@@ -33,7 +33,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.05.ilex-the-surveyor
       count: 1
-    - cardKey: vessels.06.sol-the-warden
+    - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
@@ -587,7 +587,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.05.ilex-the-surveyor
       count: 1
-    - cardKey: vessels.06.sol-the-warden
+    - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1

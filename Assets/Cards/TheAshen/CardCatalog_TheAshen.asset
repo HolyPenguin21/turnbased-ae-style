@@ -825,6 +825,53 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 17
+    authoredKey: ashen.card.spore-drifter
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Spore Drifter
+    art: {fileID: 21300000, guid: 0056579d87697e1468b8ecf717e8ca22, type: 3}
+    detailArt: {fileID: 21300000, guid: 2d61d9a753aaf874a9234d881733ad83, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 2
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities:
+    - Scorcher
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 18
     authoredKey: ashen.card.scrap-shaman
     deckPointCost: 3
     deckCopyLimit: 4
@@ -871,7 +918,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 18
+  - id: 19
     authoredKey: ashen.card.scav-carrier
     deckPointCost: 4
     deckCopyLimit: 4
@@ -919,7 +966,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 19
+  - id: 20
     authoredKey: ashen.card.rad-brute
     deckPointCost: 3
     deckCopyLimit: 4
@@ -967,14 +1014,14 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 20
+  - id: 21
     authoredKey: ashen.card.furnace-bearer
     deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Furnace Bearer
     art: {fileID: 21300000, guid: 85877c9a0abd668469ce291cacff3802, type: 3}
-    detailArt: {fileID: 21300000, guid: 572fb2e8858e51447b03447d4df763db, type: 3}
+    detailArt: {fileID: 21300000, guid: 5950e6ac9083ccb42890e07171c5231c, type: 3}
     faction: 4
     cardType: 1
     apCost: 4
@@ -1016,7 +1063,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 21
+  - id: 22
     authoredKey: ashen.card.ash-walker
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1063,7 +1110,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 22
+  - id: 23
     authoredKey: ashen.card.grave-engine
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1110,7 +1157,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 23
+  - id: 24
     authoredKey: ashen.card.rust-tank
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1156,7 +1203,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 24
+  - id: 25
     authoredKey: ashen.card.roadbreaker
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1203,7 +1250,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 25
+  - id: 26
     authoredKey: ashen.card.furnace-tortoise
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1251,7 +1298,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 26
+  - id: 27
     authoredKey: ashen.card.boomstick
     deckPointCost: 5
     deckCopyLimit: 4
@@ -1297,7 +1344,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 27
+  - id: 28
     authoredKey: ashen.card.leviathan
     deckPointCost: 6
     deckCopyLimit: 4
@@ -1343,7 +1390,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 28
+  - id: 29
     authoredKey: ashen.card.scrap-mortar
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1389,7 +1436,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 29
+  - id: 30
     authoredKey: ashen.card.colossus
     deckPointCost: 5
     deckCopyLimit: 4
@@ -1436,7 +1483,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 30
+  - id: 31
     authoredKey: ashen.card.ash-howitzer
     deckPointCost: 6
     deckCopyLimit: 4
@@ -1484,7 +1531,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 31
+  - id: 32
     authoredKey: ashen.card.striker
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1531,7 +1578,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 32
+  - id: 33
     authoredKey: ashen.card.scrapwing
     deckPointCost: 2
     deckCopyLimit: 4

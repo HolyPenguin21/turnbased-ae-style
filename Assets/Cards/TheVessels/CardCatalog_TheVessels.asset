@@ -403,13 +403,13 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 8
-    authoredKey: vessels.06.sol-the-warden
+    authoredKey: vessels.06.jol-the-warden
     deckPointCost: 3
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Sol the Warden
-    art: {fileID: 21300000, guid: cee75655fff09514a8de0b85addce953, type: 3}
-    detailArt: {fileID: 21300000, guid: de1a5bedb9e66ef49aa19a7c489e5b0a, type: 3}
+    displayName: Jol the Warden
+    art: {fileID: 21300000, guid: f8e9e56bf906fb248ab7e9d9183fcff8, type: 3}
+    detailArt: {fileID: 21300000, guid: 9c6c10a839f307d4abe29b1a42030d6c, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -778,6 +778,54 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 16
+    authoredKey: vessels.27.arc-cantor
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Arc Cantor
+    art: {fileID: 21300000, guid: c1e5722ae67722840a49f3d36e0a7cb7, type: 3}
+    detailArt: {fileID: 21300000, guid: a06fbe592e8a13c4db4cf26d5911e5bf, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - Scorcher
+    - Hyperkinetic
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 17
     authoredKey: vessels.16.bulwark-vessel
     deckPointCost: 2
     deckCopyLimit: 4
@@ -824,7 +872,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 17
+  - id: 18
     authoredKey: vessels.17.relay-carrier
     deckPointCost: 2
     deckCopyLimit: 4
@@ -872,7 +920,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 18
+  - id: 19
     authoredKey: vessels.18.bastion-frame
     deckPointCost: 2
     deckCopyLimit: 4
@@ -919,7 +967,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 19
+  - id: 20
     authoredKey: vessels.19.heavy-sentinel
     deckPointCost: 2
     deckCopyLimit: 4
@@ -966,7 +1014,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 20
+  - id: 21
     authoredKey: vessels.20.siege-walker
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1012,7 +1060,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 21
+  - id: 22
     authoredKey: vessels.21.resonance-tank
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1059,7 +1107,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 22
+  - id: 23
     authoredKey: vessels.22.monolith
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1106,7 +1154,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 23
+  - id: 24
     authoredKey: vessels.23.echo-mortar
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1153,7 +1201,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 24
+  - id: 25
     authoredKey: vessels.24.prism-engine
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1200,7 +1248,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 25
+  - id: 26
     authoredKey: vessels.25.harmonic-howitzer
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1248,7 +1296,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 26
+  - id: 27
     authoredKey: vessels.26.skimmer
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1295,7 +1343,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 27
+  - id: 28
     authoredKey: vessels.28.dreadnought
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1341,7 +1389,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 28
+  - id: 29
     authoredKey: vessels.27.gyrocopter
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1388,7 +1436,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 29
+  - id: 30
     authoredKey: vessels.27.null-vessel
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1422,6 +1470,52 @@ MonoBehaviour:
     unitTypeTags: 0100000005000000
     grantedAbilities:
     - ShockAttack
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 31
+    authoredKey: vessels.27.llens-watcher
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Null Vessel
+    art: {fileID: 21300000, guid: f2d6f3af2f7c3cc49b92f4764ed2ca37, type: 3}
+    detailArt: {fileID: 21300000, guid: 79d4cead0a93fcc46b1a4f179607e630, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    range: 3
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
