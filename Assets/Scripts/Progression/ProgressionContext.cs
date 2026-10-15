@@ -30,6 +30,7 @@ namespace Game.Progression
                 var obsolete = service.Snapshot.ownedCards.Where(e => service.Rules.Resolve(e.cardKey) == null).Select(e => e.cardKey).ToList();
                 Notice = notice;
                 if (obsolete.Count > 0) Notice = (notice ?? "") + "\nObsolete card identities retained: " + string.Join(", ", obsolete);
+                if (service.StarterIssues.Count > 0) Notice = (Notice ?? "") + "\n" + string.Join("\n", service.StarterIssues);
                 Error = null;
                 return true;
             }

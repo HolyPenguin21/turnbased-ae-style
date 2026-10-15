@@ -77,6 +77,9 @@ namespace Game.Progression
         // Copies of one faction's saved decks in profile order, without copying the whole profile.
         public System.Collections.Generic.List<SavedDeck> Decks(Faction faction)
             => profile.savedDecks.Where(d => d.faction == faction).Select(CollectionProfile.CopyDeck).ToList();
+        // Authored data errors found while building starters; the row is skipped so the collection stays usable.
+        private readonly System.Collections.Generic.List<string> starterIssues = new System.Collections.Generic.List<string>();
+        public System.Collections.Generic.IReadOnlyList<string> StarterIssues => starterIssues;
         public SavedDeck Starter(Faction faction)
         {
             var deck = new SavedDeck { isStarter = true, deckId = Guid.NewGuid().ToString("N"), name = Rules.Starting.GetDeck(faction)?.deckName ?? "Starter", faction = faction };
@@ -85,7 +88,13 @@ namespace Game.Progression
                 foreach (var e in source.cards.Where(e => e != null && e.count > 0))
                 {
                     var card = Rules.Starting.ResolveCard(e.cardKey);
-                    if (card == null || !Rules.Permitted(card, faction)) throw new InvalidOperationException("Invalid starter reference: " + e.cardKey);
+                    if (card == null || !Rules.Permitted(card, faction))
+                    {
+                        string issue = $"Starting deck '{deck.name}': card '{e.cardKey}' "
+                            + (card == null ? "is not in any card catalog" : "is not allowed for " + faction) + " and was skipped.";
+                        if (!starterIssues.Contains(issue)) { starterIssues.Add(issue); UnityEngine.Debug.LogWarning(issue, Rules.Starting); }
+                        continue;
+                    }
                     DeckRules.Entries(deck, DeckRules.Category(card)).Add(new DeckCardEntry { cardKey = card.authoredKey, count = e.count });
                 }
             return deck;
