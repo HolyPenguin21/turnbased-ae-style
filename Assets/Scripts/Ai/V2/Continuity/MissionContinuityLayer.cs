@@ -58,7 +58,7 @@ namespace Game.Ai.V2
                 if (ActiveResolvers.TryGetValue(intent.Kind, out var resolve)) resolve(player, snap, intent, pass);
                 else ReconContinuity.ResolveScoutOperation(player, snap, intent, pass);
             }
-            RetireRecruitedReturnFallbacks(player, snap, pass);
+            AttackContinuity.RetireRecruitedReturnFallbacks(player, snap, pass);
             foreach (MissionIntentKey key in pass.Dead) state.Remove(key);
             // In-place rekeys preserve the same durable intent and accumulated progress.
             foreach ((MissionIntentKey oldKey, MissionIntent intent) in pass.Rekeys)
@@ -437,7 +437,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] cooldown — {key} reason={reason} start=t{turn} until=t{until} duration={duration}");
         }
 
-        private static string Describe(MissionStepResult o) =>
+        internal static string Describe(MissionStepResult o) =>
             o.Proposal != null && o.Proposal.Target is ScoutMissionTarget t
                 ? ReconScoutKinds.Name(t.Kind)
                 : o.Proposal != null && o.Proposal.Target is EconomyMissionTarget e

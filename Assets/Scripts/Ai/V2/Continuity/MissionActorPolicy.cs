@@ -139,7 +139,7 @@ namespace Game.Ai.V2
                     if (valid)
                     {
                         c.Claim(i.IntentKey, actorId, preparing
-                            ? MissionContinuityLayer.AttackPreparationMutationContract(snap.TurnNumber)
+                            ? AttackContinuity.AttackPreparationMutationContract(snap.TurnNumber)
                             : attack.AssaultStarted ? ArmyMutationContract.FullyProtected
                             : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"),
                             preparationHost: preparing);

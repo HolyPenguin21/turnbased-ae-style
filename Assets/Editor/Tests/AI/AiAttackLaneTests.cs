@@ -171,7 +171,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = Snap(new[] { Building(RedBase, Red) },
                 new[] { OurBase, RedBase }, new[] { Army(7, RedBase, Strong()) });
 
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
                 out bool captured);
 
             Assert.That(keep, Is.False, "one intent is one Base; there is no re-orient after capture");
@@ -189,7 +189,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = Snap(new[] { Building(RedBase, Blue) },
                 new[] { OurBase }, new[] { Army(7, EnRoute, Strong()) });
 
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
                 out bool captured);
 
             Assert.That(keep, Is.False);
@@ -204,7 +204,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = Snap(new[] { Building(RedBase, Red) },
                 new[] { OurBase }, Array.Empty<ArmySnapshot>());
 
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
                 out _), Is.False);
         }
 
@@ -215,7 +215,7 @@ namespace Game.EditorTests
         {
             // Clears -> back to Assault.
             MissionIntent capable = AttackIntent(AttackMissionPhase.Reinforcement, 7);
-            MissionContinuityLayer.ResolveAttackIntent(Us,
+            AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Strong()) }, new[] { OurBase }),
                 capable, capable.Attack, null, out _);
             Assert.That(capable.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
@@ -225,7 +225,7 @@ namespace Game.EditorTests
             using (Coverage(required: true))
             {
                 MissionIntent needsHelp = AttackIntent(AttackMissionPhase.Assault, 7);
-                MissionContinuityLayer.ResolveAttackIntent(Us,
+                AttackContinuity.ResolveAttackIntent(Us,
                     DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, EnRoute, Strong()) },
                         new[] { OurBase }),
                     needsHelp, needsHelp.Attack, null, out _);
@@ -242,13 +242,13 @@ namespace Game.EditorTests
             WorldSnapshot snap = DefendedSite(new[] { actor }, new[] { OurBase });
             snap.Self.TotalMilitaryPotential = actor.EffectiveArmyPower * 5f;
             MissionIntent marching = AttackIntent(AttackMissionPhase.Assault, 7);
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, snap, marching,
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, snap, marching,
                 marching.Attack, null, out _), Is.True);
             Assert.That(marching.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
 
             MissionIntent staging = AttackIntent(AttackMissionPhase.Assault, 7);
             staging.Attack.AssaultStarted = false;
-            MissionContinuityLayer.ResolveAttackIntent(Us, snap, staging,
+            AttackContinuity.ResolveAttackIntent(Us, snap, staging,
                 staging.Attack, null, out _);
             Assert.That(staging.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
         }
@@ -284,7 +284,7 @@ namespace Game.EditorTests
         {
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 8);
             intent.Attack.SupportReturnHex = OurBase;
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Strong()) }, new[] { OurBase }),
                 intent, intent.Attack, null, out _);
 
@@ -310,7 +310,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = DefendedSite(
                 new[] { Army(primary.Id, EnRoute, Weak()) }, new[] { OurBase });
 
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us, snap, intent,
                 intent.Attack, null, out _);
 
             Assert.That(keep, Is.True);
@@ -368,7 +368,7 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(required: true);
             MissionIntent started = AttackIntent(AttackMissionPhase.Reinforcement, 7);
             started.Attack.AssaultStarted = false;
-            bool keepStarted = MissionContinuityLayer.ResolveAttackIntent(Us,
+            bool keepStarted = AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
                 started, started.Attack, null, out _);
 
@@ -379,7 +379,7 @@ namespace Game.EditorTests
 
             MissionIntent neverStarted = AttackIntent(AttackMissionPhase.Reinforcement, 7,
                 started: false);
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us,
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us,
                     DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase }),
                     neverStarted, neverStarted.Attack, null, out _),
                 Is.False, "nothing was spent physically, so there is nothing to withdraw");
@@ -393,7 +393,7 @@ namespace Game.EditorTests
             MissionIntent lost = AttackIntent(AttackMissionPhase.RecoveryReturn, 7,
                 recoveryBase: AltBase);
             // AltBase left Self.BaseHexes — it is no longer ours.
-            bool keepLost = MissionContinuityLayer.ResolveAttackIntent(Us,
+            bool keepLost = AttackContinuity.ResolveAttackIntent(Us,
                 Snap(new[] { Building(RedBase, Red) }, new[] { OurBase },
                     new[] { Army(7, EnRoute, Weak()) }),
                 lost, lost.Attack, null, out _);
@@ -403,7 +403,7 @@ namespace Game.EditorTests
 
             MissionIntent arrived = AttackIntent(AttackMissionPhase.RecoveryReturn, 7,
                 recoveryBase: OurBase);
-            bool keepArrived = MissionContinuityLayer.ResolveAttackIntent(Us,
+            bool keepArrived = AttackContinuity.ResolveAttackIntent(Us,
                 Snap(new[] { Building(RedBase, Red) }, new[] { OurBase },
                     new[] { Army(7, OurBase, Weak()) }),
                 arrived, arrived.Attack, null, out bool arrivedSuccess);
@@ -413,7 +413,7 @@ namespace Game.EditorTests
 
             MissionIntent homeless = AttackIntent(AttackMissionPhase.RecoveryReturn, 7,
                 recoveryBase: AltBase);
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us,
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us,
                     Snap(new[] { Building(RedBase, Red) }, Array.Empty<HexCoord>(),
                         new[] { Army(7, EnRoute, Weak()) }),
                     homeless, homeless.Attack, null, out _),
@@ -432,7 +432,7 @@ namespace Game.EditorTests
                 capturedByUs ? new[] { OurBase, RedBase } : new[] { OurBase },
                 new[] { Army(7, EnRoute, Weak()) });
 
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us, snap, intent,
                 intent.Attack, null, out bool success);
 
             Assert.That(keep, Is.True, "withdrawal follows its own base destination");
@@ -516,7 +516,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = DefendedSite(
                 new[] { Army(7, EnRoute, Strong()), Army(8, OurBase, Weak()) }, new[] { OurBase });
 
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null,
                 out _);
 
             Assert.That(keep, Is.True);
@@ -616,7 +616,7 @@ namespace Game.EditorTests
             var state = new MissionIntentState();
             MissionStepResult outcome = AttackOutcome(strikeSpent: true);
 
-            MissionContinuityLayer.CreateAttackIntent(state, outcome, turn: 6);
+            AttackContinuity.CreateAttackIntent(state, outcome, turn: 6);
 
             Assert.That(state.TryGet(outcome.IntentKey, out MissionIntent created), Is.True);
             Assert.That(created.Attack.LastOpportunisticStrikeTurn, Is.EqualTo(6),
@@ -629,7 +629,7 @@ namespace Game.EditorTests
             var state = new MissionIntentState();
             MissionStepResult outcome = AttackOutcome(strikeSpent: false);
 
-            MissionContinuityLayer.CreateAttackIntent(state, outcome, turn: 6);
+            AttackContinuity.CreateAttackIntent(state, outcome, turn: 6);
 
             Assert.That(state.TryGet(outcome.IntentKey, out MissionIntent created), Is.True);
             Assert.That(created.Attack.LastOpportunisticStrikeTurn, Is.EqualTo(0),
@@ -795,7 +795,7 @@ namespace Game.EditorTests
         {
             using IDisposable coverage = Coverage(coverageRequired);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
                 intent, intent.Attack, null, out bool captured);
 
@@ -813,7 +813,7 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(required: true);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
             WorldSnapshot snap = DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase });
-            MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, intent.Attack, null, out _);
+            AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null, out _);
             // A reusable shell exists: before commitment this would be an IndependentFieldArmy.
             var inventory = new CapabilityInventory
             {
@@ -834,7 +834,7 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(required: true);
             // Primary at (4,0) marching on (6,0); the support one hex behind it.
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
-            MissionContinuityLayer.ResolveAttackIntent(Us,
+            AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(3, 0), Strong()) },
                     new[] { OurBase }),
                 intent, intent.Attack, null, out _);
@@ -852,7 +852,7 @@ namespace Game.EditorTests
         {
             using IDisposable coverage = Coverage(required: true);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
-            MissionContinuityLayer.ResolveAttackIntent(Us,
+            AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(3, 0), Weak()) },
                     new[] { OurBase }),
                 intent, intent.Attack, null, out _);
@@ -867,7 +867,7 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(required: true);
             // Meeting it would hold the primary for several turns (or send it back): rejected.
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
-            MissionContinuityLayer.ResolveAttackIntent(Us,
+            AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(-4, 0), Strong()) },
                     new[] { OurBase }),
                 intent, intent.Attack, null, out _);
@@ -903,7 +903,7 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(required: true);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 9999);
             intent.Attack.RendezvousHex = new HexCoord(5, 0);
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
                 intent, intent.Attack, null, out _);
 
@@ -919,7 +919,7 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(required: true);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 9999);
             intent.Attack.RendezvousHex = new HexCoord(5, 0);
-            MissionContinuityLayer.ResolveAttackIntent(Us,
+            AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, EnRoute, Strong()) },
                     new[] { OurBase }),
                 intent, intent.Attack, null, out _);
@@ -934,7 +934,7 @@ namespace Game.EditorTests
             ArmySnapshot remnant = Army(7, EnRoute, Weak());
             remnant.IsStructuralRaidActor = false;
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
-            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+            bool keep = AttackContinuity.ResolveAttackIntent(Us,
                 DefendedSite(new[] { remnant }, new[] { OurBase, AltBase }),
                 intent, intent.Attack, null, out _);
 

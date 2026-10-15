@@ -32,7 +32,7 @@ namespace Game.EditorTests
             state.Put(intent);
             try
             {
-                var contract = MissionContinuityLayer.AttackPreparationMutationContract(4);
+                var contract = AttackContinuity.AttackPreparationMutationContract(4);
                 Assert.That(contract.TargetRosterKeys(host), Is.EqualTo(new[] { "tank", "tank" }));
                 attack.TargetRoster.Add(new StrikeRosterSlot("recce", false, 1, ForceSource.Deck));
                 Assert.That(contract.TargetRosterKeys(host), Is.EqualTo(new[] { "tank", "tank", "recce" }));

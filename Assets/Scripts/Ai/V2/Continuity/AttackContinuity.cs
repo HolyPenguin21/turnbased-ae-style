@@ -8,17 +8,19 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using static Game.Ai.V2.MissionContinuityLayer;
 
 namespace Game.Ai.V2
 {
     // ===========================================================================================
     //  ATK §24/§25/§47/§61/§70/§71 — ATTACK CONTINUITY.
     //
-    //  A mechanical partial of MissionContinuityLayer, not a second continuity owner: intents still
-    //  live in the one MissionIntentState, are keyed by the one MissionIntentKey, and are reaped by
-    //  the same rules. This file holds only the Attack lane's own lifecycle answers.
+    //  The Attack line's own owner, composed by MissionContinuityLayer by mission kind; not a
+    //  second intent store: intents still live in the one MissionIntentState, are keyed by the one
+    //  MissionIntentKey, and are reaped by the same rules. It holds only the Attack lane's own
+    //  lifecycle answers.
     // ===========================================================================================
-    internal static partial class MissionContinuityLayer
+    internal static class AttackContinuity
     {
         internal static bool IsAttackStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm)
         {
@@ -893,7 +895,7 @@ namespace Game.Ai.V2
         // position left the whole pool (a unit died, a card was spent elsewhere) — a small
         // reshuffle of the greedy pick never churns it. Housekeeping may take armies apart
         // meanwhile: the roster is by card key, not by army, so the host re-gathers it.
-        private static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a,
+        internal static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a,
             ArmyData liveHost)
         {
             UnitData commander = liveHost?.Commander;
@@ -1060,7 +1062,7 @@ namespace Game.Ai.V2
             MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
         }
 
-        private static bool TryHandleAttackSideLeg(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryHandleAttackSideLeg(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
@@ -1115,7 +1117,7 @@ namespace Game.Ai.V2
 
             return false;
         }
-        private static bool TryCompleteAttackLeg(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCompleteAttackLeg(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
@@ -1148,7 +1150,7 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static bool TryCreateAttackStep(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCreateAttackStep(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (!(o.AttackFacts().HasAttackPayload && o.GroundFacts().OperationStarted)) return false;
@@ -1156,12 +1158,12 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static bool TryPreserveAttackSupportMover(MissionIntentState state, AiAllocatorState allocator,
+        internal static bool TryPreserveAttackSupportMover(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult o, int turn) =>
             intent.Attack != null && o.AttackFacts().HasAttackPayload
                 && GroundCombatLegs.IsAttackSupportLeg(o.AttackFacts().AttackTarget.Phase);
 
-        private static void ApplyAttackStepFacts(MissionIntentState state, AiAllocatorState allocator,
+        internal static void ApplyAttackStepFacts(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (o.AttackFacts().HasAttackPayload && intent.Attack != null)
@@ -1256,7 +1258,7 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void RetireGatherDonors(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        internal static void RetireGatherDonors(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
         {
             var state = pass.State;
             var dead = pass.Dead;
@@ -1283,7 +1285,7 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void ResolveAttackOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        internal static void ResolveAttackOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
         {
             var state = pass.State;
             var active = pass.Active;
@@ -1291,8 +1293,7 @@ namespace Game.Ai.V2
             var rekeys = pass.Rekeys;
             var raidClaims = pass.ActorClaims;
 
-            // ATK §24/§25 — the Attack lane's own lifecycle answers live in
-            // MissionContinuityLayer.Attack.cs (a mechanical partial of this same owner).
+            // ATK §24/§25 — the Attack lane's own lifecycle answers live in ResolveAttackIntent.
             // Audit F7 — a Gather re-plan may not recruit another intent's actor. T07 — an
             // army walking home on a completed Raid's Return fallback is NOT another
             // intent's actor (the fallback has no commitment protection and no claim); if
@@ -1318,7 +1319,7 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void RetireRecruitedReturnFallbacks(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        internal static void RetireRecruitedReturnFallbacks(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
         {
             var state = pass.State;
             var active = pass.Active;
@@ -1344,13 +1345,13 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionStepResult o)
+        internal static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
             o.AttackFactsForWrite().HasAttackPayload = true;
             o.AttackFactsForWrite().AttackTarget = pm.AttackTarget;
         }
 
-        private static void CaptureAttackExecutionFacts(ExecutionResult e, MissionStepResult o)
+        internal static void CaptureAttackExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
             o.GroundFactsForWrite().OperationStarted = e.OperationStarted || e.StepsMoved > 0
                 || e.StopReason == ExecutionStopReason.BattleStarted;

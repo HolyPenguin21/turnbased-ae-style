@@ -455,7 +455,7 @@ namespace Game.EditorTests
             AttackIntent attack = Marching();
             MissionIntent intent = Intent(attack);
 
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, attack,
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, snap, intent, attack,
                 new HashSet<int>(), out _), Is.True);
             Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn));
             Assert.That(attack.TacticalRetreat, Is.True);
@@ -465,7 +465,7 @@ namespace Game.EditorTests
             Assert.That(w.EnemyArmyId, Is.EqualTo(5));
 
             // idempotent: a second pass neither re-triggers nor loses the leg
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, attack,
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, snap, intent, attack,
                 new HashSet<int>(), out _), Is.True);
             Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn));
         }
@@ -478,12 +478,12 @@ namespace Game.EditorTests
             WorldSnapshot homeless = Snap(us, enemy);
             homeless.Self.BaseHexes = new List<HexCoord>();
             AttackIntent attack = Marching();
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, homeless, Intent(attack), attack,
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, homeless, Intent(attack), attack,
                 new HashSet<int>(), out _), Is.False, "controlled end: the claim is released with the intent");
 
             ArmySnapshot strong = Army(7, Origin, Strong());
             AttackIntent ok = Marching();
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, Snap(strong, Sight(5, new HexCoord(2, 0), Red, Weak())),
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, Snap(strong, Sight(5, new HexCoord(2, 0), Red, Weak())),
                 Intent(ok), ok, new HashSet<int>(), out _), Is.True);
             Assert.That(ok.Phase, Is.EqualTo(AttackMissionPhase.Assault));
             Assert.That(ok.TacticalRetreat, Is.False);
@@ -656,7 +656,7 @@ namespace Game.EditorTests
             AttackIntent attack = Marching();
             attack.LastOpportunisticStrikeTurn = snap.TurnNumber; // the fight was spent this turn
             MissionIntent intent = Intent(attack);
-            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, attack, new HashSet<int>(), out _), Is.True);
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, snap, intent, attack, new HashSet<int>(), out _), Is.True);
             Assert.That(attack.Target, Is.EqualTo(Main));
             Assert.That(attack.PrimaryArmyId, Is.EqualTo(7));
             Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
@@ -676,7 +676,7 @@ namespace Game.EditorTests
             AttackTacticalOpportunity.Decide(snap, weak, Main, -1, false, null, null);
             CheckAndApply(MissionIntentRegistry.GetOrCreate(Us), snap, weak, out _);
             AttackIntent attack = Marching();
-            MissionContinuityLayer.ResolveAttackIntent(Us, snap, Intent(attack), attack, new HashSet<int>(), out _);
+            AttackContinuity.ResolveAttackIntent(Us, snap, Intent(attack), attack, new HashSet<int>(), out _);
             Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn));
             Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(start), "pure selection / phase change: no world receipt");
 

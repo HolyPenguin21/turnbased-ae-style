@@ -23,7 +23,7 @@ namespace Game.Ai.V2
                 && ObjectiveLiveStatus.RaidSatisfied(player, pm.RaidTarget);
 
         // The Raid lane's own lifecycle answers for ResolveActive (the counterpart of
-        // ResolveAttackIntent). Returns false when the intent must be retired; true keeps it, and
+        // AttackContinuity.ResolveAttackIntent). Returns false when the intent must be retired; true keeps it, and
         // ResolveActive adds it to this pass's active set while it is Active.
         // `raidClaims` — every durable claim (recovery may not recruit another operation's actor).
         internal static bool ResolveRaidIntent(PlayerSetupData player, WorldSnapshot snap,

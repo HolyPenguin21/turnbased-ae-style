@@ -11,7 +11,7 @@ namespace Game.Ai.V2
             {
                 [MissionKind.Scout] = ReconContinuity.ClassifyScoutStep,
                 [MissionKind.Raid] = RaidContinuity.ClassifyRaidStep,
-                [MissionKind.Attack] = ClassifyAttackStep,
+                [MissionKind.Attack] = AttackContinuity.ClassifyAttackStep,
                 [MissionKind.Economy] = EconomyContinuity.ClassifyEconomyStep,
                 [MissionKind.Development] = DevelopmentContinuity.ClassifyDevelopmentStep,
             };
@@ -20,7 +20,7 @@ namespace Game.Ai.V2
             {
                 [MissionKind.Scout] = ReconContinuity.IsScoutStepObjectiveSatisfiedLive,
                 [MissionKind.Raid] = RaidContinuity.IsRaidStepObjectiveSatisfiedLive,
-                [MissionKind.Attack] = IsAttackStepObjectiveSatisfiedLive,
+                [MissionKind.Attack] = AttackContinuity.IsAttackStepObjectiveSatisfiedLive,
                 [MissionKind.ActiveDefence] = ActiveDefenceContinuity.IsActiveDefenceStepObjectiveSatisfiedLive,
                 [MissionKind.Economy] = EconomyContinuity.IsEconomyStepObjectiveSatisfiedLive,
                 [MissionKind.Development] = DevelopmentContinuity.IsDevelopmentStepObjectiveSatisfiedLive,
@@ -55,14 +55,14 @@ namespace Game.Ai.V2
         private delegate bool OutcomeTransition(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult result, int turn);
         private static readonly OutcomeTransition[] SideLegTransitions =
-            { TryHandleAttackSideLeg, GroundCombatContinuity.TryHandleInvalidGroundSupport };
+            { AttackContinuity.TryHandleAttackSideLeg, GroundCombatContinuity.TryHandleInvalidGroundSupport };
         private static readonly OutcomeTransition[] CompletionTransitions =
-            { RaidContinuity.TryCompleteRaidTarget, TryCompleteAttackLeg, ReconContinuity.TryContinueScoutWaypoint };
+            { RaidContinuity.TryCompleteRaidTarget, AttackContinuity.TryCompleteAttackLeg, ReconContinuity.TryContinueScoutWaypoint };
         private static readonly OutcomeTransition[] RecoveryTransitions = { EconomyContinuity.TryKeepEconomyRecovery };
         private static readonly OutcomeObservation[] RetirementPreparers = { EconomyContinuity.PrepareEconomyRetirement };
         private static readonly OutcomeTransition[] NoProgressTransitions = { EconomyContinuity.TryHandleEconomyNoProgress };
         private static readonly OutcomeTransition[] CreationTransitions =
-            { ReconContinuity.TryCreateScoutStep, RaidContinuity.TryCreateRaidStep, TryCreateAttackStep, ActiveDefenceContinuity.TryCreateActiveDefenceStep,
+            { ReconContinuity.TryCreateScoutStep, RaidContinuity.TryCreateRaidStep, AttackContinuity.TryCreateAttackStep, ActiveDefenceContinuity.TryCreateActiveDefenceStep,
                 EconomyContinuity.TryCreateEconomyStep, DevelopmentContinuity.TryCreateDevelopmentStep };
         private static readonly Action<MissionIntentState, MissionStepResult, int>[] ProgressRecorders =
             { EconomyContinuity.RecordEconomyStepProgress };
@@ -81,9 +81,9 @@ namespace Game.Ai.V2
             MissionIntent intent, MissionStepResult result, int turn);
         private static readonly OutcomeObservation[] BeforeMoverObservers = { ReconContinuity.ObserveReconMover };
         private static readonly OutcomeTransition[] MoverTransitions =
-            { RaidContinuity.TryApplyRaidMoverFacts, TryPreserveAttackSupportMover, TryPreservePinnedDomainMover };
+            { RaidContinuity.TryApplyRaidMoverFacts, AttackContinuity.TryPreserveAttackSupportMover, TryPreservePinnedDomainMover };
         private static readonly OutcomeObservation[] IntentFactObservers =
-            { ReconContinuity.ApplyScoutStepFacts, ApplyAttackStepFacts, RaidContinuity.ApplyRaidStepFacts, EconomyContinuity.ApplyEconomyStepFacts };
+            { ReconContinuity.ApplyScoutStepFacts, AttackContinuity.ApplyAttackStepFacts, RaidContinuity.ApplyRaidStepFacts, EconomyContinuity.ApplyEconomyStepFacts };
         private static readonly OutcomeTransition[] CapabilityFailureTransitions =
             { EconomyContinuity.TryHandleEconomyCapabilityFailure };
 
@@ -138,7 +138,7 @@ namespace Game.Ai.V2
         private delegate void ActiveResolver(Game.Players.PlayerSetupData player,
             WorldSnapshot snapshot, MissionIntent intent, ActiveResolution pass);
         private static readonly ResolutionPreparation[] ResolutionPreparers =
-            { EconomyContinuity.RepairEconomyLoans, RetireGatherDonors, ReconContinuity.CollectScoutFoci };
+            { EconomyContinuity.RepairEconomyLoans, AttackContinuity.RetireGatherDonors, ReconContinuity.CollectScoutFoci };
         private static readonly ResolutionPreparation[] ResolutionFinalizers =
             { ReconContinuity.FinalizeReconResolution, GroundCombatContinuity.FinalizeAirSupportResolution };
         private static readonly IReadOnlyDictionary<MissionKind, ActiveResolver> ActiveResolvers =
@@ -147,7 +147,7 @@ namespace Game.Ai.V2
                 [MissionKind.Development] = DevelopmentContinuity.ResolveDevelopmentOperation,
                 [MissionKind.Economy] = EconomyContinuity.ResolveEconomyOperation,
                 [MissionKind.ActiveDefence] = ActiveDefenceContinuity.ResolveDefenceOperation,
-                [MissionKind.Attack] = ResolveAttackOperation,
+                [MissionKind.Attack] = AttackContinuity.ResolveAttackOperation,
                 [MissionKind.Raid] = RaidContinuity.ResolveRaidOperation,
             };
 
@@ -155,7 +155,7 @@ namespace Game.Ai.V2
             ProvisionFactReaders = new Dictionary<MissionKind, Action<ProvisionedMission, MissionStepResult>>
             {
                 [MissionKind.Raid] = RaidContinuity.CaptureRaidProvisionFacts,
-                [MissionKind.Attack] = CaptureAttackProvisionFacts,
+                [MissionKind.Attack] = AttackContinuity.CaptureAttackProvisionFacts,
                 [MissionKind.ActiveDefence] = ActiveDefenceContinuity.CaptureActiveDefenceProvisionFacts,
                 [MissionKind.Economy] = EconomyContinuity.CaptureEconomyProvisionFacts,
                 [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentProvisionFacts,
@@ -165,7 +165,7 @@ namespace Game.Ai.V2
             {
                 [MissionKind.Scout] = ReconContinuity.CaptureScoutExecutionFacts,
                 [MissionKind.Raid] = RaidContinuity.CaptureRaidExecutionFacts,
-                [MissionKind.Attack] = CaptureAttackExecutionFacts,
+                [MissionKind.Attack] = AttackContinuity.CaptureAttackExecutionFacts,
                 [MissionKind.Economy] = EconomyContinuity.CaptureEconomyExecutionFacts,
                 [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentExecutionFacts,
             };
