@@ -43,8 +43,9 @@ namespace Game.EditorTests
             ["Execution/BuildingPlayExecutor.cs"] = 2,
             ["Execution/ReconAirExecutor.cs"] = 34,
             ["Execution/ReconGroundExecutor.cs"] = 2,
-            // +1 (T01): the preparation step measures its physical AP delta like every lane.
-            ["Execution/ActiveDefenceExecutor.cs"] = 1,
+            // +1 (T01): the preparation step measures its physical AP delta like every lane;
+            // +1: the same physical after-read in that step's log line.
+            ["Execution/ActiveDefenceExecutor.cs"] = 2,
             ["Execution/RaidExecutor.cs"] = 1,
             ["Execution/TaskExecutor.cs"] = 10,
             ["Housekeeping/HousekeepingManager.cs"] = 6,
@@ -62,7 +63,10 @@ namespace Game.EditorTests
             ["Orchestration/MandatoryAviationStep.cs"] = 1,
             // T01: the preparation step's physical turn-AP-left read, as every provisioning lane.
             ["Provisioning/AttackProvisioner.cs"] = 1,
-            ["Provisioning/GroundCombatAssaultTransaction.cs"] = 3,
+            ["Provisioning/GroundCombatAssaultTransaction.cs"] = 1,
+            // Moved, not new: the walk-home and reinforcement leg checks' turn-AP-left reads
+            // (were in GroundCombatAssaultTransaction.cs, 3 -> 1).
+            ["Provisioning/GroundCombatLegChecks.cs"] = 2,
             ["Provisioning/ProvisioningManager.Air.cs"] = 1,
             ["Provisioning/ProvisioningManager.Development.cs"] = 1,
             ["Provisioning/ProvisioningManager.Economy.cs"] = 4,

@@ -3,10 +3,10 @@
 # working tree. Exit 1 on any regression.   test_regress.sh [base-rev]   (default: HEAD)
 source "$(dirname "$0")/common.sh"
 BASE="${1:-HEAD}"; BASE_SHA=$(git -C "$REPO" rev-parse "$BASE")
-BX="$WORK/tests_base_$BASE_SHA.xml"
+BX="$WORK/tests_base_${MODE}_$BASE_SHA.xml"
 [ -f "$BX" ] || { echo "base $BASE ($BASE_SHA):"; "$HERE/run_tests.sh" "$BX" "$BASE_SHA"; }
-echo "working tree:"; "$HERE/run_tests.sh" "$WORK/tests_current.xml" ""
-python3 - "$BX" "$WORK/tests_current.xml" <<'PY'
+echo "working tree:"; "$HERE/run_tests.sh" "$WORK/tests_current_$MODE.xml" ""
+"$PYTHON" - "$BX" "$WORK/tests_current_$MODE.xml" <<'PY'
 import sys, xml.etree.ElementTree as ET
 def res(f): return {t.get('fullname'): t for t in ET.parse(f).getroot().iter('test-case')}
 b, c = res(sys.argv[1]), res(sys.argv[2])

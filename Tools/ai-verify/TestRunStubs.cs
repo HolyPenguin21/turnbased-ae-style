@@ -1,7 +1,9 @@
 // Test-run only (net472 under Mono). Never part of the Unity project.
 public static class Net472Compat { public static int SingleToInt32Bits(float v) { unsafe { return *(int*)&v; } } }
-// Test-run only: a managed Mathf in the GLOBAL namespace shadows UnityEngine.Mathf (whose static
-// constructor needs the native engine) for every `using UnityEngine;` file. Same semantics as Unity.
+#if !AI_VERIFY_REAL_UNITY
+// Stub mode only: a managed Mathf in the GLOBAL namespace shadows the reference DLL's UnityEngine.Mathf
+// (whose bodies throw) for every `using UnityEngine;` file. Same semantics as Unity. The real
+// assemblies (AI_VERIFY_UNITY) bring a working Mathf.
 public static class Mathf
 {
     public const float Epsilon = float.Epsilon;
@@ -39,3 +41,4 @@ public static class Mathf
     public static float Sign(float f) => f >= 0f ? 1f : -1f;
     public static float PerlinNoise(float x, float y) => 0.5f;
 }
+#endif

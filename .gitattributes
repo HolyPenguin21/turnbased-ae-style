@@ -37,3 +37,6 @@
 *.pdb binary
 *.ttf binary
 *.otf binary
+
+# Shell tooling (Tools/ai-verify) must run in Git Bash on Windows: never CRLF.
+*.sh text eol=lf

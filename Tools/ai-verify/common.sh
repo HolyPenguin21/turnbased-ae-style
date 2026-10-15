@@ -5,6 +5,27 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(git -C "$HERE" rev-parse --show-toplevel)"
 WORK="${AI_VERIFY_WORK:-${TMPDIR:-/tmp}/ai-verify}"
 mkdir -p "$WORK"
+PYTHON="$(command -v python3 || command -v python)"
+
+# Two reference modes, chosen by AI_VERIFY_UNITY:
+#   unset  — "stub": NuGet UnityEngine.Modules 2021.3 (publicized reference DLLs: every method body
+#            throws) + EngineStubs.cs + a managed Mathf. For containers without Unity.
+#   set    — "unity": the installed editor's real managed assemblies. AI_VERIFY_UNITY is the
+#            Editor/Data folder of the project's version (ProjectSettings/ProjectVersion.txt), e.g.
+#            D:/Unity/Editor/6000.5.4f1/Editor/Data. Packages (TextMeshPro, InputSystem, uGUI) come
+#            from the project's Library/ScriptAssemblies, so Unity must have imported the project.
+#            No stubs: the compile is the real API, and the tests run on Unity's bundled Mono.
+if [ -n "$AI_VERIFY_UNITY" ]; then
+  MODE=unity
+  [ -d "$AI_VERIFY_UNITY/Managed/UnityEngine" ] || { echo "AI_VERIFY_UNITY: no Managed/UnityEngine in $AI_VERIFY_UNITY"; exit 2; }
+  [ -f "$REPO/Library/ScriptAssemblies/UnityEngine.UI.dll" ] || { echo "Library/ScriptAssemblies is missing: open the project in Unity once"; exit 2; }
+  MONO="$AI_VERIFY_UNITY/MonoBleedingEdge/bin/mono"; [ -f "$MONO.exe" ] && MONO="$MONO.exe"
+  MSB_PROPS=(-p:UnityData="$AI_VERIFY_UNITY" -p:UnityLibrary="$REPO/Library/ScriptAssemblies")
+else
+  MODE=stub
+  MONO=mono
+  MSB_PROPS=()
+fi
 
 # mirror_assets <dest> [rev] — a copy of Assets/ from the working tree or from a git revision,
 # with the three .NET Framework 4.7.2 API gaps patched IN THE COPY (never in the repo).
