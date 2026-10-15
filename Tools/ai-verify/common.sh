@@ -20,7 +20,9 @@ if [ -n "$AI_VERIFY_UNITY" ]; then
   [ -d "$AI_VERIFY_UNITY/Managed/UnityEngine" ] || { echo "AI_VERIFY_UNITY: no Managed/UnityEngine in $AI_VERIFY_UNITY"; exit 2; }
   [ -f "$REPO/Library/ScriptAssemblies/UnityEngine.UI.dll" ] || { echo "Library/ScriptAssemblies is missing: open the project in Unity once"; exit 2; }
   MONO="$AI_VERIFY_UNITY/MonoBleedingEdge/bin/mono"; [ -f "$MONO.exe" ] && MONO="$MONO.exe"
-  MSB_PROPS=(-p:UnityData="$AI_VERIFY_UNITY" -p:UnityLibrary="$REPO/Library/ScriptAssemblies")
+  UNITY_NUNIT="$(ls "$REPO"/Library/PackageCache/com.unity.ext.nunit*/net472/unity-custom/nunit.framework.dll 2>/dev/null | head -1)"
+  [ -n "$UNITY_NUNIT" ] || { echo "com.unity.ext.nunit is missing from Library/PackageCache"; exit 2; }
+  MSB_PROPS=(-p:UnityData="$AI_VERIFY_UNITY" -p:UnityLibrary="$REPO/Library/ScriptAssemblies" -p:UnityNUnit="$UNITY_NUNIT")
 else
   MODE=stub
   MONO=mono

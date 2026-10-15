@@ -13,9 +13,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(SrcAssets)/**/*.cs" />
-    <PackageReference Include="NUnit" Version="3.14.0" />
   </ItemGroup>
   <ItemGroup Condition="'$(UnityData)' == ''">
+    <PackageReference Include="NUnit" Version="3.14.0" />
     <Compile Include="EngineStubs.cs" />
     <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" />
     <PackageReference Include="Unity3D.UnityEngine.UI" Version="2020.3.21" />
@@ -28,5 +28,8 @@
     <Reference Include="$(UnityLibrary)/Unity.InputSystem.dll" />
     <Reference Include="$(UnityLibrary)/UnityEngine.UI.dll" />
     <Reference Include="$(UnityLibrary)/UnityEditor.UI.dll" />
+    <!-- The NUnit the editor compiles the tests against (com.unity.ext.nunit): its API is older
+         than NuGet NUnit 3.14, e.g. Does.Not.Contain takes only a string. -->
+    <Reference Include="$(UnityNUnit)" />
   </ItemGroup>
 </Project>

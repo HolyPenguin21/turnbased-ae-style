@@ -276,7 +276,7 @@ namespace Game.EditorTests
             ArmyData support = Army(Staging, lead, Hero("Small reserve commander", 1), Body("Fresh", 20));
             var plan = GroundCombatReinforcement.CommandHandover(host, support, WeakOpposition(), 0f, null);
             Assert.That(plan, Is.Not.Null);
-            Assert.That(plan.Displaced, Does.Not.Contain(old));
+            Assert.That(plan.Displaced, Has.No.Member(old));
             Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Promote,
                 plan.Displaced, out _, requireChargeNow: false), Is.True);
         }
@@ -291,7 +291,7 @@ namespace Game.EditorTests
                 WeakOpposition(), 0f, requireChargeNow: false, out string why);
             Assert.That(plan, Is.Not.Null, why);
             Assert.That(plan.Promote, Is.Null, "a body delivery must not invent a weaker command upgrade");
-            Assert.That(plan.Displaced, Does.Not.Contain(old));
+            Assert.That(plan.Displaced, Has.No.Member(old));
         }
 
         [Test]
@@ -340,7 +340,7 @@ namespace Game.EditorTests
             var plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(DepartureSnapshot(),
                 WeakOpposition(), host.Id, GroundCombatAdmissionPolicy.AttackCoverageGate);
             Assert.That(plan.Feasible, Is.True, plan.Reason);
-            Assert.That(plan.ReturnHeroes, Does.Not.Contain(support));
+            Assert.That(plan.ReturnHeroes, Has.No.Member(support));
         }
 
         [Test]
