@@ -629,8 +629,8 @@ namespace Game.EditorTests
                 LastProgressTurn = 8,
             };
 
-            Assert.That(MissionContinuityLayer.IsProductiveReconLaneThisTurn(intent, 8), Is.True);
-            Assert.That(MissionContinuityLayer.IsProductiveReconLaneThisTurn(intent, 9), Is.False);
+            Assert.That(ReconContinuity.IsProductiveReconLaneThisTurn(intent, 8), Is.True);
+            Assert.That(ReconContinuity.IsProductiveReconLaneThisTurn(intent, 9), Is.False);
         }
 
         [Test]

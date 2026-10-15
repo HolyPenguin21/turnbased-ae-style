@@ -415,7 +415,7 @@ namespace Game.Ai.V2
             {
                 if (pass.DonatedOperations.Contains(intent.IntentKey)) continue;
                 if (ActiveResolvers.TryGetValue(intent.Kind, out var resolve)) resolve(player, snap, intent, pass);
-                else ResolveScoutOperation(player, snap, intent, pass);
+                else ReconContinuity.ResolveScoutOperation(player, snap, intent, pass);
             }
             RetireRecruitedReturnFallbacks(player, snap, pass);
             foreach (MissionIntentKey key in pass.Dead) state.Remove(key);
@@ -433,162 +433,6 @@ namespace Game.Ai.V2
             });
             foreach (var finalize in ResolutionFinalizers) finalize(player, snap, pass);
             return pass.Active;
-        }
-
-        // A mover that already advanced this turn owns its lane through the productive typed loop.
-        // Reconciliation may run repeatedly after each step; trimming it here would manufacture
-        // surplus churn and immediately recreate effectively the same intent.
-        internal static bool IsProductiveReconLaneThisTurn(MissionIntent intent, int turn) =>
-            intent != null && intent.Kind == MissionKind.Scout && intent.Scout != null
-            && intent.PreferredMoverArmyId.HasValue && intent.LastProgressTurn == turn;
-
-        // The CapabilityUnavailable stall exemption protects a Recon lane whose OWN actor is only
-        // momentarily busy / out of MP. A Scout intent with no bound actor has no such actor to wait
-        // for: every failed turn is genuine idleness and must age toward ShouldReap (audit F4).
-        internal static bool IsMoverlessScoutRole(MissionIntent intent) =>
-            intent != null && intent.Kind == MissionKind.Scout && intent.Scout != null
-            && !ReconScoutKinds.IsAirSweep(intent.Scout.Kind)
-            && !intent.PreferredMoverArmyId.HasValue;
-
-        // §P1 — GRADUAL contraction of durable Scout lanes toward desired concurrency: at most
-        // maxReconLaneTrimPerTurn shed per turn, only Soft/None-funded lanes, and the target floor
-        // already accounts for any Hard-funded lanes that are being kept regardless.
-        private static void TrimSurplusReconLanes(PlayerSetupData player, List<MissionIntent> active,
-            MissionIntentState state, WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
-        {
-            var airActorIds = new HashSet<int>((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
-                .Where(a => a != null && a.IsAir).Select(a => a.ArmyId));
-            // DesiredTotal/HardCap govern physical ground scout lanes. Air intents use the
-            // independent aviation capacity policy and must survive this contraction pass.
-            // AirSweep is an aviation operation even when its wing has landed back into storage.
-            var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null
-                && !ReconScoutKinds.IsCapture(i.Scout.Kind)
-                && !ReconScoutKinds.IsAirSweep(i.Scout.Kind)
-                && (!i.PreferredMoverArmyId.HasValue || !airActorIds.Contains(i.PreferredMoverArmyId.Value)))
-                .ToList();
-            if (scoutLanes.Count == 0)
-                return;
-
-            var runnable = reconObjectives
-                .Where(o => o != null && o.Kind != ReconObjectiveKind.CaptureStructure && o.BaseValue > 0f)
-                .OrderByDescending(o => o.BaseValue)
-                .ThenBy(o => o.IntentKey)
-                .ToList();
-            int desired = ReconConcurrencyPolicy.DesiredTotal(snap, runnable);
-
-            var shedable = scoutLanes
-                .Where(i => i.Funding < CommitmentTier.Hard
-                    && !IsProductiveReconLaneThisTurn(i, snap.TurnNumber))
-                // A lane without a bound actor occupies no physical scout, so it is shed first;
-                // then the lane that has gone longest without progress (audit F4). Only after
-                // that the original Funding / newest-first order.
-                .OrderByDescending(i => i.PreferredMoverArmyId.HasValue ? 0 : 1)
-                .ThenBy(i => i.LastProgressTurn)
-                .ThenBy(i => (int)i.Funding)
-                .ThenByDescending(i => i.CreatedTurn)
-                .ThenByDescending(i => i.StallTurns)
-                .ThenByDescending(i => i.IntentKey)
-                .ToList();
-            int hardKept = scoutLanes.Count - shedable.Count;
-            // How many shedable lanes exceed the room left under `desired` after the Hard lanes.
-            int surplus = shedable.Count - System.Math.Max(0, desired - hardKept);
-            if (surplus <= 0)
-                return;
-
-            int dropped = 0;
-            foreach (MissionIntent v in shedable)
-            {
-                if (dropped >= surplus || !ReconTurnStateStore.For(player, snap.TurnNumber).TryConsumeReconLaneTrim(snap.TurnNumber))
-                    break;
-                state.Remove(v.IntentKey);
-                active.Remove(v);
-                if (v.PreferredMoverArmyId.HasValue)
-                {
-                    // A contraction decision is turn-wide. Do not let the same actor immediately
-                    // acquire a fresh Recon mission later in this turn's bounded replans.
-                    ReconTurnStateStore.For(player, snap.TurnNumber).MarkReconActorTrimmed(snap.TurnNumber,
-                        v.PreferredMoverArmyId.Value);
-                    ReconPatrolStateRegistry.Retire(player,
-                        v.PreferredMoverArmyId.Value, "recon lane surplus trim");
-                }
-                dropped++;
-                AiDebugLog.Write($"[AI][V2] continuity — {v.IntentKey} retired: recon lane surplus "
-                    + $"(active {scoutLanes.Count}, hard {hardKept}, desired {desired}, "
-                    + $"shed {dropped}/{surplus} this pass; per-turn quota enforced)");
-            }
-        }
-
-        // Spec §1 — re-point a stale ground scout intent's live waypoint at the nearest still-
-        // runnable hex of its own kind, avoiding hexes already owned by another scout intent.
-        // Mutates s.FocusHex and the shared ownedFoci set. Returns false only when nothing runnable
-        // remains, in which case the caller retires the intent.
-        private static bool TryRefocusScoutIntent(WorldSnapshot snap, ScoutIntent s, HashSet<HexCoord> ownedFoci)
-        {
-            // AirSweep has no waypoint to re-point: its anchor is re-derived every turn, and an
-            // invalid sweep (no enemy anchor at all) simply retires.
-            if (snap?.MapKnowledge == null || s == null || ReconScoutKinds.IsAirSweep(s.Kind))
-                return false;
-
-            HexCoord old = s.FocusHex;
-            HexCoord? pick = null;
-            int bestDist = int.MaxValue;
-            // Recon S3 — prefer a waypoint at least scoutTargetMinSeparation from every other
-            // scout's focus (the spacing Assignment keeps between lanes); only when none exists
-            // fall back to the nearest runnable hex.
-            HexCoord? spacedPick = null;
-            int spacedDist = int.MaxValue;
-            bool Spaced(HexCoord h)
-            {
-                foreach (HexCoord other in ownedFoci)
-                    if (!other.Equals(old)
-                        && HexGridMath.Distance(other, h) < AiConfigV2.scoutTargetMinSeparation)
-                        return false;
-                return true;
-            }
-            void Consider(HexCoord h)
-            {
-                int d = HexGridMath.Distance(old, h);
-                if (d < bestDist) { bestDist = d; pick = h; }
-                if (d < spacedDist && Spaced(h)) { spacedDist = d; spacedPick = h; }
-            }
-
-            if (ReconScoutKinds.IsCapture(s.Kind)) return false;
-            if (ReconScoutKinds.IsRefresh(s.Kind))
-            {
-                foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
-                {
-                    if (kv.Key.Equals(old) || ownedFoci.Contains(kv.Key))
-                        continue;
-                    int age = System.Math.Max(0, snap.TurnNumber - kv.Value);
-                    if (!ReconIntelSnapshotRegistry.IsStaleAge(age))
-                        continue;
-                    if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
-                        continue;
-                    Consider(kv.Key);
-                }
-            }
-            else
-            {
-                if (snap.MapKnowledge.Frontier == null)
-                    return false;
-                foreach (FrontierHexSnapshot f in snap.MapKnowledge.Frontier)
-                {
-                    if (f.Hex.Equals(old) || ownedFoci.Contains(f.Hex))
-                        continue;
-                    if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
-                        continue;
-                    Consider(f.Hex);
-                }
-            }
-
-            if (spacedPick.HasValue)
-                pick = spacedPick;
-            if (pick == null)
-                return false;
-            ownedFoci.Remove(old);
-            ownedFoci.Add(pick.Value);
-            s.FocusHex = pick.Value;
-            return true;
         }
 
         // =====================================================================================
@@ -781,7 +625,7 @@ namespace Game.Ai.V2
             else TryDomainTransition(CreationTransitions, state, allocState, null, o, turn);
         }
 
-        private static void AdvanceIntent(MissionIntent intent, MissionStepResult o, int turn,
+        internal static void AdvanceIntent(MissionIntent intent, MissionStepResult o, int turn,
             MissionIntentState state, AiAllocatorState allocState)
         {
             bool firstReconcileThisTurn = intent.LastReconciledTurn != turn;

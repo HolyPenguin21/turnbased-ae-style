@@ -55,7 +55,7 @@ namespace Game.EditorTests
                 },
             };
             var intent = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = old };
-            MethodInfo refocus = typeof(MissionContinuityLayer).GetMethod("TryRefocusScoutIntent",
+            MethodInfo refocus = typeof(ReconContinuity).GetMethod("TryRefocusScoutIntent",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert.That(refocus, Is.Not.Null);
 

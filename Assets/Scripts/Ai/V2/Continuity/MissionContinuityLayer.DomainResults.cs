@@ -9,7 +9,7 @@ namespace Game.Ai.V2
         private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             ExecutionClassifiers = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             {
-                [MissionKind.Scout] = ClassifyScoutStep,
+                [MissionKind.Scout] = ReconContinuity.ClassifyScoutStep,
                 [MissionKind.Raid] = ClassifyRaidStep,
                 [MissionKind.Attack] = ClassifyAttackStep,
                 [MissionKind.Economy] = ClassifyEconomyStep,
@@ -18,7 +18,7 @@ namespace Game.Ai.V2
         private static readonly IReadOnlyDictionary<MissionKind, Func<Game.Players.PlayerSetupData, ProvisionedMission, bool>>
             LiveObjectiveReaders = new Dictionary<MissionKind, Func<Game.Players.PlayerSetupData, ProvisionedMission, bool>>
             {
-                [MissionKind.Scout] = IsScoutStepObjectiveSatisfiedLive,
+                [MissionKind.Scout] = ReconContinuity.IsScoutStepObjectiveSatisfiedLive,
                 [MissionKind.Raid] = IsRaidStepObjectiveSatisfiedLive,
                 [MissionKind.Attack] = IsAttackStepObjectiveSatisfiedLive,
                 [MissionKind.ActiveDefence] = IsActiveDefenceStepObjectiveSatisfiedLive,
@@ -27,7 +27,7 @@ namespace Game.Ai.V2
             };
         internal static bool IsStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player, ProvisionedMission mission) =>
             LiveObjectiveReaders.TryGetValue(mission.Kind, out var read)
-                ? read(player, mission) : IsScoutStepObjectiveSatisfiedLive(player, mission);
+                ? read(player, mission) : ReconContinuity.IsScoutStepObjectiveSatisfiedLive(player, mission);
         private static readonly IReadOnlyDictionary<MissionKind, Func<MissionStepResult, bool>>
             InvalidatedTargetContinues = new Dictionary<MissionKind, Func<MissionStepResult, bool>>
             {
@@ -57,12 +57,12 @@ namespace Game.Ai.V2
         private static readonly OutcomeTransition[] SideLegTransitions =
             { TryHandleAttackSideLeg, TryHandleInvalidGroundSupport };
         private static readonly OutcomeTransition[] CompletionTransitions =
-            { TryCompleteRaidTarget, TryCompleteAttackLeg, TryContinueScoutWaypoint };
+            { TryCompleteRaidTarget, TryCompleteAttackLeg, ReconContinuity.TryContinueScoutWaypoint };
         private static readonly OutcomeTransition[] RecoveryTransitions = { TryKeepEconomyRecovery };
         private static readonly OutcomeObservation[] RetirementPreparers = { PrepareEconomyRetirement };
         private static readonly OutcomeTransition[] NoProgressTransitions = { TryHandleEconomyNoProgress };
         private static readonly OutcomeTransition[] CreationTransitions =
-            { TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, TryCreateActiveDefenceStep,
+            { ReconContinuity.TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, TryCreateActiveDefenceStep,
                 TryCreateEconomyStep, DevelopmentContinuity.TryCreateDevelopmentStep };
         private static readonly Action<MissionIntentState, MissionStepResult, int>[] ProgressRecorders =
             { RecordEconomyStepProgress };
@@ -79,11 +79,11 @@ namespace Game.Ai.V2
         }
         private delegate void OutcomeObservation(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult result, int turn);
-        private static readonly OutcomeObservation[] BeforeMoverObservers = { ObserveReconMover };
+        private static readonly OutcomeObservation[] BeforeMoverObservers = { ReconContinuity.ObserveReconMover };
         private static readonly OutcomeTransition[] MoverTransitions =
             { TryApplyRaidMoverFacts, TryPreserveAttackSupportMover, TryPreservePinnedDomainMover };
         private static readonly OutcomeObservation[] IntentFactObservers =
-            { ApplyScoutStepFacts, ApplyAttackStepFacts, ApplyRaidStepFacts, ApplyEconomyStepFacts };
+            { ReconContinuity.ApplyScoutStepFacts, ApplyAttackStepFacts, ApplyRaidStepFacts, ApplyEconomyStepFacts };
         private static readonly OutcomeTransition[] CapabilityFailureTransitions =
             { TryHandleEconomyCapabilityFailure };
 
@@ -112,7 +112,7 @@ namespace Game.Ai.V2
         // Same capability-failure exceptions as the former two expressions; Raid ages only for reap.
         private static bool DomainAgesCapabilityFailure(MissionIntent intent, bool forReaping) =>
             intent.Kind == MissionKind.Development || forReaping && intent.Kind == MissionKind.Raid
-                || IsMoverlessScoutRole(intent) || IsCollectorEconomyIntent(intent);
+                || ReconContinuity.IsMoverlessScoutRole(intent) || IsCollectorEconomyIntent(intent);
 
         // One derived, pass-scoped workspace. Domain handlers mutate the existing durable owner;
         // this object owns only deferred retire/rekey ordering and normalized actor availability.
@@ -138,9 +138,9 @@ namespace Game.Ai.V2
         private delegate void ActiveResolver(Game.Players.PlayerSetupData player,
             WorldSnapshot snapshot, MissionIntent intent, ActiveResolution pass);
         private static readonly ResolutionPreparation[] ResolutionPreparers =
-            { RepairEconomyLoans, RetireGatherDonors, CollectScoutFoci };
+            { RepairEconomyLoans, RetireGatherDonors, ReconContinuity.CollectScoutFoci };
         private static readonly ResolutionPreparation[] ResolutionFinalizers =
-            { FinalizeReconResolution, FinalizeAirSupportResolution };
+            { ReconContinuity.FinalizeReconResolution, FinalizeAirSupportResolution };
         private static readonly IReadOnlyDictionary<MissionKind, ActiveResolver> ActiveResolvers =
             new Dictionary<MissionKind, ActiveResolver>
             {
@@ -163,7 +163,7 @@ namespace Game.Ai.V2
         private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             ExecutionFactReaders = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             {
-                [MissionKind.Scout] = CaptureScoutExecutionFacts,
+                [MissionKind.Scout] = ReconContinuity.CaptureScoutExecutionFacts,
                 [MissionKind.Raid] = CaptureRaidExecutionFacts,
                 [MissionKind.Attack] = CaptureAttackExecutionFacts,
                 [MissionKind.Economy] = CaptureEconomyExecutionFacts,
@@ -172,7 +172,7 @@ namespace Game.Ai.V2
         internal static void CaptureProvisionFacts(ProvisionedMission provisioned, MissionStepResult result)
         {
             if (ProvisionFactReaders.TryGetValue(provisioned.Kind, out var capture)) capture(provisioned, result);
-            else CaptureScoutProvisionFacts(provisioned, result);
+            else ReconContinuity.CaptureScoutProvisionFacts(provisioned, result);
         }
         internal static void CaptureExecutionFacts(ExecutionResult execution, MissionStepResult result)
         {
