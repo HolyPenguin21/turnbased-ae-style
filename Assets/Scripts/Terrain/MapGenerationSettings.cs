@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Economy;
 using UnityEngine;
 
 namespace Game.Terrain
@@ -24,6 +25,56 @@ namespace Game.Terrain
     {
         Arid,
         Desert,
+    }
+
+    // Zero is deliberately invalid: missing serialized regional values fail validation.
+    public enum ResourceSpecialization { Balanced = 1, Human, Energy, Materials }
+    public enum ResourceRichness { Poor = 1, Normal, Rich }
+
+    public readonly struct RegionResourceConditions
+    {
+        public readonly ResourceSpecialization Specialization;
+        public readonly ResourceRichness Richness;
+        public RegionResourceConditions(ResourceSpecialization specialization, ResourceRichness richness)
+        {
+            if (!System.Enum.IsDefined(typeof(ResourceSpecialization), specialization)
+                || !System.Enum.IsDefined(typeof(ResourceRichness), richness))
+                throw new System.ArgumentException("Invalid region resource conditions.");
+            Specialization = specialization; Richness = richness;
+        }
+    }
+
+    // Value-only request, derived once from the actual match. No world state or cached layouts.
+    public readonly struct MatchResourceBudget
+    {
+        public readonly int FarTarget, TechTarget;
+        public readonly ResourceSpecialization Specialization;
+        public MatchResourceBudget(int farTarget, int techTarget, ResourceSpecialization specialization)
+        { FarTarget = farTarget; TechTarget = techTarget; Specialization = specialization; }
+
+        // Also used for a constrained plan's ACTUAL count. Never truncate a requested type list.
+        // Balanced remainders rotate from a random start supplied by the planner; UI reads ranges.
+        public ResourceYields OrdinaryCounts(int actualCount, int remainderStart = 0)
+        {
+            int count = System.Math.Max(0, actualCount);
+            int each = Specialization == ResourceSpecialization.Balanced ? count / 3 : System.Math.Min(1, count / 3);
+            var values = new[] { each, each, each };
+            int rest = count - 3 * each;
+            if (Specialization != ResourceSpecialization.Balanced && count >= 3)
+                values[(int)Specialization - (int)ResourceSpecialization.Human] += rest;
+            else for (int i = 0; i < rest; i++) values[(remainderStart + i) % 3]++;
+            return new ResourceYields { human = values[0], energy = values[1], materials = values[2] };
+        }
+
+        public string DescribeTarget()
+        {
+            var counts = OrdinaryCounts(FarTarget);
+            string mix;
+            if (Specialization == ResourceSpecialization.Balanced && FarTarget % 3 != 0)
+                mix = $"H/E/M: {FarTarget / 3}–{FarTarget / 3 + 1} each (random remainder)";
+            else mix = $"H/E/M: {counts.human}/{counts.energy}/{counts.materials}";
+            return $"Generation target: {FarTarget} far hexes, {mix}; Tech: {TechTarget}";
+        }
     }
 
     // One full terrain palette: everything HexMapGenerator needs to paint a field/border in a
@@ -107,6 +158,18 @@ namespace Game.Terrain
         // of breaking.
         [Header("Biomes (Desert override, optional)")]
         public BiomeTerrainSet desertOverride = new BiomeTerrainSet();
+
+        public static MatchResourceBudget ResourceBudget(int players, int radius, RegionResourceConditions? conditions = null)
+        {
+            int tech = players == 2 ? 2 : Mathf.Max(0, players - 1);
+            int far = Mathf.Max(0, players + radius - 4);
+            if (conditions.HasValue)
+            {
+                int delta = (int)conditions.Value.Richness - (int)ResourceRichness.Normal;
+                far = Mathf.Max(3, Mathf.Max(tech, far + delta));
+            }
+            return new MatchResourceBudget(far, tech, conditions?.Specialization ?? ResourceSpecialization.Balanced);
+        }
 
         // Which full palette HexMapGenerator actually paints with for the given biome choice —
         // Arid is always these top-level fields themselves (never duplicated), Desert is

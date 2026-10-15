@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Game.Cards;
 using Game.Players;
+using Game.Terrain;
 using UnityEngine;
 
 namespace Game.Campaign
@@ -11,6 +12,7 @@ namespace Game.Campaign
     [Serializable] public sealed class CampaignGenerationSettings
     {
         public int RegionCount = 33;
+        public int BiomeZoneCount = 4, SpecializationZoneCount = 6, RichnessZoneCount = 5;
         public float MinimumRegionArea = .018f;
         public float MinimumRegionWidth = .07f;
         public float BorderIrregularity = .85f;
@@ -24,7 +26,9 @@ namespace Game.Campaign
         public CampaignState Generate(int seed, Faction human, CampaignGenerationSettings settings = null)
         {
             settings = settings ?? new CampaignGenerationSettings();
-            if (!CampaignRules.IsPlayable(human) || settings.RegionCount < 3 || settings.RegionCount > 128
+            if (settings.BiomeZoneCount < 2 || settings.SpecializationZoneCount < 4 || settings.RichnessZoneCount < 3
+                || settings.BiomeZoneCount > 128 || settings.SpecializationZoneCount > 128 || settings.RichnessZoneCount > 128
+                || !CampaignRules.IsPlayable(human) || settings.RegionCount < 3 || settings.RegionCount > 128
                 || settings.PointSpacing < 0 || settings.MinimumRegionArea <= 0 || settings.MinimumRegionWidth <= 0
                 || settings.BorderIrregularity < 0 || settings.BorderIrregularity > 1
                 || new[] { settings.PointSpacing, settings.MinimumRegionArea, settings.MinimumRegionWidth, settings.BorderIrregularity }.Any(v => float.IsNaN(v) || float.IsInfinity(v))) throw new ArgumentException("Invalid campaign settings.");
@@ -37,6 +41,7 @@ namespace Game.Campaign
                     var regions = Build(settings, rng);
                     Assign(regions, rng);
                     CampaignGeometry.Validate(regions, true);
+                    AssignProperties(regions, seed, settings);
                     var state = new CampaignState { CampaignId = Guid.NewGuid().ToString("N"), PlanetName = "Dustworld " + unchecked((uint)seed).ToString("X4"),
                         Seed = seed, BackgroundId = BackgroundForSeed(seed), HumanFaction = human, Regions = regions, Phase = CampaignPhase.AwaitingFactionAction };
                     state.Factions = DeckRules.PlayableFactions.Select(f => new CampaignFactionState { Faction = f }).ToList();
@@ -47,6 +52,50 @@ namespace Game.Campaign
             }
             throw new InvalidOperationException("Could not generate a valid planet within 64 attempts.", last);
         }
+        private static void AssignProperties(List<RegionState> regions, int seed, CampaignGenerationSettings settings)
+        {
+            // Explicit salts; these streams never consume geometry/ownership/background/turn RNG.
+            GrowZones(regions, seed, 0x42494f, settings.BiomeZoneCount, new[] { Biome.Arid, Biome.Desert }, (r, v) => r.Biome = v);
+            GrowZones(regions, seed, 0x524553, settings.SpecializationZoneCount,
+                new[] { ResourceSpecialization.Balanced, ResourceSpecialization.Human, ResourceSpecialization.Energy, ResourceSpecialization.Materials }, (r, v) => r.Specialization = v);
+            GrowZones(regions, seed, 0x524943, settings.RichnessZoneCount,
+                new[] { ResourceRichness.Poor, ResourceRichness.Normal, ResourceRichness.Rich }, (r, v) => r.Richness = v);
+        }
+
+        private static void GrowZones<T>(List<RegionState> regions, int seed, int salt, int requestedCenters,
+            T[] categories, Action<RegionState, T> assign)
+        {
+            var rng = new CampaignRandom(CampaignRandom.Derive(seed, salt));
+            var sorted = regions.OrderBy(r => r.RegionId).ToList();
+            var byId = sorted.ToDictionary(r => r.RegionId);
+            var shuffled = sorted.OrderBy(_ => rng.Next()).ToList();
+            var values = categories.OrderBy(_ => rng.Next()).ToArray();
+            // Small maps use one center per available category, random categories if N < K.
+            int count = Math.Min(sorted.Count, requestedCenters);
+            var zones = Enumerable.Range(0, count).Select(_ => new HashSet<int>()).ToList();
+            var remaining = new HashSet<int>(sorted.Select(r => r.RegionId));
+            for (int i = 0; i < count; i++)
+            {
+                int id = shuffled[i].RegionId; zones[i].Add(id); remaining.Remove(id);
+                assign(byId[id], values[i % values.Length]);
+            }
+            // Random round-robin growth prevents one early center swallowing the planet.
+            // Every assignment joins its own zone through the EXISTING neighbor graph.
+            while (remaining.Count > 0)
+            {
+                bool progressed = false;
+                foreach (int zone in Enumerable.Range(0, count).OrderBy(_ => rng.Next()))
+                {
+                    var frontier = zones[zone].SelectMany(id => byId[id].NeighborIds)
+                        .Where(remaining.Contains).Distinct().OrderBy(id => id).ToList();
+                    if (frontier.Count == 0) continue;
+                    int id = frontier[rng.Range(frontier.Count)];
+                    zones[zone].Add(id); remaining.Remove(id); assign(byId[id], values[zone % values.Length]); progressed = true;
+                }
+                if (!progressed) throw new InvalidDataException("Disconnected regional property graph.");
+            }
+        }
+
         private static List<Vector2> Clip(List<Vector2> polygon, Vector2 normal, double offset)
         {
             var result = new List<Vector2>();

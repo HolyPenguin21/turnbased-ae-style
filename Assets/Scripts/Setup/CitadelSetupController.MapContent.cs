@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Core;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -46,108 +47,29 @@ namespace Game.Setup
         // themselves don't need to change; only where hexCount comes from does.
         private static int HexCountForRadius(int radius) => 1 + 3 * radius * (radius + 1);
 
-        // Near-zone types only — Tech no longer spawns next to a citadel at all (the user's own
-        // later call): a player's own base now guarantees Human/Energy/Materials nearby but has
-        // to go find Tech elsewhere on the map, same as every other player.
-        private static readonly ResourceType[] NearResourceTypes =
-            { ResourceType.Human, ResourceType.Energy, ResourceType.Materials };
-
-        // Near: one H/E/M each, distance 2-3 from its own citadel and >=2 from every other
-        // citadel. Far: P + radius - 4 ordinary resource hexes, >=4 from all citadels, with
-        // balanced H/E/M counts. Tech adds +1 to the closest-to-centre far hexes, never its own
-        // separate hex (2 for two players, otherwise P-1). No resource hexes are adjacent.
-        // MatchResourcePlacement owns layout planning; this pass stamps only the chosen plan.
+        // All budgets and typed assignments are resolved before the single registry pass.
         private void GenerateResources()
         {
-            if (map == null || gameConfig == null)
-                return;
-
-            List<PlayerSetupData> citadelPlayers = _allPlayers
-                .Where(p => p.CitadelHexQ.HasValue && p.CitadelHexR.HasValue)
-                .ToList();
-            if (citadelPlayers.Count == 0)
-                return;
-
-            // RefreshAll already ran once, back when HexMapGenerator first built the map (all
-            // zero yield, since baseline was reset to 0 — see the user's own change) — every hex
-            // this pass touches needs the same per-hex redraw CitadelSetupController.
-            // FinalizePlayer already does for its own citadel bonus, or the icon never appears.
-            MapResourceDisplay resourceDisplay = map.GetComponent<MapResourceDisplay>();
-            var citadelHexes = citadelPlayers
-                .Select(p => new HexCoord(p.CitadelHexQ.Value, p.CitadelHexR.Value))
-                .ToList();
-            int farTarget = Mathf.Max(0, citadelPlayers.Count + map.FieldRadius - 4);
-            int techTarget = citadelPlayers.Count == 2
-                ? 2
-                : Mathf.Max(0, citadelPlayers.Count - 1);
-            MatchResourcePlacement.Layout layout =
-                MatchResourcePlacement.Plan(map, citadelHexes, farTarget, techTarget);
-            List<List<HexCoord>> nearPlan = layout.NearHexes;
-            for (int player = 0; player < citadelHexes.Count; player++)
+            if (map == null || gameConfig == null) return;
+            var citadels = _allPlayers.Where(p => p.CitadelHexQ.HasValue && p.CitadelHexR.HasValue)
+                .Select(p => new HexCoord(p.CitadelHexQ.Value, p.CitadelHexR.Value)).ToList();
+            if (citadels.Count == 0) return;
+            var budget = MapGenerationSettings.ResourceBudget(citadels.Count, map.FieldRadius, GameSession.SelectedResourceConditions);
+            var layout = MatchResourcePlacement.Plan(map, citadels, budget);
+            var display = map.GetComponent<MapResourceDisplay>();
+            foreach (var point in layout.Near.SelectMany(n => n).Concat(layout.Far.Points))
             {
-                List<ResourceType> types = PickRandomDistinct(NearResourceTypes.ToList(), NearResourceTypes.Length);
-                for (int i = 0; i < nearPlan[player].Count; i++)
-                {
-                    HexCoord hex = nearPlan[player][i];
-                    var yields = new ResourceYields();
-                    AddYieldUnit(yields, types[i]);
-                    HexResourceBonusRegistry.Set(hex, yields);
-                    resourceDisplay?.RefreshHex(hex);
-                }
-                if (nearPlan[player].Count < NearResourceTypes.Length)
-                    Debug.LogWarning($"Resource generation: placed {nearPlan[player].Count}/3 near resources "
-                        + $"for citadel {citadelHexes[player]}; no complete plan found with the spacing rules.");
+                HexResourceBonusRegistry.Set(point.Hex, point.Yields);
+                display?.RefreshHex(point.Hex);
             }
-
-            MatchResourcePlacement.FarLayout farPlan = layout.Far;
-            // Balance the ACTUALLY placed count, even on a constrained custom map.
-            List<ResourceType> farTypes = BuildBalancedFarTypes(farPlan.Hexes.Count);
-            var techHexes = new HashSet<HexCoord>(farPlan.TechHexes);
-            for (int i = 0; i < farPlan.Hexes.Count; i++)
-            {
-                HexCoord hex = farPlan.Hexes[i];
-                var yields = new ResourceYields();
-                AddYieldUnit(yields, farTypes[i]);
-                if (techHexes.Contains(hex)) AddYieldUnit(yields, ResourceType.Tech);
-                HexResourceBonusRegistry.Set(hex, yields);
-                resourceDisplay?.RefreshHex(hex);
-            }
-            if (farPlan.Hexes.Count < farTarget || farPlan.TechHexes.Count < techTarget)
-                Debug.LogWarning($"Resource generation: placed {farPlan.Hexes.Count}/{farTarget} far hexes "
-                    + $"and {farPlan.TechHexes.Count}/{techTarget} Tech bonuses; "
-                    + "no complete plan found with the spacing and reachability rules.");
-        }
-
-        private static void AddYieldUnit(ResourceYields yields, ResourceType type)
-        {
-            switch (type)
-            {
-                case ResourceType.Human: yields.human++; break;
-                case ResourceType.Energy: yields.energy++; break;
-                case ResourceType.Materials: yields.materials++; break;
-                case ResourceType.Tech: yields.tech++; break;
-            }
-        }
-
-        private static List<ResourceType> BuildBalancedFarTypes(int count)
-        {
-            var result = new List<ResourceType>();
-            if (count <= 0)
-                return result;
-
-            int each = count / NearResourceTypes.Length;
-            int remainder = count % NearResourceTypes.Length;
-
-            foreach (ResourceType type in NearResourceTypes)
-                for (int i = 0; i < each; i++)
-                    result.Add(type);
-
-            List<ResourceType> extraOrder =
-                PickRandomDistinct(NearResourceTypes.ToList(), NearResourceTypes.Length);
-            for (int i = 0; i < remainder; i++)
-                result.Add(extraOrder[i]);
-
-            return PickRandomDistinct(result, result.Count);
+            for (int player = 0; player < citadels.Count; player++)
+                if (layout.Near[player].Count < 3)
+                    Debug.LogWarning($"Resource generation: placed {layout.Near[player].Count}/3 near resources for {citadels[player]}.");
+            int tech = layout.Far.Points.Count(p => p.Tech);
+            if (layout.Far.Points.Count < budget.FarTarget || tech < budget.TechTarget)
+                Debug.LogWarning($"Resource generation: placed {layout.Far.Points.Count}/{budget.FarTarget} far hexes and {tech}/{budget.TechTarget} Tech; spacing/reachability limits.");
+            if (layout.Far.Points.Count < 3)
+                Debug.LogWarning("Resource generation: fewer than three far hexes; all ordinary types cannot be represented.");
         }
 
         // Neutral armies: 3-5 on a 12x9 map, 12-15 on a 16x13 one (see CalibratedCount) — never
@@ -178,22 +100,11 @@ namespace Game.Setup
 
             List<ArmyDefinition> shuffledArmies = PickRandomDistinct(mapArmies, mapArmies.Count);
 
-            var placedHexes = new List<HexCoord>();
-            int armyIndex = 0;
-            while (placedHexes.Count < target && armyIndex < shuffledArmies.Count)
-            {
-                List<HexCoord> pool = candidates.Where(h =>
-                    !placedHexes.Contains(h) &&
-                    !placedHexes.Any(p => HexGridMath.Neighbors(p).Contains(h)))
-                    .ToList();
-                if (pool.Count == 0)
-                    break;
-
-                HexCoord hex = pool[Random.Range(0, pool.Count)];
-                placedHexes.Add(hex);
-                SpawnNeutralArmy(hex, shuffledArmies[armyIndex]);
-                armyIndex++;
-            }
+            var citadels = _allPlayers.Where(p => p.CitadelHexQ.HasValue && p.CitadelHexR.HasValue)
+                .Select(p => new HexCoord(p.CitadelHexQ.Value, p.CitadelHexR.Value)).ToList();
+            var plan = PlanNeutralArmyHexes(candidates, citadels, GetCityRuinsHexes(), target, map.FieldRadius);
+            for (int i = 0; i < plan.Count; i++) SpawnNeutralArmy(plan[i], shuffledArmies[i]);
+            if (plan.Count < target) Debug.LogWarning($"Neutral generation: placed {plan.Count}/{target}; no complete spaced layout found.");
         }
 
         // Every "City ruins" hex plus its immediate neighbours (project owner's own call,
@@ -254,7 +165,7 @@ namespace Game.Setup
         // (the user's own later call, 2026-08-23) — a miss leaves that ruins hex with no neutral
         // army and, since GenerateRandomEvents only guarantees an event on hexes already carrying
         // a neutral-owned army, no event either.
-        private const float CityRuinsGarrisonChance = 0.3f;
+        // Probability constant is shared with the pure neutral-placement scoring partial.
 
         // Every eligible "City ruins" hex on the map has a CityRuinsGarrisonChance shot at being a
         // garrisoned outpost (the user's own later call, in addition to
@@ -516,19 +427,6 @@ namespace Game.Setup
         {
         }
 
-        // Shared by GenerateResources/GenerateNeutralArmies — up to `count` distinct entries
-        // picked without replacement from `pool` (fewer than `count` if the pool runs out).
-        private static List<T> PickRandomDistinct<T>(List<T> pool, int count)
-        {
-            var working = new List<T>(pool);
-            var result = new List<T>(Mathf.Min(count, working.Count));
-            while (result.Count < count && working.Count > 0)
-            {
-                int index = Random.Range(0, working.Count);
-                result.Add(working[index]);
-                working.RemoveAt(index);
-            }
-            return result;
-        }
+
     }
 }

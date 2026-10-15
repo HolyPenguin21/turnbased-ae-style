@@ -93,7 +93,7 @@ namespace Game.Setup
             World("Game.Map.StealthSystem", StealthSystem.Clear),
             World("Game.Turns.InitiativePublicHistory", InitiativePublicHistory.Clear),
             new MatchStateEntry("Game.Core.GameSession", MatchStateKind.World,
-                resetNote: "GameSession.TryPrepareMatch sets the players and match identity"),
+                resetNote: "TryPrepareMatch clears map/resource choices before the caller prepares them; MainMenu/subsystem registration clear them too. World reset must preserve prepared inputs until generation."),
 
             // --- AI memory carried between turns ------------------------------------------------
             Memory("Game.Ai.AiMapMemory", AiMapMemory.Clear),

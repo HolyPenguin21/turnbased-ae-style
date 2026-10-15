@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Game.Cards;
 using Game.Core;
+using Game.Terrain;
 using UnityEngine;
 
 namespace Game.Campaign
@@ -12,17 +13,76 @@ namespace Game.Campaign
         private readonly string path;
         public CampaignStore(string directory) { path = Path.Combine(directory, "campaign-v1.json"); }
         public bool Exists => AtomicJsonFile.Exists(path);
-        public CampaignState Load(out string notice) => AtomicJsonFile.Load(path, Read, "Campaign recovered from backup: ", out notice);
-        private static CampaignState Read(string file)
+        private sealed class ObsoleteCampaignException : NotSupportedException
+        { public ObsoleteCampaignException() : base("Obsolete campaign schema. Start a new campaign.") { } }
+        public CampaignState Load(out string notice)
+        {
+            try { return AtomicJsonFile.Load(path, Read, "Campaign recovered from backup: ", out notice); }
+            catch (ObsoleteCampaignException)
+            {
+                // Never recover an old schema from backup. Preserve a future-version file even
+                // if the other file is obsolete. Only this campaign's pair may be discarded.
+                CampaignState currentBackup = null;
+                foreach (string file in new[] { path, path + ".bak" })
+                    if (File.Exists(file))
+                    {
+                        int version;
+                        try { version = SchemaOf(ReadJson(file)); }
+                        catch (InvalidDataException) { continue; }
+                        if (version > CampaignState.CurrentSchema)
+                            throw new NotSupportedException("Campaign needs a newer game version.");
+                        if (file == path + ".bak" && version == CampaignState.CurrentSchema)
+                        {
+                            try { currentBackup = Read(file); }
+                            catch (InvalidDataException) { /* corrupt current backup cannot recover */ }
+                        }
+                    }
+                if (currentBackup != null)
+                {
+                    // The obsolete primary does not authorize deleting a valid NEW-schema backup.
+                    // Leave the backup intact for the next atomic save, as ordinary recovery does.
+                    if (File.Exists(path)) File.Delete(path);
+                    notice = "Campaign recovered from current-schema backup after obsolete primary.";
+                    return currentBackup;
+                }
+                foreach (string file in new[] { path, path + ".bak" }) if (File.Exists(file)) File.Delete(file);
+                notice = "Obsolete campaign removed. Start a new campaign; collection and decks are retained.";
+                return null;
+            }
+        }
+        [Serializable] private sealed class SchemaHeader { public int SchemaVersion; }
+        private static string ReadJson(string file)
         {
             if (new FileInfo(file).Length > 16 * 1024 * 1024) throw new InvalidDataException("Campaign file too large.");
-            var state = CampaignState.Deserialize(File.ReadAllText(file)); Validate(state); return state;
+            return File.ReadAllText(file);
+        }
+        private static int SchemaOf(string json)
+        {
+            SchemaHeader header;
+            try { header = JsonUtility.FromJson<SchemaHeader>(json); }
+            catch (Exception ex) { throw new InvalidDataException("Invalid campaign JSON header.", ex); }
+            if (header == null || header.SchemaVersion == 0) throw new InvalidDataException("Missing campaign schema.");
+            return header.SchemaVersion;
+        }
+        private static void ValidateSchema(int version)
+        {
+            if (version > CampaignState.CurrentSchema) throw new NotSupportedException("Campaign needs a newer game version.");
+            if (version == 1) throw new ObsoleteCampaignException();
+            if (version != CampaignState.CurrentSchema) throw new InvalidDataException("Invalid campaign schema.");
+        }
+        private static CampaignState Read(string file)
+        {
+            string json = ReadJson(file);
+            // Check the header BEFORE deserializing fields whose future/obsolete shape is unknown.
+            ValidateSchema(SchemaOf(json));
+            var state = CampaignState.Deserialize(json); Validate(state); return state;
         }
         public static void Validate(CampaignState s)
         {
-            if (s == null || !Guid.TryParseExact(s.CampaignId, "N", out _) || string.IsNullOrWhiteSpace(s.PlanetName)) throw new InvalidDataException("Missing campaign identity.");
-            if (s.SchemaVersion > 1) throw new NotSupportedException("Campaign needs a newer game version.");
-            if (s.SchemaVersion != 1 || !CampaignRules.IsPlayable(s.HumanFaction) || !Enum.IsDefined(typeof(CampaignPhase), s.Phase)
+            if (s == null) throw new InvalidDataException("Missing campaign state.");
+            ValidateSchema(s.SchemaVersion);
+            if (!Guid.TryParseExact(s.CampaignId, "N", out _) || string.IsNullOrWhiteSpace(s.PlanetName)) throw new InvalidDataException("Missing campaign identity.");
+            if (!CampaignRules.IsPlayable(s.HumanFaction) || !Enum.IsDefined(typeof(CampaignPhase), s.Phase)
                 || s.BackgroundId < 0 || s.BackgroundId > CampaignMapGenerator.BackgroundCount
                 || s.RoundNumber < 1 || s.RandomSequence < 0 || s.TurnOrder == null || s.TurnOrder.Count < 1 || s.TurnOrder.Count > 3
                 || s.TurnOrder.Distinct().Count() != s.TurnOrder.Count || s.TurnOrder.Any(f => !CampaignRules.IsPlayable(f)) || s.CurrentTurnIndex < 0 || s.CurrentTurnIndex >= s.TurnOrder.Count
@@ -30,6 +90,11 @@ namespace Game.Campaign
                 || s.Factions.Select(f => f.Faction).Distinct().Count() != 3 || s.BattleHistory == null || s.BattleHistory.Count > 100000) throw new InvalidDataException("Invalid campaign state.");
             if (s.Factions.Where(f => !f.Eliminated).Any(f => !s.TurnOrder.Contains(f.Faction))) throw new InvalidDataException("Active faction missing from turn order.");
             CampaignGeometry.Validate(s.Regions);
+            foreach (var region in s.Regions)
+                if (!Enum.IsDefined(typeof(Biome), region.Biome)
+                    || !Enum.IsDefined(typeof(ResourceSpecialization), region.Specialization)
+                    || !Enum.IsDefined(typeof(ResourceRichness), region.Richness))
+                    throw new InvalidDataException("Invalid region conditions.");
             foreach (var f in s.Factions) if (f.Eliminated == s.Regions.Any(r => r.OwnerFaction == f.Faction)) throw new InvalidDataException("Elimination mismatch.");
             if (s.BattleHistory.Any(h => h == null || !Guid.TryParseExact(h.OperationId, "N", out _) || h.Round < 1 || h.Round > s.RoundNumber
                 || (h.Manual ? !Guid.TryParseExact(h.MatchId, "N", out _) : !string.IsNullOrEmpty(h.MatchId))

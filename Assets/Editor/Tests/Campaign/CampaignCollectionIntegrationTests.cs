@@ -7,6 +7,7 @@ using Game.Cards;
 using Game.Core;
 using Game.Players;
 using Game.Progression;
+using Game.Terrain;
 using NUnit.Framework;
 using UnityEditor;
 
@@ -136,6 +137,100 @@ public sealed class CampaignCollectionIntegrationTests
             typeof(ProgressionContext).GetProperty("Rewards").SetValue(null, previousRewards);
         }
     }
+    [Test] public void CampaignBuilderUpgradesOldPreviewLayoutWithoutOverlapOrDuplicateConditions()
+    {
+        var root = new UnityEngine.GameObject("CampaignBuilderUpgradeTest", typeof(UnityEngine.RectTransform));
+        try
+        {
+            var ui = root.AddComponent<CampaignUI>();
+            ((UnityEngine.RectTransform)root.transform).sizeDelta = new UnityEngine.Vector2(950, 700);
+            UnityEngine.RectTransform Rect(string name, UnityEngine.Transform parent, float x, float y, float w, float h)
+            {
+                var r = new UnityEngine.GameObject(name, typeof(UnityEngine.RectTransform)).GetComponent<UnityEngine.RectTransform>();
+                r.SetParent(parent, false); r.anchorMin = r.anchorMax = r.pivot = new UnityEngine.Vector2(0, 1);
+                r.anchoredPosition = new UnityEngine.Vector2(x, -y); r.sizeDelta = new UnityEngine.Vector2(w, h); return r;
+            }
+            var panel = Rect("RegionPanel", root.transform, 0, 0, 430, 768);
+            var preview = Rect("RegionTerrainPreview", panel, 30, 344, 370, 122).gameObject.AddComponent<UnityEngine.UI.RawImage>();
+            var logo = Rect("OwnerLogo", panel, 122, 478, 36, 36).gameObject.AddComponent<UnityEngine.UI.Image>();
+            var owner = Rect("OwnerName", panel, 170, 482, 230, 34).gameObject.AddComponent<TMPro.TextMeshProUGUI>();
+            Rect("OwnerCaption", panel, 30, 482, 88, 34).gameObject.AddComponent<TMPro.TextMeshProUGUI>();
+            var confirm = Rect("ConfirmText", root.transform, 35, 110, 880, 90).gameObject.AddComponent<TMPro.TextMeshProUGUI>();
+            // The authored scene can use stretched anchors: sizeDelta alone is NOT its height.
+            confirm.rectTransform.anchorMin = new UnityEngine.Vector2(0, .2f);
+            confirm.rectTransform.anchorMax = new UnityEngine.Vector2(0, .8f);
+            var info = Rect("DeckInfo", root.transform, 35, 92, 880, 125).gameObject.AddComponent<TMPro.TextMeshProUGUI>();
+            var scroll = Rect("DeckScroll", root.transform, 35, 232, 880, 310);
+            var viewport = Rect("Viewport", scroll, 0, 0, 880, 310);
+            var content = Rect("Content", viewport, 0, 0, 850, 1);
+            var so = new SerializedObject(ui);
+            void Set(string field, UnityEngine.Object value) => so.FindProperty(field).objectReferenceValue = value;
+            Set("regionPanel", panel.gameObject); Set("terrainPreview", preview); Set("ownerLogo", logo); Set("ownerName", owner);
+            Set("confirmText", confirm); Set("deckInfo", info); Set("deckListContent", content);
+            // Other reference slots already exist; the test creates no prefab assets.
+            Set("neighborEmblemsContent", Rect("ExistingNeighbors", panel, 28, 528, 374, 40));
+            Set("attacksContent", Rect("ExistingAttacks", panel, 28, 620, 374, 134));
+            so.FindProperty("standings").arraySize = 0; so.FindProperty("historyRows").arraySize = 0;
+            var method = typeof(CampaignScreenBuilder).GetMethod("AddReferenceSlots", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            method.Invoke(null, new object[] { so }); so.ApplyModifiedProperties(); so.Update();
+            var conditions = (TMPro.TMP_Text)so.FindProperty("regionConditionsText").objectReferenceValue;
+            Assert.IsNotNull(conditions);
+            UnityEngine.Rect Bounds(UnityEngine.RectTransform r) => new UnityEngine.Rect(r.anchoredPosition.x, -r.anchoredPosition.y, r.sizeDelta.x, r.sizeDelta.y);
+            Assert.IsFalse(Bounds(conditions.rectTransform).Overlaps(Bounds(preview.rectTransform)));
+            Assert.IsFalse(Bounds(conditions.rectTransform).Overlaps(Bounds(owner.rectTransform)));
+            Assert.AreEqual(300, confirm.rectTransform.rect.height, .01);
+            Assert.AreEqual(212, info.rectTransform.rect.height, .01);
+            Assert.AreEqual(222, scroll.rect.height, .01);
+            method.Invoke(null, new object[] { so }); so.ApplyModifiedProperties();
+            Assert.AreEqual(1, panel.Cast<UnityEngine.Transform>().Count(t => t.name == "RegionConditions"));
+        }
+        finally { UnityEngine.Object.DestroyImmediate(root); }
+    }
+
+    [TestCase(false)] [TestCase(true)]
+    public void AttackDefenceAndInterruptedRetryUseTargetConditionsAndOrdinarySetupClearsThem(bool defence)
+    {
+        var state = new CampaignMapGenerator().Generate(851, Faction.Ashen);
+        var attack = state.Regions.SelectMany(r => r.NeighborIds.Select(n => (source: r, target: state.Regions.Find(t => t.RegionId == n))))
+            .First(p => p.source.OwnerFaction != p.target.OwnerFaction
+                && (defence ? p.target.OwnerFaction == state.HumanFaction : p.source.OwnerFaction == state.HumanFaction));
+        state.CurrentTurnIndex = state.TurnOrder.IndexOf(attack.source.OwnerFaction);
+        attack.source.Biome = Biome.Arid; attack.source.Specialization = ResourceSpecialization.Human; attack.source.Richness = ResourceRichness.Poor;
+        attack.target.Biome = Biome.Desert; attack.target.Specialization = ResourceSpecialization.Materials; attack.target.Richness = ResourceRichness.Rich;
+        var controller = new CampaignController(state, new CampaignStore(directory));
+        controller.BeginAttack(attack.source.RegionId, attack.target.RegionId, true);
+        var previous = CampaignMatchBridge.Controller; var previousCollection = ProgressionContext.Collection;
+        var config = AssetDatabase.LoadAssetAtPath<GameConfig>("Assets/Config/GameConfig.asset");
+        var players = GameSession.Players;
+        try
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, controller);
+            typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
+            string deck = collection.DefaultDeck(state.HumanFaction).deckId;
+            Assert.IsTrue(CampaignMatchBridge.PrepareMatch(config, deck, out var error), error);
+            string match = GameSession.MatchId;
+            Assert.AreEqual(Biome.Desert, GameSession.SelectedBiome);
+            Assert.AreEqual(ResourceSpecialization.Materials, GameSession.SelectedResourceConditions.Value.Specialization);
+            Assert.AreEqual(ResourceRichness.Rich, GameSession.SelectedResourceConditions.Value.Richness);
+            Assert.IsTrue(CampaignMatchBridge.PrepareMatch(config, deck, out error), error);
+            Assert.AreEqual(match, GameSession.MatchId);
+            Assert.AreEqual(Biome.Desert, GameSession.ResolveBiome());
+            // Registry cleanup on entering Game cannot erase prepared inputs.
+            Game.Setup.MatchStateInventory.ResetForNewMatch();
+            Assert.AreEqual(ResourceRichness.Rich, GameSession.SelectedResourceConditions.Value.Richness);
+            var ordinary = new System.Collections.Generic.List<PlayerSetupData>();
+            Assert.IsTrue(GameSession.TryPrepareMatch(ordinary, config, out error), error);
+            Assert.IsNull(GameSession.SelectedResourceConditions); Assert.IsNull(GameSession.SelectedBiome);
+            Assert.IsNull(GameSession.CampaignContext);
+        }
+        finally
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, previous);
+            typeof(ProgressionContext).GetProperty("Collection").SetValue(null, previousCollection);
+            GameSession.Players = players; GameSession.ClearMapConditions();
+        }
+    }
+
     [Test] public void ActualUnitStatImprovementsNeverReduceDeckScoreOrAttackChance()
     {
         var resolver = new CampaignBattleResolver();

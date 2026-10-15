@@ -4,6 +4,7 @@ using Game.Core;
 using Game.Players;
 using Game.Progression;
 using Game.UI;
+using Game.Terrain;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -47,7 +48,7 @@ namespace Game.Campaign
         [SerializeField] private TMP_Text humanFactionName;
         [SerializeField] private RawImage terrainPreview;
         [SerializeField] private Image ownerLogo;
-        [SerializeField] private TMP_Text ownerName;
+        [SerializeField] private TMP_Text ownerName, regionConditionsText;
         [SerializeField] private RectTransform neighborsContent;
         [SerializeField] private CampaignNeighborRowView neighborRowPrefab;
         [Header("Region information (optional)")]
@@ -296,6 +297,7 @@ namespace Game.Campaign
                 if (terrainPreview.materialForRendering != regionPreviewMaterial) terrainPreview.materialForRendering.SetVector("_UVRect", uvRect);
             }
             SetLogo(ownerLogo, region.OwnerFaction); ownerName.text = FactionName(region.OwnerFaction);
+            regionConditionsText.text = $"Biome: {BiomeName(region.Biome)}\nSpecialization: {region.Specialization}\nRichness: {region.Richness}";
             ClearChildren(neighborsContent);
             int row = 0;
             foreach (int id in region.NeighborIds)
@@ -391,7 +393,7 @@ namespace Game.Campaign
             var s = Controller.View; if (!CampaignRules.CanAttack(s, s.HumanFaction, from, target)) return;
             confirmFrom = from; confirmTarget = target;
             OpenModal(confirmWindow, CancelAttackConfirmation);
-            confirmText.text = s.Regions.Find(r => r.RegionId == from).Name + " → " + s.Regions.Find(r => r.RegionId == target).Name;
+            confirmText.text = s.Regions.Find(r => r.RegionId == from).Name + " → " + s.Regions.Find(r => r.RegionId == target).Name + BattleConditions(s.Regions.Find(r => r.RegionId == target));
         }
         private void OpenDeckSelection()
         {
@@ -401,6 +403,7 @@ namespace Game.Campaign
             bool attack = op.AttackerFaction == s.HumanFaction;
             string message = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name + "\nOperation: " + (attack ? "ATTACK" : "DEFENCE")
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);
+            message += BattleConditions(s.Regions.Find(r => r.RegionId == op.TargetRegionId));
             if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
             deckInfo.text = message;
             ClearChildren(deckListContent);
@@ -425,6 +428,13 @@ namespace Game.Campaign
             deckStart.GetComponentInChildren<TMP_Text>().text = attack ? "Start Battle" : "Defend Region";
             deckStart.interactable = !op.TestAutoResolve && selectedDeck != null && ProgressionContext.Collection.Rules.Validate(selectedDeck, ProgressionContext.Collection.Owned).IsValid;
             deckAutoResolve.gameObject.SetActive(enableHumanTestAutoResolve || op.TestAutoResolve);
+        }
+        private static string BiomeName(Biome biome) => biome == Biome.Arid ? "Arid badlands" : "Desert";
+        private string BattleConditions(RegionState target)
+        {
+            // Campaign battles already use two participants and the configured default radius.
+            var budget = MapGenerationSettings.ResourceBudget(2, gameConfig.mapGeneration.radius, target.ResourceConditions);
+            return $"\n{BiomeName(target.Biome)} · {target.Specialization} · {target.Richness}\n{budget.DescribeTarget()}";
         }
         private void StartBattle()
         {

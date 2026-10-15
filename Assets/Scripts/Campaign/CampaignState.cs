@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Game.Players;
+using Game.Terrain;
 using UnityEngine;
 
 namespace Game.Campaign
@@ -12,6 +13,12 @@ namespace Game.Campaign
         public int RegionId;
         public string Name;
         public Faction OwnerFaction;
+        // Stored one-based so even Arid cannot be silently supplied by missing JSON.
+        public int BiomeId;
+        public Biome Biome { get => (Biome)(BiomeId - 1); set => BiomeId = (int)value + 1; }
+        public ResourceSpecialization Specialization;
+        public ResourceRichness Richness;
+        public RegionResourceConditions ResourceConditions => new RegionResourceConditions(Specialization, Richness);
         public List<Vector2> PolygonVertices = new List<Vector2>();
         public List<int> NeighborIds = new List<int>();
     }
@@ -51,7 +58,8 @@ namespace Game.Campaign
     }
     [Serializable] public sealed class CampaignState
     {
-        public int SchemaVersion = 1;
+        public const int CurrentSchema = 2;
+        public int SchemaVersion = CurrentSchema;
         public string CampaignId, PlanetName;
         public int Seed, RandomSequence, RoundNumber = 1, CurrentTurnIndex;
         // Zero preserves the original terrain for saves created before background variants.
