@@ -406,7 +406,7 @@ namespace Game.Ai.V2
                     SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to, maxMovement)));
             if (state.Count == 0)
             {
-                FinalizeAirSupportResolution(player, snap, pass);
+                GroundCombatContinuity.FinalizeAirSupportResolution(player, snap, pass);
                 return pass.Active;
             }
             foreach (var prepare in ResolutionPreparers) prepare(player, snap, pass);
@@ -433,19 +433,6 @@ namespace Game.Ai.V2
             });
             foreach (var finalize in ResolutionFinalizers) finalize(player, snap, pass);
             return pass.Active;
-        }
-
-        // =====================================================================================
-        //  The Raid phase machine and its actor/base helpers.
-        // =====================================================================================
-
-        // Is the durable primary still the kind of army ground-combat provisioning (Raid, Attack)
-        // would accept? Uses the SAME structural snapshot predicate ActorCommitments applies in
-        // combat phases.
-        internal static bool GroundCombatPrimaryAlive(WorldSnapshot snap, int armyId)
-        {
-            ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
-            return a != null && a.IsStructuralRaidActor;
         }
 
         public static List<Commitment> BindFunding(IReadOnlyList<MissionIntent> activeIntents,

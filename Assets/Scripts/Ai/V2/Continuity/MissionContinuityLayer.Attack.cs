@@ -117,7 +117,7 @@ namespace Game.Ai.V2
             else if (a.Phase != AttackMissionPhase.SupportReturn)
             {
                 if (!a.PrimaryArmyId.HasValue
-                    || !GroundCombatPrimaryAlive(snap, a.PrimaryArmyId.Value))
+                    || !GroundCombatContinuity.GroundCombatPrimaryAlive(snap, a.PrimaryArmyId.Value))
                 {
                     // A started operation whose primary survives only as a non-combat remnant
                     // (lone hero, lone recce) withdraws like any other non-viable operation (§47);
@@ -1033,10 +1033,10 @@ namespace Game.Ai.V2
                     id != payload.PrimaryArmyId
                     && !(o.GroundFacts().ReinforcementHandoffAttempted && id == o.MoverArmyId)));
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
-            RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
+            GroundCombatContinuity.RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh Attack admitted");
             foreach (int supportId in payload.GatherSupportArmyIds)
-                RetireReturnFallbacksForActor(state, supportId, "fresh Attack gather admitted");
+                GroundCombatContinuity.RetireReturnFallbacksForActor(state, supportId, "fresh Attack gather admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Attack] continuity — "
                 + $"[{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created "

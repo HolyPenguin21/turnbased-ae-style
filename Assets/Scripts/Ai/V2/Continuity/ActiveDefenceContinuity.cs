@@ -259,7 +259,7 @@ namespace Game.Ai.V2
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.ActiveDefence,
                 CommitmentTier.Hard, payload);
-            RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
+            GroundCombatContinuity.RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh ActiveDefence admitted");
             if (payload.Phase == ActiveDefencePhase.Return)
                 // The army withdraws: an intercept it still held is over.

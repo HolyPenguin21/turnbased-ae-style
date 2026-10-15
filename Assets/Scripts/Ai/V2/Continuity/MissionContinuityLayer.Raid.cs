@@ -206,7 +206,7 @@ namespace Game.Ai.V2
             bool recoveryGroundGate = ri.Phase == RaidMissionPhase.RecoveryReturn;
             if (ri.OperationStarted && ri.Phase != RaidMissionPhase.Return && !recoveryGroundGate
                 && (!ri.PrimaryArmyId.HasValue
-                    || !GroundCombatPrimaryAlive(snap, ri.PrimaryArmyId.Value)))
+                    || !GroundCombatContinuity.GroundCombatPrimaryAlive(snap, ri.PrimaryArmyId.Value)))
             {
                 AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — "
                     + $"primary #{ri.PrimaryArmyId} no longer structural in phase {ri.Phase}");
@@ -635,7 +635,7 @@ namespace Game.Ai.V2
                 OperationStarted = true,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.Raid, CommitmentTier.Hard, ri);
-            RetireReturnFallbacksForActor(state, intent.PreferredMoverArmyId,
+            GroundCombatContinuity.RetireReturnFallbacksForActor(state, intent.PreferredMoverArmyId,
                 "fresh Raid admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");

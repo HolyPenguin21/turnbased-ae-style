@@ -55,7 +55,7 @@ namespace Game.Ai.V2
         private delegate bool OutcomeTransition(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult result, int turn);
         private static readonly OutcomeTransition[] SideLegTransitions =
-            { TryHandleAttackSideLeg, TryHandleInvalidGroundSupport };
+            { TryHandleAttackSideLeg, GroundCombatContinuity.TryHandleInvalidGroundSupport };
         private static readonly OutcomeTransition[] CompletionTransitions =
             { TryCompleteRaidTarget, TryCompleteAttackLeg, ReconContinuity.TryContinueScoutWaypoint };
         private static readonly OutcomeTransition[] RecoveryTransitions = { TryKeepEconomyRecovery };
@@ -140,7 +140,7 @@ namespace Game.Ai.V2
         private static readonly ResolutionPreparation[] ResolutionPreparers =
             { RepairEconomyLoans, RetireGatherDonors, ReconContinuity.CollectScoutFoci };
         private static readonly ResolutionPreparation[] ResolutionFinalizers =
-            { ReconContinuity.FinalizeReconResolution, FinalizeAirSupportResolution };
+            { ReconContinuity.FinalizeReconResolution, GroundCombatContinuity.FinalizeAirSupportResolution };
         private static readonly IReadOnlyDictionary<MissionKind, ActiveResolver> ActiveResolvers =
             new Dictionary<MissionKind, ActiveResolver>
             {
@@ -176,7 +176,7 @@ namespace Game.Ai.V2
         }
         internal static void CaptureExecutionFacts(ExecutionResult execution, MissionStepResult result)
         {
-            CaptureGroundHandoffFacts(execution, result);
+            GroundCombatContinuity.CaptureGroundHandoffFacts(execution, result);
             if (ExecutionFactReaders.TryGetValue(result.MissionKind, out var capture)) capture(execution, result);
         }
     }
