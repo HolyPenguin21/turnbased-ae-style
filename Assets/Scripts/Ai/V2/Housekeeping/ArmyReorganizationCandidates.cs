@@ -181,7 +181,7 @@ namespace Game.Ai.V2
                     continue;
                 foreach (ReorgUnit hero in ExcessHeroes(state.Roster[srcId], src, commandContext,
                              includeOperators: preparation).Where(h => preparation && h.IsDevelopmentOperator
-                                 || !StrategicEffectRegistry.HasArmySupportEffect(h.CombatProfile.Abilities, h.MoveMax)))
+                                 || !h.IsArmySupportCarrier))
                     foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
                     {
                         if (state.Meta[dstId].IsMissionReceiver)
@@ -503,7 +503,7 @@ namespace Game.Ai.V2
         private static int PreparationSlotWaste(List<ReorgUnit> units) =>
             (units ?? new List<ReorgUnit>()).Where(u => u != null && u.IsHero).Skip(1)
                 .Count(u => !u.IsDevelopmentOperator && !u.IsCommitted
-                    && !StrategicEffectRegistry.HasArmySupportEffect(u.CombatProfile.Abilities, u.MoveMax));
+                    && !u.IsArmySupportCarrier);
 
         // The heroes that may leave: neither the current commander nor the one commander
         // evaluation's best legal leader (HeroRoleEvaluator, the BestCommander the reorder

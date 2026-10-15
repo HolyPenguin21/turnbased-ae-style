@@ -212,15 +212,16 @@ namespace Game.EditorTests
             ArmyData host = Army(Staging, old, keep, extra, Body("Fighter", 20));
             var returned = new[] { old, extra };
             Assert.That(GroundCombatAssemblyPlanner.CanApplyHeroReturn(host, home, keep, returned), Is.True);
+            var applied = new List<GroundCombatAssemblyTransfer>();
+            var baseline = GroundCombatAssemblyTransaction.Capture(Us, host, applied);
             host.TryReorderCommander(keep, out _);
             Assert.That(ArmyActions.TransferMembersAtomic(returned, host, home, null, out _), Is.True);
-            var applied = new List<GroundCombatAssemblyTransfer>();
             Assert.That(GroundCombatAssemblyTransaction.Rollback(Us, host, applied,
-                new AiTurnContext(), "raid", home, returned, old), Is.True);
+                new AiTurnContext(), "raid", baseline, home, returned), Is.True);
             Assert.That(host.Commander, Is.SameAs(old));
             Assert.That(host.Members, Does.Contain(extra));
             Assert.That(home.Members.Count, Is.EqualTo(2));
-            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, returned, old), Is.Zero);
+            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline, returned), Is.Zero);
         }
 
         [Test]
@@ -251,12 +252,12 @@ namespace Game.EditorTests
             if (ability != null) old.Abilities.Add(ability);
             ArmyData host = Army(Staging, old, Body("Fighter", 5));
             ArmyData support = Army(Staging, lead, Body("Fresh", 20), Body("Guard", 2));
-            CommandHandoverPlan plan = GroundCombatReinforcement.CommandHandover(
+            HandoffPlan plan = GroundCombatReinforcement.CommandHandover(
                 host, support, WeakOpposition(), 0f, null);
             Assert.That(plan, Is.Not.Null);
             var final = host.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
             Assert.That(final.Contains(old), Is.EqualTo(keepOld));
-            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Hero,
+            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Promote,
                 plan.Displaced, out _, requireChargeNow: false), Is.True);
             if (!keepOld)
             {
@@ -276,7 +277,7 @@ namespace Game.EditorTests
             var plan = GroundCombatReinforcement.CommandHandover(host, support, WeakOpposition(), 0f, null);
             Assert.That(plan, Is.Not.Null);
             Assert.That(plan.Displaced, Does.Not.Contain(old));
-            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Hero,
+            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Promote,
                 plan.Displaced, out _, requireChargeNow: false), Is.True);
         }
 
@@ -482,10 +483,10 @@ namespace Game.EditorTests
             Assert.That(donor.Commander, Is.SameAs(second));
 
             Assert.That(GroundCombatAssemblyTransaction.Rollback(Us, host, applied, new AiTurnContext(), "test",
-                baseline: baseline), Is.True);
+                baseline), Is.True);
             Assert.That(donor.Commander, Is.SameAs(first));
             Assert.That(host.HasActivationCoverageFor(x), Is.False);
-            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline: baseline), Is.Zero);
+            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline), Is.Zero);
             host.MarkActivated();
             Assert.That(host.RequiresActivationCharge(x), Is.True, "a rolled-back join paid nothing");
         }
@@ -506,10 +507,10 @@ namespace Game.EditorTests
             var baseline = GroundCombatAssemblyTransaction.Capture(Us, host, transfers);
             var applied = new List<GroundCombatAssemblyTransfer> { Move(riding, donor, host) };
 
-            GroundCombatAssemblyTransaction.Rollback(Us, host, applied, new AiTurnContext(), "test", baseline: baseline);
+            GroundCombatAssemblyTransaction.Rollback(Us, host, applied, new AiTurnContext(), "test", baseline);
             Assert.That(donor.Members, Does.Contain(riding));
             Assert.That(riding.TransportCarrier, Is.Null, "the canonical refresh keeps the carrier's new pair");
-            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline: baseline),
+            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline),
                 Is.GreaterThan(0), "a changed pairing is a remaining world change");
         }
 

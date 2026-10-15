@@ -97,6 +97,9 @@ namespace Game.Ai.V2
                 }
 
                 int? pinnedActor = incumbent?.Attack?.PrimaryArmyId;
+                // A started Assault keeps its committed members and drops the fresh power bar; the
+                // one fact Missions, admission (ForceCommitted) and provisioning all read.
+                bool assaultStarted = incumbent?.Attack?.AssaultStarted == true;
                 var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
                 if (pinnedActor.HasValue)
                     excluded.Remove(pinnedActor.Value);
@@ -149,8 +152,8 @@ namespace Game.Ai.V2
                             ? GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage
                             : (bool?)null,
                         AllowSameHexAssembly = intermediate == null,
-                        PreserveDepartureRoster = incumbent?.Attack?.AssaultStarted == true,
-                        MinimumArmyPower = incumbent?.Attack?.AssaultStarted == true
+                        PreserveDepartureRoster = assaultStarted,
+                        MinimumArmyPower = assaultStarted
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
@@ -213,7 +216,7 @@ namespace Game.Ai.V2
                 // fight (our roster / equipment / HP, the enemy's visible state, the enemy gone)
                 // that the shared estimator confirms lifts it: a new turn number, AP or a timer
                 // is not a reason. A march already under way is governed by Continuity's edge.
-                if ((incumbent == null || incumbent.Attack?.AssaultStarted != true)
+                if (!assaultStarted
                     && AttackRetreatWitness.Blocks(MissionIntentRegistry.GetOrCreate(snap.Observer), snap,
                         objective.Target, actor, out string witnessWhy))
                 {
@@ -258,7 +261,7 @@ namespace Game.Ai.V2
                     DefenderCount = assaultObjective.DefenderCount,
                     ProjectedWinChance = plan.ProjectedWinChance,
                     CoversAllDefenders = plan.CoversAllDefenders,
-                    ForceCommitted = incumbent?.Attack?.AssaultStarted == true,
+                    ForceCommitted = assaultStarted,
                     EstimatedEta = eta,
                     // §17 — carry the operation's own once-per-turn side-strike marker into the leg
                     // the executor will run. A fresh objective has no incumbent and therefore no

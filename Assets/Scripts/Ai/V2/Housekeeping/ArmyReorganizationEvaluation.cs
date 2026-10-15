@@ -66,7 +66,7 @@ namespace Game.Ai.V2
                     // battle carriers (Heal/Drill) for the mission's own counterfactual check.
                     preparationSlotWaste += units.Where(u => u != null && u.IsHero).Skip(1)
                         .Count(u => !u.IsCommitted && !u.IsDevelopmentOperator
-                            && !StrategicEffectRegistry.HasArmySupportEffect(u.CombatProfile.Abilities, u.MoveMax));
+                            && !u.IsArmySupportCarrier);
                 if (meta.PreparationTargetKeys != null)
                     preparationSlotWaste += ReorgViability.PreparationRosterWaste(meta, units,
                         s.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(

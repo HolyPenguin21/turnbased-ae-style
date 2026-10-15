@@ -88,7 +88,7 @@ namespace Game.Ai.V2
                     && AiArmyRoles.IsFacilityOperator(host.Owner, host.Hex, h)).ToList();
                 var optional = home == null ? new List<UnitData>() : heroes.Where(h => h != lead
                     && host.Members.Contains(h) && !required.Contains(h)
-                    && !StrategicEffectRegistry.HasArmySupportEffect(h.Abilities, h.MoveMax))
+                    && !StrategicEffectRegistry.IsArmySupportCarrier(h))
                     .OrderByDescending(AiArmyRoles.IsGarrisonHero)
                     .ThenByDescending(h => h.ActivationApCost).ThenBy(h => h.RuntimeId).ToList();
                 // A partly full home may take only SOME heroes. Never discard an ordinary
@@ -118,7 +118,7 @@ namespace Game.Ai.V2
                         && host.Members.Contains(h) && !returning.Contains(h)
                         // Attack has no probability floor: it must not silently shed a passive
                         // carrier merely because an unconstrained fight still passes zero.
-                        && (gate > 0f || !StrategicEffectRegistry.HasArmySupportEffect(h.Abilities, h.MoveMax)))
+                        && (gate > 0f || !StrategicEffectRegistry.IsArmySupportCarrier(h)))
                         .OrderByDescending(h => h.ActivationApCost).ThenBy(h => h.RuntimeId))
                     {
                         var trial = new List<UnitData>(returning) { secondary };

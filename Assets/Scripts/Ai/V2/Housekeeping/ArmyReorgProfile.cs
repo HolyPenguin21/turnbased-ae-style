@@ -75,6 +75,9 @@ namespace Game.Ai.V2
         public WorthIt.DefenderProfile CombatProfile;
         // What this hero gives a formation it commands (initiative bonus, battle Fate).
         public WorthIt.SideCommander AsCommander;
+        // An army support carrier (StrategicEffectRegistry.IsArmySupportCarrier's rule).
+        public bool IsArmySupportCarrier =>
+            StrategicEffectRegistry.HasArmySupportEffect(CombatProfile.Abilities, MoveMax);
     }
 
     public sealed class ReorgContainer

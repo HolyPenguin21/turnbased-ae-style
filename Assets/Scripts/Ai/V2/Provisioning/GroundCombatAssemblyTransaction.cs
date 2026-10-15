@@ -51,12 +51,13 @@ namespace Game.Ai.V2
         // rejection.
         internal static bool Rollback(PlayerSetupData player, ArmyData host,
             List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx, string lane,
-            ArmyData heroHome = null, IReadOnlyList<UnitData> returnedHeroes = null,
-            UnitData originalCommander = null, GroundCombatAssemblyBaseline baseline = null)
+            GroundCombatAssemblyBaseline baseline, ArmyData heroHome = null,
+            IReadOnlyList<UnitData> returnedHeroes = null)
         {
             bool ok = true;
-            if (host == null || applied == null)
+            if (host == null || applied == null || baseline == null)
                 return false;
+            baseline.Commanders.TryGetValue(host, out UnitData originalCommander);
             for (int i = applied.Count - 1; i >= 0; --i)
             {
                 GroundCombatAssemblyTransfer t = applied[i];
@@ -89,29 +90,25 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2]   {lane} assembly rollback — FAILED hero return: {why}");
                 }
             }
-            if (originalCommander != null && host.Members.Contains(originalCommander)
-                && host.Commander != originalCommander && !host.TryReorderCommander(originalCommander, out _))
-                ok = false;
-            // A field donor that gave its commander away is led by it again (a zero-AP reorder);
-            // a garrison's order is canonical (ArmyData.NormalizeGarrisonOrder) and restores itself.
-            if (baseline != null)
-                foreach (KeyValuePair<ArmyData, UnitData> kv in baseline.Commanders)
-                    if (kv.Key != host && !kv.Key.IsGarrison && kv.Value != null && kv.Key.Members.Contains(kv.Value)
-                        && kv.Key.Commander != kv.Value && !kv.Key.TryReorderCommander(kv.Value, out _))
-                        ok = false;
+            // The host and every field donor are led by their own commander again (a zero-AP
+            // reorder); a garrison's order is canonical (ArmyData.NormalizeGarrisonOrder).
+            foreach (KeyValuePair<ArmyData, UnitData> kv in baseline.Commanders)
+                if (!kv.Key.IsGarrison && kv.Value != null && kv.Key.Members.Contains(kv.Value)
+                    && kv.Key.Commander != kv.Value && !kv.Key.TryReorderCommander(kv.Value, out _))
+                    ok = false;
             return ok;
         }
 
-        // How many of the applied transfers are STILL sitting in the host after a rollback attempt
-        // — i.e. how much of the world this transaction really changed. Zero means a Complete
-        // rollback (no mutation to report); anything else is an Incomplete one. With a baseline it
-        // also counts a donor commander that was not restored and a transport pairing the
-        // canonical refresh re-assigned (it changes that unit's movement).
+        // How much of the world this transaction really changed after a rollback attempt: applied
+        // transfers still in the host, returned heroes not back, a field army (host or donor) not
+        // led by its own commander, and a transport pair the canonical refresh re-assigned (it
+        // changes that unit's movement). Zero means a Complete rollback (no mutation to report);
+        // anything else is an Incomplete one.
         internal static int RemainingApplied(ArmyData host,
-            List<GroundCombatAssemblyTransfer> applied, IReadOnlyList<UnitData> returnedHeroes = null,
-            UnitData originalCommander = null, GroundCombatAssemblyBaseline baseline = null)
+            List<GroundCombatAssemblyTransfer> applied, GroundCombatAssemblyBaseline baseline,
+            IReadOnlyList<UnitData> returnedHeroes = null)
         {
-            if (host == null || applied == null)
+            if (host == null || applied == null || baseline == null)
                 return 0;
             int count = 0;
             foreach (GroundCombatAssemblyTransfer t in applied)
@@ -119,13 +116,9 @@ namespace Game.Ai.V2
                     count++;
             if (returnedHeroes != null)
                 count += returnedHeroes.Count(h => h != null && !host.Members.Contains(h));
-            if (originalCommander != null && host.Commander != originalCommander) count++;
-            if (baseline != null)
-            {
-                count += baseline.Commanders.Count(kv => kv.Key != host && !kv.Key.IsGarrison
-                    && kv.Key.Commander != kv.Value);
-                count += baseline.Carriers.Count(kv => kv.Key.TransportCarrier != kv.Value);
-            }
+            count += baseline.Commanders.Count(kv => !kv.Key.IsGarrison && kv.Value != null
+                && kv.Key.Commander != kv.Value);
+            count += baseline.Carriers.Count(kv => kv.Key.TransportCarrier != kv.Value);
             return count;
         }
     }

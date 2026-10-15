@@ -72,7 +72,7 @@ namespace Game.Ai.V2
         public static int RetainedSupportSlots(IEnumerable<UnitData> members, UnitData commander) =>
             (members ?? Enumerable.Empty<UnitData>()).Count(u => u != null && u != commander
                 && u.IsHero && !u.IsPrisoner
-                && StrategicEffectRegistry.HasArmySupportEffect(u.Abilities, u.MoveMax));
+                && StrategicEffectRegistry.IsArmySupportCarrier(u));
 
         // The capacity a preparation host's roster is composed under: its Capacity (commander
         // included) less the slots of the support carriers it keeps.

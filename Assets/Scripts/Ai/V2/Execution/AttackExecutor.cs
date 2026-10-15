@@ -257,9 +257,8 @@ namespace Game.Ai.V2
                 if (!legal || !ArmyActions.TransferMember(t.Unit, donor, host, ctx?.HexSelection, out why))
                 {
                     bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx,
-                        "attack preparation", baseline: baseline);
-                    int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied,
-                        baseline: baseline);
+                        "attack preparation", baseline);
+                    int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline);
                     result.StopReason = ExecutionStopReason.MoveRejected;
                     result.NeedsReplan = true;
                     // An incomplete rollback left bodies in the host: that IS a world change.

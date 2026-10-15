@@ -39,7 +39,9 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                     snap, objective.Opposition, actor.ArmyId,
                     GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate, bonus,
-                    GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage);
+                    GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage,
+                    // The roster Missions and provisioning will field for this Assault.
+                    preserveDepartureRoster: attack.AssaultStarted);
                 if (!plan.Feasible)
                     continue;
                 // Keep an actually started detour stable, but re-prove knowledge, routes and
