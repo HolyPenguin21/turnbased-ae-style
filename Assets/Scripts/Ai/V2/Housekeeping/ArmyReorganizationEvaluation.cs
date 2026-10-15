@@ -46,6 +46,14 @@ namespace Game.Ai.V2
             int unledViableFields = 0;
             int supportLedWhileCombatBenched = 0;
 
+            // 2026-10-15 (user decision) — a lone free hero is a bench, not a defect, until a known
+            // enemy can reach this hex within activeDefenceWithdrawMaxEnemyEta turns: then it
+            // shelters in the local garrison (exposed like an operator outside it), which its
+            // command rating also serves. Economy still reaches it there by garrison extraction.
+            bool shelterLoneHeroes = s.ThreatBenchmarks.Any(t => !t.HiddenFromUs
+                    && t.EtaToGroup <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                && s.Meta.Values.Any(m => m.IsGarrison && m.CanReceive);
+
             foreach (int id in s.Meta.Keys.OrderBy(x => x))
             {
                 ReorgContainer meta = s.Meta[id];
@@ -54,8 +62,15 @@ namespace Game.Ai.V2
                 if (ReorgViability.Capacity(units, meta.IsGarrison) < units.Count)
                     legality++;
                 if (!meta.IsGarrison)
+                {
                     operatorExposure += units.Count(u => u != null
                         && (u.IsDevelopmentOperator || u.IsGarrisonHero));
+                    if (shelterLoneHeroes && meta.IsMutableGround && meta.CanDonate
+                        && units.Count == 1 && units[0] != null && units[0].IsHero
+                        && !units[0].IsCommitted && !units[0].IsDevelopmentOperator
+                        && !units[0].IsGarrisonHero)
+                        operatorExposure++;
+                }
 
                 if (meta.CanReorderCommander)
                     commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);

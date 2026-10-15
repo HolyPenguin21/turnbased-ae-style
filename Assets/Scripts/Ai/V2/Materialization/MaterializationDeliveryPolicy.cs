@@ -79,6 +79,18 @@ namespace Game.Ai.V2
         {
             if (p == null || demand == null)
                 return DeliveryAssessment.No(DeliveryFailureReason.MissingPlanOrDemand);
+            // Playtest 2026-10-15 (Draven T9): Dust Medic was played into a new army #24 for an
+            // Aggression raid, then the Economy Hero demand chose #24 as Aldric's recipient and
+            // walked it the other way; both deliveries were lost. A container this turn's Phase A
+            // materialized for one axis (StrategicCapabilityLeaseRegistry) belongs to that axis.
+            if (p.Deploy.Kind == DeploymentKind.ExistingArmy && p.Deploy.Army != null && snapshot != null)
+            {
+                DesireAxis? leasedTo = StrategicCapabilityLeaseRegistry.LeasedAxis(
+                    player, snapshot.TurnNumber, p.Deploy.Army.Id);
+                if (leasedTo.HasValue && leasedTo.Value != demand.RequestingAxis)
+                    return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                        $"army#{p.Deploy.Army.Id} leased_to={leasedTo.Value}");
+            }
             if (demand.EconomyEscortArmyId.HasValue)
             {
                 if (demand.RequestingAxis != DesireAxis.Economy

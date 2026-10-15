@@ -802,15 +802,28 @@ namespace Game.Ai.V2
             // worth defending only in the measure the contact can actually hurt it: both are
             // weighted by the same PotentialDamage, so a passing weak contact is a cheap target.
             float damage = Mathf.Clamp01(t.PotentialDamage);
+            AssetDefenceTerms(t, out float threatDirection, out float preventedDamage);
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm * damage),
-                threatDirection: TaskScoreEvaluator.ThreatDirection(
-                    damage / (1f + t.EnemyEta.GetValueOrDefault())),
-                preventedDamage: TaskScoreEvaluator.PreventedDamage(
-                    t.PotentialDamage * Mathf.Clamp01(assetNorm)),
+                threatDirection: threatDirection,
+                preventedDamage: preventedDamage,
                 intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
                     age / (float)Mathf.Max(1, AiConfigV2.reconIntelStaleTurnsHi)),
                 ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(homeDistance));
+        }
+
+        // What keeping this contact off its asset is worth: the threat's direction and the damage
+        // it would do, both weighted by PotentialDamage. Shared with the held-base garrison
+        // demand (AggressionDemandEvaluator.Garrison), which defends the same asset in place.
+        internal static void AssetDefenceTerms(AssetThreatSnapshot t, out float threatDirection,
+            out float preventedDamage)
+        {
+            float assetNorm = t.Asset.Value / Mathf.Max(1f, AiConfigV2.assetValueCitadel);
+            float damage = Mathf.Clamp01(t.PotentialDamage);
+            threatDirection = TaskScoreEvaluator.ThreatDirection(
+                damage / (1f + t.EnemyEta.GetValueOrDefault()));
+            preventedDamage = TaskScoreEvaluator.PreventedDamage(
+                t.PotentialDamage * Mathf.Clamp01(assetNorm));
         }
 
         private static bool TryDirectResponse(WorldSnapshot snap, ActiveDefenceObjective objective,

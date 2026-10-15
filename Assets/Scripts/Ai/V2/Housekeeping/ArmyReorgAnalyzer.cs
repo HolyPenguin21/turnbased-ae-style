@@ -20,13 +20,16 @@ namespace Game.Ai.V2
         private sealed class LeaseState
         {
             public int Turn;
-            public readonly HashSet<int> ArmyIds = new HashSet<int>();
+            // The axis whose demand materialized each leased army (2026-10-15: another axis may not
+            // take it over as a card recipient in the same turn, MaterializationDeliveryPolicy).
+            public readonly Dictionary<int, DesireAxis> ArmyIds = new Dictionary<int, DesireAxis>();
         }
 
         private static readonly Dictionary<PlayerSetupData, LeaseState> ByPlayer =
             new Dictionary<PlayerSetupData, LeaseState>();
 
-        public static void Mark(PlayerSetupData player, int turn, CapabilityKind capability, IEnumerable<int> armyIds)
+        public static void Mark(PlayerSetupData player, int turn, DesireAxis axis, CapabilityKind capability,
+            IEnumerable<int> armyIds)
         {
             if (player == null || armyIds == null)
                 return;
@@ -35,8 +38,11 @@ namespace Game.Ai.V2
 
             var added = new List<int>();
             foreach (int id in armyIds.Where(id => id >= 0).Distinct())
-                if (state.ArmyIds.Add(id))
+                if (!state.ArmyIds.ContainsKey(id))
+                {
+                    state.ArmyIds[id] = axis;
                     added.Add(id);
+                }
 
             if (added.Count > 0)
                 AiDebugLog.Write($"[AI][V2][Lease] protect operational {capability} army(s) "
@@ -53,7 +59,12 @@ namespace Game.Ai.V2
         // call order.
         public static bool IsLeased(PlayerSetupData player, int turn, int armyId) =>
             player != null && ByPlayer.TryGetValue(player, out LeaseState state)
-            && state.Turn == turn && state.ArmyIds.Contains(armyId);
+            && state.Turn == turn && state.ArmyIds.ContainsKey(armyId);
+
+        // The axis this army is leased to this turn, or null. Same turn gate as IsLeased.
+        public static DesireAxis? LeasedAxis(PlayerSetupData player, int turn, int armyId) =>
+            player != null && ByPlayer.TryGetValue(player, out LeaseState state) && state.Turn == turn
+            && state.ArmyIds.TryGetValue(armyId, out DesireAxis axis) ? axis : (DesireAxis?)null;
 
         public static void Clear(PlayerSetupData player, int turn)
         {
@@ -243,7 +254,7 @@ namespace Game.Ai.V2
                 // only when a body leaves (a small shortfall bought for a strong attacker is
                 // legal, so it is never a deficit Housekeeping refills).
                 container.GarrisonNonHeroFloor = 1;
-                container.GarrisonPowerFloor = AiArmyRoles.GarrisonDefenceFloor(player, isCitadel);
+                container.GarrisonPowerFloor = AiArmyRoles.GarrisonDefenceFloor(player, army.Hex, isCitadel);
             }
 
             return container;

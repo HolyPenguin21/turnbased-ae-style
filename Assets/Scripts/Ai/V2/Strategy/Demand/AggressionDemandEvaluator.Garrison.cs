@@ -10,10 +10,24 @@ namespace Game.Ai.V2
 {
     public static partial class AggressionDemandEvaluator
     {
-        private static TaskScore BuildHeldBaseGarrisonScore() =>
-            new TaskScore(
+        // A garrison under a known threat defends that asset in place: the worst threat on this
+        // hex adds the same direction / prevented-damage terms ActiveDefence prices it with.
+        private static TaskScore BuildHeldBaseGarrisonScore(WorldSnapshot snap, HexCoord baseHex)
+        {
+            AssetThreatSnapshot worst = snap?.Threat?.Threats?
+                .Where(t => t?.Asset != null && t.Contact?.Army != null && t.Asset.Hex.Equals(baseHex))
+                .OrderByDescending(t => t.Severity).ThenBy(t => t.Contact.Army.ArmyId)
+                .FirstOrDefault();
+            float threatDirection = 0f, preventedDamage = 0f;
+            if (worst != null)
+                ActiveDefenceObjectiveEvaluator.AssetDefenceTerms(worst,
+                    out threatDirection, out preventedDamage);
+            return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
-                    AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)));
+                    AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)),
+                threatDirection: threatDirection,
+                preventedDamage: preventedDamage);
+        }
 
         // Every own base, including a newly founded or vacated one, whose
         // garrison is below its non-hero floor is garrisoned from hand first. If the hand cannot
@@ -31,9 +45,10 @@ namespace Game.Ai.V2
                 if (garrison == null)
                     continue;
                 // The one garrison defence floor (AiArmyRoles.GarrisonDefenceFloor) on the snapshot's
-                // ground force: at least one body and the Citadel / Base share of power.
-                float floor = AiArmyRoles.GarrisonDefenceFloor(snap.Self.AvailablePower,
-                    baseHex.Equals(snap.Self.Citadel));
+                // ground force: at least one body and the Citadel / Base share of power, raised to
+                // the known threat against this garrison (AiArmyRoles.GarrisonThreatFloor).
+                float floor = AiArmyRoles.GarrisonDefenceFloor(snap.Observer, snap.Self.AvailablePower,
+                    baseHex, baseHex.Equals(snap.Self.Citadel));
                 int bodies = garrison.Members?.Count(AiArmyRoles.IsGroundBattleBody) ?? 0;
                 float desired = bodies == 0
                     ? Mathf.Max(floor, AiConfigV2.combatPowerPerBodyEstimate)
@@ -41,7 +56,7 @@ namespace Game.Ai.V2
                 if (desired <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 string missing = $"{desired:0.#}";
-                TaskScore score = BuildHeldBaseGarrisonScore();
+                TaskScore score = BuildHeldBaseGarrisonScore(snap, baseHex);
                 diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE base=({baseHex.Q},{baseHex.R}) "
                     + $"capability=FieldCombatPower shape=Garrison missing={missing} desired={desired:0.#} "
                     + $"task={score.Value:0.##} reason=held_base_garrison_below_floor");

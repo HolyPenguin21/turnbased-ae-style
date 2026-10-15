@@ -60,6 +60,40 @@ namespace Game.EditorTests
             HashSet<int> spare = Spare(10f, 3f, 12f, 11f);
             Assert.That(spare.Count, Is.EqualTo(2));
         }
+
+        // 2026-10-15 — playtest: Sentinels two turns from Draven's Base (-1,3) while its garrison
+        // sat above the 5% share. The known threat raises the floor of the garrison it reaches.
+        private static AiMapMemory.KnownEnemySighting Enemy(Game.HexGrid.HexCoord hex, int move,
+            bool garrison = false, bool air = false) =>
+            new AiMapMemory.KnownEnemySighting(hex, new Game.Players.PlayerSetupData(), "enemy", 1, 3f, 5f,
+                new[] { new Game.Combat.WorthIt.DefenderProfile(3f, false, attack: 5f, hitPoints: 5f) },
+                armyId: 11, isGarrison: garrison, isAir: air, maxMovement: move);
+
+        [Test]
+        public void ThreatFloor_ReachingEnemyRaisesOnlyItsNearestGarrison()
+        {
+            var baseHex = new Game.HexGrid.HexCoord(-1, 3);
+            var citadel = new Game.HexGrid.HexCoord(-1, 5);
+            AiMapMemory.KnownEnemySighting sentinels = Enemy(new Game.HexGrid.HexCoord(1, 0), 3);
+            float expected = Game.Ai.V2.AiPower.SightingPower(sentinels)
+                * Game.Ai.V2.AiConfigV2.aggDefenceConfidenceMargin;
+
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { sentinels }, new[] { baseHex, citadel }, baseHex),
+                Is.EqualTo(expected).Within(1e-4f));
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { sentinels }, new[] { baseHex, citadel }, citadel),
+                Is.Zero, "one force contributes once, to the nearest garrison it reaches");
+        }
+
+        [Test]
+        public void ThreatFloor_IgnoresOutOfReachGarrisonAndAirContacts()
+        {
+            var baseHex = new Game.HexGrid.HexCoord(-1, 3);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(
+                new[] { Enemy(new Game.HexGrid.HexCoord(6, -3), 1) }, new[] { baseHex }, baseHex), Is.Zero);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(
+                new[] { Enemy(new Game.HexGrid.HexCoord(1, 0), 3, garrison: true),
+                    Enemy(new Game.HexGrid.HexCoord(1, 0), 3, air: true) }, new[] { baseHex }, baseHex), Is.Zero);
+        }
     }
 }
 #endif

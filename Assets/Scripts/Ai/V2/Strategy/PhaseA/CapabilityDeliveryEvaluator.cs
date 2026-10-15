@@ -300,7 +300,7 @@ namespace Game.Ai.V2
                 // remains open (delivered=0), so a later pass/turn may add another body to the same
                 // ordinary reserve army and re-run the canonical GroundCombat admission.
                 StrategicCapabilityLeaseRegistry.Mark(
-                    player, ctx.TurnNumber, demand.Capability, leased);
+                    player, ctx.TurnNumber, demand.RequestingAxis, demand.Capability, leased);
                 delivered = 0f;
                 AiDebugLog.Write($"[AI][V2][{demand.ConsumerMissionKind}] materialization partial "
                     + $"support for {demand.ConsumerIntentKey}: no transfer-ready leased army; "
@@ -314,7 +314,7 @@ namespace Game.Ai.V2
             // snapshot. Until then the turn-local lease prevents Housekeeping repackaging it.
             if (!MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand) && !escortPreparation)
                 StrategicCapabilityLeaseRegistry.Mark(
-                    player, ctx.TurnNumber, demand.Capability, leased);
+                    player, ctx.TurnNumber, demand.RequestingAxis, demand.Capability, leased);
             return true;
         }
 
@@ -435,7 +435,7 @@ namespace Game.Ai.V2
             if (leased.Count == 0)
                 return false;
             StrategicCapabilityLeaseRegistry.Mark(
-                player, ctx.TurnNumber, CapabilityKind.ScoutCapability, leased);
+                player, ctx.TurnNumber, DesireAxis.Recon, CapabilityKind.ScoutCapability, leased);
             return true;
         }
     }

@@ -180,7 +180,7 @@ namespace Game.Ai.V2
                 {
                     HashSet<int> spare = AiArmyRoles.SpareableBodies(bodies,
                         set => AiPower.EffectiveArmyPower(set.ToList()),
-                        AiArmyRoles.GarrisonDefenceFloor(groundAvailablePower, a.Hex.Equals(citadel)));
+                        AiArmyRoles.GarrisonDefenceFloor(player, groundAvailablePower, a.Hex, a.Hex.Equals(citadel)));
                     bodies = bodies.Where((u, i) => spare.Contains(i)).ToList();
                 }
                 pool.AddRange(bodies.Select(AiPower.ToPowerUnit));

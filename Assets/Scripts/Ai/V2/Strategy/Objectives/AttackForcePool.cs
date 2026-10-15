@@ -72,7 +72,7 @@ namespace Game.Ai.V2
                     garrisonBodies = a.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
                     spare = AiArmyRoles.SpareableBodies(garrisonBodies,
                         set => AiPower.EffectiveArmyPower(set.ToList()),
-                        AiArmyRoles.GarrisonDefenceFloor(self.AvailablePower, a.Hex.Equals(citadel)));
+                        AiArmyRoles.GarrisonDefenceFloor(player, self.AvailablePower, a.Hex, a.Hex.Equals(citadel)));
                 }
                 foreach (UnitData u in a.Members)
                 {
