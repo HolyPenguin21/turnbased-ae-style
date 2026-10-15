@@ -1484,13 +1484,13 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 31
-    authoredKey: vessels.27.llens-watcher
+    authoredKey: vessels.27.lens-watcher
     deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Null Vessel
-    art: {fileID: 21300000, guid: f2d6f3af2f7c3cc49b92f4764ed2ca37, type: 3}
-    detailArt: {fileID: 21300000, guid: 79d4cead0a93fcc46b1a4f179607e630, type: 3}
+    displayName: Lens Watcher
+    art: {fileID: 21300000, guid: 7ee2d51b3a45eeb4dbdfc2b2a6d7887c, type: 3}
+    detailArt: {fileID: 21300000, guid: e61f9b8e2cbbcc64bbd2921cd2dcc6fe, type: 3}
     faction: 5
     cardType: 1
     apCost: 2
