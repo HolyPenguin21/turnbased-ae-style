@@ -419,6 +419,10 @@ namespace Game.Ai.V2
                 foreach (WorthIt.DefendingArmy army in opposition)
                 {
                     hash = hash * 31 + CommanderFingerprint(army.Commander);
+                    // The defender's own terrain + structure bonus on the hex it stands on now:
+                    // the same roster leaving (or entering) a fortification is a different fight.
+                    hash = hash * 31 + (army.DefenseBonusOverride.HasValue
+                        ? (int)System.Math.Round(army.DefenseBonusOverride.Value * 100f) + 1 : 0);
                     foreach (WorthIt.DefenderProfile profile in army.Units)
                         if (profile.IsHero) hash = hash * 31 + profile.FateMax;
                 }

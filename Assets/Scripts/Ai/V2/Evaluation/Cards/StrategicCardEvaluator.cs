@@ -1107,13 +1107,16 @@ namespace Game.Ai.V2
             // "Before" = the army after the hero joins WITHOUT leading: the current commander keeps
             // capacity and every other hero, the newcomer included, takes a slot. A heroless
             // destination holds its nominal capacity with no commander slot.
+            // Both sides carry every hero that stays: the newcomer's Heal/Drill acts under the
+            // current commander, the destination's support heroes under the newcomer.
+            WorthIt.SideCommander newcomer = WorthIt.SideCommander.Of(def);
             HeroRoleEvaluator.CommandProjection before = ectx.DestHasHero
                 ? HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity, ectx.DestHeroCount,
-                    ectx.DestCommander, bodies, context, 0f)
+                    ectx.DestCommander.WithSupport(newcomer.SupportHeroes), bodies, context, 0f)
                 : HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity + 1, 0, default,
                     bodies, context, 0f);
             HeroRoleEvaluator.CommandProjection led = HeroRoleEvaluator.ProjectCommand(def.commandRating,
-                ectx.DestHeroCount, WorthIt.SideCommander.Of(def), bodies, context, 0f);
+                ectx.DestHeroCount, newcomer.WithSupport(ectx.DestCommander.SupportHeroes), bodies, context, 0f);
             bool leads = !ectx.DestHasHero || HeroRoleEvaluator.CompareCandidates(
                 new HeroRoleEvaluator.CommandCandidate(led, 0, 0f, 0, 0, 1),
                 new HeroRoleEvaluator.CommandCandidate(before, 0, 0f, 0, 0, 0)) < 0;

@@ -393,6 +393,9 @@ namespace Game.Ai.V2
         // The host commander (card key) the roster was composed under, and the roster's power.
         public string TargetRosterCommanderKey;
         public float TargetRosterPower;
+        // The capacity it was composed under (StrikeRoster.HostRosterCapacity: the commander's
+        // slots less the support carriers the host keeps); a change re-freezes it.
+        public int TargetRosterCapacity;
         // 2026-10-01 (variant B) — a stronger commander fetched from an own garrison elsewhere:
         // the lone-hero container walking to the host (AttackPreparationStep.FetchCommander /
         // MoveCommander). Housekeeping promotes it on the host's hex; cleared when it is gone.

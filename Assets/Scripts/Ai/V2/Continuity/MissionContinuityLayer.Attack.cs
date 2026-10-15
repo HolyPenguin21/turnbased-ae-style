@@ -897,11 +897,14 @@ namespace Game.Ai.V2
         {
             UnitData commander = liveHost?.Commander;
             string commanderKey = commander == null ? null : StrikeRoster.UnitKey(commander);
+            int capacity = StrikeRoster.HostRosterCapacity(liveHost);
             string why = null;
             if (a.TargetRoster == null || a.TargetRoster.Count == 0)
                 why = "frozen";
             else if (commanderKey != a.TargetRosterCommanderKey)
                 why = $"commander {a.TargetRosterCommanderKey ?? "none"}->{commanderKey ?? "none"}";
+            else if (capacity != a.TargetRosterCapacity)
+                why = $"capacity {a.TargetRosterCapacity}->{capacity}";
             else if (snap.Self.AttackPeak > a.TargetRosterPeak
                      * (1f + AiConfigV2.attackTargetRosterRefreezeGrowth))
                 why = $"peak {a.TargetRosterPeak:0.#}->{snap.Self.AttackPeak:0.#}";
@@ -920,14 +923,13 @@ namespace Game.Ai.V2
             }
             if (why == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
                 return;
-            int capacity = liveHost != null ? liveHost.Capacity
-                : ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false);
             List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(snap.Self.StrikePool,
                 commander == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(commander),
                 capacity, out float power);
             a.TargetRoster = roster;
             a.TargetRosterPeak = snap.Self.AttackPeak;
             a.TargetRosterCommanderKey = commanderKey;
+            a.TargetRosterCapacity = capacity;
             a.TargetRosterPower = power;
             AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} target roster {why}: "
                 + $"[{string.Join(",", a.TargetRoster.Select(x => x.IsHero ? x.Key + "*" : x.Key))}] "

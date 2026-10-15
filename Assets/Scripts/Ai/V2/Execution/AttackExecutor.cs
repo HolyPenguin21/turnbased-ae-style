@@ -244,6 +244,8 @@ namespace Game.Ai.V2
             }
 
             float before = AiPower.EffectiveArmyPower(host.Members);
+            GroundCombatAssemblyBaseline baseline = GroundCombatAssemblyTransaction.Capture(player, host,
+                assembly.Transfers);
             var applied = new List<GroundCombatAssemblyTransfer>();
             foreach (GroundCombatAssemblyTransfer t in assembly.Transfers)
             {
@@ -254,8 +256,10 @@ namespace Game.Ai.V2
                     && donor.CanLeaveWithoutOvercrowding(t.Unit);
                 if (!legal || !ArmyActions.TransferMember(t.Unit, donor, host, ctx?.HexSelection, out why))
                 {
-                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "attack preparation");
-                    int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied);
+                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx,
+                        "attack preparation", baseline: baseline);
+                    int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied,
+                        baseline: baseline);
                     result.StopReason = ExecutionStopReason.MoveRejected;
                     result.NeedsReplan = true;
                     // An incomplete rollback left bodies in the host: that IS a world change.

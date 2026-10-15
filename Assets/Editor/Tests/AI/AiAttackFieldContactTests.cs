@@ -82,6 +82,19 @@ namespace Game.EditorTests
             Assert.That(Hash(a, b), Is.EqualTo(Hash(b, a)));
         }
 
+        // The same roster that left (or entered) a fortification is a different fight: the
+        // withdrawal witness must ask the estimator again, not answer "unchanged_obstacle".
+        [Test]
+        public void ContactFingerprint_ChangesWithTheDefendersHexBonus()
+        {
+            var body = Body(4, 2, 6);
+            int Hash(float? bonus) => AttackTacticalOpportunity.ContactFingerprint(new[] {
+                new WorthIt.DefendingArmy(new[] { body }, new WorthIt.SideCommander(2, 3), bonus, 5) });
+            Assert.That(Hash(3f), Is.Not.EqualTo(Hash(0f)), "left the fortification");
+            Assert.That(Hash(0f), Is.Not.EqualTo(Hash(null)));
+            Assert.That(Hash(3f), Is.EqualTo(Hash(3f)));
+        }
+
         // ---- the one-day voluntary fight -------------------------------------------------------
 
         [Test]

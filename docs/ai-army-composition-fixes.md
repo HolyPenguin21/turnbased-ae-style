@@ -32,4 +32,17 @@ The unadapted reference-DLL compile has the same pre-existing UnityEditor/stub d
 
 Portable checks use old Unity reference DLLs, NUnitLite/Mono and verification-only adapters for newer API signatures, managed Mathf and TMP fields. Without a configured native map, visibility recomputation is omitted in that copy; empty summon-catalog checks use reference equality. No adapter is part of the gameplay changes. The full unfiltered baseline suite contains engine-dependent failures; only its actually passing cases are used for the differential gate.
 
+## Review of six follow-up hypotheses (2026-10-15)
+
+Base: `bc4d0bd55d13ae98d060dba73fa026caf77b92dc`.
+
+1. Stale withdrawal after the enemy changed position or defence: confirmed. `ContactFingerprint` ignored each army's `DefenseBonusOverride`, so the same roster leaving a fortification kept `unchanged_obstacle`. The fingerprint now folds that bonus.
+2. Commander choice without the other heroes' effects: confirmed. `BestCommanderFor`, Housekeeping's `CommandCandidateFor` and the hero-card projection credited a Heal/Drill carrier only when it led. Every candidate now carries the heroes that stay (`SideCommander.WithSupport`).
+3. Preparation and a retained support hero: partly confirmed. No endless wait (the stall lifecycle ends a preparation without a witness), but the frozen roster was composed for the commander's full capacity, so one position could never fit. It is now composed under `StrikeRoster.HostRosterCapacity` and re-frozen when that changes.
+4. Rollback completeness: partly confirmed. Roster, host commander, AP and per-unit movement were restored. A field donor's commander, the activation coverage pre-marked on a not-yet-activated host, and transport pairs were not; the first two are now restored and the third is reported by `RemainingApplied`.
+5. Movement through exchange: correct. Spent movement lives on the unit (`MovementSpent`, preserved by `SetTransportCarrier`); an army only re-takes the minimum of its current members, as for a human player. The local-refit cap is that lane's battle-stop rule.
+6. Projected and actual handoff AP: confirmed for the rendezvous step. Provisioning reserved the support's activation for a step that moves no one; it now reserves exactly `HandoffApCost` (`GroundCombatLegChecks.ReinforcementStepAp`). The live charge rule, coverage ledger and arrival projection were consistent.
+
+Regression tests: `AiAttackFieldContactTests.ContactFingerprint_ChangesWithTheDefendersHexBonus` and `AiGarrisonHeroTests` (`BestCommander_CreditsASecondaryCarrierUnderEveryCandidate`, `SideCommanderWithSupport_AddsOnlyLivingSupportHeroes`, `PreparationRoster_LeavesTheSlotOfARetainedSupportCarrier`, `ReinforcementHandoffStep_CostsOnlyItsCharges`, `AssemblyRollback_*`). The first two reproduce the original failure on the base revision. Portable run with a verification-only `VisionSystem` reference-equality adapter: 2,008 base passes retained, 10 new passes, no regressions.
+
 Unity `6000.5.4f1`, the full native EditMode suite and gameplay acceptance were not run. Native acceptance should include a travelling command handoff with activation charges, a full/partly full garrison, a fresh versus started Attack, preparation with passive heroes and facility operators, and re-evaluation after observed support-hero changes on either side.

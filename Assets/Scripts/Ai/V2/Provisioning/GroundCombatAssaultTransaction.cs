@@ -212,15 +212,14 @@ namespace Game.Ai.V2
                             + $"({rendezvous.Q},{rendezvous.R})")));
             }
 
-            int activationAp = support.HasActivatedThisTurn ? 0 : support.ActivationApCost;
-            // At the rendezvous the step IS the handoff: its own activation charges (newcomers to
-            // an army that already acted, both directions) are part of this leg's AP. The odds
-            // projection above does not check that the armies can actually exchange anyone; the
-            // handoff plan does, so no plan means there is no step to provision.
+            // At the rendezvous the step IS the handoff. The odds projection above does not check
+            // that the armies can actually exchange anyone; the handoff plan does, so no plan
+            // means there is no step to provision.
+            HandoffPlan plan = null;
             if (atRendezvous)
             {
                 string planWhy;
-                HandoffPlan plan = lane == "attack"
+                plan = lane == "attack"
                     ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, opposition,
                         defenderHexDefenseBonus, requireChargeNow: true, out planWhy, capacityIsProgress)
                     : GroundCombatReinforcement.PlanHandoff(primary, support,
@@ -230,8 +229,8 @@ namespace Game.Ai.V2
                     return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.NoExecutableStep(
                             $"{lane} reinforcement #{support.Id} -> #{primary.Id} has no executable handoff: {planWhy}")));
-                activationAp += GroundCombatReinforcement.HandoffApCost(plan, primary, support);
             }
+            int activationAp = ReinforcementStepAp(support, primary, plan);
             if (activationAp > funded.Tentative.Ap + eps)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.EnvelopeTooSmall(activationAp,
@@ -243,6 +242,14 @@ namespace Game.Ai.V2
 
             return new GroundCombatLegCheck { Ok = true, Mover = support, ActivationAp = activationAp };
         }
+
+        // The AP of one reinforcement step. A transit step activates the support. The handoff
+        // step (`handoff` given) moves no one — the executor never moves and hands off in one
+        // step — so it costs exactly its own charges: newcomers to an army that already acted,
+        // both directions (GroundCombatReinforcement.HandoffApCost).
+        internal static int ReinforcementStepAp(ArmyData support, ArmyData primary, HandoffPlan handoff) =>
+            handoff != null ? GroundCombatReinforcement.HandoffApCost(handoff, primary, support)
+                : support.HasActivatedThisTurn ? 0 : support.ActivationApCost;
     }
 
     // One command handover (GroundCombatReinforcement.CommandHandover): the hero, the primary body
@@ -906,6 +913,7 @@ namespace Game.Ai.V2
                         $"turn AP exhausted: {lane} needs {N(activationAp)}, {N(turnApLeft)} left")));
 
             UnitData originalCommander = host.Commander;
+            GroundCombatAssemblyBaseline baseline = GroundCombatAssemblyTransaction.Capture(player, host, transfers);
             bool reordered = plan.Commander != null && plan.Commander != host.Commander
                 && GroundCombatAssemblyPlanner.CanPromoteBeforeHeroReturn(host, plan.Commander)
                 && host.TryReorderCommander(plan.Commander, out _);
@@ -933,8 +941,9 @@ namespace Game.Ai.V2
                 if (donor == null || !ArmyActions.TransferMember(t.Unit, donor, host, ctx.HexSelection, out why))
                 {
                     bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, lane,
-                        shedGarrison, shedDone, originalCommander);
-                    int transfersStillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied, shedDone, originalCommander);
+                        shedGarrison, shedDone, originalCommander, baseline);
+                    int transfersStillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied,
+                        shedDone, originalCommander, baseline);
                     bool rollbackChangedWorld = transfersStillApplied > 0;
                     AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — assembly transaction failed on "
                         + $"{t.Unit.Name} from #{t.DonorArmyId}: {why}; rollback={(rollbackOk ? "OK" : "FAILED")}; "
@@ -965,8 +974,9 @@ namespace Game.Ai.V2
             if (!sameRoster || actualAp != activationAp || actualAp > envelope + eps)
             {
                 bool reconcileRollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, lane,
-                        shedGarrison, shedDone, originalCommander);
-                int stillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied, shedDone, originalCommander);
+                        shedGarrison, shedDone, originalCommander, baseline);
+                int stillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied,
+                    shedDone, originalCommander, baseline);
                 AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — assembled host #{host.Id} "
                     + $"costs {N(actualAp)} AP but {N(activationAp)} was projected/funded "
                     + $"(envelope {N(envelope)}); rollback={(reconcileRollbackOk ? "OK" : "FAILED")}; "

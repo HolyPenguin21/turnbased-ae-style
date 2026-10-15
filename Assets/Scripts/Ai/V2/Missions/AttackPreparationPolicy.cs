@@ -52,7 +52,10 @@ namespace Game.Ai.V2
             UnitData current = liveHost.Commander;
             StrikeRoster.ComposeUnder(snap.Self.StrikePool,
                 current == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(current),
-                liveHost.Capacity, out currentPower);
+                StrikeRoster.HostRosterCapacity(liveHost), out currentPower);
+            // Under a fetched commander every support carrier of the host stays, the current
+            // commander included when it is one (an ordinary one returns to the garrison).
+            int retainedUnderUpgrade = StrikeRoster.RetainedSupportSlots(liveHost.Members, null);
             if (AttackForceReadiness.ForceReady(currentPower, snap.Self.AttackPeak))
                 return default;
             currentCommand = current?.CommandRating ?? 0;
@@ -68,7 +71,7 @@ namespace Game.Ai.V2
                         || !AiArmyRoles.CanSpareGarrisonMember(player, g, u))
                         continue;
                     StrikeRoster.ComposeUnder(snap.Self.StrikePool, StrikeRoster.CommanderCandidate(u),
-                        u.CommandRating, out float power);
+                        u.CommandRating - retainedUnderUpgrade, out float power);
                     if (power > best.power + AiConfigV2.allocatorSliceEpsilon
                         || (best.hero != null && System.Math.Abs(power - best.power) <= AiConfigV2.allocatorSliceEpsilon
                             && HexGridMath.Distance(g.Hex, liveHost.Hex) < HexGridMath.Distance(best.garrison.Hex, liveHost.Hex)))

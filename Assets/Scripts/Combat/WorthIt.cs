@@ -218,6 +218,18 @@ namespace Game.Combat
                 return new SideCommander(commander.Initiative, commander.Fate, support.Count > 0 ? support : null);
             }
 
+            // This commander leading a formation whose other heroes stay in it: their Heal/Drill
+            // act in its battles too (the profile form of Of(members) for a roster led by it).
+            public SideCommander WithSupport(IEnumerable<DefenderProfile> otherHeroes)
+            {
+                if (!Present || otherHeroes == null) return this;
+                var support = (SupportHeroes ?? System.Array.Empty<DefenderProfile>())
+                    .Concat(otherHeroes.Where(p => p.IsHero && p.HitPoints > 0 && IsSupportHero(p.Abilities)))
+                    .ToList();
+                return support.Count == (SupportHeroes?.Count ?? 0) ? this
+                    : new SideCommander(Initiative, Fate, support);
+            }
+
             public bool Equals(SideCommander other)
             {
                 if (Present != other.Present || Initiative != other.Initiative || Fate != other.Fate

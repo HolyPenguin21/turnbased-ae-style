@@ -454,7 +454,8 @@ namespace Game.Ai.V2
             return roster
                 .Where(u => u != null && u.IsHero && !u.IsCommitted && !u.IsDevelopmentOperator
                     && u.HeroRole != HeroOperationalRole.SupportOperator)
-                .Select(u => (unit: u, candidate: CommandCandidateFor(u, bodies, 0, context)))
+                .Select(u => (unit: u, candidate: CommandCandidateFor(u, bodies,
+                    System.Array.Empty<ReorgUnit>(), context)))
                 .OrderBy(x => x.candidate, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
                     HeroRoleEvaluator.CompareCandidates))
                 .Select(x => x.unit)
@@ -489,7 +490,8 @@ namespace Game.Ai.V2
                 return heroes[0];
             List<WorthIt.DefenderProfile> bodies = CommandBodies(units);
             return legal
-                .Select(h => (unit: h, candidate: CommandCandidateFor(h, bodies, heroes.Count - 1, context)))
+                .Select(h => (unit: h, candidate: CommandCandidateFor(h, bodies,
+                    heroes.Where(x => !ReferenceEquals(x, h)).ToList(), context)))
                 .OrderBy(x => x.candidate, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
                     HeroRoleEvaluator.CompareCandidates))
                 .First().unit;
@@ -550,11 +552,14 @@ namespace Game.Ai.V2
                 .Select(u => u.CombatProfile)
                 .ToList();
 
+        // `otherHeroes` stay in the formation under this commander: they take slots, and their
+        // Heal/Drill act in its fight exactly as under any other commander.
         private static HeroRoleEvaluator.CommandCandidate CommandCandidateFor(ReorgUnit hero,
-            IEnumerable<WorthIt.DefenderProfile> bodies, int otherHeroes,
+            IEnumerable<WorthIt.DefenderProfile> bodies, IReadOnlyList<ReorgUnit> otherHeroes,
             IReadOnlyList<WorthIt.DefendingArmy> context) =>
             new HeroRoleEvaluator.CommandCandidate(
-                HeroRoleEvaluator.ProjectCommand(hero.CommandRating, otherHeroes, hero.AsCommander,
+                HeroRoleEvaluator.ProjectCommand(hero.CommandRating, otherHeroes.Count,
+                    hero.AsCommander.WithSupport(otherHeroes.Select(u => u.CombatProfile)),
                     bodies, context, 0f),
                 HeroRoleEvaluator.RolePreference(hero.HeroRole), hero.HeroCombatLeadership,
                 hero.CommandRating, hero.AsCommander.Fate, hero.Key);

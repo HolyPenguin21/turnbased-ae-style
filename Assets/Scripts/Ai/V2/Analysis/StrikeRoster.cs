@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Map;
 using Game.Units;
 
 namespace Game.Ai.V2
@@ -63,6 +64,21 @@ namespace Game.Ai.V2
             power = AiPower.EffectiveArmyPower(pick.Select(c => c.Unit).ToList());
             return pick.Select(c => c.Slot).ToList();
         }
+
+        // Heroes besides `commander` that stay in the formation and take a body slot: the army
+        // support carriers (Heal/Drill/Transport, StrategicEffectRegistry.HasArmySupportEffect)
+        // Housekeeping never releases from a preparation host. A roster composed past them would
+        // name a position the host can never hold.
+        public static int RetainedSupportSlots(IEnumerable<UnitData> members, UnitData commander) =>
+            (members ?? Enumerable.Empty<UnitData>()).Count(u => u != null && u != commander
+                && u.IsHero && !u.IsPrisoner
+                && StrategicEffectRegistry.HasArmySupportEffect(u.Abilities, u.MoveMax));
+
+        // The capacity a preparation host's roster is composed under: its Capacity (commander
+        // included) less the slots of the support carriers it keeps.
+        public static int HostRosterCapacity(ArmyData host) =>
+            host == null ? ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false)
+                : host.Capacity - RetainedSupportSlots(host.Members, host.Commander);
 
         // The pool candidate standing for a live hero (by its card key), or a fresh one built
         // from the unit itself when the pool has none.
