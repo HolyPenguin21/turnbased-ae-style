@@ -407,7 +407,7 @@ namespace Game.EditorTests
             EquipmentSystem.ApplyAttachments(unit, null, Attachment(AttachmentSlot.Mutator));
             unit.Fate = 1;
             var mobility = Attachment(AttachmentSlot.Equipment, EquipmentStat.MoveMax, 2);
-            var delta = StrategicCardEvaluator.EquipmentDeltaParts(mobility, unit);
+            var delta = EquipmentUpgradeValuation.EquipmentDeltaParts(mobility, unit);
             Assert.That(delta.Combat, Is.Zero);
             // Speed alone (no route known): the move proxy on the hero reference line. Nothing for Fate -
             // the spent point is neither healed nor read as a gain.

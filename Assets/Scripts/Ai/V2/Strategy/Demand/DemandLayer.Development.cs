@@ -63,7 +63,7 @@ namespace Game.Ai.V2
             {
                 upgrades++;
                 // The upgrade's whole value — stat delta AND known-threat matchup — is priced ONCE
-                // by StrategicCardEvaluator.EquipmentUpgradeValue inside the card scorer. A
+                // by EquipmentUpgradeValuation.EquipmentUpgradeValue inside the card scorer. A
                 // world-task urgency here would count the matchup a second time.
                 var devScore = new TaskScore();
                 yield return new AxisDemand

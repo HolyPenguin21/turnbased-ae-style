@@ -687,7 +687,7 @@ namespace Game.Ai.V2
                     ? !EquipmentSystem.CanAttach(card, op.RecipientCard, root, out _)
                     : !EquipmentSystem.CanAttach(card, op.RecipientUnit, root, out _)) continue;
                 // The item's own utility, without production context (no Challenge, repeat or supply).
-                float value = StrategicCardEvaluator.EquipmentUpgradeValue(op);
+                float value = EquipmentUpgradeValuation.EquipmentUpgradeValue(op);
                 yield return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Equipment, EquipHost = op.RecipientUnit,
@@ -700,7 +700,7 @@ namespace Game.Ai.V2
                     StableKey = "hand:" + GenerationSource.StableCardKey(card)
                         + ":equipment:" + DevelopmentOpportunityEvaluator.RecipientKey(op),
                     Explain = card.Definition.displayName + " -> " + op.RecipientLabel
-                        + " purpose=" + StrategicCardEvaluator.EquipmentPurposeLabel(snap, op.RecipientCard, op.RecipientUnit)
+                        + " purpose=" + EquipmentUpgradeValuation.EquipmentPurposeLabel(snap, op.RecipientCard, op.RecipientUnit)
                         + $" delta={op.ExpectedGain:0.###} tactical={op.TacticalGain:0.###} " + op.Explain,
                 };
             }

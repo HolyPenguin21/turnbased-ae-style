@@ -281,7 +281,7 @@ namespace Game.Ai.V2
         }
 
         // Σ over the equipment cards of each one's combat gain on a free, legal ground host
-        // (StrategicCardEvaluator.EquipmentDeltaParts — the one equipment value). A host takes one
+        // (EquipmentUpgradeValuation.EquipmentDeltaParts — the one equipment value). A host takes one
         // item; the largest gains are matched first.
         private static float EquipmentReserve(SelfSnapshot self, List<ArmyData> ownArmies,
             List<CardDefinition> equipment)
@@ -299,16 +299,16 @@ namespace Game.Ai.V2
                             && (slot == AttachmentSlot.Equipment ? u.Equipment == null : u.Mutator == null))
                             hosts.Add(eq => eq.attachmentSlot == slot
                                 && EquipmentSystem.FitsHost(eq, u.OriginatingCard, out _)
-                                    ? ReserveBodies(StrategicCardEvaluator.EquipmentDeltaParts(eq, u)) : 0f);
+                                    ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, u)) : 0f);
                 foreach (CardData c in self.Hand)
                     if (IsGroundHostCard(c?.Definition)
                         && (slot == AttachmentSlot.Equipment ? c.Equipment == null : c.Mutator == null))
                         hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, c.Definition, out _)
-                            ? ReserveBodies(StrategicCardEvaluator.EquipmentDeltaParts(eq, c)) : 0f);
+                            ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, c)) : 0f);
                 foreach (CardDefinition d in self.Deck)
                     if (IsGroundHostCard(d))
                         hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, d, out _)
-                            ? ReserveBodies(StrategicCardEvaluator.EquipmentDeltaParts(eq, d)) : 0f);
+                            ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, d)) : 0f);
             }
 
             var pairs = new List<(float gain, int item, int host)>();
@@ -338,7 +338,7 @@ namespace Game.Ai.V2
         // consumer boundary: the reserve counts combat bodies. EquipmentDelta.Combat is U_combat divided by
         // the persistence factor, U_combat = 1.10 x dC in card score, and one reference body is
         // AiConfigV2.equipReserveReferenceBodyC of C.
-        private static float ReserveBodies(StrategicCardEvaluator.EquipmentDelta delta) =>
+        private static float ReserveBodies(EquipmentUpgradeValuation.EquipmentDelta delta) =>
             delta.Combat * AiConfigV2.equipmentUpgradePersistence / AiConfigV2.equipCombatCardScale
             / AiConfigV2.equipReserveReferenceBodyC;
 

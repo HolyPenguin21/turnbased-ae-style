@@ -489,7 +489,7 @@ namespace Game.Ai.V2
     //   Units     — unit cards added under the map's own command capacity;
     //   Hero      — hero cards added on top (their bodies and the capacity they lift);
     //   Equipment — Σ, per equipment card, its best combat gain on a free legal host
-    //               (StrategicCardEvaluator.EquipmentDeltaParts, one host per item);
+    //               (EquipmentUpgradeValuation.EquipmentDeltaParts, one host per item);
     //   Aviation  — Σ power of aviation cards: support that may or may not help a ground fight.
     public readonly struct ForceReserve
     {

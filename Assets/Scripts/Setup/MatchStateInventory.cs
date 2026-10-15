@@ -135,7 +135,7 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.WorldDeltaLifecycle", MatchStateKind.TurnScoped,
                 resetNote: "monotonic revision counters; the mutation transaction closes with its step"),
             new MatchStateEntry("Game.Ai.V2.GroundCombatAdmissionRegistry", MatchStateKind.Scoped),
-            new MatchStateEntry("Game.Ai.V2.StrategicCardEvaluator.EquipmentTargetMemo", MatchStateKind.Scoped),
+            new MatchStateEntry("Game.Ai.V2.EquipmentUpgradeValuation.EquipmentTargetMemo", MatchStateKind.Scoped),
             new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Scoped),
 
             // --- identities ------------------------------------------------------------------------

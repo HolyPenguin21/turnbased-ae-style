@@ -411,13 +411,13 @@ namespace Game.EditorTests
             var host = new CardDefinition { cardType = CardType.Unit, attack = 2, defenseRating = 1, hitPoints = 4, range = 2 };
             var item = new CardDefinition { cardType = CardType.Equipment, equipment = new EquipmentGrant() };
             item.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 3 });
-            var free = StrategicCardEvaluator.EquipmentDeltaParts(item, host);
-            var emptyWorld = StrategicCardEvaluator.EquipmentDeltaParts(item, new CardData(host), new WorldSnapshot());
+            var free = EquipmentUpgradeValuation.EquipmentDeltaParts(item, host);
+            var emptyWorld = EquipmentUpgradeValuation.EquipmentDeltaParts(item, new CardData(host), new WorldSnapshot());
             Assert.That(free.Combat, Is.GreaterThan(0f));
             Assert.That(free.Total, Is.EqualTo(emptyWorld.Total).Within(1e-5f), "no second, linear formula for the reserve");
             var big = new CardDefinition { cardType = CardType.Equipment, equipment = new EquipmentGrant() };
             big.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 40 });
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(big, host).Combat,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(big, host).Combat,
                 Is.GreaterThan(free.Combat), "no fixed clamp on the result");
         }
 
@@ -435,7 +435,7 @@ namespace Game.EditorTests
             var purpose = new MissionIntent { Kind = MissionKind.Scout, PreferredMoverArmyId = army.Id,
                 Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(7, 0) } };
             var ctx = new EfficiencyContext { IsHero = true };
-            StrategicCardEvaluator.ApplyKnownRouteAndCoverage(ctx, snap, army, host, null, purpose);
+            EquipmentUpgradeValuation.ApplyKnownRouteAndCoverage(ctx, snap, army, host, null, purpose);
             var body = new CardDefinition { cardType = CardType.Hero, moveMax = 3, activationApCost = 1 };
             var item = new CardDefinition { cardType = CardType.Equipment, attachmentSlot = slot,
                 equipment = new EquipmentGrant() };
@@ -463,7 +463,7 @@ namespace Game.EditorTests
             var purpose = new MissionIntent { Kind = MissionKind.Scout, PreferredMoverArmyId = army.Id,
                 Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = focus } };
             var ctx = new EfficiencyContext { IsHero = true, StealthUsable = true };
-            StrategicCardEvaluator.ApplyKnownRouteAndCoverage(ctx, snap, army, host, null, purpose);
+            EquipmentUpgradeValuation.ApplyKnownRouteAndCoverage(ctx, snap, army, host, null, purpose);
             Assert.That(ctx.StealthRisk, Is.EqualTo(ScoutRiskModel.DetectorRisk(snap, focus)));
             Assert.That(ctx.DetectionRelevance, Is.Zero, "enemy detectors are not evidence of a hidden target");
             var stealth = new[] { "Stealth4" };
@@ -471,7 +471,7 @@ namespace Game.EditorTests
                 Is.GreaterThan(U(Medium, Medium, new EfficiencyContext { IsHero = true, StealthUsable = true }, None, stealth).Stealth));
             snap.Known = new KnownSnapshot();
             var unknown = new EfficiencyContext { IsHero = true, StealthUsable = true };
-            StrategicCardEvaluator.ApplyKnownRouteAndCoverage(unknown, snap, army, host, null, purpose);
+            EquipmentUpgradeValuation.ApplyKnownRouteAndCoverage(unknown, snap, army, host, null, purpose);
             Assert.That(U(Medium, Medium, unknown, None, stealth).Stealth,
                 Is.EqualTo(U(Medium, Medium, new EfficiencyContext { IsHero = true, StealthUsable = true }, None, stealth).Stealth));
         }

@@ -113,7 +113,7 @@ namespace Game.EditorTests
             var host = Host(); host.attack = baseAttack; host.grantedAbilities.Clear();
             var gear = Gear("Heavy MG"); var prediction = EquipmentSystem.Project(new CardData(host), gear);
             Assert.That(prediction.Stats[EquipmentStat.Attack], Is.EqualTo(5));
-            var delta = StrategicCardEvaluator.EquipmentDeltaParts(gear, host);
+            var delta = EquipmentUpgradeValuation.EquipmentDeltaParts(gear, host);
             Assert.That(improvement ? delta.Combat > 0 : delta.Combat < 0, Is.True);
             Assert.That(host.attack, Is.EqualTo(baseAttack));
         }

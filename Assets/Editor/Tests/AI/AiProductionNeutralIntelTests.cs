@@ -56,7 +56,7 @@ namespace Game.EditorTests
                 },
             };
 
-            float observedFit = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat;
+            float observedFit = EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat;
             Assert.That(observedFit, Is.GreaterThan(0f),
                 "An observed defender is a legitimate composition witness");
 
@@ -66,15 +66,15 @@ namespace Game.EditorTests
                 new WorthIt.DefenderProfile(defense: 100, hasCeramicArmor: false,
                     attack: 100, hitPoints: 80),
             };
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.EqualTo(observedFit).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.EqualTo(observedFit).Within(0.0001f),
                 "Unobserved changes to the live neutral roster must not affect valuation");
 
             snapshot.TrueWorld.NeutralArmies = System.Array.Empty<ArmySnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.EqualTo(observedFit).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.EqualTo(observedFit).Within(0.0001f),
                 "Last observed neutral profiles remain legitimate even when the live roster disappears");
 
             snapshot.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
                 "Without a known witness, an unseen neutral must provide no contextual combat information (the efficiency value stands, no fabricated threat)");
         }
     }

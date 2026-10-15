@@ -286,7 +286,7 @@ namespace Game.EditorTests
                     {
                         var plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
                             op, generation, DesireAxis.Development);
-                        float value = StrategicCardEvaluator.EquipmentUpgradeValue(op);
+                        float value = EquipmentUpgradeValuation.EquipmentUpgradeValue(op);
                         return new DemandCandidate(plan, 0, value, 0, value);
                     }).ToList(),
                 };
@@ -351,7 +351,7 @@ namespace Game.EditorTests
         public void SignedLossCannotBeErasedByLegacyMatchupWitness()
         {
             var host = new CardData(new CardDefinition { cardType = CardType.Unit });
-            var delta = new StrategicCardEvaluator.EquipmentDelta(0.6f, -0.7f);
+            var delta = new EquipmentUpgradeValuation.EquipmentDelta(0.6f, -0.7f);
             var op = new DevelopmentOpportunity
             {
                 RecipientCard = host,
@@ -359,9 +359,9 @@ namespace Game.EditorTests
                 TacticalGain = delta.Tactical * AiConfigV2.combatPowerPerBodyEstimate,
             };
             Assert.That(op.ExpectedGain, Is.LessThan(0f));
-            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op),
-                Is.EqualTo(StrategicCardEvaluator.EquipmentUpgradeValue(delta)).Within(0.0001f));
-            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op), Is.LessThan(0f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentUpgradeValue(op),
+                Is.EqualTo(EquipmentUpgradeValuation.EquipmentUpgradeValue(delta)).Within(0.0001f));
+            Assert.That(EquipmentUpgradeValuation.EquipmentUpgradeValue(op), Is.LessThan(0f),
                 "A matchup witness cannot turn a harmful signed delta into a useful investment");
         }
 
@@ -415,7 +415,7 @@ namespace Game.EditorTests
             definition.grantedAbilities.Add(UnitAbilities.RapidReaction);
             var host = new CardData(definition);
             var attachment = AttachmentSlotTests.Attachment(slot, EquipmentStat.Attack, 20);
-            var delta = StrategicCardEvaluator.EquipmentDeltaParts(attachment, host);
+            var delta = EquipmentUpgradeValuation.EquipmentDeltaParts(attachment, host);
             Assert.That(EquipmentSystem.Project(host).Stats[EquipmentStat.ActivationApCost], Is.Zero);
             Assert.That(delta.Total, Is.Zero.Within(0.0001f),
                 "Hero Attack has no combat value, and an already-free activation cannot become cheaper");
@@ -618,13 +618,13 @@ namespace Game.EditorTests
                     .Where(p => p.Kind == NonCombatCardPlayer.PlayKind.Equipment).ToList();
                 Assert.That(before.Count(p => p.Card == equipment), Is.EqualTo(2));
                 Assert.That(before.Count(p => p.Card == mutator), Is.EqualTo(2));
-                float previous = StrategicCardEvaluator.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total;
+                float previous = EquipmentUpgradeValuation.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total;
                 var chosen = before.Single(p => p.Card == equipment && p.EquipHostCard == hosts[0]);
                 var result = NonCombatPlayExecutor.Execute(chosen, snap, player, root, hand, ctx);
                 Assert.That(result.Played, Is.True, result.FailReason);
                 Assert.That(hosts[0].Equipment, Is.SameAs(equipment.Definition));
                 Assert.That(hand.Hand.Contains(equipment), Is.False);
-                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total,
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total,
                     Is.LessThan(previous));
                 var after = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>()).ToList();
                 Assert.That(after.Count(p => p.Card == mutator), Is.EqualTo(2));

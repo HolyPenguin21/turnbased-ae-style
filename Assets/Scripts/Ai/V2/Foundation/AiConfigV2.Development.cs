@@ -55,6 +55,6 @@ namespace Game.Ai.V2
         public const float devDiversityRecentWeight = 0.15f;
         // In the card-currency EV, prerequisite AP (facility / operator / hero travel) is priced
         // by ActionPrice in card units; equipment output value is
-        // StrategicCardEvaluator.EquipmentUpgradeValue's (equipmentUpgradePersistence).
+        // EquipmentUpgradeValuation.EquipmentUpgradeValue's (equipmentUpgradePersistence).
     }
 }

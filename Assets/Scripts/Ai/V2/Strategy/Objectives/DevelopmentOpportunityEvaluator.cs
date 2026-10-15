@@ -80,7 +80,7 @@ namespace Game.Ai.V2
         // value of the output, already discounted by the operator-generation chance.
         public float ExpectedGain;
         // Equipment only: the tactical share of ExpectedGain (Move/Range/AP/Command/roles, AiPower
-        // units) — the part StrategicCardEvaluator.EquipmentUpgradeValue never matchup-gates.
+        // units) — the part EquipmentUpgradeValuation.EquipmentUpgradeValue never matchup-gates.
         public float TacticalGain;
         // Legacy preview helper result; not used to admit or rank prerequisite steps.
         public float Ev;
@@ -130,7 +130,7 @@ namespace Game.Ai.V2
             // One settled evaluation has one immutable set of available operator sources.
             List<GenerationStep> generatedOperatorSources = null;
             using var recipientMemo = new RecipientEvaluationMemo();
-            using var targetMemo = new StrategicCardEvaluator.EquipmentTargetMemo();
+            using var targetMemo = new EquipmentUpgradeValuation.EquipmentTargetMemo();
             IEnumerable<HexCoord> sites = snap.Self.BaseHexes
                 .Concat(snap.Development.Facilities.Select(f => f.Hex))
                 .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
@@ -351,7 +351,7 @@ namespace Game.Ai.V2
                 }
                 // Repeat damping is already inside the gain (EquipmentOpportunities, source set); there is no supply term.
                 best.WorldTaskScore = BuildDevelopmentScore(
-                    best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
+                    best.SuccessChance * EquipmentUpgradeValuation.EquipmentUpgradeValue(best));
                 MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
                     best, source, DesireAxis.Development);
                 float ev = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(best, plan,
@@ -955,7 +955,7 @@ namespace Game.Ai.V2
         }
 
         // The best legal recipient (hand card or deployed unit) for this Equipment output, by
-        // StrategicCardEvaluator.EquipmentUpgradeValue. null when no recipient gains anything.
+        // EquipmentUpgradeValuation.EquipmentUpgradeValue. null when no recipient gains anything.
         private static DevelopmentOpportunity BestEquipmentOpportunity(ResearchProductionMode mode,
             HexCoord facilityHex, CardDefinition equipment, float successChance,
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
@@ -964,7 +964,7 @@ namespace Game.Ai.V2
             List<DevelopmentOpportunity> recipients = EquipmentOpportunities(mode, facilityHex,
                 equipment, successChance, generation, snap, inv, player, root, hand, out diag, futureAttachment: true);
             DevelopmentOpportunity best = recipients
-                .OrderByDescending(o => StrategicCardEvaluator.EquipmentUpgradeValue(o))
+                .OrderByDescending(o => EquipmentUpgradeValuation.EquipmentUpgradeValue(o))
                 .ThenBy(o => RecipientKey(o), System.StringComparer.Ordinal).FirstOrDefault();
             // The repeated-cost witness counts distinct legal, useful recipient slots, rather
             // than the coarse radar target count or every card in the catalog.
@@ -981,11 +981,11 @@ namespace Game.Ai.V2
         {
             public readonly bool Legal;
             public readonly string Why;
-            public readonly StrategicCardEvaluator.EquipmentDelta Gain;
+            public readonly EquipmentUpgradeValuation.EquipmentDelta Gain;
             public readonly string Purpose;
             public readonly bool NoNeed;
             public readonly bool PendingCovers;
-            public RecipientVerdict(bool legal, string why, StrategicCardEvaluator.EquipmentDelta gain,
+            public RecipientVerdict(bool legal, string why, EquipmentUpgradeValuation.EquipmentDelta gain,
                 string purpose, bool noNeed, bool pendingCovers)
             { Legal = legal; Why = why; Gain = gain; Purpose = purpose; NoNeed = noNeed; PendingCovers = pendingCovers; }
         }
@@ -1080,16 +1080,16 @@ namespace Game.Ai.V2
                     verdict = new RecipientVerdict(false, why, default, null, false, false);
                 else
                 {
-                    StrategicCardEvaluator.EquipmentDelta gain = unit != null
-                        ? StrategicCardEvaluator.EquipmentDeltaParts(equipment, unit, snap, inv)
-                        : StrategicCardEvaluator.EquipmentDeltaParts(equipment, card, snap, inv);
+                    EquipmentUpgradeValuation.EquipmentDelta gain = unit != null
+                        ? EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, unit, snap, inv)
+                        : EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, card, snap, inv);
                     string purpose;
                     using (new Game.Core.ProfileScope("AI/Dev.PurposeLabel"))
-                        purpose = StrategicCardEvaluator.EquipmentPurposeLabel(snap, card, unit);
+                        purpose = EquipmentUpgradeValuation.EquipmentPurposeLabel(snap, card, unit);
                     DevelopmentOpportunity probe = MakeProbe(equipment, card, unit, gain, powerUnit);
                     // Delta already includes mission-scoped penetration and effect usefulness.
                     // Utility is required even for in-advance investment; surplus alone cannot admit it.
-                    bool noNeed = StrategicCardEvaluator.EquipmentUpgradeValue(probe) <= 0f;
+                    bool noNeed = EquipmentUpgradeValuation.EquipmentUpgradeValue(probe) <= 0f;
                     // A real card in hand is the pending stage. Reuse it before manufacturing more
                     // for its useful recipient slot; ordinary hand attachment enumeration stays live.
                     bool covers = false;
@@ -1170,7 +1170,7 @@ namespace Game.Ai.V2
 
         // The slice of a candidate that PendingEquipmentCovers and the need check read.
         private static DevelopmentOpportunity MakeProbe(CardDefinition equipment, CardData card,
-            UnitData unit, StrategicCardEvaluator.EquipmentDelta gain, float powerUnit) =>
+            UnitData unit, EquipmentUpgradeValuation.EquipmentDelta gain, float powerUnit) =>
             new DevelopmentOpportunity
             {
                 Card = equipment, RecipientCard = card, RecipientUnit = unit,
@@ -1190,15 +1190,15 @@ namespace Game.Ai.V2
                     : EquipmentSystem.CanAttachPreview(def, op.RecipientUnit, out _);
                 if (!legal) continue;
                 var delta = op.RecipientCard != null
-                    ? StrategicCardEvaluator.EquipmentDeltaParts(def, op.RecipientCard, snap, inv)
-                    : StrategicCardEvaluator.EquipmentDeltaParts(def, op.RecipientUnit, snap, inv);
+                    ? EquipmentUpgradeValuation.EquipmentDeltaParts(def, op.RecipientCard, snap, inv)
+                    : EquipmentUpgradeValuation.EquipmentDeltaParts(def, op.RecipientUnit, snap, inv);
                 var pendingUse = new DevelopmentOpportunity
                 {
                     Card = def, RecipientCard = op.RecipientCard, RecipientUnit = op.RecipientUnit,
                     ExpectedGain = delta.Total * AiConfigV2.combatPowerPerBodyEstimate,
                     TacticalGain = delta.Tactical * AiConfigV2.combatPowerPerBodyEstimate,
                 };
-                if (StrategicCardEvaluator.EquipmentUpgradeValue(pendingUse) > 0f) return true;
+                if (EquipmentUpgradeValuation.EquipmentUpgradeValue(pendingUse) > 0f) return true;
             }
             return false;
         }

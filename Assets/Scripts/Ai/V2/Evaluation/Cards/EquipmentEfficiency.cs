@@ -21,7 +21,7 @@ namespace Game.Ai.V2
     //  worked examples is docs/ai-v2-equipment-efficiency-table.md.
     //
     //  Pure arithmetic over plain structs: no snapshot, registry or engine type is read here, so
-    //  the table is EditMode-testable. StrategicCardEvaluator.ScoreEquipmentDelta builds the
+    //  the table is EditMode-testable. EquipmentUpgradeValuation.ScoreEquipmentDelta builds the
     //  context from the live world and converts E to card-value units (equipCardValuePerE).
     // ===========================================================================================
     internal readonly struct EfficiencyStats
