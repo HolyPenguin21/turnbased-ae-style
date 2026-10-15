@@ -474,11 +474,11 @@ namespace Game.EditorTests
         {
             ArmyData army = Army();
             MethodInfo build = typeof(WorldAnalysis).GetMethod("BuildSelf", BindingFlags.Static | BindingFlags.NonPublic);
-            SelfSnapshot before = (SelfSnapshot)build.Invoke(null, new object[] { _owner, _root, null, Context() });
+            SelfSnapshot before = (SelfSnapshot)build.Invoke(null, new object[] { _owner, _root, null, Context(), null });
             Assert.That(before.Armies.Any(a => a.ArmyId == army.Id), Is.True);
             army.Members.Clear();
             _selection.DeleteArmyIfEmptied(army);
-            SelfSnapshot after = (SelfSnapshot)build.Invoke(null, new object[] { _owner, _root, null, Context() });
+            SelfSnapshot after = (SelfSnapshot)build.Invoke(null, new object[] { _owner, _root, null, Context(), null });
             Assert.That(after.Armies.Any(a => a.ArmyId == army.Id), Is.False);
             yield return null;
         }

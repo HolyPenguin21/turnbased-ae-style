@@ -1304,6 +1304,7 @@ namespace Game.EditorTests
                         LastKnownHex = target, Phase = RaidMissionPhase.Reinforcement, TargetIsNeutral = true } };
                 intent.IntentKey = MissionIntentKey.For(intent);
                 MissionIntentRegistry.GetOrCreate(_owner).Put(intent);
+                snap.Intents = MissionIntentRegistry.GetOrCreate(_owner);
                 var card = new CardData(new CardDefinition { isAviation = true, attack = 6,
                     moveMax = 6, activationApCost = 0, launchEnergyCost = 0 });
                 var hand = new AiHandData(null, _owner.Faction, 0); hand.Hand.Add(card);
@@ -1319,6 +1320,7 @@ namespace Game.EditorTests
                 Assert.That(candidates[0].Explain, Does.Contain(intent.IntentKey.ToString()));
                 Assert.That(MissionIntentRegistry.GetOrCreate(_owner).Count, Is.EqualTo(1));
                 MissionIntentRegistry.Clear();
+                snap.Intents = MissionIntentRegistry.GetOrCreate(_owner);
                 candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
                 Assert.That(candidates, Is.Empty, "a sighting alone must not invent a task for aviation");
             }
