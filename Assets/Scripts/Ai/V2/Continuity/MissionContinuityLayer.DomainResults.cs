@@ -138,7 +138,8 @@ namespace Game.Ai.V2
         private delegate void ActiveResolver(Game.Players.PlayerSetupData player,
             WorldSnapshot snapshot, MissionIntent intent, ActiveResolution pass);
         private static readonly ResolutionPreparation[] ResolutionPreparers =
-            { EconomyContinuity.RepairEconomyLoans, AttackContinuity.RetireGatherDonors, ReconContinuity.CollectScoutFoci };
+            { EconomyContinuity.RepairEconomyLoans, EconomyContinuity.RecoverEndedOutboundBuilders,
+                AttackContinuity.RetireGatherDonors, ReconContinuity.CollectScoutFoci };
         private static readonly ResolutionPreparation[] ResolutionFinalizers =
             { ReconContinuity.FinalizeReconResolution, GroundCombatContinuity.FinalizeAirSupportResolution };
         private static readonly IReadOnlyDictionary<MissionKind, ActiveResolver> ActiveResolvers =

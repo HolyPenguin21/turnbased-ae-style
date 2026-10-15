@@ -113,5 +113,26 @@ namespace Game.Ai.V2
         internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target) =>
             _extractionDeliveryFailures.Record(turn, (resourceType, target));
 
+        // Builders whose outbound build was retired by an execution outcome (a proven route
+        // failure, a reap, a failed step), which carries no world snapshot to decide the
+        // builder's way home. EconomyContinuity.RecoverEndedOutboundBuilders hands each one to
+        // BeginEconomyBuilderRecovery on the next ResolveActive. Playtest 2026-10-15: Nadia
+        // Thorne, ambushed one hex short of her site, was released in the field and stayed
+        // there for the rest of the game.
+        private readonly Dictionary<int, (HexCoord Site, float Value)> _endedOutboundBuilders =
+            new Dictionary<int, (HexCoord, float)>();
+
+        internal bool HasEndedOutboundBuilders => _endedOutboundBuilders.Count > 0;
+
+        internal void RecordEndedOutboundBuilder(int builderArmyId, HexCoord site, float value) =>
+            _endedOutboundBuilders[builderArmyId] = (site, value);
+
+        internal List<(int BuilderArmyId, HexCoord Site, float Value)> TakeEndedOutboundBuilders()
+        {
+            var taken = _endedOutboundBuilders.OrderBy(x => x.Key)
+                .Select(x => (x.Key, x.Value.Site, x.Value.Value)).ToList();
+            _endedOutboundBuilders.Clear();
+            return taken;
+        }
     }
 }

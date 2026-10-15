@@ -243,8 +243,10 @@ namespace Game.UI
         // start, this popup (attackPopup) IS the entire encounter. `hunterArmy` needing its own
         // non-hero units is the caller's responsibility to have already checked (same rule
         // CheckBattleEnd's own trigger enforces) — this doesn't re-check it.
-        public void BeginCaptureKillEncounter(ArmyData hunterArmy, ArmyData targetArmy, Action onClosed,
-            bool fastResolve = false)
+        // No Fast Resolve here (BattleContactPopupUI hides it for a hero-only target): its result
+        // popup lives under panelRoot, which this encounter never activates, so a human hunter
+        // waited forever on an invisible "Capture/Kill resolved." popup (playtest 2026-10-15).
+        public void BeginCaptureKillEncounter(ArmyData hunterArmy, ArmyData targetArmy, Action onClosed)
         {
             if (attackPopup == null || hunterArmy == null || targetArmy == null)
             {
@@ -266,7 +268,7 @@ namespace Game.UI
             // does that on its own once VisibilityChanged fires below (see GameTurnController.
             // RecomputeBlockedState's own battleScreen.IsShowing term).
             _onClosed = onClosed;
-            _fastResolve = fastResolve;
+            _fastResolve = false;
             hexSelectionController?.Deselect();
             rtsCamera?.SetPanningEnabled(false);
 
@@ -340,23 +342,12 @@ namespace Game.UI
                 // has already handled Fate, roster cleanup, building transfer, vision and restack.
                 ResolveHexAfterVictory(hunterHex, finalization.Survivor);
             };
-            var summaries = fastResolve ? new List<string>() : null;
-            RunCaptureKillSequence(sequence, () =>
-            {
-                if (fastResolve && outcomePopup != null)
-                {
-                    outcomePopup.Show("Capture/Kill resolved.", string.Join("\n", summaries),
-                        finishEncounter, autoCloseNoHuman: _localArmy == null);
-                    VisibilityChanged?.Invoke();
-                }
-                else
-                    finishEncounter();
-            }, suppressAiThoughts: true, summaries: summaries);
+            RunCaptureKillSequence(sequence, finishEncounter, suppressAiThoughts: true);
             VisibilityChanged?.Invoke(); // opening edge — attackPopup is showing as of this call
         }
 
         private void RunCaptureKillSequence(BattleCaptureKillSequence sequence,
-            Action onAllResolved, bool suppressAiThoughts = false, List<string> summaries = null)
+            Action onAllResolved, bool suppressAiThoughts = false)
         {
             if (sequence == null || !sequence.TryGetCurrent(out BattleCaptureKillTarget next))
             {
@@ -370,14 +361,13 @@ namespace Game.UI
                 {
                     BattleCaptureKillStep step = sequence.ResolveCurrent(
                         roll, map, hexSelectionController);
-                    summaries?.Add($"{next.Hero.Name}: {step.Application.EffectiveOutcome}.");
                     RefreshGrid();
 
                     if (step.Retreat.ContactParticipants != null)
                         _pendingRetreatContacts.Enqueue((
                             step.Retreat.Destination, step.Retreat.ContactParticipants));
 
-                    RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts, summaries);
+                    RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts);
                 },
                 suppressAiThoughts ? null : ShowAiThought, automateHumanSides: _fastResolve);
         }

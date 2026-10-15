@@ -46,7 +46,8 @@ namespace Game.Ai.V2
             var pass = new ActiveResolution(state, reconObjectives, ctx?.Map == null ? null
                 : (Func<HexCoord, HexCoord, int, int>)((from, to, maxMovement) =>
                     SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to, maxMovement)));
-            if (state.Count == 0)
+            // A builder released by the last retirement still needs its recovery decision.
+            if (state.Count == 0 && !state.Economy.HasEndedOutboundBuilders)
             {
                 GroundCombatContinuity.FinalizeAirSupportResolution(player, snap, pass);
                 return pass.Active;
