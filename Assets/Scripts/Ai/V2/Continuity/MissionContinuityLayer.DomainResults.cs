@@ -13,7 +13,7 @@ namespace Game.Ai.V2
                 [MissionKind.Raid] = ClassifyRaidStep,
                 [MissionKind.Attack] = ClassifyAttackStep,
                 [MissionKind.Economy] = ClassifyEconomyStep,
-                [MissionKind.Development] = ClassifyDevelopmentStep,
+                [MissionKind.Development] = DevelopmentContinuity.ClassifyDevelopmentStep,
             };
         private static readonly IReadOnlyDictionary<MissionKind, Func<Game.Players.PlayerSetupData, ProvisionedMission, bool>>
             LiveObjectiveReaders = new Dictionary<MissionKind, Func<Game.Players.PlayerSetupData, ProvisionedMission, bool>>
@@ -23,7 +23,7 @@ namespace Game.Ai.V2
                 [MissionKind.Attack] = IsAttackStepObjectiveSatisfiedLive,
                 [MissionKind.ActiveDefence] = IsActiveDefenceStepObjectiveSatisfiedLive,
                 [MissionKind.Economy] = IsEconomyStepObjectiveSatisfiedLive,
-                [MissionKind.Development] = IsDevelopmentStepObjectiveSatisfiedLive,
+                [MissionKind.Development] = DevelopmentContinuity.IsDevelopmentStepObjectiveSatisfiedLive,
             };
         internal static bool IsStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player, ProvisionedMission mission) =>
             LiveObjectiveReaders.TryGetValue(mission.Kind, out var read)
@@ -63,7 +63,7 @@ namespace Game.Ai.V2
         private static readonly OutcomeTransition[] NoProgressTransitions = { TryHandleEconomyNoProgress };
         private static readonly OutcomeTransition[] CreationTransitions =
             { TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, TryCreateActiveDefenceStep,
-                TryCreateEconomyStep, TryCreateDevelopmentStep };
+                TryCreateEconomyStep, DevelopmentContinuity.TryCreateDevelopmentStep };
         private static readonly Action<MissionIntentState, MissionStepResult, int>[] ProgressRecorders =
             { RecordEconomyStepProgress };
         private static void RecordDomainStepProgress(MissionIntentState state, MissionStepResult result, int turn)
@@ -116,7 +116,7 @@ namespace Game.Ai.V2
 
         // One derived, pass-scoped workspace. Domain handlers mutate the existing durable owner;
         // this object owns only deferred retire/rekey ordering and normalized actor availability.
-        private sealed class ActiveResolution
+        internal sealed class ActiveResolution
         {
             internal readonly MissionIntentState State;
             internal readonly List<MissionIntent> Active = new List<MissionIntent>();
@@ -144,7 +144,7 @@ namespace Game.Ai.V2
         private static readonly IReadOnlyDictionary<MissionKind, ActiveResolver> ActiveResolvers =
             new Dictionary<MissionKind, ActiveResolver>
             {
-                [MissionKind.Development] = ResolveDevelopmentOperation,
+                [MissionKind.Development] = DevelopmentContinuity.ResolveDevelopmentOperation,
                 [MissionKind.Economy] = ResolveEconomyOperation,
                 [MissionKind.ActiveDefence] = ResolveDefenceOperation,
                 [MissionKind.Attack] = ResolveAttackOperation,
@@ -158,7 +158,7 @@ namespace Game.Ai.V2
                 [MissionKind.Attack] = CaptureAttackProvisionFacts,
                 [MissionKind.ActiveDefence] = CaptureActiveDefenceProvisionFacts,
                 [MissionKind.Economy] = CaptureEconomyProvisionFacts,
-                [MissionKind.Development] = CaptureDevelopmentProvisionFacts,
+                [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentProvisionFacts,
             };
         private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             ExecutionFactReaders = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
@@ -167,7 +167,7 @@ namespace Game.Ai.V2
                 [MissionKind.Raid] = CaptureRaidExecutionFacts,
                 [MissionKind.Attack] = CaptureAttackExecutionFacts,
                 [MissionKind.Economy] = CaptureEconomyExecutionFacts,
-                [MissionKind.Development] = CaptureDevelopmentExecutionFacts,
+                [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentExecutionFacts,
             };
         internal static void CaptureProvisionFacts(ProvisionedMission provisioned, MissionStepResult result)
         {

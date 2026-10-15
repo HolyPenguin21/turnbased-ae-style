@@ -379,7 +379,7 @@ namespace Game.Ai.V2
         // re-tested on every ResolveActive pass: the planner only proposes Active intents, and
         // AdvanceIntent / ShouldReap bound how long the retry may go on. Siege and EconomyLoan
         // are owned by their own resume edges, never by this one.
-        private static void ResumeTransientSuspension(MissionIntent intent)
+        internal static void ResumeTransientSuspension(MissionIntent intent)
         {
             if (intent.Status == IntentStatus.Suspended
                 && (intent.Suspended == SuspendReason.PoolExhausted
@@ -857,7 +857,7 @@ namespace Game.Ai.V2
         // Docs/ai-duplicate-methods-analysis.md, group M). Collapsing them here means a future
         // field added to MissionIntent only has to be wired up once, instead of risking a silently
         // half-initialized intent from a copy nobody remembered to update.
-        private static MissionIntent NewIntent(MissionStepResult o, int turn, MissionKind kind,
+        internal static MissionIntent NewIntent(MissionStepResult o, int turn, MissionKind kind,
             CommitmentTier funding, object objective)
         {
             return new MissionIntent
@@ -924,7 +924,7 @@ namespace Game.Ai.V2
                 + $"age {i.TurnsActive}/{AiConfigV2.commitmentMaxTurns}";
         }
 
-        private static bool ShouldReap(MissionIntent i, int turn)
+        internal static bool ShouldReap(MissionIntent i, int turn)
         {
             if (i.Kind == MissionKind.Raid)
                 return i.StallTurns >= AiConfigV2.raidIntentStallTurns
