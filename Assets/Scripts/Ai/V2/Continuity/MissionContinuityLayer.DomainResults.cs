@@ -21,7 +21,7 @@ namespace Game.Ai.V2
                 [MissionKind.Scout] = ReconContinuity.IsScoutStepObjectiveSatisfiedLive,
                 [MissionKind.Raid] = IsRaidStepObjectiveSatisfiedLive,
                 [MissionKind.Attack] = IsAttackStepObjectiveSatisfiedLive,
-                [MissionKind.ActiveDefence] = IsActiveDefenceStepObjectiveSatisfiedLive,
+                [MissionKind.ActiveDefence] = ActiveDefenceContinuity.IsActiveDefenceStepObjectiveSatisfiedLive,
                 [MissionKind.Economy] = IsEconomyStepObjectiveSatisfiedLive,
                 [MissionKind.Development] = DevelopmentContinuity.IsDevelopmentStepObjectiveSatisfiedLive,
             };
@@ -62,7 +62,7 @@ namespace Game.Ai.V2
         private static readonly OutcomeObservation[] RetirementPreparers = { PrepareEconomyRetirement };
         private static readonly OutcomeTransition[] NoProgressTransitions = { TryHandleEconomyNoProgress };
         private static readonly OutcomeTransition[] CreationTransitions =
-            { ReconContinuity.TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, TryCreateActiveDefenceStep,
+            { ReconContinuity.TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, ActiveDefenceContinuity.TryCreateActiveDefenceStep,
                 TryCreateEconomyStep, DevelopmentContinuity.TryCreateDevelopmentStep };
         private static readonly Action<MissionIntentState, MissionStepResult, int>[] ProgressRecorders =
             { RecordEconomyStepProgress };
@@ -146,7 +146,7 @@ namespace Game.Ai.V2
             {
                 [MissionKind.Development] = DevelopmentContinuity.ResolveDevelopmentOperation,
                 [MissionKind.Economy] = ResolveEconomyOperation,
-                [MissionKind.ActiveDefence] = ResolveDefenceOperation,
+                [MissionKind.ActiveDefence] = ActiveDefenceContinuity.ResolveDefenceOperation,
                 [MissionKind.Attack] = ResolveAttackOperation,
                 [MissionKind.Raid] = ResolveRaidOperation,
             };
@@ -156,7 +156,7 @@ namespace Game.Ai.V2
             {
                 [MissionKind.Raid] = CaptureRaidProvisionFacts,
                 [MissionKind.Attack] = CaptureAttackProvisionFacts,
-                [MissionKind.ActiveDefence] = CaptureActiveDefenceProvisionFacts,
+                [MissionKind.ActiveDefence] = ActiveDefenceContinuity.CaptureActiveDefenceProvisionFacts,
                 [MissionKind.Economy] = CaptureEconomyProvisionFacts,
                 [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentProvisionFacts,
             };

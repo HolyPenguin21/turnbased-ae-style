@@ -61,7 +61,7 @@ namespace Game.Ai.V2
         // completed Raid target's Return. When that actor is bound to a new ground-combat
         // operation the fallback leg is retired, never kept as a second owner of the same army.
         // (An ActiveDefence Return is a real, claimed withdrawal — not a fallback.)
-        private static void RetireReturnFallbacksForActor(MissionIntentState state,
+        internal static void RetireReturnFallbacksForActor(MissionIntentState state,
             int? actorId, string reason)
         {
             if (state == null || !actorId.HasValue)

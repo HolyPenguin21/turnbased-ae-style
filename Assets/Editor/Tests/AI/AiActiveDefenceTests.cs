@@ -1378,7 +1378,7 @@ namespace Game.EditorTests
                 var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
 
                 // The lane's own lifecycle answer (the part of ResolveActive that is not engine-bound).
-                bool alive = (bool)typeof(MissionContinuityLayer).GetMethod("ResolveActiveDefenceIntent",
+                bool alive = (bool)typeof(ActiveDefenceContinuity).GetMethod("ResolveActiveDefenceIntent",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
                     .Invoke(null, new object[] { player, snap, intent, rekeys });
 
