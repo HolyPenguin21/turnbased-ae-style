@@ -393,7 +393,7 @@ namespace Game.Campaign
             var s = Controller.View; if (!CampaignRules.CanAttack(s, s.HumanFaction, from, target)) return;
             confirmFrom = from; confirmTarget = target;
             OpenModal(confirmWindow, CancelAttackConfirmation);
-            confirmText.text = s.Regions.Find(r => r.RegionId == from).Name + " → " + s.Regions.Find(r => r.RegionId == target).Name + BattleConditions(s.Regions.Find(r => r.RegionId == target));
+            confirmText.text = s.Regions.Find(r => r.RegionId == from).Name + " > " + s.Regions.Find(r => r.RegionId == target).Name + BattleConditions(s.Regions.Find(r => r.RegionId == target));
         }
         private void OpenDeckSelection()
         {
