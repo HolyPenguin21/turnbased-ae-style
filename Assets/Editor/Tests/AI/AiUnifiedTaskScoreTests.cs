@@ -585,7 +585,7 @@ namespace Game.EditorTests
                 TargetHex = hex, EconomyResourceType = ResourceType.Materials,
                 Value = 4f, EconomySiteValue = 17f,
             };
-            MissionIntent intent = MissionContinuityLayer.BeginEconomyDelivery(
+            MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(
                 owner, demand, 9, 2);
             Assert.That(intent.Economy.IntrinsicValue, Is.EqualTo(4f));
             Assert.That(intent.Economy.BuildValue, Is.EqualTo(17f));

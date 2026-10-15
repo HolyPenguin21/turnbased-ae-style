@@ -191,7 +191,7 @@ namespace Game.Ai.V2
 
             // A donor parked on an Economy loan (SuspendReason.EconomyLoan) keeps its pre-loan
             // identity untouched. ProvisioningManager is the sole owner of granting the loan;
-            // RepayEconomyLoan is the only place that resumes it, and it does so by re-finding
+            // EconomyContinuity.RepayEconomyLoan is the only place that resumes it, and it does so by re-finding
             // this exact IntentKey via the borrowing Economy intent's LoanSource. Refocusing (or
             // retiring, if no runnable waypoint remains) a stale objective here would rekey or
             // delete that identity mid-loan; the orphan-repair pass above then finds no live

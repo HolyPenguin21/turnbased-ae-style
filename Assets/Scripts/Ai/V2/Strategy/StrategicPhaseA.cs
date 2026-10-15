@@ -132,11 +132,11 @@ namespace Game.Ai.V2
             // BuildValue and must not compete for one slot. Within a kind, every ACTIVE Economy
             // intent is a real, independent obligation (Continuity supports several concurrent
             // BuildExtraction/FoundBase deliveries, each keyed by its own target hex — see
-            // MissionIntentKey.For and MissionContinuityLayer.BeginEconomyDelivery), and
+            // MissionIntentKey.For and EconomyContinuity.BeginEconomyDelivery), and
             // StrategicResourceReservationLedger is per-owner, so each keeps its own reserved
             // resources and idle clock.
             List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => (activeIntents?
-                .Where(i => MissionContinuityLayer.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
+                .Where(i => EconomyContinuity.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
                 // a transiently suspended build keeps its hold, but the retarget slot goes to an
                 // Active one (CanReplaceCommittedBase only switches an Active commitment)
                 .OrderByDescending(i => i.Status == IntentStatus.Active)
@@ -196,7 +196,7 @@ namespace Game.Ai.V2
                         .FirstOrDefault();
                 }
                 if (supersedingBaseSite != null
-                    && MissionContinuityLayer.TryRetargetCommittedBase(player,
+                    && EconomyContinuity.TryRetargetCommittedBase(player,
                         protectedActiveBase, supersedingBaseSite, ctx.TurnNumber))
                 {
                     // Continuity has atomically rekeyed the same intent/actor and released
@@ -487,7 +487,7 @@ namespace Game.Ai.V2
                         }
                         if (infra.Built && istate.Demand.RequestingAxis == DesireAxis.Economy
                             && infra.BuilderArmyId.HasValue)
-                            MissionContinuityLayer.BeginEconomyBuilderRecovery(
+                            EconomyContinuity.BeginEconomyBuilderRecovery(
                                 player, snap, istate.Demand, infra.BuilderArmyId.Value,
                                 ctx.TurnNumber);
                     }
@@ -993,7 +993,7 @@ namespace Game.Ai.V2
         private static bool IsCommittedEconomyBuild(
             IReadOnlyList<MissionIntent> activeIntents, AxisDemand demand)
         {
-            return MissionContinuityLayer.HasEconomyBuildCommitment(activeIntents, demand);
+            return EconomyContinuity.HasEconomyBuildCommitment(activeIntents, demand);
         }
 
         private static AxisDemand CloneResidualDemand(DemandState state)

@@ -41,7 +41,7 @@ namespace Game.Ai.V2.Initiative
                 // owning an unselected card or a transient Phase A demand is not a commitment.
                 AiHandData hand = AiHandRegistry.Peek(p);
                 IEnumerable<ResourceCost> committedBuildCosts = MissionIntentRegistry.Peek(p)?.All
-                    .Where(MissionContinuityLayer.IsLiveEconomyBuild)
+                    .Where(EconomyContinuity.IsLiveEconomyBuild)
                     .Where(i => i.Economy.BuildResourceCost != null
                         && (i.Economy.Kind != EconomyTaskKind.FoundBase
                             || (i.Economy.BuildCard != null

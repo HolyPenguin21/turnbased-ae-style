@@ -35,7 +35,7 @@ namespace Game.EditorTests
             try
             {
                 AxisDemand original = BaseDemand(card, 9, 3, 20f, 40f);
-                MissionIntent incumbent = MissionContinuityLayer.BeginEconomyDelivery(
+                MissionIntent incumbent = EconomyContinuity.BeginEconomyDelivery(
                     player, original, 9, 1);
                 AxisDemand oldSite = BaseDemand(card, 9, 3, 20f, 40f);
                 AxisDemand rival = BaseDemand(card, 9, 6, 34f, 38f);
@@ -63,7 +63,7 @@ namespace Game.EditorTests
             var card = new CardData(new CardDefinition { cardType = CardType.Base });
             try
             {
-                MissionIntent incumbent = MissionContinuityLayer.BeginEconomyDelivery(
+                MissionIntent incumbent = EconomyContinuity.BeginEconomyDelivery(
                     player, BaseDemand(card, 9, 3, 20f, 40f), 9, 1);
                 AxisDemand rival = BaseDemand(card, 9, 6, 29f, 80f);
                 Assert.That(DemandLayer.SelectBaseDemandForCurrentCommitment(
@@ -91,7 +91,7 @@ namespace Game.EditorTests
             var card = new CardData(new CardDefinition { cardType = CardType.Base });
             try
             {
-                MissionIntent incumbent = MissionContinuityLayer.BeginEconomyDelivery(
+                MissionIntent incumbent = EconomyContinuity.BeginEconomyDelivery(
                     player, BaseDemand(card, 9, 3, 20f, 40f), 9, 1);
                 MissionIntentKey oldKey = incumbent.IntentKey;
                 StableMissionKey oldAttempt = incumbent.LastAttemptKey;
@@ -99,7 +99,7 @@ namespace Game.EditorTests
                 incumbent.StepsMovedTotal = 1;
                 AxisDemand rival = BaseDemand(card, 9, 6, 34f, 38f);
                 rival.EconomySwitchIncumbentValue = 20f;
-                Assert.That(MissionContinuityLayer.TryRetargetCommittedBase(
+                Assert.That(EconomyContinuity.TryRetargetCommittedBase(
                     player, incumbent, rival, 2), Is.False);
                 Assert.That(incumbent.IntentKey, Is.EqualTo(oldKey));
                 Assert.That(incumbent.LastAttemptKey, Is.EqualTo(oldAttempt));
@@ -115,14 +115,14 @@ namespace Game.EditorTests
             var card = new CardData(new CardDefinition { cardType = CardType.Base });
             try
             {
-                MissionIntent incumbent = MissionContinuityLayer.BeginEconomyDelivery(
+                MissionIntent incumbent = EconomyContinuity.BeginEconomyDelivery(
                     player, BaseDemand(card, 9, 3, 20f, 40f), 9, 1);
                 incumbent.Funding = CommitmentTier.Hard;
                 MissionIntentKey oldKey = incumbent.IntentKey;
                 StableMissionKey oldAttempt = incumbent.LastAttemptKey;
                 AxisDemand rival = BaseDemand(card, 9, 6, 34f, 38f);
                 rival.EconomySwitchIncumbentValue = 20f;
-                Assert.That(MissionContinuityLayer.TryRetargetCommittedBase(
+                Assert.That(EconomyContinuity.TryRetargetCommittedBase(
                     player, incumbent, rival, 2), Is.True);
                 MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
                 Assert.That(state.Count, Is.EqualTo(1));
@@ -135,7 +135,7 @@ namespace Game.EditorTests
                 Assert.That(incumbent.Economy.IntrinsicValue, Is.EqualTo(34f));
                 Assert.That(incumbent.Economy.BuildValue, Is.EqualTo(38f));
                 Assert.That(incumbent.Funding, Is.EqualTo(CommitmentTier.Hard));
-                Assert.That(MissionContinuityLayer.TryRetargetCommittedBase(
+                Assert.That(EconomyContinuity.TryRetargetCommittedBase(
                     player, incumbent, rival, 2), Is.False,
                     "a switched intent cannot re-switch onto its already-owned target");
             }

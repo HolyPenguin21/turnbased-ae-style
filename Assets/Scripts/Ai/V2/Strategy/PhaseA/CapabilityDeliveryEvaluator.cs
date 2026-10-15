@@ -221,7 +221,7 @@ namespace Game.Ai.V2
                     ready.EconomyReadyBuilderIsSupport = DemandLayer.EconomyBuilderIsSupport(choice);
                     // A physically deployed Hero is not a fulfilled Economy build demand
                     // unless Continuity successfully owns its destination lease.
-                    MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(
+                    MissionIntent delivery = EconomyContinuity.BeginEconomyDelivery(
                         player, ready, builderId, ctx.TurnNumber);
                     if (delivery == null)
                     {

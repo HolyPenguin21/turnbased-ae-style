@@ -266,7 +266,7 @@ namespace Game.Ai.V2
 
                     IReadOnlyDictionary<HexCoord, int> homes = EconomyHomeRoutes(player,
                         ctx, site.Hex, collector.MaxMovement, snap.Self.BaseHexes);
-                    HexCoord? safeReturn = MissionContinuityLayer.SelectEconomyHome(snap,
+                    HexCoord? safeReturn = EconomyContinuity.SelectEconomyHome(snap,
                         site.Hex, homes);
                     if (!safeReturn.HasValue)
                         continue;

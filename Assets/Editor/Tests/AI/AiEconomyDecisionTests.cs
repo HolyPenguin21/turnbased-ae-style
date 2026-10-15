@@ -2695,7 +2695,7 @@ namespace Game.EditorTests
             };
             try
             {
-                MissionIntent intent = MissionContinuityLayer.BeginEconomyDelivery(
+                MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(
                     player, demand, builderArmyId: 91, turn: 7);
                 var snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
                 snapshot.Self.Armies = new[]
@@ -2754,7 +2754,7 @@ namespace Game.EditorTests
                     EconomyResourceType = ResourceType.Materials,
                 };
 
-                MissionIntent fresh = MissionContinuityLayer.BeginEconomyDelivery(
+                MissionIntent fresh = EconomyContinuity.BeginEconomyDelivery(
                     player, demand, builderArmyId: armyId, turn: 9);
 
                 Assert.That(state.TryGet(recovery.IntentKey, out _), Is.False,
@@ -3351,7 +3351,7 @@ namespace Game.EditorTests
         // empty otherwise), so it applies a one-turn commitment horizon instead of protecting an
         // arbitrarily distant route. The "protect a genuinely multi-turn delivery across turns"
         // guarantee this test used to encode now lives in ProvisioningManager.ProvisionEconomy's
-        // direct-army path calling MissionContinuityLayer.BeginEconomyDelivery once the builder
+        // direct-army path calling EconomyContinuity.BeginEconomyDelivery once the builder
         // cannot finish this turn — see EconomyDirectAssignment_BecomesDurableIntentWhenNotCompletingThisTurn.
         [Test]
         public void EconomyResourceReserve_OneTurnHorizonAppliesBeforeDurableIntentExists()
@@ -3431,7 +3431,7 @@ namespace Game.EditorTests
             };
             try
             {
-                MissionIntent intent = MissionContinuityLayer.BeginEconomyDelivery(
+                MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(
                     player, demand, builderArmyId: 42, turn: 3);
 
                 Assert.That(intent, Is.Not.Null,
@@ -3561,7 +3561,7 @@ namespace Game.EditorTests
                 },
             };
 
-            HexCoord? target = MissionContinuityLayer.SelectEconomyRecoveryTarget(
+            HexCoord? target = EconomyContinuity.SelectEconomyRecoveryTarget(
                 snap, player, actor);
 
             Assert.That(target, Is.EqualTo(new HexCoord(2, 0)));
@@ -3572,16 +3572,16 @@ namespace Game.EditorTests
         {
             MissionIntent scout = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
 
-            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+            Assert.That(EconomyContinuity.RequiresEconomyBuilderRecovery(
                 EconomyTaskKind.BuildExtraction, scout, underImmediateThreat: false,
                 alreadyProtected: false, hasRecoveryTarget: true), Is.False);
-            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+            Assert.That(EconomyContinuity.RequiresEconomyBuilderRecovery(
                 EconomyTaskKind.BuildExtraction, scout, underImmediateThreat: true,
                 alreadyProtected: false, hasRecoveryTarget: true), Is.True);
-            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+            Assert.That(EconomyContinuity.RequiresEconomyBuilderRecovery(
                 EconomyTaskKind.BuildExtraction, lender: null, underImmediateThreat: false,
                 alreadyProtected: false, hasRecoveryTarget: true), Is.True);
-            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+            Assert.That(EconomyContinuity.RequiresEconomyBuilderRecovery(
                 EconomyTaskKind.FoundBase, lender: null, underImmediateThreat: false,
                 alreadyProtected: true, hasRecoveryTarget: true), Is.False);
         }

@@ -281,7 +281,7 @@ namespace Game.Ai.V2
                 // Preflight the canonical Continuity site lease before spending a builder
                 // extraction AP or reserving completion resources for an incompatible project.
                 int candidateBuilder = deferredPlan.Container?.Id ?? -1;
-                if (!MissionContinuityLayer.CanGrantEconomyBuildSite(player, target.TargetHex,
+                if (!EconomyContinuity.CanGrantEconomyBuildSite(player, target.TargetHex,
                         currentIntentKey, candidateBuilder, target.BuildCard))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         "economy build site already leased by another active project"));
@@ -409,7 +409,7 @@ namespace Game.Ai.V2
             if (!directPrep.Feasible)
                 return ProvisioningResult.Fail(directPrep.Failure);
 
-            if (!MissionContinuityLayer.CanGrantEconomyBuildSite(player, target.TargetHex,
+            if (!EconomyContinuity.CanGrantEconomyBuildSite(player, target.TargetHex,
                     currentIntentKey, hero.Id, target.BuildCard))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "economy build site already leased by another active project"));
@@ -430,7 +430,7 @@ namespace Game.Ai.V2
                 // EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources' one-turn horizon
                 // protecting unconditionally on every turn of the walk and freezing resources too
                 // early.
-                MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
+                MissionIntent delivery = EconomyContinuity.BeginEconomyDelivery(player, new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Economy,
                     Capability = target.Kind == EconomyTaskKind.FoundBase

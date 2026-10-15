@@ -40,7 +40,7 @@ namespace Game.EditorTests
             var site = new HexCoord(4, 3);
             var incumbent = Build(EconomyTaskKind.FoundBase, site, 12);
             MissionIntentRegistry.GetOrCreate(player).Put(incumbent);
-            Assert.That(MissionContinuityLayer.BeginEconomyDelivery(player, Demand(site), 20, 3),
+            Assert.That(EconomyContinuity.BeginEconomyDelivery(player, Demand(site), 20, 3),
                 Is.Null);
             Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(
                 incumbent.IntentKey, out MissionIntent actual), Is.True);
@@ -53,7 +53,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData();
             var incumbent = Build(EconomyTaskKind.FoundBase, new HexCoord(4, 3), 12);
             MissionIntentRegistry.GetOrCreate(player).Put(incumbent);
-            Assert.That(MissionContinuityLayer.BeginEconomyDelivery(player,
+            Assert.That(EconomyContinuity.BeginEconomyDelivery(player,
                 Demand(new HexCoord(7, 3)), 20, 3), Is.Not.Null);
             Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(
                 incumbent.IntentKey, out MissionIntent actual), Is.True);
@@ -65,9 +65,9 @@ namespace Game.EditorTests
         {
             var player = new PlayerSetupData();
             var site = new HexCoord(4, 3);
-            MissionIntent first = MissionContinuityLayer.BeginEconomyDelivery(
+            MissionIntent first = EconomyContinuity.BeginEconomyDelivery(
                 player, Demand(site), 20, 3);
-            MissionIntent second = MissionContinuityLayer.BeginEconomyDelivery(
+            MissionIntent second = EconomyContinuity.BeginEconomyDelivery(
                 player, Demand(site), 20, 4);
             Assert.That(second, Is.SameAs(first));
             Assert.That(second.CreatedTurn, Is.EqualTo(3));
@@ -77,11 +77,11 @@ namespace Game.EditorTests
         public void RecoveryAndMobileCollection_DoNotLeaseBuildSite()
         {
             var hex = new HexCoord(4, 3);
-            Assert.That(MissionContinuityLayer.HoldsEconomyBuildSite(
+            Assert.That(EconomyContinuity.HoldsEconomyBuildSite(
                 Build(EconomyTaskKind.ReturnBuilder, hex, 1), hex), Is.False);
-            Assert.That(MissionContinuityLayer.HoldsEconomyBuildSite(
+            Assert.That(EconomyContinuity.HoldsEconomyBuildSite(
                 Build(EconomyTaskKind.MobileCollection, hex, 2), hex), Is.False);
-            Assert.That(MissionContinuityLayer.HoldsEconomyBuildSite(
+            Assert.That(EconomyContinuity.HoldsEconomyBuildSite(
                 Build(EconomyTaskKind.BuildExtraction, hex, 3), hex), Is.True);
         }
     }

@@ -371,9 +371,9 @@ namespace Game.EditorTests
             var s = Snapshot(a); s.Self.BaseHexes = new[] { nearHexButFarRoute, farHexButShortRoute };
             a.EconomyHomeRouteCosts = new Dictionary<HexCoord, int>
                 { [nearHexButFarRoute] = 12, [farHexButShortRoute] = 6 };
-            Assert.That(MissionContinuityLayer.SelectEconomyHome(s, Site, a.EconomyHomeRouteCosts),
+            Assert.That(EconomyContinuity.SelectEconomyHome(s, Site, a.EconomyHomeRouteCosts),
                 Is.EqualTo(farHexButShortRoute));
-            Assert.That(MissionContinuityLayer.SelectEconomyRecoveryTarget(s, p, a),
+            Assert.That(EconomyContinuity.SelectEconomyRecoveryTarget(s, p, a),
                 Is.EqualTo(farHexButShortRoute));
         }
         [Test]
@@ -401,10 +401,10 @@ namespace Game.EditorTests
                     TargetHex = Site, ResourceType = ResourceType.Energy, BuildCard = card } };
             MethodInfo phaseA = typeof(StrategicPhaseA).GetMethod("IsCommittedEconomyBuild",
                 BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.That(MissionContinuityLayer.HasEconomyBuildCommitment(new[] { i }, d), Is.False);
+            Assert.That(EconomyContinuity.HasEconomyBuildCommitment(new[] { i }, d), Is.False);
             Assert.That(phaseA.Invoke(null, new object[] { new[] { i }, d }), Is.EqualTo(false));
             i.Economy.ResourceType = ResourceType.Materials;
-            Assert.That(MissionContinuityLayer.HasEconomyBuildCommitment(new[] { i }, d), Is.True);
+            Assert.That(EconomyContinuity.HasEconomyBuildCommitment(new[] { i }, d), Is.True);
             Assert.That(phaseA.Invoke(null, new object[] { new[] { i }, d }), Is.EqualTo(true));
         }
         [Test]

@@ -27,7 +27,7 @@ namespace Game.Ai.V2
         // turn (protectedActiveEconomyBuild == null short-circuits it otherwise), so it never fires
         // on a continuing multi-turn delivery. Once Provisioning binds a builder that cannot finish
         // this turn, it hands the delivery to Continuity
-        // (MissionContinuityLayer.BeginEconomyDelivery, called from
+        // (EconomyContinuity.BeginEconomyDelivery, called from
         // ProvisioningManager.ProvisionEconomy's direct-army path), and from the NEXT turn on
         // StrategicPhaseA's protectedActiveEconomyBuild protects the full H/E/M/T vector regardless
         // of remaining travel. Only WHILE that durable identity does not exist yet — the turn a
@@ -85,7 +85,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, int turn, MissionIntent intent)
         {
             EconomyIntent economy = intent?.Economy;
-            if (player == null || !MissionContinuityLayer.IsLiveEconomyBuild(intent)
+            if (player == null || !EconomyContinuity.IsLiveEconomyBuild(intent)
                 || economy.BuildResourceCost == null)
                 return;
 

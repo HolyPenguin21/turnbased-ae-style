@@ -151,7 +151,7 @@ namespace Game.Ai.V2
                 // Continuity owns the actor for an existing objective. A later, cheaper builder
                 // must not supply a different delivery cost for that same durable operation.
                 MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i =>
-                    MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
+                    EconomyContinuity.HoldsEconomyBuildSite(i, site.Hex)
                     && i.Economy.Kind == EconomyTaskKind.BuildExtraction
                     && i.Economy.ResourceType == site.ResourceType
                     && i.PreferredMoverArmyId.HasValue);
@@ -774,10 +774,10 @@ namespace Game.Ai.V2
                     buildApCost, includeReturn, requiresFoundingGarrison))
                 .Where(x => x.Suitability != EconomyArmySuitability.Ineligible)
                 .Where(x => EconomyExtractionDeliveryAllowed(x)
-                    || activeIntents?.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, target)
+                    || activeIntents?.Any(i => EconomyContinuity.HoldsEconomyBuildSite(i, target)
                         && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
                 .Where(x => EconomySupportBuilderAllowed(x)
-                    || activeIntents?.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, target)
+                    || activeIntents?.Any(i => EconomyContinuity.HoldsEconomyBuildSite(i, target)
                         && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
                 .Where(x => x.Route.IsOnTarget
                     || ActiveAssignment(activeIntents, x.Army.ArmyId) == null
@@ -1331,7 +1331,7 @@ namespace Game.Ai.V2
                 return 0f;
             return TaskScoreEvaluator.MoverOpportunityCost(MissionIntent.DisplacementValueOf(
                 activeIntents, builder.Army.ArmyId,
-                isOwn: i => MissionContinuityLayer.HoldsEconomyBuildSite(i, site)));
+                isOwn: i => EconomyContinuity.HoldsEconomyBuildSite(i, site)));
         }
 
         internal static bool EconomyDonorStructurallyEligible(MissionIntent donor)
@@ -1489,7 +1489,7 @@ namespace Game.Ai.V2
                     }
 
                     MissionIntent pinnedBase = committed ? activeIntents?.FirstOrDefault(i =>
-                        MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
+                        EconomyContinuity.HoldsEconomyBuildSite(i, site.Hex)
                         && i.Economy.Kind == EconomyTaskKind.FoundBase
                         && (i.Economy.BuildCard == null || i.Economy.BuildCard == card)
                         && i.PreferredMoverArmyId.HasValue) : null;
@@ -1739,7 +1739,7 @@ namespace Game.Ai.V2
                 return false;
             bool build = kind == EconomyTaskKind.BuildExtraction || kind == EconomyTaskKind.FoundBase;
             return intents.Any(i => (build
-                    ? MissionContinuityLayer.HoldsEconomyBuildSite(i, target.Value)
+                    ? EconomyContinuity.HoldsEconomyBuildSite(i, target.Value)
                     : i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
                         && i.Economy?.TargetHex.Equals(target.Value) == true)
                 && i.Economy.Kind == kind);
@@ -1750,14 +1750,14 @@ namespace Game.Ai.V2
         {
             if (!target.HasValue || intents == null)
                 return false;
-            return intents.Any(i => MissionContinuityLayer.MatchesEconomyBuild(i, EconomyTaskKind.FoundBase,
+            return intents.Any(i => EconomyContinuity.MatchesEconomyBuild(i, EconomyTaskKind.FoundBase,
                     target.Value, null, card));
         }
 
         private static bool HasActiveEconomyBuildIntent(
             IReadOnlyList<MissionIntent> intents, AxisDemand demand)
         {
-            return MissionContinuityLayer.HasEconomyBuildCommitment(intents, demand);
+            return EconomyContinuity.HasEconomyBuildCommitment(intents, demand);
         }
 
         private static bool HasStructuralEconomyBuilderRoute(WorldSnapshot snap, HexCoord target,
