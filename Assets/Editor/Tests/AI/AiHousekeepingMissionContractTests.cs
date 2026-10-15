@@ -373,7 +373,7 @@ namespace Game.EditorTests
             var garrison = new Game.Map.ArmyData { Owner = owner, IsGarrison = true };
             var commitments = new ActorCommitments();
             commitments.Claim(garrison.Id);
-            StrategicCapabilityLeaseRegistry.Mark(owner, 3, CapabilityKind.FieldCombatPower,
+            StrategicCapabilityLeaseRegistry.Mark(owner, 3, DesireAxis.Aggression, CapabilityKind.FieldCombatPower,
                 new[] { garrison.Id });
             try
             {

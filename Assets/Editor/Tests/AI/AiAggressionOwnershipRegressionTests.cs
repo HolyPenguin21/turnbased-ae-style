@@ -191,6 +191,74 @@ namespace Game.EditorTests
             Assert.That(new AxisDemand { ConsumerMissionKind = MissionKind.Raid }.UsesAttackContinuationAp, Is.False);
         }
 
+        // 2026-10-15 — a garrison under a known threat defends its asset in place: the demand
+        // carries the same direction / prevented-damage terms ActiveDefence prices that threat with.
+        [Test]
+        public void GarrisonDemandUnderThreatOutweighsThePeacetimeFloor()
+        {
+            ArmySnapshot garrison = Actor(8, Home, 0f);
+            garrison.IsGarrison = true;
+            garrison.IsStructuralRaidActor = false;
+            garrison.MemberCount = 0;
+            WorldSnapshot peace = Snap(garrison);
+            float peaceValue = AggressionDemandEvaluator.Build(peace, Array.Empty<RaidObjective>(),
+                    Array.Empty<MissionIntent>(), new ActorCommitments(), _us).Demands
+                .Single(d => d.DeliveryShape == CapabilityDeliveryShape.Garrison).Value;
+
+            WorldSnapshot war = Snap(garrison);
+            war.Threat.Threats = new[]
+            {
+                new AssetThreatSnapshot
+                {
+                    Asset = new StrategicAssetSnapshot { Hex = Home, Kind = AssetKind.Base,
+                        Value = AiConfigV2.assetValueBase },
+                    Contact = new EnemyContactSnapshot { Army = new ArmySnapshot { ArmyId = 11, Owner = _enemy,
+                            Hex = Away, Members = Array.Empty<WorthIt.DefenderProfile>() },
+                        Position = Away, Knowledge = ContactKnowledge.Exact, LastObservedTurn = 10 },
+                    EnemyEta = 1, PotentialDamage = 0.8f, Severity = 0.6f,
+                },
+            };
+            float warValue = AggressionDemandEvaluator.Build(war, Array.Empty<RaidObjective>(),
+                    Array.Empty<MissionIntent>(), new ActorCommitments(), _us).Demands
+                .Single(d => d.DeliveryShape == CapabilityDeliveryShape.Garrison).Value;
+
+            Assert.That(warValue, Is.GreaterThan(peaceValue));
+        }
+
+        // Playtest 2026-10-15 (Draven T9): Dust Medic became new army #24 for an Aggression raid,
+        // then the Economy Hero demand took #24 as Aldric's recipient. A container this turn's
+        // Phase A leased to one axis is not another axis's recipient; its own axis may still use it.
+        [Test]
+        public void PhaseALeasedContainerIsNotAnotherAxisRecipient()
+        {
+            var army = new ArmyData { Owner = _us, Hex = Home, Name = "Raid body" };
+            WorldSnapshot snap = Snap();
+            try
+            {
+                StrategicCapabilityLeaseRegistry.Mark(_us, snap.TurnNumber, DesireAxis.Aggression,
+                    CapabilityKind.FieldCombatPower, new[] { army.Id });
+                var plan = new MaterializationPlan
+                {
+                    Deploy = new PlacementOption(Home, DeploymentKind.ExistingArmy, army),
+                };
+                var economyHero = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                    Capability = CapabilityKind.Hero, TargetHex = Away };
+                MaterializationDeliveryPolicy.DeliveryAssessment other =
+                    MaterializationDeliveryPolicy.AssessDemandOperationally(plan, economyHero, snap, _us);
+                Assert.That(other.CanDeliver, Is.False);
+                Assert.That(other.Detail, Does.Contain("leased_to=Aggression"));
+
+                var ownAxis = new AxisDemand { RequestingAxis = DesireAxis.Aggression,
+                    Capability = CapabilityKind.Hero, TargetHex = Away };
+                Assert.That(MaterializationDeliveryPolicy.AssessDemandOperationally(plan, ownAxis, snap, _us)
+                    .Detail ?? "", Does.Not.Contain("leased_to"));
+            }
+            finally
+            {
+                StrategicCapabilityLeaseRegistry.ClearAll();
+            }
+        }
+
         [Test]
         public void TrackedAttackLookupAgreesWithEnumerationAndRejectsChangedOwner()
         {

@@ -385,16 +385,20 @@ namespace Game.Ai.V2
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
         }
 
+        // `homeThreat` (0..1, ThreatModel Citadel/Base severity): 2026-10-15 (user decision) — while a
+        // known enemy threatens home, watching the direction it comes from weighs up to twice as much
+        // as in peace (playtest 2026-10-15: a far ruins Explore outscored the Refresh toward Sentinels).
         private static TaskScore BuildRefreshScore(float stalenessRaw, float strategicRelevanceRaw,
             float threatDirectionRaw, int homeDistance, ScoutCostEstimate cost,
-            float detectionRiskRaw)
+            float detectionRiskRaw, float homeThreat)
         {
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
             return new TaskScore(
                 staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
-                threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw),
+                threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw)
+                    * (1f + Mathf.Clamp01(homeThreat)),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                 cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
                 delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
@@ -501,7 +505,8 @@ namespace Game.Ai.V2
             ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Refresh, req, riskRaw,
                 preferredMoverArmyId);
             TaskScore score = BuildRefreshScore(staleRaw, strategicRaw, directionalRaw,
-                homeDist, cost, riskRaw);
+                homeDist, cost, riskRaw, Mathf.Max(snap.Threat?.CitadelThreatSeverity ?? 0f,
+                    snap.Threat?.BaseThreatSeverity ?? 0f));
 
             var objective = new ReconObjective
             {

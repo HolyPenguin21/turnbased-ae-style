@@ -326,24 +326,70 @@ namespace Game.Ai
             List<UnitData> bodies = source.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
             HashSet<int> spare = SpareableBodies(bodies,
                 set => AiPower.EffectiveArmyPower(set.ToList()),
-                GarrisonDefenceFloor(player, isCitadel));
+                GarrisonDefenceFloor(player, source.Hex, isCitadel));
             return removedBodies.All(u => spare.Contains(bodies.IndexOf(u)));
         }
 
         // The garrison defence floor on the player's live ground force (map + AI hand + remaining
         // deck, aviation excluded — PlayerForceAnalysis.AdditivePower, the mobilization scale).
-        public static float GarrisonDefenceFloor(PlayerSetupData player, bool isCitadel)
+        public static float GarrisonDefenceFloor(PlayerSetupData player, HexCoord garrisonHex, bool isCitadel)
         {
             AiHandData hand = AiHandRegistry.Peek(player);
             PlayerForceAnalysis.AdditivePower(player, ArmyRegistry.AllForOwner(player), hand?.Hand,
                 hand?.RemainingDeck, out _, out float available);
-            return GarrisonDefenceFloor(available, isCitadel);
+            return GarrisonDefenceFloor(player, available, garrisonHex, isCitadel);
         }
 
-        // Same floor from an already measured ground force (SelfSnapshot.AvailablePower).
+        // Same floor from an already measured ground force (SelfSnapshot.AvailablePower): the
+        // share floor, raised to the known threat against this garrison (GarrisonThreatFloor).
+        public static float GarrisonDefenceFloor(PlayerSetupData player, float groundAvailablePower,
+            HexCoord garrisonHex, bool isCitadel) =>
+            Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel),
+                GarrisonThreatFloor(player, garrisonHex));
+
+        // The peacetime share of the ground force alone.
         public static float GarrisonDefenceFloor(float groundAvailablePower, bool isCitadel) =>
             Math.Max(0f, groundAvailablePower)
                 * (isCitadel ? AiConfig.garrisonDefenceShareCitadel : AiConfig.garrisonDefenceShareBase);
+
+        // 2026-10-15 (user decision) — a garrison under a known threat keeps the power to meet it.
+        // Playtest 2026-10-15: Draven's Base (-1,3) held 18 power above its 5% share floor while
+        // Sentinels (52) stood two turns away; nothing asked to reinforce it. Each known mobile
+        // enemy army (AiMapMemory, the Known/Threat source) that can reach an own garrison within
+        // activeDefenceWithdrawMaxEnemyEta turns (hex distance against its MaxMovement: an upper
+        // bound of its reach) contributes its power x aggDefenceConfidenceMargin ONCE, to the
+        // nearest such garrison — the DefensiveReserve "one force contributes once" rule.
+        public static float GarrisonThreatFloor(PlayerSetupData player, HexCoord garrisonHex)
+        {
+            if (player == null)
+                return 0f;
+            List<HexCoord> garrisons = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && a.IsGarrison).Select(a => a.Hex).Distinct().ToList();
+            return GarrisonThreatFloor(AiMapMemory.AllKnownEnemySightings(player), garrisons, garrisonHex);
+        }
+
+        // Same rule on explicit facts: the known enemy sightings and the own garrison hexes.
+        public static float GarrisonThreatFloor(IEnumerable<AiMapMemory.KnownEnemySighting> enemies,
+            IEnumerable<HexCoord> garrisonHexes, HexCoord garrisonHex)
+        {
+            List<HexCoord> garrisons = (garrisonHexes ?? Enumerable.Empty<HexCoord>()).Distinct().ToList();
+            if (!garrisons.Contains(garrisonHex))
+                garrisons.Add(garrisonHex);
+            float floor = 0f;
+            foreach (AiMapMemory.KnownEnemySighting enemy in enemies ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
+            {
+                if (enemy.IsGarrison || enemy.IsAir || enemy.MaxMovement <= 0)
+                    continue;
+                int reach = enemy.MaxMovement * AiConfigV2.activeDefenceWithdrawMaxEnemyEta;
+                HexCoord? nearest = garrisons
+                    .Where(h => HexGridMath.Distance(h, enemy.Hex) <= reach)
+                    .OrderBy(h => HexGridMath.Distance(h, enemy.Hex)).ThenBy(h => h.Q).ThenBy(h => h.R)
+                    .Select(h => (HexCoord?)h).FirstOrDefault();
+                if (nearest.HasValue && nearest.Value.Equals(garrisonHex))
+                    floor += AiPower.SightingPower(enemy) * AiConfigV2.aggDefenceConfidenceMargin;
+            }
+            return floor;
+        }
 
         // Which garrison bodies may leave (indices into `bodies`), decided once for the roster:
         //   * how many — the most that still lets the strongest remaining bodies hold `floor`

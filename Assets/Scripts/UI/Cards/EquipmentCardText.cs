@@ -73,41 +73,26 @@ namespace Game.UI
             return Join(AddedAbilities(equip.equipment, config), StatChanges(equip.equipment));
         }
 
-        // The equipment card's own face while it is still free in hand: compatibility + skills.
-        // Numeric stat changes live in the five stat badges and are deliberately not duplicated here.
+        // The equipment card's own face while it is still free in hand: ability abbreviations
+        // only, same as every other card face (see GameConfig.FormatAbilities). Compatibility
+        // and the full stat list stay in the detail panel (see Description); numeric changes are
+        // on the stat badges.
         public static string CardFace(CardDefinition equip, GameConfig config)
-        {
-            if (equip == null)
-                return string.Empty;
-            return Join(AttachmentTargets(equip), AddedAbilities(equip.equipment, config),
-                UnbadgedStatChanges(equip.equipment));
-        }
+            => equip == null ? string.Empty : AddedAbilities(equip.equipment, config);
 
         private static string AttachmentTargets(CardDefinition equip)
         {
             return Compatibility(equip.equipment, equip.attachmentSlot == AttachmentSlot.Mutator);
         }
 
-        // Unit badges cover Attack/Defense/HP/Move/Range. Initiative and activation AP
-        // still need readable text, including while an attachment is being previewed.
-        private static string UnbadgedStatChanges(EquipmentGrant grant)
-            => FormatStatChanges(grant?.statChanges?.Where(c => c != null
-                && (c.stat == EquipmentStat.ActivationApCost
-                    || (c.stat == EquipmentStat.Initiative
-                        && ResolveEquipmentHostType(grant) == CardType.Unit))));
-
         // The result detail has no stat badges, so include the complete existing effect summary.
         public static string Description(CardDefinition equip, GameConfig config)
             => equip == null ? string.Empty : Join(AttachmentTargets(equip), EffectSummary(equip, config));
 
-        // The equipment's description once it is already attached to a host. Compatibility is no
-        // longer useful at that point; numeric stat changes still belong to the stat badges.
+        // The equipment's face once it is already attached to a host (shown over the host card
+        // while its equipment button is held) — the same abilities-only face as CardFace.
         public static string AttachedCardFace(CardDefinition equip, GameConfig config)
-        {
-            if (equip == null)
-                return string.Empty;
-            return Join(AddedAbilities(equip.equipment, config), UnbadgedStatChanges(equip.equipment));
-        }
+            => CardFace(equip, config);
 
         // Resolves the five physical badge slots through the card type the Equipment targets.
         // A free Equipment card derives this from hostKinds; an attached preview passes its actual

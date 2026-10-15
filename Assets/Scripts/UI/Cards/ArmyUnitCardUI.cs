@@ -275,10 +275,10 @@ namespace Game.UI
             SetBadge(4, cost != null ? cost.tech : 0);
         }
 
-        // Preview mode: for an Equipment/Mutator card, who it fits + the skills it grants (see
-        // EquipmentCardText.CardFace — the same face as the card in hand; numeric changes are on
-        // the stat badges). Any other card lists its own tags + abilities. Hidden when there's
-        // nothing to say.
+        // Preview mode: the card's ability abbreviations only, same as every compact card face
+        // (see GameConfig.FormatAbilities / EquipmentCardText.CardFace — the same face as the
+        // card in hand). Type tags and full names + descriptions stay in the detail panel.
+        // Hidden when there's nothing to say.
         private void RefreshSkillsText(CardDefinition card, GameConfig config)
         {
             TMP_Text label = PreviewSkillsLabel;
@@ -286,30 +286,11 @@ namespace Game.UI
                 return;
             string text;
             if (card == null)
-            {
                 text = string.Empty;
-            }
             else if (card.cardType == CardType.Equipment)
-            {
                 text = EquipmentCardText.CardFace(card, config);
-            }
             else
-            {
-                // Lead with the unit type tags this card is filed under ("Bio, Infantry") — the
-                // types it fits — before the granted-ability list, same "who it fits first" order
-                // as the Equipment face's host tags. Silently skipped when the card has no tags.
-                string tags = card.unitTypeTags != null && card.unitTypeTags.Count > 0
-                    ? string.Join(", ", card.unitTypeTags)
-                    : string.Empty;
-                // Abbreviations only, same as every compact card face (see GameConfig.
-                // FormatAbilities); full names + descriptions stay in the detail panel.
-                string abilities = config != null
-                    ? config.FormatAbilities(card.grantedAbilities)
-                    : string.Empty;
-                text = !string.IsNullOrEmpty(tags) && !string.IsNullOrEmpty(abilities)
-                    ? tags + "\n" + abilities
-                    : tags + abilities;
-            }
+                text = config != null ? config.FormatAbilities(card.grantedAbilities) : string.Empty;
             label.text = text;
             label.gameObject.SetActive(!string.IsNullOrEmpty(text));
         }

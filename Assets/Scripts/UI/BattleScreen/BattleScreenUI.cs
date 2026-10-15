@@ -336,7 +336,7 @@ namespace Game.UI
                 return;
             }
             if (encounter.TargetHeroOnly)
-                BeginCaptureKillEncounter(encounter.Initiator, encounter.Target, onClosed, fastResolve);
+                BeginCaptureKillEncounter(encounter.Initiator, encounter.Target, onClosed);
             else
                 Show(encounter.Hex, encounter.Participants.ToList(), onClosed, fastResolve);
         }

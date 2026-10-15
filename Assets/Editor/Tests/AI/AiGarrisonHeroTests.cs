@@ -751,6 +751,32 @@ namespace Game.EditorTests
             ReorganizationPlan plan = RPlan(garrison, field);
             Assert.That(plan.ExpectedMembership[1], Does.Contain(iri.Key), plan.DebugSummary());
         }
+
+        // 2026-10-15 (user decision) — playtest: Aldric and Dorian stood as lone free heroes on
+        // Draven's Base (-1,3) beside its garrison while Sentinels were one turn away. A lone hero
+        // stays a bench in peace; under a near threat it shelters in the local garrison.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LoneFreeHero_SheltersInTheLocalGarrisonOnlyUnderANearThreat(bool threatened)
+        {
+            ReorgUnit aldric = RHero(4, support: false);
+            ReorgUnit tank = RBody(9f), medic = RBody(3f);
+            ReorgContainer garrison = RGarrison(1, tank, medic);
+            ReorgContainer lone = RFree(2, aldric);
+            var group = new LocalForceGroup { Containers = new List<ReorgContainer> { garrison, lone } };
+            if (threatened)
+                group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
+                {
+                    ArmyId = 11, EtaToGroup = 1, EtaToNearestBase = 1,
+                    Members = new[] { new Game.Combat.WorthIt.DefenderProfile(3f, false, attack: 5f, hitPoints: 5f) },
+                    TargetableUnitKeys = new HashSet<int> { tank.Key, medic.Key },
+                });
+
+            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+
+            Assert.That(plan.ExpectedMembership[1].Contains(aldric.Key), Is.EqualTo(threatened),
+                plan.DebugSummary());
+        }
     }
 }
 #endif

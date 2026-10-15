@@ -144,6 +144,8 @@ namespace Game.Ai.V2
                     AdvanceIntent(intent, o, turn, state, allocState);
                     return true;
                 }
+                // The route failure ends the outbound commitment, not the builder's lifecycle.
+                RecordEndedOutboundBuilder(state, intent);
                 RetireEconomyIntent(state, intent, o, turn);
                 return true;
             }
@@ -288,6 +290,48 @@ namespace Game.Ai.V2
             // Preserve the old null-intent loan hand-back (the attempt may never become durable).
             // Ownership cleanup belongs to the common retirement boundary, not this domain hook.
             if (intent == null || intent.Kind == MissionKind.Economy) RepayEconomyLoan(state, intent, o);
+            RecordEndedOutboundBuilder(state, intent);
+        }
+
+        // An outbound build retired by an outcome leaves its builder wherever the step stopped.
+        // Recorded here, decided by RecoverEndedOutboundBuilders on the next snapshot.
+        private static void RecordEndedOutboundBuilder(MissionIntentState state, MissionIntent intent)
+        {
+            if (state == null || !IsLiveEconomyBuild(intent) || !intent.PreferredMoverArmyId.HasValue)
+                return;
+            state.Economy.RecordEndedOutboundBuilder(intent.PreferredMoverArmyId.Value,
+                intent.Economy.TargetHex, intent.Economy.BuildValue);
+        }
+
+        // ResolveActive preparer: each builder an outcome released in the field enters the ONE
+        // builder recovery decision (BeginEconomyBuilderRecovery: a ReturnBuilder home, or a
+        // release when no shelter is reachable) unless another operation already owns it — a
+        // repaid loan donor, a fresh delivery, a Phase B handoff.
+        internal static void RecoverEndedOutboundBuilders(PlayerSetupData player, WorldSnapshot snap,
+            ActiveResolution pass)
+        {
+            MissionIntentState state = pass.State;
+            if (snap == null || !state.Economy.HasEndedOutboundBuilders)
+                return;
+            ActorCommitments owners = ActorCommitments.FromIntents(state.All, snap, pass.ReconObjectives);
+            foreach ((int builderArmyId, HexCoord site, float value) in state.Economy.TakeEndedOutboundBuilders())
+            {
+                // Only a builder left in the field: a garrison (extraction never ran) or a hero
+                // still on an own base is already home, and must not be walked to another one.
+                ArmySnapshot builder = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.ArmyId == builderArmyId);
+                if (builder == null || builder.IsGarrison || IsProtectedEconomyHex(snap, player, builder.Hex)
+                    || owners.IsArmyClaimed(builderArmyId))
+                    continue;
+                AiDebugLog.Write($"[AI][V2][Economy] recover ended outbound build "
+                    + $"({site.Q},{site.R}) actor=#{builderArmyId}");
+                BeginEconomyBuilderRecovery(player, snap, new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = CapabilityKind.EconomicInfrastructure,
+                    TargetHex = site, EconomySiteValue = value,
+                }, builderArmyId, snap.TurnNumber);
+            }
         }
 
         internal static void ApplyEconomyStepFacts(MissionIntentState state, AiAllocatorState allocator,
@@ -327,6 +371,7 @@ namespace Game.Ai.V2
                 && state.Economy.RecordBaseExpansionDeliveryFailure(
                     turn, intent.Economy.BuildCard, intent.Economy.TargetHex))
             {
+                RecordEndedOutboundBuilder(state, intent);
                 RetireEconomyIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
                     "BaseExpansionDeliverySuppressed");
@@ -350,6 +395,7 @@ namespace Game.Ai.V2
                 && state.Economy.RecordExtractionDeliveryFailure(
                     turn, intent.Economy.ResourceType, intent.Economy.TargetHex))
             {
+                RecordEndedOutboundBuilder(state, intent);
                 RetireEconomyIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
                     "ExtractionDeliverySuppressed");

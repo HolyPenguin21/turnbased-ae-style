@@ -414,6 +414,58 @@ namespace Game.EditorTests
             Assert.That(Has(player, intent), Is.False);
         }
 
+        // Playtest 2026-10-15 (Nadia Thorne): an ambush one hex short of the site rejected the
+        // move; the build retired and the lone hero stood in the field for the rest of the game.
+        // The route failure still ends the build, but the next snapshot sends a field builder
+        // home and releases one that already stands on a base.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ProvenRouteFailure_HandsTheBuilderToRecoveryOnTheNextResolve(bool atBase)
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            DurableIntent(player, m, 3);
+
+            Settle(player, m, 4, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.MoveRejected,
+            });
+            Assert.That(MissionIntentRegistry.GetOrCreate(player).All, Is.Empty,
+                "the route failure still ends the outbound build at once");
+
+            HexCoord stoppedAt = atBase ? Home : new HexCoord(5, -2);
+            var snap = new WorldSnapshot
+            {
+                Observer = player, TurnNumber = 4,
+                Self = new SelfSnapshot
+                {
+                    BaseHexes = new[] { Home },
+                    Armies = new[]
+                    {
+                        new ArmySnapshot
+                        {
+                            ArmyId = Actor, Hex = stoppedAt, HasHero = true, MemberCount = 1,
+                            MaxMovement = 3, CurrentMovement = 0,
+                            EconomyHomeRouteCosts = new Dictionary<HexCoord, int> { [Home] = atBase ? 0 : 5 },
+                        },
+                    },
+                },
+            };
+            List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
+
+            if (atBase)
+            {
+                Assert.That(active, Is.Empty, "a builder already on a safe base is simply released");
+                return;
+            }
+            MissionIntent recovery = active.Single();
+            Assert.That(recovery.Economy.Kind, Is.EqualTo(EconomyTaskKind.ReturnBuilder));
+            Assert.That(recovery.Economy.TargetHex, Is.EqualTo(Home));
+            Assert.That(recovery.PreferredMoverArmyId, Is.EqualTo(Actor));
+            Assert.That(MissionContinuityLayer.ResolveActive(player, snap).Single(), Is.SameAs(recovery),
+                "the recovery is decided once, not re-created on every pass");
+        }
+
         // --- B3: a suspended ReturnCollector is re-tested, never parked forever --------------
 
         [Test]

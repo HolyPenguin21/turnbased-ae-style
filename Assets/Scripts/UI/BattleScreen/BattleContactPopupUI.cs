@@ -182,12 +182,11 @@ namespace Game.UI
             // in the Tactical Battle Module at all — onFight routes straight into a Capture/Kill
             // Challenge sequence (see the callers' own targetHeroOnly branch / BattleScreenUI.
             // BeginCaptureKillEncounter). Label the button for what it actually does in that case.
-            bool captureOnly = participants != null && participants.Count > 1
-                && !BattleInitiator.IsCombatCapable(participants[1]);
+            bool captureOnly = BattleEncounterCoordinator.IsHeroOnlyEncounter(participants);
             if (fightButtonLabel != null)
                 fightButtonLabel.text = captureOnly ? "Capture" : "To Battle";
 
-            BindFightOptions(onFight);
+            BindFightOptions(onFight, captureOnly);
             if (delayButton != null)
             {
                 delayButton.gameObject.SetActive(true);
@@ -205,16 +204,24 @@ namespace Game.UI
             if (fightButtonLabel != null)
                 fightButtonLabel.text = "Continue";
 
-            BindFightOptions(onContinue);
+            BindFightOptions(onContinue, BattleEncounterCoordinator.IsHeroOnlyEncounter(participants));
             if (delayButton != null)
                 delayButton.gameObject.SetActive(false);
         }
 
-        // Both buttons enter the same encounter callback; only the control mode differs.
-        private void BindFightOptions(Action<bool> onFight)
+        // Both buttons enter the same encounter callback; only the control mode differs. A
+        // Capture/Kill encounter has no Fast Resolve: its challenge is the popup itself, never the
+        // battle screen whose outcome popup a fast resolve would wait on.
+        private void BindFightOptions(Action<bool> onFight, bool captureOnly)
         {
             BindFightOption(fightButton, onFight, fastResolve: false);
-            BindFightOption(fastResolveButton, onFight, fastResolve: true);
+            if (captureOnly)
+            {
+                if (fastResolveButton != null)
+                    fastResolveButton.gameObject.SetActive(false);
+            }
+            else
+                BindFightOption(fastResolveButton, onFight, fastResolve: true);
         }
 
         private void BindFightOption(Button button, Action<bool> onFight, bool fastResolve)

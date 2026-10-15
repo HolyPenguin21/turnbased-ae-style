@@ -166,11 +166,12 @@ namespace Game.EditorTests
         {
             var neural = Mutator("neural-accelerator");
             string face = EquipmentCardText.CardFace(neural, null);
-            Assert.That(face, Does.StartWith("Bio, Unit\n").And.Contain("Initiative 1").And.Not.Contain("Activation AP"));
-            Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Does.Contain("Initiative 1").And.Not.Contain("Activation AP"));
+            Assert.That(face, Does.Not.Contain("Bio").And.Not.Contain("Unit").And.Not.Contain("Initiative"));
+            Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Is.EqualTo(face));
+            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Bio, Unit\n").And.Contain("Initiative 1"));
             Assert.That(EquipmentCardText.StatBadgeValue(neural.equipment, EquipmentStat.Defense), Is.EqualTo("1"));
             Assert.That(EquipmentCardText.Description(neural, null), Does.Contain("Defense 1"));
-            Assert.That(EquipmentCardText.CardFace(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
+            Assert.That(EquipmentCardText.Description(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);
             Assert.That(description, Does.Contain("Defense 1").And.Contain("HP 1").And.Contain("Initiative -1"));
             Assert.That(description, Does.Not.Contain("+").And.Not.Contain("=").And.Not.Contain("—"));
@@ -218,8 +219,10 @@ namespace Game.EditorTests
         {
             var catalog = AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset");
             Assert.That(catalog, Is.Not.Null);
-            Assert.That(EquipmentCardText.CardFace(Mutator("ghost-genome"), null),
+            Assert.That(EquipmentCardText.Description(Mutator("ghost-genome"), null),
                 Does.Contain("Hero").And.Contain("Stealth4"));
+            Assert.That(EquipmentCardText.CardFace(Mutator("ghost-genome"), null),
+                Does.Contain("Stealth4").And.Not.Contain("Hero"));
             foreach (var faction in new[] { Faction.IronConcord, Faction.Ashen, Faction.Vessels })
             {
                 var cards = catalog.ResolveFor(ResearchProductionMode.Research, faction);

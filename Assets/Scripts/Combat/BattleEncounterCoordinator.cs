@@ -56,8 +56,7 @@ namespace Game.Combat
             // Strategic arrival and the hunter role are different for a hero-only mover.
             // Normalize once here so direct, delayed and chained encounters all reuse the
             // existing target-only Capture/Kill sequence with the ground army as hunter.
-            if (initiator != null && target != null && !BattleInitiator.IsCombatCapable(initiator)
-                && BattleInitiator.IsCombatCapable(target))
+            if (IsHeroOnlyMover(initiator, target))
             {
                 var ordered = new List<ArmyData>(participants);
                 ordered[0] = target;
@@ -67,10 +66,28 @@ namespace Game.Combat
                 initiator = target;
                 target = heroArmy;
             }
-            bool targetHeroOnly = target != null && !BattleInitiator.IsCombatCapable(target);
+            bool targetHeroOnly = IsHeroOnlyTarget(target);
 
             return new BattleEncounterContext(hex, participants, initiator, target, targetHeroOnly, presentationObserver);
         }
+
+        // The same TargetHeroOnly classification for a caller that only holds the participant
+        // list (BattleContactPopupUI), in either order: a hero-only mover is the hunted side too.
+        public static bool IsHeroOnlyEncounter(IReadOnlyList<ArmyData> participants)
+        {
+            ArmyData initiator = participants != null && participants.Count > 0 ? participants[0] : null;
+            ArmyData target = participants != null && participants.Count > 1 ? participants[1] : null;
+            if (IsHeroOnlyMover(initiator, target))
+                target = initiator;
+            return IsHeroOnlyTarget(target);
+        }
+
+        private static bool IsHeroOnlyTarget(ArmyData target) =>
+            target != null && !BattleInitiator.IsCombatCapable(target);
+
+        private static bool IsHeroOnlyMover(ArmyData initiator, ArmyData target) =>
+            initiator != null && target != null && !BattleInitiator.IsCombatCapable(initiator)
+            && BattleInitiator.IsCombatCapable(target);
 
         // Best-guess presentation observer for a call site that doesn't already know exactly
         // which human this encounter is about to be shown to — the first participant actually

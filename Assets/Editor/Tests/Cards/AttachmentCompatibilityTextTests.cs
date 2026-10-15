@@ -19,7 +19,8 @@ namespace Game.EditorTests
                 hostTypeTags = new List<UnitTypeTag> { tag },
                 hostKinds = new List<EquipmentHostKind> { kind },
             } };
-            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo(expected));
+            // Compatibility is detail-panel only; the card face lists ability abbreviations alone.
+            Assert.That(EquipmentCardText.CardFace(card, null), Is.Empty);
             Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo(expected));
         }
 
@@ -34,11 +35,11 @@ namespace Game.EditorTests
             foreach (var slot in new[] { AttachmentSlot.Equipment, AttachmentSlot.Mutator })
             {
                 card.attachmentSlot = slot;
-                Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo("Bio, Infantry, Unit"));
+                Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Bio, Infantry, Unit"));
             }
             card.equipment.hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Armored, UnitTypeTag.Vehicle };
             card.attachmentSlot = AttachmentSlot.Equipment;
-            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo("Armored, Vehicle, Unit"));
+            Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Armored, Vehicle, Unit"));
         }
 
         [Test]
@@ -70,8 +71,25 @@ namespace Game.EditorTests
         {
             var card = new CardDefinition { attachmentSlot = AttachmentSlot.Mutator,
                 equipment = new EquipmentGrant { hostKinds = new List<EquipmentHostKind> { kind } } };
-            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo(expected));
+            Assert.That(EquipmentCardText.CardFace(card, null), Is.Empty);
             Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void CardFaceListsOnlyAbilitiesWithoutTypeTagsOrStatText()
+        {
+            var card = new CardDefinition { attachmentSlot = AttachmentSlot.Mutator, equipment = new EquipmentGrant
+            {
+                hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Infantry },
+                hostKinds = new List<EquipmentHostKind> { EquipmentHostKind.Unit },
+                statChanges = new List<EquipmentStatChange>
+                {
+                    new EquipmentStatChange { stat = EquipmentStat.Initiative, amount = 1 },
+                },
+            } };
+            card.equipment.addAbilities.Add(UnitAbilities.ShockAttack);
+            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo("Shock Attack"));
+            Assert.That(EquipmentCardText.AttachedCardFace(card, null), Is.EqualTo("Shock Attack"));
         }
     }
 }
