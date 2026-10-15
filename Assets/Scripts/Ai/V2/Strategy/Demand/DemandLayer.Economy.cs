@@ -76,7 +76,7 @@ namespace Game.Ai.V2
 
         private static TaskScore BuildFoundBaseScore(WorldSnapshot snap,
             IReadOnlyList<(float Gain, float Priority)> marginalByResource,
-            bool hasUsefulGain, float paybackTurns, StrategicCardEvaluator.BaseSiteValue facts,
+            bool hasUsefulGain, float paybackTurns, BaseSiteValuation.BaseSiteValue facts,
             EconomyBaseOpportunity site, int homeDistance, float cardAp, float resourceApEquivalent,
             float extraActivationAp = 0f, float moverOpportunityCost = 0f) =>
             new TaskScore(
@@ -434,7 +434,7 @@ namespace Game.Ai.V2
                     continue;
 
                 float global = TaskScoreEvaluator.GlobalCardEffectScoreUnits(
-                    ActionPrice.CardScoreToTaskScore(StrategicCardEvaluator.GlobalEffectValue(s, def)));
+                    ActionPrice.CardScoreToTaskScore(BaseSiteValuation.GlobalEffectValue(s, def)));
                 var score = new TaskScore(globalCardEffect: global);
                 AiDebugLog.WriteDeduped($"global-source|{def.authoredKey}|{capability}",
                     $"[AI][V2][Economy][GlobalSource] decision=CREATE card={def.displayName} "
@@ -1414,8 +1414,8 @@ namespace Game.Ai.V2
                         continue;
 
                     bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
-                    StrategicCardEvaluator.BaseSiteValue facts =
-                        StrategicCardEvaluator.ScoreBaseSite(s, site, card);
+                    BaseSiteValuation.BaseSiteValue facts =
+                        BaseSiteValuation.ScoreBaseSite(s, site, card);
 
                     // Only real card-semantic facts come from Evaluation; TaskScore is the
                     // sole numeric evaluator of this Base's economic and strategic value.
@@ -1430,7 +1430,7 @@ namespace Game.Ai.V2
                     float usefulGainTotal = 0f;
                     foreach (ResourceType type in ResourceBundle.All)
                     {
-                        float typeGain = StrategicCardEvaluator.BaseCardMarginalGain(
+                        float typeGain = BaseSiteValuation.BaseCardMarginalGain(
                             s, site, card.Definition, type);
                         if (typeGain <= AiConfigV2.allocatorSliceEpsilon)
                             continue;

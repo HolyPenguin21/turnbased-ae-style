@@ -27,18 +27,18 @@ namespace Game.EditorTests
                     Hex = hex, CollectionCapacity = new ResourceBundle { Materials = 1 }
                 } }
             } };
-            Assert.That(StrategicCardEvaluator.BaseCardMarginalGain(snap, site,
+            Assert.That(BaseSiteValuation.BaseCardMarginalGain(snap, site,
                 card, ResourceType.Materials), Is.Zero);
-            Assert.That(StrategicCardEvaluator.BaseCardMarginalYield(snap, site, card), Is.Zero);
+            Assert.That(BaseSiteValuation.BaseCardMarginalYield(snap, site, card), Is.Zero);
             snap.Self.Armies = new List<ArmySnapshot>();
-            Assert.That(StrategicCardEvaluator.BaseCardMarginalGain(snap, site,
+            Assert.That(BaseSiteValuation.BaseCardMarginalGain(snap, site,
                 card, ResourceType.Materials), Is.EqualTo(1f));
             site.HexYield = new ResourceBundle { Materials = 2 };
             snap.Self.Armies = new List<ArmySnapshot> { new ArmySnapshot
             {
                 Hex = hex, CollectionCapacity = new ResourceBundle { Materials = 1 }
             } };
-            Assert.That(StrategicCardEvaluator.BaseCardMarginalGain(snap, site,
+            Assert.That(BaseSiteValuation.BaseCardMarginalGain(snap, site,
                 card, ResourceType.Materials), Is.EqualTo(1f));
         }
 
@@ -61,11 +61,11 @@ namespace Game.EditorTests
                     Hex = hex, CollectionCapacity = new ResourceBundle { Materials = 1 }
                 } }
             } };
-            Assert.That(StrategicCardEvaluator.BaseCardMarginalGain(snap, site,
+            Assert.That(BaseSiteValuation.BaseCardMarginalGain(snap, site,
                 card, ResourceType.Materials), Is.Zero);
-            Assert.That(StrategicCardEvaluator.BaseCardMarginalGain(snap, site,
+            Assert.That(BaseSiteValuation.BaseCardMarginalGain(snap, site,
                 card, ResourceType.Energy), Is.EqualTo(1f));
-            Assert.That(StrategicCardEvaluator.BaseCardMarginalYield(snap, site, card),
+            Assert.That(BaseSiteValuation.BaseCardMarginalYield(snap, site, card),
                 Is.EqualTo(1f));
             Assert.That(IncomeProjection.MarginalOwnerCollectionAtHex(1, 0, 1, 1, true), Is.Zero);
         }
