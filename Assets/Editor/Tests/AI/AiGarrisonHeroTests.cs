@@ -242,6 +242,145 @@ namespace Game.EditorTests
                 Is.EqualTo(4));
         }
 
+        [TestCase(null, false)]
+        [TestCase(UnitAbilities.Heal, true)]
+        [TestCase(UnitAbilities.Transport, true)]
+        public void CommandHandover_ReturnsOrdinaryOldCommandButKeepsArmySupport(string ability, bool keepOld)
+        {
+            UnitData old = Hero("Old", 4), lead = Hero("New", 8);
+            if (ability != null) old.Abilities.Add(ability);
+            ArmyData host = Army(Staging, old, Body("Fighter", 5));
+            ArmyData support = Army(Staging, lead, Body("Fresh", 20), Body("Guard", 2));
+            CommandHandoverPlan plan = GroundCombatReinforcement.CommandHandover(
+                host, support, WeakOpposition(), 0f, null);
+            Assert.That(plan, Is.Not.Null);
+            var final = host.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
+            Assert.That(final.Contains(old), Is.EqualTo(keepOld));
+            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Hero,
+                plan.Displaced, out _, requireChargeNow: false), Is.True);
+            if (!keepOld)
+            {
+                Assert.That(final.Count(u => u.IsHero), Is.EqualTo(1));
+                Assert.That(GroundCombatReinforcement.ProjectedHandoffApCost(plan.Incoming,
+                    plan.Displaced, host, support, supportWalks: true), Is.EqualTo(old.ActivationApCost));
+            }
+            Assert.That(host.Commander, Is.SameAs(old), "planning never mutates command");
+        }
+
+        [Test]
+        public void CommandHandover_KeepsOldHeroWhenTheSupportCannotReceiveIt()
+        {
+            UnitData old = Hero("Old", 4), lead = Hero("New", 8);
+            ArmyData host = Army(Staging, old, Body("Fighter", 5));
+            ArmyData support = Army(Staging, lead, Hero("Small reserve commander", 1), Body("Fresh", 20));
+            var plan = GroundCombatReinforcement.CommandHandover(host, support, WeakOpposition(), 0f, null);
+            Assert.That(plan, Is.Not.Null);
+            Assert.That(plan.Displaced, Does.Not.Contain(old));
+            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Hero,
+                plan.Displaced, out _, requireChargeNow: false), Is.True);
+        }
+
+        [Test]
+        public void CommandHandover_DoesNotReplaceABetterExistingCommander()
+        {
+            UnitData old = Hero("Strong lead", 8), incoming = Hero("Weak lead", 3);
+            ArmyData host = Army(Staging, old, Body("Fighter", 5));
+            ArmyData support = Army(Staging, incoming, Body("Fresh", 20), Body("Guard", 2));
+            var plan = GroundCombatReinforcement.PlanAttackHandoff(host, support,
+                WeakOpposition(), 0f, requireChargeNow: false, out string why);
+            Assert.That(plan, Is.Not.Null, why);
+            Assert.That(plan.Promote, Is.Null, "a body delivery must not invent a weaker command upgrade");
+            Assert.That(plan.Displaced, Does.Not.Contain(old));
+        }
+
+        [Test]
+        public void CommandHandover_ExecutionReturnsOldCommanderInTheSameAtomicExchange()
+        {
+            UnitData old = Hero("Old", 4), lead = Hero("New", 8);
+            ArmyData host = Army(Staging, old, Body("Fighter", 5));
+            ArmyData support = Army(Staging, lead, Body("Fresh", 20), Body("Guard", 2));
+            bool applied = GroundCombatReinforcementTransaction.ApplyReinforcementHandoff(Us,
+                new AiTurnContext(), null, support, host, out _, out bool exchanged, out _,
+                out string why, WeakOpposition());
+            Assert.That(applied, Is.True, why);
+            Assert.That(exchanged, Is.True);
+            Assert.That(host.Commander, Is.SameAs(lead));
+            Assert.That(host.Members.Count(u => u.IsHero), Is.EqualTo(1));
+            Assert.That(support.Members, Does.Contain(old));
+            Assert.That(ArmyData.RosterFits(support.Members, false), Is.True);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AttackDeparture_OptimizesFreshRosterAndPreservesCommittedRoster(bool committed)
+        {
+            DepartureHome();
+            UnitData lead = Hero("Lead", 8), extra = Hero("Extra", 4);
+            ArmyData host = Army(Staging, lead, extra, Body("Fighter", 20));
+            var plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
+            {
+                Opposition = WeakOpposition(), WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                PreferredPrimaryArmyId = host.Id, PinToPreferred = true, PreserveDepartureRoster = committed,
+            });
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.ReturnHeroes.Contains(extra), Is.EqualTo(!committed));
+            Assert.That(host.Members, Does.Contain(extra), "projection is read-only");
+        }
+
+        [TestCase(UnitAbilities.Heal)]
+        [TestCase(UnitAbilities.Drill)]
+        [TestCase(UnitAbilities.Transport)]
+        public void AttackZeroGate_DoesNotTreatAnArmySupportHeroAsWaste(string ability)
+        {
+            DepartureHome();
+            UnitData lead = Hero("Lead", 8), support = Hero("Support", 4);
+            support.Abilities.Add(ability);
+            ArmyData host = Army(Staging, lead, support, Body("Fighter", 20));
+            var plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(DepartureSnapshot(),
+                WeakOpposition(), host.Id, GroundCombatAdmissionPolicy.AttackCoverageGate);
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.ReturnHeroes, Does.Not.Contain(support));
+        }
+
+        [Test]
+        public void AttackDeparture_StillRequiresTheStrictPowerThreshold()
+        {
+            DepartureHome();
+            ArmyData host = Army(Staging, Hero("Lead", 8), Hero("Extra", 4), Body("Fighter", 20));
+            var plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
+            {
+                Opposition = WeakOpposition(), WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                PreferredPrimaryArmyId = host.Id, PinToPreferred = true, AllowSameHexAssembly = false,
+                MinimumArmyPower = AiPower.EffectiveArmyPower(host.Members),
+            });
+            Assert.That(plan.Feasible, Is.False, "equality does not satisfy Attack's strict power bar");
+        }
+
+        [TestCase(false, 0.8f)]
+        [TestCase(true, 0.8f)]
+        [TestCase(false, 0f)]
+        [TestCase(true, 0f)]
+        public void PartlyFullHome_PermitsPartialReturnsBeforeChoosingSupportFallback(bool needsAssembly, float gate)
+        {
+            ArmyData home = DepartureHome();
+            while (home.Members.Count < home.Capacity - 1) home.Members.Add(Body("Guard", 12));
+            UnitData mara = Hero("Mara", 4, support: true), edda = Hero("Edda", 4, support: true);
+            UnitData sol = Hero("Sol", 4); sol.ActivationApCost = 0;
+            ArmyData host = Army(Staging, mara, edda, sol, Body("Fighter", 3));
+            if (needsAssembly) Army(Staging, Body("Fresh", 20), Body("Reserve", 20));
+            var plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
+            {
+                Opposition = WeakOpposition(), WinChanceGate = gate,
+                PreferredPrimaryArmyId = host.Id, PinToPreferred = true,
+                MinimumArmyPower = needsAssembly ? AiPower.EffectiveArmyPower(host.Members) + 0.01f : 0f,
+            });
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.Commander, Is.SameAs(sol));
+            Assert.That(plan.ReturnHeroes.Count, Is.EqualTo(1));
+            Assert.That(plan.NeedsAssembly, Is.EqualTo(needsAssembly));
+            Assert.That(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan).Count, Is.LessThanOrEqualTo(sol.CommandRating));
+        }
+
         // ---- the Support tag on the catalog heroes -------------------------------------------
 
         // Every hero that grants AP, researches or assembles is authored as a garrison hero; a new
@@ -479,4 +618,5 @@ namespace Game.EditorTests
     }
 }
 #endif
+
 

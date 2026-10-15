@@ -418,13 +418,24 @@ namespace Game.Ai.V2
                 int hash = CombatFingerprint(WorthIt.UnitsOf(opposition));
                 foreach (WorthIt.DefendingArmy army in opposition)
                 {
-                    hash = hash * 31 + (army.Commander.Present ? 1 : 0);
-                    hash = hash * 31 + army.Commander.Initiative;
-                    hash = hash * 31 + army.Commander.Fate;
+                    hash = hash * 31 + CommanderFingerprint(army.Commander);
                     foreach (WorthIt.DefenderProfile profile in army.Units)
                         if (profile.IsHero) hash = hash * 31 + profile.FateMax;
                 }
                 return hash;
+            }
+        }
+
+        // Body-only snapshots carry secondary Heal/Drill heroes on the commander projection.
+        // Both sides of a remembered obstacle must hash the same inputs WorthIt consumes.
+        internal static int CommanderFingerprint(WorthIt.SideCommander commander)
+        {
+            unchecked
+            {
+                int hash = commander.Present ? 1 : 0;
+                hash = hash * 31 + commander.Initiative;
+                hash = hash * 31 + commander.Fate;
+                return hash * 31 + CombatFingerprint(commander.SupportHeroes);
             }
         }
 
@@ -446,8 +457,14 @@ namespace Game.Ai.V2
                     int h = (int)System.Math.Round(p.Attack * 10f) * 31
                         + (int)System.Math.Round(p.Defense * 10f) * 131
                         + (int)System.Math.Round(p.HitPoints * 10f) * 1031
+                        + (int)System.Math.Round(p.MaxHitPoints * 10f) * 1033
                         + p.Initiative * 10007 + (p.HasCeramicArmor ? 7 : 0) + (p.IsHero ? 13 : 0)
+                        + p.FateMax * 10009 + p.Range * 10037
+                        + (p.IsGroundCombatant ? 19 : 0) + (p.IsSummoned ? 23 : 0)
                         + (p.Abilities?.Count ?? 0) * 100003;
+                    if (p.TypeTags != null)
+                        foreach (var tag in p.TypeTags)
+                            h += ((int)tag + 1) * 100019;
                     // Which skills, not only how many: swapping Splash for Pyrokinetic at equal
                     // stats is a different fight. Order-free, and stable across runs (no
                     // string.GetHashCode).
@@ -521,3 +538,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }
 }
+

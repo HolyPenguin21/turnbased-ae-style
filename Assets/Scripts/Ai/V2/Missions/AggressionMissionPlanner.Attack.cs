@@ -149,6 +149,7 @@ namespace Game.Ai.V2
                             ? GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage
                             : (bool?)null,
                         AllowSameHexAssembly = intermediate == null,
+                        PreserveDepartureRoster = incumbent?.Attack?.AssaultStarted == true,
                         MinimumArmyPower = incumbent?.Attack?.AssaultStarted == true
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                         PreferredPrimaryArmyId = pinnedActor,
@@ -727,5 +728,6 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
 

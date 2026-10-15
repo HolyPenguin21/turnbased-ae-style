@@ -71,7 +71,8 @@ namespace Game.Ai.V2
                 minimumArmyPower: target.ForceCommitted ? 0f
                     : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                 allowSameHexAssembly: !target.IsIntermediateAssault,
-                requireCoverage: GroundCombatAdmissionPolicy.AssaultCoverage(proposal));
+                requireCoverage: GroundCombatAdmissionPolicy.AssaultCoverage(proposal),
+                preserveDepartureRoster: target.ForceCommitted);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -84,7 +85,7 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> unavailableArmyIds,
             float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null,
             float minimumArmyPower = 0f, bool allowSameHexAssembly = true,
-            bool? requireCoverage = null) =>
+            bool? requireCoverage = null, bool preserveDepartureRoster = false) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
                 Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
@@ -93,6 +94,7 @@ namespace Game.Ai.V2
                 DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 MinimumArmyPower = minimumArmyPower,
                 AllowSameHexAssembly = allowSameHexAssembly,
+                PreserveDepartureRoster = preserveDepartureRoster,
                 PreferredPrimaryArmyId = pinnedArmyId,
                 PinToPreferred = pinnedArmyId.HasValue,
                 RequireCoverage = requireCoverage,
@@ -251,5 +253,6 @@ namespace Game.Ai.V2
 
     }
 }
+
 
 

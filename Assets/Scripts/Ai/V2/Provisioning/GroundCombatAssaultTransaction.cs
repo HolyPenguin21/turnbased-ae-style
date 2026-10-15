@@ -425,7 +425,8 @@ namespace Game.Ai.V2
         // the handoff — one answer for all four.
         internal static CommandHandoverPlan CommandHandover(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool allowEmptySupport = false)
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool allowEmptySupport = false,
+            bool requireChargeNow = false)
         {
             if (primary == null || support == null || primary.IsGarrison)
                 return null;
@@ -444,63 +445,92 @@ namespace Game.Ai.V2
                 .OrderByDescending(HeroRoleEvaluator.CombatLeadershipScore)
                 .ThenBy(u => u.RuntimeId))
             {
-                // Joined without displacing anyone, or — no room for the hero itself — exchanged
-                // for the primary's weakest body.
-                UnitData heroFor = null;
-                var joined = new List<UnitData>(primary.Members) { hero };
-                if (ArmyData.ComputeCapacity(new[] { hero }.Concat(primary.Members), false) < joined.Count)
+                // First prove this incoming hero wins the existing command contest, including
+                // the current commander. Removing old heroes must not manufacture an upgrade.
+                var contest = new List<UnitData>(primary.Members) { hero };
+                if (ArmyData.ComputeCapacity(new[] { hero }.Concat(primary.Members), false) < contest.Count)
                 {
-                    if (weakestHostBody == null)
-                        continue;
-                    heroFor = weakestHostBody;
-                    joined.Remove(heroFor);
+                    if (weakestHostBody == null) continue;
+                    contest.Remove(weakestHostBody);
                 }
-                if (HeroRoleEvaluator.BestCommanderFor(joined, false, opposition,
-                        defenderHexDefenseBonus, prospects) != hero)
-                    continue;
-
-                var incoming = new List<UnitData> { hero };
-                var displaced = new List<UnitData>();
-                if (heroFor != null)
-                    displaced.Add(heroFor);
-                var led = new List<UnitData> { hero };
-                led.AddRange(primary.Members.Where(u => u != heroFor));
-                int room = System.Math.Max(0, ArmyData.ComputeCapacity(led, false) - led.Count);
-                var fresh = new Queue<UnitData>(donorBodies);
-                while (room > 0 && fresh.Count > 0)
+                if (HeroRoleEvaluator.BestCommanderFor(contest, false, opposition,
+                    defenderHexDefenseBonus, prospects) != hero) continue;
+                // Command replacement is one complete exchange, not an accumulating hero join.
+                // Keep passive carriers; return ordinary old heroes when the support can take
+                // them. The retained variant is still available when that exchange is illegal.
+                var ordinaryHeroes = primary.Members.Where(u => u != null && u.IsHero
+                    && !StrategicEffectRegistry.HasArmySupportEffect(u.Abilities, u.MoveMax)).ToList();
+                for (int variant = 0; variant < (ordinaryHeroes.Count > 0 ? 2 : 1); variant++)
                 {
-                    incoming.Add(fresh.Dequeue());
-                    room--;
-                }
-                var weakest = new Queue<UnitData>(WeakestBodies(primary.Members.Where(u => u != heroFor)));
-                while (fresh.Count > 0 && weakest.Count > 0
-                    && GroundCombatDonorPolicy.UnitCombatValue(fresh.Peek())
-                        > GroundCombatDonorPolicy.UnitCombatValue(weakest.Peek()))
-                {
-                    incoming.Add(fresh.Dequeue());
-                    displaced.Add(weakest.Dequeue());
-                }
-
-                // The support is never emptied: if everything would leave, its weakest moving body
-                // stays (the last fill, or else the last exchange, which is undone as a pair).
-                int fills = incoming.Count - 1 - (displaced.Count - (heroFor != null ? 1 : 0));
-                if (!support.Members.Except(incoming).Concat(displaced).Any() && incoming.Count > 1)
-                {
-                    if (fills > 0)
-                        incoming.RemoveAt(fills);
-                    else
+                    var returning = variant == 0 ? ordinaryHeroes : new List<UnitData>();
+                    var retained = primary.Members.Except(returning).ToList();
+                    // Joined without displacing anyone, or — no room for the hero itself — exchanged
+                    // for the primary's weakest body.
+                    UnitData heroFor = null;
+                    var joined = new List<UnitData>(retained) { hero };
+                    if (ArmyData.ComputeCapacity(new[] { hero }.Concat(retained), false) < joined.Count)
                     {
-                        incoming.RemoveAt(incoming.Count - 1);
-                        displaced.RemoveAt(displaced.Count - 1);
+                        if (weakestHostBody == null)
+                            continue;
+                        heroFor = weakestHostBody;
+                        joined.Remove(heroFor);
                     }
+                    if (HeroRoleEvaluator.BestCommanderFor(joined, false, opposition,
+                            defenderHexDefenseBonus, prospects) != hero)
+                        continue;
+
+                    var incoming = new List<UnitData> { hero };
+                    var displaced = new List<UnitData>(returning);
+                    if (heroFor != null)
+                        displaced.Add(heroFor);
+                    var led = new List<UnitData> { hero };
+                    led.AddRange(retained.Where(u => u != heroFor));
+                    int room = System.Math.Max(0, ArmyData.ComputeCapacity(led, false) - led.Count);
+                    var fresh = new Queue<UnitData>(donorBodies);
+                    while (room > 0 && fresh.Count > 0)
+                    {
+                        incoming.Add(fresh.Dequeue());
+                        room--;
+                    }
+                    var weakest = new Queue<UnitData>(WeakestBodies(retained.Where(u => u != heroFor)));
+                    while (fresh.Count > 0 && weakest.Count > 0
+                        && GroundCombatDonorPolicy.UnitCombatValue(fresh.Peek())
+                            > GroundCombatDonorPolicy.UnitCombatValue(weakest.Peek()))
+                    {
+                        incoming.Add(fresh.Dequeue());
+                        displaced.Add(weakest.Dequeue());
+                    }
+
+                    // The support is never emptied: if everything would leave, its weakest moving body
+                    // stays (the last fill, or else the last exchange, which is undone as a pair).
+                    int fills = incoming.Count - 1
+                        - displaced.Count(AiArmyRoles.IsGroundBattleBody) + (heroFor != null ? 1 : 0);
+                    if (!support.Members.Except(incoming).Concat(displaced).Any() && incoming.Count > 1)
+                    {
+                        if (fills > 0)
+                            incoming.RemoveAt(fills);
+                        else
+                        {
+                            incoming.RemoveAt(incoming.Count - 1);
+                            displaced.RemoveAt(displaced.Count - 1);
+                        }
+                    }
+                    // Without its hero the support must still hold what it keeps and receives; a
+                    // support that cannot does not give this hero away.
+                    if (!SupportStaysLegal(support, incoming, displaced)
+                        && !(allowEmptySupport && support.Members.All(u => incoming.Contains(u))
+                            && displaced.Count == 0))
+                        continue;
+                    var final = new[] { hero }.Concat(primary.Members.Except(displaced))
+                        .Concat(incoming.Where(u => u != hero)).ToList();
+                    var withOldHeroes = final.Concat(returning).ToList();
+                    if (ArmyData.ComputeCurrentMovement(final) < ArmyData.ComputeCurrentMovement(withOldHeroes)
+                        || ArmyData.ComputeMaxMovement(final) < ArmyData.ComputeMaxMovement(withOldHeroes)
+                        || !ArmyActions.CanExchangeMembers(incoming, support, primary, hero,
+                            displaced, out _, requireChargeNow))
+                        continue;
+                    return new CommandHandoverPlan(hero, heroFor, incoming, displaced);
                 }
-                // Without its hero the support must still hold what it keeps and receives; a
-                // support that cannot does not give this hero away.
-                if (!SupportStaysLegal(support, incoming, displaced)
-                    && !(allowEmptySupport && support.Members.All(u => incoming.Contains(u))
-                        && displaced.Count == 0))
-                    continue;
-                return new CommandHandoverPlan(hero, heroFor, incoming, displaced);
             }
             return null;
         }
@@ -524,7 +554,7 @@ namespace Game.Ai.V2
             if (commandOpposition != null)
             {
                 CommandHandoverPlan c = CommandHandover(primary, support, commandOpposition,
-                    commandHexBonus, null, allowEmptySupport);
+                    commandHexBonus, null, allowEmptySupport, requireChargeNow);
                 if (c != null)
                 {
                     if (ArmyActions.CanExchangeMembers(c.Incoming, support, primary, c.Hero,
@@ -697,6 +727,7 @@ namespace Game.Ai.V2
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
                     RequireCoverage = GroundCombatAdmissionPolicy.AssaultCoverage(proposal),
                     AllowSameHexAssembly = !(proposal.Target is AttackMissionTarget local && local.IsIntermediateAssault),
+                    PreserveDepartureRoster = proposal.Target is AttackMissionTarget committed && committed.ForceCommitted,
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
                         && !attackTarget.ForceCommitted
                         ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,
@@ -976,5 +1007,6 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+
 
 

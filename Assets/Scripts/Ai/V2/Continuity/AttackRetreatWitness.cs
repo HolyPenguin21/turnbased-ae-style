@@ -30,7 +30,7 @@ namespace Game.Ai.V2
 
         internal static int OwnFingerprintOf(ArmySnapshot army) =>
             army == null ? 0 : AttackTacticalOpportunity.CombatFingerprint(army.Members) * 31
-                + (army.Commander.Present ? army.Commander.Initiative * 7 + army.Commander.Fate : 0);
+                + AttackTacticalOpportunity.CommanderFingerprint(army.Commander);
 
         // Does a withdrawal witness still forbid a fresh march on `target` with `army`? Re-asks the
         // shared estimator when either side's observed inputs changed; clears the witness when the
@@ -81,3 +81,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
