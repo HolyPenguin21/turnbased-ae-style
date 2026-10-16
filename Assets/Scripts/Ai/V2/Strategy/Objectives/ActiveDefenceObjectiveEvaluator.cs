@@ -782,7 +782,10 @@ namespace Game.Ai.V2
                     && HexGridMath.Distance(a.Hex, hex) <= a.CurrentMovement)
                     return true;
             }
-            ResourceBundle stock = snap.Self.Stockpile;
+            // The bank's spendable view (reservations excluded), never the raw stockpile.
+            if (snap.Economy == null)
+                return false;
+            ResourceBundle stock = snap.Economy.SpendableStockpile;
             return snap.Self.Hand != null && snap.Self.Hand.Any(c =>
                 c?.Definition != null && c.Definition.cardType == Game.Cards.CardType.Unit
                 && ResourceBundle.All.All(t => (c.EffectivePlayResourceCost?.Get(t) ?? 0) <= stock.Get(t)));
