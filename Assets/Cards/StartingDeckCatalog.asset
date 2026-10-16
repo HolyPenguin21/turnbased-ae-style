@@ -216,11 +216,11 @@ MonoBehaviour:
     - cardKey: concord.card.tessa-rourke
       count: 1
     - cardKey: concord.card.scout
-      count: 1
+      count: 2
     - cardKey: concord.card.rc-vehicle
       count: 1
     - cardKey: concord.card.watcher-drone
-      count: 1
+      count: 3
     - cardKey: concord.card.scrapper
       count: 1
     - cardKey: concord.card.crawler
@@ -457,7 +457,7 @@ MonoBehaviour:
     - cardKey: concord.card.rc-vehicle
       count: 1
     - cardKey: concord.card.watcher-drone
-      count: 1
+      count: 3
     - cardKey: concord.card.scrapper
       count: 1
     - cardKey: concord.card.light-infantry
@@ -638,9 +638,9 @@ MonoBehaviour:
     - cardKey: ashen.card.iri-vane
       count: 1
     - cardKey: ashen.card.hooded
-      count: 1
+      count: 3
     - cardKey: ashen.card.dust-runner
-      count: 1
+      count: 2
     - cardKey: ashen.card.tech-scrapper
       count: 1
     - cardKey: ashen.card.rad-hunter
@@ -889,7 +889,7 @@ MonoBehaviour:
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
     - cardKey: vessels.10.whisper-scout
-      count: 1
+      count: 3
     - cardKey: vessels.11.glass-runner
       count: 1
     - cardKey: vessels.12.salvage-drone
