@@ -205,8 +205,12 @@ namespace Game.UI
             int order = CollectionOrder(card);
             return card == null || order > 4 ? 5 : order;
         }
+        // Mutators are ordered by production Challenge difficulty (CardDefinition.fate) within their section.
+        private static bool IsMutator(CardDefinition card) => card != null && card.cardType == CardType.Equipment
+            && DeckRules.Category(card) == DeckCategory.Mutator;
         private static IOrderedEnumerable<T> OrderCards<T>(IEnumerable<T> rows, Func<T, CardDefinition> resolve)
             => rows.OrderBy(row => CollectionOrder(resolve(row)))
+                .ThenBy(row => IsMutator(resolve(row)) ? resolve(row).fate : 0)
                 .ThenBy(row => resolve(row)?.apCost ?? 0)
                 .ThenBy(row => resolve(row)?.deckPointCost ?? 0)
                 .ThenBy(row => resolve(row)?.displayName ?? "", StringComparer.Ordinal);

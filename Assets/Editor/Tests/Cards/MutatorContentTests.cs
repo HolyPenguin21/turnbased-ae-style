@@ -168,13 +168,13 @@ namespace Game.EditorTests
             string face = EquipmentCardText.CardFace(neural, null);
             Assert.That(face, Does.StartWith("Bio, Unit").And.Not.Contain("Initiative"));
             Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Is.EqualTo(face));
-            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Bio, Unit\n").And.Contain("Initiative 2"));
+            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Challenge: ").And.Contain("\nBio, Unit\n").And.Contain("Initiative: +2"));
             Assert.That(EquipmentCardText.StatBadgeValue(neural.equipment, EquipmentStat.Defense), Is.EqualTo("1"));
-            Assert.That(EquipmentCardText.Description(neural, null), Does.Contain("Defense 1"));
+            Assert.That(EquipmentCardText.Description(neural, null), Does.Contain("Defense: +1"));
             Assert.That(EquipmentCardText.Description(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);
-            Assert.That(description, Does.Contain("Defense 2").And.Contain("HP 1").And.Contain("Initiative -1"));
-            Assert.That(description, Does.Not.Contain("+").And.Not.Contain("=").And.Not.Contain("—"));
+            Assert.That(description, Does.Contain("Defense: +2").And.Contain("HP: +1").And.Contain("Initiative: -1"));
+            Assert.That(description, Does.Not.Contain("=").And.Not.Contain("—"));
         }
 
         [Test]

@@ -58,7 +58,9 @@ namespace Game.UI
                 if (change == null)
                     continue;
                 string name = StatName(change.stat);
-                parts.Add($"{name} {change.amount}");
+                // An override sets the value ("Attack: 4"); a delta is signed ("Attack: +1", "Attack: -1").
+                string value = change.isOverride || change.amount < 0 ? change.amount.ToString() : "+" + change.amount;
+                parts.Add($"{name}: {value}");
             }
             return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
         }
@@ -86,8 +88,10 @@ namespace Game.UI
         }
 
         // The result detail has no stat badges, so include the complete existing effect summary.
+        // The first line is the production difficulty (CardDefinition.fate, see its comment).
         public static string Description(CardDefinition equip, GameConfig config)
-            => equip == null ? string.Empty : Join(AttachmentTargets(equip), EffectSummary(equip, config));
+            => equip == null ? string.Empty
+                : Join($"Challenge: {equip.fate}", AttachmentTargets(equip), EffectSummary(equip, config));
 
         // The equipment's face once it is already attached to a host (shown over the host card
         // while its equipment button is held) — the same face as the free card (CardFace).

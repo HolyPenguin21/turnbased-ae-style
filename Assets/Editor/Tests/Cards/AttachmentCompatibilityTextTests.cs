@@ -21,7 +21,7 @@ namespace Game.EditorTests
             } };
             // The card face and the detail panel open with the same compatibility line.
             Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo(expected));
-            Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo(expected));
+            Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Challenge: 0\n" + expected));
         }
 
         [Test]
@@ -35,11 +35,11 @@ namespace Game.EditorTests
             foreach (var slot in new[] { AttachmentSlot.Equipment, AttachmentSlot.Mutator })
             {
                 card.attachmentSlot = slot;
-                Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Bio, Infantry, Unit"));
+                Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Challenge: 0\nBio, Infantry, Unit"));
             }
             card.equipment.hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Armored, UnitTypeTag.Vehicle };
             card.attachmentSlot = AttachmentSlot.Equipment;
-            Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Armored, Vehicle, Unit"));
+            Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Challenge: 0\nArmored, Vehicle, Unit"));
         }
 
         [Test]
@@ -72,7 +72,7 @@ namespace Game.EditorTests
             var card = new CardDefinition { attachmentSlot = AttachmentSlot.Mutator,
                 equipment = new EquipmentGrant { hostKinds = new List<EquipmentHostKind> { kind } } };
             Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo(expected));
-            Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo(expected));
+            Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo("Challenge: 0\n" + expected));
         }
 
         [Test]
