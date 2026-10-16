@@ -39,7 +39,13 @@ namespace Game.EditorTools
         [Test] public void NoSeparateCardCountLimit() { card.deckCopyLimit = 150; card.deckPointCost = 0; Assert.That(rules.Validate(Deck(150), _ => 150).IsValid, Is.True); }
         [Test] public void DuplicateRowsAreRejectedWithoutLosingData() { var deck = Deck(1); deck.mainCards.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 }); Assert.That(rules.Validate(deck, _ => 4).IsValid, Is.False); Assert.That(deck.mainCards.Count, Is.EqualTo(2)); }
         [Test] public void SystemCardsNeverBecomeRewardsOrDeckCards() { card.deckBuilderExcluded = true; Assert.That(rules.Cards(Faction.IronConcord), Is.Empty); Assert.That(rules.Validate(Deck(1), _ => 4).IsValid, Is.False); }
-        [Test] public void NeutralIsNotAnImplicitPermission() { catalog.faction = Faction.Neutral; card.faction = Faction.Neutral; Assert.That(rules.Cards(Faction.IronConcord), Is.Empty); }
+        [Test] public void NeutralCatalogIsSharedUnlessExcluded()
+        {
+            catalog.faction = Faction.Neutral; card.faction = Faction.Neutral;
+            foreach (var faction in DeckRules.PlayableFactions) Assert.That(rules.Cards(faction), Is.EqualTo(new[] { card }));
+            card.deckBuilderExcluded = true;
+            Assert.That(rules.Cards(Faction.IronConcord), Is.Empty);
+        }
         [Test] public void UnknownIdentityIsKeptInDeckButIgnoredInPlay()
         {
             var deck = Deck(1); deck.mainCards.Add(new DeckCardEntry { cardKey = "removed", count = 1 });
@@ -251,6 +257,40 @@ namespace Game.EditorTools
                 context.SetValue(null, previous);
             }
         }
+        [Test] public void ShowPreselectsRequestedFactionDeck()
+        {
+            var context = typeof(ProgressionContext).GetField("<Collection>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var previous = context.GetValue(null);
+            var dropdown = new GameObject("dropdown", typeof(RectTransform)).AddComponent<TMPro.TMP_Dropdown>();
+            var input = new GameObject("input", typeof(RectTransform)).AddComponent<TMPro.TMP_InputField>();
+            var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
+            var empty = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+            var canvas = new GameObject("canvas", typeof(RectTransform));
+            var cell = CollectionWindowBuilder.BuildCell(null); var row = CollectionWindowBuilder.BuildRow(null);
+            Game.UI.CollectionScreensUI screens = null;
+            try
+            {
+                var profile = new CollectionProfile();
+                profile.savedDecks.Add(new SavedDeck { deckId = "first", name = "First", faction = Faction.Ashen });
+                profile.savedDecks.Add(new SavedDeck { deckId = "picked", name = "Picked", faction = Faction.Ashen });
+                context.SetValue(null, new CollectionService(new DeckRules(empty, research), null, profile));
+                screens = CollectionWindowBuilder.BuildWindow(canvas.transform, cell, row, dropdown, input, null);
+                screens.Configure(config);
+                screens.Show(null, null, Faction.Ashen, "picked");
+                var root = (RectTransform)screens.transform;
+                Assert.That(root.Find("Deck/DeckName").GetComponent<TMPro.TMP_InputField>().text, Is.EqualTo("Picked"));
+                typeof(Game.UI.CollectionScreensUI).GetMethod("Close", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(screens, null);
+            }
+            finally
+            {
+                if (screens != null) Game.UI.UIFocusUtility.SetOverlay(screens, false);
+                UnityEngine.Object.DestroyImmediate(canvas);
+                UnityEngine.Object.DestroyImmediate(cell.gameObject); UnityEngine.Object.DestroyImmediate(row.gameObject);
+                UnityEngine.Object.DestroyImmediate(dropdown.gameObject); UnityEngine.Object.DestroyImmediate(input.gameObject);
+                UnityEngine.Object.DestroyImmediate(config); UnityEngine.Object.DestroyImmediate(empty);
+                context.SetValue(null, previous);
+            }
+        }
         [Test] public void ExistingCollectionWindowReceivesCompleteSkinWithoutLosingState()
         {
             var canvas = new GameObject("canvas", typeof(RectTransform));
@@ -304,11 +344,12 @@ namespace Game.EditorTools
                 UnityEngine.Object.DestroyImmediate(row.gameObject);
             }
         }
-        [Test] public void CollectionAndDeckRowsUseCategoryThenPerCopyCost()
+        [Test] public void CollectionAndDeckRowsUseCategoryThenApCost()
         {
-            var cheap = new CardDefinition { authoredKey = "cheap", displayName = "Zulu", cardType = CardType.Unit, deckPointCost = 1 };
-            var expensive = new CardDefinition { authoredKey = "expensive", displayName = "Alpha", cardType = CardType.Unit, deckPointCost = 3 };
-            var hero = new CardDefinition { authoredKey = "hero", displayName = "Hero", cardType = CardType.Hero, deckPointCost = 10 };
+            // AP decides inside a category even against deck points; points only break AP ties.
+            var cheap = new CardDefinition { authoredKey = "cheap", displayName = "Zulu", cardType = CardType.Unit, apCost = 1, deckPointCost = 5 };
+            var expensive = new CardDefinition { authoredKey = "expensive", displayName = "Alpha", cardType = CardType.Unit, apCost = 3, deckPointCost = 1 };
+            var hero = new CardDefinition { authoredKey = "hero", displayName = "Hero", cardType = CardType.Hero, apCost = 9, deckPointCost = 10 };
             var cards = new[] { expensive, cheap, hero };
             var method = typeof(Game.UI.CollectionScreensUI).GetMethod("OrderCards", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
             var collectionOrder = (IEnumerable<CardDefinition>)method.MakeGenericMethod(typeof(CardDefinition)).Invoke(null,
