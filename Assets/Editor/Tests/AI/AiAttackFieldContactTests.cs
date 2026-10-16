@@ -403,8 +403,8 @@ namespace Game.EditorTests
             Assert.That(GroundCombatAdmissionPolicy.RequiresCoverage(0.55f, null), Is.True);
             Assert.That(GroundCombatAdmissionPolicy.FreshStartWinChanceGate, Is.EqualTo(0.80f));
             Assert.That(GroundCombatAdmissionPolicy.ContinuationWinChanceFloor, Is.EqualTo(0.55f));
-            // main Base / Citadel: no floor
-            Assert.That(GroundCombatAdmissionPolicy.AttackCoverageGate, Is.Zero);
+            // main Base / Citadel (2026-10-16): the start gate; a committed march keeps the abort floor
+            Assert.That(GroundCombatAdmissionPolicy.AttackWinChanceGate, Is.EqualTo(0.55f));
         }
 
         [TestCase(0.39f, false)]
@@ -423,7 +423,11 @@ namespace Game.EditorTests
             Assert.That(GroundCombatAdmissionPolicy.AssaultCoverage(proposal), Is.False);
             var main = new MissionProposal { Kind = MissionKind.Attack, Target = new AttackMissionTarget
                 { Phase = AttackMissionPhase.Assault, Target = Main } };
-            Assert.That(GroundCombatAdmissionPolicy.AssaultGate(main, 7), Is.Zero);
+            Assert.That(GroundCombatAdmissionPolicy.AssaultGate(main, 7), Is.EqualTo(0.55f), "a fresh march starts at 0.55");
+            var committed = new MissionProposal { Kind = MissionKind.Attack, Target = new AttackMissionTarget
+                { Phase = AttackMissionPhase.Assault, Target = Main, ForceCommitted = true } };
+            Assert.That(GroundCombatAdmissionPolicy.AssaultGate(committed, 7), Is.EqualTo(0.40f),
+                "a committed march is re-planned at the abort floor");
             Assert.That(GroundCombatAdmissionPolicy.AssaultCoverage(main), Is.Null, "main target keeps its default");
         }
 

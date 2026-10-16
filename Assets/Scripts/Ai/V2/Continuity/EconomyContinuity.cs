@@ -880,6 +880,40 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // A Base project is admitted on a positive net TaskScore (DemandLayer.Economy). While its
+        // founding card is still in hand nothing irreversible is spent, so the SAME predicate is
+        // re-read on the refreshed value of the same site/card: once it no longer clears, the
+        // commitment ends instead of freezing the bank for a loss (playtest 2026-10-16: a Base
+        // admitted at +0.4 held every resource and the air recon card for three turns at -2..-7).
+        // Release path of a retarget (both lease owners) plus an ordinary retirement (builder
+        // recovery, loan repayment).
+        internal static bool TryReleaseUnprofitableBase(MissionIntentState state, PlayerSetupData player,
+            MissionIntent incumbent, float refreshedValue, int turn)
+        {
+            if (state == null || player == null || !IsLiveEconomyBuild(incumbent)
+                || incumbent.Economy.Kind != EconomyTaskKind.FoundBase
+                || refreshedValue > AiConfigV2.allocatorSliceEpsilon
+                || (incumbent.LastProgressTurn == turn && incumbent.StepsMovedTotal > 0))
+                return false; // an actor that already advanced this turn finishes its step first
+            if (!state.TryGet(incumbent.IntentKey, out MissionIntent owned)
+                || !object.ReferenceEquals(owned, incumbent))
+                return false;
+            string owner = EconomyMissionPlanner.OwnerKey(incumbent.LastAttemptKey);
+            string targetOwner = InfrastructureFulfillment.EconomyReservationOwner(new AxisDemand
+            {
+                Capability = CapabilityKind.EconomicExpansionBase,
+                TargetHex = incumbent.Economy.TargetHex,
+            });
+            MissionLeaseBook.ReleaseByOwner(player, turn, owner);
+            if (targetOwner != owner)
+                MissionLeaseBook.ReleaseByOwner(player, turn, targetOwner);
+            RecordEndedOutboundBuilder(state, incumbent);
+            RetireEconomyIntent(state, incumbent, null, turn);
+            AiDebugLog.Write($"[AI][V2][Economy] release {incumbent.IntentKey} — refreshed Base value "
+                + $"{refreshedValue:0.##} no longer clears admission; card stays in hand, bank freed");
+            return true;
+        }
+
         internal static void BeginEconomyBuilderRecovery(PlayerSetupData player,
             WorldSnapshot snap, AxisDemand completedDemand, int builderArmyId, int turn)
         {

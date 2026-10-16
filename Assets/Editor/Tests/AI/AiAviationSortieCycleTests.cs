@@ -1619,6 +1619,61 @@ namespace Game.EditorTests
             }
         }
 
+        // Playtest 2026-10-16: a Mosquito (0 endurance) that Assignment stopped driving (NO_CANDIDATE)
+        // kept its Outbound phase, was never a recovery, took the unlanded damage twice and was lost.
+        // The turn-end recall turns it home; a wing that may legally hold the night is left alone.
+        // Engine-bound (ArmyController is a MonoBehaviour, HexMap a component): Unity editor only.
+        [Test]
+        public void TurnEndRecall_TurnsAStrandedOutboundReconWingHome_AndLeavesASafeHoldAlone()
+        {
+            HexMap map = Line(8, out GameObject mapObject);
+            var actors = new List<GameObject>();
+            AviationObligationStallRegistry.Clear();
+            ReconPatrolStateRegistry.ClearAll();
+            ReconAirSortieRegistry.ClearAll();
+            try
+            {
+                Airfield(new HexCoord(0, 0), capacity: 4);
+                var ctx = new AiTurnContext { TurnNumber = 3, Map = map };
+                ArmyData Recon(HexCoord hex, int endurance)
+                {
+                    UnitData plane = Plane(1, 1);
+                    plane.TurnsWithoutRefuel = endurance;
+                    ArmyData wing = Wing(hex, plane);
+                    var actor = new GameObject("recon-actor"); actors.Add(actor);
+                    wing.Controller = actor.AddComponent<ArmyController>();
+                    ReconPatrolStateRegistry.GetOrCreate(_owner, wing.Id, hex, new HexCoord(8, 0),
+                        ReconMode.Refresh, ctx.TurnNumber);
+                    ReconAirSortieRegistry.GetOrCreate(_owner, wing.Id, new HexCoord(0, 0)).Phase =
+                        ReconAirPhase.Outbound;
+                    return wing;
+                }
+                ArmyData stranded = Recon(new HexCoord(2, 0), endurance: 0);
+                ArmyData safeHold = Recon(new HexCoord(3, 0), endurance: 2);
+                Assert.That(ReconAirExecutor.FindMandatoryRecoveryActors(_owner, ctx), Is.Empty,
+                    "baseline: an Outbound wing is no recovery");
+
+                List<ArmyData> owed = ReconAirExecutor.RecallUnsafeReconWings(_owner, ctx);
+                Assert.That(owed, Is.EqualTo(new[] { stranded }));
+                Assert.That(ReconAirSortieRegistry.TryGet(_owner, stranded.Id, out ReconAirSortieState s)
+                    && s.Phase == ReconAirPhase.Return, Is.True);
+                Assert.That(ReconAirSortieRegistry.TryGet(_owner, safeHold.Id, out ReconAirSortieState h)
+                    && h.Phase == ReconAirPhase.Outbound, Is.True, "a legal night aloft is not recalled");
+
+                AviationObligationStallRegistry.MarkStalled(_owner, ctx.TurnNumber, stranded.Id);
+                Assert.That(ReconAirExecutor.RecallUnsafeReconWings(_owner, ctx), Is.Empty,
+                    "a recall that made no progress stops for the turn");
+            }
+            finally
+            {
+                AviationObligationStallRegistry.Clear();
+                ReconPatrolStateRegistry.ClearAll();
+                ReconAirSortieRegistry.ClearAll();
+                foreach (var actor in actors) Object.DestroyImmediate(actor);
+                Object.DestroyImmediate(mapObject);
+            }
+        }
+
         private UnitData Plane(int ap, int energy) => new UnitData
         {
             Owner = _owner, IsAviation = true, ActivationApCost = ap, LaunchEnergyCost = energy,

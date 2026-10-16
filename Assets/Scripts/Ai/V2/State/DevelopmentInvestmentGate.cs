@@ -57,8 +57,8 @@ namespace Game.Ai.V2
             foreach (ResourceType t in ResourceBundle.All)
             {
                 int previous = consecutive && s.Streak.TryGetValue(t, out int p) ? p : 0;
-                s.Streak[t] = s.Surplus.Get(t) >= AiConfigV2.devInvestmentSurplusThreshold
-                    ? previous + 1 : 0;
+                float? cardNeed = snap.Economy != null ? snap.Economy.DeckResourceNeed.Get(t) : (float?)null;
+                s.Streak[t] = CountsAsSurplus(s.Surplus.Get(t), cardNeed) ? previous + 1 : 0;
             }
             s.LastTurn = snap.TurnNumber;
             AiDebugLog.Write($"[AI][V2][Development][Gate] turn={snap.TurnNumber} "
@@ -68,6 +68,15 @@ namespace Game.Ai.V2
                     $"{Abbrev(t)}={s.Surplus.Get(t):0.00}/{s.Streak[t]}"
                     + (s.Streak[t] >= AiConfigV2.devInvestmentSurplusTurns ? ":OPEN" : ":closed"))));
         }
+
+        // 2026-10-16 — the window protects the hand and the deck: a resource neither still needs
+        // (EconomySnapshot.DeckResourceNeed 0) is theirs no longer, so it counts as surplus even
+        // while Development or aviation keep spending it. Playtest: deck empty, every Energy unit
+        // went to equipment and sorties, so the 1-Energy mutators never saw an open window.
+        // `cardNeed` null = unknown (no economy snapshot): only the headroom decides.
+        internal static bool CountsAsSurplus(float headroom, float? cardNeed) =>
+            headroom >= AiConfigV2.devInvestmentSurplusThreshold
+            || (cardNeed.HasValue && cardNeed.Value <= 0f);
 
         // Is this concrete spend inside the window? Only resources with a positive cost count.
         internal static bool IsOpenFor(PlayerSetupData player, int turn, ResourceCost cost) =>

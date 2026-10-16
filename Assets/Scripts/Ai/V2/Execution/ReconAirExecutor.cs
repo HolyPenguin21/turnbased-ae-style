@@ -252,6 +252,32 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
+        // End-of-turn safety net, the recon counterpart of GroundCombatAirSupport.RecallUnsafeStrikes.
+        // An airborne recon wing that Assignment no longer drives (NO_CANDIDATE: no useful or safe
+        // forward step) keeps its Outbound phase, so FindMandatoryRecoveryActors never sees it and it
+        // takes the unlanded-end damage twice — a 0-endurance plane is lost aloft. Once the turn's
+        // loop is over, every such wing that cannot safely end the turn here is turned home through
+        // the sortie lifecycle; the wings now owed a recovery come from the one must-recover rule.
+        internal static List<ArmyData> RecallUnsafeReconWings(PlayerSetupData player, AiTurnContext ctx)
+        {
+            if (player == null || ctx?.Map == null)
+                return new List<ArmyData>();
+            foreach (ArmyData wing in ArmyRegistry.AllForOwner(player)
+                .Where(a => ReconAirCapacityPolicy.IsAirborneReconWing(player, a)
+                    && AirSortieRegistry.ForArmy(player, a) == null
+                    && !AiAirSortiePlanner.CanEndTurnHereAndRecover(a, ctx.Map, player))
+                .OrderBy(a => a.Id).ToList())
+            {
+                ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(player, wing.Id, wing.Hex);
+                if (sortie.Phase == ReconAirPhase.Return)
+                    continue;
+                ReconAirSortieLifecycle.RecallForTurnEnd(sortie, "turn_end_recall: cannot safely end the turn aloft");
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Recall] actor=#{wing.Id} at ({wing.Hex.Q},{wing.Hex.R}) "
+                    + $"mp={wing.CurrentMovement} — not driven this turn and cannot end it aloft; turning home");
+            }
+            return FindMandatoryRecoveryActors(player, ctx);
+        }
+
         // Execute at most one action from an already assembled air-recon plan. Planning stays
         // in AirReconPlanner; launch/actor validation and result construction stay in this executor.
         internal static IEnumerator ExecutePlanStep(AirReconPlan plan, PlayerSetupData player,

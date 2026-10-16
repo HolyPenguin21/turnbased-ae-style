@@ -82,6 +82,52 @@ namespace Game.EditorTests
             Assert.That(assessment.RequiredPower, Is.EqualTo(80f));
         }
 
+        // 2026-10-16 (user decision) — attack by opportunity: below the 80% floor a host still marches
+        // when the estimator gives it the fresh-raid confidence against the KNOWN defenders
+        // (playtest: 29.4 power against a 12.1 Base was held for a 32.7 floor). A host that would
+        // lose stays below the bar; an empty site never waives it (the strict-boundary test above).
+        [TestCase(true)]
+        [TestCase(false)]
+        public void BelowTheFloor_ReadyOnlyByADecisiveWinAgainstKnownDefenders(bool strongHost)
+        {
+            var body = strongHost
+                ? new WorthIt.DefenderProfile(4f, false, null, 8f, 12f, 3)
+                : new WorthIt.DefenderProfile(0f, false, null, 1f, 1f, 1);
+            ArmySnapshot host = Actor(7, Home, power: 30f);
+            host.Members = new[] { body, body, body };
+            AttackPreparationAssessment result = AttackPreparationReadiness.Assess(host, 100f,
+                DefendedSite(), 0f);
+            Assert.That(AttackForceReadiness.ForceReady(30f, 100f), Is.False, "30 is below the 80 floor");
+            Assert.That(result.PowerReady, Is.EqualTo(strongHost), $"win {result.ProjectedWinChance:0.00}");
+            Assert.That(result.Reason, Is.EqualTo(strongHost ? "ready_by_opportunity" : "fist_below_bar"));
+        }
+
+        // 2026-10-16 (user decision) — a garrison is a donor of the strike fist: a host below the
+        // floor stages where a garrison can spare bodies above its floor, then marches as before.
+        [TestCase(4, true)]
+        [TestCase(2, false)]
+        public void StagingBase_HostBelowTheFloorPicksTheGarrisonThatCanSpareBodies(int garrisonBodies, bool spare)
+        {
+            var target = new HexCoord(6, 0);
+            ArmySnapshot host = Actor(7, Away, power: 30f);
+            host.ReachableOwnBaseHexes = new[] { Home, Away };
+            var body = new WorthIt.DefenderProfile(2f, false, null, 4f, 6f, 2);
+            var garrison = new ArmySnapshot
+            {
+                ArmyId = 3, Owner = _us, Hex = Home, IsGarrison = true, MemberCount = garrisonBodies,
+                Members = Enumerable.Repeat(body, garrisonBodies).ToArray(),
+                NonHeroSpareable = Enumerable.Repeat(true, garrisonBodies).ToArray(),
+            };
+            WorldSnapshot snap = Snap(host, garrison);
+            snap.Self.BaseHexes = new[] { Home, Away };
+            Assert.That(AttackPreparationPolicy.SpareGarrisonPower(snap, Home) > 0f, Is.EqualTo(spare));
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, target, host),
+                Is.EqualTo(spare ? Home : Away), "nearest to the target unless a garrison can donate");
+            host.EffectiveArmyPower = 90f;
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, target, host), Is.EqualTo(Away),
+                "a fist already above the floor stages on the Base nearest to the target");
+        }
+
         [Test]
         public void PreparationRereadsDynamicPeakWithoutKeepingAnOldReadyResult()
         {
@@ -91,27 +137,22 @@ namespace Game.EditorTests
             Assert.That(AttackPreparationReadiness.Assess(host, 90f, EmptySite(), 0f).Ready, Is.True);
         }
 
-        // Coverage gates the march only while AiConfigV2.attackRequiresDefenderCoverage is on
-        // (2026-10-04 test behavior: off).
+        // 2026-10-16 (user decision, test behavior removed) — coverage is required again and the
+        // march starts at attackStartMinWinChance: a fist above the power bar is ready only when it
+        // can damage every known defender and wins the start gate.
         [TestCase(true)]
         [TestCase(false)]
-        public void AbovePowerBarWithoutDefenderCoverage_IsReadyOnlyWhenCoverageIsWaived(bool required)
+        public void AbovePowerBar_ReadyOnlyWhenTheFistCoversTheDefenders(bool canDamage)
         {
-            bool previous = AiConfigV2.attackRequiresDefenderCoverage;
-            AiConfigV2.attackRequiresDefenderCoverage = required;
-            try
-            {
-                AttackPreparationAssessment result = AttackPreparationReadiness.Assess(Actor(7, Home),
-                    100f, DefendedSite(), 0f);
-                Assert.That(result.PowerReady, Is.True);
-                Assert.That(result.CoversAllDefenders, Is.False);
-                Assert.That(result.Ready, Is.EqualTo(!required));
-                Assert.That(result.Reason, Is.EqualTo(required ? "coverage_missing" : "ready"));
-            }
-            finally
-            {
-                AiConfigV2.attackRequiresDefenderCoverage = previous;
-            }
+            ArmySnapshot host = Actor(7, Home);
+            var body = new WorthIt.DefenderProfile(4f, false, null, canDamage ? 8f : 1f, 12f, 3);
+            host.Members = new[] { body, body, body };
+            AttackPreparationAssessment result = AttackPreparationReadiness.Assess(host, 100f,
+                DefendedSite(), 0f);
+            Assert.That(result.PowerReady, Is.True);
+            Assert.That(result.CoversAllDefenders, Is.EqualTo(canDamage));
+            Assert.That(result.Ready, Is.EqualTo(canDamage));
+            Assert.That(result.Reason, Is.EqualTo(canDamage ? "ready" : "coverage_missing"));
         }
 
         [Test]

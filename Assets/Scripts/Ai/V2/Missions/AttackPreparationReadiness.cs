@@ -15,12 +15,14 @@ namespace Game.Ai.V2
         internal bool Ready => CapabilityReady && StructuralActor;
 
         internal AttackPreparationAssessment(ArmySnapshot host, float peak,
-            bool feasible, float win, bool cover)
+            bool feasible, float win, bool cover,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = null)
         {
             HostAvailable = host != null;
             CurrentPower = host?.EffectiveArmyPower ?? 0f;
             RequiredPower = AttackForceReadiness.RequiredPower(peak);
-            PowerReady = AttackForceReadiness.ForceReady(CurrentPower, peak);
+            // Below the 80% floor the host is still ready by opportunity (AttackForceReadiness).
+            PowerReady = AttackForceReadiness.ForceReady(CurrentPower, peak, win, opposition);
             StructuralActor = GroundCombatActorEligibility.IsStructuralActor(host);
             CombatFeasible = feasible;
             ProjectedWinChance = win;
@@ -28,7 +30,8 @@ namespace Game.Ai.V2
             // Coverage is named only where it actually gated the fight (a test switch may waive it).
             Reason = !HostAvailable ? "no_primary" : !PowerReady ? "fist_below_bar"
                 : !feasible ? (!cover ? "coverage_missing" : "win_below_gate")
-                : !StructuralActor ? "actor_ineligible" : "ready";
+                : !StructuralActor ? "actor_ineligible"
+                : AttackForceReadiness.ForceReady(CurrentPower, peak) ? "ready" : "ready_by_opportunity";
         }
     }
 
@@ -44,9 +47,9 @@ namespace Game.Ai.V2
                 return new AttackPreparationAssessment(null, currentPeak, false, 0f, false);
             bool clears = GroundCombatFeasibility.Clears(
                 host.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(), host.Commander,
-                opposition, GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus,
+                opposition, GroundCombatAdmissionPolicy.AttackWinChanceGate, hexBonus,
                 out float win, out bool cover);
-            return new AttackPreparationAssessment(host, currentPeak, clears, win, cover);
+            return new AttackPreparationAssessment(host, currentPeak, clears, win, cover, opposition);
         }
     }
 }

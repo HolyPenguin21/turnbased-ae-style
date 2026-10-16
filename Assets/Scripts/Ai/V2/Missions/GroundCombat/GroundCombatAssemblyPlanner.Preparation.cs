@@ -27,7 +27,7 @@ namespace Game.Ai.V2
                 return GroundCombatAssemblyPlan.Infeasible("preparation host is not an own ground field container");
             return AssembleSameHex(snap, host.Owner, host,
                 opposition ?? System.Array.Empty<WorthIt.DefendingArmy>(), excludeArmyIds,
-                GroundCombatAdmissionPolicy.AttackCoverageGate, defenderHexDefenseBonus, 0f,
+                GroundCombatAdmissionPolicy.AttackWinChanceGate, defenderHexDefenseBonus, 0f,
                 preparation: true);
         }
 
@@ -180,10 +180,11 @@ namespace Game.Ai.V2
             if (!preserveDepartureRoster)
                 return PlanDepartureRoster(snap, host, members, transfers, opposition,
                     gate, hexBonus, minimumPower, requireCoverage);
-            if ((minimumPower <= 0f || AiPower.EffectiveArmyPower(members) > minimumPower)
-                && GroundCombatFeasibility.Clears(members.Select(WorthIt.FromLiveUnit).ToList(),
+            if (GroundCombatFeasibility.Clears(members.Select(WorthIt.FromLiveUnit).ToList(),
                     WorthIt.SideCommander.Of(members), opposition, gate, hexBonus,
-                    out float win, out bool cover, requireCoverage))
+                    out float win, out bool cover, requireCoverage)
+                && AttackForceReadiness.ClearsFloor(AiPower.EffectiveArmyPower(members),
+                    minimumPower, win, opposition))
             {
                 GroundCombatAssemblyPlan plan = FinishAssembly(host, transfers, win, cover, gate, members);
                 plan.RequireCoverage = requireCoverage;

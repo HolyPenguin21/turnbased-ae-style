@@ -58,6 +58,17 @@ namespace Game.Ai.V2
                 ? (safeEnds > 0 ? ReconAirPhase.Outbound : ReconAirPhase.Return)
                 : phase;
 
+        // Turn-end recall: a wing nothing drives any more this turn and that cannot legally end
+        // the turn aloft turns home, so the one must-recover rule (ReconAirExecutor.
+        // FindMandatoryRecoveryActors, Phase == Return) flies it before the fuel damage lands.
+        internal static void RecallForTurnEnd(ReconAirSortieState sortie, string reason)
+        {
+            if (sortie == null)
+                return;
+            sortie.Phase = ReconAirPhase.Return;
+            sortie.LastDecisionReason = reason;
+        }
+
         // Mark this AI turn as processed for the sortie (Hold-reopen-once semantics). Executor-owned.
         internal static bool BeginTurn(ReconAirSortieState sortie, int turn) => sortie.BeginTurn(turn);
 

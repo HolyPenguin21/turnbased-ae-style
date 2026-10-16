@@ -305,6 +305,25 @@ namespace Game.Ai.V2
                     yield return ctx.WaitAtObserverActionBoundary();
                 }
 
+                // The same safety net for recon wings left aloft without a driving mission: one
+                // recovery step at a time through the mandatory-aviation adapter; a step that makes
+                // no progress stalls the wing for the turn, so the loop always ends.
+                List<ArmyData> reconRecalls = ReconAirExecutor.RecallUnsafeReconWings(player, ctx);
+                for (int guard = 0; reconRecalls.Count > 0 && guard < 64; guard++)
+                {
+                    ArmyData wing = reconRecalls[0];
+                    WorldAnalysis.StepObservationStamp beforeRecall =
+                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
+                    bool recallChanged = false;
+                    yield return MandatoryAviationStep.Execute(MandatoryAviationKind.Recovery, wing,
+                        player, root, ctx, frame.Snapshot, v => recallChanged = v);
+                    frame.ObserveSettled(beforeRecall, null);
+                    AviationObligations.RecordSettledStep(player, ctx, wing.Id, recallChanged);
+                    ReservationInvariants.CheckBoundary(player, root, ctx, $"recon air recall #{wing.Id}");
+                    yield return ctx.WaitAtObserverActionBoundary();
+                    reconRecalls = ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
+                }
+
                 // Cold Phase A and the following typed admissions may have created or
                 // re-bound actors AFTER management captured postCommitments. Housekeeping
                 // must see the latest canonical ownership, never the pre-cold snapshot.

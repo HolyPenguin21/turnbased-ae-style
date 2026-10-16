@@ -149,6 +149,20 @@ namespace Game.EditorTests
             SurplusFraction = 1f,
         };
 
+        // Playtest 2026-10-16: deck empty, Energy spent every turn by equipment and sorties, so the
+        // 1-Energy mutators never saw an open window. The window protects the hand and the deck: a
+        // resource they no longer need counts as surplus whatever stock is left; the idle-stock
+        // headroom itself (InvestmentSurplusByType, read by the radar and ForceNeed) is unchanged.
+        [TestCase(0.5f, 0f, true)]
+        [TestCase(0.5f, 2f, false)]
+        [TestCase(0.5f, null, false)]
+        [TestCase(0.6f, 5f, true)]
+        public void InvestmentWindow_CountsAResourceTheHandAndDeckNoLongerNeedAsSurplus(
+            float headroom, float? cardNeed, bool surplus)
+        {
+            Assert.That(DevelopmentInvestmentGate.CountsAsSurplus(headroom, cardNeed), Is.EqualTo(surplus));
+        }
+
         [Test]
         public void ProductionNeverCreatesANeed_NoMilitaryWitnessMeansNoDevelopment()
         {

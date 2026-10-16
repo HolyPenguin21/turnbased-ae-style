@@ -147,6 +147,28 @@ namespace Game.Ai.V2
                 ?? Enumerable.Empty<MissionIntent>()).ToList();
             List<MissionIntent> protectedActiveExtractions = ProtectedActiveBuilds(EconomyTaskKind.BuildExtraction);
             List<MissionIntent> protectedActiveBases = ProtectedActiveBuilds(EconomyTaskKind.FoundBase);
+            // Same stage and safety as the retarget below (card still in hand, Economy's view
+            // complete): a committed Base whose refreshed value no longer clears admission is
+            // released by Continuity instead of protected. No same-site demand: Continuity owns it.
+            if (economyAxisAuthoritative)
+            {
+                foreach (MissionIntent committedBase in protectedActiveBases.ToList())
+                {
+                    if (committedBase.Economy.BuildCard == null
+                        || !hand.Hand.Contains(committedBase.Economy.BuildCard))
+                        continue;
+                    var committed = new[] { committedBase };
+                    List<AxisDemand> sameSite = demands.Where(d => d != null
+                        && d.Capability == CapabilityKind.EconomicExpansionBase
+                        && EconomyContinuity.HasEconomyBuildCommitment(committed, d)).ToList();
+                    if (sameSite.Count == 0
+                        || !EconomyContinuity.TryReleaseUnprofitableBase(intentState, player,
+                            committedBase, sameSite.Max(d => d.Value), ctx.TurnNumber))
+                        continue;
+                    protectedActiveBases.Remove(committedBase);
+                    demands = demands.Where(d => !sameSite.Contains(d)).ToList();
+                }
+            }
             // The FoundBase retarget/hysteresis switch below still evaluates against exactly one
             // (the highest-ranked) active Base commitment — deliberately unchanged scope: retargeting
             // several concurrent Base builds against each other's hysteresis margin is a separate,

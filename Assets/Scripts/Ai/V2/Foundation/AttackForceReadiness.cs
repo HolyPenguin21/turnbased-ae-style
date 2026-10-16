@@ -64,5 +64,24 @@ namespace Game.Ai.V2
         internal static float RequiredPower(float currentDeckPeakPower) =>
             0.80f * currentDeckPeakPower;
 
+        // 2026-10-16 (user decision) — attack by opportunity. The 80% floor waits for the strongest
+        // fist the deck can field; a force below it still marches when the shared estimator gives
+        // it the fresh-raid confidence (raidMinViableWinChance) against THIS target's KNOWN
+        // defenders. An empty opposition (a location-only Citadel, an unscouted site) is no
+        // estimate (Clears reports win 1), so it never waives the floor. Every floor check of the
+        // Attack lane reads this: assembly, gather, departure roster, preparation readiness and
+        // the assault transaction answer the same question the same way.
+        internal static bool ClearsFloor(float power, float minimumPower, float winChance,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            minimumPower <= 0f || power > minimumPower || IsOpportunity(winChance, opposition);
+
+        internal static bool ForceReady(float attackArmyPower, float currentDeckPeakPower,
+            float winChance, IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            ForceReady(attackArmyPower, currentDeckPeakPower) || IsOpportunity(winChance, opposition);
+
+        internal static bool IsOpportunity(float winChance, IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            winChance >= AiConfigV2.raidMinViableWinChance
+            && opposition != null && opposition.Any(a => a.Units.Any(u => u.IsGroundCombatant));
+
     }
 }

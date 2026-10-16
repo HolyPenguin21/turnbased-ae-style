@@ -227,7 +227,8 @@ namespace Game.Ai.V2
             bool coverageOk = GroundCombatFeasibility.Clears(bodies, commander, opposition, winChanceGate,
                 defenderHexDefenseBonus, out float win, out bool cover);
             float power = AiPower.EffectiveArmyPower(roster);
-            bool clears = coverageOk && (minimumArmyPower <= 0f || power > minimumArmyPower);
+            bool clears = coverageOk
+                && AttackForceReadiness.ClearsFloor(power, minimumArmyPower, win, opposition);
             var chosen = new List<GatherSupport>();
             // Strike force step 5 — gather to the PEAK, not to the bare gate: below the gate any
             // improving support is taken (best win gain per AP first); past it a support is worth
@@ -311,7 +312,8 @@ namespace Game.Ai.V2
                 power = AiPower.EffectiveArmyPower(roster);
                 coverageOk = GroundCombatFeasibility.Clears(bodies, commander, opposition,
                     winChanceGate, defenderHexDefenseBonus, out win, out cover);
-                clears = coverageOk && (minimumArmyPower <= 0f || power > minimumArmyPower);
+                clears = coverageOk
+                    && AttackForceReadiness.ClearsFloor(power, minimumArmyPower, win, opposition);
             }
 
             if (heroDonor != null && !chosen.Contains(heroDonor))

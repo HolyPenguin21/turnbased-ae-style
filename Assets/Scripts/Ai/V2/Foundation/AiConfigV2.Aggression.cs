@@ -100,16 +100,20 @@ namespace Game.Ai.V2
         // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
         // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).
         public const float attackGatherMinWinGain = 0.05f;
-        // 2026-10-04 (user decision, TEST BEHAVIOR) — Attack does not require known defender
-        // coverage (WorthIt.CanDamageAll), neither before nor during the assault: a fist may march
-        // on a site holding a defender none of its bodies can damage. Only Attack's no-threshold
-        // gate (GroundCombatAdmissionPolicy.AttackCoverageGate) reads it; Raid / ActiveDefence keep
-        // coverage. Static, not const, so tests can exercise both rules.
-        public static bool attackRequiresDefenderCoverage = false;
+        // 2026-10-16 (user decision) — the 2026-10-04 test behavior (Attack ignored known defender
+        // coverage, WorthIt.CanDamageAll) is removed: an Attack, like Raid / ActiveDefence, needs
+        // every known defender damageable. Static, not const, so tests can exercise both rules.
+        public static bool attackRequiresDefenderCoverage = true;
+        // 2026-10-16 (user decision) — the win chance an Attack needs to START its march on the main
+        // target (GroundCombatAdmissionPolicy.AttackWinChanceGate). Higher than the abort floor
+        // attackLocalMinWinChance on purpose: a march that started at 0.55 is not called back by
+        // Monte-Carlo noise, and an army that withdrew below 0.40 does not restart on the same facts.
+        // Equal to the Raid continuation floor (GroundCombatAdmissionPolicy.ContinuationWinChanceFloor).
+        public const float attackStartMinWinChance = 0.55f;
         // 2026-10-08 (user decision) — the win chance a VOLUNTARY local fight of an Attack army must
         // reach: intercepting a known field army, taking an optional intermediate Base, or fighting
         // a contact that stands on the path. The main Base / Citadel keeps no floor
-        // (GroundCombatAdmissionPolicy.AttackCoverageGate); independent Raid / ActiveDefence keep
+        // (GroundCombatAdmissionPolicy.AttackWinChanceGate); independent Raid / ActiveDefence keep
         // their own 0.80 / 0.55. A relevant, significant hostile army below this chance sends the
         // marching Attack home (AttackMissionPhase.RecoveryReturn).
         public const float attackLocalMinWinChance = 0.40f;

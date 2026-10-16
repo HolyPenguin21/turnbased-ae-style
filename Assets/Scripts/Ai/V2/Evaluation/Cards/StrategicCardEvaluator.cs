@@ -303,7 +303,13 @@ namespace Game.Ai.V2
             System.Func<ResourceType, float> spendable = root == null ? null
                 : (System.Func<ResourceType, float>)(type =>
                     StrategicSpendability.SpendableAmount(player, root, ctx, type));
-            return marginalBenefit - ResourceCost(plan, snap, spendable, player);
+            // 2026-10-16 (user decision) — Research/Production is the designed resource sink: once
+            // the turn's AP has no other use, the upgrade pays its AP at today's marginal value
+            // (the same ramp and floor recurring AP effects use), so idle AP stops vetoing it.
+            // Resources are already priced by scarcity (ActionPrice.Scarcity).
+            float apScale = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f,
+                EffectEvaluationContext.ResolveMarginalApUtility(snap, null));
+            return marginalBenefit - ResourceCost(plan, snap, spendable, player, apScale);
         }
 
         // -----------------------------------------------------------------------------------------
@@ -767,11 +773,12 @@ namespace Game.Ai.V2
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
         private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
+            float apScale = 1f)
         {
             if (plan == null) return 0f;
             return ResourceCost(plan.ApCost + plan.DeferredAttachmentAp, plan.ResCost,
-                       plan.Generation, snap, spendableResource, player)
+                       plan.Generation, snap, spendableResource, player, apScale)
                    + ChainStepPenalty(plan.Kind);
         }
 
@@ -780,15 +787,16 @@ namespace Game.Ai.V2
         // Price each outcome before weighting: resource preservation can be nonlinear.
         private static float ResourceCost(float successfulAp, ResourceCost successfulResources,
             GenerationStep generation, WorldSnapshot snap,
-            System.Func<ResourceType, float> spendableResource, PlayerSetupData player)
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
+            float apScale = 1f)
         {
-            float successfulCost = ActionPrice.ToCardScore(ActionPrice.Ap(successfulAp))
+            float successfulCost = ActionPrice.ToCardScore(ActionPrice.Ap(successfulAp) * apScale)
                 + StrategicResourceCostValue(successfulResources, snap, spendableResource, player);
             if (generation == null)
                 return successfulCost;
             float chance = Mathf.Clamp01(generation.SuccessChance);
             float attemptCost = ActionPrice.ToCardScore(
-                    ResearchProductionSystem.AttemptApCost(generation.CardDef))
+                    ResearchProductionSystem.AttemptApCost(generation.CardDef) * apScale)
                 + StrategicResourceCostValue(generation.GenerationResourceCost, snap,
                     spendableResource, player);
             return chance * successfulCost + (1f - chance) * attemptCost;

@@ -118,14 +118,16 @@ namespace Game.Ai.V2
         // authorising a clearly hopeless attack. Fresh raids never see this floor.
         internal const float ContinuationWinChanceFloor = 0.55f;
 
-        // Attack imposes no probability threshold; whether it checks known defender coverage is
-        // RequiresCoverage's answer (AiConfigV2.attackRequiresDefenderCoverage).
-        internal const float AttackCoverageGate = 0f;
+        // 2026-10-16 (user decision, test behavior removed) — the win chance an Attack needs to
+        // START its march on the main target (AiConfigV2.attackStartMinWinChance). Once marching,
+        // AttackMarchPolicy decides each turn whether to continue, withdraw (below the abort floor
+        // attackLocalMinWinChance) or turn home to save a threatened stronghold.
+        internal static float AttackWinChanceGate => AiConfigV2.attackStartMinWinChance;
 
         // Does a fight admitted at `gate` require every known defender to be damageable? Always
         // for Raid / ActiveDefence; for Attack's no-threshold gate only while the test switch is on.
         internal static bool RequiresCoverage(float gate) =>
-            gate > AttackCoverageGate || AiConfigV2.attackRequiresDefenderCoverage;
+            gate > AttackWinChanceGate || AiConfigV2.attackRequiresDefenderCoverage;
 
         // 2026-10-08 — the win chance and the coverage rule are two independent facts of an Attack
         // fight. A voluntary fight against a field army keeps coverage (every known defender must
@@ -150,10 +152,14 @@ namespace Game.Ai.V2
 
         // The gate an assigned assault actor is (re)planned at: Attack's floor; otherwise the
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
+        // A committed Attack march is re-planned at the abort floor (AttackMarchPolicy decides it
+        // each turn); only its start needs AttackWinChanceGate.
         internal static float AssaultGate(MissionProposal proposal, int actorId) =>
             proposal != null && proposal.Kind == MissionKind.Attack
-                ? proposal.Target is AttackMissionTarget attack && attack.IsIntermediateAssault
-                    ? AttackIntermediateBaseWinChanceGate : AttackCoverageGate
+                ? proposal.Target is AttackMissionTarget attack
+                    ? attack.IsIntermediateAssault ? AttackIntermediateBaseWinChanceGate
+                        : attack.ForceCommitted ? AttackLocalWinChanceGate : AttackWinChanceGate
+                    : AttackWinChanceGate
             : PinnedOrFreshGate(proposal != null && proposal.FromDurableIntent
                 && proposal.DurableFundingTier == CommitmentTier.Hard
                 && proposal.PreferredMoverArmyId == actorId);
@@ -207,6 +213,10 @@ namespace Game.Ai.V2
         // Attack fresh admission only. The shared assembly kernel compares the actual legal
         // projected roster; Raid and ActiveDefence leave this at zero.
         public float MinimumArmyPower;
+        // Attack only (2026-10-16): the last defender of a threatened stronghold may be the actor
+        // when the fight is decisive and the stronghold stays covered
+        // (ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered).
+        public bool AllowDecisivePinnedDefender;
         // Overrides GroundCombatAdmissionPolicy.RequiresCoverage(WinChanceGate) for a request whose
         // ACTION, not its gate value, decides (an optional intermediate Base at 0.40 needs none).
         // Honoured by the exact and assembled departure-roster checks alike.
@@ -249,8 +259,9 @@ namespace Game.Ai.V2
                     snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.RequireCoverage,
                     request.MinimumArmyPower, request.PreserveDepartureRoster);
-                if (exact.Feasible && (request.MinimumArmyPower <= 0f
-                    || exact.ProjectedPower > request.MinimumArmyPower))
+                if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
+                    request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
+                    && DecisiveIfPinned(snap, request, a, exact, opposition))
                     return exact;
             }
 
@@ -268,7 +279,7 @@ namespace Game.Ai.V2
                     snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.MinimumArmyPower, request.RequireCoverage,
                     request.PreserveDepartureRoster);
-                if (assembled.Feasible)
+                if (assembled.Feasible && DecisiveIfPinned(snap, request, a, assembled, opposition))
                     return assembled;
             }
 
@@ -295,8 +306,9 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(snap, opposition,
                     a.ArmyId, request.WinChanceGate, request.DefenderHexDefenseBonus,
                     request.RequireCoverage, request.MinimumArmyPower, request.PreserveDepartureRoster);
-                if (exact.Feasible && (request.MinimumArmyPower <= 0f
-                    || exact.ProjectedPower > request.MinimumArmyPower))
+                if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
+                    request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
+                    && DecisiveIfPinned(snap, request, a, exact, opposition))
                     ids.Add(a.ArmyId);
             }
             if (!request.AllowSameHexAssembly)
@@ -309,9 +321,10 @@ namespace Game.Ai.V2
             {
                 if (excluded.Contains(a.ArmyId))
                     continue;
-                if (TryAssembleForHost(snap, opposition, a, excluded, request.WinChanceGate,
-                        request.DefenderHexDefenseBonus, request.MinimumArmyPower, request.RequireCoverage,
-                        request.PreserveDepartureRoster).Feasible)
+                GroundCombatAssemblyPlan assembledHost = TryAssembleForHost(snap, opposition, a,
+                    excluded, request.WinChanceGate, request.DefenderHexDefenseBonus,
+                    request.MinimumArmyPower, request.RequireCoverage, request.PreserveDepartureRoster);
+                if (assembledHost.Feasible && DecisiveIfPinned(snap, request, a, assembledHost, opposition))
                 {
                     ids.Add(a.ArmyId);
                     excluded.Add(a.ArmyId);
@@ -327,9 +340,20 @@ namespace Game.Ai.V2
         private static List<ArmySnapshot> OrderedEligible(WorldSnapshot snap,
             GroundCombatAssemblyRequest request)
         {
-            List<ArmySnapshot> eligible = GroundCombatActorEligibility
+            IEnumerable<ArmySnapshot> ready = GroundCombatActorEligibility
                 .EligibleReadyArmies(snap, request.ExcludedArmyIds,
-                    allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f)
+                    allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f);
+            // A pinned stronghold defender joins the candidates only for a request that allows a
+            // decisive departure and only while its stronghold stays covered; Plan then accepts it
+            // only for a decisive fight (DecisiveIfPinned).
+            if (request.AllowDecisivePinnedDefender)
+                ready = ready.Concat(snap.Self.Armies.Where(a => a != null && a.IsStructuralRaidActor
+                    && a.CurrentMovement > 0
+                    && (request.ExcludedArmyIds == null || !request.ExcludedArmyIds.Contains(a.ArmyId))
+                    && ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)
+                    && ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered(snap, a,
+                        request.ExcludedArmyIds)));
+            List<ArmySnapshot> eligible = ready
                 .Where(a => Admissible(a, request))
                 .OrderByDescending(a => a.EffectiveArmyPower)
                 .ToList();
@@ -349,6 +373,15 @@ namespace Game.Ai.V2
         // `sparableSupportBodies` that join the primary; `displacedIndex` — the index into
         // `primaryBodies` the swap sends back to the support (-1 for a fill). PlanGather prices
         // the handoff (GroundCombatReinforcement.ProjectedHandoffApCost) on exactly these units.
+
+        // A pinned stronghold defender reaches Plan only through AllowDecisivePinnedDefender; its
+        // plan stands only for a decisive fight against known defenders.
+        // Without the flag no pinned army is a candidate at all, so nothing is re-measured.
+        private static bool DecisiveIfPinned(WorldSnapshot snap, GroundCombatAssemblyRequest request,
+            ArmySnapshot a, GroundCombatAssemblyPlan plan, IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            !request.AllowDecisivePinnedDefender
+            || !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)
+            || AttackForceReadiness.IsOpportunity(plan.ProjectedWinChance, opposition);
 
         private static bool Admissible(ArmySnapshot a, GroundCombatAssemblyRequest r)
         {

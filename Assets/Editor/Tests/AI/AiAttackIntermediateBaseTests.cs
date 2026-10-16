@@ -76,7 +76,8 @@ namespace Game.EditorTests
             var proposal = Proposal(local: true);
             Assert.That(GroundCombatAdmissionPolicy.AssaultGate(proposal, 7), Is.EqualTo(GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate));
             Assert.That(GroundCombatAdmissionPolicy.AssaultCoverage(proposal), Is.False);
-            Assert.That(GroundCombatAdmissionPolicy.AssaultGate(Proposal(local: false), 7), Is.EqualTo(GroundCombatAdmissionPolicy.AttackCoverageGate));
+            // A committed main march is re-planned at the abort floor (2026-10-16, AttackMarchPolicy).
+            Assert.That(GroundCombatAdmissionPolicy.AssaultGate(Proposal(local: false), 7), Is.EqualTo(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate));
         }
 
         [TestCase(6, 2, 4, 3, 3, true)]

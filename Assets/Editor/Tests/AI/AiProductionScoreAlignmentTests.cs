@@ -174,9 +174,12 @@ namespace Game.EditorTests
                 SuccessChance = opportunity.SuccessChance };
             plan.GeneratedEquipmentDef = equipment;
             float resourceCost = StrategicCardEvaluator.StrategicResourceCostValue(plan.ResCost, snapshot);
+            // A Development upgrade pays its AP at today's marginal value (2026-10-16).
+            float apScale = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f,
+                EffectEvaluationContext.ResolveMarginalApUtility(snapshot, null));
             // No recipient => no WorthIt matchup witness: value = delta x persistence, applied ONCE.
             float expected = 0.75f * 2f * AiConfigV2.equipmentUpgradePersistence
-                - resourceCost - ActionPrice.ToCardScore(3f)
+                - resourceCost - ActionPrice.ToCardScore(3f * apScale)
                 - AiConfigV2.stratChainGenerationStepPenalty
                 - AiConfigV2.stratChainAttachStepPenalty;
             float actual = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
@@ -184,6 +187,42 @@ namespace Game.EditorTests
             Assert.That(actual, Is.EqualTo(expected).Within(0.0001f));
             Assert.That(actual, Is.LessThan(expected + 0.0001f),
                 "Development's lifetime persistence multiplier must not be applied a second time in card competition");
+        }
+
+        // Playtest 2026-10-16: with the deck empty and 15 AP idle every Research mutator stayed
+        // "play -0.5 < hold 0" — the full AP price vetoed the designed resource sink.
+        [Test]
+        public void DevelopmentUpgrade_IdleApIsCheaperThanApThatIsTheBindingConstraint()
+        {
+            var equipment = new CardDefinition { cardType = CardType.Equipment,
+                apCost = 3, resourceCost = new ResourceCost { energy = 1 } };
+            var opportunity = new DevelopmentOpportunity { SuccessChance = 0.5f, ExpectedGain = 1f,
+                Card = equipment };
+            var plan = new MaterializationPlan
+            {
+                Kind = MaterializationChainKind.GenerateAttachUpgrade, ApCost = 4f,
+                ResCost = new ResourceCost { energy = 1 }, GeneratedEquipmentDef = equipment,
+                Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true,
+                    SuccessChance = 0.5f },
+            };
+            WorldSnapshot Turn(float witnessedApDemand) => new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Stockpile = new ResourceBundle { Energy = 20f },
+                    PerTurnIncome = new ResourceBundle { Energy = 3f },
+                    Hand = Array.Empty<CardData>(), Deck = Array.Empty<CardDefinition>(),
+                    ApEconomy = new ApActionEconomySnapshot
+                        { BaseActionPoints = 20, WitnessedApDemand = witnessedApDemand },
+                },
+            };
+            float idle = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(opportunity, plan,
+                Turn(2f), null, null, null);
+            float busy = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(opportunity, plan,
+                Turn(30f), null, null, null);
+            Assert.That(EffectEvaluationContext.ResolveMarginalApUtility(Turn(2f), null), Is.EqualTo(0f));
+            Assert.That(EffectEvaluationContext.ResolveMarginalApUtility(Turn(30f), null), Is.EqualTo(1f));
+            Assert.That(idle, Is.GreaterThan(busy));
         }
 
         [Test]
@@ -391,7 +430,13 @@ namespace Game.EditorTests
             generation.SuccessChance = op.SuccessChance;
             var upgrade = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(op, generation, DesireAxis.Development);
             float ready = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(op, upgrade, snap, null, null, null);
-            Assert.That(ready, Is.EqualTo(-(attemptCost + ActionPrice.ToCardScore(0.5f) + penalties)).Within(1e-5f),
+            // The READY upgrade pays its AP at today's marginal value (2026-10-16); the card-play
+            // chains above keep the full AP price.
+            float apScale = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f,
+                EffectEvaluationContext.ResolveMarginalApUtility(snap, null));
+            float readyAttempt = ActionPrice.ToCardScore(1f * apScale)
+                + StrategicCardEvaluator.StrategicResourceCostValue(equipment.resourceCost, snap);
+            Assert.That(ready, Is.EqualTo(-(readyAttempt + ActionPrice.ToCardScore(0.5f * apScale) + penalties)).Within(1e-5f),
                 "READY funds creation only, but prices the same success-contingent attachment");
             Assert.That(upgrade.ApCost, Is.EqualTo(1f));
             Assert.That(upgrade.DeferredAttachmentAp, Is.EqualTo(1f));

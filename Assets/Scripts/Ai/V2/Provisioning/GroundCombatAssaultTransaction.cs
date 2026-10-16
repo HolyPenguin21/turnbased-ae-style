@@ -96,7 +96,12 @@ namespace Game.Ai.V2
             // off a threatened own Citadel/Base.
             ArmySnapshot assigned = session.Snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
                 && a.ArmyId == actorId);
-            if (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(session.Snapshot, assigned))
+            // 2026-10-16 — an Attack may take it for a decisive fight while the stronghold stays
+            // covered (Plan below re-checks the fight: GroundCombatAssemblyPlanner.DecisiveIfPinned).
+            bool attackLane = proposal.Kind == MissionKind.Attack;
+            if (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(session.Snapshot, assigned)
+                && !(attackLane && ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered(
+                    session.Snapshot, assigned, excluded)))
             {
                 failure = ProvisionFailure.MoverContended(
                     $"{lane} {key} assigned actor #{actorId} is the last defender of a threatened stronghold");
@@ -122,6 +127,7 @@ namespace Game.Ai.V2
                         && !attackTarget.ForceCommitted
                         ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
+                    AllowDecisivePinnedDefender = attackLane,
                 });
             if (!plan.Feasible)
             {
@@ -254,7 +260,7 @@ namespace Game.Ai.V2
             plan.CoversAllDefenders = departureCover;
             if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
                 && !AttackForceReadiness.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
-                    session.Snapshot.Self.AttackPeak))
+                    session.Snapshot.Self.AttackPeak, departureWin, opposition))
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible("fresh attack force fell below the current deck peak")));
 

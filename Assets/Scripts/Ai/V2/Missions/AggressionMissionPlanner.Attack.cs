@@ -148,7 +148,8 @@ namespace Game.Ai.V2
                         Opposition = opposition,
                         WinChanceGate = intermediate != null
                             ? GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate
-                            : GroundCombatAdmissionPolicy.AttackCoverageGate,
+                            : assaultStarted ? GroundCombatAdmissionPolicy.AttackLocalWinChanceGate
+                            : GroundCombatAdmissionPolicy.AttackWinChanceGate,
                         RequireCoverage = intermediate != null
                             ? GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage
                             : (bool?)null,
@@ -156,6 +157,7 @@ namespace Game.Ai.V2
                         PreserveDepartureRoster = assaultStarted,
                         MinimumArmyPower = assaultStarted
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
+                        AllowDecisivePinnedDefender = true,
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
@@ -208,6 +210,18 @@ namespace Game.Ai.V2
                             + "reason=hostile_contact_below_threshold; not started, nothing proposed");
                         if (incumbent != null)
                             assaultWhy[incumbent.IntentKey] = "attack_assault_hostile_contact_on_path";
+                        continue;
+                    }
+                    // 2026-10-16 — nor while an own stronghold falls without this army
+                    // (AttackMarchPolicy: the defence of home outranks a fresh march).
+                    AttackMarchAssessment home = AttackMarchPolicy.Assess(snap, objective.Target, actor);
+                    if (home.Verdict == AttackMarchVerdict.DefendHome)
+                    {
+                        AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#defend-home",
+                            $"[AI][V2][Attack][March] decision=HOLD target={objective.Target.DiagnosticLabel} "
+                            + $"actor=#{actor.ArmyId} reason={home.Reason}; not started, nothing proposed");
+                        if (incumbent != null)
+                            assaultWhy[incumbent.IntentKey] = "attack_assault_home_needs_the_army";
                         continue;
                     }
                 }
