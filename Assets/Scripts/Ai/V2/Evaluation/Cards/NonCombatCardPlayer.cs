@@ -409,25 +409,9 @@ namespace Game.Ai.V2
 
             foreach (HexCoord airfield in airfields)
             {
-                int coverage;
-                string witness;
-                TaskScore service = uncoveredAirJobs > 0
-                    ? BestAirfieldServiceTaskScore(
-                        snap, player, ctx, def, airfield, objectives, out coverage, out witness)
-                    : NoMarginalAirService(out coverage, out witness);
-                string use = coverage > 0 ? "recon" : null;
-                if (judgeUse && strikeTargets != null)
-                    foreach (CombatAirSupportRequest target in strikeTargets)
-                    {
-                        var combat = GroundCombatAirSupport.ProjectService(snap, player, ctx.Map,
-                            projected, airfield, target);
-                        if (!combat.HasValue || combat.Value.Score.Value <= AiConfigV2.allocatorSliceEpsilon
-                            || (use != null && combat.Value.Score.Value <= service.Value)) continue;
-                        service = combat.Value.Score;
-                        coverage = 1;
-                        witness = $"{target.Key}; first strike in {combat.Value.FirstStrikeEta} turn(s)";
-                        use = $"strike@({target.Target.Q},{target.Target.R})";
-                    }
+                TaskScore service = AirfieldServiceTaskScore(snap, player, ctx, projected, airfield,
+                    objectives, strikeTargets, uncoveredAirJobs > 0,
+                    out int coverage, out string witness, out string use);
                 if (judgeUse && use == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
@@ -463,12 +447,42 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // The ONE per-airfield service of an aircraft group: the best runnable Recon objective
+        // (when Recon still has an uncovered air job) or the best uncovered ground-combat strike
+        // it could fly from this airfield. A card's deployment and a stored aircraft's rebase
+        // (AviationRebasePlanner) both read it, so a carrier moving with an army is valued as the
+        // airfield to act from by both lanes. `use`: "recon", "strike@(q,r)" or null (no service).
+        internal static TaskScore AirfieldServiceTaskScore(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, IReadOnlyList<UnitData> projected, HexCoord airfield,
+            IReadOnlyList<ReconObjective> objectives, IReadOnlyList<CombatAirSupportRequest> strikeTargets,
+            bool reconUseful, out int coverage, out string witness, out string use)
+        {
+            TaskScore service = reconUseful
+                ? BestAirfieldServiceTaskScore(snap, player, ctx, projected, airfield, objectives,
+                    out coverage, out witness)
+                : NoMarginalAirService(out coverage, out witness);
+            use = coverage > 0 ? "recon" : null;
+            foreach (CombatAirSupportRequest target in strikeTargets
+                ?? (IReadOnlyList<CombatAirSupportRequest>)System.Array.Empty<CombatAirSupportRequest>())
+            {
+                var combat = GroundCombatAirSupport.ProjectService(snap, player, ctx.Map,
+                    projected, airfield, target);
+                if (!combat.HasValue || combat.Value.Score.Value <= AiConfigV2.allocatorSliceEpsilon
+                    || (use != null && combat.Value.Score.Value <= service.Value)) continue;
+                service = combat.Value.Score;
+                coverage = 1;
+                witness = $"{target.Key}; first strike in {combat.Value.FirstStrikeEta} turn(s)";
+                use = $"strike@({target.Target.Q},{target.Target.R})";
+            }
+            return service;
+        }
+
         // Ground-combat targets a new aircraft would actually serve: the targets of EXISTING tasks
         // (Attack in Assault, weak Raid, ActiveDefence threats) that still want air support and are
         // not covered by a free formed wing — the same demand wing formation reads
         // (AviationRebasePlanner.CombatSupportTargets). Never an arbitrary sighting outside a
         // task, and never a Hex Event guard: aviation does not interact with events at all.
-        private static List<CombatAirSupportRequest> KnownStrikeTargets(WorldSnapshot snap,
+        internal static List<CombatAirSupportRequest> KnownStrikeTargets(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ReconObjective> objectives)
         {
