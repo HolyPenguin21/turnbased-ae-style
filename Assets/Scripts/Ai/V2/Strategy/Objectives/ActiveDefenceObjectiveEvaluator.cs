@@ -759,6 +759,35 @@ namespace Game.Ai.V2
             return false;
         }
 
+        // 2026-10-16 (user decision) — the last defender of a threatened stronghold may leave for a
+        // DECISIVE attack (AttackForceReadiness.IsOpportunity) when the stronghold stays covered:
+        // another own body remains on the hex (a scout counts), an own free ground army reaches it
+        // this turn, or the hand holds a unit the stock can pay to place into the garrison now.
+        // Without any cover the defender stays (IsPinnedStrongholdDefender).
+        internal static bool StrongholdStaysCovered(WorldSnapshot snap, ArmySnapshot leaving,
+            ISet<int> unavailable = null)
+        {
+            if (leaving == null || snap?.Self?.Armies == null)
+                return false;
+            HexCoord hex = leaving.Hex;
+            foreach (ArmySnapshot a in snap.Self.Armies)
+            {
+                if (a == null || a.ArmyId == leaving.ArmyId || a.IsAir || a.IsAirfield || a.IsPrison
+                    || a.MemberCount <= 0)
+                    continue;
+                if (a.Hex.Equals(hex))
+                    return true;
+                if (!a.IsGarrison && a.CurrentMovement > 0
+                    && (unavailable == null || !unavailable.Contains(a.ArmyId))
+                    && HexGridMath.Distance(a.Hex, hex) <= a.CurrentMovement)
+                    return true;
+            }
+            ResourceBundle stock = snap.Self.Stockpile;
+            return snap.Self.Hand != null && snap.Self.Hand.Any(c =>
+                c?.Definition != null && c.Definition.cardType == Game.Cards.CardType.Unit
+                && ResourceBundle.All.All(t => (c.EffectivePlayResourceCost?.Get(t) ?? 0) <= stock.Get(t)));
+        }
+
         // Reserve only actors in a concrete imminent response, not every nearby army.
         // This is an admission exclusion for optional raids, never an actor lease or spend.
         internal static HashSet<int> ImminentResponseArmyIds(WorldSnapshot snap, ISet<int> committed,

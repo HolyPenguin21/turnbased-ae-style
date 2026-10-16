@@ -156,6 +156,7 @@ namespace Game.Ai.V2
                         PreserveDepartureRoster = assaultStarted,
                         MinimumArmyPower = assaultStarted
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
+                        AllowDecisivePinnedDefender = true,
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
