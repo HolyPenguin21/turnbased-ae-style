@@ -1763,53 +1763,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 37
-    authoredKey: concord.card.ark-carrier
-    deckPointCost: 7
-    deckCopyLimit: 2
-    deckBuilderExcluded: 0
-    displayName: Ark Carrier
-    art: {fileID: 21300000, guid: a5ca0c911325d174dab1b024c6c66b75, type: 3}
-    detailArt: {fileID: 21300000, guid: a6c5297f1394fd74a905a3249eddebfd, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 7
-    resourceCost:
-      human: 0
-      energy: 3
-      materials: 4
-      tech: 3
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 4
-    range: 2
-    hitPoints: 8
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 2
-    unitTypeTags: 01000000040000000200000007000000
-    grantedAbilities:
-    - Airfield
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 38
     authoredKey: concord.card.arsenal
     deckPointCost: 5
     deckCopyLimit: 3
@@ -1855,7 +1808,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 39
+  - id: 38
     authoredKey: concord.card.atlas
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1901,7 +1854,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 40
+  - id: 39
     authoredKey: concord.card.barracuda
     deckPointCost: 4
     deckCopyLimit: 3
@@ -1948,7 +1901,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 41
+  - id: 40
     authoredKey: concord.card.boatswain
     deckPointCost: 6
     deckCopyLimit: 2
@@ -1958,7 +1911,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: da74be26b32db0f4cbaeab0bde0ee1c8, type: 3}
     faction: 0
     cardType: 1
-    apCost: 6
+    apCost: 5
     resourceCost:
       human: 0
       energy: 2
@@ -1995,7 +1948,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 42
+  - id: 41
     authoredKey: concord.card.breakwater-crab
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2042,7 +1995,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 43
+  - id: 42
     authoredKey: concord.card.claimjumper
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2088,7 +2041,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 44
+  - id: 43
     authoredKey: concord.card.duelist
     deckPointCost: 4
     deckCopyLimit: 3
@@ -2134,7 +2087,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 45
+  - id: 44
     authoredKey: concord.card.dynamo
     deckPointCost: 4
     deckCopyLimit: 3
@@ -2181,7 +2134,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 46
+  - id: 45
     authoredKey: concord.card.grapeshot
     deckPointCost: 3
     deckCopyLimit: 4
@@ -2227,7 +2180,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 47
+  - id: 46
     authoredKey: concord.card.gun-commander
     deckPointCost: 5
     deckCopyLimit: 2
@@ -2274,7 +2227,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 48
+  - id: 47
     authoredKey: concord.card.helios
     deckPointCost: 4
     deckCopyLimit: 3
@@ -2321,7 +2274,101 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
+  - id: 48
+    authoredKey: concord.card.sky-tug
+    deckPointCost: 5
+    deckCopyLimit: 3
+    deckBuilderExcluded: 0
+    displayName: Sky Tug
+    art: {fileID: 21300000, guid: 67a259b1ca39a554cb541dc83c572c82, type: 3}
+    detailArt: {fileID: 21300000, guid: b3b55db2858649942916d714113af3a4, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 5
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 1
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 49
+    authoredKey: concord.card.storm-petrel
+    deckPointCost: 6
+    deckCopyLimit: 2
+    deckBuilderExcluded: 0
+    displayName: Storm Petrel
+    art: {fileID: 21300000, guid: abce28351077622499efadc46c1e11da, type: 3}
+    detailArt: {fileID: 21300000, guid: a7c0be14342f97348851c4b27fb3a1eb, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 10
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 3
+    range: 2
+    hitPoints: 4
+    initiative: 3
+    isAviation: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 50
     authoredKey: concord.card.jackal
     deckPointCost: 2
     deckCopyLimit: 4
@@ -2367,7 +2414,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 50
+  - id: 51
     authoredKey: concord.card.mantis
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2413,7 +2460,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 51
+  - id: 52
     authoredKey: concord.card.mosquito
     deckPointCost: 2
     deckCopyLimit: 4
@@ -2445,52 +2492,6 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 52
-    authoredKey: concord.card.needle-rail-tank
-    deckPointCost: 5
-    deckCopyLimit: 3
-    deckBuilderExcluded: 0
-    displayName: Needle Rail Tank
-    art: {fileID: 21300000, guid: 4cef28c8c815341478095106d2f2c10a, type: 3}
-    detailArt: {fileID: 21300000, guid: de93d96cc52e23a4882db2a69e2be488, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 2
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 2
-    range: 3
-    hitPoints: 4
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000400000002000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2599,6 +2600,52 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 55
+    authoredKey: concord.card.needle-rail-tank
+    deckPointCost: 5
+    deckCopyLimit: 3
+    deckBuilderExcluded: 0
+    displayName: Needle Rail Tank
+    art: {fileID: 21300000, guid: 4cef28c8c815341478095106d2f2c10a, type: 3}
+    detailArt: {fileID: 21300000, guid: de93d96cc52e23a4882db2a69e2be488, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 6
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 2
+    range: 3
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000400000002000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 56
     authoredKey: concord.card.sandnought
     deckPointCost: 6
     deckCopyLimit: 2
@@ -2644,101 +2691,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 56
-    authoredKey: concord.card.shoal-destroyer
-    deckPointCost: 10
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Shoal Destroyer
-    art: {fileID: 21300000, guid: 8a536aaf14407fb49a0296becbca331a, type: 3}
-    detailArt: {fileID: 21300000, guid: a090b2628767d7548927873dd31740ad, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 8
-    resourceCost:
-      human: 0
-      energy: 3
-      materials: 5
-      tech: 3
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 2
-    commandRating: 0
-    fate: 0
-    attack: 8
-    defenseRating: 3
-    range: 3
-    hitPoints: 10
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 010000000400000002000000
-    grantedAbilities:
-    - AA
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
   - id: 57
-    authoredKey: concord.card.sky-tug
-    deckPointCost: 5
-    deckCopyLimit: 3
-    deckBuilderExcluded: 0
-    displayName: Sky Tug
-    art: {fileID: 21300000, guid: 67a259b1ca39a554cb541dc83c572c82, type: 3}
-    detailArt: {fileID: 21300000, guid: b3b55db2858649942916d714113af3a4, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 5
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 3
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 1
-    launchEnergyCost: 2
-    turnsWithoutRefuel: 1
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities:
-    - AA
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 58
     authoredKey: concord.card.skydiver
     deckPointCost: 7
     deckCopyLimit: 2
@@ -2784,38 +2737,85 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 59
-    authoredKey: concord.card.storm-petrel
-    deckPointCost: 6
+  - id: 58
+    authoredKey: concord.card.ark-carrier
+    deckPointCost: 7
     deckCopyLimit: 2
     deckBuilderExcluded: 0
-    displayName: Storm Petrel
-    art: {fileID: 21300000, guid: abce28351077622499efadc46c1e11da, type: 3}
-    detailArt: {fileID: 21300000, guid: a7c0be14342f97348851c4b27fb3a1eb, type: 3}
+    displayName: Ark Carrier
+    art: {fileID: 21300000, guid: a5ca0c911325d174dab1b024c6c66b75, type: 3}
+    detailArt: {fileID: 21300000, guid: a6c5297f1394fd74a905a3249eddebfd, type: 3}
     faction: 0
     cardType: 1
-    apCost: 6
+    apCost: 8
     resourceCost:
       human: 0
-      energy: 2
-      materials: 1
+      energy: 3
+      materials: 4
       tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 10
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 6
+    attack: 4
     defenseRating: 3
     range: 2
-    hitPoints: 4
-    initiative: 3
-    isAviation: 1
-    launchEnergyCost: 2
+    hitPoints: 8
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 2
+    unitTypeTags: 01000000040000000200000007000000
+    grantedAbilities:
+    - Airfield
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 59
+    authoredKey: concord.card.shoal-destroyer
+    deckPointCost: 10
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Shoal Destroyer
+    art: {fileID: 21300000, guid: 8a536aaf14407fb49a0296becbca331a, type: 3}
+    detailArt: {fileID: 21300000, guid: a090b2628767d7548927873dd31740ad, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 9
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 5
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 2
+    commandRating: 0
+    fate: 0
+    attack: 8
+    defenseRating: 4
+    range: 3
+    hitPoints: 10
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
+    unitTypeTags: 010000000400000002000000
     grantedAbilities:
     - AA
     resourceYield:
