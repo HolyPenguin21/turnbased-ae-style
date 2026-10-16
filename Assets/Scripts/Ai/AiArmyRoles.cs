@@ -288,7 +288,26 @@ namespace Game.Ai
         // candidates one-by-one against the unchanged source could approve several removals that
         // collectively cross the protected garrison floor.
         public static bool CanSpareGarrisonMembers(PlayerSetupData player, ArmyData source,
-            IEnumerable<UnitData> units, bool allowCitadelEmergency = false)
+            IEnumerable<UnitData> units, bool allowCitadelEmergency = false) =>
+            GarrisonSpareCheck(player, source, allowCitadelEmergency)(units);
+
+        // The same answer as CanSpareGarrisonMembers for any departing set from `source`, with the
+        // garrison's floor and spareable bodies measured once, on the first set that removes a
+        // body: a planner testing several sets against the SAME unchanged source pays the power
+        // read (whole hand and deck, known threats, kept-set search) once. Discard it as soon as
+        // `source`, the player's force or the known enemies may have changed.
+        public static Func<IEnumerable<UnitData>, bool> GarrisonSpareCheck(PlayerSetupData player,
+            ArmyData source, bool allowCitadelEmergency = false)
+        {
+            List<UnitData> bodies = null;
+            HashSet<int> spare = null;
+            return units => CanSpareGarrisonMembers(player, source, units, allowCitadelEmergency,
+                ref bodies, ref spare);
+        }
+
+        private static bool CanSpareGarrisonMembers(PlayerSetupData player, ArmyData source,
+            IEnumerable<UnitData> units, bool allowCitadelEmergency,
+            ref List<UnitData> bodies, ref HashSet<int> spare)
         {
             if (player == null || source == null || units == null)
                 return false;
@@ -323,11 +342,16 @@ namespace Game.Ai
             // 2026-09-30 (user decision) — a power floor, not a headcount: the garrison keeps a share
             // of the player's whole ground force, at least one body, and among the legal choices
             // the strongest bodies go (SpareableBodies).
-            List<UnitData> bodies = source.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
-            HashSet<int> spare = SpareableBodies(bodies,
-                set => AiPower.EffectiveArmyPower(set.ToList()),
-                GarrisonDefenceFloor(player, source.Hex, isCitadel));
-            return removedBodies.All(u => spare.Contains(bodies.IndexOf(u)));
+            if (spare == null)
+            {
+                bodies = source.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
+                spare = SpareableBodies(bodies,
+                    set => AiPower.EffectiveArmyPower(set.ToList()),
+                    GarrisonDefenceFloor(player, source.Hex, isCitadel));
+            }
+            List<UnitData> b = bodies;
+            HashSet<int> s = spare;
+            return removedBodies.All(u => s.Contains(b.IndexOf(u)));
         }
 
         // The garrison defence floor on the player's live ground force (map + AI hand + remaining

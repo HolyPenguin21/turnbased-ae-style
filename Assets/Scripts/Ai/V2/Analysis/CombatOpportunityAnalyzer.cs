@@ -93,12 +93,17 @@ namespace Game.Ai.V2
         //    · the RaiseTheRots summon when a pool unit can raise it.
         //  Future random rewards are not assumed. No catalog, or a summoner whose summon template
         //  is unknown, means no upper bound: nothing is proven. Cached per snapshot (a new world
-        //  state is a new WorldSnapshot).
+        //  state is a new WorldSnapshot). Built in two stages: the distinct hosts first, the
+        //  equipment expansion (hosts x grants, the costly part) only for a fight the hosts miss.
         private sealed class PoolBox
         {
             public List<WorthIt.DefenderProfile> Attackers;
             public bool Bounded;
             public string Summary;
+            // Stage-two input (ExpandKnownPool); Expanded once Attackers is the whole pool.
+            public List<CardDefinition> Grants;
+            public HashSet<int> OccupiedMutators;
+            public bool Expanded;
         }
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot, PoolBox>
             PoolCache = new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot, PoolBox>();
@@ -116,6 +121,20 @@ namespace Game.Ai.V2
             });
             if (!pool.Bounded)
                 return false;
+            if (!pool.Expanded)
+            {
+                // Coverage is monotone in the attacker set: hosts that already cover prove the
+                // whole pool covers, so the expansion is never needed for this fight.
+                bool hostsCover;
+                using (new Game.Core.ProfileScope("AI/Pool.HostsCover"))
+                    hostsCover = WorthIt.CanDamageAll(pool.Attackers, opposition, hexBonus);
+                if (hostsCover)
+                    return false;
+                using (new Game.Core.ProfileScope("AI/Pool.Expand"))
+                    ExpandKnownPool(pool);
+                if (!pool.Bounded)
+                    return false;
+            }
             bool covered;
             using (new Game.Core.ProfileScope("AI/Pool.CanDamageAll"))
                 covered = WorthIt.CanDamageAll(pool.Attackers, opposition, hexBonus);
@@ -206,6 +225,25 @@ namespace Game.Ai.V2
             attackers = uniqueHosts.Select(h => h.Host).ToList();
             occupiedMutators = new HashSet<int>(uniqueHosts.Select((h, i) => (h.Occupied, i))
                 .Where(x => x.Occupied).Select(x => x.i));
+
+            return new PoolBox
+            {
+                Attackers = attackers,
+                Bounded = bounded,
+                Summary = $"map{map}/hand{hand}/deck{deck}/outputs{outputs}/equipment{grantCount}",
+                Grants = grants,
+                OccupiedMutators = occupiedMutators,
+            };
+        }
+
+        // Stage two: every distinct host again under every known grant, and the RaiseTheRots
+        // summon. Mutates `pool` into the whole known pool.
+        private static void ExpandKnownPool(PoolBox pool)
+        {
+            List<WorthIt.DefenderProfile> attackers = pool.Attackers;
+            List<CardDefinition> grants = pool.Grants;
+            HashSet<int> occupiedMutators = pool.OccupiedMutators;
+            bool bounded = pool.Bounded;
             var seenAttackers = new HashSet<string>(attackers.Select(ProfileKey));
 
             int baseCount = attackers.Count;
@@ -231,13 +269,11 @@ namespace Game.Ai.V2
                     attackers.Add(AiPower.ToDefenderProfile(summon));
             }
 
-            return new PoolBox
-            {
-                Attackers = attackers,
-                Bounded = bounded,
-                Summary = $"map{map}/hand{hand}/deck{deck}/outputs{outputs}/equipment{grantCount}"
-                    + (bounded ? "" : "/unbounded"),
-            };
+            pool.Bounded = bounded;
+            pool.Summary += bounded ? "" : "/unbounded";
+            pool.Grants = null;
+            pool.OccupiedMutators = null;
+            pool.Expanded = true;
         }
 
         // What the pool's consumers read of a profile: attack, abilities and the ground flag

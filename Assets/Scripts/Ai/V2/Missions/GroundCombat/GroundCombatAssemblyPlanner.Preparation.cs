@@ -105,13 +105,15 @@ namespace Game.Ai.V2
                     .ThenBy(u => u.Name)
                     .ToList();
                 var selectedFromDonor = new List<UnitData>();
+                // The donor stays unchanged while its picks are tried: its floor is read once.
+                System.Func<IEnumerable<UnitData>, bool> canSpare = donor.IsGarrison
+                    ? AiArmyRoles.GarrisonSpareCheck(owner, donor) : null;
                 foreach (UnitData pick in picks)
                 {
                     if (donor.Members.Count - selectedFromDonor.Count <= 1)
                         break;
                     selectedFromDonor.Add(pick);
-                    if (donor.IsGarrison
-                        && !AiArmyRoles.CanSpareGarrisonMembers(owner, donor, selectedFromDonor))
+                    if (canSpare != null && !canSpare(selectedFromDonor))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         continue;

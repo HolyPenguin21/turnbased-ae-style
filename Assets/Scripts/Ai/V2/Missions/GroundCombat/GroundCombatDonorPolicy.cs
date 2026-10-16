@@ -51,13 +51,15 @@ namespace Game.Ai.V2
                     || donor.IsPrison || donor.IsAirfield || donor.IsAirArmy || AiArmyRoles.IsSoloRecce(donor)
                     || (excludeArmyIds != null && excludeArmyIds.Contains(donor.Id)))
                     continue;
+                System.Func<IEnumerable<UnitData>, bool> canSpare = donor.IsGarrison
+                    ? AiArmyRoles.GarrisonSpareCheck(owner, donor) : null;
                 foreach (UnitData h in donor.Members)
                 {
                     if (h == null || !h.IsHero || h.IsAviation)
                         continue;
                     if (!donor.CanLeaveWithoutOvercrowding(h))
                         continue;
-                    if (donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(owner, donor, h))
+                    if (canSpare != null && !canSpare(new[] { h }))
                         continue;
                     // A facility operator stays, whatever army it stands in (a garrison's is
                     // already refused by CanSpareGarrisonMember).

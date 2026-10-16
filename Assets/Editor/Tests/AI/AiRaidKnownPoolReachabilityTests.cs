@@ -160,6 +160,25 @@ namespace Game.EditorTests
                 Snapshot(catalogKnown: false), Wall, 0f, out _), Is.False);
         }
 
+        // The pool is cached per snapshot and expanded by equipment only when the plain hosts miss
+        // a fight; every answer on the same snapshot must match the whole pool's, in any order.
+        [Test]
+        public void SameSnapshot_HostOnlyAndExpandedAnswersAgree()
+        {
+            WorldSnapshot snap = Snapshot(deck: new[] { AttackEquipment(6) });
+            var soft = new[] { new WorthIt.DefendingArmy(new[] { Unit(3f, defense: 2f) }, default) };
+            var mid = new[] { new WorthIt.DefendingArmy(new[] { Unit(3f, defense: 8f) }, default) };
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, soft, 0f, out _),
+                Is.False, "hosts cover");
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, mid, 0f, out _),
+                Is.False, "only the equipped host covers");
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, Wall, 0f, out string reason),
+                Is.True, "nothing covers");
+            Assert.That(reason, Does.Contain("equipment1"));
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, soft, 0f, out _),
+                Is.False, "after expansion");
+        }
+
         [Test]
         public void SiteDefenceIsPartOfTheProof_WeakerSiteReopens()
         {

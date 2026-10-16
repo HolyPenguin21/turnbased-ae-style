@@ -276,7 +276,7 @@ namespace Game.Ai.V2
             self.Reserve = new ForceReserve(
                 units: ceilings.UnitsReserve,
                 hero: ceilings.HeroReserve,
-                equipment: EquipmentReserve(self, ownArmies, equipment),
+                equipment: ReserveScope(self, ownArmies, equipment),
                 aviation: aviation);
             self.CommandHeroes = commandHeroes;
         }
@@ -284,11 +284,32 @@ namespace Game.Ai.V2
         // Σ over the equipment cards of each one's combat gain on a free, legal ground host
         // (EquipmentUpgradeValuation.EquipmentDeltaParts — the one equipment value). A host takes one
         // item; the largest gains are matched first.
+        private static float ReserveScope(SelfSnapshot self, List<ArmyData> ownArmies,
+            List<CardDefinition> equipment)
+        {
+            using (new ProfileScope("AI/Self.EquipmentReserve"))
+                return EquipmentReserve(self, ownArmies, equipment);
+        }
+
         private static float EquipmentReserve(SelfSnapshot self, List<ArmyData> ownArmies,
             List<CardDefinition> equipment)
         {
             if (equipment.Count == 0)
                 return 0f;
+
+            // A card host's gain is a pure function of (item, host definition, its attachments) in
+            // this snapshot-free context: copies of one card in hand or deck are priced once.
+            var cardGains = new Dictionary<(CardDefinition, CardDefinition, CardDefinition, CardDefinition), float>();
+            float CardGain(CardDefinition eq, CardDefinition host, CardData card)
+            {
+                var key = (eq, host, card?.Equipment, card?.Mutator);
+                if (!cardGains.TryGetValue(key, out float gain))
+                    cardGains[key] = gain = EquipmentSystem.FitsHost(eq, host, out _)
+                        ? ReserveBodies(card != null
+                            ? EquipmentUpgradeValuation.EquipmentDeltaParts(eq, card)
+                            : EquipmentUpgradeValuation.EquipmentDeltaParts(eq, host)) : 0f;
+                return gain;
+            }
 
             // Each free ground host as "the combat gain of this item on it" (0 = does not fit).
             var hosts = new List<System.Func<CardDefinition, float>>();
@@ -304,12 +325,10 @@ namespace Game.Ai.V2
                 foreach (CardData c in self.Hand)
                     if (IsGroundHostCard(c?.Definition)
                         && (slot == AttachmentSlot.Equipment ? c.Equipment == null : c.Mutator == null))
-                        hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, c.Definition, out _)
-                            ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, c)) : 0f);
+                        hosts.Add(eq => eq.attachmentSlot == slot ? CardGain(eq, c.Definition, c) : 0f);
                 foreach (CardDefinition d in self.Deck)
                     if (IsGroundHostCard(d))
-                        hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, d, out _)
-                            ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, d)) : 0f);
+                        hosts.Add(eq => eq.attachmentSlot == slot ? CardGain(eq, d, null) : 0f);
             }
 
             var pairs = new List<(float gain, int item, int host)>();
@@ -432,6 +451,9 @@ namespace Game.Ai.V2
             IMissionIntentView ownIntents, AiTurnContext ctx = null)
         {
             var nonHero = a.Members.Where(m => m.IsGroundCombatant).ToList();
+            // One garrison floor read for every member question about this unchanged army.
+            System.Func<IEnumerable<UnitData>, bool> canSpareGarrison = isOwn && a.IsGarrison
+                ? AiArmyRoles.GarrisonSpareCheck(viewer, a) : null;
             bool allHidden = !isOwn && a.Members.Count > 0
                 && a.Members.All(m => StealthSystem.IsHiddenFrom(m, viewer));
 
@@ -499,10 +521,10 @@ namespace Game.Ai.V2
                 NonHeroMutatorOccupied = isOwn ? nonHero.Select(u => u.Mutator != null).ToList() : null,
                 MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),
                 RecoveryMembers = a.Members.Select((u, index) => ToRaidRecoveryMember(
-                    a, u, index, viewer, isOwn)).ToList(),
+                    a, u, index, viewer, isOwn, canSpareGarrison)).ToList(),
                 NonHeroRuntimeIds = isOwn ? nonHero.Select(u => u.RuntimeId).ToList() : System.Array.Empty<int>(),
                 NonHeroSpareable = isOwn && a.IsGarrison
-                    ? nonHero.Select(u => AiArmyRoles.CanSpareGarrisonMember(viewer, a, u)).ToList() : null,
+                    ? nonHero.Select(u => canSpareGarrison(new[] { u })).ToList() : null,
                 NonHeroCurrentMovement = nonHero.Select(SoloMoveCurrent).ToList(),
                 EconomyRosterProtected = isOwn && ownIntents != null && ownIntents.All.Any(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
@@ -549,7 +571,8 @@ namespace Game.Ai.V2
         }
 
         private static RaidRecoveryMemberSnapshot ToRaidRecoveryMember(ArmyData army, UnitData unit,
-            int index, PlayerSetupData viewer, bool isOwn)
+            int index, PlayerSetupData viewer, bool isOwn,
+            System.Func<IEnumerable<UnitData>, bool> canSpareGarrison)
         {
             WorthIt.DefenderProfile current = WorthIt.FromLiveUnit(unit);
             var full = new WorthIt.DefenderProfile(current.Defense, current.HasCeramicArmor,
@@ -570,7 +593,7 @@ namespace Game.Ai.V2
             bool isBody = AiArmyRoles.IsGroundBattleBody(unit);
             bool canSpare = isOwn && army.Members.Count > 1 && isBody
                 && army.CanLeaveWithoutOvercrowding(unit)
-                && (!army.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(viewer, army, unit));
+                && (!army.IsGarrison || canSpareGarrison(new[] { unit }));
             return new RaidRecoveryMemberSnapshot(unit.RuntimeId, index, unit.IsHero,
                 unit.IsAviation, isBody, canSpare, unit.ActivationApCost, current, full,
                 initialized, cost);
