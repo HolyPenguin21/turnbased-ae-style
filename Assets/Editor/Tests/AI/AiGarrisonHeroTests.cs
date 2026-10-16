@@ -96,6 +96,12 @@ namespace Game.EditorTests
             return new[] { new WorthIt.DefendingArmy(new[] { WorthIt.FromLiveUnit(enemy) }, default) };
         }
 
+        // Not a decisive fight for the departure host alone: the 80% power floor is not waived by
+        // opportunity (AttackForceReadiness.IsOpportunity, 2026-10-16), so the floor itself decides.
+        private static IReadOnlyList<WorthIt.DefendingArmy> ContestedOpposition(int count, int attack) =>
+            new[] { new WorthIt.DefendingArmy(Enumerable.Range(0, count)
+                .Select(i => WorthIt.FromLiveUnit(Body("Enemy" + i, attack))).ToList(), default) };
+
         [TestCase(false)]
         [TestCase(true)]
         public void DepartureProjection_PricesOneCommanderAndReturnsSecondaryHeroes(bool supportTagged)
@@ -350,7 +356,7 @@ namespace Game.EditorTests
             ArmyData host = Army(Staging, Hero("Lead", 8), Hero("Extra", 4), Body("Fighter", 20));
             var plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
             {
-                Opposition = WeakOpposition(), WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                Opposition = ContestedOpposition(3, 12), WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
                 PreferredPrimaryArmyId = host.Id, PinToPreferred = true, AllowSameHexAssembly = false,
                 MinimumArmyPower = AiPower.EffectiveArmyPower(host.Members),
             });
@@ -371,7 +377,7 @@ namespace Game.EditorTests
             if (needsAssembly) Army(Staging, Body("Fresh", 20), Body("Reserve", 20));
             var plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
             {
-                Opposition = WeakOpposition(), WinChanceGate = gate,
+                Opposition = needsAssembly ? ContestedOpposition(2, 6) : WeakOpposition(), WinChanceGate = gate,
                 PreferredPrimaryArmyId = host.Id, PinToPreferred = true,
                 MinimumArmyPower = needsAssembly ? AiPower.EffectiveArmyPower(host.Members) + 0.01f : 0f,
             });
