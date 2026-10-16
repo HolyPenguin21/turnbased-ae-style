@@ -108,6 +108,34 @@ namespace Game.EditorTests
             finally { MissionIntentRegistry.Clear(); }
         }
 
+        // Playtest 2026-10-16: a Base admitted at +0.4 was held at -2..-7 for three turns. The
+        // admission predicate (positive net TaskScore) is re-read on the refreshed same-site value.
+        [Test]
+        public void Release_EndsOnlyACommittedBaseWhoseRefreshedValueNoLongerClearsAdmission()
+        {
+            var player = new PlayerSetupData();
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            try
+            {
+                MissionIntent incumbent = EconomyContinuity.BeginEconomyDelivery(
+                    player, BaseDemand(card, 9, 3, 0.4f, 10f), 9, 3);
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                Assert.That(EconomyContinuity.HasEconomyBuildCommitment(new[] { incumbent },
+                    BaseDemand(card, 9, 3, -3.5f, 10f)), Is.True, "Phase A finds the refreshed same-site value");
+                Assert.That(EconomyContinuity.TryReleaseUnprofitableBase(state, player, incumbent, 2f, 4),
+                    Is.False, "a still profitable Base keeps its commitment");
+                incumbent.LastProgressTurn = 4;
+                incumbent.StepsMovedTotal = 1;
+                Assert.That(EconomyContinuity.TryReleaseUnprofitableBase(state, player, incumbent, -3.5f, 4),
+                    Is.False, "a builder that already advanced this turn finishes its step first");
+                Assert.That(state.Count, Is.EqualTo(1));
+                Assert.That(EconomyContinuity.TryReleaseUnprofitableBase(state, player, incumbent, -3.5f, 5),
+                    Is.True);
+                Assert.That(state.Count, Is.EqualTo(0));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
         [Test]
         public void Retarget_PreservesOneActorAndCard_RekeysIntentAndAttempt()
         {
