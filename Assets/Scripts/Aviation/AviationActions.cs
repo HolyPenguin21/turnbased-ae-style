@@ -95,6 +95,7 @@ namespace Game.Aviation
             }
             if (!ArmyRegistry.IsRegistered(army)) ArmyRegistry.Register(army);
             if (army.Controller == null) hexSelection?.CreateArmyMarker(army);
+            else hexSelection?.RefreshArmyAirLook(army); // a carrier deck marker was made empty (ground look)
             hexSelection?.RestackArmiesOn(airfield.Hex, null);
             launchedArmy = army;
             return true;

@@ -136,6 +136,10 @@ namespace Game.Aviation
             if (army.IsCarrierFlightDeck)
             {
                 army.IsAirArmy = true;
+                // The deck's marker is created while it is still empty (ground look); restyle it
+                // once aircraft are aboard.
+                if (army.Members.Count > 0)
+                    hexSelection?.RefreshArmyAirLook(army);
                 return;
             }
             bool air = IsAirArmy(army);
