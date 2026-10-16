@@ -1759,6 +1759,53 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 33
+    authoredKey: neutral.mutator.regenerative-culture
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Regenerative Culture
+    art: {fileID: 21300000, guid: 990fd4b70b713994caed7ca345bce9a5, type: 3}
+    detailArt: {fileID: 21300000, guid: c94e5b9890e32484891c889be2ff2b7c, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 3
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - Regeneration
+      statChanges: []
+  - id: 34
     authoredKey: neutral.mutator.reinforced-skeleton
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1813,7 +1860,7 @@ MonoBehaviour:
       - stat: 6
         amount: -1
         isOverride: 0
-  - id: 34
+  - id: 35
     authoredKey: neutral.mutator.reactive-marrow
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1862,7 +1909,7 @@ MonoBehaviour:
       - stat: 4
         amount: 3
         isOverride: 0
-  - id: 35
+  - id: 36
     authoredKey: neutral.mutator.pain-suppression
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1917,56 +1964,6 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 36
-    authoredKey: neutral.mutator.regenerative-culture
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Regenerative Culture
-    art: {fileID: 21300000, guid: 990fd4b70b713994caed7ca345bce9a5, type: 3}
-    detailArt: {fileID: 21300000, guid: c94e5b9890e32484891c889be2ff2b7c, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 1
-      energy: 1
-      materials: 0
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 5
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities:
-      - Regeneration
-      statChanges:
-      - stat: 0
-        amount: 2
-        isOverride: 0
   - id: 37
     authoredKey: neutral.mutator.hyper-regeneration
     deckPointCost: 2
@@ -2013,7 +2010,6 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities:
       - Regeneration
-      - CeramicArmor
       statChanges:
       - stat: 4
         amount: 2
@@ -2030,7 +2026,7 @@ MonoBehaviour:
     cardType: 5
     apCost: 1
     resourceCost:
-      human: 2
+      human: 3
       energy: 1
       materials: 0
       tech: 1
@@ -2038,7 +2034,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 6
     attack: 0
     defenseRating: 0
     range: 0
@@ -2064,6 +2060,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities:
       - Regeneration
+      - Berserk
       statChanges:
       - stat: 1
         amount: 2
@@ -2087,14 +2084,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 2
-      energy: 1
+      energy: 0
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -2118,10 +2115,11 @@ MonoBehaviour:
       hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
-      addAbilities: []
+      addAbilities:
+      - Counterattack
       statChanges:
       - stat: 6
-        amount: 2
+        amount: 1
         isOverride: 0
       - stat: 1
         amount: 1
