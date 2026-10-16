@@ -31,11 +31,51 @@ namespace Game.Ai.V2
             if (bases == null || bases.Count == 0)
                 return null;
             HexCoord citadel = snap.Self.Citadel;
+            // 2026-10-16 (user decision) — a garrison is a donor of the strike fist. A field host
+            // still below the floor stages on the reachable own Base whose garrison can spare the
+            // most power above its floor; the ordinary same-hex Assemble step takes those bodies
+            // (AiArmyRoles.CanSpareGarrisonMembers). Once no garrison can spare a body the host
+            // stages, as before, on the Base nearest to the target.
+            if (host != null && host.IsStructuralRaidActor
+                && !AttackForceReadiness.ForceReady(host.EffectiveArmyPower, snap.Self.AttackPeak))
+            {
+                var donor = bases
+                    .Select(h => (Hex: h, Spare: SpareGarrisonPower(snap, h)))
+                    .Where(x => x.Spare > 0f)
+                    .OrderByDescending(x => x.Spare)
+                    .ThenBy(x => HexGridMath.Distance(x.Hex, targetHex))
+                    .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
+                    .FirstOrDefault();
+                if (donor.Spare > 0f)
+                    return donor.Hex;
+            }
             return bases
                 .OrderBy(h => HexGridMath.Distance(h, targetHex))
                 .ThenByDescending(h => h.Equals(citadel))
                 .ThenBy(h => h.Q).ThenBy(h => h.R)
                 .First();
+        }
+
+        // Power the own garrison on `hex` can give away above its defence floor, from the scan's
+        // frozen facts: its spareable non-hero bodies (ArmySnapshot.NonHeroSpareable), strongest
+        // first, never more than leaves secureBaseMinNonHeroUnits behind.
+        internal static float SpareGarrisonPower(WorldSnapshot snap, HexCoord hex)
+        {
+            ArmySnapshot garrison = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.IsGarrison
+                && a.Hex.Equals(hex));
+            IReadOnlyList<WorthIt.DefenderProfile> bodies = garrison?.Members;
+            if (bodies == null || bodies.Count == 0)
+                return 0f;
+            int room = bodies.Count - AiConfig.secureBaseMinNonHeroUnits;
+            if (room <= 0)
+                return 0f;
+            List<WorthIt.DefenderProfile> spare = bodies
+                .Where((b, i) => garrison.NonHeroSpareable == null
+                    || (i < garrison.NonHeroSpareable.Count && garrison.NonHeroSpareable[i]))
+                .OrderByDescending(b => AiPower.EffectiveArmyPowerFromProfiles(new[] { b }))
+                .Take(room)
+                .ToList();
+            return spare.Count == 0 ? 0f : AiPower.EffectiveArmyPowerFromProfiles(spare);
         }
         internal static (ArmyData garrison, UnitData hero, float power) FindCommanderUpgrade(
             WorldSnapshot snap, ArmySnapshot host, out float currentPower, out int currentCommand, out bool assessable)

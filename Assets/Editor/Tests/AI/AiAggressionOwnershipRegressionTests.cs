@@ -102,6 +102,32 @@ namespace Game.EditorTests
             Assert.That(result.Reason, Is.EqualTo(strongHost ? "ready_by_opportunity" : "fist_below_bar"));
         }
 
+        // 2026-10-16 (user decision) — a garrison is a donor of the strike fist: a host below the
+        // floor stages where a garrison can spare bodies above its floor, then marches as before.
+        [TestCase(4, true)]
+        [TestCase(2, false)]
+        public void StagingBase_HostBelowTheFloorPicksTheGarrisonThatCanSpareBodies(int garrisonBodies, bool spare)
+        {
+            var target = new HexCoord(6, 0);
+            ArmySnapshot host = Actor(7, Away, power: 30f);
+            host.ReachableOwnBaseHexes = new[] { Home, Away };
+            var body = new WorthIt.DefenderProfile(2f, false, null, 4f, 6f, 2);
+            var garrison = new ArmySnapshot
+            {
+                ArmyId = 3, Owner = _us, Hex = Home, IsGarrison = true, MemberCount = garrisonBodies,
+                Members = Enumerable.Repeat(body, garrisonBodies).ToArray(),
+                NonHeroSpareable = Enumerable.Repeat(true, garrisonBodies).ToArray(),
+            };
+            WorldSnapshot snap = Snap(host, garrison);
+            snap.Self.BaseHexes = new[] { Home, Away };
+            Assert.That(AttackPreparationPolicy.SpareGarrisonPower(snap, Home) > 0f, Is.EqualTo(spare));
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, target, host),
+                Is.EqualTo(spare ? Home : Away), "nearest to the target unless a garrison can donate");
+            host.EffectiveArmyPower = 90f;
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, target, host), Is.EqualTo(Away),
+                "a fist already above the floor stages on the Base nearest to the target");
+        }
+
         [Test]
         public void PreparationRereadsDynamicPeakWithoutKeepingAnOldReadyResult()
         {
