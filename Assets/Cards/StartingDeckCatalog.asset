@@ -299,6 +299,12 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.shoal-destroyer
       count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
     equipment:
     - cardKey: neutral.equipment.bio.flamer
       count: 1
@@ -679,6 +685,12 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.roadbreaker
       count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
     equipment:
     - cardKey: neutral.equipment.bio.flamer
       count: 1
@@ -869,6 +881,12 @@ MonoBehaviour:
     - cardKey: vessels.27.arc-cantor
       count: 1
     - cardKey: vessels.27.lens-watcher
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
       count: 1
     equipment:
     - cardKey: neutral.equipment.bio.flamer

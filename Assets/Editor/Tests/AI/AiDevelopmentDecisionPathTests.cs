@@ -423,6 +423,19 @@ namespace Game.EditorTests
             Assert.That(host.Mutator, Is.Null);
         }
 
+        // Playtest 2026-10-16: the mutator slot weight is the only difference between the two slots.
+        [Test]
+        public void MutatorGain_IsTheSameGainInTheEquipmentSlotTimesTheMutatorWeight()
+        {
+            var host = new CardData(AttachmentSlotTests.Host(hero: false));
+            float equipment = EquipmentUpgradeValuation.EquipmentDeltaParts(
+                AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Attack, 2), host).Total;
+            float mutator = EquipmentUpgradeValuation.EquipmentDeltaParts(
+                AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Attack, 2), host).Total;
+            Assert.That(equipment, Is.GreaterThan(0f));
+            Assert.That(mutator, Is.EqualTo(equipment * AiConfigV2.equipMutatorValueMult).Within(0.0001f));
+        }
+
         [Test]
         public void SameNamedPhysicalRecipientsHaveDistinctStablePlanKeys()
         {

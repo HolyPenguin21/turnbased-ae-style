@@ -21,26 +21,26 @@ namespace Game.EditorTests
         private static IEnumerable<CardDefinition> Mutators() => Blocks(NeutralPath).Select(Read)
             .Where(c => c.authoredKey.StartsWith("neutral.mutator."));
 
-        [TestCase("dermal-plating", "Defense:1", "")]
-        [TestCase("reactive-marrow", "HitPoints:2", "")]
-        [TestCase("reinforced-skeleton", "Defense:1,HitPoints:1,Initiative:-1", "")]
-        [TestCase("pain-suppression", "HitPoints:2,Defense:1,MoveMax:-1", "")]
-        [TestCase("regenerative-culture", "Attack:1", UnitAbilities.Regeneration)]
-        [TestCase("hyper-regeneration", "HitPoints:1,MoveMax:-1", "Regeneration,CeramicArmor")]
-        [TestCase("survivor-strain", "Defense:1,MoveMax:-1,HitPoints:2", UnitAbilities.Regeneration)]
-        [TestCase("adrenal-surge", "MoveMax:1,Initiative:1,Defense:-1", "")]
-        [TestCase("metabolic-overdrive", "MoveMax:1,Defense:-1", "")]
-        [TestCase("predator-reflexes", "Initiative:1,Defense:1,MoveMax:-1", "")]
-        [TestCase("neural-accelerator", "Initiative:1,Defense:1,Attack:1", "")]
-        [TestCase("rapid-synapse", "Defense:-1", UnitAbilities.RapidReaction)]
-        [TestCase("hunter-glands", "Defense:-1", UnitAbilities.R1S4)]
-        [TestCase("enhanced-senses", "Initiative:1,MoveMax:-1", "r1s4,CeramicArmor")]
-        [TestCase("wanderer-strain", "MoveMax:1,Defense:-1,Attack:1", UnitAbilities.R1S4)]
-        [TestCase("chameleon-tissue", "MoveMax:-1,Initiative:1", UnitAbilities.Stealth4)]
-        [TestCase("fortunate-genome", "Fate:1", "")]
-        [TestCase("ghost-genome", "", UnitAbilities.Stealth4)]
-        [TestCase("hunter-genome", "", UnitAbilities.R1S4)]
-        [TestCase("reflex-genome", "", UnitAbilities.RapidReaction)]
+        [TestCase("dermal-plating", "Defense:2", "")]
+        [TestCase("reactive-marrow", "HitPoints:3", "")]
+        [TestCase("reinforced-skeleton", "Defense:2,HitPoints:1,Initiative:-1", "")]
+        [TestCase("pain-suppression", "HitPoints:3,Defense:1,MoveMax:-1", "")]
+        [TestCase("regenerative-culture", "Attack:2", UnitAbilities.Regeneration)]
+        [TestCase("hyper-regeneration", "HitPoints:2,MoveMax:-1", "Regeneration,CeramicArmor")]
+        [TestCase("survivor-strain", "Defense:2,MoveMax:-1,HitPoints:2", UnitAbilities.Regeneration)]
+        [TestCase("adrenal-surge", "MoveMax:2,Initiative:1,Defense:-1", "")]
+        [TestCase("metabolic-overdrive", "MoveMax:2,Defense:-1", "")]
+        [TestCase("predator-reflexes", "Initiative:2,Defense:1,MoveMax:-1", "")]
+        [TestCase("neural-accelerator", "Initiative:2,Defense:1,Attack:1", "")]
+        [TestCase("rapid-synapse", "Defense:-1,Initiative:1", UnitAbilities.RapidReaction)]
+        [TestCase("hunter-glands", "Defense:-1,Initiative:1", UnitAbilities.R1S4)]
+        [TestCase("enhanced-senses", "Initiative:2,MoveMax:-1", "r1s4,CeramicArmor")]
+        [TestCase("wanderer-strain", "MoveMax:2,Defense:-1,Attack:1", UnitAbilities.R1S4)]
+        [TestCase("chameleon-tissue", "MoveMax:-1,Initiative:2", UnitAbilities.Stealth4)]
+        [TestCase("fortunate-genome", "Fate:2", "")]
+        [TestCase("ghost-genome", "Fate:1", UnitAbilities.Stealth4)]
+        [TestCase("hunter-genome", "Fate:1", UnitAbilities.R1S4)]
+        [TestCase("reflex-genome", "Fate:1", UnitAbilities.RapidReaction)]
         public void AuthoredEffectsMatchDesignAndApplyToRealHost(string slug, string stats, string skill)
         {
             CardDefinition card = Mutator(slug);
@@ -90,7 +90,7 @@ namespace Game.EditorTests
                     Assert.That(change.stat == EquipmentStat.Range
                         || change.stat == EquipmentStat.CommandRating,
                         Is.False, change.stat.ToString());
-                    Assert.That(change.amount, Is.InRange(-1, change.stat == EquipmentStat.HitPoints && !hero ? 2 : 1));
+                    Assert.That(change.amount, Is.InRange(-1, change.stat == EquipmentStat.HitPoints && !hero ? 3 : 2));
                     if (hero) Assert.That(change.stat, Is.EqualTo(EquipmentStat.Fate));
                 }
                 Assert.That(c.apCost, Is.EqualTo(1));
@@ -137,7 +137,7 @@ namespace Game.EditorTests
             EquipmentSystem.ApplyAttachments(unit, null, Mutator("neural-accelerator"));
             Assert.That(unit.ActivationApCost, Is.EqualTo(initial));
             Assert.That(unit.Defense, Is.EqualTo(host.defenseRating + 1));
-            Assert.That(unit.Initiative, Is.EqualTo(host.initiative + 1));
+            Assert.That(unit.Initiative, Is.EqualTo(host.initiative + 2));
         }
 
         [TestCase(false)]
@@ -155,7 +155,7 @@ namespace Game.EditorTests
             }
             else EquipmentSystem.ApplyAttachments(body, equipment, mutator);
             Assert.That(body.Equipment, Is.SameAs(equipment)); Assert.That(body.Mutator, Is.SameAs(mutator));
-            Assert.That(body.HitPointsMax, Is.EqualTo(host.hitPoints + 2));
+            Assert.That(body.HitPointsMax, Is.EqualTo(host.hitPoints + 3));
             Assert.That(body.Attack, Is.EqualTo(5));
             Assert.That(EquipmentSystem.Project(new CardData(host) { Equipment = equipment, Mutator = mutator })
                 .Stats[EquipmentStat.HitPoints], Is.EqualTo(body.HitPointsMax));
@@ -168,12 +168,12 @@ namespace Game.EditorTests
             string face = EquipmentCardText.CardFace(neural, null);
             Assert.That(face, Does.Not.Contain("Bio").And.Not.Contain("Unit").And.Not.Contain("Initiative"));
             Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Is.EqualTo(face));
-            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Bio, Unit\n").And.Contain("Initiative 1"));
+            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Bio, Unit\n").And.Contain("Initiative 2"));
             Assert.That(EquipmentCardText.StatBadgeValue(neural.equipment, EquipmentStat.Defense), Is.EqualTo("1"));
             Assert.That(EquipmentCardText.Description(neural, null), Does.Contain("Defense 1"));
             Assert.That(EquipmentCardText.Description(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);
-            Assert.That(description, Does.Contain("Defense 1").And.Contain("HP 1").And.Contain("Initiative -1"));
+            Assert.That(description, Does.Contain("Defense 2").And.Contain("HP 1").And.Contain("Initiative -1"));
             Assert.That(description, Does.Not.Contain("+").And.Not.Contain("=").And.Not.Contain("—"));
         }
 

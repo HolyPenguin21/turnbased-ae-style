@@ -410,16 +410,33 @@ namespace Game.Ai.V2
         public static bool CanReturnThisTurnTo(PlayerSetupData player, HexMap map, ArmyData air,
             HexCoord landing, out int routeCost)
         {
-            routeCost = int.MaxValue;
-            if (!AviationRules.IsOwnedAirfieldAt(landing, player))
-                return false;
-            if (FreeLandingCapacity(landing, player, air) < air.Members.Count)
-                return false;
-            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
-            if (path == null)
-                return false;
-            routeCost = AviationRules.PathMoveCost(air, path);
+            routeCost = LandingRouteCost(player, map, air, air.Hex, landing);
             return routeCost <= air.CurrentMovement;
+        }
+
+        // The cheapest flight from `from` to any owned airfield with room for the whole wing —
+        // the cost the same-turn return (TryReplan) would pay once the wing stands on `from`.
+        // int.MaxValue when no landing is reachable at all.
+        public static int CheapestLandingRouteCost(PlayerSetupData player, HexMap map, ArmyData air,
+            HexCoord from)
+        {
+            int best = int.MaxValue;
+            if (player == null || map == null || air == null)
+                return best;
+            foreach (HexCoord landing in OwnedAirfieldHexes(player))
+                best = Mathf.Min(best, LandingRouteCost(player, map, air, from, landing));
+            return best;
+        }
+
+        private static int LandingRouteCost(PlayerSetupData player, HexMap map, ArmyData air,
+            HexCoord from, HexCoord landing)
+        {
+            if (!AviationRules.IsOwnedAirfieldAt(landing, player))
+                return int.MaxValue;
+            if (FreeLandingCapacity(landing, player, air) < air.Members.Count)
+                return int.MaxValue;
+            HexPath path = HexPathfinder.FindPath(map, from, landing, flatCost: true);
+            return path != null ? AviationRules.PathMoveCost(air, path) : int.MaxValue;
         }
 
         public static int ReturnPathCostOrMax(HexMap map, ArmyData air, HexCoord landing)

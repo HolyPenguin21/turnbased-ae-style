@@ -110,7 +110,7 @@ namespace Game.EditorTests
             EquipmentSystem.ApplyAttachments(body, equipment, null);
             Assert.That(body.Attack, Is.EqualTo(8));
             EquipmentSystem.ApplyAttachments(body, null, mutator);
-            Assert.That(body.Attack, Is.EqualTo(9));
+            Assert.That(body.Attack, Is.EqualTo(10));
             Assert.That(body.Range, Is.EqualTo(1));
             Assert.That(body.HitPointsMax - body.HitPointsCurrent, Is.EqualTo(3));
             Assert.That(body.Abilities, Has.Member(UnitAbilities.CriticalDamage));

@@ -211,8 +211,16 @@ namespace Game.Ai.V2
         internal static AviationRebasePlan BuildPlan(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, IReadOnlyList<ReconObjective> objectives)
         {
-            if (player == null || root == null || ctx?.Map == null || objectives == null
-                || objectives.Count == 0)
+            if (player == null || root == null || ctx?.Map == null || objectives == null)
+                return null;
+
+            // A stored aircraft is worth relocating for the same service a new card of it would
+            // be deployed for (NonCombatCardPlayer.AirfieldServiceTaskScore): Recon objectives and
+            // the uncovered strike targets of existing ground-combat tasks. A carrier marching
+            // with an Attack therefore draws aircraft once its hex serves the assault better.
+            List<CombatAirSupportRequest> strikeTargets = NonCombatCardPlayer.KnownStrikeTargets(
+                snap, player, root, ctx, objectives);
+            if (objectives.Count == 0 && strikeTargets.Count == 0)
                 return null;
 
             AviationRebasePlan best = null;
@@ -226,16 +234,16 @@ namespace Game.Ai.V2
                     IReadOnlyList<UnitData> group = new[] { aircraft };
                     if (!AiAirSortiePlanner.CanAffordLaunch(root, group))
                         continue;
-                    TaskScore sourceService = NonCombatCardPlayer.BestAirfieldServiceTaskScore(
-                        snap, player, ctx, group, source.Hex, objectives,
-                        out _, out string sourceWitness);
+                    TaskScore sourceService = NonCombatCardPlayer.AirfieldServiceTaskScore(
+                        snap, player, ctx, group, source.Hex, objectives, strikeTargets, true,
+                        out _, out string sourceWitness, out _);
 
                     foreach (HexCoord destination in AiAirSortiePlanner.OwnedAirfieldHexes(player)
                         .Where(h => !h.Equals(source.Hex)))
                     {
-                        TaskScore destinationService = NonCombatCardPlayer.BestAirfieldServiceTaskScore(
-                            snap, player, ctx, group, destination, objectives,
-                            out int coverage, out string destinationWitness);
+                        TaskScore destinationService = NonCombatCardPlayer.AirfieldServiceTaskScore(
+                            snap, player, ctx, group, destination, objectives, strikeTargets, true,
+                            out int coverage, out string destinationWitness, out _);
                         float improvement = destinationService.Value - sourceService.Value;
                         if (coverage <= 0 || improvement <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
