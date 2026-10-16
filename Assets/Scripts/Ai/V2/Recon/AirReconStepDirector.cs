@@ -253,7 +253,15 @@ namespace Game.Ai.V2
             {
                 float bestOutbound = Math.Max(sortie.BestOutboundStepScore, choice.Value.Score);
                 nextBestOutboundScore = bestOutbound;
-                int mpSlackAfterStep = air.CurrentMovement - choice.Value.RouteCost;
+                // The reserve is the way home the Return leg will actually fly (TryReplan: the
+                // cheapest landing), not the Pick's forward-ranked landing — measuring it on a
+                // farther forward airfield turned a Mosquito back after one step (playtest
+                // 2026-10-16, Kryll T11/T17).
+                int returnCost = AiAirSortiePlanner.CheapestLandingRouteCost(player, ctx.Map, air,
+                    choice.Value.Hex);
+                int mpSlackAfterStep = returnCost == int.MaxValue
+                    ? air.CurrentMovement - choice.Value.RouteCost
+                    : air.CurrentMovement - HexGridMath.Distance(air.Hex, choice.Value.Hex) - returnCost;
                 bool marginalDrop = bestOutbound > 0.01f
                     && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * bestOutbound;
                 bool returnReserve = TurnsForReturnReserve(choice.Value.RequiredTurns,

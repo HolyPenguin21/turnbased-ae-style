@@ -26,12 +26,12 @@ namespace Game.Aviation
                 || host.Owner == null || !ArmyRegistry.IsRegistered(host)) return;
             foreach (UnitData unit in host.Members.Where(IsCarrier).ToList())
             {
-                string name = $"{unit.Name} {unit.RuntimeId}";
+                string name = unit.Name;
                 if (unit.CarrierAirfield == null || !ArmyRegistry.IsRegistered(unit.CarrierAirfield))
                 {
                     unit.CarrierAirfield = new ArmyData
                     {
-                        Name = name + " — Airfield", Owner = host.Owner, Hex = host.Hex,
+                        Name = name + " - Airfield", Owner = host.Owner, Hex = host.Hex,
                         CarrierUnit = unit, IsAirfield = true,
                     };
                     ArmyRegistry.Register(unit.CarrierAirfield);
@@ -40,7 +40,7 @@ namespace Game.Aviation
                 {
                     unit.CarrierFlightDeck = new ArmyData
                     {
-                        Name = name + " — Air Wing", Owner = host.Owner, Hex = host.Hex,
+                        Name = name + " - Air Wing", Owner = host.Owner, Hex = host.Hex,
                         CarrierUnit = unit, IsAirArmy = true, LaunchCarrier = unit,
                     };
                     ArmyRegistry.Register(unit.CarrierFlightDeck);
@@ -66,7 +66,7 @@ namespace Game.Aviation
             if (wing?.IsCarrierFlightDeck != true || wing.Members.Count == 0) return;
             UnitData carrier = wing.CarrierUnit;
             wing.CarrierUnit = null;
-            wing.Name = $"{carrier.Name} {carrier.RuntimeId} — Sortie {wing.Id}";
+            wing.Name = $"{carrier.Name} - Sortie {wing.Id}";
             carrier.CarrierFlightDeck = null;
             EnsureCarrierContainers(ArmyRegistry.FindArmyContaining(carrier));
             VisionSystem.NotifyContentChanged(wing.Hex);

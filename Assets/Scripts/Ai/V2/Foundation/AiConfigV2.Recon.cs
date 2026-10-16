@@ -257,7 +257,7 @@
         //  safe landing. All soft — the shared aviation safety filter always wins. First-pass.
         // =======================================================================================
         public const float airReconTurningMarginalGainFloor = 0.35f; // Outbound step score <= this * best Outbound step so far -> pivot to Return
-        public const int airReconTurningMpReserveSlack = 1;          // pivot once MP left after the step would exceed the proven return cost by no more than this
+        public const int airReconTurningMpReserveSlack = 0;          // pivot once MP left after the step would exceed the proven return cost by no more than this (0: the pivot itself is the last step that keeps the way home; 1 turned an odd-move plane back one step early, playtest 2026-10-16)
         public const float airReconOutboundTrailOverlapPenalty = 0.30f; // per sortie-trail hex within one hex of a candidate Outbound step
         public const float airReconLateralNoveltyBonus = 0.20f;     // small bonus for an informative step that sweeps sideways rather than straight out
         public const float airReconCoverageOverlapPenalty = 0.35f;  // score /= 1 + this*claims — per OTHER active sortie already claiming the step's sector (spec §49)
