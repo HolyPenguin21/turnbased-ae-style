@@ -261,7 +261,7 @@ namespace Game.Ai.V2
                     request.MinimumArmyPower, request.PreserveDepartureRoster);
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
-                    && DecisiveIfPinned(snap, a, exact, opposition))
+                    && DecisiveIfPinned(snap, request, a, exact, opposition))
                     return exact;
             }
 
@@ -279,7 +279,7 @@ namespace Game.Ai.V2
                     snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.MinimumArmyPower, request.RequireCoverage,
                     request.PreserveDepartureRoster);
-                if (assembled.Feasible && DecisiveIfPinned(snap, a, assembled, opposition))
+                if (assembled.Feasible && DecisiveIfPinned(snap, request, a, assembled, opposition))
                     return assembled;
             }
 
@@ -308,7 +308,7 @@ namespace Game.Ai.V2
                     request.RequireCoverage, request.MinimumArmyPower, request.PreserveDepartureRoster);
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
-                    && DecisiveIfPinned(snap, a, exact, opposition))
+                    && DecisiveIfPinned(snap, request, a, exact, opposition))
                     ids.Add(a.ArmyId);
             }
             if (!request.AllowSameHexAssembly)
@@ -324,7 +324,7 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan assembledHost = TryAssembleForHost(snap, opposition, a,
                     excluded, request.WinChanceGate, request.DefenderHexDefenseBonus,
                     request.MinimumArmyPower, request.RequireCoverage, request.PreserveDepartureRoster);
-                if (assembledHost.Feasible && DecisiveIfPinned(snap, a, assembledHost, opposition))
+                if (assembledHost.Feasible && DecisiveIfPinned(snap, request, a, assembledHost, opposition))
                 {
                     ids.Add(a.ArmyId);
                     excluded.Add(a.ArmyId);
@@ -376,9 +376,11 @@ namespace Game.Ai.V2
 
         // A pinned stronghold defender reaches Plan only through AllowDecisivePinnedDefender; its
         // plan stands only for a decisive fight against known defenders.
-        private static bool DecisiveIfPinned(WorldSnapshot snap, ArmySnapshot a,
-            GroundCombatAssemblyPlan plan, IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
-            !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)
+        // Without the flag no pinned army is a candidate at all, so nothing is re-measured.
+        private static bool DecisiveIfPinned(WorldSnapshot snap, GroundCombatAssemblyRequest request,
+            ArmySnapshot a, GroundCombatAssemblyPlan plan, IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            !request.AllowDecisivePinnedDefender
+            || !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)
             || AttackForceReadiness.IsOpportunity(plan.ProjectedWinChance, opposition);
 
         private static bool Admissible(ArmySnapshot a, GroundCombatAssemblyRequest r)

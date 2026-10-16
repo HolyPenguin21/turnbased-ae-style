@@ -30,7 +30,7 @@ namespace Game.Ai.V2
         // as DevelopmentFacility.Contested but is NOT applied here — a contested facility still
         // produces offerings for the analyzer/radar; Phase A alone skips execution while contested.
         private static DevelopmentReadiness BuildDevelopment(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, IMissionIntentView intents, SelfSnapshot self = null)
+            AiHandData hand, AiTurnContext ctx, IMissionIntentView intents)
         {
             var rd = new DevelopmentReadiness();
             var facilities = new List<DevelopmentFacility>();
@@ -161,7 +161,7 @@ namespace Game.Ai.V2
             // Operational generation is priced from the concrete chain by StrategicCardEvaluator /
             // StrategicSpendability. WHEN Development may spend at all is the investment window
             // (DevelopmentInvestmentGate over InvestmentSurplus), not a multiplier on its value.
-            rd.InvestmentSurplusByType = SurplusByType(player, root, ctx, intents, self);
+            rd.InvestmentSurplusByType = SurplusByType(player, root, ctx, intents);
             rd.InvestmentSurplus = ResourceBundle.All.Min(t => rd.InvestmentSurplusByType.Get(t));
             bool hasExecutableOffering = offerings.Any(o => facilities.Any(f =>
                 f.Mode == o.Mode && f.Hex.Equals(o.FacilityHex) && f.HasHero && !f.Contested));
@@ -218,39 +218,20 @@ namespace Game.Ai.V2
         // reservation floors in Analysis. Kept per type so an unrelated empty resource (Tech on an
         // Energy+Materials chain) never suppresses a spend that does not consume it.
         private static ResourceBundle SurplusByType(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, IMissionIntentView intents, SelfSnapshot self = null)
+            AiTurnContext ctx, IMissionIntentView intents)
         {
             var surplus = new ResourceBundle();
             if (player == null || root == null)
                 return surplus;
-            // The window protects the hand and the deck (DevelopmentInvestmentGate). A resource
-            // neither still needs is not theirs to absorb: it is surplus even while Development
-            // or aviation keep spending it (playtest 2026-10-16: deck empty, every Energy unit
-            // went to equipment and sorties, so the 1-Energy mutators never saw an open window).
-            var cardNeed = new ResourceBundle();
-            if (self != null)
-            {
-                AccumulateCardCosts(self.Hand ?? System.Array.Empty<CardData>(), ref cardNeed);
-                AccumulateCardCosts(self.Deck ?? System.Array.Empty<CardDefinition>(), ref cardNeed);
-            }
             foreach (ResourceType t in ResourceBundle.All)
             {
                 float spendable = Mathf.Max(0f,
                     StrategicSpendability.SpendableAmount(player, root, ctx, t)
                     - OutstandingEconomyCommitment(player, ctx, t, intents));
-                float income = IncomeProjection.IncomeFor(player, t, ctx?.Map);
-                surplus.Add(t, InvestmentSurplus(spendable, income, self != null ? cardNeed.Get(t) : (float?)null));
+                float income = Mathf.Max(1f, IncomeProjection.IncomeFor(player, t, ctx?.Map));
+                surplus.Add(t, Mathf.Clamp01(spendable / (income * 2f)));
             }
             return surplus;
-        }
-
-        // Headroom of one resource for Development: free stock against two turns of income, or
-        // fully free when the hand and the deck no longer need it (`cardNeed` 0; null = unknown).
-        internal static float InvestmentSurplus(float spendable, float income, float? cardNeed)
-        {
-            if (cardNeed.HasValue && cardNeed.Value <= 0f)
-                return 1f;
-            return Mathf.Clamp01(Mathf.Max(0f, spendable) / (Mathf.Max(1f, income) * 2f));
         }
 
         // H/E/M/T an ACTIVE Economy build intent is already committed to but that the turn-scoped

@@ -464,11 +464,14 @@ namespace Game.Ai.V2
                     + $"deployed={snap.Self.DeployedPower:0.#} available={snap.Self.AvailablePower:0.#}");
                 return;
             }
-            float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
+            // 2026-10-16 — the march now needs a real win chance (AttackWinChanceGate): the fist is
+            // short of whichever is larger, the 80% floor or the power the site itself demands.
+            float sitePower = GroundCombatDemandPolicy.RequiredSitePower(objective.Opposition, hexBonus);
+            float required = Mathf.Max(AttackForceReadiness.RequiredPower(snap.Self.AttackPeak), sitePower);
             float have = fist?.EffectiveArmyPower ?? 0f;
             // §11 — a fist that already has the numbers yet misses the gate is an assembly /
             // composition gap: strengthening it by a phantom +1 from hand closes nothing.
-            if (AttackForceReadiness.ForceReady(have, snap.Self.AttackPeak))
+            if (AttackForceReadiness.ForceReady(have, snap.Self.AttackPeak) && have >= sitePower)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP target={objective.Target.DiagnosticLabel} "
                     + $"fist={(fist?.ArmyId ?? 0)} required={required:0.#} have={have:0.#} hexDef={hexBonus:0.#} "

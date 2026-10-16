@@ -36,7 +36,9 @@ namespace Game.Ai.V2
             // most power above its floor; the ordinary same-hex Assemble step takes those bodies
             // (AiArmyRoles.CanSpareGarrisonMembers). Once no garrison can spare a body the host
             // stages, as before, on the Base nearest to the target.
-            if (host != null && host.IsStructuralRaidActor
+            // Only a host with a free roster slot can take a body: a full one would wait on that
+            // Base for a transfer that never fits.
+            if (host != null && host.IsStructuralRaidActor && host.MemberCount < host.Capacity
                 && !AttackForceReadiness.ForceReady(host.EffectiveArmyPower, snap.Self.AttackPeak))
             {
                 var donor = bases

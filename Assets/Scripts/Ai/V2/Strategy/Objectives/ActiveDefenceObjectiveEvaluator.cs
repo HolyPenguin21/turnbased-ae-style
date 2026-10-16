@@ -775,10 +775,12 @@ namespace Game.Ai.V2
                 if (a == null || a.ArmyId == leaving.ArmyId || a.IsAir || a.IsAirfield || a.IsPrison
                     || a.MemberCount <= 0)
                     continue;
+                // An army another operation holds may leave too; a garrison stays.
+                if (!a.IsGarrison && unavailable != null && unavailable.Contains(a.ArmyId))
+                    continue;
                 if (a.Hex.Equals(hex))
                     return true;
                 if (!a.IsGarrison && a.CurrentMovement > 0
-                    && (unavailable == null || !unavailable.Contains(a.ArmyId))
                     && HexGridMath.Distance(a.Hex, hex) <= a.CurrentMovement)
                     return true;
             }

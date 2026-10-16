@@ -75,7 +75,11 @@ namespace Game.Ai.V2
 
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);
             float have = primary?.EffectiveArmyPower ?? 0f;
-            float required = minimumArmyPower > 0f ? minimumArmyPower : RequiredSitePower(opposition, hexBonus);
+            // 2026-10-16 — an Attack's floor (`minimumArmyPower`) now sits under a real win gate:
+            // it asks for whichever is larger, its floor or the power the site itself demands.
+            float required = minimumArmyPower > 0f
+                ? Mathf.Max(minimumArmyPower, RequiredSitePower(opposition, hexBonus))
+                : RequiredSitePower(opposition, hexBonus);
             // §11 — enough numeric power that still misses the estimator's gate is a composition
             // gap more power cannot close; it never becomes a phantom +1 FieldCombatPower.
             if (minimumArmyPower <= 0f && required - have <= AiConfigV2.allocatorSliceEpsilon)

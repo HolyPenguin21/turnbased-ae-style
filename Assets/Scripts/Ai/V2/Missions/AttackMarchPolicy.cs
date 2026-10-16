@@ -77,9 +77,10 @@ namespace Game.Ai.V2
                 $"win {win:0.00} < abort floor {AbortFloor:0.00}");
         }
 
-        // The own Citadel / Base that an honest hostile army will take unless `army` returns: it
-        // does not hold without the army (activeDefenceHoldWinChance), the army reaches it no
-        // later than the enemy, and with the army it holds. The Citadel first, then the nearest
+        // The own Citadel / Base that an honest hostile army will take unless `army` returns: the
+        // threat is imminent (activeDefenceWithdrawMaxEnemyEta), it does not hold without the army
+        // (activeDefenceHoldWinChance), the army reaches it no later than the enemy, and with the
+        // army it holds. The Citadel first, then the nearest
         // enemy. Null when no stronghold needs this army.
         internal static HexCoord? StrongholdNeedingArmy(WorldSnapshot snap, ArmySnapshot army,
             out int enemyEta)
@@ -97,7 +98,9 @@ namespace Game.Ai.V2
                     || (t.Asset.Kind != AssetKind.Citadel && t.Asset.Kind != AssetKind.Base))
                     continue;
                 int eta = t.EnemyEta.Value;
-                if (EtaTurns(army, t.Asset.Hex) > eta)
+                // The same imminence ActiveDefence answers (threat_not_imminent beyond it): a
+                // distant contact does not call a march home.
+                if (eta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta || EtaTurns(army, t.Asset.Hex) > eta)
                     continue;
                 IReadOnlyList<WorthIt.DefendingArmy> enemy =
                     ActiveDefenceObjectiveEvaluator.Opposition(snap, t.Contact.Army.ArmyId);

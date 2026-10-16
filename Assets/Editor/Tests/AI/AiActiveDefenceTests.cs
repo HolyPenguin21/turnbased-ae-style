@@ -495,6 +495,9 @@ namespace Game.EditorTests
             snap.Threat.Threats[0].EnemyEta = 0;
             Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.Null,
                 "an army that cannot get back in time is not called back");
+            snap.Threat.Threats[0].EnemyEta = 3;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.Null,
+                "a threat that is not imminent (ActiveDefence's own horizon) does not call it back");
         }
 
         private static ActiveDefenceObjective AssetObjective(WorldSnapshot snap) =>
