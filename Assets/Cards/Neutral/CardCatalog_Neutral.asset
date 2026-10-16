@@ -1295,7 +1295,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 1
+      tech: 0
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1327,7 +1327,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 1
-        amount: 1
+        amount: 2
         isOverride: 0
   - id: 25
     authoredKey: neutral.mutator.reactive-marrow
@@ -1344,7 +1344,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 1
+      tech: 0
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1376,7 +1376,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 4
-        amount: 2
+        amount: 3
         isOverride: 0
   - id: 26
     authoredKey: neutral.mutator.reinforced-skeleton
@@ -1393,7 +1393,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1425,7 +1425,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 1
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 4
         amount: 1
@@ -1448,7 +1448,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 1
+      tech: 0
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1480,7 +1480,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 4
-        amount: 2
+        amount: 3
         isOverride: 0
       - stat: 1
         amount: 1
@@ -1503,7 +1503,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1536,7 +1536,7 @@ MonoBehaviour:
       - Regeneration
       statChanges:
       - stat: 0
-        amount: 1
+        amount: 2
         isOverride: 0
   - id: 29
     authoredKey: neutral.mutator.hyper-regeneration
@@ -1553,7 +1553,7 @@ MonoBehaviour:
       human: 2
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1587,7 +1587,7 @@ MonoBehaviour:
       - CeramicArmor
       statChanges:
       - stat: 4
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 5
         amount: -1
@@ -1607,7 +1607,7 @@ MonoBehaviour:
       human: 2
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1640,7 +1640,7 @@ MonoBehaviour:
       - Regeneration
       statChanges:
       - stat: 1
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 5
         amount: -1
@@ -1663,7 +1663,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1695,7 +1695,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 5
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 6
         amount: 1
@@ -1718,7 +1718,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 1
+      tech: 0
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1750,7 +1750,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 5
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 1
         amount: -1
@@ -1763,166 +1763,6 @@ MonoBehaviour:
     displayName: Predator Reflexes
     art: {fileID: 21300000, guid: 34caabfccad6aad42a6831d2ca73ea85, type: 3}
     detailArt: {fileID: 21300000, guid: a959425143073b9479bc69a2105c2af1, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 1
-      energy: 1
-      materials: 0
-      tech: 2
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 6
-        amount: 1
-        isOverride: 0
-      - stat: 1
-        amount: 1
-        isOverride: 0
-      - stat: 5
-        amount: -1
-        isOverride: 0
-  - id: 34
-    authoredKey: neutral.mutator.neural-accelerator
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Neural Accelerator
-    art: {fileID: 21300000, guid: 9e1391bb2497a474190c44b1efcacc64, type: 3}
-    detailArt: {fileID: 21300000, guid: 588c5ee3db81ebc43b592166cf942773, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 2
-      energy: 1
-      materials: 0
-      tech: 3
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 5
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 6
-        amount: 1
-        isOverride: 0
-      - stat: 1
-        amount: 1
-        isOverride: 0
-      - stat: 0
-        amount: 1
-        isOverride: 0
-  - id: 35
-    authoredKey: neutral.mutator.rapid-synapse
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Rapid Synapse
-    art: {fileID: 21300000, guid: c326c35b5cca74b409afac480c9a5f1d, type: 3}
-    detailArt: {fileID: 21300000, guid: b1777bdf86e05724eb4b053e724d1e25, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 2
-      energy: 1
-      materials: 0
-      tech: 2
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities:
-      - RapidReaction
-      statChanges:
-      - stat: 1
-        amount: -1
-        isOverride: 0
-  - id: 36
-    authoredKey: neutral.mutator.hunter-glands
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Hunter Glands
-    art: {fileID: 21300000, guid: 3529523b3a533ee4bb89798de47496f5, type: 3}
-    detailArt: {fileID: 21300000, guid: 8fcf28a828e7d7e44ba62f6fcef07197, type: 3}
     faction: 2
     cardType: 5
     apCost: 1
@@ -1959,11 +1799,177 @@ MonoBehaviour:
       hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 6
+        amount: 2
+        isOverride: 0
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 34
+    authoredKey: neutral.mutator.neural-accelerator
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Neural Accelerator
+    art: {fileID: 21300000, guid: 9e1391bb2497a474190c44b1efcacc64, type: 3}
+    detailArt: {fileID: 21300000, guid: 588c5ee3db81ebc43b592166cf942773, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 2
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 6
+        amount: 2
+        isOverride: 0
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 0
+        amount: 1
+        isOverride: 0
+  - id: 35
+    authoredKey: neutral.mutator.rapid-synapse
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Rapid Synapse
+    art: {fileID: 21300000, guid: c326c35b5cca74b409afac480c9a5f1d, type: 3}
+    detailArt: {fileID: 21300000, guid: b1777bdf86e05724eb4b053e724d1e25, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 2
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - RapidReaction
+      statChanges:
+      - stat: 1
+        amount: -1
+        isOverride: 0
+      - stat: 6
+        amount: 1
+        isOverride: 0
+  - id: 36
+    authoredKey: neutral.mutator.hunter-glands
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Hunter Glands
+    art: {fileID: 21300000, guid: 3529523b3a533ee4bb89798de47496f5, type: 3}
+    detailArt: {fileID: 21300000, guid: 8fcf28a828e7d7e44ba62f6fcef07197, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
       addAbilities:
       - r1s4
       statChanges:
       - stat: 1
         amount: -1
+        isOverride: 0
+      - stat: 6
+        amount: 1
         isOverride: 0
   - id: 37
     authoredKey: neutral.mutator.enhanced-senses
@@ -1980,7 +1986,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2014,7 +2020,7 @@ MonoBehaviour:
       - CeramicArmor
       statChanges:
       - stat: 6
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 5
         amount: -1
@@ -2034,7 +2040,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2067,7 +2073,7 @@ MonoBehaviour:
       - r1s4
       statChanges:
       - stat: 5
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 1
         amount: -1
@@ -2090,7 +2096,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 1
+      tech: 0
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2126,7 +2132,7 @@ MonoBehaviour:
         amount: -1
         isOverride: 0
       - stat: 6
-        amount: 1
+        amount: 2
         isOverride: 0
   - id: 40
     authoredKey: neutral.mutator.fortunate-genome
@@ -2143,7 +2149,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2175,7 +2181,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 9
-        amount: 1
+        amount: 2
         isOverride: 0
   - id: 41
     authoredKey: neutral.mutator.ghost-genome
@@ -2192,7 +2198,7 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 0
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2223,7 +2229,10 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities:
       - Stealth4
-      statChanges: []
+      statChanges:
+      - stat: 9
+        amount: 1
+        isOverride: 0
   - id: 42
     authoredKey: neutral.mutator.hunter-genome
     deckPointCost: 1
@@ -2237,6 +2246,56 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 01000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - r1s4
+      statChanges:
+      - stat: 9
+        amount: 1
+        isOverride: 0
+  - id: 43
+    authoredKey: neutral.mutator.reflex-genome
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Reflex Genome
+    art: {fileID: 21300000, guid: 7666ab34d640b1c4ba497ea1ef9e46f9, type: 3}
+    detailArt: {fileID: 21300000, guid: 0c7b6fccc0c139b46a0b686f7932d56a, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 2
       energy: 1
       materials: 0
       tech: 2
@@ -2269,55 +2328,11 @@ MonoBehaviour:
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
-      - r1s4
-      statChanges: []
-  - id: 43
-    authoredKey: neutral.mutator.reflex-genome
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Reflex Genome
-    art: {fileID: 21300000, guid: 7666ab34d640b1c4ba497ea1ef9e46f9, type: 3}
-    detailArt: {fileID: 21300000, guid: 0c7b6fccc0c139b46a0b686f7932d56a, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 2
-      energy: 1
-      materials: 0
-      tech: 3
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 5
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 01000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities:
       - RapidReaction
-      statChanges: []
+      statChanges:
+      - stat: 9
+        amount: 1
+        isOverride: 0
   - id: 44
     authoredKey: neutral.equipment.infantry.ballistic-shield
     deckPointCost: 1

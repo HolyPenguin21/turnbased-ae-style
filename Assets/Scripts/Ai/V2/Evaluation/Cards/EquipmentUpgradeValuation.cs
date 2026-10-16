@@ -115,10 +115,10 @@ namespace Game.Ai.V2
                 return default;
             var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
             var before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
-            return ScoreEquipmentDelta(grant, before, current.Abilities,
+            return WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, current.Abilities,
                 host.cardType == CardType.Hero, snap, inv,
                 EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait,
-                host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment);
+                host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment));
         }
 
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, UnitData host,
@@ -149,10 +149,22 @@ namespace Game.Ai.V2
                 stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host,
                     EquipmentStat.Fate, projectedFate);
             var projected = new PredictedEquipmentState(stats, next.Abilities);
-            return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv, projected,
-                true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
+            return WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv,
+                projected, true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
                 OwnWorld.Of(snap?.Observer).ArmyContaining(host), null,
-                Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host);
+                Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host));
+        }
+
+        // The one slot weight (AiConfigV2.equipMutatorValueMult): only a positive gain of a
+        // Mutator-slot attachment is scaled; losses and capability rejects keep their value.
+        private static EquipmentDelta WithSlotWeight(CardDefinition attachment, EquipmentDelta delta)
+        {
+            if (attachment?.attachmentSlot != AttachmentSlot.Mutator)
+                return delta;
+            float m = AiConfigV2.equipMutatorValueMult;
+            return new EquipmentDelta(delta.Combat > 0f ? delta.Combat * m : delta.Combat,
+                delta.Tactical > 0f ? delta.Tactical * m : delta.Tactical,
+                () => delta.Detail + $" mutator x{m:0.##}");
         }
 
         // Combat = what WorthIt can witness (Attack/Defense/HP/Initiative, hero Fate,

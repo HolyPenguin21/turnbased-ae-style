@@ -53,6 +53,10 @@ namespace Game.Ai.V2
         // ---- price of E ---------------------------------------------------------------------------
         // A unit costs ~0.5 AP per E; 1 AP = cardScorePerApEquivalent card units.
         public const float equipCardValuePerE = 0.075f;
+        // Value weight of a Mutator-slot gain against the same gain in the Equipment slot. 1: one
+        // shared valuation; mutator strength is set by its card data (rebalanced 2026-10-16: -1
+        // resource, +1 stat each, so a mutator buys an equipment-level gain per resource).
+        public const float equipMutatorValueMult = 1f;
 
         // ---- mission context (host already on a mission) ---------------------------------------------
         public const float equipAttackOffenseMult = 1.5f;
