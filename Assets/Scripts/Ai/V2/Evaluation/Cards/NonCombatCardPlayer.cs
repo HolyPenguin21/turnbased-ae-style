@@ -537,8 +537,13 @@ namespace Game.Ai.V2
             if (ctx?.Map == null || projected == null || projected.Count == 0
                 || projected.Any(u => u == null || !u.IsAviation))
                 return default;
+            // A fixed airfield is threatened as its Base/Citadel; a mobile one as its carrier's army.
+            bool fixedAirfield = snap?.Self?.BaseHexes?.Contains(airfield) == true;
             float airfieldThreat = snap?.Threat?.Threats?
-                .Where(t => t?.Asset != null && t.Asset.Hex.Equals(airfield))
+                .Where(t => t?.Asset != null && t.Asset.Hex.Equals(airfield)
+                    && (fixedAirfield
+                        ? t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base
+                        : t.Asset.Kind == AssetKind.Army))
                 .Select(t => t.Severity).DefaultIfEmpty(0f).Max() ?? 0f;
 
             TaskScore best = default;

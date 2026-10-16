@@ -77,18 +77,16 @@ namespace Game.Aviation
 
             // Forming a stack is not a take-off. The common movement activation path charges
             // AP + Energy exactly once, and is also what shows both costs on the route arrow.
+            // A launch is exactly the selected aircraft: an occupied ready deck already belongs to
+            // an earlier formation, so this one becomes a separate wing of the same carrier.
             ArmyData deck = CarrierLaunchDeck(airfield, hexSelection);
-            if (deck != null && deck.Members.Count + aircraft.Count > AviationRules.ContainerCapacity(deck))
-            {
-                failReason = "The carrier's launch deck is full.";
-                return false;
-            }
-            var army = deck ?? new ArmyData
+            var army = deck != null && deck.Members.Count == 0 ? deck : new ArmyData
             {
                 Name = catalog != null ? catalog.GetRandomArmyName(ArmyRegistry.AllForOwner(airfield.Owner).Select(existing => existing.Name)) : "Air Wing",
                 Owner = airfield.Owner,
                 Hex = airfield.Hex,
                 IsAirArmy = true,
+                LaunchCarrier = airfield.CarrierUnit,
             };
             foreach (UnitData aircraftCard in aircraft.ToList())
             {
@@ -206,7 +204,7 @@ namespace Game.Aviation
                 return 0;
             if (EnsureAirfield(hexSelection, airArmy.Owner, airArmy.Hex) == null) return 0;
             int landed = 0;
-            bool carrierLanding = AviationRules.AirfieldsAt(airArmy.Hex, airArmy.Owner).Any(a => a.IsCarrierContainer);
+            bool carrierLanding = false;
             foreach (ArmyData airfield in AviationRules.AirfieldsAt(airArmy.Hex, airArmy.Owner)
                 .OrderBy(a => a.CarrierUnit != null && a.CarrierUnit == airArmy.LaunchCarrier ? 0 : 1).ToList())
             {

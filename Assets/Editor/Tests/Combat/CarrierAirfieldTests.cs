@@ -81,7 +81,7 @@ namespace Game.EditorTests
             Assert.That(stored.MoveCurrent, Is.EqualTo(1)); Assert.That(ready.MoveCurrent, Is.EqualTo(1));
             Assert.That(stored.HasAirAttackedThisTurn, Is.True);
             Assert.That(AiAirSortiePlanner.OwnedAirfieldHexes(_owner), Does.Contain(destination));
-            Assert.That(AiAirSortiePlanner.OwnedAirfieldHexes(_owner), Does.Not.Contain(Home));
+            Assert.That(AiAirSortiePlanner.OwnedAirfieldHexes(_owner), Has.No.Member(Home));
         }
 
         [Test]
@@ -107,6 +107,70 @@ namespace Game.EditorTests
                 out ArmyData wing, out _), Is.True);
             Assert.That(wing, Is.SameAs(c.CarrierFlightDeck));
             Assert.That(wing.Members, Is.EquivalentTo(new[] { p }));
+        }
+
+        [Test]
+        public void LaunchBesideOccupiedDeckFormsSeparateWingOfExactlySelectedAircraft()
+        {
+            UnitData c = Carrier(), ready = Plane(), next = Plane();
+            c.CarrierFlightDeck.Members.Add(ready); c.CarrierAirfield.Members.Add(next);
+            Assert.That(AviationActions.TryLaunch(c.CarrierAirfield, new[] { next }, null, null,
+                out ArmyData wing, out _), Is.True);
+            Assert.That(wing, Is.Not.SameAs(c.CarrierFlightDeck));
+            Assert.That(wing.Members, Is.EquivalentTo(new[] { next }));
+            Assert.That(wing.LaunchCarrier, Is.SameAs(c));
+            Assert.That(c.CarrierFlightDeck.Members, Is.EquivalentTo(new[] { ready }));
+            Assert.That(AviationRules.FreeAirfieldCapacity(Home, _owner), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void DepartingCarrierLandsArrivedWingInsteadOfStrandingIt()
+        {
+            UnitData c = Carrier(), p = Plane(); ArmyData arrived = Wing(p);
+            var destination = new HexCoord(1, 0);
+            ArmyRegistry.MoveArmy(ArmyRegistry.FindArmyContaining(c), destination);
+            Assert.That(c.CarrierAirfield.Members, Does.Contain(p));
+            Assert.That(c.CarrierAirfield.Hex, Is.EqualTo(destination));
+            Assert.That(ArmyRegistry.IsRegistered(arrived), Is.False);
+            Assert.That(p.SortieLaunchPaid, Is.False);
+        }
+
+        [Test]
+        public void DepartingCarrierLeavesWingsThatStillHaveAFixedAirfield()
+        {
+            UnitData c = Carrier();
+            BuildingRegistry.Register(Home, new BuildingData { Owner = _owner, Hex = Home, AirfieldCapacity = 4 });
+            UnitData p = Plane(); ArmyData arrived = Wing(p);
+            ArmyRegistry.MoveArmy(ArmyRegistry.FindArmyContaining(c), new HexCoord(1, 0));
+            Assert.That(ArmyRegistry.IsRegistered(arrived), Is.True);
+            Assert.That(arrived.Members, Does.Contain(p));
+            Assert.That(c.CarrierAirfield.Members, Is.Empty);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void OrdinaryWingAtFixedAirfieldBesideCarrierKeepsItsEndTurnLifetime(bool human)
+        {
+            _owner.IsHuman = human; UnitData c = Carrier();
+            BuildingRegistry.Register(Home, new BuildingData { Owner = _owner, Hex = Home, AirfieldCapacity = 4 });
+            ArmyData fixedAirfield = AviationActions.EnsureAirfield(null, _owner, Home);
+            UnitData p = Plane(); ArmyData wing = Wing(p);
+            AviationTurnLifecycle.ResolveEndOfTurn(_owner, null);
+            Assert.That(ArmyRegistry.IsRegistered(wing), Is.True);
+            Assert.That(c.CarrierAirfield.Members, Is.Empty);
+            if (human) Assert.That(wing.Members, Does.Contain(p));
+            else Assert.That(fixedAirfield.Members, Does.Contain(p));
+        }
+
+        [Test]
+        public void AirfieldHexOrderKeepsStartingCitadelFirstAndCarriersAfterFixedFields()
+        {
+            var citadel = new HexCoord(5, 0); var outpost = new HexCoord(2, 0);
+            BuildingRegistry.Register(outpost, new BuildingData { Owner = _owner, Hex = outpost, AirfieldCapacity = 2 });
+            BuildingRegistry.Register(citadel, new BuildingData { Owner = _owner, Hex = citadel, AirfieldCapacity = 2,
+                IsStartingCitadel = true });
+            Carrier();
+            Assert.That(AviationRules.OwnedAirfieldHexes(_owner), Is.EqualTo(new[] { citadel, outpost, Home }));
         }
 
         [Test]
@@ -242,8 +306,8 @@ namespace Game.EditorTests
             UnitData c = Carrier(); c.CarrierAirfield.Members.Add(Plane());
             c.CarrierFlightDeck.Members.Add(Plane()); ArmyData flying = Wing(Plane());
             var targets = AviationCombatPresenter.FindAirStrikeTargetsAt(Home, new PlayerSetupData());
-            Assert.That(targets, Does.Contain(ArmyRegistry.FindArmyContaining(c)).And.Contain(flying));
-            Assert.That(targets, Does.Not.Contain(c.CarrierAirfield).And.Not.Contain(c.CarrierFlightDeck));
+            Assert.That(targets, Has.Member(ArmyRegistry.FindArmyContaining(c)).And.Member(flying));
+            Assert.That(targets, Has.No.Member(c.CarrierAirfield).And.No.Member(c.CarrierFlightDeck));
         }
 
         [Test]

@@ -157,6 +157,7 @@ namespace Game.Map
             StealthSystem.StealthChanged += OnStealthChanged;
             BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
             AviationActions.AircraftReturnedToHand += GrantCard;
+            AviationActions.ReturnedWingDeletionRequested += DeleteReturnedWing;
             RefreshAllVisibility();
         }
 
@@ -183,6 +184,7 @@ namespace Game.Map
             StealthSystem.StealthChanged -= OnStealthChanged;
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
             AviationActions.AircraftReturnedToHand -= GrantCard;
+            AviationActions.ReturnedWingDeletionRequested -= DeleteReturnedWing;
             SetRememberedBuildingVisualsVisible(false);
             SetRememberedArmyVisualsVisible(false);
         }

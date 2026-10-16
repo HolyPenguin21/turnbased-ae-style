@@ -101,6 +101,12 @@ namespace Game.Map
                 army.Controller.Visual.ApplyPrefabAppearance(prefab);
         }
 
+        private void DeleteReturnedWing(ArmyData wing)
+        {
+            DeleteArmyIfEmptied(wing, force: true);
+            RestackArmiesOn(wing.Hex, null);
+        }
+
         public void DeleteArmyIfEmptied(ArmyData army, bool force = false)
         {
             if (army == null || army.Members.Count > 0)

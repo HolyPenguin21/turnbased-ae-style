@@ -14,6 +14,8 @@ namespace Game.Aviation
     public static partial class AviationActions
     {
         public static event Action<PlayerSetupData, CardData> AircraftReturnedToHand;
+        // Map-side deletion (selection/marker) for a wing emptied without a selection reference.
+        public static event Action<ArmyData> ReturnedWingDeletionRequested;
 
         public static bool IsCarrier(UnitData unit) => unit != null && !unit.IsHero && !unit.IsAviation
             && !unit.IsPrisoner && unit.HitPointsCurrent > 0 && unit.AirfieldCapacity > 0;
@@ -93,6 +95,7 @@ namespace Game.Aviation
         {
             if (wing == null || wing.Members.Count > 0 || wing.IsCarrierContainer) return;
             if (selection != null) selection.DeleteArmyIfEmptied(wing, force: true);
+            else if (ReturnedWingDeletionRequested != null) ReturnedWingDeletionRequested(wing);
             else
             {
                 ArmyController controller = wing.Controller;
@@ -104,6 +107,26 @@ namespace Game.Aviation
                 }
                 ArmyRegistry.Unregister(wing);
             }
+        }
+
+        // A carrier hex is an airfield only while the carrier stands on it, but landing happens at
+        // end of turn. Before the last carrier leaves a hex without a fixed airfield, own wings
+        // that finished their flight there land aboard now: the same end-of-turn landing brought
+        // forward, so an arrived sortie is never stranded by a later ground move.
+        internal static void LandWingsBeforeCarrierDeparts(ArmyData host)
+        {
+            if (host == null || host.Owner == null || host.IsCarrierContainer || host.IsPrison
+                || !host.Members.Any(IsCarrier))
+                return;
+            HexCoord hex = host.Hex;
+            if (AviationRules.IsAirfieldBuilding(BuildingRegistry.FindAt(hex), host.Owner)
+                || ArmyRegistry.AllAt(hex).Any(a => a != host && a.Owner == host.Owner
+                    && !a.IsCarrierContainer && !a.IsPrison && a.Members.Any(IsCarrier)))
+                return;
+            foreach (ArmyData wing in ArmyRegistry.AllAt(hex).Where(a => a.Owner == host.Owner
+                && !a.IsCarrierContainer && AviationRules.IsValidAirArmy(a)
+                && (a.Controller == null || !a.Controller.IsMoving)).ToList())
+                LandInSlotOrder(wing, null);
         }
 
         public static ArmyData FindStoredAircraftSource(HexCoord hex, PlayerSetupData owner,

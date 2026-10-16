@@ -24,11 +24,16 @@ namespace Game.Aviation
                 .OrderBy(a => a.CarrierUnit == null ? 0 : 1).ThenBy(a => a.Id);
 
         // One owner-scoped map capability for human placement, flight planning and landing.
+        // Fixed airfields keep their established order (starting citadel first, then coordinates):
+        // planners break exact ties by this order. Mobile carrier hexes follow.
         public static IEnumerable<HexCoord> OwnedAirfieldHexes(PlayerSetupData owner) =>
-            BuildingRegistry.AllBuildings().Where(b => IsAirfieldBuilding(b, owner)).Select(b => b.Hex)
+            BuildingRegistry.AllBuildings().Where(b => IsAirfieldBuilding(b, owner))
+                .OrderByDescending(b => b.IsStartingCitadel).ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R)
+                .Select(b => b.Hex)
                 .Concat(ArmyRegistry.AllForOwner(owner)
                     .Where(a => !a.IsCarrierContainer && !a.IsPrison && a.Members.Any(AviationActions.IsCarrier))
-                    .Select(a => a.Hex)).Distinct().OrderBy(h => h.Q).ThenBy(h => h.R);
+                    .Select(a => a.Hex).OrderBy(h => h.Q).ThenBy(h => h.R))
+                .Distinct();
 
         public static bool IsAirfieldBuilding(BuildingData building, PlayerSetupData owner)
         {
