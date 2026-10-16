@@ -73,12 +73,12 @@ namespace Game.UI
             return Join(AddedAbilities(equip.equipment, config), StatChanges(equip.equipment));
         }
 
-        // The equipment card's own face while it is still free in hand: ability abbreviations
-        // only, same as every other card face (see GameConfig.FormatAbilities). Compatibility
-        // and the full stat list stay in the detail panel (see Description); numeric changes are
-        // on the stat badges.
+        // The equipment/mutator card's own face (free in hand or catalog preview): who it fits
+        // (the same compatibility line as Description), then the added abilities' abbreviations
+        // (see GameConfig.FormatAbilities). Numeric changes are on the stat badges; the full
+        // stat list stays in the detail panel (see Description).
         public static string CardFace(CardDefinition equip, GameConfig config)
-            => equip == null ? string.Empty : AddedAbilities(equip.equipment, config);
+            => equip == null ? string.Empty : Join(AttachmentTargets(equip), AddedAbilities(equip.equipment, config));
 
         private static string AttachmentTargets(CardDefinition equip)
         {
@@ -90,7 +90,7 @@ namespace Game.UI
             => equip == null ? string.Empty : Join(AttachmentTargets(equip), EffectSummary(equip, config));
 
         // The equipment's face once it is already attached to a host (shown over the host card
-        // while its equipment button is held) — the same abilities-only face as CardFace.
+        // while its equipment button is held) — the same face as the free card (CardFace).
         public static string AttachedCardFace(CardDefinition equip, GameConfig config)
             => CardFace(equip, config);
 

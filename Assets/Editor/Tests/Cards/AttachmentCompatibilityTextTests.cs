@@ -19,8 +19,8 @@ namespace Game.EditorTests
                 hostTypeTags = new List<UnitTypeTag> { tag },
                 hostKinds = new List<EquipmentHostKind> { kind },
             } };
-            // Compatibility is detail-panel only; the card face lists ability abbreviations alone.
-            Assert.That(EquipmentCardText.CardFace(card, null), Is.Empty);
+            // The card face and the detail panel open with the same compatibility line.
+            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo(expected));
             Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo(expected));
         }
 
@@ -71,12 +71,12 @@ namespace Game.EditorTests
         {
             var card = new CardDefinition { attachmentSlot = AttachmentSlot.Mutator,
                 equipment = new EquipmentGrant { hostKinds = new List<EquipmentHostKind> { kind } } };
-            Assert.That(EquipmentCardText.CardFace(card, null), Is.Empty);
+            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo(expected));
             Assert.That(EquipmentCardText.Description(card, null), Is.EqualTo(expected));
         }
 
         [Test]
-        public void CardFaceListsOnlyAbilitiesWithoutTypeTagsOrStatText()
+        public void CardFaceListsCompatibilityThenAbilitiesWithoutStatText()
         {
             var card = new CardDefinition { attachmentSlot = AttachmentSlot.Mutator, equipment = new EquipmentGrant
             {
@@ -88,8 +88,9 @@ namespace Game.EditorTests
                 },
             } };
             card.equipment.addAbilities.Add(UnitAbilities.ShockAttack);
-            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo("Shock Attack"));
-            Assert.That(EquipmentCardText.AttachedCardFace(card, null), Is.EqualTo("Shock Attack"));
+            // Free and attached faces are identical; numeric changes stay on the stat badges.
+            Assert.That(EquipmentCardText.CardFace(card, null), Is.EqualTo("Bio, Infantry, Unit\nShock Attack"));
+            Assert.That(EquipmentCardText.AttachedCardFace(card, null), Is.EqualTo("Bio, Infantry, Unit\nShock Attack"));
         }
     }
 }

@@ -11,15 +11,16 @@ namespace Game.UI
     // discloses the CardType.Equipment card attached to that host. While the pointer is over it
     // OR the left button is held down on it, the card shows the equipment instead of the unit:
     //   - portrait swapped to the equipment's art
-    //   - the host's own stat row hidden (statsToHideOnHover)
+    //   - the host's stat badges replaced with the gear's own modifiers (attack..rangeStatText;
+    //     legacy fallback without them: the stat row hidden via statsToHideOnHover)
     //   - the name element replaced with the equipment's name (nameOverrideText)
-    //   - the info element replaced with the equipment's added abilities + stat changes
-    //     (infoText — see EquipmentCardText.EffectSummary)
+    //   - the info element replaced with the same face the free card shows — who it fits + added
+    //     abilities (infoText — see EquipmentCardText.AttachedCardFace)
     // Each overridden element's previous value is captured on the first change and restored
     // when neither hover nor press holds, so nameOverrideText / infoText / statsToHideOnHover
     // can point straight at the card's own existing elements — no dedicated overlay objects.
-    // BattleGridCell has no ability-text element, so there only nameOverrideText is wired and
-    // the name alone changes. The owning card also calls Revert() from its own OnPointerExit.
+    // Card_Hand, Card_Army and BattleGridCell wire all of them. The owning card also calls
+    // Revert() from its own OnPointerExit.
     //
     // The owning card drives this via Configure(equipmentCard, config) every time it (re)binds
     // a unit — that also shows/hides this button (hidden when nothing's attached).
@@ -33,7 +34,7 @@ namespace Game.UI
         [SerializeField] private GameObject buttonVisual;
         // Legacy fallback for cards that have not wired individual stat texts yet.
         [SerializeField] private GameObject statsToHideOnHover;
-        // Optional five-slot Equipment view. When wired (Card_Hand), attached Equipment keeps
+        // Optional five-slot Equipment view. When wired (every card prefab), attached Equipment keeps
         // the row visible and temporarily replaces host totals with the gear's own modifiers.
         [SerializeField] private TMP_Text attackStatText;
         [SerializeField] private TMP_Text defenseStatText;
@@ -134,8 +135,8 @@ namespace Game.UI
             _moveSwap.Show(moveStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 3, _hostCardType));
             _rangeSwap.Show(rangeStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 4, _hostCardType));
             _nameSwap.Show(nameOverrideText, _equipment.displayName);
-            // Only the hand prefab has the new five-slot Equipment view. Keep legacy effect text
-            // in Army/Battle contexts until those modals are migrated to the same template.
+            // With the five-slot view the numbers are on the badges, so the text is the card face;
+            // without it (legacy wiring) the stat changes have to be spelled out in the text.
             _infoSwap.Show(infoText, hasEquipmentStatView
                 ? EquipmentCardText.AttachedCardFace(_equipment, _config)
                 : EquipmentCardText.EffectSummary(_equipment, _config));

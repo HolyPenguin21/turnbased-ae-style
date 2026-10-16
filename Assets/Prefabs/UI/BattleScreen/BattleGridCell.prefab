@@ -1370,7 +1370,7 @@ MonoBehaviour:
   hpStatText: {fileID: 4970000000000000089}
   moveStatText: {fileID: 4970000000000000069}
   rangeStatText: {fileID: 4970000000000000059}
-  nameOverrideText: {fileID: 0}
+  nameOverrideText: {fileID: 8153288399193924460}
   infoText: {fileID: 4970000000000000204}
 --- !u!1 &7279367339746685217
 GameObject:
@@ -1605,7 +1605,7 @@ MonoBehaviour:
   hpStatText: {fileID: 4970000000000000089}
   moveStatText: {fileID: 4970000000000000069}
   rangeStatText: {fileID: 4970000000000000059}
-  nameOverrideText: {fileID: 0}
+  nameOverrideText: {fileID: 8153288399193924460}
   infoText: {fileID: 4970000000000000204}
 
 

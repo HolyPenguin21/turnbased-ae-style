@@ -2591,14 +2591,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.EquipmentArtToggle
   cardArtImage: {fileID: 1980000000000010004}
   buttonVisual: {fileID: 4116135757129442736}
-  statsToHideOnHover: {fileID: 0}
-  attackStatText: {fileID: 0}
-  defenseStatText: {fileID: 0}
-  hpStatText: {fileID: 0}
-  moveStatText: {fileID: 0}
-  rangeStatText: {fileID: 0}
-  nameOverrideText: {fileID: 0}
-  infoText: {fileID: 0}
+  statsToHideOnHover: {fileID: 5104911165608082475}
+  attackStatText: {fileID: 6822279082554395410}
+  defenseStatText: {fileID: 2506810297412926485}
+  hpStatText: {fileID: 4600275812722530622}
+  moveStatText: {fileID: 6662871343601880706}
+  rangeStatText: {fileID: 2660958940758301456}
+  nameOverrideText: {fileID: 1948341482214874657}
+  infoText: {fileID: 6905873488597389035}
 --- !u!1 &5104911165608082475
 GameObject:
   m_ObjectHideFlags: 0
@@ -3175,11 +3175,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.EquipmentArtToggle
   cardArtImage: {fileID: 1980000000000010004}
   buttonVisual: {fileID: 8105000000000000000}
-  statsToHideOnHover: {fileID: 0}
-  attackStatText: {fileID: 0}
-  defenseStatText: {fileID: 0}
-  hpStatText: {fileID: 0}
-  moveStatText: {fileID: 0}
-  rangeStatText: {fileID: 0}
-  nameOverrideText: {fileID: 0}
-  infoText: {fileID: 0}
+  statsToHideOnHover: {fileID: 5104911165608082475}
+  attackStatText: {fileID: 6822279082554395410}
+  defenseStatText: {fileID: 2506810297412926485}
+  hpStatText: {fileID: 4600275812722530622}
+  moveStatText: {fileID: 6662871343601880706}
+  rangeStatText: {fileID: 2660958940758301456}
+  nameOverrideText: {fileID: 1948341482214874657}
+  infoText: {fileID: 6905873488597389035}
