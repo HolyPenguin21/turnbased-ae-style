@@ -691,9 +691,12 @@ namespace Game.Ai.V2
             bool formed = false;
             if (executionTrace != null) executionTrace.FormationCommitted = false;
             ArmyData airArmy = decision.ExistingArmy;
+            // The exact container the formation drew from; a cancelled launch returns there.
+            ArmyData sourceAirfield = null;
             if (airArmy == null)
             {
                 ArmyData airfield = AviationActions.FindStoredAircraftSource(decision.TargetHex, player, decision.AircraftToLaunch);
+                sourceAirfield = airfield;
                 if (airfield == null || decision.AircraftToLaunch == null || decision.AircraftToLaunch.Count == 0)
                 {
                     AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed — no airfield/aircraft at "
@@ -750,7 +753,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" — {taskKind} has no viable first step "
                     + "this turn, cancels the launch and returns aircraft to storage.");
                 AirSortieRegistry.Remove(player, task);
-                ArmyData homeAirfield = airArmy.CarrierUnit?.CarrierAirfield
+                ArmyData homeAirfield = sourceAirfield
                     ?? AviationActions.EnsureAirfield(ctx.HexSelection, player, airArmy.Hex);
                 if (homeAirfield == null) yield break;
                 foreach (UnitData aircraft in airArmy.Members.ToList())

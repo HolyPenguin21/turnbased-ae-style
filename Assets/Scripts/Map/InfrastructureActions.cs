@@ -116,7 +116,8 @@ namespace Game.Map
             FacilityData[] carriedOver = existing?.FacilitySlots;
             MapObjectVisual oldVisual = existing?.Visual;
             bool ownerGarrisonExistedBefore = ArmyRegistry.AllAt(hex).Any(a => a != null && a.IsGarrison && a.Owner == owner);
-            bool ownerAirfieldExistedBefore = AviationRules.FindAirfieldAt(hex, owner) != null;
+            // The building's own container only: a carrier hangar on the hex is not rolled back.
+            bool ownerAirfieldExistedBefore = AviationRules.AirfieldsAt(hex, owner).Any(a => !a.IsCarrierContainer);
 
             int[] resourcesBefore = completeBeforeCommit == null ? null : SnapshotResources(root);
             var rostersBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllAt(hex)
@@ -234,7 +235,8 @@ namespace Game.Map
             if (!ownerAirfieldExistedBefore)
             {
                 ArmyData orphan = ArmyRegistry.AllAt(hex)
-                    .FirstOrDefault(a => a != null && a.IsAirfield && a.Owner == owner && a.Members.Count == 0);
+                    .FirstOrDefault(a => a != null && a.IsAirfield && !a.IsCarrierContainer
+                        && a.Owner == owner && a.Members.Count == 0);
                 if (orphan != null)
                 {
                     if (orphan.Controller != null)

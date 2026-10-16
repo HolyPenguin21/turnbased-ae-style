@@ -141,6 +141,7 @@ namespace Game.Map
             if (!IsRegistered(army) || army.Hex.Equals(newHex))
                 return;
 
+            AviationActions.LandWingsBeforeCarrierDeparts(army);
             HexCoord oldHex = army.Hex;
             RelocateInIndex(army, newHex);
             // The whole indexed group is in its final position before observers are notified.
