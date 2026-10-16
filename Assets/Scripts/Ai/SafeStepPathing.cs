@@ -125,8 +125,9 @@ namespace Game.Ai
                 {
                     if (cache.BaseCostFields.Count >= MaxCostFields)
                         cache.BaseCostFields.Clear();
-                    field = HexPathfinder.FindCosts(map, new[] { home },
-                        hex => cache.BlockedHexes.Contains(hex));
+                    using (new Game.Core.ProfileScope("AI/Pathing.CostField"))
+                        field = HexPathfinder.FindCosts(map, new[] { home },
+                            hex => cache.BlockedHexes.Contains(hex));
                     cache.BaseCostFields[home] = field;
                 }
                 if (field.TryGetValue(target, out int cost) && cost < minimum)
@@ -151,6 +152,7 @@ namespace Game.Ai
             {
                 if (cache.ReturnCostFields.Count >= MaxCostFields)
                     cache.ReturnCostFields.Clear();
+                using var __field = new Game.Core.ProfileScope("AI/Pathing.CostField");
                 field = new ReturnCostField
                 {
                     Bases = new HashSet<HexCoord>(baseHexes),
@@ -162,7 +164,10 @@ namespace Game.Ai
             return field.Costs.TryGetValue(from, out int cost) ? cost : int.MaxValue;
         }
 
-        private const int MaxCachedRoutes = 512;
+        // One Economy scan alone asks for every builder x every candidate site (539 routes in a
+        // 2026-10-16 profile). A cap below one scan's working set cleared the cache mid-scan and
+        // turned every later scan into misses; a route is a short list, so keep a wide margin.
+        private const int MaxCachedRoutes = 8192;
         private const int MaxCostFields = 32;
         private sealed class PlayerRouteCache
         {

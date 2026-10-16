@@ -41,21 +41,82 @@ namespace Game.Ai.V2
             return maximum;
         }
 
+        // The target-independent half of EconomyBuilderRoutes: live armies, active Economy movers
+        // and each garrison's sparable heroes with their extraction container. BuildEconomy asks
+        // for every candidate site against the same unchanged world, so it prepares this once per
+        // scan; only the route, return leg and threat witness depend on the target.
+        internal sealed class EconomyBuilderPool
+        {
+            internal readonly Dictionary<int, ArmyData> LiveById;
+            internal readonly HashSet<int> ActiveEconomyActors;
+            private readonly PlayerSetupData _player;
+            private readonly System.Func<ResearchProductionMode, HexCoord?> _preparationSite;
+            private readonly Dictionary<int, IReadOnlyList<(UnitData Hero,
+                ProvisioningManager.GarrisonExtractionCandidate Extraction)>> _garrisonHeroes =
+                new Dictionary<int, IReadOnlyList<(UnitData, ProvisioningManager.GarrisonExtractionCandidate)>>();
+
+            internal EconomyBuilderPool(WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx)
+            {
+                _player = player;
+                LiveById = ArmyRegistry.AllForOwner(player)
+                    .Where(a => a != null).ToDictionary(a => a.Id);
+                ActiveEconomyActors = new HashSet<int>(
+                    WorldSnapshot.IntentsOf(snap)
+                        .Where(i => i != null && i.Status == IntentStatus.Active
+                            && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId.HasValue)
+                        .Select(i => i.PreferredMoverArmyId.Value));
+                // The selected preparation site per mode is a pure read of the unchanged world.
+                System.Func<ResearchProductionMode, HexCoord?> live =
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(
+                        player, AiHandRegistry.Peek(player), ctx, snap.Intents);
+                var sites = new Dictionary<ResearchProductionMode, HexCoord?>();
+                _preparationSite = mode =>
+                {
+                    if (!sites.TryGetValue(mode, out HexCoord? site))
+                        sites[mode] = site = live(mode);
+                    return site;
+                };
+            }
+
+            // Sparable heroes of `garrison` in EconomyHeroCandidates order, each with a resolved
+            // (non-None) extraction; the same answers the per-target loop used to recompute.
+            internal IReadOnlyList<(UnitData Hero, ProvisioningManager.GarrisonExtractionCandidate Extraction)>
+                GarrisonHeroes(ArmyData garrison)
+            {
+                if (_garrisonHeroes.TryGetValue(garrison.Id, out var heroes))
+                    return heroes;
+                var list = new List<(UnitData, ProvisioningManager.GarrisonExtractionCandidate)>();
+                foreach (UnitData sparableHero in AiArmyRoles.EconomyHeroCandidates(_player, garrison, _preparationSite))
+                {
+                    ProvisioningManager.GarrisonExtractionCandidate extraction =
+                        ProvisioningManager.ResolveGarrisonExtractionCandidate(_player, garrison,
+                            commitments: null, session: null, root: null,
+                            ecoApEnvelopeRemaining: float.MaxValue, preparationSite: _preparationSite,
+                            exactEconomyHeroId: sparableHero.RuntimeId);
+                    if (extraction.Tier != ProvisioningManager.GarrisonExtractionTier.None)
+                        list.Add((sparableHero, extraction));
+                }
+                _garrisonHeroes[garrison.Id] = list;
+                return list;
+            }
+        }
+
         internal static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
             WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target,
-            ArmySnapshot projectedArmy = null)
+            ArmySnapshot projectedArmy = null) =>
+            EconomyBuilderRoutes(snap, player, ctx, target, projectedArmy, null);
+
+        internal static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
+            WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target,
+            ArmySnapshot projectedArmy, EconomyBuilderPool pool)
         {
             var result = new List<EconomyBuilderRouteSnapshot>();
             if (snap?.Self?.Armies == null || player == null || ctx?.Map == null)
                 return result;
 
-            Dictionary<int, ArmyData> liveById = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null).ToDictionary(a => a.Id);
-            HashSet<int> activeEconomyActors = new HashSet<int>(
-                WorldSnapshot.IntentsOf(snap)
-                    .Where(i => i != null && i.Status == IntentStatus.Active
-                        && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId.HasValue)
-                    .Select(i => i.PreferredMoverArmyId.Value));
+            pool ??= new EconomyBuilderPool(snap, player, ctx);
+            Dictionary<int, ArmyData> liveById = pool.LiveById;
+            HashSet<int> activeEconomyActors = pool.ActiveEconomyActors;
             IEnumerable<ArmySnapshot> candidates = projectedArmy != null
                 ? new[] { projectedArmy } : snap.Self.Armies;
             foreach (ArmySnapshot army in candidates
@@ -67,17 +128,9 @@ namespace Game.Ai.V2
                 {
                     if (!liveById.TryGetValue(army.ArmyId, out ArmyData liveGarrison))
                         continue;
-                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(
-                        player, AiHandRegistry.Peek(player), ctx, snap.Intents);
-                    foreach (UnitData sparableHero in AiArmyRoles.EconomyHeroCandidates(player, liveGarrison, site))
+                    foreach ((UnitData sparableHero, ProvisioningManager.GarrisonExtractionCandidate extraction)
+                             in pool.GarrisonHeroes(liveGarrison))
                     {
-                        ProvisioningManager.GarrisonExtractionCandidate extraction =
-                            ProvisioningManager.ResolveGarrisonExtractionCandidate(player, liveGarrison,
-                                commitments: null, session: null, root: null,
-                                ecoApEnvelopeRemaining: float.MaxValue, preparationSite: site,
-                                exactEconomyHeroId: sparableHero.RuntimeId);
-                        if (extraction.Tier == ProvisioningManager.GarrisonExtractionTier.None)
-                            continue;
                         if (army.Hex.Equals(target))
                         {
                             // A garrison is NEVER a mobile hero army. Even when it already occupies

@@ -118,11 +118,16 @@ namespace Game.Ai.V2
             // army routes/threat witnesses are identical within this immutable world scan;
             // compute them only once without caching across snapshots or projected-army calls.
             var builderRoutesByHex = new Dictionary<HexCoord, IReadOnlyList<EconomyBuilderRouteSnapshot>>();
+            EconomyBuilderPool builderPool = null;
             IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutesFor(HexCoord hex)
             {
                 if (!builderRoutesByHex.TryGetValue(hex, out IReadOnlyList<EconomyBuilderRouteSnapshot> routes))
                 {
-                    routes = EconomyBuilderRoutes(snap, player, ctx, hex);
+                    using (new ProfileScope("AI/Economy.BuilderRoutes"))
+                    {
+                        builderPool ??= new EconomyBuilderPool(snap, player, ctx);
+                        routes = EconomyBuilderRoutes(snap, player, ctx, hex, null, builderPool);
+                    }
                     builderRoutesByHex[hex] = routes;
                 }
                 return routes;
@@ -150,6 +155,7 @@ namespace Game.Ai.V2
             }
             var collectorSites = new List<EconomyExtractionOpportunity>();
             var guardedExtraction = new List<EconomyExtractionOpportunity>();
+            using (new ProfileScope("AI/Economy.ExtractionSites"))
             foreach ((HexCoord Hex, ResourceType Type, int Yield) site
                      in KnownExtractionYields(snap))
             {
@@ -235,6 +241,7 @@ namespace Game.Ai.V2
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.PreferredMoverArmyId.HasValue)
                 .Select(i => i.PreferredMoverArmyId.Value));
+            using (new ProfileScope("AI/Economy.Collectors"))
             foreach (EconomyExtractionOpportunity site in collectorSites)
             {
                 // Demand admits a new collector for USEFUL income, not strictly for a
@@ -338,6 +345,7 @@ namespace Game.Ai.V2
                     out HexCoord targetCitadel, out HexCoord anchor);
                 if (hasDirection)
                     directionalSites.UnionWith(knownMapHexes);
+                using (new ProfileScope("AI/Economy.BaseSites"))
                 foreach (HexCoord hex in directionalSites.OrderBy(x => x.Q).ThenBy(x => x.R))
                     {
                         // Direction is a SCORE input (ForwardProgressValue/CorridorAlignmentValue
