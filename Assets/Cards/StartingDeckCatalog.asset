@@ -685,6 +685,56 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.roadbreaker
       count: 1
+    - cardKey: ashen.card.ash-crossbowman
+      count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 1
+    - cardKey: ashen.card.bone-picker
+      count: 1
+    - cardKey: ashen.card.carrion
+      count: 1
+    - cardKey: ashen.card.carrion-mother
+      count: 1
+    - cardKey: ashen.card.cinder-stalker
+      count: 1
+    - cardKey: ashen.card.cinder-tanker
+      count: 1
+    - cardKey: ashen.card.deadeye
+      count: 1
+    - cardKey: ashen.card.dune-locomotive
+      count: 1
+    - cardKey: ashen.card.flywheel
+      count: 1
+    - cardKey: ashen.card.fumehound
+      count: 1
+    - cardKey: ashen.card.gravebell-mortar
+      count: 1
+    - cardKey: ashen.card.iron-hedgehog
+      count: 1
+    - cardKey: ashen.card.iron-maw
+      count: 1
+    - cardKey: ashen.card.rad-leaper
+      count: 1
+    - cardKey: ashen.card.rattle-gunner
+      count: 1
+    - cardKey: ashen.card.rattletrap
+      count: 1
+    - cardKey: ashen.card.rivet-maw
+      count: 1
+    - cardKey: ashen.card.rivetstorm
+      count: 1
+    - cardKey: ashen.card.rust-breacher
+      count: 1
+    - cardKey: ashen.card.scab-shield
+      count: 1
+    - cardKey: ashen.card.scrap-locust
+      count: 1
+    - cardKey: ashen.card.scrap-mountain
+      count: 1
+    - cardKey: ashen.card.slag-lobber
+      count: 1
+    - cardKey: ashen.card.walking-refinery
+      count: 1
     - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory
