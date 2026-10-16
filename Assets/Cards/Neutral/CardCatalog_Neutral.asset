@@ -1281,21 +1281,21 @@ MonoBehaviour:
         amount: 2
         isOverride: 1
   - id: 24
-    authoredKey: neutral.mutator.dermal-plating
+    authoredKey: neutral.mutator.adrenal-surge
     deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Dermal Plating
-    art: {fileID: 21300000, guid: f953c6494cc360548bf17f83d4282521, type: 3}
-    detailArt: {fileID: 21300000, guid: 85ff393dc8bda23408044b3155fa3c77, type: 3}
+    displayName: Adrenal Surge
+    art: {fileID: 21300000, guid: 91bd2c8e69de11248ac4e62acee2f0ef, type: 3}
+    detailArt: {fileID: 21300000, guid: dfe02b78c6c0df94a941c1a9a667749d, type: 3}
     faction: 2
     cardType: 5
     apCost: 1
     resourceCost:
       human: 1
-      energy: 1
+      energy: 0
       materials: 0
-      tech: 0
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1326,10 +1326,226 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges:
-      - stat: 1
+      - stat: 5
         amount: 2
         isOverride: 0
+      - stat: 4
+        amount: 1
+        isOverride: 0
+      - stat: 1
+        amount: -1
+        isOverride: 0
   - id: 25
+    authoredKey: neutral.mutator.chameleon-tissue
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Chameleon Tissue
+    art: {fileID: 21300000, guid: 0417d8a0d2f001347bee3295600677ea, type: 3}
+    detailArt: {fileID: 21300000, guid: 8a8333bd81e63d240a6f9178203ca691, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - Stealth4
+      statChanges:
+      - stat: 5
+        amount: -1
+        isOverride: 0
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 4
+        amount: 1
+        isOverride: 0
+  - id: 26
+    authoredKey: neutral.mutator.dermal-plating
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Dermal Plating
+    art: {fileID: 21300000, guid: f953c6494cc360548bf17f83d4282521, type: 3}
+    detailArt: {fileID: 21300000, guid: 85ff393dc8bda23408044b3155fa3c77, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 2
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 4
+        amount: 1
+        isOverride: 0
+  - id: 27
+    authoredKey: neutral.mutator.fortunate-genome
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Fortunate Genome
+    art: {fileID: 21300000, guid: 2767d1b4adcebc345b23f84b481cf080, type: 3}
+    detailArt: {fileID: 21300000, guid: b138243b7fe1cdf42be971d14b070d83, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 01000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 9
+        amount: 2
+        isOverride: 0
+  - id: 28
+    authoredKey: neutral.mutator.ghost-genome
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Ghost Genome
+    art: {fileID: 21300000, guid: 7830718655edbed49bcb6b356c8fbc76, type: 3}
+    detailArt: {fileID: 21300000, guid: caf02b300c67a4b4f90ac27c67aa972d, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 01000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - Stealth4
+      statChanges:
+      - stat: 9
+        amount: 1
+        isOverride: 0
+      - stat: 5
+        amount: 1
+        isOverride: 0
+  - id: 29
     authoredKey: neutral.mutator.reactive-marrow
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1378,7 +1594,7 @@ MonoBehaviour:
       - stat: 4
         amount: 3
         isOverride: 0
-  - id: 26
+  - id: 30
     authoredKey: neutral.mutator.reinforced-skeleton
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1433,7 +1649,7 @@ MonoBehaviour:
       - stat: 6
         amount: -1
         isOverride: 0
-  - id: 27
+  - id: 31
     authoredKey: neutral.mutator.pain-suppression
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1488,7 +1704,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 28
+  - id: 32
     authoredKey: neutral.mutator.regenerative-culture
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1538,7 +1754,7 @@ MonoBehaviour:
       - stat: 0
         amount: 2
         isOverride: 0
-  - id: 29
+  - id: 33
     authoredKey: neutral.mutator.hyper-regeneration
     deckPointCost: 2
     deckCopyLimit: 1
@@ -1592,7 +1808,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 30
+  - id: 34
     authoredKey: neutral.mutator.survivor-strain
     deckPointCost: 2
     deckCopyLimit: 1
@@ -1648,62 +1864,7 @@ MonoBehaviour:
       - stat: 4
         amount: 2
         isOverride: 0
-  - id: 31
-    authoredKey: neutral.mutator.adrenal-surge
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Adrenal Surge
-    art: {fileID: 21300000, guid: 91bd2c8e69de11248ac4e62acee2f0ef, type: 3}
-    detailArt: {fileID: 21300000, guid: dfe02b78c6c0df94a941c1a9a667749d, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 1
-      energy: 0
-      materials: 0
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 5
-        amount: 2
-        isOverride: 0
-      - stat: 4
-        amount: 1
-        isOverride: 0
-      - stat: 1
-        amount: -1
-        isOverride: 0
-  - id: 32
+  - id: 35
     authoredKey: neutral.mutator.metabolic-overdrive
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1755,7 +1916,7 @@ MonoBehaviour:
       - stat: 1
         amount: -1
         isOverride: 0
-  - id: 33
+  - id: 36
     authoredKey: neutral.mutator.predator-reflexes
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1810,7 +1971,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 34
+  - id: 37
     authoredKey: neutral.mutator.neural-accelerator
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1865,7 +2026,7 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 35
+  - id: 38
     authoredKey: neutral.mutator.rapid-synapse
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1918,7 +2079,7 @@ MonoBehaviour:
       - stat: 6
         amount: 1
         isOverride: 0
-  - id: 36
+  - id: 39
     authoredKey: neutral.mutator.hunter-glands
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1971,7 +2132,7 @@ MonoBehaviour:
       - stat: 6
         amount: 1
         isOverride: 0
-  - id: 37
+  - id: 40
     authoredKey: neutral.mutator.enhanced-senses
     deckPointCost: 2
     deckCopyLimit: 1
@@ -2025,7 +2186,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 38
+  - id: 41
     authoredKey: neutral.mutator.wanderer-strain
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2079,161 +2240,6 @@ MonoBehaviour:
         amount: -1
         isOverride: 0
       - stat: 0
-        amount: 1
-        isOverride: 0
-  - id: 39
-    authoredKey: neutral.mutator.chameleon-tissue
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Chameleon Tissue
-    art: {fileID: 21300000, guid: 0417d8a0d2f001347bee3295600677ea, type: 3}
-    detailArt: {fileID: 21300000, guid: 8a8333bd81e63d240a6f9178203ca691, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 1
-      energy: 1
-      materials: 0
-      tech: 0
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities:
-      - Stealth4
-      statChanges:
-      - stat: 5
-        amount: -1
-        isOverride: 0
-      - stat: 1
-        amount: 1
-        isOverride: 0
-      - stat: 4
-        amount: 1
-        isOverride: 0
-  - id: 40
-    authoredKey: neutral.mutator.fortunate-genome
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Fortunate Genome
-    art: {fileID: 21300000, guid: 2767d1b4adcebc345b23f84b481cf080, type: 3}
-    detailArt: {fileID: 21300000, guid: b138243b7fe1cdf42be971d14b070d83, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 1
-      energy: 1
-      materials: 0
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 01000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 9
-        amount: 2
-        isOverride: 0
-  - id: 41
-    authoredKey: neutral.mutator.ghost-genome
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Ghost Genome
-    art: {fileID: 21300000, guid: 7830718655edbed49bcb6b356c8fbc76, type: 3}
-    detailArt: {fileID: 21300000, guid: caf02b300c67a4b4f90ac27c67aa972d, type: 3}
-    faction: 2
-    cardType: 5
-    apCost: 1
-    resourceCost:
-      human: 1
-      energy: 1
-      materials: 0
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 5
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 1
-    equipment:
-      hostTypeTags: 00000000
-      hostKinds: 01000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities:
-      - Stealth4
-      statChanges:
-      - stat: 9
         amount: 1
         isOverride: 0
   - id: 42
