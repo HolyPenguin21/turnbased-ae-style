@@ -1625,6 +1625,1156 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
+  - id: 34
+    authoredKey: ashen.card.ash-crossbowman
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Ash Crossbowman
+    art: {fileID: 21300000, guid: eb617b498d6d758498c15f6ac960a543, type: 3}
+    detailArt: {fileID: 21300000, guid: f89baa698c3716b49a3a59df59853896, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    range: 3
+    hitPoints: 3
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 35
+    authoredKey: ashen.card.blister-juggernaut
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Blister Juggernaut
+    art: {fileID: 21300000, guid: 2157be586a6b5d447a59a3dc0ee3c266, type: 3}
+    detailArt: {fileID: 21300000, guid: 76e18f8ae1e8e654cb9c4cd1f663d376, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    range: 1
+    hitPoints: 8
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 36
+    authoredKey: ashen.card.bone-picker
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Bone Picker
+    art: {fileID: 21300000, guid: 5e81c860a2235e64f8701f4b81e9ea7f, type: 3}
+    detailArt: {fileID: 21300000, guid: 7019dc44912e7ca4bbd6f87f9eabf35f, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    range: 1
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 37
+    authoredKey: ashen.card.carrion
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Carrion
+    art: {fileID: 21300000, guid: 4a043e611fa89b544a0687323057a6ee, type: 3}
+    detailArt: {fileID: 21300000, guid: 72d25195b73d5404b8730fdb60bc79de, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    range: 1
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 38
+    authoredKey: ashen.card.carrion-mother
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Carrion Mother
+    art: {fileID: 21300000, guid: 839c5dcd4ae79a144983ffff482a3fa7, type: 3}
+    detailArt: {fileID: 21300000, guid: 4d9ef2ce21a7b2143ae3e82f429e4768, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 1
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 39
+    authoredKey: ashen.card.cinder-stalker
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Cinder Stalker
+    art: {fileID: 21300000, guid: cfe1b6c5c6375df43a1b87e47a00f9be, type: 3}
+    detailArt: {fileID: 21300000, guid: 791c473400d7512479d4045310c6bff5, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 40
+    authoredKey: ashen.card.cinder-tanker
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Cinder Tanker
+    art: {fileID: 21300000, guid: e297f1ce991bb0d469bea7dc63fe9870, type: 3}
+    detailArt: {fileID: 21300000, guid: 74871e824a795e14082544360b54b0c2, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 4
+    range: 2
+    hitPoints: 7
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 41
+    authoredKey: ashen.card.deadeye
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Deadeye
+    art: {fileID: 21300000, guid: 51678757dd220bd4e9a603dc2063074a, type: 3}
+    detailArt: {fileID: 21300000, guid: 9a64bd3a9d2230c4ea454c2032e622b9, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 1
+    range: 3
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 42
+    authoredKey: ashen.card.dune-locomotive
+    deckPointCost: 5
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Dune Locomotive
+    art: {fileID: 21300000, guid: f43e65be4e0a3f74fac22c15e172c7d7, type: 3}
+    detailArt: {fileID: 21300000, guid: 72bee8b1757d23b46878efbfb3c8d565, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 5
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 1
+    hitPoints: 7
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 43
+    authoredKey: ashen.card.flywheel
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Flywheel
+    art: {fileID: 21300000, guid: 2182c58ac7e3e0c4fad32f1c2200599f, type: 3}
+    detailArt: {fileID: 21300000, guid: 1511d392f023c6344a0b65fdea33fe97, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 5
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 1
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 44
+    authoredKey: ashen.card.fumehound
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Fumehound
+    art: {fileID: 21300000, guid: 5a8c44b3132a97e4399051a583fbaed9, type: 3}
+    detailArt: {fileID: 21300000, guid: fcbd0cf20fb624843a2fcce01c72aa12, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    range: 1
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 45
+    authoredKey: ashen.card.gravebell-mortar
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Gravebell Mortar
+    art: {fileID: 21300000, guid: 0e94dd4ab19b86543b70b237b81b40a4, type: 3}
+    detailArt: {fileID: 21300000, guid: 916a5fa4a19971241ab5f1a59df9b8b8, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 1
+    range: 4
+    hitPoints: 2
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 46
+    authoredKey: ashen.card.iron-hedgehog
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Iron Hedgehog
+    art: {fileID: 21300000, guid: 455b0460ca4da094ba7f22dc0897b93e, type: 3}
+    detailArt: {fileID: 21300000, guid: 037bf6550de1dc44d8fd94a008722108, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 4
+    range: 1
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 47
+    authoredKey: ashen.card.iron-maw
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Iron Maw
+    art: {fileID: 21300000, guid: 60a59e46270131841843bb126cdc46da, type: 3}
+    detailArt: {fileID: 21300000, guid: a6500084e9cf14944855b726052229d1, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 1
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 48
+    authoredKey: ashen.card.rad-leaper
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Rad Leaper
+    art: {fileID: 21300000, guid: a72f4894da9618641903991ad94358f0, type: 3}
+    detailArt: {fileID: 21300000, guid: 9818fb839a1846e4b9297013195e34d6, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 1
+    range: 1
+    hitPoints: 3
+    initiative: 3
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 49
+    authoredKey: ashen.card.rattle-gunner
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Rattle Gunner
+    art: {fileID: 21300000, guid: 08fdec7d5c8ad3643b25902e6ebad938, type: 3}
+    detailArt: {fileID: 21300000, guid: fd5f92dc10bd83a438543b40a27630ec, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 50
+    authoredKey: ashen.card.rattletrap
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Rattletrap
+    art: {fileID: 21300000, guid: ea0dcebbf547e03448b303fc6d293d28, type: 3}
+    detailArt: {fileID: 21300000, guid: 960c65e40d4843f4098ddfeb57e0fa2a, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 51
+    authoredKey: ashen.card.rivet-maw
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Rivet Maw
+    art: {fileID: 21300000, guid: 825c4bbd4fc6b2b49a7b196f0cccd118, type: 3}
+    detailArt: {fileID: 21300000, guid: deb3dcec494f5104eb50c6d3cf8828bd, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    range: 1
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 52
+    authoredKey: ashen.card.rivetstorm
+    deckPointCost: 5
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Rivetstorm
+    art: {fileID: 21300000, guid: aec75e679f58d1940876c1c453780b49, type: 3}
+    detailArt: {fileID: 21300000, guid: aac7ce8f42daea94dbd16e3b57afc938, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 1
+    range: 3
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 53
+    authoredKey: ashen.card.rust-breacher
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Rust Breacher
+    art: {fileID: 21300000, guid: 1eca34f12a33f764b9929a96774bf3bb, type: 3}
+    detailArt: {fileID: 21300000, guid: 019f03b44e531cb43bbf1940423a0301, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 1
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 54
+    authoredKey: ashen.card.scab-shield
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Scab Shield
+    art: {fileID: 21300000, guid: e2381f27f1f0d344dbfba856de254632, type: 3}
+    detailArt: {fileID: 21300000, guid: 7364705c009b8bf40a74b3ae24e22cb8, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 4
+    range: 1
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 55
+    authoredKey: ashen.card.scrap-locust
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Scrap Locust
+    art: {fileID: 21300000, guid: 432e724ce0dbab6449d1c1eb8ccc9115, type: 3}
+    detailArt: {fileID: 21300000, guid: 0c05f6c202cf1c947ad3ce330766296b, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 5
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    range: 1
+    hitPoints: 2
+    initiative: 3
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 56
+    authoredKey: ashen.card.scrap-mountain
+    deckPointCost: 6
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Scrap Mountain
+    art: {fileID: 21300000, guid: a071a3e2efc246844aec54cbf143d331, type: 3}
+    detailArt: {fileID: 21300000, guid: ccfb438ceaf811c4b90b69d005427d84, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 6
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 3
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 5
+    range: 1
+    hitPoints: 10
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 57
+    authoredKey: ashen.card.slag-lobber
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Slag Lobber
+    art: {fileID: 21300000, guid: 1e96e8231bea50f4fa19ff4a61916be7, type: 3}
+    detailArt: {fileID: 21300000, guid: dfb2663a32a8c9d4aaefa77173a4a586, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 1
+    range: 4
+    hitPoints: 2
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 58
+    authoredKey: ashen.card.walking-refinery
+    deckPointCost: 5
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Walking Refinery
+    art: {fileID: 21300000, guid: 20a5a9815c13c14419f1f75132c0b170, type: 3}
+    detailArt: {fileID: 21300000, guid: 39cb84e225841164f9d1f4d1b966a97d, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 4
+    range: 2
+    hitPoints: 8
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   citadelPrefab: {fileID: 300002, guid: 32d3700f525ecfd4392314f143a8fd85, type: 3}
   basePrefab: {fileID: 300002, guid: 344324a29ce74294c80618317a14651a, type: 3}
   armyPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
