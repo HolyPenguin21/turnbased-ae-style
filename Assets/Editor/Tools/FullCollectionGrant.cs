@@ -12,7 +12,7 @@ namespace Game.EditorTools
     // as collection-v1.json.bak (AtomicJsonFile). Decks are still capped at DeckRules.MaximumPoints.
     public static class FullCollectionGrant
     {
-        private const string MenuPath = "Game/Collection/Grant Full Collection (Test)";
+        private const string MenuPath = "Tools/Full Collection";
 
         [MenuItem(MenuPath)]
         public static void Grant()
