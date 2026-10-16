@@ -685,53 +685,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 14
-    authoredKey: concord.card.rc-vehicle
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: RC Vehicle
-    art: {fileID: 21300000, guid: ec740b73693f73c4c80d7cc9193d533a, type: 3}
-    detailArt: {fileID: 21300000, guid: a8e0a294aa9960e4486fdf6bfb1a4691, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 2
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 2
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 4
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - r1s5
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 15
     authoredKey: concord.card.jackal
     deckPointCost: 2
     deckCopyLimit: 4
@@ -778,7 +731,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 16
+  - id: 15
     authoredKey: concord.card.mosquito
     deckPointCost: 2
     deckCopyLimit: 4
@@ -824,100 +777,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 17
-    authoredKey: concord.card.roadwarden-aa
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Roadwarden AA
-    art: {fileID: 21300000, guid: a367f097ff504b8439f9d8d5868f4665, type: 3}
-    detailArt: {fileID: 21300000, guid: 93e1f8c82dda7c048a09515ba291f27a, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 3
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - AA
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 18
-    authoredKey: concord.card.medium-infantry
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Medium infantry
-    art: {fileID: 21300000, guid: f84d75a21baefb54186695b4b8b70eac, type: 3}
-    detailArt: {fileID: 21300000, guid: f5d5a338fc909d1448e8c396629781d9, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 2
-    resourceCost:
-      human: 1
-      energy: 0
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 0000000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 19
+  - id: 16
     authoredKey: concord.card.hazard-pioneer
     deckPointCost: 3
     deckCopyLimit: 4
@@ -964,7 +824,194 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
+  - id: 17
+    authoredKey: concord.card.medium-infantry
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Medium infantry
+    art: {fileID: 21300000, guid: f84d75a21baefb54186695b4b8b70eac, type: 3}
+    detailArt: {fileID: 21300000, guid: f5d5a338fc909d1448e8c396629781d9, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 18
+    authoredKey: concord.card.rc-vehicle
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: RC Vehicle
+    art: {fileID: 21300000, guid: ec740b73693f73c4c80d7cc9193d533a, type: 3}
+    detailArt: {fileID: 21300000, guid: a8e0a294aa9960e4486fdf6bfb1a4691, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - r1s5
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 19
+    authoredKey: concord.card.at-infantry
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: AT Infantry
+    art: {fileID: 21300000, guid: b6fdd0c5ffebcdc44b29c772f2c1413c, type: 3}
+    detailArt: {fileID: 21300000, guid: ecfc07428f64ab64bb9cff02eb048e24, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities:
+    - Hyperkinetic
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 20
+    authoredKey: concord.card.coil-marksman
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Coil Marksman
+    art: {fileID: 21300000, guid: 9c5c487d35c6509439d00256b5debd21, type: 3}
+    detailArt: {fileID: 21300000, guid: 733e2b957e8487a42add869dc9f2a343, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities:
+    - Ionic
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 21
     authoredKey: concord.card.flamer
     deckPointCost: 3
     deckCopyLimit: 4
@@ -999,53 +1046,6 @@ MonoBehaviour:
     grantedAbilities:
     - Pyrokinetic
     - Scorcher
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 21
-    authoredKey: concord.card.coil-marksman
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Coil Marksman
-    art: {fileID: 21300000, guid: 9c5c487d35c6509439d00256b5debd21, type: 3}
-    detailArt: {fileID: 21300000, guid: 733e2b957e8487a42add869dc9f2a343, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 3
-    resourceCost:
-      human: 1
-      energy: 0
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0000000003000000
-    grantedAbilities:
-    - Ionic
     resourceYield:
       human: 0
       energy: 0
@@ -1153,37 +1153,37 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 24
-    authoredKey: concord.card.at-infantry
+    authoredKey: concord.card.at-cannon
     deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: AT Infantry
-    art: {fileID: 21300000, guid: b6fdd0c5ffebcdc44b29c772f2c1413c, type: 3}
-    detailArt: {fileID: 21300000, guid: ecfc07428f64ab64bb9cff02eb048e24, type: 3}
+    displayName: AT Cannon
+    art: {fileID: 21300000, guid: fd60c9277a2c8984ba5a57441dbd1c12, type: 3}
+    detailArt: {fileID: 21300000, guid: 9a3822a26cb6dcc4f907d483b86d8668, type: 3}
     faction: 0
     cardType: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
-      human: 1
-      energy: 0
+      human: 0
+      energy: 2
       materials: 1
-      tech: 1
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 1
+    defenseRating: 1
+    range: 3
+    hitPoints: 2
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0000000003000000
+    unitTypeTags: 07000000
     grantedAbilities:
     - Hyperkinetic
     resourceYield:
@@ -1325,8 +1325,7 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000003000000
-    grantedAbilities:
-    - Berserk
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
@@ -1529,38 +1528,40 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 32
-    authoredKey: concord.card.light-tank
-    deckPointCost: 4
-    deckCopyLimit: 4
+    authoredKey: concord.card.sky-tug
+    deckPointCost: 5
+    deckCopyLimit: 3
     deckBuilderExcluded: 0
-    displayName: Light Tank
-    art: {fileID: 21300000, guid: f404364e79cfd0248bae269dc3997004, type: 3}
-    detailArt: {fileID: 21300000, guid: 7bdf80a4c79a5d84589eefcdb957142b, type: 3}
+    displayName: Sky Tug
+    art: {fileID: 21300000, guid: 67a259b1ca39a554cb541dc83c572c82, type: 3}
+    detailArt: {fileID: 21300000, guid: b3b55db2858649942916d714113af3a4, type: 3}
     faction: 0
     cardType: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
-      energy: 1
-      materials: 2
-      tech: 0
+      energy: 2
+      materials: 1
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 5
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
-    defenseRating: 3
+    attack: 4
+    defenseRating: 2
     range: 2
-    hitPoints: 5
+    hitPoints: 6
     initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
+    isAviation: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 1
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
-    grantedAbilities: []
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - AA
+    - r1s0
     resourceYield:
       human: 0
       energy: 0
@@ -1575,39 +1576,38 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 33
-    authoredKey: concord.card.rusty-vulture
+    authoredKey: concord.card.atlas
     deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Rusty Vulture
-    art: {fileID: 21300000, guid: cb7141a8b0c93e04fb581e4e232fcb06, type: 3}
-    detailArt: {fileID: 21300000, guid: 04cb285496a2af240a1868515b55ef60, type: 3}
+    displayName: Atlas
+    art: {fileID: 21300000, guid: ae4a51986f417924481f3a59e30c3efa, type: 3}
+    detailArt: {fileID: 21300000, guid: caf74b05be6da8e4b8697e88dfb471ec, type: 3}
     faction: 0
     cardType: 1
     apCost: 5
     resourceCost:
-      human: 0
+      human: 1
       energy: 1
-      materials: 0
-      tech: 2
+      materials: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 6
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
-    fate: 2
-    attack: 5
-    defenseRating: 3
+    fate: 0
+    attack: 4
+    defenseRating: 4
     range: 2
-    hitPoints: 6
-    initiative: 2
-    isAviation: 1
-    launchEnergyCost: 1
-    turnsWithoutRefuel: 1
-    antiAirRadius: 2
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities:
-    - r1s4
+    unitTypeTags: 000000000300000002000000
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
@@ -1622,38 +1622,39 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 34
-    authoredKey: concord.card.medium-tank
-    deckPointCost: 5
-    deckCopyLimit: 4
+    authoredKey: concord.card.duelist
+    deckPointCost: 4
+    deckCopyLimit: 3
     deckBuilderExcluded: 0
-    displayName: Medium Tank
-    art: {fileID: 21300000, guid: d2f14ef1403276a499eef8959e3c8cee, type: 3}
-    detailArt: {fileID: 21300000, guid: e484f72d2b47f2a4a9c1baf55e16c711, type: 3}
+    displayName: Duelist
+    art: {fileID: 21300000, guid: 753c95859f7f33f4887390dbcfbe8dd2, type: 3}
+    detailArt: {fileID: 21300000, guid: c2b61a033e63f1b4cb8d0dab1e82319b, type: 3}
     faction: 0
     cardType: 1
     apCost: 5
     resourceCost:
       human: 0
       energy: 1
-      materials: 3
-      tech: 0
+      materials: 2
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
-    defenseRating: 4
+    attack: 4
+    defenseRating: 2
     range: 2
-    hitPoints: 6
-    initiative: 1
+    hitPoints: 5
+    initiative: 3
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000400000002000000
-    grantedAbilities: []
+    unitTypeTags: 0100000005000000
+    grantedAbilities:
+    - CriticalDamage
     resourceYield:
       human: 0
       energy: 0
@@ -1668,193 +1669,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 35
-    authoredKey: concord.card.bulldog
-    deckPointCost: 5
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Bulldog
-    art: {fileID: 21300000, guid: 17671a29f0f6b044e8dac3f04b120240, type: 3}
-    detailArt: {fileID: 21300000, guid: 4dfe84cb2432243468a2f26a693387e0, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 3
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 4
-    range: 1
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
-    grantedAbilities:
-    - Splash
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 36
-    authoredKey: concord.card.at-cannon
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: AT Cannon
-    art: {fileID: 21300000, guid: fd60c9277a2c8984ba5a57441dbd1c12, type: 3}
-    detailArt: {fileID: 21300000, guid: 9a3822a26cb6dcc4f907d483b86d8668, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 1
-    range: 3
-    hitPoints: 2
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 07000000
-    grantedAbilities:
-    - Hyperkinetic
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 37
-    authoredKey: concord.card.hammerback
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Hammerback
-    art: {fileID: 21300000, guid: 7c1d4e3d2fecf70498839a19a21b353e, type: 3}
-    detailArt: {fileID: 21300000, guid: 7e27151f7677bd84994ae1ba37734176, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 3
-      materials: 1
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 2
-    attack: 5
-    defenseRating: 2
-    range: 3
-    hitPoints: 4
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 38
-    authoredKey: concord.card.helios
-    deckPointCost: 4
-    deckCopyLimit: 3
-    deckBuilderExcluded: 0
-    displayName: Helios
-    art: {fileID: 21300000, guid: c4ea2d22b61e22640a191aec511f3ce0, type: 3}
-    detailArt: {fileID: 21300000, guid: 3caa6d33003eab940913d68ccb1935c5, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 3
-      materials: 1
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 3
-    hitPoints: 5
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000400000007000000
-    grantedAbilities:
-    - Pyrokinetic
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 39
     authoredKey: concord.card.dynamo
     deckPointCost: 4
     deckCopyLimit: 3
@@ -1901,7 +1715,287 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
+  - id: 36
+    authoredKey: concord.card.hammerback
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Hammerback
+    art: {fileID: 21300000, guid: 7c1d4e3d2fecf70498839a19a21b353e, type: 3}
+    detailArt: {fileID: 21300000, guid: 7e27151f7677bd84994ae1ba37734176, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 2
+    attack: 5
+    defenseRating: 2
+    range: 3
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 37
+    authoredKey: concord.card.helios
+    deckPointCost: 4
+    deckCopyLimit: 3
+    deckBuilderExcluded: 0
+    displayName: Helios
+    art: {fileID: 21300000, guid: c4ea2d22b61e22640a191aec511f3ce0, type: 3}
+    detailArt: {fileID: 21300000, guid: 3caa6d33003eab940913d68ccb1935c5, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 3
+    hitPoints: 5
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000400000007000000
+    grantedAbilities:
+    - Pyrokinetic
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 38
+    authoredKey: concord.card.light-tank
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Light Tank
+    art: {fileID: 21300000, guid: f404364e79cfd0248bae269dc3997004, type: 3}
+    detailArt: {fileID: 21300000, guid: 7bdf80a4c79a5d84589eefcdb957142b, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 2
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000002000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 39
+    authoredKey: concord.card.roadwarden-aa
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Roadwarden AA
+    art: {fileID: 21300000, guid: a367f097ff504b8439f9d8d5868f4665, type: 3}
+    detailArt: {fileID: 21300000, guid: 93e1f8c82dda7c048a09515ba291f27a, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 40
+    authoredKey: concord.card.rusty-vulture
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Rusty Vulture
+    art: {fileID: 21300000, guid: cb7141a8b0c93e04fb581e4e232fcb06, type: 3}
+    detailArt: {fileID: 21300000, guid: 04cb285496a2af240a1868515b55ef60, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 6
+    activationApCost: 1
+    commandRating: 0
+    fate: 2
+    attack: 5
+    defenseRating: 3
+    range: 2
+    hitPoints: 6
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 1
+    turnsWithoutRefuel: 1
+    antiAirRadius: 2
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - r1s4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 41
+    authoredKey: concord.card.sand-organ
+    deckPointCost: 4
+    deckCopyLimit: 3
+    deckBuilderExcluded: 0
+    displayName: Sand Organ
+    art: {fileID: 21300000, guid: 418755c49409e4e45876c7156ea829eb, type: 3}
+    detailArt: {fileID: 21300000, guid: 5f6f8873f3d78d04cab6314f4a1670ab, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 1
+    range: 3
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 42
     authoredKey: concord.card.arsenal
     deckPointCost: 5
     deckCopyLimit: 3
@@ -1934,99 +2028,6 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 010000000500000002000000
     grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 41
-    authoredKey: concord.card.atlas
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Atlas
-    art: {fileID: 21300000, guid: ae4a51986f417924481f3a59e30c3efa, type: 3}
-    detailArt: {fileID: 21300000, guid: caf74b05be6da8e4b8697e88dfb471ec, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 1
-      energy: 1
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 4
-    range: 2
-    hitPoints: 5
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 000000000300000002000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 42
-    authoredKey: concord.card.boatswain
-    deckPointCost: 6
-    deckCopyLimit: 2
-    deckBuilderExcluded: 0
-    displayName: Boatswain
-    art: {fileID: 21300000, guid: 5c2fd749e24de33479dafc7a09534422, type: 3}
-    detailArt: {fileID: 21300000, guid: da74be26b32db0f4cbaeab0bde0ee1c8, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 3
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 4
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000400000002000000
-    grantedAbilities:
-    - Drill
     resourceYield:
       human: 0
       energy: 0
@@ -2088,6 +2089,53 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 44
+    authoredKey: concord.card.bulldog
+    deckPointCost: 5
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Bulldog
+    art: {fileID: 21300000, guid: 17671a29f0f6b044e8dac3f04b120240, type: 3}
+    detailArt: {fileID: 21300000, guid: 4dfe84cb2432243468a2f26a693387e0, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 3
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 4
+    range: 1
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities:
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 45
     authoredKey: concord.card.claimjumper
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2119,7 +2167,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000005000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Hyperkinetic
     resourceYield:
       human: 0
       energy: 0
@@ -2133,7 +2182,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 45
+  - id: 46
     authoredKey: concord.card.gun-commander
     deckPointCost: 5
     deckCopyLimit: 2
@@ -2154,8 +2203,8 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 2
+    attack: 5
+    defenseRating: 3
     range: 3
     hitPoints: 5
     initiative: 2
@@ -2180,7 +2229,100 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 46
+  - id: 47
+    authoredKey: concord.card.medium-tank
+    deckPointCost: 5
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Medium Tank
+    art: {fileID: 21300000, guid: d2f14ef1403276a499eef8959e3c8cee, type: 3}
+    detailArt: {fileID: 21300000, guid: e484f72d2b47f2a4a9c1baf55e16c711, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 4
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000400000002000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 48
+    authoredKey: concord.card.boatswain
+    deckPointCost: 6
+    deckCopyLimit: 2
+    deckBuilderExcluded: 0
+    displayName: Boatswain
+    art: {fileID: 21300000, guid: 5c2fd749e24de33479dafc7a09534422, type: 3}
+    detailArt: {fileID: 21300000, guid: da74be26b32db0f4cbaeab0bde0ee1c8, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 3
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 4
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000400000002000000
+    grantedAbilities:
+    - Drill
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 49
     authoredKey: concord.card.artillery-tank
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2227,54 +2369,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 47
-    authoredKey: concord.card.sky-tug
-    deckPointCost: 5
-    deckCopyLimit: 3
-    deckBuilderExcluded: 0
-    displayName: Sky Tug
-    art: {fileID: 21300000, guid: 67a259b1ca39a554cb541dc83c572c82, type: 3}
-    detailArt: {fileID: 21300000, guid: b3b55db2858649942916d714113af3a4, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 5
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 1
-    launchEnergyCost: 2
-    turnsWithoutRefuel: 1
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities:
-    - AA
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 48
+  - id: 50
     authoredKey: concord.card.storm-petrel
     deckPointCost: 6
     deckCopyLimit: 2
@@ -2307,101 +2402,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
-    - AA
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 49
-    authoredKey: concord.card.sand-organ
-    deckPointCost: 4
-    deckCopyLimit: 3
-    deckBuilderExcluded: 0
-    displayName: Sand Organ
-    art: {fileID: 21300000, guid: 418755c49409e4e45876c7156ea829eb, type: 3}
-    detailArt: {fileID: 21300000, guid: 5f6f8873f3d78d04cab6314f4a1670ab, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 1
-    range: 3
-    hitPoints: 3
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - Splash
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 50
-    authoredKey: concord.card.heavy-tank
-    deckPointCost: 6
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Heavy Tank
-    art: {fileID: 21300000, guid: 1f6e0fb1b03202840980d81a993a79b7, type: 3}
-    detailArt: {fileID: 21300000, guid: 82a1eb01826c5fe48a356c9d606bb610, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 6
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 3
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 6
-    defenseRating: 4
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 010000000400000002000000
-    grantedAbilities:
-    - CeramicArmor
+    - r1s0
     resourceYield:
       human: 0
       energy: 0
@@ -2462,52 +2463,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 52
-    authoredKey: concord.card.sandnought
-    deckPointCost: 6
-    deckCopyLimit: 2
-    deckBuilderExcluded: 0
-    displayName: Sandnought
-    art: {fileID: 21300000, guid: af3b63d367b4b014e842dc60ec699bb3, type: 3}
-    detailArt: {fileID: 21300000, guid: 197b0729809d0544a907fc0ea10e380a, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 6
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 4
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 3
-    range: 2
-    hitPoints: 7
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000400000002000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 53
     authoredKey: concord.card.wasp
     deckPointCost: 5
     deckCopyLimit: 4
@@ -2541,6 +2496,54 @@ MonoBehaviour:
     unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s0
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 53
+    authoredKey: concord.card.heavy-tank
+    deckPointCost: 6
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Heavy Tank
+    art: {fileID: 21300000, guid: 1f6e0fb1b03202840980d81a993a79b7, type: 3}
+    detailArt: {fileID: 21300000, guid: 82a1eb01826c5fe48a356c9d606bb610, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 6
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 4
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000400000002000000
+    grantedAbilities:
+    - CeramicArmor
     resourceYield:
       human: 0
       energy: 0
@@ -2555,6 +2558,53 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 54
+    authoredKey: concord.card.sandnought
+    deckPointCost: 6
+    deckCopyLimit: 2
+    deckBuilderExcluded: 0
+    displayName: Sandnought
+    art: {fileID: 21300000, guid: af3b63d367b4b014e842dc60ec699bb3, type: 3}
+    detailArt: {fileID: 21300000, guid: 197b0729809d0544a907fc0ea10e380a, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 6
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 4
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 2
+    hitPoints: 7
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000400000002000000
+    grantedAbilities:
+    - Stealth4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 55
     authoredKey: concord.card.mantis
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2600,7 +2650,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 55
+  - id: 56
     authoredKey: concord.card.pulse-cannon
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2647,7 +2697,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 56
+  - id: 57
     authoredKey: concord.card.skydiver
     deckPointCost: 7
     deckCopyLimit: 2
@@ -2693,7 +2743,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 57
+  - id: 58
     authoredKey: concord.card.ark-carrier
     deckPointCost: 7
     deckCopyLimit: 2
@@ -2727,53 +2777,6 @@ MonoBehaviour:
     unitTypeTags: 01000000040000000200000007000000
     grantedAbilities:
     - Airfield
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 58
-    authoredKey: concord.card.duelist
-    deckPointCost: 4
-    deckCopyLimit: 3
-    deckBuilderExcluded: 0
-    displayName: Duelist
-    art: {fileID: 21300000, guid: 753c95859f7f33f4887390dbcfbe8dd2, type: 3}
-    detailArt: {fileID: 21300000, guid: c2b61a033e63f1b4cb8d0dab1e82319b, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 3
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000005000000
-    grantedAbilities:
-    - CriticalDamage
     resourceYield:
       human: 0
       energy: 0

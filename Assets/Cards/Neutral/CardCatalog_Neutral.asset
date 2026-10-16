@@ -1661,7 +1661,7 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 1
-      energy: 1
+      energy: 0
       materials: 0
       tech: 1
     requiredBuildingAbility: 
@@ -1697,7 +1697,7 @@ MonoBehaviour:
       - stat: 5
         amount: 2
         isOverride: 0
-      - stat: 6
+      - stat: 4
         amount: 1
         isOverride: 0
       - stat: 1
@@ -2131,8 +2131,11 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-      - stat: 6
-        amount: 2
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 4
+        amount: 1
         isOverride: 0
   - id: 40
     authoredKey: neutral.mutator.fortunate-genome
