@@ -73,7 +73,7 @@ namespace Game.UI
                 editDecksButton.onClick.AddListener(() =>
                 {
                     var menu = UnityEngine.Object.FindAnyObjectByType<MainMenuController>();
-                    if (menu != null) menu.OpenDeckBuilderFromSetup(RefreshDeckOptions);
+                    if (menu != null) menu.OpenDeckBuilderFromSetup(RefreshDeckOptions, Data.Faction, Data.SelectedDeckId);
                 });
             }
             RefreshDeckOptions();

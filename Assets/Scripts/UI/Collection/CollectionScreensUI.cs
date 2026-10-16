@@ -75,7 +75,9 @@ namespace Game.UI
         private static CollectionScreensUI active;
 
         public void Configure(GameConfig gameConfig) { config = gameConfig; }
-        public void Show(GameObject panel, Action onClosed = null)
+        // startFaction/startDeckId preselect a deck (Edit Deck from game setup); otherwise the
+        // window keeps its last faction and opens that faction's default deck.
+        public void Show(GameObject panel, Action onClosed = null, Faction? startFaction = null, string startDeckId = null)
         {
             if (open) return;
             if (!ProgressionContext.Initialize(config)) { ShowMessage(transform, ProgressionContext.Error); return; }
@@ -86,7 +88,8 @@ namespace Game.UI
             hiddenPanel = panel; if (hiddenPanel != null) hiddenPanel.SetActive(false); closed = onClosed;
             ownership = 0; dirty = false; selected = null;
             status = ProgressionContext.Notice ?? "";
-            draft = collection.DefaultDeck(faction) ?? NewDeck();
+            if (startFaction.HasValue && Array.IndexOf(DeckRules.PlayableFactions, startFaction.Value) >= 0) faction = startFaction.Value;
+            draft = (startDeckId != null ? collection.GetDeck(startDeckId, faction) : null) ?? collection.DefaultDeck(faction) ?? NewDeck();
             UIFocusUtility.SetOverlay(this, true);
             collection.Changed += OnCollectionChanged;
             RefreshAll(true);
@@ -204,6 +207,7 @@ namespace Game.UI
         }
         private static IOrderedEnumerable<T> OrderCards<T>(IEnumerable<T> rows, Func<T, CardDefinition> resolve)
             => rows.OrderBy(row => CollectionOrder(resolve(row)))
+                .ThenBy(row => resolve(row)?.apCost ?? 0)
                 .ThenBy(row => resolve(row)?.deckPointCost ?? 0)
                 .ThenBy(row => resolve(row)?.displayName ?? "", StringComparer.Ordinal);
         // The highlight frame is authored on the CollectionCard prefab ("Selection"); only toggled here.

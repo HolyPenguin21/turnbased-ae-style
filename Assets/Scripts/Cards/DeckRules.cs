@@ -52,9 +52,10 @@ namespace Game.Cards
             if (Category(card) != DeckCategory.Main)
                 return Research != null && (Research.ResolveFor(ResearchProductionMode.Production, faction).Contains(card)
                     || Research.ResolveFor(ResearchProductionMode.Research, faction).Contains(card));
-            // Own catalog plus explicit cross-catalog loans from the authored starting source.
-            // Neutral alone never means that every neutral unit is playable.
+            // Own catalog, the shared Neutral catalog (opt out per card with deckBuilderExcluded),
+            // plus explicit cross-catalog loans from the authored starting source.
             return Starting?.GetCatalog(faction)?.cards.Contains(card) == true
+                || Starting?.GetCatalog(Faction.Neutral)?.cards.Contains(card) == true
                 || Starting?.GetDeck(faction)?.cards.Any(e => e != null && Starting.ResolveCard(e.cardKey) == card) == true;
         }
         public IEnumerable<CardDefinition> Cards(Faction faction)

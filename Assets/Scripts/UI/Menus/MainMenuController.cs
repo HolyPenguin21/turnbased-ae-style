@@ -45,7 +45,7 @@ namespace Game.UI
         {
             if (collectionScreens != null) collectionScreens.Show(mainMenuPanel);
         }
-        public void OpenDeckBuilderFromSetup(System.Action onClosed)
+        public void OpenDeckBuilderFromSetup(System.Action onClosed, Game.Players.Faction? faction = null, string deckId = null)
         {
             if (collectionScreens == null || gameSetupPanel == null || UIFocusUtility.HasOverlay) return;
             if (!Game.Progression.ProgressionContext.Initialize(gameConfig))
@@ -60,7 +60,7 @@ namespace Game.UI
             {
                 if (group != null) { group.interactable = interactable; group.blocksRaycasts = blocksRaycasts; }
                 onClosed?.Invoke();
-            });
+            }, faction, deckId);
         }
 
         private void Update()
