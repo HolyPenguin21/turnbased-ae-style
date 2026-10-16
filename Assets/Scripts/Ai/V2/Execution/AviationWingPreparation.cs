@@ -43,7 +43,7 @@ namespace Game.Ai.V2
 
             // Without the ownership view no existing army may be repurposed: a shell or a ground
             // army could belong to an operation this caller cannot see.
-            if (commitments != null)
+            if (commitments != null && !airfield.IsCarrierContainer)
             {
                 ArmyData shell = ReusableArmySelector.FindReusableAt(player, airfield.Hex, commitments);
                 if (shell != null && !commitments.IsPreparationHost(shell.Id)

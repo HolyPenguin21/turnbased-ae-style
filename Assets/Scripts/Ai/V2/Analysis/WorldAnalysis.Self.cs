@@ -50,6 +50,7 @@ namespace Game.Ai.V2
             self.HoldsStartingCitadel = canonicalCitadel.HasValue
                 && (!configuredCitadel.HasValue || canonicalCitadel.Value.Equals(configuredCitadel.Value));
             self.BaseHexes = baseHexes;
+            self.AirfieldHexes = AviationRules.OwnedAirfieldHexes(player).ToList();
             using (new ProfileScope("AI/Self.ArmySnapshots"))
                 self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx), intents, ctx)).ToList();
             // Includes own remaining MP: rebuild with Self even when enemy knowledge is unchanged.
@@ -450,6 +451,13 @@ namespace Game.Ai.V2
                 IsPrison = a.IsPrison,
                 IsAir = a.IsAirArmy,
                 IsAirfield = a.IsAirfield,
+                IsCarrierContainer = a.IsCarrierContainer,
+                CarrierCargoPower = isOwn && !a.IsCarrierContainer
+                    ? a.Members.Where(AviationActions.IsCarrier).Sum(u =>
+                        (u.CarrierAirfield?.Members.Sum(AiPower.UnitPower) ?? 0f)
+                        + (u.CarrierFlightDeck?.Members.Sum(AiPower.UnitPower) ?? 0f)) : 0f,
+                MobileAirfieldCapacity = !a.IsCarrierContainer && !a.IsPrison
+                    ? a.Members.Where(AviationActions.IsCarrier).Sum(u => u.AirfieldCapacity) : 0,
                 CanServeReconAir = reconAir,
                 StoredAircraft = isOwn && a.IsAirfield
                     ? a.Members.Where(AviationRules.IsAviation).Select(u => new StoredAircraftLaunchCost(

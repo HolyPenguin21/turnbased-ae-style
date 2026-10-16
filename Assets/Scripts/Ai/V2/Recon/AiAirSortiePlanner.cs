@@ -41,18 +41,9 @@ namespace Game.Ai.V2
             }
         }
 
-        // Every one of this player's own owned, airfield-CAPABLE hexes (citadel + every later
-        // Base) — selected from the building registry by the shared AirfieldCapacity rule, not
-        // indirectly through Barracks/garrison presence. "Any owned airfield with free capacity"
-        // is always filtered from this set, never hard-coded to one building name.
+        // Buildings and mobile carriers expose the same owner-scoped hex capability.
         public static IEnumerable<HexCoord> OwnedAirfieldHexes(PlayerSetupData player) =>
-            BuildingRegistry.AllBuildings()
-                .Where(building => AviationRules.IsAirfieldBuilding(building, player))
-                .OrderByDescending(building => building.IsStartingCitadel)
-                .ThenBy(building => building.Hex.Q)
-                .ThenBy(building => building.Hex.R)
-                .Select(building => building.Hex)
-                .Distinct();
+            AviationRules.OwnedAirfieldHexes(player);
 
         // Anti-air is resolved by the live gameplay reaction system. Strategic aviation planning
         // deliberately does not predict or avoid AA zones: route admission here is only movement,
@@ -530,7 +521,8 @@ namespace Game.Ai.V2
             }
 
             // Return leg finished — the sortie is over.
-            if (!task.Outbound && task.Army.Hex.Equals(task.TargetHex))
+            if (!task.Outbound && task.Army.Hex.Equals(task.TargetHex)
+                && AviationRules.IsOwnedAirfieldAt(task.TargetHex, player))
             {
                 AirSortieRegistry.Remove(player, task);
                 return null;
@@ -701,7 +693,7 @@ namespace Game.Ai.V2
             ArmyData airArmy = decision.ExistingArmy;
             if (airArmy == null)
             {
-                ArmyData airfield = AviationRules.FindAirfieldAt(decision.TargetHex, player);
+                ArmyData airfield = AviationActions.FindStoredAircraftSource(decision.TargetHex, player, decision.AircraftToLaunch);
                 if (airfield == null || decision.AircraftToLaunch == null || decision.AircraftToLaunch.Count == 0)
                 {
                     AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed — no airfield/aircraft at "
@@ -758,7 +750,9 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" — {taskKind} has no viable first step "
                     + "this turn, cancels the launch and returns aircraft to storage.");
                 AirSortieRegistry.Remove(player, task);
-                ArmyData homeAirfield = AviationActions.EnsureAirfield(ctx.HexSelection, player, airArmy.Hex);
+                ArmyData homeAirfield = airArmy.CarrierUnit?.CarrierAirfield
+                    ?? AviationActions.EnsureAirfield(ctx.HexSelection, player, airArmy.Hex);
+                if (homeAirfield == null) yield break;
                 foreach (UnitData aircraft in airArmy.Members.ToList())
                 {
                     airArmy.Members.Remove(aircraft);

@@ -42,6 +42,7 @@ namespace Game.Map
                 LaunchEnergyCost = launchEnergyCost,
                 TurnsWithoutRefuel = Mathf.Max(0, turnsWithoutRefuel),
                 AntiAirRadius = Mathf.Max(1, antiAirRadius),
+                AirfieldCapacity = !isAviation && !isHero ? Mathf.Max(0, sourceDefinition?.airfieldCapacity ?? 0) : 0,
                 OriginatingCard = sourceDefinition,
             };
             if (grantedAbilities != null)
@@ -100,16 +101,18 @@ namespace Game.Map
                 army.Controller.Visual.ApplyPrefabAppearance(prefab);
         }
 
-        public void DeleteArmyIfEmptied(ArmyData army)
+        public void DeleteArmyIfEmptied(ArmyData army, bool force = false)
         {
             if (army == null || army.Members.Count > 0)
+                return;
+            if (!force && army.IsCarrierContainer)
                 return;
             ArmyController controller = army.Controller;
             HexCoord actualHex = controller != null ? controller.CurrentHex : army.Hex;
             // Persistent containers survive at their indexed building. A travelling army
             // killed over another building is not a new empty container at either endpoint.
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if ((controller == null || !controller.IsMoving) && building != null && building.Owner == army.Owner
+            if (!force && !army.WasCarrierWing && (controller == null || !controller.IsMoving) && building != null && building.Owner == army.Owner
                 && (building.HasAbility(UnitAbilities.Barracks)
                     || (army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner))))
             {

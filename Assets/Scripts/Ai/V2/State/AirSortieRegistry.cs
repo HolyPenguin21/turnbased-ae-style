@@ -50,6 +50,7 @@ namespace Game.Ai.V2
         private static int ReservedSlots(HexCoord hex, PlayerSetupData owner, ArmyData excluding)
             => For(owner).Where(s => s?.Army != null && s.Army != excluding
                 && s.Army.Owner == owner && AviationRules.IsValidAirArmy(s.Army)
+                && AviationRules.IsOwnedAirfieldAt(s.LandingHex, owner)
                 && s.LandingHex.Equals(hex) && !s.Army.Hex.Equals(hex)
                 && ArmyRegistry.AllForOwner(owner).Contains(s.Army))
                 .GroupBy(s => s.Army.Id).Sum(g => g.First().Army.Members.Count);

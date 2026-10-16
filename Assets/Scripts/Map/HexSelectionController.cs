@@ -156,6 +156,7 @@ namespace Game.Map
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             StealthSystem.StealthChanged += OnStealthChanged;
             BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
+            AviationActions.AircraftReturnedToHand += GrantCard;
             RefreshAllVisibility();
         }
 
@@ -181,6 +182,7 @@ namespace Game.Map
             VisionSystem.VisibleContentChanged -= OnVisibleContentChanged;
             StealthSystem.StealthChanged -= OnStealthChanged;
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
+            AviationActions.AircraftReturnedToHand -= GrantCard;
             SetRememberedBuildingVisualsVisible(false);
             SetRememberedArmyVisualsVisible(false);
         }
@@ -289,10 +291,15 @@ namespace Game.Map
             var staleAviation = new List<ArmyData>();
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
                 if ((AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
-                    && (building == null || army.Owner != building.Owner))
+                    && !army.IsCarrierContainer
+                    && (army.IsAirfield ? !AviationRules.IsAirfieldBuilding(building, army.Owner)
+                        : !AviationRules.IsOwnedAirfieldAt(hex, army.Owner)))
                     staleAviation.Add(army);
             foreach (ArmyData army in staleAviation)
+            {
                 AviationActions.ReturnAircraftToDeck(army, this);
+                if (army.IsAirfield) AviationActions.DeleteReturnedWing(army, this);
+            }
         }
 
         private void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
@@ -766,7 +773,8 @@ namespace Game.Map
             // sharing the hex is what the battle trigger (see Game.Combat.BattleInitiator) is
             // for, not something to select/command from this panel.
             List<ArmyData> armies = ArmyRegistry.AllAt(coord).FindAll(a => a.Owner == turnController?.CurrentPlayer);
-            List<ArmyData> mobileArmies = armies.FindAll(a => !a.IsGarrison && !a.IsAirfield && !a.IsPrison);
+            List<ArmyData> mobileArmies = armies.FindAll(a => !a.IsGarrison && !a.IsAirfield && !a.IsPrison
+                && (!a.IsCarrierFlightDeck || a.Members.Count > 0));
             ArmyData soleArmy = mobileArmies.Count == 1 ? mobileArmies[0] : null;
 
             if (observerInspection)
@@ -803,7 +811,8 @@ namespace Game.Map
             // (see its RefreshButtonRow) — never selectable for a move order from here, and never
             // worth a button of its own on the hex-side row at all.
             armies = armies.FindAll(a => a.Owner == turnController?.CurrentPlayer
-                && !a.IsPrison && !a.IsAirfield && !a.IsGarrison);
+                && !a.IsPrison && !a.IsAirfield && !a.IsGarrison
+                && (!a.IsCarrierFlightDeck || a.Members.Count > 0));
             // Show even a single MOBILE army (garrison/airfield/prison
             // don't count), and never over an open army/base modal — both re-run SelectHex on
             // close, which re-evaluates this.

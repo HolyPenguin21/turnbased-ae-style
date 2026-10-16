@@ -214,6 +214,9 @@ namespace Game.Ai.V2
         public bool IsPrison;
         public bool IsAir;
         public bool IsAirfield;
+        public int MobileAirfieldCapacity;
+        public bool IsCarrierContainer;
+        public float CarrierCargoPower;
         // Frozen through the canonical Recon actor/lifecycle policy, excluding strike and recovery wings.
         public bool CanServeReconAir;
         public IReadOnlyList<StoredAircraftLaunchCost> StoredAircraft = System.Array.Empty<StoredAircraftLaunchCost>();
@@ -529,6 +532,7 @@ namespace Game.Ai.V2
         // after it was lost). The Attack preparation host is created only there.
         public bool HoldsStartingCitadel;
         public IReadOnlyList<HexCoord> BaseHexes;
+        public IReadOnlyList<HexCoord> AirfieldHexes;
         public IReadOnlyList<ArmySnapshot> Armies;
         // Current observation plus an affordable safe local step, frozen at Analysis.
         public IReadOnlyList<(int ArmyId, HexCoord Hex)> ReconCaptureOpportunities =

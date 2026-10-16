@@ -253,6 +253,7 @@
         public const float effectScorcherFit = 0.20f;      // Scorcher — narrower Bio-gated AoE fit
         public const float effectRegenerationFit = 0.25f;  // Regeneration — CombatBody ExpectedSustain fit
         public const float effectRaiseTheRotsFit = 0.35f;  // RaiseTheRots — ForceGrowth FreeBattleSlots fit
+        public const float effectMobileAirfieldFit = 0.35f;
         public const float effectPyrokineticFit = 0.30f;   // Pyrokinetic — CombatBody fit scaled by known Bio enemies near the deploy
         public const float effectShockAttackFit = 0.25f;   // ShockAttack — CombatBody fit (a landed hit cancels the target's pending turn)
         public const float effectBerserkFit = 0.15f;       // Berserk — CombatBody fit (+Attack / -Defense per hit taken)

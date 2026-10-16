@@ -200,6 +200,7 @@ namespace Game.Map
         {
             if (unit == null)
                 return;
+            Game.Aviation.AviationActions.RemoveCarrierContainers(unit);
             bool had = unit.IsHidden || _detected.ContainsKey(unit);
             unit.IsHidden = false;
             _detected.Remove(unit);
@@ -371,7 +372,7 @@ namespace Game.Map
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(observer))
             {
-                if (army.Members.Count == 0)
+                if (army.IsCarrierContainer || army.Members.Count == 0)
                     continue;
                 // ArmyData.Hex only updates once a whole move finishes (ArmyRegistry.MoveArmy) —
                 // mid-move the live per-step position is ArmyController.CurrentHex instead, same
@@ -514,7 +515,7 @@ namespace Game.Map
         //    its dice or turn every already-visible enemy into a fresh challenge.
         public static void RunChecksForNewVisionSource(ArmyData army, UnitData unit)
         {
-            if (army?.Owner == null || unit == null)
+            if (army?.Owner == null || army.IsCarrierContainer || unit == null)
                 return;
             HexCoord sourceHex = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
             RunChecksForNewVisionSource(army.Owner, sourceHex,

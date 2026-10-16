@@ -29,7 +29,7 @@ namespace Game.Ai.V2
         {
             if (army == null || army.Owner != player || army.Controller == null)
                 return false;
-            if (army.Members.Count != 0 || army.IsGarrison || army.IsPrison)
+            if (army.Members.Count != 0 || army.IsGarrison || army.IsPrison || army.IsCarrierContainer)
                 return false;
             // Airfield containers / air armies are semantically distinct from a ground shell — the
             // model exposes these predicates, so this is not a hardcoded flag.

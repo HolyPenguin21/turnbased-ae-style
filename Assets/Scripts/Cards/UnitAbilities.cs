@@ -87,6 +87,7 @@ namespace Game.Cards
         public const string Heal = "Heal";
         // Persistent support for one slower Infantry in the same army, up to the carrier's MoveMax.
         public const string Transport = "Transport";
+        public const string Airfield = "Airfield";
 
         // "+2 damage against Mechanical-tagged targets, if the attack already dealt at least 1
         // damage" — the Mechanical counterpart of Hyperkinetic (Armored) and Pyrokinetic (Bio).
@@ -243,7 +244,7 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
-            Splash, Scorcher, RaiseTheRots, Heal, Transport, Ionic, Bodyguard, Counterattack, Drill,
+            Splash, Scorcher, RaiseTheRots, Heal, Transport, Airfield, Ionic, Bodyguard, Counterattack, Drill,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,

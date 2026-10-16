@@ -421,7 +421,8 @@ namespace Game.Map
             // (see ArmyData.IsPrison's own comment), so it must never become an owner's
             // "representative" army here either, or a real army (e.g. that owner's garrison)
             // would lose its marker to a Prison that was never meant to have one at all.
-            return ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count > 0 && !a.IsPrison && !a.IsAirfield);
+            return ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count > 0 && !a.IsPrison
+                && !a.IsAirfield && !a.IsCarrierContainer);
         }
 
         // Every HexObjectLayout offset is in hex-radius units (x = left/right, y = world Z) —

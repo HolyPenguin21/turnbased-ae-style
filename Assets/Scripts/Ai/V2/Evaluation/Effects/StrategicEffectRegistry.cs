@@ -45,6 +45,7 @@ namespace Game.Ai.V2
         EligibleAllies,     // aura (candidate -> army) — BaseFit scaled by eligible friendly units in the dest army
         AllyHealing,       // one wounded Bio ally, per carrier action/hero round
         TransportMobility, // actual expected movement gain of the whole recipient army
+        MobileAirfield,    // held/deployed aircraft not yet served by mobile deck capacity
         FreeBattleSlots,    // summon— BaseFit scaled by min(free slots, CapacityRequirement) / CapacityRequirement
     }
 
@@ -351,6 +352,23 @@ namespace Game.Ai.V2
             ?.cardType == CardType.Hero;
         public bool ProjectedIsBio => (Plan?.BaseCardInHand?.Definition ?? Plan?.GeneratedBaseDef)
             ?.unitTypeTags.Contains(UnitTypeTag.Bio) == true;
+
+        public float MobileAirfieldService
+        {
+            get
+            {
+                CardDefinition card = Plan?.BaseCardInHand?.Definition ?? Plan?.GeneratedBaseDef;
+                if (card == null || card.isAviation || card.cardType != CardType.Unit
+                    || card.airfieldCapacity <= 0) return 0f;
+                int aircraft = (Snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                    .Where(a => a != null && (a.IsAir || a.IsAirfield)).Sum(a => a.MemberCount)
+                    + (Snap?.Self?.Hand ?? System.Array.Empty<CardData>())
+                        .Count(c => c?.Definition?.isAviation == true);
+                int capacity = (Snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                    .Where(a => a != null).Sum(a => a.MobileAirfieldCapacity);
+                return Mathf.Clamp01((aircraft - capacity) / (float)card.airfieldCapacity);
+            }
+        }
 
         // Plan-less overloads — the non-combat lane (Base / Facility / Aviation / Equipment) has no
         // MaterializationPlan but still needs the PlayerGlobal effect priced identically.
@@ -879,6 +897,13 @@ namespace Game.Ai.V2
                         StrategicEffectContext.ExpectedSustain, EffectField.RoleFit, coverage: false,
                         timing: EffectTiming.DuringCombat, durationRounds: 0,
                         stacking: EffectStacking.Stack, stackingKey: "Regeneration"),
+                },
+                [UnitAbilities.Airfield] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectMobileAirfieldFit,
+                        StrategicEffectContext.MobileAirfield, EffectField.Synergy, coverage: false,
+                        scope: EffectScope.DestArmy, stacking: EffectStacking.Unique, stackingKey: "Airfield",
+                        bodyOnly: true),
                 },
                 [UnitAbilities.RaiseTheRots] = new[]
                 {
@@ -1507,6 +1532,8 @@ namespace Game.Ai.V2
                         ? e.BaseFit * Mathf.Max(1f, ctx.ExpectedCombatRounds) : 0f;
                 case StrategicEffectContext.TransportMobility:
                     return e.BaseFit * ctx.TransportMovementGain;
+                case StrategicEffectContext.MobileAirfield:
+                    return e.BaseFit * ctx.MobileAirfieldService;
                 case StrategicEffectContext.ExpectedSustain:
                 {
                     // §3.2 — regen value ≈ BaseFit × (usable rounds / norm) × HP factor × magP.

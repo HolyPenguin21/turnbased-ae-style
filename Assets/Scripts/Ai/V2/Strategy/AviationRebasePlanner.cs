@@ -68,7 +68,8 @@ namespace Game.Ai.V2
                 bool live = army != null && army.Owner == player
                     && OwnWorld.Of(player).Armies.Contains(army)
                     && AviationRules.IsValidAirArmy(army) && army.Controller != null;
-                if (!live || army.Hex.Equals(sortie.LandingHex))
+                if (!live || (army.Hex.Equals(sortie.LandingHex)
+                    && AviationRules.IsOwnedAirfieldAt(sortie.LandingHex, player)))
                 {
                     AirSortieRegistry.Remove(player, sortie);
                     continue;

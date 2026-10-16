@@ -881,6 +881,42 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void AviationCacheKeyIncludesIonicAndDrillMagnitudes()
+        {
+            var planes = new[] { Profile(attack: 4f) };
+            var targets = new[] { Profile(hp: 20f) };
+            int[] Key(int ionic, int drill) => AviationCombatEstimator.BuildKey(planes, targets,
+                AirStrikePolicy.Standard, 1, 0, new AbilityMagnitudes(2, 2, 1, 2, 1, 1, ionic, drill));
+            Assert.That(Key(2, 1), Is.Not.EqualTo(Key(3, 1)));
+            Assert.That(Key(2, 1), Is.Not.EqualTo(Key(2, 2)));
+        }
+
+        [Test]
+        public void AviationCacheOwnsWrittenRostersAndProtectsReadResults()
+        {
+            var skills = new List<string> { UnitAbilities.Ionic };
+            var tags = new List<UnitTypeTag> { UnitTypeTag.Mechanical };
+            var profiles = new[] { new WorthIt.DefenderProfile(2, false, tags, 3, 20, abilities: skills) };
+            var planes = new[] { Profile(attack: 1f) };
+            WorthIt.BeginEstimateCacheScope();
+            try
+            {
+                var first = AviationCombatEstimator.EstimateAirStrike(planes, profiles, AirStrikePolicy.Standard);
+                skills.Clear(); tags.Clear();
+                Assert.That(first.ExpectedDefendersAfter[0].Abilities, Does.Contain(UnitAbilities.Ionic));
+                Assert.That(first.ExpectedDefendersAfter[0].TypeTags, Does.Contain(UnitTypeTag.Mechanical));
+                Assert.Throws<System.NotSupportedException>(() =>
+                    ((IList<string>)first.ExpectedDefendersAfter[0].Abilities).Clear());
+                int hits = AviationCombatEstimator.CacheHits;
+                var again = AviationCombatEstimator.EstimateAirStrike(planes, profiles, AirStrikePolicy.Standard);
+                Assert.That(AviationCombatEstimator.CacheHits, Is.EqualTo(hits + 1));
+                Assert.That(again.ExpectedDamage, Is.EqualTo(first.ExpectedDamage));
+                Assert.That(again.ExpectedDefendersAfter[0].Abilities, Does.Contain(UnitAbilities.Ionic));
+            }
+            finally { WorthIt.EndEstimateCacheScope(); }
+        }
+
+        [Test]
         public void AirObservation_CopiesFateAndDetectsFateOnlyChanges()
         {
             var profiles = new[] { HeroProfile(4), Profile() };

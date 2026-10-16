@@ -36,7 +36,7 @@ namespace Game.Ai.V2
                 yield return ExecuteFormation(player, root, ctx, plan, setChanged);
                 yield break;
             }
-            ArmyData source = AviationRules.FindAirfieldAt(plan.SourceHex, player);
+            ArmyData source = AviationActions.FindStoredAircraftSource(plan.SourceHex, player, plan.Aircraft);
             if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u))
                 || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft))
                 yield break;
@@ -77,7 +77,7 @@ namespace Game.Ai.V2
             RecordLaunchReceipt(trace);
 
             ArmyData wing = ArmyRegistry.AllForOwner(player)
-                .Where(a => AviationRules.IsValidAirArmy(a) && !before.Contains(a.Id))
+                .Where(a => AviationRules.IsValidAirArmy(a) && (!before.Contains(a.Id) || plan.Aircraft.Any(a.Members.Contains)))
                 .OrderBy(a => a.Id).FirstOrDefault();
             if (wing == null)
                 yield break;
@@ -113,7 +113,7 @@ namespace Game.Ai.V2
         private static IEnumerator ExecuteFormation(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, AviationRebasePlan plan, System.Action<bool> setChanged)
         {
-            ArmyData source = AviationRules.FindAirfieldAt(plan.SourceHex, player);
+            ArmyData source = AviationActions.FindStoredAircraftSource(plan.SourceHex, player, plan.Aircraft);
             if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u)))
                 yield break;
             // Re-proved against the live bank: the flight this wing exists for must still be payable.

@@ -28,7 +28,7 @@ namespace Game.Combat
     {
         // Same bounded budget as WorthIt's ground Monte Carlo.
         internal const int Trials = 25;
-        private const int KeyVersion = 4;
+        private const int KeyVersion = 5;
         private const int CacheMaxEntries = 20000;
 
         public readonly struct AirStrikeEstimate
@@ -343,7 +343,7 @@ namespace Game.Combat
                 policy.ExactTargetArmyId ?? int.MinValue, policy.MinimumSurvivors,
                 System.BitConverter.SingleToInt32Bits(m.CriticalDamageMultiplier),
                 m.HyperkineticBonusDamage, m.CeramicArmorReduction, m.PyrokineticBonusDamage,
-                m.BerserkAttackGain, m.BerserkDefenseLoss };
+                m.BerserkAttackGain, m.BerserkDefenseLoss, m.IonicBonusDamage, m.DrillAttackBonus };
             void Profile(WorthIt.DefenderProfile p)
             {
                 buf.Add(System.BitConverter.SingleToInt32Bits(p.Attack));

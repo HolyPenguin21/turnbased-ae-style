@@ -332,7 +332,7 @@ namespace Game.Ai.V2
         // The own base the wing lands at: nearest to the target, then by coordinates.
         internal static HexCoord? LandingBase(WorldSnapshot snap, HexCoord targetHex)
         {
-            List<HexCoord> bases = (snap?.Self?.BaseHexes ?? Array.Empty<HexCoord>())
+            List<HexCoord> bases = (snap?.Self?.AirfieldHexes ?? snap?.Self?.BaseHexes ?? Array.Empty<HexCoord>())
                 .Distinct().ToList();
             if (bases.Count == 0)
                 return null;

@@ -212,7 +212,7 @@ namespace Game.Ai.V2
             if (!ArmyRegistry.AllForOwner(player).Contains(a) || !ArmyRegistry.AllForOwner(player).Contains(b))
             { why = "container no longer registered"; return false; }
             if (a.IsPrison || b.IsPrison) { why = "prison container"; return false; }
-            if (AviationRules.IsAirfield(a) || AviationRules.IsAirArmy(a)
+            if (a.IsCarrierContainer || b.IsCarrierContainer || AviationRules.IsAirfield(a) || AviationRules.IsAirArmy(a)
                 || AviationRules.IsAirfield(b) || AviationRules.IsAirArmy(b))
             { why = "aviation container"; return false; }
             ArmyMutationContract giver = ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments);

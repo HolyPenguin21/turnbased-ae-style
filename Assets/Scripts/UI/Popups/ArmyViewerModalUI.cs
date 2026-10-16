@@ -725,7 +725,9 @@ namespace Game.UI
                 titleText.text = string.IsNullOrEmpty(armyName) ? prefix : $"{prefix} — <b>{armyName}</b>";
             }
             if (contextButtonLabel != null)
-                contextButtonLabel.text = _currentArmy != null && (_currentArmy.IsGarrison || _currentArmy.IsAirfield)
+                contextButtonLabel.text = _currentArmy?.IsCarrierContainer == true
+                    ? (_currentArmy.IsAirfield ? "Air Wing" : "Airfield")
+                    : _currentArmy != null && (_currentArmy.IsGarrison || _currentArmy.IsAirfield)
                     ? $"Create Army ({ArmyActions.CreateArmyApCost} AP)" : "Rename";
             // No administrative actions on someone else's army — Create Army/Rename both
             // mutate it (see OnContextButtonClicked) — nor on a Prison, even the owner's own.
@@ -760,9 +762,7 @@ namespace Game.UI
             ArmyData prison = atHex.Find(a => a.IsPrison && a.Members.Count > 0);
             if (prison != null)
                 siblings.Add(prison);
-            ArmyData airfield = atHex.Find(a => a.IsAirfield);
-            if (airfield != null)
-                siblings.Add(airfield);
+            siblings.AddRange(atHex.Where(a => a.IsAirfield));
             ArmyData garrison = atHex.Find(a => a.IsGarrison);
             if (garrison != null)
                 siblings.Add(garrison);
@@ -802,8 +802,9 @@ namespace Game.UI
         // free (AviationRules.FreeAirfieldCapacity — own wings standing on the hex land into it).
         private int EffectiveCapacityFor(List<UnitData> members) =>
             _currentArmy == null ? 0
-            : _currentArmy.IsAirfield
-                ? members.Count + Game.Aviation.AviationRules.FreeAirfieldCapacity(_currentArmy.Hex, _currentArmy.Owner)
+            : _currentArmy.IsCarrierContainer ? AviationRules.ContainerCapacity(_currentArmy)
+            : _currentArmy.IsAirfield || _currentArmy.IsCarrierFlightDeck
+                ? members.Count + AviationRules.FreeContainerCapacity(_currentArmy)
             : System.Math.Max(ArmyData.ComputeCapacity(members, _currentArmy.IsGarrison), members.Count);
 
         // One slot per point of EffectiveCapacity, not just one per actual Member — the empty
@@ -877,6 +878,20 @@ namespace Game.UI
             List<UnitData> members = VisibleMembers();
             int effectiveCapacity = EffectiveCapacityFor(members);
 
+            if (_currentArmy.IsCarrierContainer)
+            {
+                UnitData carrier = _currentArmy.CarrierUnit;
+                ArmyData host = ArmyRegistry.FindArmyContaining(carrier);
+                int stored = carrier.CarrierAirfield?.Members.Count ?? 0;
+                int ready = carrier.CarrierFlightDeck?.Members.Count ?? 0;
+                detailText.text = $"{_currentArmy.Name}\n"
+                    + $"Aircraft aboard: {stored + ready}/{carrier.AirfieldCapacity}\n"
+                    + $"Stored: {stored}\nReady: {ready}\n"
+                    + (_currentArmy.IsAirfield ? "Stored aircraft" : "Ready for take-off")
+                    + $"\nCarrier Move: {host?.CurrentMovement ?? 0}/{host?.MaxMovement ?? 0}";
+                return;
+            }
+
             UnitData hero = ArmyData.CommanderOf(members);
             string leaderLine = hero != null
                 ? $"{hero.Name} Commanding ({effectiveCapacity})"
@@ -923,7 +938,13 @@ namespace Game.UI
             if (_currentArmy == null)
                 return;
 
-            if (_currentArmy.IsGarrison || _currentArmy.IsAirfield)
+            if (_currentArmy.IsCarrierContainer)
+            {
+                ArmyData paired = _currentArmy.IsAirfield ? _currentArmy.CarrierUnit.CarrierFlightDeck
+                    : _currentArmy.CarrierUnit.CarrierAirfield;
+                if (paired != null) SwitchTo(paired);
+            }
+            else if (_currentArmy.IsGarrison || _currentArmy.IsAirfield)
                 CreateArmy();
             else
                 renamePopup?.Show(_currentArmy, OnRenamed);

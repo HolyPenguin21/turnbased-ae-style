@@ -89,7 +89,8 @@ namespace Game.Ai.V2
                 });
             }
 
-            foreach (ArmySnapshot a in snap.Self.Armies.Where(x => !x.IsGarrison && !x.IsPrison && x.MemberCount > 0))
+            foreach (ArmySnapshot a in snap.Self.Armies.Where(x => !x.IsGarrison && !x.IsPrison
+                && !x.IsCarrierContainer && x.MemberCount > 0))
             {
                 assets.Add(new StrategicAssetSnapshot
                 {
@@ -97,14 +98,16 @@ namespace Game.Ai.V2
                     Kind = AssetKind.Army,
                     HexDefenseBonus = 0f,
                     Opposition = new[] { new WorthIt.DefendingArmy(a.Members, a.Commander) },
-                    Value = Mathf.Min(AiConfigV2.assetValueArmyCap, a.EffectiveArmyPower / AiConfigV2.assetValueArmyPowerDivisor),
+                    Value = Mathf.Min(AiConfigV2.assetValueArmyCap,
+                        (a.EffectiveArmyPower + a.CarrierCargoPower) / AiConfigV2.assetValueArmyPowerDivisor),
                 });
             }
             model.Assets = assets;
 
             var threats = new List<AssetThreatSnapshot>();
             List<ArmySnapshot> ownFieldForResponse = snap.Self.Armies
-                .Where(a => !a.IsPrison && !a.IsGarrison && !a.IsAirfield && a.MemberCount > 0).ToList();
+                .Where(a => !a.IsPrison && !a.IsGarrison && !a.IsAirfield
+                    && !a.IsCarrierContainer && a.MemberCount > 0).ToList();
             var responseCosts = ownFieldForResponse.ToDictionary(a => a.ArmyId,
                 a => TerrainCostField(ctx.Map, a.Hex, Mathf.Max(1, a.MaxMovement), a.IsAir));
 

@@ -936,7 +936,7 @@ namespace Game.UI
                     return false;
                 }
                 if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
-                        targetArmy.Hex, out string aviationFailReason, card.Data?.Equipment, card.Data))
+                        targetArmy.Hex, out string aviationFailReason, card.Data?.Equipment, card.Data, targetArmy))
                 {
                     turnController.ShowSpawnHint(aviationFailReason);
                     return false;

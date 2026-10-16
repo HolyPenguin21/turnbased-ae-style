@@ -271,6 +271,9 @@ namespace Game.Ai.V2
             && a.PendingActivationApCost == b.PendingActivationApCost
             && a.PendingActivationEnergyCost == b.PendingActivationEnergyCost
             && a.IsHidden == b.IsHidden && a.IsAir == b.IsAir
+            && a.IsCarrierContainer == b.IsCarrierContainer
+            && a.MobileAirfieldCapacity == b.MobileAirfieldCapacity
+            && a.CarrierCargoPower == b.CarrierCargoPower
             && a.IsSoloRecce == b.IsSoloRecce
             && a.IsStructuralRaidActor == b.IsStructuralRaidActor
             && SameCombatCapability(a, b);
@@ -288,6 +291,8 @@ namespace Game.Ai.V2
                 if (!old.TryGetValue(kv.Key, out ArmySnapshot prior)
                     || prior.MemberCount != kv.Value.MemberCount
                     || prior.IsAir != kv.Value.IsAir
+                    || prior.IsCarrierContainer != kv.Value.IsCarrierContainer
+                    || prior.MobileAirfieldCapacity != kv.Value.MobileAirfieldCapacity
                     || prior.IsSoloRecce != kv.Value.IsSoloRecce
                     || prior.IsStructuralRaidActor != kv.Value.IsStructuralRaidActor
                     || prior.ActivationApCost != kv.Value.ActivationApCost
@@ -401,7 +406,12 @@ namespace Game.Ai.V2
             IEnumerable<string> development = (snapshot?.Development?.Facilities
                     ?? System.Array.Empty<DevelopmentFacility>())
                 .Select(x => $"dev:{x.Hex.Q},{x.Hex.R}:{x.Mode}:{x.HasHero}:{x.Contested}");
-            return known.Concat(development).OrderBy(x => x).ToArray();
+            // Mobile airfields are infrastructure capabilities without being Base buildings.
+            // Moving or losing a carrier must invalidate same-turn aviation placement/plans.
+            IEnumerable<string> airfields = (snapshot?.Self?.AirfieldHexes
+                    ?? System.Array.Empty<HexCoord>())
+                .Select(h => $"airfield:{h.Q},{h.R}");
+            return known.Concat(development).Concat(airfields).OrderBy(x => x).ToArray();
         }
 
         // Known-event facts per hex: guard present / active / completed. A hex appearing, losing its
