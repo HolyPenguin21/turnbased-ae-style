@@ -149,6 +149,20 @@ namespace Game.EditorTests
             SurplusFraction = 1f,
         };
 
+        // Playtest 2026-10-16: deck empty, Energy spent every turn by equipment and sorties, so the
+        // 1-Energy mutators never saw an open window. The window protects the hand and the deck: a
+        // resource they no longer need is surplus whatever stock is left.
+        [TestCase(3f, 3f, 0f, 1f)]
+        [TestCase(3f, 3f, 2f, 0.5f)]
+        [TestCase(3f, 3f, null, 0.5f)]
+        [TestCase(12f, 3f, 5f, 1f)]
+        public void InvestmentSurplus_IsFullWhenTheHandAndDeckNoLongerNeedTheResource(
+            float spendable, float income, float? cardNeed, float expected)
+        {
+            Assert.That(WorldAnalysis.InvestmentSurplus(spendable, income, cardNeed),
+                Is.EqualTo(expected).Within(1e-5f));
+        }
+
         [Test]
         public void ProductionNeverCreatesANeed_NoMilitaryWitnessMeansNoDevelopment()
         {

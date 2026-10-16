@@ -61,7 +61,7 @@ namespace Game.Ai.V2
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
                 snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
-                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
+                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents, snap.Self);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
@@ -110,7 +110,7 @@ namespace Game.Ai.V2
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
                 snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
-                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
+                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents, snap.Self);
             // Operational combat facts must follow the registries even when honest knowledge did
             // not change (HP loss, reinforcement, destruction). This is materially cheaper than
             // rebuilding MapKnowledge and keeps the sanctioned TrueWorld boundary explicit.
@@ -151,7 +151,7 @@ namespace Game.Ai.V2
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
                 snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
-                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
+                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents, snap.Self);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
