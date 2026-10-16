@@ -66,11 +66,19 @@ namespace Game.EditorTests
             Body(1, 1, 4, 1),
         };
 
-        // About even against SiteDefenders: clears Attack's no-threshold gate, but well short of
-        // the decisive (fresh-raid) win that lets a force march below the 80% floor.
+        // Against SiteDefenders (measured with the shared estimator, 2026-10-16):
+        // Contested ~0.72 — clears the start gate (attackStartMinWinChance 0.55) but is not the
+        // decisive win that lets a force march below the 80% floor; Holding ~0.48 — below the start
+        // gate, above the abort floor (attackLocalMinWinChance 0.40): a march keeps going; Weak
+        // ~0.00 — a march withdraws (AttackMarchPolicy).
         private static List<WorthIt.DefenderProfile> Contested() => new List<WorthIt.DefenderProfile>
         {
-            Body(6, 3, 12, 4), Body(6, 3, 11, 3),
+            Body(6, 4, 12, 4), Body(6, 4, 12, 3),
+        };
+
+        private static List<WorthIt.DefenderProfile> Holding() => new List<WorthIt.DefenderProfile>
+        {
+            Body(6, 3, 12, 4), Body(6, 3, 12, 3),
         };
 
         private static WorthIt.DefenderProfile[] SiteDefenders() => new[]
@@ -808,15 +816,31 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(coverageRequired);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
             bool keep = AttackContinuity.ResolveAttackIntent(Us,
-                DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
+                DefendedSite(new[] { Army(7, EnRoute, Holding()) }, new[] { OurBase, AltBase }),
                 intent, intent.Attack, null, out bool captured);
 
             Assert.That(keep, Is.True);
             Assert.That(captured, Is.False);
             Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault),
-                "no existing reinforcement: the primary keeps marching, it neither waits nor withdraws");
+                "a contested fight without reinforcement keeps marching (above the abort floor)");
             Assert.That(intent.Attack.SupportArmyId, Is.Null);
             Assert.That(intent.Attack.RecoveryBaseHex, Is.Null);
+        }
+
+        // 2026-10-16 (user decision) — worse news that makes the committed fight a loss (below the
+        // abort floor) with no support on the route sends the army home instead of to the defenders.
+        [Test]
+        public void CommittedAssault_LosingFightWithoutSupportWithdraws()
+        {
+            using IDisposable coverage = Coverage(required: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
+            bool keep = AttackContinuity.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
+                intent, intent.Attack, null, out _);
+
+            Assert.That(keep, Is.True);
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn));
+            Assert.That(intent.Attack.RecoveryBaseHex, Is.Not.Null);
         }
 
         [Test]
@@ -865,7 +889,7 @@ namespace Game.EditorTests
             using IDisposable coverage = Coverage(required: true);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
             AttackContinuity.ResolveAttackIntent(Us,
-                DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(3, 0), Weak()) },
+                DefendedSite(new[] { Army(7, EnRoute, Holding()), Army(8, new HexCoord(3, 0), Weak()) },
                     new[] { OurBase }),
                 intent, intent.Attack, null, out _);
 
@@ -880,7 +904,7 @@ namespace Game.EditorTests
             // Meeting it would hold the primary for several turns (or send it back): rejected.
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
             AttackContinuity.ResolveAttackIntent(Us,
-                DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(-4, 0), Strong()) },
+                DefendedSite(new[] { Army(7, EnRoute, Holding()), Army(8, new HexCoord(-4, 0), Strong()) },
                     new[] { OurBase }),
                 intent, intent.Attack, null, out _);
 
@@ -916,7 +940,7 @@ namespace Game.EditorTests
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 9999);
             intent.Attack.RendezvousHex = new HexCoord(5, 0);
             bool keep = AttackContinuity.ResolveAttackIntent(Us,
-                DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
+                DefendedSite(new[] { Army(7, EnRoute, Holding()) }, new[] { OurBase, AltBase }),
                 intent, intent.Attack, null, out _);
 
             Assert.That(keep, Is.True);

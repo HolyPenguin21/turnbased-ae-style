@@ -120,7 +120,7 @@ namespace Game.Ai.V2
                     AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex),
                     AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex),
                     // Coverage is independent of the dynamic force requirement.
-                    GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
                     diag, AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
                 if (attackShortage != null)
@@ -189,7 +189,7 @@ namespace Game.Ai.V2
                 Dictionary<int, float> donors = GroundCombatDonorPolicy.BorrowableDonorValues(
                     snap.Observer == null ? null : snap.Intents?.All);
                 GroundCombatGatherPlan free = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                    hexBonus, ai.Target.Hex, claimed, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    hexBonus, ai.Target.Hex, claimed, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     hostId, donors, requireMovementNow: false, minimumArmyPower: required,
                     allowPartial: true);
                 if (free.Feasible && free.SupportArmyIds.Count > 0)
@@ -199,7 +199,7 @@ namespace Game.Ai.V2
                     return null;
                 }
                 GroundCombatGatherPlan contended = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                    hexBonus, ai.Target.Hex, new HashSet<int>(), GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    hexBonus, ai.Target.Hex, new HashSet<int>(), GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     hostId, null, requireMovementNow: false, minimumArmyPower: required, allowPartial: true);
                 // Contention only when the busy armies would really complete the fist; a partial
                 // lift held elsewhere does not excuse a measured shortage.
@@ -286,7 +286,7 @@ namespace Game.Ai.V2
             // target is served by a card that closes target coverage — not only by one filling a
             // missing slot of the strongest-power roster.
             bool coverageGap = coverageTarget.HasValue
-                && GroundCombatAdmissionPolicy.RequiresCoverage(GroundCombatAdmissionPolicy.AttackCoverageGate)
+                && GroundCombatAdmissionPolicy.RequiresCoverage(GroundCombatAdmissionPolicy.AttackWinChanceGate)
                 && MaterializationDeliveryPolicy.UncoveredDefenderCount(snap, host.Members, null,
                     coverageTarget.Value) > 0;
             bool ExactlyMissing(Game.Cards.CardDefinition d) =>
@@ -382,7 +382,7 @@ namespace Game.Ai.V2
                 new GroundCombatAssemblyRequest
                 {
                     Opposition = objective.Opposition,
-                    WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = claimed,
                     DefenderHexDefenseBonus = hexBonus,
@@ -401,7 +401,7 @@ namespace Game.Ai.V2
                 .Where(a => a.CurrentMovement <= 0)
                 .FirstOrDefault(a => GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
                     objective.Opposition, a.ArmyId,
-                    GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus).Feasible
+                    GroundCombatAdmissionPolicy.AttackWinChanceGate, hexBonus).Feasible
                     && AttackForceReadiness.ForceReady(a.EffectiveArmyPower,
                         snap.Self.AttackPeak));
             if (futureActor != null)
@@ -412,7 +412,7 @@ namespace Game.Ai.V2
             }
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
                 objective.Opposition, hexBonus, objective.Hex, claimed,
-                GroundCombatAdmissionPolicy.AttackCoverageGate,
+                GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
                 requireMovementNow: false,
                 minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
@@ -430,7 +430,7 @@ namespace Game.Ai.V2
                 new GroundCombatAssemblyRequest
                 {
                     Opposition = objective.Opposition,
-                    WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = new HashSet<int>(),
                     DefenderHexDefenseBonus = hexBonus,

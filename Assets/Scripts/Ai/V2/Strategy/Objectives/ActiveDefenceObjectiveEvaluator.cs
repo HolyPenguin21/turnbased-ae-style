@@ -812,7 +812,7 @@ namespace Game.Ai.V2
             return required;
         }
 
-        private static bool IsHonestPositionedHostile(AssetThreatSnapshot t) =>
+        internal static bool IsHonestPositionedHostile(AssetThreatSnapshot t) =>
             t?.Asset != null && t.Contact?.Army != null
             && t.Contact.Army.ArmyId >= 0
             && t.Contact.Position.HasValue

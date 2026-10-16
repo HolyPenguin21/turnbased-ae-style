@@ -155,6 +155,29 @@ namespace Game.Ai.V2
                     return false;
             }
 
+            // 2026-10-16 (user decision) — king safety first: an own stronghold that falls without
+            // this army calls it home (AttackMarchPolicy), unless a decisive blow at the enemy's
+            // Citadel lands first. An operation that never started simply ends (the army is free
+            // for the defence); a started one walks home through the existing RecoveryReturn leg.
+            if ((a.Phase == AttackMissionPhase.Assault || a.Phase == AttackMissionPhase.Reinforcement)
+                && a.PrimaryArmyId.HasValue)
+            {
+                ArmySnapshot marching = snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == a.PrimaryArmyId.Value);
+                AttackMarchAssessment march = AttackMarchPolicy.Assess(snap, a.Target, marching);
+                if (march.Verdict == AttackMarchVerdict.DefendHome)
+                {
+                    if (!a.OperationStarted)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Attack][March] {intent.IntentKey} retired — {march.Reason}; "
+                            + $"primary #{a.PrimaryArmyId} is free for the defence");
+                        return false;
+                    }
+                    WithdrawTo(intent, a, march.HomeHex.Value, "defend_home: " + march.Reason);
+                    return true;
+                }
+            }
+
             ResolveGatherReturns(snap, player, intent, a);
             ResolveAttackAirSupport(snap, player, intent, a, unavailableArmyIds);
 
@@ -435,12 +458,43 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            // 2026-10-16 (user decision) — no support meets the army ahead: the strategic verdict
+            // decides. A contested fight (at or above the abort floor) keeps marching while air
+            // support and equipment improve it; a losing one withdraws instead of feeding the army
+            // to the defenders.
+            AttackMarchAssessment march = AttackMarchPolicy.Assess(snap, a.Target, primary);
+            HexCoord? home = march.Verdict == AttackMarchVerdict.Withdraw
+                ? AiReturnBasePolicy.SelectReturnBase(snap, snap.Observer, a.PrimaryArmyId) : null;
+            if (home.HasValue)
+            {
+                WithdrawTo(intent, a, home.Value, "withdraw: " + march.Reason);
+                return true;
+            }
             a.Phase = AttackMissionPhase.Assault;
             AiDebugLog.WriteDeduped(intent.IntentKey + "#committed",
                 $"[AI][V2][Attack][Continuity] {intent.IntentKey} primary #{a.PrimaryArmyId} no longer "
                 + $"clears {a.Target.DiagnosticLabel} ({DescribeClearance(snap, a)}); existing "
-                + $"reinforcement candidate none ({none}); committed assault continues");
+                + $"reinforcement candidate none ({none}); {march.Reason} (win {march.WinChance:0.00}) — "
+                + "committed assault continues");
             return true;
+        }
+
+        // The march ends and the army walks to `home` through the existing RecoveryReturn leg
+        // (the operation retires on arrival). Local and support bindings come off; donors already
+        // walking home keep doing so (GatherReturns).
+        private static void WithdrawTo(MissionIntent intent, AttackIntent a, HexCoord home, string why)
+        {
+            a.Phase = AttackMissionPhase.RecoveryReturn;
+            a.RecoveryBaseHex = home;
+            a.IntermediateTarget = AttackTargetRef.None;
+            a.RendezvousHex = null;
+            a.ReinforcementRequestedTurn = -1;
+            a.SupportArmyId = null;
+            a.SupportReturnHex = null;
+            a.GatherSupportArmyIds.Clear();
+            intent.StallTurns = 0;
+            AiDebugLog.Write($"[AI][V2][Attack][March] {intent.IntentKey} phase -> RecoveryReturn "
+                + $"({home.Q},{home.R}); {why}");
         }
 
         // The committed Reinforcement's support: an EXISTING free army the one assembly owner says
@@ -687,7 +741,7 @@ namespace Game.Ai.V2
             // completed Raid's unclaimed fallback included); an army another operation holds is
             // bought only by a fresh, priced proposal that wins the allocator.
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 a.PrimaryArmyId, null,
                 minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
@@ -820,7 +874,7 @@ namespace Game.Ai.V2
                 // ATK-F05 — free armies only; a bought donor is the planner's priced
                 // RecruitDonors proposal (AggressionMissionPlanner.AppendPreparationRecruit).
                 : GroundCombatAssemblyPlanner.PlanGather(snap, opposition, hexBonus, a.Target.Hex,
-                    unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate, hostId, null,
+                    unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate, hostId, null,
                     minimumArmyPower: required, allowPartial: true);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {

@@ -104,7 +104,7 @@ namespace Game.Ai.V2
                 Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
                     player == null ? null : intentState?.All);
                 GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                    hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     fieldHost.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
                 // The lead leg is a FREE army (a bought donor stays with its operation until the
                 // intent this step creates retires it), exactly as the fresh gather's lead.
@@ -398,7 +398,7 @@ namespace Game.Ai.V2
             float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex), hexBonus,
-                a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 host.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
             List<int> bought = plan.Feasible
                 ? plan.SupportArmyIds.Where(donorValues.ContainsKey).ToList() : new List<int>();

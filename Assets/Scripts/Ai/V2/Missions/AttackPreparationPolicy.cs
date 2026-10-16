@@ -137,7 +137,7 @@ namespace Game.Ai.V2
                     || objective.Opposition == null || objective.Opposition.Count == 0)
                     continue;
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                    snap, objective.Opposition, hostId, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    snap, objective.Opposition, hostId, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     objective.HexDefense);
                 if (!plan.Feasible || !plan.CoversAllDefenders)
                     continue;

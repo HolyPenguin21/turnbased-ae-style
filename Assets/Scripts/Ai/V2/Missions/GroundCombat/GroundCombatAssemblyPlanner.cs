@@ -118,14 +118,16 @@ namespace Game.Ai.V2
         // authorising a clearly hopeless attack. Fresh raids never see this floor.
         internal const float ContinuationWinChanceFloor = 0.55f;
 
-        // Attack imposes no probability threshold; whether it checks known defender coverage is
-        // RequiresCoverage's answer (AiConfigV2.attackRequiresDefenderCoverage).
-        internal const float AttackCoverageGate = 0f;
+        // 2026-10-16 (user decision, test behavior removed) — the win chance an Attack needs to
+        // START its march on the main target (AiConfigV2.attackStartMinWinChance). Once marching,
+        // AttackMarchPolicy decides each turn whether to continue, withdraw (below the abort floor
+        // attackLocalMinWinChance) or turn home to save a threatened stronghold.
+        internal static float AttackWinChanceGate => AiConfigV2.attackStartMinWinChance;
 
         // Does a fight admitted at `gate` require every known defender to be damageable? Always
         // for Raid / ActiveDefence; for Attack's no-threshold gate only while the test switch is on.
         internal static bool RequiresCoverage(float gate) =>
-            gate > AttackCoverageGate || AiConfigV2.attackRequiresDefenderCoverage;
+            gate > AttackWinChanceGate || AiConfigV2.attackRequiresDefenderCoverage;
 
         // 2026-10-08 — the win chance and the coverage rule are two independent facts of an Attack
         // fight. A voluntary fight against a field army keeps coverage (every known defender must
@@ -150,10 +152,14 @@ namespace Game.Ai.V2
 
         // The gate an assigned assault actor is (re)planned at: Attack's floor; otherwise the
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
+        // A committed Attack march is re-planned at the abort floor (AttackMarchPolicy decides it
+        // each turn); only its start needs AttackWinChanceGate.
         internal static float AssaultGate(MissionProposal proposal, int actorId) =>
             proposal != null && proposal.Kind == MissionKind.Attack
-                ? proposal.Target is AttackMissionTarget attack && attack.IsIntermediateAssault
-                    ? AttackIntermediateBaseWinChanceGate : AttackCoverageGate
+                ? proposal.Target is AttackMissionTarget attack
+                    ? attack.IsIntermediateAssault ? AttackIntermediateBaseWinChanceGate
+                        : attack.ForceCommitted ? AttackLocalWinChanceGate : AttackWinChanceGate
+                    : AttackWinChanceGate
             : PinnedOrFreshGate(proposal != null && proposal.FromDurableIntent
                 && proposal.DurableFundingTier == CommitmentTier.Hard
                 && proposal.PreferredMoverArmyId == actorId);

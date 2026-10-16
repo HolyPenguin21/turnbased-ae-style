@@ -326,7 +326,7 @@ namespace Game.EditorTests
             ArmyData host = Army(Staging, lead, extra, Body("Fighter", 20));
             var plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
             {
-                Opposition = WeakOpposition(), WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                Opposition = WeakOpposition(), WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 PreferredPrimaryArmyId = host.Id, PinToPreferred = true, PreserveDepartureRoster = committed,
             });
             Assert.That(plan.Feasible, Is.True, plan.Reason);
@@ -343,8 +343,10 @@ namespace Game.EditorTests
             UnitData lead = Hero("Lead", 8), support = Hero("Support", 4);
             support.Abilities.Add(ability);
             ArmyData host = Army(Staging, lead, support, Body("Fighter", 20));
+            // An Attack start always carries its power floor (minimumArmyPower > 0).
             var plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(DepartureSnapshot(),
-                WeakOpposition(), host.Id, GroundCombatAdmissionPolicy.AttackCoverageGate);
+                WeakOpposition(), host.Id, GroundCombatAdmissionPolicy.AttackWinChanceGate,
+                minimumArmyPower: 0.01f);
             Assert.That(plan.Feasible, Is.True, plan.Reason);
             Assert.That(plan.ReturnHeroes, Has.No.Member(support));
         }
@@ -356,7 +358,7 @@ namespace Game.EditorTests
             ArmyData host = Army(Staging, Hero("Lead", 8), Hero("Extra", 4), Body("Fighter", 20));
             var plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
             {
-                Opposition = ContestedOpposition(3, 12), WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                Opposition = ContestedOpposition(3, 12), WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 PreferredPrimaryArmyId = host.Id, PinToPreferred = true, AllowSameHexAssembly = false,
                 MinimumArmyPower = AiPower.EffectiveArmyPower(host.Members),
             });

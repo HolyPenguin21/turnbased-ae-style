@@ -116,9 +116,11 @@ namespace Game.Ai.V2
                 if (home != null)
                     foreach (UnitData secondary in heroes.Where(h => h != lead
                         && host.Members.Contains(h) && !returning.Contains(h)
-                        // Attack has no probability floor: it must not silently shed a passive
-                        // carrier merely because an unconstrained fight still passes zero.
-                        && (gate > 0f || !StrategicEffectRegistry.IsArmySupportCarrier(h)))
+                        // An Attack strikes at its full strength: its start (the only lane with a
+                        // power floor, `minimumPower`) never sheds a passive carrier merely because
+                        // the fight would still pass without it.
+                        && ((gate > 0f && minimumPower <= 0f)
+                            || !StrategicEffectRegistry.IsArmySupportCarrier(h)))
                         .OrderByDescending(h => h.ActivationApCost).ThenBy(h => h.RuntimeId))
                     {
                         var trial = new List<UnitData>(returning) { secondary };

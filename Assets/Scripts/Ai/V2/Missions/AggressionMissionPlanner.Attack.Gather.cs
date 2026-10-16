@@ -24,7 +24,7 @@ namespace Game.Ai.V2
             Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
                 snap.Observer == null ? null : intentState?.All);
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 donorValues: donorValues,
                 minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)

@@ -47,7 +47,7 @@ namespace Game.Ai.V2
                 return new AttackPreparationAssessment(null, currentPeak, false, 0f, false);
             bool clears = GroundCombatFeasibility.Clears(
                 host.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(), host.Commander,
-                opposition, GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus,
+                opposition, GroundCombatAdmissionPolicy.AttackWinChanceGate, hexBonus,
                 out float win, out bool cover);
             return new AttackPreparationAssessment(host, currentPeak, clears, win, cover, opposition);
         }

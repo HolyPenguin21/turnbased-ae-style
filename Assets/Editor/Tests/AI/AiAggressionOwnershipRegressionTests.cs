@@ -137,27 +137,22 @@ namespace Game.EditorTests
             Assert.That(AttackPreparationReadiness.Assess(host, 90f, EmptySite(), 0f).Ready, Is.True);
         }
 
-        // Coverage gates the march only while AiConfigV2.attackRequiresDefenderCoverage is on
-        // (2026-10-04 test behavior: off).
+        // 2026-10-16 (user decision, test behavior removed) — coverage is required again and the
+        // march starts at attackStartMinWinChance: a fist above the power bar is ready only when it
+        // can damage every known defender and wins the start gate.
         [TestCase(true)]
         [TestCase(false)]
-        public void AbovePowerBarWithoutDefenderCoverage_IsReadyOnlyWhenCoverageIsWaived(bool required)
+        public void AbovePowerBar_ReadyOnlyWhenTheFistCoversTheDefenders(bool canDamage)
         {
-            bool previous = AiConfigV2.attackRequiresDefenderCoverage;
-            AiConfigV2.attackRequiresDefenderCoverage = required;
-            try
-            {
-                AttackPreparationAssessment result = AttackPreparationReadiness.Assess(Actor(7, Home),
-                    100f, DefendedSite(), 0f);
-                Assert.That(result.PowerReady, Is.True);
-                Assert.That(result.CoversAllDefenders, Is.False);
-                Assert.That(result.Ready, Is.EqualTo(!required));
-                Assert.That(result.Reason, Is.EqualTo(required ? "coverage_missing" : "ready"));
-            }
-            finally
-            {
-                AiConfigV2.attackRequiresDefenderCoverage = previous;
-            }
+            ArmySnapshot host = Actor(7, Home);
+            var body = new WorthIt.DefenderProfile(4f, false, null, canDamage ? 8f : 1f, 12f, 3);
+            host.Members = new[] { body, body, body };
+            AttackPreparationAssessment result = AttackPreparationReadiness.Assess(host, 100f,
+                DefendedSite(), 0f);
+            Assert.That(result.PowerReady, Is.True);
+            Assert.That(result.CoversAllDefenders, Is.EqualTo(canDamage));
+            Assert.That(result.Ready, Is.EqualTo(canDamage));
+            Assert.That(result.Reason, Is.EqualTo(canDamage ? "ready" : "coverage_missing"));
         }
 
         [Test]

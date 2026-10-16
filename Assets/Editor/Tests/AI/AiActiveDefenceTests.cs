@@ -117,7 +117,7 @@ namespace Game.EditorTests
             GroundCombatAssemblyPlan Plan(WorldSnapshot snap, float enemyAttack, bool allow) =>
                 GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest
                 {
-                    Opposition = Site(enemyAttack), WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    Opposition = Site(enemyAttack), WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     MinimumArmyPower = 80f, AllowSameHexAssembly = false, AllowDecisivePinnedDefender = allow,
                 });
             Assert.That(Plan(Snap(scout), 1f, true).Feasible, Is.True, "decisive and covered");
@@ -462,6 +462,39 @@ namespace Game.EditorTests
                     new AssetThreatSnapshot { Contact = contact, CanDamage = true, EnemyEta = 2,
                         AttackWinChance = 1f, PotentialDamage = 1f, Severity = 1f, Confidence = 1f,
                         Asset = new StrategicAssetSnapshot { Kind = AssetKind.Base, Hex = Secondary, Value = 10f } } } } };
+        }
+
+        // 2026-10-16 (user decision) — king safety: an own Base that falls without the marching
+        // Attack army calls it home, unless a decisive blow at the enemy's Citadel lands first.
+        [Test]
+        public void AttackMarch_HomeThatFallsWithoutTheArmyCallsItBack_UnlessADecisiveCitadelBlowLandsFirst()
+        {
+            var owner = new PlayerSetupData();
+            var marcher = DefenceActor(owner, 26, new HexCoord(1, 0), 20f, 10f, 30f);
+            WorldSnapshot snap = AssetWorld(marcher);
+            PlayerSetupData enemy = snap.Threat.Threats[0].Contact.Army.Owner;
+            var site = new HexCoord(3, -1);
+            AttackTargetRef citadel = AttackTargetRef.For(site, enemy, AttackTargetKind.Citadel);
+            AttackTargetRef plainBase = AttackTargetRef.For(site, enemy, AttackTargetKind.Base);
+
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out int eta), Is.EqualTo(Secondary));
+            Assert.That(eta, Is.EqualTo(2));
+            Assert.That(AttackMarchPolicy.Assess(snap, citadel, marcher).Verdict,
+                Is.EqualTo(AttackMarchVerdict.DefendHome), "unknown defenders are no decisive blow");
+
+            var weak = new WorthIt.DefenderProfile(0f, false, null, 1f, 2f, 0);
+            snap.Known.EnemySightings = snap.Known.EnemySightings.Concat(new[] {
+                new AiMapMemory.KnownEnemySighting(site, enemy, "garrison", 1, 1f, 1f, new[] { weak },
+                    false, 0, 0, 8, 98) }).ToArray();
+            AttackMarchAssessment mate = AttackMarchPolicy.Assess(snap, citadel, marcher);
+            Assert.That(mate.Decisive, Is.True);
+            Assert.That(mate.Verdict, Is.EqualTo(AttackMarchVerdict.Continue), "the decisive Citadel blow lands first");
+            Assert.That(AttackMarchPolicy.Assess(snap, plainBase, marcher).Verdict,
+                Is.EqualTo(AttackMarchVerdict.DefendHome), "a plain Base does not end the enemy");
+
+            snap.Threat.Threats[0].EnemyEta = 0;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.Null,
+                "an army that cannot get back in time is not called back");
         }
 
         private static ActiveDefenceObjective AssetObjective(WorldSnapshot snap) =>

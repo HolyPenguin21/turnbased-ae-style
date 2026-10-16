@@ -27,7 +27,7 @@ namespace Game.Ai.V2
                 return GroundCombatAssemblyPlan.Infeasible("preparation host is not an own ground field container");
             return AssembleSameHex(snap, host.Owner, host,
                 opposition ?? System.Array.Empty<WorthIt.DefendingArmy>(), excludeArmyIds,
-                GroundCombatAdmissionPolicy.AttackCoverageGate, defenderHexDefenseBonus, 0f,
+                GroundCombatAdmissionPolicy.AttackWinChanceGate, defenderHexDefenseBonus, 0f,
                 preparation: true);
         }
 
