@@ -249,8 +249,8 @@ namespace Game.Ai.V2
                     snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.RequireCoverage,
                     request.MinimumArmyPower, request.PreserveDepartureRoster);
-                if (exact.Feasible && (request.MinimumArmyPower <= 0f
-                    || exact.ProjectedPower > request.MinimumArmyPower))
+                if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
+                    request.MinimumArmyPower, exact.ProjectedWinChance, opposition))
                     return exact;
             }
 
@@ -295,8 +295,8 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(snap, opposition,
                     a.ArmyId, request.WinChanceGate, request.DefenderHexDefenseBonus,
                     request.RequireCoverage, request.MinimumArmyPower, request.PreserveDepartureRoster);
-                if (exact.Feasible && (request.MinimumArmyPower <= 0f
-                    || exact.ProjectedPower > request.MinimumArmyPower))
+                if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
+                    request.MinimumArmyPower, exact.ProjectedWinChance, opposition))
                     ids.Add(a.ArmyId);
             }
             if (!request.AllowSameHexAssembly)

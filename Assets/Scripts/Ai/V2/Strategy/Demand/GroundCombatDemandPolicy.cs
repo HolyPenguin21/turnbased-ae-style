@@ -34,8 +34,8 @@ namespace Game.Ai.V2
             string at = $"intent={intent.IntentKey} target={targetLabel} primary={primaryId}";
             GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
                 snap, opposition, primaryId, gate, hexBonus);
-            if (primaryPlan.Feasible && (minimumArmyPower <= 0f
-                || primaryPlan.ProjectedPower > minimumArmyPower))
+            if (primaryPlan.Feasible && AttackForceReadiness.ClearsFloor(primaryPlan.ProjectedPower,
+                minimumArmyPower, primaryPlan.ProjectedWinChance, opposition))
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
                     + $"win={primaryPlan.ProjectedWinChance:0.00} reason=primary_clears_its_gate");

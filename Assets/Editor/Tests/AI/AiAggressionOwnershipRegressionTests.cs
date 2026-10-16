@@ -82,6 +82,26 @@ namespace Game.EditorTests
             Assert.That(assessment.RequiredPower, Is.EqualTo(80f));
         }
 
+        // 2026-10-16 (user decision) — attack by opportunity: below the 80% floor a host still marches
+        // when the estimator gives it the fresh-raid confidence against the KNOWN defenders
+        // (playtest: 29.4 power against a 12.1 Base was held for a 32.7 floor). A host that would
+        // lose stays below the bar; an empty site never waives it (the strict-boundary test above).
+        [TestCase(true)]
+        [TestCase(false)]
+        public void BelowTheFloor_ReadyOnlyByADecisiveWinAgainstKnownDefenders(bool strongHost)
+        {
+            var body = strongHost
+                ? new WorthIt.DefenderProfile(4f, false, null, 8f, 12f, 3)
+                : new WorthIt.DefenderProfile(0f, false, null, 1f, 1f, 1);
+            ArmySnapshot host = Actor(7, Home, power: 30f);
+            host.Members = new[] { body, body, body };
+            AttackPreparationAssessment result = AttackPreparationReadiness.Assess(host, 100f,
+                DefendedSite(), 0f);
+            Assert.That(AttackForceReadiness.ForceReady(30f, 100f), Is.False, "30 is below the 80 floor");
+            Assert.That(result.PowerReady, Is.EqualTo(strongHost), $"win {result.ProjectedWinChance:0.00}");
+            Assert.That(result.Reason, Is.EqualTo(strongHost ? "ready_by_opportunity" : "fist_below_bar"));
+        }
+
         [Test]
         public void PreparationRereadsDynamicPeakWithoutKeepingAnOldReadyResult()
         {

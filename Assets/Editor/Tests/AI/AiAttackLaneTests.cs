@@ -66,6 +66,13 @@ namespace Game.EditorTests
             Body(1, 1, 4, 1),
         };
 
+        // About even against SiteDefenders: clears Attack's no-threshold gate, but well short of
+        // the decisive (fresh-raid) win that lets a force march below the 80% floor.
+        private static List<WorthIt.DefenderProfile> Contested() => new List<WorthIt.DefenderProfile>
+        {
+            Body(6, 3, 12, 4), Body(6, 3, 11, 3),
+        };
+
         private static WorthIt.DefenderProfile[] SiteDefenders() => new[]
         {
             Body(6, 3, 12, 4), Body(6, 3, 12, 3),
@@ -235,10 +242,12 @@ namespace Game.EditorTests
             }
         }
 
+        // The unstarted staging recall below needs a contested fight: a decisive win marches by
+        // opportunity whatever the peak (FreshAssault_WaitsForTheDynamicForceThreshold).
         [Test]
         public void RewardAfterMarch_DoesNotRecallACombatCapablePrimary()
         {
-            ArmySnapshot actor = Army(7, EnRoute, Strong());
+            ArmySnapshot actor = Army(7, EnRoute, Contested());
             WorldSnapshot snap = DefendedSite(new[] { actor }, new[] { OurBase });
             snap.Self.TotalMilitaryPotential = actor.EffectiveArmyPower * 5f;
             MissionIntent marching = AttackIntent(AttackMissionPhase.Assault, 7);
@@ -526,11 +535,14 @@ namespace Game.EditorTests
 
         // ---- §40 the mission proposal, and §83 R one army one mission ---------------------
 
-        [TestCase(0.79f, false)]
-        [TestCase(0.81f, true)]
-        public void FreshAssault_WaitsForTheDynamicForceThreshold(float share, bool expected)
+        // A contested fight waits for the 80% floor; a decisive one marches below it by
+        // opportunity (2026-10-16, user decision — AttackForceReadiness.IsOpportunity).
+        [TestCase(0.79f, false, false)]
+        [TestCase(0.81f, false, true)]
+        [TestCase(0.79f, true, true)]
+        public void FreshAssault_WaitsForTheDynamicForceThreshold(float share, bool decisive, bool expected)
         {
-            ArmySnapshot actor = Army(7, EnRoute, Strong());
+            ArmySnapshot actor = Army(7, EnRoute, decisive ? Strong() : Contested());
             WorldSnapshot snap = DefendedSite(new[] { actor }, new[] { OurBase },
                 alsoOwnBuilding: true);
             snap.Self.TotalMilitaryPotential = actor.EffectiveArmyPower / share;

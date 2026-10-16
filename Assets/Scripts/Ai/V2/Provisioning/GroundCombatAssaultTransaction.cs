@@ -254,7 +254,7 @@ namespace Game.Ai.V2
             plan.CoversAllDefenders = departureCover;
             if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
                 && !AttackForceReadiness.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
-                    session.Snapshot.Self.AttackPeak))
+                    session.Snapshot.Self.AttackPeak, departureWin, opposition))
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible("fresh attack force fell below the current deck peak")));
 

@@ -672,6 +672,7 @@ namespace Game.EditorTests
                 "RefreshAfterFormation",                                                   // a wing was formed
                 "StartWithCredit",                                                         // the loop block begins
                 "ObserveSettled",                                                          // air-support recall
+                "ObserveSettled",                                                          // recon air recall
                 "RefreshFinalOwnership", "AcceptHousekeeping",                             // the end of the turn
             }));
             Assert.That(Calls("StrategicReadmissionRunner.cs"), Is.EqualTo(new[]

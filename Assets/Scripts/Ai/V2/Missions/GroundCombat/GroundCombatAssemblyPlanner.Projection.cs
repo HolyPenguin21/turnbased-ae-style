@@ -61,10 +61,10 @@ namespace Game.Ai.V2
                     && AiArmyRoles.IsFacilityOperator(host.Owner, host.Hex, u))) return null;
                 if (returning.Count > 0 && !CanApplyHeroReturn(host, home, lead, returning)) return null;
                 float power = AiPower.EffectiveArmyPower(roster);
-                if (minimumPower > 0f && power <= minimumPower) return null;
                 if (!GroundCombatFeasibility.Clears(roster.Select(WorthIt.FromLiveUnit).ToList(),
                     WorthIt.SideCommander.Of(roster), opposition, gate, hexBonus,
                     out float win, out bool cover, requireCoverage)) return null;
+                if (!AttackForceReadiness.ClearsFloor(power, minimumPower, win, opposition)) return null;
                 var plan = new GroundCombatAssemblyPlan
                 {
                     Feasible = true, BaseArmyId = host.Id, NeedsAssembly = transfers.Count > 0,
