@@ -877,8 +877,8 @@ MonoBehaviour:
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scrap Shaman
-    art: {fileID: 21300000, guid: 29cbb0a34a222e34cac948711d02b3fb, type: 3}
-    detailArt: {fileID: 21300000, guid: 572fb2e8858e51447b03447d4df763db, type: 3}
+    art: {fileID: 21300000, guid: 6aec6559c0dac41419634154fc7d7249, type: 3}
+    detailArt: {fileID: 21300000, guid: 3642dca99534b6c4ba9fb25d14468961, type: 3}
     faction: 4
     cardType: 1
     apCost: 3

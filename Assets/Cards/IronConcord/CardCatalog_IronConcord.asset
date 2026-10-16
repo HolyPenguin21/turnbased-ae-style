@@ -1902,53 +1902,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 40
-    authoredKey: concord.card.pulse-cannon
-    deckPointCost: 6
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Pulse Cannon
-    art: {fileID: 21300000, guid: 922554905e778d64aa9735b3060079e2, type: 3}
-    detailArt: {fileID: 21300000, guid: ed24d56984537524a9b3f15b51c757ee, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 3
-      materials: 1
-      tech: 3
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 2
-    range: 3
-    hitPoints: 3
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - Hyperkinetic
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 41
     authoredKey: concord.card.arsenal
     deckPointCost: 5
     deckCopyLimit: 3
@@ -1994,7 +1947,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 42
+  - id: 41
     authoredKey: concord.card.atlas
     deckPointCost: 4
     deckCopyLimit: 4
@@ -2040,7 +1993,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 43
+  - id: 42
     authoredKey: concord.card.boatswain
     deckPointCost: 6
     deckCopyLimit: 2
@@ -2087,7 +2040,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 44
+  - id: 43
     authoredKey: concord.card.breakwater-crab
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2134,7 +2087,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 45
+  - id: 44
     authoredKey: concord.card.claimjumper
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2180,7 +2133,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 46
+  - id: 45
     authoredKey: concord.card.gun-commander
     deckPointCost: 5
     deckCopyLimit: 2
@@ -2227,7 +2180,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 47
+  - id: 46
     authoredKey: concord.card.artillery-tank
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2237,7 +2190,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 1e08c58e4b42d0642a06fd5d0cd0bb59, type: 3}
     faction: 0
     cardType: 1
-    apCost: 4
+    apCost: 7
     resourceCost:
       human: 0
       energy: 4
@@ -2274,7 +2227,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 48
+  - id: 47
     authoredKey: concord.card.sky-tug
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2321,7 +2274,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 49
+  - id: 48
     authoredKey: concord.card.storm-petrel
     deckPointCost: 6
     deckCopyLimit: 2
@@ -2368,53 +2321,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 50
-    authoredKey: concord.card.mantis
-    deckPointCost: 5
-    deckCopyLimit: 3
-    deckBuilderExcluded: 0
-    displayName: Mantis
-    art: {fileID: 21300000, guid: 919e708330e0f6c4c8ef1ec0886faa75, type: 3}
-    detailArt: {fileID: 21300000, guid: 571febf2e9a58f14f8635569eaa3efd3, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 3
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 3
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000500000002000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 51
+  - id: 49
     authoredKey: concord.card.sand-organ
     deckPointCost: 4
     deckCopyLimit: 3
@@ -2424,7 +2331,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 5f6f8873f3d78d04cab6314f4a1670ab, type: 3}
     faction: 0
     cardType: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
       energy: 2
@@ -2461,7 +2368,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 52
+  - id: 50
     authoredKey: concord.card.heavy-tank
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2508,7 +2415,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 53
+  - id: 51
     authoredKey: concord.card.needle-rail-tank
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2554,7 +2461,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 54
+  - id: 52
     authoredKey: concord.card.sandnought
     deckPointCost: 6
     deckCopyLimit: 2
@@ -2600,7 +2507,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 55
+  - id: 53
     authoredKey: concord.card.wasp
     deckPointCost: 5
     deckCopyLimit: 4
@@ -2634,6 +2541,99 @@ MonoBehaviour:
     unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s0
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 54
+    authoredKey: concord.card.mantis
+    deckPointCost: 5
+    deckCopyLimit: 3
+    deckBuilderExcluded: 0
+    displayName: Mantis
+    art: {fileID: 21300000, guid: 919e708330e0f6c4c8ef1ec0886faa75, type: 3}
+    detailArt: {fileID: 21300000, guid: 571febf2e9a58f14f8635569eaa3efd3, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 7
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 4
+    range: 2
+    hitPoints: 8
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000500000002000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 55
+    authoredKey: concord.card.pulse-cannon
+    deckPointCost: 6
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Pulse Cannon
+    art: {fileID: 21300000, guid: 922554905e778d64aa9735b3060079e2, type: 3}
+    detailArt: {fileID: 21300000, guid: ed24d56984537524a9b3f15b51c757ee, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 7
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 1
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 2
+    range: 3
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - Hyperkinetic
     resourceYield:
       human: 0
       energy: 0
