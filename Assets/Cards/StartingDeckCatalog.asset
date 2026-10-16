@@ -257,6 +257,48 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.siege-grenadier
       count: 1
+    - cardKey: concord.card.roadwarden-aa
+      count: 1
+    - cardKey: concord.card.hazard-pioneer
+      count: 1
+    - cardKey: concord.card.coil-marksman
+      count: 1
+    - cardKey: concord.card.trench-guardian
+      count: 1
+    - cardKey: concord.card.bulldog
+      count: 1
+    - cardKey: concord.card.hammerback
+      count: 1
+    - cardKey: concord.card.arsenal
+      count: 1
+    - cardKey: concord.card.atlas
+      count: 1
+    - cardKey: concord.card.claimjumper
+      count: 1
+    - cardKey: concord.card.duelist
+      count: 1
+    - cardKey: concord.card.dynamo
+      count: 1
+    - cardKey: concord.card.grapeshot
+      count: 1
+    - cardKey: concord.card.gun-commander
+      count: 1
+    - cardKey: concord.card.helios
+      count: 1
+    - cardKey: concord.card.jackal
+      count: 1
+    - cardKey: concord.card.mantis
+      count: 1
+    - cardKey: concord.card.needle-rail-tank
+      count: 1
+    - cardKey: concord.card.sand-jackal
+      count: 1
+    - cardKey: concord.card.sand-organ
+      count: 1
+    - cardKey: concord.card.sandnought
+      count: 1
+    - cardKey: concord.card.shoal-destroyer
+      count: 1
     equipment:
     - cardKey: neutral.equipment.bio.flamer
       count: 1
@@ -629,6 +671,14 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.furnace-tortoise
       count: 1
+    - cardKey: ashen.card.spore-drifter
+      count: 1
+    - cardKey: ashen.card.scrap-shaman
+      count: 1
+    - cardKey: ashen.card.furnace-bearer
+      count: 1
+    - cardKey: ashen.card.roadbreaker
+      count: 1
     equipment:
     - cardKey: neutral.equipment.bio.flamer
       count: 1
@@ -815,6 +865,10 @@ MonoBehaviour:
     - cardKey: vessels.27.gyrocopter
       count: 1
     - cardKey: vessels.27.null-vessel
+      count: 1
+    - cardKey: vessels.27.arc-cantor
+      count: 1
+    - cardKey: vessels.27.lens-watcher
       count: 1
     equipment:
     - cardKey: neutral.equipment.bio.flamer
