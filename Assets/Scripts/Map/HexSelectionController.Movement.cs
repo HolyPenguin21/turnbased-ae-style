@@ -489,6 +489,8 @@ namespace Game.Map
 
             HexCoord originHex = army.Hex;
             ArmyController movingArmy = controller;
+            if (army.IsCarrierFlightDeck)
+                movingArmy.ResetTransform(map, ResolveArmyOffset(army.Hex, movingArmy));
 
             // Set true by shouldStopEarly below the instant it claims the stop for a "clean" Hex
             // Event hex — read inside onComplete to skip the ordinary enemy-contact branch for

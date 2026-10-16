@@ -157,7 +157,7 @@ namespace Game.Map
                 // observers. A captured base/citadel leaves the previous owner's Prison and any
                 // empty shell registered on the hex; counting them kept the hex visible to that
                 // player after the building changed hands.
-                if (army.IsPrison || army.Members.Count == 0)
+                if (army.IsPrison || army.IsCarrierContainer || army.Members.Count == 0)
                     continue;
                 // ArmyData.Hex only updates once a whole move finishes (see ArmyRegistry.
                 // MoveArmy's own comment) — mid-move, ArmyController.CurrentHex is the live,

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Game.Aviation;
 using Game.HexGrid;
 
 namespace Game.Map
@@ -18,7 +20,15 @@ namespace Game.Map
         public static void Clear()
         {
             foreach (List<ArmyData> armies in ByHex.Values)
-                foreach (ArmyData army in armies) army.ClearTransport();
+                foreach (ArmyData army in armies)
+                {
+                    army.ClearTransport();
+                    foreach (var unit in army.Members)
+                    {
+                        unit.CarrierAirfield = null;
+                        unit.CarrierFlightDeck = null;
+                    }
+                }
             ByHex.Clear();
             ArmyData.ResetIdentitySequence();
         }
@@ -32,8 +42,10 @@ namespace Game.Map
                 list = new List<ArmyData>();
                 ByHex[army.Hex] = list;
             }
+            if (list.Contains(army)) return;
             list.Add(army);
             army.RefreshTransport();
+            AviationActions.EnsureCarrierContainers(army);
             VisionSystem.RecomputeFor(army.Owner);
             // Anyone else already watching this hex needs to know it just gained content too —
             // see VisionSystem.NotifyContentChanged's own comment.
@@ -51,6 +63,8 @@ namespace Game.Map
                 return;
             HexCoord origin = army.Hex;
             ByHex[origin].Remove(army);
+            foreach (var unit in army.Members.ToList())
+                AviationActions.RemoveCarrierContainers(unit);
             army.ClearTransport();
             if (finalHex.HasValue) army.Hex = finalHex.Value;
             VisionSystem.RecomputeFor(army.Owner);
@@ -128,20 +142,24 @@ namespace Game.Map
                 return;
 
             HexCoord oldHex = army.Hex;
-            if (ByHex.TryGetValue(oldHex, out List<ArmyData> oldList))
-                oldList.Remove(army);
-            army.Hex = newHex;
-            if (!ByHex.TryGetValue(newHex, out List<ArmyData> newList))
-            {
-                newList = new List<ArmyData>();
-                ByHex[newHex] = newList;
-            }
-            newList.Add(army);
+            RelocateInIndex(army, newHex);
+            // The whole indexed group is in its final position before observers are notified.
+            foreach (var unit in army.Members)
+                foreach (ArmyData attached in new[] { unit.CarrierAirfield, unit.CarrierFlightDeck })
+                    if (attached != null && IsRegistered(attached)) RelocateInIndex(attached, newHex);
 
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(oldHex);
             VisionSystem.NotifyContentChanged(newHex);
             ArmyRelocated?.Invoke(army, oldHex, newHex);
+        }
+
+        private static void RelocateInIndex(ArmyData army, HexCoord hex)
+        {
+            if (ByHex.TryGetValue(army.Hex, out List<ArmyData> oldList)) oldList.Remove(army);
+            army.Hex = hex;
+            if (!ByHex.TryGetValue(hex, out List<ArmyData> list)) ByHex[hex] = list = new List<ArmyData>();
+            list.Add(army);
         }
 
         // Every army belonging to one player, across every hex — used to reset

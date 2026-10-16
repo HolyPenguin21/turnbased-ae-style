@@ -79,6 +79,8 @@ MonoBehaviour:
     description: "Restores 1 HP to one random wounded living Bio ally in this army. Units activate at the start of their combat turn; heroes activate at the start of each combat round."
   - tag: Transport
     description: "Continuously raises the movement maximum of the slowest Infantry ally slower than this carrier to this carrier's permanent maximum. Reassigns when the carrier or recipient changes armies or dies."
+  - tag: Airfield
+    description: Provides a mobile airfield with the card's aircraft capacity.
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1

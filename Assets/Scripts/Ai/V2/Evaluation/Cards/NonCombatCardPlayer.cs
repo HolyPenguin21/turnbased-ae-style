@@ -538,8 +538,7 @@ namespace Game.Ai.V2
                 || projected.Any(u => u == null || !u.IsAviation))
                 return default;
             float airfieldThreat = snap?.Threat?.Threats?
-                .Where(t => t?.Asset != null && t.Asset.Hex.Equals(airfield)
-                    && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base))
+                .Where(t => t?.Asset != null && t.Asset.Hex.Equals(airfield))
                 .Select(t => t.Severity).DefaultIfEmpty(0f).Max() ?? 0f;
 
             TaskScore best = default;

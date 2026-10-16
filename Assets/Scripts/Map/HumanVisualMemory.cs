@@ -163,6 +163,7 @@ namespace Game.Map
                 // read as ordinary ground units under fog (see SnapshotArmy's own IsAirfield
                 // comment for the other half of this: that flag can't self-heal from composition).
                 IsAviation = source.IsAviation,
+                AirfieldCapacity = source.AirfieldCapacity,
             };
             foreach (string ability in source.Abilities)
                 snapshot.Abilities.Add(ability);

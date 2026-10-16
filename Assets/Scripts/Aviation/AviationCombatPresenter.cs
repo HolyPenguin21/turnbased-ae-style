@@ -76,6 +76,11 @@ namespace Game.Aviation
                 yield break;
             }
 
+            // Airborne AA carriers use the same reaction rules as ground AA. A moving escort
+            // can intercept a stationary enemy wing; the per-pair reaction state prevents repeats.
+            if (airArmy.Members.Exists(member => AntiAirRules.TryGetRadius(member, out _)))
+                yield return ResolveGroundAaStep(airArmy, hex);
+
             // Passing through an occupied hex only exposes the air army to entry AA.
             // Air strikes are endpoint actions, not automatic attacks along the route.
             if (outcome == null || !outcome.IsTerminalStep)
@@ -292,7 +297,7 @@ namespace Game.Aviation
                     continue;
                 if (exactTargetArmyId.HasValue && army.Id != exactTargetArmyId.Value)
                     continue;
-                if (AviationRules.IsAirfield(army))
+                if (AviationRules.IsAirfield(army) || army.IsCarrierContainer)
                     continue;
                 if (HexEventRegistry.IsEventGuardArmy(hex, army))
                     continue;

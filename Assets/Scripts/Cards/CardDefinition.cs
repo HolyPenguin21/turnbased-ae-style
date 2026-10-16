@@ -103,7 +103,7 @@ namespace Game.Cards
         // number avoids inventing one ability tag per range and keeps the inspector dropdown
         // useful to content authors.
         public int antiAirRadius = 1;
-        // A Base with a positive value is an airfield. Kept on the Base card so Citadel/Base
+        // A Base or ground Unit with a positive value supplies an airfield. Kept on the card so
         // capacities are data, not a hard-coded building-name or Barracks rule.
         public int airfieldCapacity;
 

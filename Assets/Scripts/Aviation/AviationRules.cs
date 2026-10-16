@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Game.Aviation
 {
-    // Pure aviation classification and capacity rules.  UI, movement, and the future AI all
+    // Pure aviation classification and capacity rules. UI, movement, and AI all
     // call these helpers instead of independently interpreting ArmyData's two aviation flags.
     public static class AviationRules
     {
@@ -19,6 +19,17 @@ namespace Game.Aviation
             && !army.IsPrison && army.Members.Count > 0 && army.Members.All(unit => unit.IsAviation);
         public static bool IsAirfield(ArmyData army) => army != null && army.IsAirfield;
 
+        public static IEnumerable<ArmyData> AirfieldsAt(HexCoord hex, PlayerSetupData owner) =>
+            ArmyRegistry.AllAt(hex).Where(a => a.IsAirfield && a.Owner == owner)
+                .OrderBy(a => a.CarrierUnit == null ? 0 : 1).ThenBy(a => a.Id);
+
+        // One owner-scoped map capability for human placement, flight planning and landing.
+        public static IEnumerable<HexCoord> OwnedAirfieldHexes(PlayerSetupData owner) =>
+            BuildingRegistry.AllBuildings().Where(b => IsAirfieldBuilding(b, owner)).Select(b => b.Hex)
+                .Concat(ArmyRegistry.AllForOwner(owner)
+                    .Where(a => !a.IsCarrierContainer && !a.IsPrison && a.Members.Any(AviationActions.IsCarrier))
+                    .Select(a => a.Hex)).Distinct().OrderBy(h => h.Q).ThenBy(h => h.R);
+
         public static bool IsAirfieldBuilding(BuildingData building, PlayerSetupData owner)
         {
             return building != null && building.Owner == owner && building.AirfieldCapacity > 0;
@@ -26,18 +37,52 @@ namespace Game.Aviation
 
         public static ArmyData FindAirfieldAt(HexCoord hex, PlayerSetupData owner)
         {
-            return ArmyRegistry.AllAt(hex).FirstOrDefault(army => army.IsAirfield && army.Owner == owner);
+            var fields = AirfieldsAt(hex, owner).ToList();
+            return fields.FirstOrDefault(a => FreeContainerCapacity(a) > 0) ?? fields.FirstOrDefault();
         }
 
         public static bool IsOwnedAirfieldAt(HexCoord hex, PlayerSetupData owner)
         {
-            return IsAirfieldBuilding(BuildingRegistry.FindAt(hex), owner);
+            return AirfieldCapacityAt(hex, owner) > 0;
         }
 
         public static int AirfieldCapacityAt(HexCoord hex, PlayerSetupData owner)
         {
             BuildingData building = BuildingRegistry.FindAt(hex);
-            return IsAirfieldBuilding(building, owner) ? building.AirfieldCapacity : 0;
+            int fixedCapacity = IsAirfieldBuilding(building, owner) ? building.AirfieldCapacity : 0;
+            return fixedCapacity + ArmyRegistry.AllAt(hex)
+                .Where(a => a.Owner == owner && !a.IsCarrierContainer && !a.IsPrison)
+                .SelectMany(a => a.Members).Where(AviationActions.IsCarrier).Sum(u => u.AirfieldCapacity);
+        }
+
+        public static int ContainerCapacity(ArmyData container)
+        {
+            if (container == null) return 0;
+            if (container.IsCarrierContainer)
+                return AviationActions.IsCarrier(container.CarrierUnit) ? container.CarrierUnit.AirfieldCapacity : 0;
+            BuildingData b = BuildingRegistry.FindAt(container.Hex);
+            return container.IsAirfield && IsAirfieldBuilding(b, container.Owner) ? b.AirfieldCapacity : 0;
+        }
+
+        // The hangar and ready wing share the carrier's physical deck capacity.
+        public static int FreeContainerCapacity(ArmyData target, ArmyData excluding = null,
+            bool landing = false)
+        {
+            if (target == null) return 0;
+            int used = target.Members.Count;
+            if (target.IsCarrierContainer)
+            {
+                ArmyData paired = target.IsAirfield ? target.CarrierUnit.CarrierFlightDeck
+                    : target.CarrierUnit.CarrierAirfield;
+                if (paired != null && paired != excluding) used += paired.Members.Count;
+            }
+            int local = Mathf.Max(0, ContainerCapacity(target) - used);
+            // Repacking already stored aircraft on this hex consumes no additional hex slot.
+            if (excluding != null && excluding.Hex.Equals(target.Hex)
+                && (excluding.IsAirfield || excluding.IsCarrierFlightDeck)) return local;
+            int global = landing ? FreeStorageSlots(target.Hex, target.Owner, excluding)
+                : FreeAirfieldCapacity(target.Hex, target.Owner, excluding);
+            return Mathf.Min(local, global);
         }
 
         // THE free-slot rule of an airfield, shared by card deployment, transfers, formation,
@@ -57,7 +102,7 @@ namespace Game.Aviation
             if (AirfieldCapacityAt(hex, owner) <= 0) return 0;
             int free = RawStorageSlots(hex, owner, excluding) - additionalClaims;
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                if (army != excluding && army.Owner == owner && IsAirArmy(army))
+                if (army != excluding && army.Owner == owner && IsAirArmy(army) && !army.IsCarrierFlightDeck)
                     free -= army.Members.Count;
             return Mathf.Max(0, free);
         }
@@ -71,7 +116,9 @@ namespace Game.Aviation
         }
 
         private static int RawStorageSlots(HexCoord hex, PlayerSetupData owner, ArmyData excluding) =>
-            AirfieldCapacityAt(hex, owner) - (FindAirfieldAt(hex, owner)?.Members.Count ?? 0)
+            AirfieldCapacityAt(hex, owner) - ArmyRegistry.AllAt(hex)
+                .Where(a => a.Owner == owner && a != excluding && (a.IsAirfield || a.IsCarrierFlightDeck))
+                .Sum(a => a.Members.Count)
                 - (ReservedLandingSlots?.Invoke(hex, owner, excluding) ?? 0);
 
         // Keeps an army's stored air/ground flag and its marker in step with its roster after a
@@ -81,6 +128,11 @@ namespace Game.Aviation
         {
             if (army == null || army.IsAirfield || army.IsGarrison || army.IsPrison)
                 return;
+            if (army.IsCarrierFlightDeck)
+            {
+                army.IsAirArmy = true;
+                return;
+            }
             bool air = IsAirArmy(army);
             if (air)
                 army.AirWingLanded = false;
@@ -96,7 +148,7 @@ namespace Game.Aviation
                 return false;
             if (unit.IsAviation && target.IsGarrison)
                 return false;
-            if (target.IsAirfield || IsAirArmy(target))
+            if (target.IsAirfield || target.IsCarrierFlightDeck || IsAirArmy(target))
                 return unit.IsAviation;
             if (unit.IsAviation)
                 return target.Members.Count == 0;

@@ -377,7 +377,7 @@ namespace Game.Ai.V2
                 return ReorgPhysicalRole.Garrison;
             if (army.IsPrison)
                 return ReorgPhysicalRole.SpecialExcludedContainer;
-            if (AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
+            if (army.IsCarrierContainer || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return ReorgPhysicalRole.Aviation;
             ArmyMutationContract protection = MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
             if (protection != null && !protection.ProtectsSoloRole)

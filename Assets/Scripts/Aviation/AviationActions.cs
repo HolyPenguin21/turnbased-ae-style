@@ -9,9 +9,9 @@ using Game.Units;
 
 namespace Game.Aviation
 {
-    // Transactional aviation actions. UI and the later AI both call this layer, so AP, Energy,
+    // Transactional aviation actions. UI and AI both call this layer, so AP, Energy,
     // capacity, and slot order cannot drift between a modal button and autonomous behavior.
-    public static class AviationActions
+    public static partial class AviationActions
     {
         public static event System.Action<ArmyData, ArmyData, UnitData> AircraftLanded;
         // All landing/storage paths publish once after their roster/refuel transaction commits.
@@ -26,16 +26,13 @@ namespace Game.Aviation
         {
             if (!AviationRules.IsOwnedAirfieldAt(hex, owner))
                 return null;
-            ArmyData existing = AviationRules.FindAirfieldAt(hex, owner);
-            if (existing != null)
-                return existing;
-
-            var airfield = new ArmyData { Name = "Airfield", Owner = owner, Hex = hex, IsAirfield = true };
-            ArmyRegistry.Register(airfield);
+            if (AviationRules.IsAirfieldBuilding(BuildingRegistry.FindAt(hex), owner)
+                && !AviationRules.AirfieldsAt(hex, owner).Any(a => a.CarrierUnit == null))
+                ArmyRegistry.Register(new ArmyData { Name = "Airfield", Owner = owner, Hex = hex, IsAirfield = true });
             // The building is the airfield's map presence; creating another marker would leak
             // its contents through FOW and make a base hex look like it has an extra army.
             hexSelection?.RestackArmiesOn(hex, null);
-            return airfield;
+            return AviationRules.FindAirfieldAt(hex, owner);
         }
 
         // sourceCard (optional): forwarded to ArmyActions.DeployUnitFromCard so a Research/
@@ -43,7 +40,7 @@ namespace Game.Aviation
         // ResourceCost. AI callers pass none.
         public static bool TryDeployFromCard(CardDefinition definition, PlayerSetupData owner,
             PlayerRoot root, HexSelectionController hexSelection, Game.HexGrid.HexCoord hex, out string failReason,
-            CardDefinition attachedEquipment = null, CardData sourceCard = null)
+            CardDefinition attachedEquipment = null, CardData sourceCard = null, ArmyData airfieldTarget = null)
         {
             failReason = null;
             if (definition == null || !definition.isAviation)
@@ -51,8 +48,9 @@ namespace Game.Aviation
                 failReason = "This is not an aviation card.";
                 return false;
             }
-            ArmyData airfield = EnsureAirfield(hexSelection, owner, hex);
-            if (airfield == null)
+            ArmyData airfield = airfieldTarget ?? EnsureAirfield(hexSelection, owner, hex);
+            if (airfield == null || !airfield.IsAirfield || airfield.Owner != owner
+                || !airfield.Hex.Equals(hex) || !ArmyRegistry.IsRegistered(airfield))
             {
                 failReason = "Aircraft can only be deployed to your airfield.";
                 return false;
@@ -70,7 +68,8 @@ namespace Game.Aviation
                 failReason = "Select aircraft from an airfield to launch.";
                 return false;
             }
-            if (aircraft.Any(unit => unit == null || !airfield.Members.Contains(unit) || !unit.IsAviation))
+            if (aircraft.Distinct().Count() != aircraft.Count
+                || aircraft.Any(unit => unit == null || !airfield.Members.Contains(unit) || !unit.IsAviation))
             {
                 failReason = "Every launched card must be an aircraft stored in this airfield.";
                 return false;
@@ -78,7 +77,13 @@ namespace Game.Aviation
 
             // Forming a stack is not a take-off. The common movement activation path charges
             // AP + Energy exactly once, and is also what shows both costs on the route arrow.
-            var army = new ArmyData
+            ArmyData deck = CarrierLaunchDeck(airfield, hexSelection);
+            if (deck != null && deck.Members.Count + aircraft.Count > AviationRules.ContainerCapacity(deck))
+            {
+                failReason = "The carrier's launch deck is full.";
+                return false;
+            }
+            var army = deck ?? new ArmyData
             {
                 Name = catalog != null ? catalog.GetRandomArmyName(ArmyRegistry.AllForOwner(airfield.Owner).Select(existing => existing.Name)) : "Air Wing",
                 Owner = airfield.Owner,
@@ -90,8 +95,8 @@ namespace Game.Aviation
                 airfield.Members.Remove(aircraftCard);
                 army.AddMemberSorted(aircraftCard);
             }
-            ArmyRegistry.Register(army);
-            hexSelection?.CreateArmyMarker(army);
+            if (!ArmyRegistry.IsRegistered(army)) ArmyRegistry.Register(army);
+            if (army.Controller == null) hexSelection?.CreateArmyMarker(army);
             hexSelection?.RestackArmiesOn(airfield.Hex, null);
             launchedArmy = army;
             return true;
@@ -109,7 +114,8 @@ namespace Game.Aviation
         // list of aircraft UnitData to convert back into cards.
         public static void ReturnAircraftToDeck(ArmyData army, HexSelectionController hexSelection)
         {
-            if (!AviationRules.IsAirfield(army) && !AviationRules.IsAirArmy(army))
+            if (army == null || (!AviationRules.IsAirfield(army) && !AviationRules.IsAirArmy(army)
+                && !army.IsCarrierContainer))
                 return;
             foreach (UnitData aircraft in army.Members.ToList())
             {
@@ -131,7 +137,8 @@ namespace Game.Aviation
                     // thread the production flag through UnitData / OriginatingCard to "preserve"
                     // it here — that is not a bug (see CardData.ResearchProductionCreated).
                     var returnedCard = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment, Mutator = aircraft.Mutator };
-                    hexSelection?.GrantCard(army.Owner, returnedCard);
+                    if (hexSelection != null) hexSelection.GrantCard(army.Owner, returnedCard);
+                    else AircraftReturnedToHand?.Invoke(army.Owner, returnedCard);
                 }
             }
             hexSelection?.DeleteArmyIfEmptied(army);
@@ -189,35 +196,41 @@ namespace Game.Aviation
         // caller that lands a wing explicitly): the wing's aircraft go back into the airfield's
         // container in slot order, as many as its free storage (AviationRules.FreeStorageSlots)
         // allows. Each landed aircraft is
-        // refuelled and its sortie closed (ResetAfterLanding — no repair); the emptied wing stays
-        // registered as an ordinary empty shell for later ground or air use. Returns the number
+        // refuelled and its sortie closed (ResetAfterLanding — no repair). Carrier arrivals are
+        // deleted once empty; a carrier's own ready deck persists. Ordinary fixed-airfield wings
+        // retain their existing empty-shell lifetime. Returns the number
         // of aircraft landed; any that found no slot stay airborne in the wing.
         public static int LandInSlotOrder(ArmyData airArmy, HexSelectionController hexSelection)
         {
             if (!AviationRules.IsValidAirArmy(airArmy))
                 return 0;
-            ArmyData airfield = EnsureAirfield(hexSelection, airArmy.Owner, airArmy.Hex);
-            if (airfield == null)
-                return 0;
-
-            int free = AviationRules.FreeStorageSlots(airArmy.Hex, airArmy.Owner, airArmy);
-            var landing = airArmy.Members.Take(System.Math.Max(0, free)).ToList();
-            foreach (UnitData aircraft in landing)
+            if (EnsureAirfield(hexSelection, airArmy.Owner, airArmy.Hex) == null) return 0;
+            int landed = 0;
+            bool carrierLanding = AviationRules.AirfieldsAt(airArmy.Hex, airArmy.Owner).Any(a => a.IsCarrierContainer);
+            foreach (ArmyData airfield in AviationRules.AirfieldsAt(airArmy.Hex, airArmy.Owner)
+                .OrderBy(a => a.CarrierUnit != null && a.CarrierUnit == airArmy.LaunchCarrier ? 0 : 1).ToList())
             {
-                airArmy.Members.Remove(aircraft);
-                AviationRules.ResetAfterLanding(aircraft);
-                airfield.AddMemberSorted(aircraft);
-            }
-            if (landing.Count > 0)
-            {
-                if (airArmy.Members.Count == 0)
-                    airArmy.AirWingLanded = true;
-                AviationRules.SyncAirArmyShell(airArmy, hexSelection);
-                hexSelection?.RestackArmiesOn(airArmy.Hex, null);
-                VisionSystem.NotifyContentChanged(airArmy.Hex);
+                int free = AviationRules.FreeContainerCapacity(airfield, airArmy, landing: true);
+                var landing = airArmy.Members.Take(free).ToList();
+                foreach (UnitData aircraft in landing)
+                {
+                    airArmy.Members.Remove(aircraft);
+                    AviationRules.ResetAfterLanding(aircraft);
+                    airfield.AddMemberSorted(aircraft);
+                }
+                if (landing.Count == 0) continue;
+                landed += landing.Count;
+                carrierLanding |= airfield.IsCarrierContainer;
                 NotifyLandingCompleted(airArmy, airfield, landing[0]);
             }
-            return landing.Count;
+            if (landed == 0) return 0;
+            if (airArmy.Members.Count == 0) airArmy.AirWingLanded = true;
+            AviationRules.SyncAirArmyShell(airArmy, hexSelection);
+            if (!airArmy.IsCarrierContainer && airArmy.Members.Count == 0
+                && (carrierLanding || airArmy.WasCarrierWing)) DeleteReturnedWing(airArmy, hexSelection);
+            hexSelection?.RestackArmiesOn(airArmy.Hex, null);
+            VisionSystem.NotifyContentChanged(airArmy.Hex);
+            return landed;
         }
     }
 }

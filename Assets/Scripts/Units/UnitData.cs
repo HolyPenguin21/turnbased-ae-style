@@ -153,6 +153,11 @@ namespace Game.Units
         public int LaunchEnergyCost;
         public int TurnsWithoutRefuel;
         public int AntiAirRadius = 1;
+        // A ground Unit with positive capacity supplies a mobile airfield. These two containers
+        // belong to this live card, so transfers between ground armies preserve the cargo.
+        public int AirfieldCapacity;
+        internal Game.Map.ArmyData CarrierAirfield;
+        internal Game.Map.ArmyData CarrierFlightDeck;
         public int ConsecutiveUnlandedEnds;
         public bool HasEmergencyFlightPenalty;
         public bool HasAirAttackedThisTurn;

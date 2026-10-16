@@ -46,6 +46,7 @@ namespace Game.UI
                 unit.Range = card.range; unit.MoveMax = unit.MoveCurrent = card.moveMax;
                 unit.CommandRating = card.commandRating; unit.Fate = card.fate; unit.Initiative = card.initiative;
                 unit.IsAviation = card.isAviation; unit.TurnsWithoutRefuel = card.turnsWithoutRefuel;
+                unit.AirfieldCapacity = card.airfieldCapacity;
                 foreach (var tag in card.unitTypeTags) unit.TypeTags.Add(tag);
                 foreach (var tag in card.grantedAbilities) unit.Abilities.Add(tag);
                 return text + UnitDetailFormatter.FormatBody(unit, config);

@@ -68,6 +68,12 @@ namespace Game.Map
         // modal stack keep one source of truth instead of a parallel aviation collection.
         public bool IsAirfield;
         public bool IsAirArmy;
+        public UnitData CarrierUnit;
+        public bool IsCarrierContainer => CarrierUnit != null;
+        public bool IsCarrierFlightDeck => CarrierUnit != null && !IsAirfield;
+        // Retained after take-off, when the wing becomes independent of its carrier.
+        public UnitData LaunchCarrier;
+        public bool WasCarrierWing => LaunchCarrier != null;
         public readonly List<UnitData> Members = new List<UnitData>();
 
         // The player's own last battle-grid layout for this specific army (see
@@ -375,7 +381,7 @@ namespace Game.Map
         {
             // Airfield capacity comes from its building, not the ordinary army/hero rule; an
             // aircraft may always leave its storage container for a compatible air army.
-            if (IsAirfield)
+            if (IsAirfield || IsCarrierFlightDeck)
                 return Members.Contains(unit);
             var remaining = new List<UnitData>(Members);
             remaining.Remove(unit);

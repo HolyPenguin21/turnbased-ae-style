@@ -57,6 +57,8 @@ namespace Game.UI
                 $"Initiative {unit.Initiative}";
             if (unit.IsAviation)
                 text += $"\nFuel {AviationRules.RemainingFuel(unit)}/{unit.TurnsWithoutRefuel}";
+            if (unit.AirfieldCapacity > 0)
+                text += $"\nAirfield Capacity {unit.AirfieldCapacity}";
             if (unit.IsHero)
                 text += $"\nCommand Rating: {unit.CommandRating}\nFate: {unit.Fate}";
             // Full name + description per ability here (detail panel), as opposed to the

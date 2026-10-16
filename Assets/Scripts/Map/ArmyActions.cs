@@ -125,8 +125,11 @@ namespace Game.Map
                     root.AddResource(ResourceType.Energy, -energy);
             }
             if (AviationRules.IsAirArmy(army))
+            {
+                AviationActions.DetachCarrierWing(army);
                 foreach (UnitData member in army.Members)
                     member.SortieLaunchPaid = true;
+            }
             army.MarkActivated();
             return true;
         }
@@ -273,7 +276,7 @@ namespace Game.Map
                 return false;
             }
             if (destination.IsAirfield
-                && AviationRules.FreeAirfieldCapacity(deploymentHex, owner) < 1)
+                && AviationRules.FreeContainerCapacity(destination) < 1)
             {
                 failReason = $"The airfield at {deploymentHex} is full.";
                 return false;
@@ -336,6 +339,7 @@ namespace Game.Map
             }
 
             resultingArmy.RefreshTransport();
+            AviationActions.RefreshCarrierContainers(resultingArmy);
             hexSelectionController.RestackArmiesOn(deploymentHex, null);
             if (AbilityParams.GetBestRecceRadius(spawned) > 0)
                 VisionSystem.RecomputeFor(owner);
@@ -359,6 +363,11 @@ namespace Game.Map
                 failReason = $"{unit.Name} is not a member of {source.Name}.";
                 return false;
             }
+            if ((source.IsCarrierContainer || target.IsCarrierContainer) && !source.Hex.Equals(target.Hex))
+            {
+                failReason = "Aircraft must be on the carrier's hex to board or leave its deck.";
+                return false;
+            }
             bool promoteToAirArmy = source.IsAirfield && unit.IsAviation && !AviationRules.IsAirArmy(target)
                 && !target.IsGarrison && !target.IsAirfield && target.Members.Count == 0;
             if (!promoteToAirArmy && !AviationRules.CanContain(target, unit))
@@ -373,12 +382,13 @@ namespace Game.Map
                 failReason = $"{unit.Name} must be at the airfield to land there.";
                 return false;
             }
-            if (target.IsAirfield && AviationRules.FreeAirfieldCapacity(target.Hex, target.Owner, source) < 1)
+            if ((target.IsAirfield || target.IsCarrierFlightDeck)
+                && AviationRules.FreeContainerCapacity(target, source) < 1)
             {
                 failReason = $"The airfield at {target.Hex} is full.";
                 return false;
             }
-            if (!target.IsAirfield)
+            if (!target.IsAirfield && !target.IsCarrierFlightDeck)
             {
                 // Judged on the roster AddMemberSorted will actually produce (garrison: normalized).
                 if (!ArmyData.RosterFits(ArmyData.ProjectAdd(target.Members, unit, target.IsGarrison),
@@ -417,6 +427,8 @@ namespace Game.Map
                 AviationRules.ResetAfterLanding(unit);
             AviationRules.SyncAirArmyShell(source, hexSelectionController);
             AviationRules.SyncAirArmyShell(target, hexSelectionController);
+            if (target.IsCarrierFlightDeck && target.Controller == null)
+                hexSelectionController?.CreateArmyMarker(target);
             if (requiresCharge)
                 targetRoot?.SpendActionPoints(unit.ActivationApCost);
             target.MarkUnitActivationPaid(unit);
@@ -472,6 +484,11 @@ namespace Game.Map
             }
 
             var distinct = units.Where(u => u != null).Distinct().ToList();
+            if ((source.IsCarrierContainer || target.IsCarrierContainer) && !source.Hex.Equals(target.Hex))
+            {
+                failReason = "Aircraft must be on the carrier's hex to board or leave its deck.";
+                return false;
+            }
             if (distinct.Count != units.Count)
             {
                 failReason = "Batch contains a null or duplicate member.";
@@ -507,7 +524,7 @@ namespace Game.Map
             var projectedSource = source.Members.Where(u => !distinct.Contains(u)).ToList();
             foreach (UnitData unit in back)
                 projectedSource = ArmyData.ProjectAdd(projectedSource, unit, source.IsGarrison);
-            if (!ArmyData.RosterFits(projectedSource, source.IsGarrison))
+            if (!source.IsCarrierFlightDeck && !ArmyData.RosterFits(projectedSource, source.IsGarrison))
             {
                 failReason = $"The batch would leave {source.Name} without room for everyone else.";
                 return false;
@@ -518,7 +535,7 @@ namespace Game.Map
             // An explicit promotion is a field-army choice; a garrison keeps its CommandRating order.
             if (promoteToCommander != null && !target.IsGarrison && projectedTarget.Remove(promoteToCommander))
                 projectedTarget.Insert(0, promoteToCommander);
-            if (!target.IsAirfield && !ArmyData.RosterFits(projectedTarget, target.IsGarrison))
+            if (!target.IsAirfield && !target.IsCarrierFlightDeck && !ArmyData.RosterFits(projectedTarget, target.IsGarrison))
             {
                 failReason = $"The batch wouldn't fit in {target.Name}.";
                 return false;
@@ -528,8 +545,8 @@ namespace Game.Map
                 failReason = $"Aircraft must be at the airfield at {target.Hex} to land there.";
                 return false;
             }
-            if (target.IsAirfield
-                && distinct.Count - back.Count > AviationRules.FreeAirfieldCapacity(target.Hex, target.Owner, source))
+            if ((target.IsAirfield || target.IsCarrierFlightDeck)
+                && distinct.Count - back.Count > AviationRules.FreeContainerCapacity(target, source))
             {
                 failReason = $"The airfield at {target.Hex} is full.";
                 return false;
@@ -598,6 +615,8 @@ namespace Game.Map
                     AviationRules.ResetAfterLanding(unit);
             AviationRules.SyncAirArmyShell(source, hexSelectionController);
             AviationRules.SyncAirArmyShell(target, hexSelectionController);
+            if (target.IsCarrierFlightDeck && target.Controller == null)
+                hexSelectionController?.CreateArmyMarker(target);
             targetRoot?.SpendActionPoints(totalApCost);
             foreach (UnitData unit in units)
                 target.MarkUnitActivationPaid(unit);
@@ -795,6 +814,8 @@ namespace Game.Map
         {
             source.RefreshTransport();
             target.RefreshTransport();
+            AviationActions.RefreshCarrierContainers(source);
+            AviationActions.RefreshCarrierContainers(target);
             if (recceTransferred)
             {
                 VisionSystem.RecomputeFor(source.Owner);

@@ -23,7 +23,7 @@ namespace Game.Aviation
                 if (AviationRules.IsOwnedAirfieldAt(airArmy.Hex, owner))
                 {
                     int landed;
-                    if (owner.IsHuman)
+                    if (owner.IsHuman && !AviationRules.AirfieldsAt(airArmy.Hex, owner).Any(a => a.IsCarrierContainer))
                     {
                         // Human formations keep their roster. They occupy the same finite
                         // landing capacity as stored aircraft; refuelling does not repair HP,

@@ -81,7 +81,7 @@ namespace Game.Aviation
                 foreach (ArmyData army in ArmyRegistry.AllAt(aaHex))
                 {
                     if (army.Owner == null || army.Owner == airArmy.Owner
-                        || AviationRules.IsAirArmy(army) || AviationRules.IsAirfield(army))
+                        || army.IsCarrierContainer || AviationRules.IsAirfield(army))
                         continue;
                     foreach (UnitData member in army.Members)
                     {
@@ -135,7 +135,8 @@ namespace Game.Aviation
                         continue;
                     foreach (ArmyData airArmy in ArmyRegistry.AllAt(airHex))
                     {
-                        if (airArmy.Owner == groundArmy.Owner || !AviationRules.IsAirArmy(airArmy))
+                        if (airArmy.Owner == groundArmy.Owner || airArmy.IsCarrierContainer
+                            || !AviationRules.IsAirArmy(airArmy))
                             continue;
                         if (!AntiAirState.CanReact(member, airArmy.Id))
                             continue;
