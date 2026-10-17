@@ -48,16 +48,44 @@ namespace Game.Combat
         {
             attack = Mathf.Max(0, attack);
             defense = Mathf.Max(0, defense);
+            // The result is a pure function of these numbers, the pair's modifier profile and the
+            // (constant) default magnitudes: equipment valuation asks the same exchange thousands
+            // of times per turn, so it is computed once per distinct input.
+            var profile = ChallengeResult.ModifierProfile.Of(attackerAbilities, defenderTags, defenderAbilities);
+            bool secondaryCeramic = secondary && HasAbility(secondaryAbilities, UnitAbilities.CeramicArmor);
+            var key = (attack, defense, Mathf.Max(0, hpCap),
+                profile.Bits | (secondary ? 32 : 0) | (secondaryCeramic ? 64 : 0));
+            if (s_expectedExchanges.TryGetValue(key, out (float Damage, float Hit) known))
+            {
+                hitChance = known.Hit;
+                return known.Damage;
+            }
+            float expected = ComputeExpectedExchange(attack, defense, profile, hpCap, secondary,
+                secondaryCeramic, out hitChance);
+            if (s_expectedExchanges.Count >= MaxExpectedExchanges)
+                s_expectedExchanges.Clear();
+            s_expectedExchanges[key] = (expected, hitChance);
+            return expected;
+        }
+
+        private const int MaxExpectedExchanges = 65536;
+        private static readonly Dictionary<(int, int, int, int), (float Damage, float Hit)> s_expectedExchanges =
+            new Dictionary<(int, int, int, int), (float Damage, float Hit)>();
+
+        private static float ComputeExpectedExchange(int attack, int defense,
+            ChallengeResult.ModifierProfile profile, int hpCap, bool secondary, bool secondaryCeramic,
+            out float hitChance)
+        {
             int n = attack + defense;
             int center = n / 2;
             double mass = 0, damage = 0, hits = 0;
             void Accumulate(int successes, double weight)
             {
                 int d = ChallengeResult.ApplyAbilityModifiers(Mathf.Max(0, successes - defense),
-                    attackerAbilities, defenderTags, defenderAbilities, AbilityMagnitudes.Default);
+                    profile, AbilityMagnitudes.Default);
                 mass += weight;
                 if (d > 0) hits += weight;
-                if (secondary) d = SecondaryDamage(d, secondaryAbilities, AbilityMagnitudes.Default);
+                if (secondary) d = SecondaryDamage(d, secondaryCeramic, AbilityMagnitudes.Default);
                 damage += weight * Mathf.Min(d, Mathf.Max(0, hpCap));
             }
             Accumulate(center, 1);
@@ -233,10 +261,13 @@ namespace Game.Combat
         }
 
         public static int SecondaryDamage(int primaryDamage, IEnumerable<string> defenderAbilities,
-            AbilityMagnitudes magnitudes)
+            AbilityMagnitudes magnitudes) =>
+            SecondaryDamage(primaryDamage, HasAbility(defenderAbilities, UnitAbilities.CeramicArmor), magnitudes);
+
+        private static int SecondaryDamage(int primaryDamage, bool defenderCeramic, AbilityMagnitudes magnitudes)
         {
             int damage = Mathf.Max(0, primaryDamage / 2);
-            if (damage > 0 && HasAbility(defenderAbilities, UnitAbilities.CeramicArmor))
+            if (damage > 0 && defenderCeramic)
                 damage = Mathf.Max(0, damage - magnitudes.CeramicArmorReduction);
             return damage;
         }

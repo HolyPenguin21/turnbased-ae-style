@@ -1300,7 +1300,7 @@ namespace Game.Combat
         // used symmetrically for BOTH sides of a fight (see WinChance's own DefenderProfile-list
         // overload below) — "Defender" is a legacy name from when it only ever described the
         // other side; CanDamage/CanDamageAll still only read Defense/HasCeramicArmor off it.
-        public readonly struct DefenderProfile
+        public readonly struct DefenderProfile : System.IEquatable<DefenderProfile>
         {
             public readonly float Defense;
             public readonly bool HasCeramicArmor;
@@ -1351,6 +1351,22 @@ namespace Game.Combat
                     ? (IReadOnlyList<string>)new[] { UnitAbilities.CeramicArmor }
                     : System.Array.Empty<string>())).ToArray());
             }
+
+            // Exactly the default struct equality (every field by its own Equals; the owned lists
+            // therefore by identity), without ValueType.Equals' reflection and boxing - equipment
+            // valuation looks a profile up in its battle on every Splash/Scorcher evaluation.
+            public bool Equals(DefenderProfile other) =>
+                Defense.Equals(other.Defense) && HasCeramicArmor == other.HasCeramicArmor
+                && Equals(TypeTags, other.TypeTags) && Attack.Equals(other.Attack)
+                && HitPoints.Equals(other.HitPoints) && MaxHitPoints.Equals(other.MaxHitPoints)
+                && Initiative == other.Initiative && Equals(Abilities, other.Abilities)
+                && IsGroundCombatant == other.IsGroundCombatant && IsHero == other.IsHero
+                && FateMax == other.FateMax && IsSummoned == other.IsSummoned && Range == other.Range;
+
+            public override bool Equals(object obj) => obj is DefenderProfile other && Equals(other);
+
+            public override int GetHashCode() =>
+                (Defense, Attack, HitPoints, Initiative, Range, FateMax).GetHashCode();
         }
 
         // Same rawExpected half-stat step as BattleTargetSelector.TryScoreTarget, CeramicArmor's

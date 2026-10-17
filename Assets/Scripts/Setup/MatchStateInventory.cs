@@ -165,6 +165,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.EquipmentEfficiency", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.Initiative.InitiativeOutcomeEvaluator", MatchStateKind.Cache),
             new MatchStateEntry("Game.Combat.WorthIt", MatchStateKind.Cache),
+            // the analytic exchange memo, keyed by its full numeric input (constant magnitudes)
+            new MatchStateEntry("Game.Combat.BattleSimulationKernel", MatchStateKind.Cache),
             new MatchStateEntry("Game.Combat.AviationCombatEstimator", MatchStateKind.Cache),
 
             // --- wiring, presentation, profile, constants -------------------------------------------
