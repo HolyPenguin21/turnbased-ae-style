@@ -215,13 +215,9 @@ namespace Game.UI
                 }
                 _remainingDeck.AddRange(pool);
 
-                for (int i = 0; i < startingHandSize; i++)
-                {
-                    CardDefinition card = PopRandomCard();
-                    if (card == null)
-                        break;
+                foreach (CardDefinition card in DeckDraw.DrawStartingHand(_remainingDeck,
+                    Mathf.Min(startingHandSize, maxHandSize)))
                     AddCard(new CardData(card));
-                }
             }
         }
 
@@ -251,9 +247,8 @@ namespace Game.UI
             }
         }
 
-        // Removes and returns one random card from the remaining deck (null if it's empty) —
-        // shared by the starting-hand draw above and OnDrawClicked below, so both pull from the
-        // same shrinking pool without replacement. The actual draw mechanic lives in
+        // Removes and returns one random card for ordinary draws (null if the deck is empty).
+        // The opening deal above uses DeckDraw.DrawStartingHand. The random mechanic lives in
         // DeckDraw.PopRandom, the one place AiHandData.DrawOne's headless mirror also calls it
         // from, so the human and AI draw algorithm can never quietly diverge.
         private CardDefinition PopRandomCard() => DeckDraw.PopRandom(_remainingDeck);

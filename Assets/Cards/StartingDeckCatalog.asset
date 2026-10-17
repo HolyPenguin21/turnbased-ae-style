@@ -198,7 +198,7 @@ MonoBehaviour:
     faction: 0
     cards:
     - cardKey: concord.card.concord-base
-      count: 1
+      count: 2
     - cardKey: concord.card.dorian-kesh
       count: 1
     - cardKey: concord.card.aldric-voss
@@ -216,273 +216,28 @@ MonoBehaviour:
     - cardKey: concord.card.tessa-rourke
       count: 1
     - cardKey: concord.card.scout
-      count: 2
+      count: 3
     - cardKey: concord.card.rc-vehicle
       count: 1
-    - cardKey: concord.card.watcher-drone
-      count: 3
-    - cardKey: concord.card.scrapper
-      count: 1
-    - cardKey: concord.card.crawler
-      count: 1
     - cardKey: concord.card.light-infantry
-      count: 1
+      count: 3
     - cardKey: concord.card.medium-infantry
-      count: 1
-    - cardKey: concord.card.flamer
-      count: 1
+      count: 2
     - cardKey: concord.card.at-infantry
       count: 1
-    - cardKey: concord.card.heavy-infantry
+    - cardKey: concord.card.dust-medic
       count: 1
     - cardKey: concord.card.light-tank
-      count: 1
+      count: 2
     - cardKey: concord.card.medium-tank
       count: 1
     - cardKey: concord.card.heavy-tank
       count: 1
     - cardKey: concord.card.artillery-cannon
-      count: 1
-    - cardKey: concord.card.at-cannon
-      count: 1
-    - cardKey: concord.card.artillery-tank
-      count: 1
-    - cardKey: concord.card.pulse-cannon
-      count: 1
-    - cardKey: concord.card.wasp
-      count: 1
-    - cardKey: concord.card.rusty-vulture
-      count: 1
-    - cardKey: concord.card.dust-medic
-      count: 1
-    - cardKey: concord.card.siege-grenadier
-      count: 1
-    - cardKey: concord.card.roadwarden-aa
-      count: 1
-    - cardKey: concord.card.hazard-pioneer
-      count: 1
-    - cardKey: concord.card.coil-marksman
-      count: 1
-    - cardKey: concord.card.trench-guardian
-      count: 1
-    - cardKey: concord.card.bulldog
-      count: 1
-    - cardKey: concord.card.hammerback
-      count: 1
-    - cardKey: concord.card.arsenal
-      count: 1
-    - cardKey: concord.card.atlas
-      count: 1
-    - cardKey: concord.card.claimjumper
-      count: 1
-    - cardKey: concord.card.duelist
-      count: 1
-    - cardKey: concord.card.dynamo
-      count: 1
-    - cardKey: concord.card.grapeshot
-      count: 1
-    - cardKey: concord.card.gun-commander
-      count: 1
-    - cardKey: concord.card.helios
-      count: 1
-    - cardKey: concord.card.jackal
-      count: 1
-    - cardKey: concord.card.mantis
-      count: 1
-    - cardKey: concord.card.needle-rail-tank
-      count: 1
-    - cardKey: concord.card.sand-jackal
-      count: 1
+      count: 2
     - cardKey: concord.card.sand-organ
       count: 1
-    - cardKey: concord.card.sandnought
-      count: 1
-    - cardKey: concord.card.shoal-destroyer
-      count: 1
-    - cardKey: neutral.facility.lab
-      count: 1
-    - cardKey: neutral.facility.factory
-      count: 1
-    - cardKey: neutral.facility.intel
-      count: 1
-    equipment:
-    - cardKey: neutral.equipment.bio.flamer
-      count: 1
-    - cardKey: neutral.equipment.bio.at-launcher
-      count: 1
-    - cardKey: neutral.equipment.bio.claws
-      count: 1
-    - cardKey: neutral.equipment.bio.heavy-mg
-      count: 1
-    - cardKey: neutral.equipment.bio.plasma-gun
-      count: 1
-    - cardKey: neutral.equipment.infantry.ballistic-shield
-      count: 1
-    - cardKey: neutral.equipment.infantry.ceramic-vest
-      count: 1
-    - cardKey: neutral.equipment.infantry.assault-rifle-kit
-      count: 1
-    - cardKey: neutral.equipment.infantry.marksman-rifle
-      count: 1
-    - cardKey: neutral.equipment.infantry.optical-scope
-      count: 1
-    - cardKey: neutral.equipment.infantry.mobility-harness
-      count: 1
-    - cardKey: neutral.equipment.infantry.shotgun
-      count: 1
-    - cardKey: neutral.equipment.infantry.grenade-launcher
-      count: 1
-    - cardKey: neutral.equipment.infantry.shock-rifle
-      count: 1
-    - cardKey: neutral.equipment.infantry.incendiary-rifle
-      count: 1
-    - cardKey: neutral.equipment.infantry.rail-rifle
-      count: 1
-    - cardKey: neutral.equipment.infantry.twin-smg
-      count: 1
-    - cardKey: neutral.equipment.infantry.portable-mortar
-      count: 1
-    - cardKey: neutral.equipment.infantry.recoil-cannon
-      count: 1
-    - cardKey: neutral.equipment.infantry.aa-launcher
-      count: 1
-    - cardKey: neutral.equipment.mechanical.armor-plate
-      count: 1
-    - cardKey: neutral.equipment.mechanical.reinforced-chassis
-      count: 1
-    - cardKey: neutral.equipment.mechanical.servo-actuators
-      count: 1
-    - cardKey: neutral.equipment.mechanical.ceramic-plating
-      count: 1
-    - cardKey: neutral.equipment.mechanical.reactive-armor
-      count: 1
-    - cardKey: neutral.equipment.mechanical.nuclear-engine
-      count: 1
-    - cardKey: neutral.equipment.vehicle.turbocharger
-      count: 1
-    - cardKey: neutral.equipment.armored.artillery-cannon
-      count: 1
-    - cardKey: neutral.equipment.armored.at-vh-launcher
-      count: 1
-    - cardKey: neutral.equipment.armored.double-barrel
-      count: 1
-    - cardKey: neutral.equipment.armored.plasma-cannon
-      count: 1
-    - cardKey: neutral.equipment.vehicle.autocannon
-      count: 1
-    - cardKey: neutral.equipment.vehicle.he-cannon
-      count: 1
-    - cardKey: neutral.equipment.vehicle.flame-projector
-      count: 1
-    - cardKey: neutral.equipment.vehicle.rail-cannon
-      count: 1
-    - cardKey: neutral.equipment.vehicle.shock-projector
-      count: 1
-    - cardKey: neutral.equipment.vehicle.aa-mount
-      count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
-      count: 1
-    - cardKey: neutral.equipment.vehicle.siege-ram
-      count: 1
-    - cardKey: neutral.equipment.vehicle.spiked-ram
-      count: 1
-    - cardKey: neutral.equipment.vehicle.mortar-rack
-      count: 1
-    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
-      count: 1
-    mutators:
-    - cardKey: neutral.mutator.dermal-plating
-      count: 1
-    - cardKey: neutral.mutator.reactive-marrow
-      count: 1
-    - cardKey: neutral.mutator.reinforced-skeleton
-      count: 1
-    - cardKey: neutral.mutator.pain-suppression
-      count: 1
-    - cardKey: neutral.mutator.regenerative-culture
-      count: 1
-    - cardKey: neutral.mutator.hyper-regeneration
-      count: 1
-    - cardKey: neutral.mutator.survivor-strain
-      count: 1
-    - cardKey: neutral.mutator.adrenal-surge
-      count: 1
-    - cardKey: neutral.mutator.metabolic-overdrive
-      count: 1
-    - cardKey: neutral.mutator.predator-reflexes
-      count: 1
-    - cardKey: neutral.mutator.neural-accelerator
-      count: 1
-    - cardKey: neutral.mutator.rapid-synapse
-      count: 1
-    - cardKey: neutral.mutator.hunter-glands
-      count: 1
-    - cardKey: neutral.mutator.enhanced-senses
-      count: 1
-    - cardKey: neutral.mutator.wanderer-strain
-      count: 1
-    - cardKey: neutral.mutator.chameleon-tissue
-      count: 1
-    - cardKey: neutral.mutator.fortunate-genome
-      count: 1
-    - cardKey: neutral.mutator.ghost-genome
-      count: 1
-    - cardKey: neutral.mutator.hunter-genome
-      count: 1
-    - cardKey: neutral.mutator.reflex-genome
-      count: 1
-  - deckName: Iron Concord Carrier AI Deck
-    faction: 0
-    cards:
-    - cardKey: concord.card.concord-base
-      count: 2
-    - cardKey: concord.card.dorian-kesh
-      count: 1
-    - cardKey: concord.card.aldric-voss
-      count: 1
-    - cardKey: concord.card.vector-vance
-      count: 1
-    - cardKey: concord.card.bolt-jax
-      count: 1
-    - cardKey: concord.card.nadia-thorne
-      count: 1
-    - cardKey: concord.card.kessa-vrail
-      count: 1
-    - cardKey: concord.card.lira-sable
-      count: 1
-    - cardKey: concord.card.tessa-rourke
-      count: 1
-    - cardKey: concord.card.scout
-      count: 2
-    - cardKey: concord.card.rc-vehicle
-      count: 1
-    - cardKey: concord.card.watcher-drone
-      count: 3
-    - cardKey: concord.card.scrapper
-      count: 1
-    - cardKey: concord.card.light-infantry
-      count: 2
-    - cardKey: concord.card.medium-infantry
-      count: 1
-    - cardKey: concord.card.at-infantry
-      count: 1
-    - cardKey: concord.card.dust-medic
-      count: 1
-    - cardKey: concord.card.boatswain
-      count: 1
-    - cardKey: concord.card.barracuda
-      count: 1
-    - cardKey: concord.card.breakwater-crab
-      count: 1
-    - cardKey: concord.card.ark-carrier
-      count: 1
-    - cardKey: concord.card.mosquito
-      count: 2
-    - cardKey: concord.card.skydiver
-      count: 1
-    - cardKey: concord.card.sky-tug
-      count: 1
-    - cardKey: concord.card.storm-petrel
+    - cardKey: concord.card.crawler
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
@@ -620,7 +375,7 @@ MonoBehaviour:
     faction: 4
     cards:
     - cardKey: ashen.card.ashen-base
-      count: 1
+      count: 2
     - cardKey: ashen.card.miller-hayes
       count: 1
     - cardKey: ashen.card.hank-mercer
@@ -640,100 +395,34 @@ MonoBehaviour:
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
-      count: 2
-    - cardKey: ashen.card.tech-scrapper
-      count: 1
-    - cardKey: ashen.card.rad-hunter
       count: 1
     - cardKey: ashen.unit.ashdrifter
-      count: 1
+      count: 4
     - cardKey: ashen.card.ash-runner
-      count: 1
+      count: 4
     - cardKey: ashen.card.iron-husk
-      count: 1
-    - cardKey: ashen.card.scav-carrier
+      count: 2
+    - cardKey: ashen.card.ash-crossbowman
       count: 1
     - cardKey: ashen.card.rad-brute
       count: 1
-    - cardKey: ashen.card.ash-walker
-      count: 1
-    - cardKey: ashen.card.grave-engine
-      count: 1
-    - cardKey: ashen.card.rust-tank
-      count: 1
-    - cardKey: ashen.card.boomstick
-      count: 1
-    - cardKey: ashen.card.leviathan
-      count: 1
-    - cardKey: ashen.card.scrap-mortar
-      count: 1
-    - cardKey: ashen.card.colossus
-      count: 1
-    - cardKey: ashen.card.ash-howitzer
-      count: 1
-    - cardKey: ashen.card.striker
-      count: 1
-    - cardKey: ashen.card.scrapwing
-      count: 1
-    - cardKey: ashen.card.furnace-tortoise
-      count: 1
-    - cardKey: ashen.card.spore-drifter
-      count: 1
-    - cardKey: ashen.card.scrap-shaman
-      count: 1
-    - cardKey: ashen.card.furnace-bearer
-      count: 1
-    - cardKey: ashen.card.roadbreaker
-      count: 1
-    - cardKey: ashen.card.ash-crossbowman
-      count: 1
-    - cardKey: ashen.card.blister-juggernaut
-      count: 1
-    - cardKey: ashen.card.bone-picker
-      count: 1
-    - cardKey: ashen.card.carrion
-      count: 1
-    - cardKey: ashen.card.carrion-mother
-      count: 1
-    - cardKey: ashen.card.cinder-stalker
-      count: 1
-    - cardKey: ashen.card.cinder-tanker
-      count: 1
     - cardKey: ashen.card.deadeye
       count: 1
-    - cardKey: ashen.card.dune-locomotive
-      count: 1
-    - cardKey: ashen.card.flywheel
-      count: 1
-    - cardKey: ashen.card.fumehound
-      count: 1
-    - cardKey: ashen.card.gravebell-mortar
-      count: 1
-    - cardKey: ashen.card.iron-hedgehog
+    - cardKey: ashen.card.rust-tank
+      count: 2
+    - cardKey: ashen.card.boomstick
       count: 1
     - cardKey: ashen.card.iron-maw
       count: 1
-    - cardKey: ashen.card.rad-leaper
+    - cardKey: ashen.card.scrap-mortar
+      count: 2
+    - cardKey: ashen.card.gravebell-mortar
       count: 1
-    - cardKey: ashen.card.rattle-gunner
+    - cardKey: ashen.card.ash-howitzer
       count: 1
-    - cardKey: ashen.card.rattletrap
+    - cardKey: ashen.card.rad-hunter
       count: 1
-    - cardKey: ashen.card.rivet-maw
-      count: 1
-    - cardKey: ashen.card.rivetstorm
-      count: 1
-    - cardKey: ashen.card.rust-breacher
-      count: 1
-    - cardKey: ashen.card.scab-shield
-      count: 1
-    - cardKey: ashen.card.scrap-locust
-      count: 1
-    - cardKey: ashen.card.scrap-mountain
-      count: 1
-    - cardKey: ashen.card.slag-lobber
-      count: 1
-    - cardKey: ashen.card.walking-refinery
+    - cardKey: ashen.card.scav-carrier
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
