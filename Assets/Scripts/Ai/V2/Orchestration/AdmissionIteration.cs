@@ -10,17 +10,13 @@ namespace Game.Ai.V2
     //  The operational admission of the AI turn: what runs inside an open admission pass (one
     //  iteration = settled world -> missions -> pack -> exactly one work step) and the terminal
     //  force admission that ends every pass. TurnLoop decides WHEN; this component decides WHAT.
-    //  Dependencies are explicit; the pass-scoped state (the parking of rejected jobs, the frame
-    //  pacing clock) lives here and is reset by OpenPass. The work step keeps its own order of
-    //  observation, ledger, settlement and trigger resolution (they differ by kind of work).
+    //  Dependencies are explicit; the pass-scoped state (the parking of rejected jobs) lives
+    //  here and is reset by OpenPass; frame pacing is the DecisionFrame's. The work step keeps
+    //  its own order of observation, ledger, settlement and trigger resolution (they differ by
+    //  kind of work).
     // ===========================================================================================
     internal sealed class AdmissionIteration : IAdmissionWork
     {
-        // Perf: an AI turn can run dozens of settled steps back-to-back with no other yield in
-        // between, so the whole turn could land in one single-frame hitch. Give a real frame back to
-        // the engine whenever the wall-clock budget since the last frame is exceeded.
-        private const float YieldBudgetSeconds = 0.008f;
-
         private readonly DecisionFrame _frame;
         private readonly AiTurnSession _session;
         private readonly StrategicReadmissionRunner _runner;
@@ -35,7 +31,6 @@ namespace Game.Ai.V2
 
         // Jobs the provisioning of this pass found out of the running for the rest of the turn.
         private PassParking _passParking;
-        private float _lastYieldTime;
 
         internal AdmissionIteration(DecisionFrame frame, AiTurnSession session,
             StrategicReadmissionRunner runner, TurnTelemetry telemetry, DesireBreakdown breakdown,
@@ -59,7 +54,6 @@ namespace Game.Ai.V2
         public void OpenPass()
         {
             _passParking = new PassParking();
-            _lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
         }
 
         // Every admission pass ends with this: axes still waiting for aviation must not be lost
@@ -110,11 +104,9 @@ namespace Game.Ai.V2
         {
             List<MissionProposal> missions;
             TentativeAllocation allocation;
-            if (UnityEngine.Time.realtimeSinceStartup - _lastYieldTime >= YieldBudgetSeconds)
-            {
-                yield return null;
-                _lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
-            }
+            // An AI turn can run dozens of settled steps back-to-back: give a frame back to the
+            // engine whenever the budget is spent (DecisionFrame's pacer, shared by every boundary).
+            yield return _frame.Checkpoint();
             // The last aviation obligation may have settled (or stalled) without a typed
             // trigger: admit the axes that waited for it before this admission.
             yield return _runner.Run(ReadmissionCause.DeferredFlush, StrategicInvalidationReason.None, null);
@@ -122,6 +114,7 @@ namespace Game.Ai.V2
             // here. The radar frame stays stable for this turn; typed Development facts
             // re-enter the existing manager immediately after the settled task boundary.
             yield return _frame.PrepareAdmission();
+            yield return _frame.Checkpoint();
             // Demand families persist across settled admissions. Only
             // StrategicReadmissionRunner replaces dirty families after a factual invalidation.
 

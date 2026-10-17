@@ -183,7 +183,7 @@ namespace Game.Ai.V2
     // The interfaces exist so the loop can be driven by scripted works in tests.
     internal interface IAdmissionWork
     {
-        // Pass-scoped resets (the parking of rejected jobs, the frame-pacing clock).
+        // Pass-scoped resets (the parking of rejected jobs).
         void OpenPass();
         // One admission iteration: reads the view, reports its ending in the outcome.
         IEnumerator Iteration(TurnLoopView view, AdmissionIterationOutcome outcome);

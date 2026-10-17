@@ -136,7 +136,8 @@ namespace Game.Setup
                 resetNote: "monotonic revision counters; the mutation transaction closes with its step"),
             new MatchStateEntry("Game.Ai.V2.GroundCombatAdmissionRegistry", MatchStateKind.Scoped),
             new MatchStateEntry("Game.Ai.V2.EquipmentUpgradeValuation.EquipmentTargetMemo", MatchStateKind.Scoped),
-            new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Scoped),
+            // the active scope plus the per-player verdict store, replaced whenever its input key differs
+            new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Cache),
 
             // --- identities ------------------------------------------------------------------------
             new MatchStateEntry("Game.Map.ArmyData", MatchStateKind.IdentitySequence, resetBy: "Game.Map.ArmyRegistry"),

@@ -129,6 +129,7 @@ namespace Game.Ai.V2
                 .ToDictionary(axis => axis, Key);
             Dictionary<DesireAxis, string> demandsBefore = dirtyAxes.ToDictionary(axis => axis,
                 axis => DemandIdentityDigest(_frame.Demands, axis));
+            yield return _frame.Checkpoint();
             List<AxisDemand> regenerated = _frame.GenerateDemands(dirtyAxes);
             List<AxisDemand> dirtyDemands = regenerated;
             _frame.ReplaceDemandFamilies(dirtyAxes, regenerated);
@@ -138,6 +139,7 @@ namespace Game.Ai.V2
             // dirtyAxes.Contains(Economy) is the exact "was Economy actually re-evaluated
             // this round" signal Phase A needs to tell "Economy resolved" apart from
             // "Economy wasn't part of this dirty-axis subset".
+            yield return _frame.Checkpoint();
             WorldAnalysis.StepObservationStamp beforeCapabilities =
                 WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
             StrategicPhaseResult followup = StrategicManager.FulfillDemands(

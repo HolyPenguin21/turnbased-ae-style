@@ -220,7 +220,7 @@ namespace Game.Ai.V2
             // the opportunity IS the candidate, with the evaluator own fully priced score.
             var intents = snap.AllIntents.ToList();
             foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.Enumerate(
-                    snap, player, root, hand, ctx, intents)
+                    snap, player, root, hand, ctx, intents, preparationOnly: true)
                 .Where(o => o.PreparationKind == DevelopmentPreparationKind.CapacityUnlock
                     && o.PreparationCapacityTier != null && o.PreparationFacilityCard != null
                     && o.PreparationCardScore.HasValue))

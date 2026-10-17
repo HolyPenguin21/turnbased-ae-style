@@ -54,6 +54,56 @@ namespace Game.Ai.V2
             + $"|repeat={DevelopmentDiversity.HistoryKey(player, snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0)}"
             + $"|{Facts(snapshot, activeIntents)}";
 
+        // Everything one (equipment, recipient) verdict of DevelopmentOpportunityEvaluator reads:
+        // legality, the signed delta, the purpose label and the pending-hand check. Unlike
+        // Fingerprint it leaves out what only the price and admission read (AP, resources, price
+        // inputs, need, supply, repeat history), so verdicts survive the spending between passes.
+        // On top of Facts/RecipientFacts it carries the live inputs the delta reads that the
+        // admission key does not: own vision of known air contacts, own AA reaction state, unit
+        // stealth/AA radius/permanent movement, member order (AA firing order), the strike roster.
+        // The memory epoch and knowledge version keep a reused player or new knowledge apart.
+        internal static string RecipientVerdictKey(WorldSnapshot snapshot,
+            IReadOnlyList<MissionIntent> activeIntents, PlayerSetupData player, AiHandData hand)
+        {
+            var live = new List<string>();
+            var aaUnits = new List<Game.Units.UnitData>();
+            if (player != null)
+                foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+                {
+                    if (a == null) continue;
+                    live.Add($"a{a.Id}:" + string.Join(",", a.Members.Select(u => u == null ? "-"
+                        : $"{u.RuntimeId}/{(u.IsHidden ? 1 : 0)}/{u.AntiAirRadius}/{u.PermanentMoveMax}")));
+                    foreach (Game.Units.UnitData u in a.Members)
+                        if (u != null && Game.Aviation.AntiAirRules.TryGetRadius(u, out _))
+                            aaUnits.Add(u);
+                }
+            foreach (AiMapMemory.KnownEnemySighting s in snapshot?.Known?.EnemySightings
+                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+            {
+                if (!s.IsAir) continue;
+                live.Add($"air{s.ArmyId}:{(snapshot.Own.IsVisible(s.Hex) ? 1 : 0)}:"
+                    + string.Join("", aaUnits.Select(u =>
+                        Game.Aviation.AntiAirState.CanReact(u, s.ArmyId) ? "1" : "0")));
+            }
+            string strike = string.Join(",", (snapshot?.Self?.StrikeRoster
+                    ?? System.Array.Empty<StrikeRosterSlot>())
+                .Select(r => r.Key).OrderBy(x => x, System.StringComparer.Ordinal));
+            // The purpose lookup (EquipmentUpgradeValuation.FindEquipmentPurpose) reads the kind and
+            // the held ground supports of every snapshot intent; Facts keys supports by activeIntents.
+            string held = string.Join(";", (snapshot?.AllIntents ?? System.Array.Empty<MissionIntent>())
+                .Where(i => i != null).OrderBy(i => i.IntentKey)
+                .Select(i => $"{i.IntentKey}:{i.Kind}:"
+                    + string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i).OrderBy(x => x))));
+            return $"turn={snapshot?.TurnNumber}"
+                + $"|held={held}"
+                + $"|memory={AiMapMemory.RouteMemoryVersionFor(player)}"
+                + $"|know={snapshot?.KnowledgeVersion}"
+                + $"|recipients={RecipientFacts(player, hand)}"
+                + $"|live={string.Join(";", live)}"
+                + $"|strike={strike}"
+                + $"|{Facts(snapshot, activeIntents)}";
+        }
+
         // Per resource: spendable (stock net of other owners' holds), income, and the current
         // verified starvation block — every resource fact the canonical card price reads.
         internal static string PriceInputs(WorldSnapshot snapshot, PlayerSetupData player,
