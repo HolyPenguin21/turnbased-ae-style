@@ -36,6 +36,12 @@ namespace Game.Cards
         public static string RoleAbility(ResearchProductionMode mode)
             => mode == ResearchProductionMode.Research ? UnitAbilities.Researcher : UnitAbilities.Assembler;
 
+        // A Facility card that founds a Research or Production site (Laboratory / Factory).
+        public static bool IsResearchProductionFacility(CardDefinition def)
+            => def != null && def.cardType == CardType.Facility && def.grantedAbilities != null
+               && (def.grantedAbilities.Contains(UnitAbilities.Research)
+                   || def.grantedAbilities.Contains(UnitAbilities.Production));
+
         // ---- Challenge rules (shared with BattleAttackPopupUI's interactive loop) ----------
 
         // The producing Hero always rolls this many dice — BattleAttackPopupUI.

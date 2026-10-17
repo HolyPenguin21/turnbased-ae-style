@@ -229,6 +229,7 @@ namespace Game.Ai.V2
             float power = AiPower.EffectiveArmyPower(roster);
             bool clears = coverageOk
                 && AttackForceReadiness.ClearsFloor(power, minimumArmyPower, win, opposition);
+            int uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus);
             var chosen = new List<GatherSupport>();
             // Strike force step 5 — gather to the PEAK, not to the bare gate: below the gate any
             // improving support is taken (best win gain per AP first); past it a support is worth
@@ -254,6 +255,15 @@ namespace Game.Ai.V2
                     foreach (int i in incomingIdx) candidate.Add(s.Units[i]);
                     float nextPower = AiPower.EffectiveArmyPower(candidate);
                     if (minimumArmyPower > 0f && nextPower <= power)
+                        continue;
+                    // 2026-10-17 — past the power bar only coverage holds the formation: a support
+                    // that damages no still-uncovered defender is no progress, and taking it reset
+                    // the stall clock forever (Ysolde T15-T20: 7/7 host, fist 61 > 60, power-only
+                    // supports re-planned each turn while one defender stayed uncovered).
+                    if (minimumArmyPower > 0f && uncovered > 0
+                        && AttackForceReadiness.ClearsFloor(power, minimumArmyPower, win, opposition)
+                        && WorthIt.UncoveredDefenderCount(projected, opposition,
+                            defenderHexDefenseBonus) >= uncovered)
                         continue;
                     if (minimumArmyPower <= 0f && clears
                         && projectedWin - win < AiConfigV2.attackGatherMinWinGain)
@@ -310,6 +320,7 @@ namespace Game.Ai.V2
                 win = pickWin;
                 chosen.Add(pick);
                 power = AiPower.EffectiveArmyPower(roster);
+                uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus);
                 coverageOk = GroundCombatFeasibility.Clears(bodies, commander, opposition,
                     winChanceGate, defenderHexDefenseBonus, out win, out cover);
                 clears = coverageOk

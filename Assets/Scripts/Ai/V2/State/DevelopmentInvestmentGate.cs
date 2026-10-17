@@ -57,7 +57,9 @@ namespace Game.Ai.V2
             foreach (ResourceType t in ResourceBundle.All)
             {
                 int previous = consecutive && s.Streak.TryGetValue(t, out int p) ? p : 0;
-                float? cardNeed = snap.Economy != null ? snap.Economy.DeckResourceNeed.Get(t) : (float?)null;
+                float? cardNeed = snap.Economy != null
+                    ? MainDeckNeed(snap.Economy.DeckResourceNeed.Get(t), snap.Self?.Hand, snap.Self?.Deck, t)
+                    : (float?)null;
                 s.Streak[t] = CountsAsSurplus(s.Surplus.Get(t), cardNeed) ? previous + 1 : 0;
             }
             s.LastTurn = snap.TurnNumber;
@@ -77,6 +79,23 @@ namespace Game.Ai.V2
         internal static bool CountsAsSurplus(float headroom, float? cardNeed) =>
             headroom >= AiConfigV2.devInvestmentSurplusThreshold
             || (cardNeed.HasValue && cardNeed.Value <= 0f);
+
+        // 2026-10-17 — the hand/deck need the window protects is the MAIN deck's. A Research /
+        // Production Facility card is Development's own spend: counting its bill as "still
+        // needed" kept the window closed against that very card. Playtest: Cassia T19-T22, deck
+        // empty, hand = Laboratory only, deckNeed H/E/M/T = 1/1/0/1 = the Laboratory's cost.
+        internal static float MainDeckNeed(float deckResourceNeed, IEnumerable<CardData> hand,
+            IEnumerable<CardDefinition> deck, ResourceType t)
+        {
+            float own = 0f;
+            foreach (CardData c in hand ?? Enumerable.Empty<CardData>())
+                if (ResearchProductionSystem.IsResearchProductionFacility(c?.Definition))
+                    own += CardCostRules.PlayResources(c)?.Get(t) ?? 0;
+            foreach (CardDefinition d in deck ?? Enumerable.Empty<CardDefinition>())
+                if (ResearchProductionSystem.IsResearchProductionFacility(d))
+                    own += d.resourceCost?.Get(t) ?? 0;
+            return System.Math.Max(0f, deckResourceNeed - own);
+        }
 
         // Is this concrete spend inside the window? Only resources with a positive cost count.
         internal static bool IsOpenFor(PlayerSetupData player, int turn, ResourceCost cost) =>

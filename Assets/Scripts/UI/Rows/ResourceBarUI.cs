@@ -23,7 +23,7 @@ namespace Game.UI
         [SerializeField] private TMP_Text turnText;
 
         // Resolved once in OnEnable, by which point setup has already registered it — CardHandUI.Show()
-        // (this object sits under CardHandPanel, its only activation trigger) is only ever called
+        // (this panel's only activation trigger) is only ever called
         // right after citadel setup finishes, so the human's PlayerRoot is guaranteed to
         // exist by the time OnEnable runs.
         private PlayerRoot _humanRoot;

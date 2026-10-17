@@ -65,7 +65,7 @@ namespace Game.Ai.V2
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
-                snap.Known.EnemySightings);
+                snap.Known.EnemySightings, HideableHex(ctx));
             using (new Game.Core.ProfileScope("AI/Analysis.BuildTrueWorld"))
                 snap.TrueWorld = BuildTrueWorld(player, ctx);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildMapKnowledge"))
@@ -79,6 +79,14 @@ namespace Game.Ai.V2
         }
 
         // A rescan for the same observer keeps the store the previous snapshot was bound to.
+        // Public terrain only: where an unseen army could stand (AiReconMemory.GoneOnReobservation).
+        private static System.Func<HexCoord, bool, bool> HideableHex(AiTurnContext ctx)
+        {
+            HexMap map = ctx?.Map;
+            return ReferenceEquals(map, null) ? null
+                : (System.Func<HexCoord, bool, bool>)((hex, isAir) => map.CanEnter(hex, isAir));
+        }
+
         private static IMissionIntentView IntentsCarriedFrom(WorldSnapshot prev, PlayerSetupData player) =>
             prev != null && object.ReferenceEquals(prev.Observer, player) ? prev.Intents : null;
 
@@ -155,7 +163,7 @@ namespace Game.Ai.V2
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
-                snap.Known.EnemySightings);
+                snap.Known.EnemySightings, HideableHex(ctx));
             using (new Game.Core.ProfileScope("AI/Analysis.BuildTrueWorld"))
                 snap.TrueWorld = BuildTrueWorld(player, ctx);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildMapKnowledge"))

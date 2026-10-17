@@ -77,12 +77,12 @@ namespace Game.Turns
         [SerializeField] private HexMap map;
         [SerializeField] private GameConfig gameConfig;
 
-        // Lives inside CardHandPanel (as does endTurnButton), so it's shown/hidden together with
-        // cardHand — no activation calls of its own. Kept only for the AI-watch debug view.
+        // Its own panel, shown/hidden together with cardHand (see CardHandUI.Show/Hide) — no
+        // activation calls of its own. Kept only for the AI-watch debug view.
         [SerializeField] private ResourceBarUI resourceBar;
 
-        // CardHandPanel: the hand plus resourceBar and endTurnButton. Hidden until the game
-        // actually starts — see BeginGame.
+        // CardHandPanel: the hand plus endTurnButton; also drives resourceBar. Hidden until the
+        // game actually starts — see BeginGame.
         [SerializeField] private CardHandUI cardHand;
         // Gameplay-side deck source for pre-turn Initiative resource-demand analysis. Existing
         // scenes predate this field, so BeginGame bootstraps it once from CardHandUI when the
@@ -561,8 +561,8 @@ namespace Game.Turns
             ConfigureAiObserverPauseButton();
 
             if (gameMenu != null) gameMenu.gameObject.SetActive(true);
-            // One trigger for the whole bottom panel — the hand, the resource bar and the
-            // end-turn button all live under CardHandPanel.
+            // One trigger for the hand, the end-turn button (both under CardHandPanel) and the
+            // resource bar (its own panel, toggled by CardHandUI.Show).
             if (cardHand != null)
                 cardHand.Show();
             // Existing scenes already carry the same deck catalog on CardHandUI. Copy it once
