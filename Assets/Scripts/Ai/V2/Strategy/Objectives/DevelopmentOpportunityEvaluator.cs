@@ -197,6 +197,43 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // Fills this turn's (equipment, recipient) verdict store ahead of Demand, one offered
+        // equipment card at a time with a frame checkpoint in between, so the first READY
+        // enumeration of a turn does not price the whole catalog against every recipient inside
+        // one frame (2026-10-17 profile: 75 ms, 211 deltas). Same sources, key and verdict code
+        // as Enumerate; when the key no longer matches at Enumerate time the warm-up was merely
+        // wasted, never wrong.
+        internal static System.Collections.IEnumerator WarmVerdicts(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            IReadOnlyList<MissionIntent> activeIntents, FramePacer pacer)
+        {
+            if (snap?.Self?.BaseHexes == null || snap.Development?.AnyFacilityWithHero != true
+                || player == null || root == null || hand?.Hand == null
+                || ctx?.ResearchProductionCatalog == null)
+                yield break;
+            RecipientEvaluationMemo.VerdictStore store = RecipientEvaluationMemo.StoreFor(player,
+                DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand));
+            List<GenerationStep> sources = GenerationSource.Enumerate(player, root, ctx,
+                hand, null, null, resourceForecast: true);
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            EquipmentUpgradeValuation.EquipmentTargetMemo targets =
+                EquipmentUpgradeValuation.EquipmentTargetMemo.Detached();
+            var warmed = new HashSet<CardDefinition>();
+            foreach (GenerationStep source in sources)
+            {
+                if (!source.ProducesEquipment || source.CardDef?.equipment == null
+                    || !warmed.Add(source.CardDef))
+                    continue;
+                if (pacer != null)
+                    yield return pacer.Checkpoint();
+                using (new RecipientEvaluationMemo(store))
+                using (targets.Enter())
+                    EquipmentOpportunities(source.Mode, source.FacilityHex, source.CardDef,
+                        source.SuccessChance, source, snap, inv, player, root, hand, out _,
+                        futureAttachment: true);
+            }
+        }
+
         // Structural (resource/AP-free) reasons a base cannot be prepared for `mode`, or null. Also
         // yields the hand facility cards and, for a full Base, the capacity tier the step would buy.
         // The one owner of these clauses: AddPreparation and SelectedPreparationSite both read it.

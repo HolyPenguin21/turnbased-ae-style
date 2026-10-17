@@ -668,7 +668,7 @@ namespace Game.EditorTests
             }
             Assert.That(Calls("AiStrategyV2Pipeline.cs"), Is.EqualTo(new[]
             {
-                "EnumerateObjectives", "ResolveInitialOwnership", "RebuildDemands",       // the start
+                "EnumerateObjectives", "ResolveInitialOwnership", "WarmDemands", "RebuildDemands", // the start
                 "AcceptChangedPhaseA", "RebuildDemands",                                   // the first Phase A changed
                 "RefreshAfterFormation",                                                   // a wing was formed
                 "StartWithCredit",                                                         // the loop block begins

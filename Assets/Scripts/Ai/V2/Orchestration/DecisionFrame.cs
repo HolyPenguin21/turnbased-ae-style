@@ -16,6 +16,8 @@ namespace Game.Ai.V2
         internal Func<WorldSnapshot, WorldSnapshot> RefreshKnowledge;
         internal Func<WorldSnapshot, WorldAnalysis.StepObservationStamp, ExecutionResult, WorldSnapshot> ObserveSettled;
         internal Func<WorldSnapshot, IEnumerator> WarmEstimates;
+        // Development's verdict warm-up ahead of demand generation (null in world-less frames).
+        internal Func<WorldSnapshot, IReadOnlyList<MissionIntent>, FramePacer, IEnumerator> WarmDevelopment;
         internal Func<WorldSnapshot, List<ReconObjective>> EnumerateRecon;
         internal Action<WorldSnapshot> RefreshAggressionFacts;
         internal Func<WorldSnapshot, List<RaidObjective>> EnumerateAggression;
@@ -32,6 +34,9 @@ namespace Game.Ai.V2
             ObserveSettled = (snap, stamp, result) =>
                 WorldAnalysis.ObserveSettled(snap, player, root, hand, ctx, stamp, result),
             WarmEstimates = snap => CombatOpportunityAnalyzer.WarmEstimates(snap),
+            // The same hand DemandLayer.Development reads.
+            WarmDevelopment = (snap, intents, pacer) => DevelopmentOpportunityEvaluator.WarmVerdicts(
+                snap, player, root, AiHandRegistry.Peek(player), ctx, intents, pacer),
             EnumerateRecon = snap => ReconObjectiveEvaluator.Enumerate(snap),
             RefreshAggressionFacts = snap => StrategyLayer.RefreshAggressionOperationalFacts(snap, breakdown),
             EnumerateAggression = snap => RaidObjectiveEvaluator.Enumerate(snap, breakdown.OpportunityReport),
@@ -95,6 +100,15 @@ namespace Game.Ai.V2
         private readonly FramePacer _pacer = new FramePacer();
         internal IEnumerator Checkpoint() => _pacer.Checkpoint();
 
+        // Paced warm-up of what demand generation prices most: Development's equipment verdicts
+        // for the current snapshot and intents. Runs at the end of every operational refresh
+        // and before the first demand build of the turn.
+        internal IEnumerator WarmDemands()
+        {
+            if (_services.WarmDevelopment != null)
+                yield return _services.WarmDevelopment(Snapshot, Intents, _pacer);
+        }
+
         internal DecisionFrame(WorldSnapshot snapshot, FrameServices services,
             MissionIntentState intentState = null)
         {
@@ -150,6 +164,7 @@ namespace Game.Ai.V2
             yield return Checkpoint();
             Intents = _services.ResolveActive(Snapshot, Recon, Aggression, false);
             Commitments = _services.RefreshActors(Intents, Snapshot, Recon);
+            yield return WarmDemands();
         }
 
         // The first Phase A changed the settled world: refresh knowledge and the operational
