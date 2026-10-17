@@ -97,7 +97,7 @@ namespace Game.UI
                 Data.SelectedDeckId = null;
                 deckDropdown.interactable = false;
                 if (Data.Faction == Faction.Random)
-                { Data.AiDeckName = null; deckDropdown.AddOptions(new List<string> { "Random AI deck after Random faction resolves" }); }
+                { Data.AiDeckName = null; deckDropdown.AddOptions(new List<string> { "Random AI deck" }); }
                 else
                 {
                     if (startingDeckCatalog != null && !startingDeckCatalog.GetAiDecks(Data.Faction).Any(d => d.deckName == Data.AiDeckName))
@@ -110,7 +110,7 @@ namespace Game.UI
             }
             Data.AiDeckName = null;
             if (Data.Faction == Faction.Random)
-            { Data.SelectedDeckId = null; deckDropdown.AddOptions(new List<string> { "Default deck after Random faction resolves" }); deckDropdown.interactable = false; refreshingDecks = false; return; }
+            { Data.SelectedDeckId = null; deckDropdown.AddOptions(new List<string> { "Starter Deck" }); deckDropdown.interactable = false; refreshingDecks = false; return; }
             if (!Game.Progression.ProgressionContext.Initialize(deckConfig))
             { deckDropdown.AddOptions(new List<string> { Game.Progression.ProgressionContext.Error }); refreshingDecks = false; return; }
             var collection = Game.Progression.ProgressionContext.Collection;
