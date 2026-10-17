@@ -438,6 +438,7 @@ namespace Game.UI
             // again, never actually taking effect).
             _retreatingArmy = null;
             _aiWaitStreak.Clear();
+            _aiPreviousPositions.Clear();
             _aiFavorableThisRound.Clear();
 
             // AI never gets a UI Arrangement phase — replace whatever FromArmies's generic
@@ -874,6 +875,7 @@ namespace Game.UI
             _arranging = false;
             _arrangeInteractive = false;
             _aiWaitStreak.Clear();
+            _aiPreviousPositions.Clear();
             _aiFavorableThisRound.Clear();
             _idleTimer = -1f;
             _idleNudgeShown = false;
@@ -956,4 +958,5 @@ namespace Game.UI
         }
     }
 }
+
 

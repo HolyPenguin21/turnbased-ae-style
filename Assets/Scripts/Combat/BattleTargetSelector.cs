@@ -12,6 +12,13 @@ namespace Game.Combat
     // versa.
     public static class BattleTargetSelector
     {
+        // All defense dice can fail, but armor/ability modifiers can still make even the
+        // maximum roll harmless. Share this feasibility check with firing-position search.
+        public static bool CanDamage(UnitData actor, UnitData target, AbilityMagnitudes magnitudes,
+            int? attackOverride = null)
+            => actor != null && target != null && ChallengeResult.ApplyAbilityModifiers(
+                Mathf.Max(0, attackOverride ?? actor.Attack), actor, target, magnitudes) > 0;
+
         // Small enough next to the x10000/x10 finishing-blow/damage-efficiency tiers to only ever
         // nudge a choice between otherwise-close candidates toward "this hit also knocks the
         // target out of the round" (UnitAbilities.ShockAttack) — never overrides a genuinely
@@ -251,6 +258,8 @@ namespace Game.Combat
                     BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: not found on grid");
                     continue;
                 }
+                if (!CanDamage(actor, candidate, magnitudes))
+                    continue;
                 if (!BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, actor.Range))
                 {
                     BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: out of range " +
@@ -301,3 +310,4 @@ namespace Game.Combat
         }
     }
 }
+
