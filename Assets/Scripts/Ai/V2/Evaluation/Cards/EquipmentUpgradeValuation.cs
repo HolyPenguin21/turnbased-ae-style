@@ -257,7 +257,21 @@ namespace Game.Ai.V2
                 // Real neighbours for Splash / Scorcher: the ground bodies of each known enemy army.
                 ctx.Battles = EquipmentTargetMemo.AttachmentTargets(snap, purpose, opposition, targets).Battles;
             if (hostUnit != null && army != null)
-                ctx.AirContacts = AirContactsFor(snap, army, hostUnit, ctx);
+            {
+                // The contact list depends on the recipient only: one Enumerate builds it once
+                // per recipient (AirContactsFor also sets the host's own AA facts on ctx).
+                if (EquipmentTargetMemo.TryGetAirContacts(snap, army, hostUnit, out List<AirContact> contacts))
+                {
+                    ctx.AntiAirRadius = hostUnit.AntiAirRadius;
+                    ctx.HostHidden = hostUnit.IsHidden;
+                }
+                else
+                {
+                    contacts = AirContactsFor(snap, army, hostUnit, ctx);
+                    EquipmentTargetMemo.StoreAirContacts(snap, army, hostUnit, contacts);
+                }
+                ctx.AirContacts = contacts;
+            }
             if (isHero)
             {
                 var fighters = army?.Members?.Where(m => m != null && !m.IsHero).ToList();
@@ -325,10 +339,20 @@ namespace Game.Ai.V2
             if (snap != null && (unpricedBefore.Count > 0 || unpricedAfter.Count > 0))
             {
                 var attachmentTargets = EquipmentTargetMemo.AttachmentTargets(snap, purpose, opposition, targets);
+                // The "before" side reads the deployed host alone (its stats, abilities, army,
+                // purpose and the snapshot), never the equipment: priced once per recipient.
+                bool memoBefore = hostUnit != null && deployment == null;
+                if (!memoBefore || !EquipmentTargetMemo.TryGetValueBefore(snap, hostUnit, includeStealthTrait,
+                        out float valueBefore))
+                {
+                    valueBefore = StrategicEffectRegistry.AttachmentValue(before, unpricedBefore, hostTags, opposition, army,
+                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets, hostUnit);
+                    if (memoBefore)
+                        EquipmentTargetMemo.StoreValueBefore(snap, hostUnit, includeStealthTrait, valueBefore);
+                }
                 tactical += StrategicEffectRegistry.AttachmentValue(predicted.Stats, unpricedAfter, hostTags, opposition, army,
                         isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets, hostUnit)
-                    - StrategicEffectRegistry.AttachmentValue(before, unpricedBefore, hostTags, opposition, army,
-                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets, hostUnit);
+                    - valueBefore;
             }
 
             // The text is formatted only when something reads it. `before`, the predicted state and
@@ -387,11 +411,45 @@ namespace Game.Ai.V2
         internal static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
             UnitData hostUnit, HexCoord? targetHex, MissionIntent purpose = null)
         {
-            if (snap?.MapKnowledge != null)
-                ctx.UsefulDarkFraction = Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac);
+            // The facts depend on the recipient and its purpose only (a route search, a scout
+            // cost estimate): one Enumerate computes them once per recipient, not per equipment.
+            if (!EquipmentTargetMemo.TryGetRoute(snap, army, hostUnit, targetHex, purpose, out RouteFacts facts))
+            {
+                facts = KnownRouteAndCoverage(snap, army, hostUnit, targetHex, purpose);
+                EquipmentTargetMemo.StoreRoute(snap, army, hostUnit, targetHex, purpose, facts);
+            }
+            if (facts.DarkFraction.HasValue) ctx.UsefulDarkFraction = facts.DarkFraction.Value;
+            if (facts.StealthRisk.HasValue) ctx.StealthRisk = facts.StealthRisk.Value;
+            if (facts.RouteLength.HasValue) ctx.RouteLength = facts.RouteLength.Value;
+            if (facts.OtherArmyActivationAp.HasValue) ctx.OtherArmyActivationAp = facts.OtherArmyActivationAp.Value;
+        }
+
+        // The context fields ApplyKnownRouteAndCoverage sets; null = left at the context default.
+        internal readonly struct RouteFacts
+        {
+            internal readonly float? DarkFraction;
+            internal readonly float? StealthRisk;
+            internal readonly int? RouteLength;
+            internal readonly float? OtherArmyActivationAp;
+
+            internal RouteFacts(float? darkFraction, float? stealthRisk = null, int? routeLength = null,
+                float? otherArmyActivationAp = null)
+            {
+                DarkFraction = darkFraction;
+                StealthRisk = stealthRisk;
+                RouteLength = routeLength;
+                OtherArmyActivationAp = otherArmyActivationAp;
+            }
+        }
+
+        private static RouteFacts KnownRouteAndCoverage(WorldSnapshot snap, ArmyData army,
+            UnitData hostUnit, HexCoord? targetHex, MissionIntent purpose)
+        {
+            float? dark = snap?.MapKnowledge != null
+                ? Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac) : (float?)null;
             // No snapshot = the reference context (Self equipment-reserve estimate): no known route.
             if (snap == null || army?.Members == null || hostUnit == null)
-                return;
+                return new RouteFacts(dark);
             ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
             if (purpose?.Kind == MissionKind.Scout && purpose.Scout != null
                 && !ReconScoutKinds.IsAirSweep(purpose.Scout.Kind)
@@ -402,23 +460,22 @@ namespace Game.Ai.V2
                     Stealth = purpose.Scout.RequiresStealth ? StealthRequirement.Required : StealthRequirement.None };
                 ScoutCostEstimate route = ScoutCostModel.Estimate(snap, target,
                     preferredMoverArmyId: army.Id, requirePreferredMover: true);
-                if (!route.MoverKnown || !route.ExecutionHex.HasValue) return;
+                if (!route.MoverKnown || !route.ExecutionHex.HasValue) return new RouteFacts(dark);
                 // The same honest risk owner used by objective/vantage scoring. A detector's
                 // presence does not invent a hidden TARGET: DetectionRelevance stays unchanged.
-                ctx.StealthRisk = ScoutRiskModel.DetectorRisk(snap, route.ExecutionHex.Value);
-                ctx.RouteLength = Mathf.Max(0, Mathf.RoundToInt(route.EstimatedDistance));
-                ctx.OtherArmyActivationAp = ArmyData.ComputeActivationApCost(
-                    army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit)));
-                return;
+                return new RouteFacts(dark, ScoutRiskModel.DetectorRisk(snap, route.ExecutionHex.Value),
+                    Mathf.Max(0, Mathf.RoundToInt(route.EstimatedDistance)),
+                    ArmyData.ComputeActivationApCost(
+                        army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit))));
             }
-            if (!targetHex.HasValue || army.Hex.Equals(targetHex.Value)) return;
+            if (!targetHex.HasValue || army.Hex.Equals(targetHex.Value)) return new RouteFacts(dark);
             int cost = actor != null ? AiV2Util.TravelCost(snap, actor, targetHex.Value, terrainOnly: true)
                 : HexGridMath.Distance(army.Hex, targetHex.Value);
             if (cost <= 0 || cost == int.MaxValue)
-                return;
-            ctx.RouteLength = cost;
-            ctx.OtherArmyActivationAp = ArmyData.ComputeActivationApCost(
-                army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit)));
+                return new RouteFacts(dark);
+            return new RouteFacts(dark, routeLength: cost,
+                otherArmyActivationAp: ArmyData.ComputeActivationApCost(
+                    army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit))));
         }
 
         // Read existing assignments only. An upgrade does not create a role or move an actor.
@@ -541,6 +598,53 @@ namespace Game.Ai.V2
             internal static void StorePurpose(WorldSnapshot snap, object host, MissionIntent purpose)
             {
                 if (s_current != null) s_current._purposes[(snap, host)] = purpose;
+            }
+
+            // Recipient-only context (no equipment in the key): the host's AA contacts, its route and
+            // coverage facts and the registry value of its abilities before any attachment.
+            private readonly Dictionary<(WorldSnapshot, ArmyData, UnitData), List<AirContact>> _airContacts = new();
+            private readonly Dictionary<(WorldSnapshot, ArmyData, UnitData, HexCoord?, MissionIntent), RouteFacts> _routes = new();
+            private readonly Dictionary<(WorldSnapshot, UnitData, bool), float> _valuesBefore = new();
+
+            internal static bool TryGetAirContacts(WorldSnapshot snap, ArmyData army, UnitData host,
+                out List<AirContact> contacts)
+            {
+                contacts = null;
+                return s_current != null && s_current._airContacts.TryGetValue((snap, army, host), out contacts);
+            }
+
+            internal static void StoreAirContacts(WorldSnapshot snap, ArmyData army, UnitData host,
+                List<AirContact> contacts)
+            {
+                if (s_current != null) s_current._airContacts[(snap, army, host)] = contacts;
+            }
+
+            internal static bool TryGetRoute(WorldSnapshot snap, ArmyData army, UnitData host,
+                HexCoord? targetHex, MissionIntent purpose, out RouteFacts facts)
+            {
+                facts = default;
+                return s_current != null
+                    && s_current._routes.TryGetValue((snap, army, host, targetHex, purpose), out facts);
+            }
+
+            internal static void StoreRoute(WorldSnapshot snap, ArmyData army, UnitData host,
+                HexCoord? targetHex, MissionIntent purpose, RouteFacts facts)
+            {
+                if (s_current != null) s_current._routes[(snap, army, host, targetHex, purpose)] = facts;
+            }
+
+            internal static bool TryGetValueBefore(WorldSnapshot snap, UnitData host, bool includeStealthTrait,
+                out float value)
+            {
+                value = 0f;
+                return s_current != null
+                    && s_current._valuesBefore.TryGetValue((snap, host, includeStealthTrait), out value);
+            }
+
+            internal static void StoreValueBefore(WorldSnapshot snap, UnitData host, bool includeStealthTrait,
+                float value)
+            {
+                if (s_current != null) s_current._valuesBefore[(snap, host, includeStealthTrait)] = value;
             }
 
             public EquipmentTargetMemo() { _outer = s_current; s_current = this; }

@@ -43,6 +43,7 @@ namespace Game.Ai.V2
         public IEnumerator Round(int managementRound, TempoRoundSink sink)
         {
             _frame.PrepareTempoOwnership();
+            yield return _frame.Checkpoint();
 
             WorldAnalysis.StepObservationStamp beforeManagement =
                 WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);

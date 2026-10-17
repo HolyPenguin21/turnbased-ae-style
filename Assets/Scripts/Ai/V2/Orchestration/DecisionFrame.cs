@@ -91,6 +91,10 @@ namespace Game.Ai.V2
         // The ownership view Phase B and Housekeeping consume (persistent state of every intent).
         internal ActorCommitments PostCommitments { get; private set; }
 
+        // The turn's frame pacing: work bodies yield through Checkpoint at decision boundaries.
+        private readonly FramePacer _pacer = new FramePacer();
+        internal IEnumerator Checkpoint() => _pacer.Checkpoint();
+
         internal DecisionFrame(WorldSnapshot snapshot, FrameServices services,
             MissionIntentState intentState = null)
         {
@@ -137,10 +141,13 @@ namespace Game.Ai.V2
         {
             yield return _services.WarmEstimates(Snapshot);
             Recon = _services.EnumerateRecon(Snapshot);
+            yield return Checkpoint();
             // Rebuild the operational Aggression facts from this settled snapshot before
             // re-enumerating objectives, so a neutral destroyed by the previous step is gone.
             _services.RefreshAggressionFacts(Snapshot);
+            yield return Checkpoint();
             Aggression = _services.EnumerateAggression(Snapshot);
+            yield return Checkpoint();
             Intents = _services.ResolveActive(Snapshot, Recon, Aggression, false);
             Commitments = _services.RefreshActors(Intents, Snapshot, Recon);
         }
@@ -150,6 +157,7 @@ namespace Game.Ai.V2
         internal IEnumerator AcceptChangedPhaseA()
         {
             Snapshot = _services.RefreshKnowledge(Snapshot);
+            yield return Checkpoint();
             yield return RefreshOperationalDecision();
         }
 
@@ -158,6 +166,7 @@ namespace Game.Ai.V2
         internal IEnumerator AcceptChangedReentry()
         {
             Snapshot = _services.RefreshKnowledge(Snapshot);
+            yield return Checkpoint();
             yield return RefreshOperationalDecision();
             _ownershipCredit = true;
         }
@@ -172,6 +181,7 @@ namespace Game.Ai.V2
             if (!_ownershipCredit)
             {
                 Snapshot = _services.RefreshKnowledge(Snapshot);
+                yield return Checkpoint();
                 yield return RefreshOperationalDecision();
             }
             _ownershipCredit = false;
@@ -214,6 +224,7 @@ namespace Game.Ai.V2
         internal IEnumerator PrepareColdResidual()
         {
             Snapshot = _services.RefreshKnowledge(Snapshot);
+            yield return Checkpoint();
             yield return RefreshOperationalDecision();
         }
 
@@ -222,6 +233,7 @@ namespace Game.Ai.V2
         internal IEnumerator AcceptChangedCold(WorldAnalysis.StepObservationStamp before, ISet<DesireAxis> axes)
         {
             ObserveSettled(before, null);
+            yield return Checkpoint();
             yield return RefreshOperationalDecision();
             RebuildDemands(axes);
             _ownershipCredit = true;

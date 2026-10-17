@@ -47,7 +47,7 @@ namespace Game.Ai
             bool hidden = Game.Map.StealthSystem.IsArmyFullyHidden(army);
             HashSet<HexCoord> blockers = BlockersFor(cache, profile, hidden);
             return AiTurnController.FindAffordableStep(map, army, targetHex,
-                SafeRouteBlocker(null, blockers, targetHex, null),
+                SafeRouteBlocker(blockers, targetHex),
                 projectedCurrentMovement, projectedMaxMovement);
         }
 
@@ -164,16 +164,41 @@ namespace Game.Ai
             return field.Costs.TryGetValue(from, out int cost) ? cost : int.MaxValue;
         }
 
+        // One mover, many targets (Economy prices every builder against every candidate site):
+        // one cached Dijkstra tree per (mover hex, maxMovement, profile) instead of one
+        // point-to-point search per target. Same blockers, destination exemption and
+        // maxMovement rule as FindSafePath; the cost is identical, and among equally cheap paths
+        // the tree's own first-found one is returned.
+        public static HexPath FindSafePathFromSource(HexMap map, PlayerSetupData owner,
+            HexCoord from, HexCoord targetHex, int? maxMovement = null,
+            SafeRouteProfile profile = SafeRouteProfile.Standard)
+        {
+            if (map == null || owner == null)
+                return null;
+            PlayerRouteCache cache = EnsureCacheState(map, owner);
+            var key = (from, maxMovement, profile);
+            if (!cache.Trees.TryGetValue(key, out HexPathfinder.CostTree tree))
+            {
+                if (cache.Trees.Count >= MaxCostTrees) cache.Trees.Clear();
+                using (new Game.Core.ProfileScope("AI/Pathing.CostTree"))
+                    tree = HexPathfinder.BuildCostTree(map, from, BlockersFor(cache, profile, false), maxMovement);
+                cache.Trees[key] = tree;
+            }
+            return tree.PathTo(targetHex);
+        }
+
         // One Economy scan alone asks for every builder x every candidate site (539 routes in a
         // 2026-10-16 profile). A cap below one scan's working set cleared the cache mid-scan and
         // turned every later scan into misses; a route is a short list, so keep a wide margin.
         private const int MaxCachedRoutes = 8192;
         private const int MaxCostFields = 32;
+        private const int MaxCostTrees = 64;
         private sealed class PlayerRouteCache
         {
             // The profile is part of the key: one endpoint asked under two profiles has two
             // different honest routes, whatever order the callers ask in.
             public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement, SafeRouteProfile profile), HexPath> Routes = new Dictionary<(HexCoord, HexCoord, int?, SafeRouteProfile), HexPath>();
+            public readonly Dictionary<(HexCoord from, int? maxMovement, SafeRouteProfile profile), HexPathfinder.CostTree> Trees = new Dictionary<(HexCoord, int?, SafeRouteProfile), HexPathfinder.CostTree>();
             public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields = new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
             public readonly Dictionary<int, ReturnCostField> ReturnCostFields = new Dictionary<int, ReturnCostField>();
             // Planning (owner-only APIs) is conservative and routes as a VISIBLE mover; only a
@@ -183,7 +208,6 @@ namespace Game.Ai
             public HashSet<HexCoord> CombatBlockedHexes;
             public HashSet<HexCoord> HiddenCombatBlockedHexes;
             public long MemoryVersion;
-            public void ClearPathsAndFields() { Routes.Clear(); BaseCostFields.Clear(); ReturnCostFields.Clear(); }
         }
         private sealed class ReturnCostField { public HashSet<HexCoord> Bases; public Dictionary<HexCoord, int> Costs; }
         private static readonly Dictionary<PlayerSetupData, PlayerRouteCache> _playerCaches = new Dictionary<PlayerSetupData, PlayerRouteCache>();
@@ -244,10 +268,17 @@ namespace Game.Ai
             {
                 HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner, moverFullyHidden: false);
                 HashSet<HexCoord> currentCombat = CaptureMemoryBlockers(map, owner, moverFullyHidden: false, armiesOnly: true);
-                // Routes of EVERY profile live in the same cache: a change in either visible
-                // blocker set invalidates them (a Combat route is not derived from Standard's set).
-                if (!cache.BlockedHexes.SetEquals(current) || !cache.CombatBlockedHexes.SetEquals(currentCombat))
-                    cache.ClearPathsAndFields();
+                // Each profile's routes depend on that profile's own visible set only (Attack on
+                // none), so a change drops just the entries it can actually affect.
+                InvalidateProfile(cache, SafeRouteProfile.Standard, cache.BlockedHexes, current);
+                InvalidateProfile(cache, SafeRouteProfile.Combat, cache.CombatBlockedHexes, currentCombat);
+                if (!cache.BlockedHexes.SetEquals(current))
+                {
+                    // Base/return fields are whole-map Dijkstras over the Standard set: any
+                    // change reaches them.
+                    cache.BaseCostFields.Clear();
+                    cache.ReturnCostFields.Clear();
+                }
                 cache.BlockedHexes = current;
                 cache.HiddenBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true);
                 cache.CombatBlockedHexes = currentCombat;
@@ -256,6 +287,59 @@ namespace Game.Ai
             }
             return cache;
         }
+        // A blocker set only removes or restores transit hexes, so a cached route survives a change
+        // it provably cannot feel:
+        //  - a NEW blocker drops only routes crossing it (the start is never entered and the
+        //    target is exempt); every other route stays a cheapest one in a smaller graph;
+        //  - a FREED hex h can only help a route that could pass through it, and any such path
+        //    costs at least dist(from,h)+dist(h,target) (each step costs >= 1) — a route already
+        //    cheaper than that bound stays; an unreachable (null) route is dropped on any release.
+        // Trees cover the whole reachable map, so any change of their profile's set drops them.
+        private static void InvalidateProfile(PlayerRouteCache cache, SafeRouteProfile profile,
+            HashSet<HexCoord> previous, HashSet<HexCoord> current)
+        {
+            if (previous.SetEquals(current))
+                return;
+            var added = new List<HexCoord>();
+            foreach (HexCoord hex in current) if (!previous.Contains(hex)) added.Add(hex);
+            var freed = new List<HexCoord>();
+            foreach (HexCoord hex in previous) if (!current.Contains(hex)) freed.Add(hex);
+            var addedSet = new HashSet<HexCoord>(added);
+
+            List<(HexCoord, HexCoord, int?, SafeRouteProfile)> stale = null;
+            foreach (KeyValuePair<(HexCoord from, HexCoord target, int? maxMovement, SafeRouteProfile profile), HexPath> entry in cache.Routes)
+            {
+                if (entry.Key.profile != profile)
+                    continue;
+                if (RouteFeelsChange(entry.Key.from, entry.Key.target, entry.Value, addedSet, freed))
+                    (stale ??= new List<(HexCoord, HexCoord, int?, SafeRouteProfile)>()).Add(entry.Key);
+            }
+            if (stale != null)
+                foreach (var key in stale) cache.Routes.Remove(key);
+
+            List<(HexCoord, int?, SafeRouteProfile)> staleTrees = null;
+            foreach (var key in cache.Trees.Keys)
+                if (key.profile == profile)
+                    (staleTrees ??= new List<(HexCoord, int?, SafeRouteProfile)>()).Add(key);
+            if (staleTrees != null)
+                foreach (var key in staleTrees) cache.Trees.Remove(key);
+        }
+
+        private static bool RouteFeelsChange(HexCoord from, HexCoord target, HexPath route,
+            HashSet<HexCoord> added, List<HexCoord> freed)
+        {
+            if (route == null)
+                return freed.Count > 0;
+            if (added.Count > 0)
+                for (int i = 1; i < route.Hexes.Count - 1; i++)
+                    if (added.Contains(route.Hexes[i]))
+                        return true;
+            foreach (HexCoord hex in freed)
+                if (HexGridMath.Distance(from, hex) + HexGridMath.Distance(hex, target) <= route.TotalCost)
+                    return true;
+            return false;
+        }
+
         private static readonly HashSet<HexCoord> NoBlockers = new HashSet<HexCoord>();
         private static HashSet<HexCoord> BlockersFor(PlayerRouteCache cache, SafeRouteProfile profile, bool hidden)
         {
@@ -274,18 +358,15 @@ namespace Game.Ai
             var key = (from, targetHex, maxMovement, profile);
             if (cache.Routes.TryGetValue(key, out HexPath cached)) return cached;
             if (cache.Routes.Count >= MaxCachedRoutes) cache.Routes.Clear();
-            HexPath computed = HexPathfinder.FindPath(map, from, targetHex, blockHex: SafeRouteBlocker(map, BlockersFor(cache, profile, false), targetHex, maxMovement));
+            HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
+                blockHex: SafeRouteBlocker(BlockersFor(cache, profile, false), targetHex),
+                maxStepCost: maxMovement);
             cache.Routes[key] = computed;
             return computed;
         }
-        private static System.Func<HexCoord, bool> SafeRouteBlocker(HexMap map, HashSet<HexCoord> blocked, HexCoord targetHex, int? maxMovement)
-        {
-            return hex =>
-            {
-                if (!hex.Equals(targetHex) && blocked.Contains(hex)) return true;
-                if (maxMovement.HasValue && map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry entry) && Mathf.Max(1, entry.moveCost) > maxMovement.Value) return true;
-                return false;
-            };
-        }
+        // The maxMovement terrain rule is HexPathfinder's maxStepCost (route search) or the
+        // execution search's own rule (FindAffordableStep), not part of this blocker.
+        private static System.Func<HexCoord, bool> SafeRouteBlocker(HashSet<HexCoord> blocked, HexCoord targetHex) =>
+            hex => !hex.Equals(targetHex) && blocked.Contains(hex);
     }
 }

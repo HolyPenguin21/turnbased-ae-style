@@ -104,13 +104,17 @@ namespace Game.Ai.V2
         // Every admitted opportunity for the current settled state, best first. Empty while the
         // investment window is closed. Demand (and the capacity-upgrade look-ahead) consume this
         // list; they never re-admit with a different predicate.
+        // `preparationOnly` - the PREPARE opportunities only (a staffed facility's catalog is not
+        // priced) and no development forecast is published: the capacity-upgrade look-ahead reads
+        // CapacityUnlock steps, which AddPreparation alone produces, and must not overwrite the
+        // forecast Demand published from the complete enumeration.
         public static List<DevelopmentOpportunity> Enumerate(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            IReadOnlyList<MissionIntent> activeIntents)
+            IReadOnlyList<MissionIntent> activeIntents, bool preparationOnly = false)
         {
             var result = new List<DevelopmentOpportunity>();
             var forecasts = new List<DevelopmentOpportunity>();
-            if (player != null && snap != null)
+            if (player != null && snap != null && !preparationOnly)
                 ResourceStarvationRegistry.ReplaceOperationalForecast(player, snap.TurnNumber,
                     "development", null);
             if (snap?.Self?.BaseHexes == null || snap.Development == null || player == null
@@ -122,14 +126,23 @@ namespace Game.Ai.V2
             CapabilityInventory inv;
             using (new Game.Core.ProfileScope("AI/Dev.Sources"))
             {
-                forecastSources = GenerationSource.Enumerate(player, root, ctx,
-                    hand, null, null, resourceForecast: true);
+                forecastSources = preparationOnly ? new List<GenerationStep>()
+                    : GenerationSource.Enumerate(player, root, ctx,
+                        hand, null, null, resourceForecast: true);
                 inv = CapabilityInventory.Build(snap, player, null);
             }
             ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             // One settled evaluation has one immutable set of available operator sources.
             List<GenerationStep> generatedOperatorSources = null;
-            using var recipientMemo = new RecipientEvaluationMemo();
+            // A staffed facility's catalog is priced against every recipient: reuse the verdicts of
+            // an earlier Enumerate of this turn while nothing they read has changed. The key is
+            // built only when a staffed facility exists; otherwise (and for the preparation-only
+            // look-ahead) the verdicts are memoised for this call alone, as before.
+            using var recipientMemo = new RecipientEvaluationMemo(
+                !preparationOnly && snap.Development.AnyFacilityWithHero
+                    ? RecipientEvaluationMemo.StoreFor(player,
+                        DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand))
+                    : new RecipientEvaluationMemo.VerdictStore());
             using var targetMemo = new EquipmentUpgradeValuation.EquipmentTargetMemo();
             IEnumerable<HexCoord> sites = snap.Self.BaseHexes
                 .Concat(snap.Development.Facilities.Select(f => f.Hex))
@@ -144,6 +157,8 @@ namespace Game.Ai.V2
                 bool facilityReady = building.HasFacilityWithAbility(
                     ResearchProductionSystem.FacilityAbility(mode));
                 UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
+                if (preparationOnly && facilityReady && actor != null)
+                    continue;
                 string reason = facilityReady && actor != null
                     ? AddReady(result, forecasts, forecastSources, mode, hex, snap, inv, occupied, player, root, hand, ctx)
                     : AddPreparation(result, forecasts, mode, hex, facilityReady, actor, snap, inv, occupied,
@@ -154,7 +169,7 @@ namespace Game.Ai.V2
             }
 
             // One best useful action, not the sum of a catalog or mutually exclusive recipients.
-            DevelopmentOpportunity forecast = forecasts.OrderByDescending(o => o.IsPreparation ? o.PreparationRank : o.BaseValue)
+            DevelopmentOpportunity forecast = preparationOnly ? null : forecasts.OrderByDescending(o => o.IsPreparation ? o.PreparationRank : o.BaseValue)
                 .ThenBy(o => o.Card?.authoredKey, System.StringComparer.Ordinal).FirstOrDefault();
             if (forecast != null)
             {
@@ -994,11 +1009,40 @@ namespace Game.Ai.V2
         {
             [System.ThreadStatic] private static RecipientEvaluationMemo s_current;
             private readonly RecipientEvaluationMemo _outer;
-            private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _verdicts = new();
+            private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _verdicts;
             // Pending-hand coverage depends only on the recipient and the slot being produced
             // (snapshot, inventory and hand are fixed for one Enumerate); negatives are cached too.
-            private readonly Dictionary<(object, object), bool> _pending = new();
-            public RecipientEvaluationMemo() { _outer = s_current; s_current = this; }
+            private readonly Dictionary<(object, object), bool> _pending;
+
+            // The verdicts outlive one Enumerate: one store per player, kept while the key of
+            // everything a verdict reads (DevelopmentAdmission.RecipientVerdictKey) is unchanged
+            // and replaced as soon as it differs. Recipients are live object identities, which the
+            // key pins (runtime ids, armies, hand), so a replaced store is never consulted again.
+            internal sealed class VerdictStore
+            {
+                internal string Key;
+                internal readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> Verdicts = new();
+                internal readonly Dictionary<(object, object), bool> Pending = new();
+            }
+
+            private static readonly Dictionary<PlayerSetupData, VerdictStore> s_stores = new();
+
+            internal static VerdictStore StoreFor(PlayerSetupData player, string key)
+            {
+                if (player == null)
+                    return new VerdictStore { Key = key };
+                if (!s_stores.TryGetValue(player, out VerdictStore store) || !string.Equals(store.Key, key, System.StringComparison.Ordinal))
+                    s_stores[player] = store = new VerdictStore { Key = key };
+                return store;
+            }
+
+            public RecipientEvaluationMemo(VerdictStore store)
+            {
+                _verdicts = store.Verdicts;
+                _pending = store.Pending;
+                _outer = s_current;
+                s_current = this;
+            }
             public void Dispose() => s_current = _outer;
 
             public static bool TryGet(CardDefinition equipment, object recipient, bool future,

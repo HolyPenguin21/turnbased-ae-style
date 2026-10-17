@@ -53,6 +53,7 @@ namespace Game.Ai.V2
             yield return _frame.PrepareColdResidual();
             List<AxisDemand> coldDemands = _frame.GenerateDemands(_demandAxes)
                 .Where(d => d != null && _coldAxes.Contains(d.RequestingAxis)).ToList();
+            yield return _frame.Checkpoint();
             if (coldDemands.Count > 0)
             {
                 // Phase A owns one carried Reservation object. Its per-call residual

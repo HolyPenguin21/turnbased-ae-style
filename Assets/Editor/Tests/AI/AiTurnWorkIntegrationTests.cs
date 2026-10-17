@@ -278,7 +278,7 @@ namespace Game.EditorTests
                 "outcome.SettledStep(progressed)", "outcome.StopAfterSettledStep(");
 
             // the iteration itself: frame pacing -> deferred flush -> frame -> portfolio -> returns -> parking -> funding -> pack
-            InOrder(iteration, "iteration start", "realtimeSinceStartup", "ReadmissionCause.DeferredFlush",
+            InOrder(iteration, "iteration start", "_frame.Checkpoint()", "ReadmissionCause.DeferredFlush",
                 "_frame.PrepareAdmission()", "MissionPortfolio.Build(", "DeferReturnsBeforeTempo(", "_passParking.Filter(",
                 "BindFunding(", "ResourceAllocator.BeginTurn(", "new ProvisioningSession(", ".Pack()",
                 "MandatoryAviationOrder.Next(", "OperationalWorkSelection.Select(");

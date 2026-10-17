@@ -165,7 +165,8 @@ namespace Game.Ai.V2
                         // Price each canonical sparable hero on its own movement and exact
                         // Shell/Host/Create witness. Demand compares roles and delivery; execution
                         // later revalidates the selected runtime identity before extraction.
-                        HexPath garrisonRoute = SafeStepPathing.FindSafePath(
+                        // One cached tree per mover answers every candidate site of the scan.
+                        HexPath garrisonRoute = SafeStepPathing.FindSafePathFromSource(
                             ctx.Map, player, army.Hex, target, sparableHero.MoveMax);
                         if (garrisonRoute != null)
                         {
@@ -217,7 +218,7 @@ namespace Game.Ai.V2
                 // SafeStepPathing.FindSafePath, generalising the old post-hoc bd283fb reject into
                 // the search itself), so the route returned — if any — is already guaranteed
                 // usable; the per-hex re-check below is now just a defensive safety net.
-                HexPath route = SafeStepPathing.FindSafePath(
+                HexPath route = SafeStepPathing.FindSafePathFromSource(
                     ctx.Map, player, army.Hex, target, army.MaxMovement);
                 if (route == null)
                     continue;

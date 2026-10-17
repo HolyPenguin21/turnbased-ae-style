@@ -663,7 +663,8 @@ namespace Game.EditorTests
                     .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));
                 return System.Text.RegularExpressions.Regex.Matches(code, @"_?frame\.(\w+)\(")
                     .Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value)
-                    .Where(n => n != "Snapshot").ToArray();
+                    // Checkpoint is frame pacing (FramePacer), not a moment of the decision protocol.
+                    .Where(n => n != "Snapshot" && n != "Checkpoint").ToArray();
             }
             Assert.That(Calls("AiStrategyV2Pipeline.cs"), Is.EqualTo(new[]
             {
