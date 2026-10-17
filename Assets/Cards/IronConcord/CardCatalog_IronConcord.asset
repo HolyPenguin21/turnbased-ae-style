@@ -1681,7 +1681,7 @@ MonoBehaviour:
     apCost: 5
     resourceCost:
       human: 0
-      energy: 2
+      energy: 3
       materials: 1
       tech: 2
     requiredBuildingAbility: Barracks
@@ -1961,9 +1961,9 @@ MonoBehaviour:
     apCost: 5
     resourceCost:
       human: 0
-      energy: 2
+      energy: 3
       materials: 1
-      tech: 1
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
@@ -2323,53 +2323,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 49
-    authoredKey: concord.card.artillery-tank
-    deckPointCost: 6
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Artillery Tank
-    art: {fileID: 21300000, guid: 9fa4995b6ddf22940b0441796514f9af, type: 3}
-    detailArt: {fileID: 21300000, guid: 1e08c58e4b42d0642a06fd5d0cd0bb59, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 7
-    resourceCost:
-      human: 0
-      energy: 4
-      materials: 2
-      tech: 5
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 7
-    defenseRating: 3
-    range: 4
-    hitPoints: 5
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - Splash
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 50
     authoredKey: concord.card.storm-petrel
     deckPointCost: 6
     deckCopyLimit: 2
@@ -2416,7 +2369,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 51
+  - id: 50
     authoredKey: concord.card.needle-rail-tank
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2462,7 +2415,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 52
+  - id: 51
     authoredKey: concord.card.wasp
     deckPointCost: 5
     deckCopyLimit: 4
@@ -2510,7 +2463,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 53
+  - id: 52
     authoredKey: concord.card.heavy-tank
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2557,7 +2510,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 54
+  - id: 53
     authoredKey: concord.card.sandnought
     deckPointCost: 6
     deckCopyLimit: 2
@@ -2604,7 +2557,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 55
+  - id: 54
     authoredKey: concord.card.mantis
     deckPointCost: 5
     deckCopyLimit: 3
@@ -2617,9 +2570,9 @@ MonoBehaviour:
     apCost: 7
     resourceCost:
       human: 0
-      energy: 1
-      materials: 3
-      tech: 1
+      energy: 2
+      materials: 4
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -2650,6 +2603,53 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
+  - id: 55
+    authoredKey: concord.card.artillery-tank
+    deckPointCost: 6
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Artillery Tank
+    art: {fileID: 21300000, guid: 9fa4995b6ddf22940b0441796514f9af, type: 3}
+    detailArt: {fileID: 21300000, guid: 1e08c58e4b42d0642a06fd5d0cd0bb59, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 7
+    resourceCost:
+      human: 0
+      energy: 5
+      materials: 2
+      tech: 4
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 7
+    defenseRating: 2
+    range: 4
+    hitPoints: 5
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 56
     authoredKey: concord.card.pulse-cannon
     deckPointCost: 6
@@ -2665,13 +2665,13 @@ MonoBehaviour:
       human: 0
       energy: 3
       materials: 1
-      tech: 3
+      tech: 4
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 6
     defenseRating: 2
     range: 3
     hitPoints: 3
@@ -2710,7 +2710,7 @@ MonoBehaviour:
     apCost: 7
     resourceCost:
       human: 0
-      energy: 3
+      energy: 4
       materials: 2
       tech: 3
     requiredBuildingAbility: Barracks
@@ -2755,7 +2755,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 8
     resourceCost:
-      human: 0
+      human: 2
       energy: 3
       materials: 4
       tech: 3
@@ -2802,7 +2802,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 9
     resourceCost:
-      human: 0
+      human: 2
       energy: 3
       materials: 5
       tech: 3
