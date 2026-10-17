@@ -1554,8 +1554,8 @@ MonoBehaviour:
     hitPoints: 6
     initiative: 1
     isAviation: 1
-    launchEnergyCost: 2
-    turnsWithoutRefuel: 1
+    launchEnergyCost: 1
+    turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -1930,7 +1930,7 @@ MonoBehaviour:
     isAviation: 1
     launchEnergyCost: 1
     turnsWithoutRefuel: 1
-    antiAirRadius: 2
+    antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
@@ -2397,8 +2397,8 @@ MonoBehaviour:
     initiative: 3
     isAviation: 1
     launchEnergyCost: 2
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    turnsWithoutRefuel: 3
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
