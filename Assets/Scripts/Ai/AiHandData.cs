@@ -66,9 +66,9 @@ namespace Game.Ai
             if (deckCatalog != null)
                 _remainingDeck.AddRange(deckCatalog.BuildAiDeckPool(faction, aiDeckName));
 
-            for (int i = 0; i < startingHandSize; i++)
-                if (DrawOne() == null)
-                    break;
+            foreach (CardDefinition definition in DeckDraw.DrawStartingHand(_remainingDeck,
+                Math.Min(startingHandSize, Capacity)))
+                AddCard(new CardData(definition));
         }
 
         // The owner's current turn, pushed in by AiTurnController.RunTurn every turn (same way as
