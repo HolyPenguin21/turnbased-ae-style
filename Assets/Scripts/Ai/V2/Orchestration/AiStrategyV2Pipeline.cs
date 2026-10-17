@@ -175,6 +175,7 @@ namespace Game.Ai.V2
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). All real axes are live.
             var demandAxes = new HashSet<DesireAxis>(DesireAxes.All);
+            yield return frame.WarmDemands();
             frame.RebuildDemands(demandAxes);
 
             // S2. Phase A's AP budget reads the player's live AP; its only own state is the

@@ -650,6 +650,26 @@ namespace Game.Ai.V2
             public EquipmentTargetMemo() { _outer = s_current; s_current = this; }
             public void Dispose() => s_current = _outer;
 
+            // A memo filled in several pieces (Development's paced verdict warm-up yields between
+            // equipment cards): created inactive, then entered around each piece, so the scope is
+            // never left active across a frame. Valid because nothing mutates the world between AI
+            // frames (FramePacer); the keys still include the snapshot.
+            private EquipmentTargetMemo(bool activate)
+            {
+                if (activate) { _outer = s_current; s_current = this; }
+            }
+
+            internal static EquipmentTargetMemo Detached() => new EquipmentTargetMemo(false);
+
+            internal System.IDisposable Enter() => new Entry(this);
+
+            private sealed class Entry : System.IDisposable
+            {
+                private readonly EquipmentTargetMemo _previous;
+                internal Entry(EquipmentTargetMemo memo) { _previous = s_current; s_current = memo; }
+                public void Dispose() => s_current = _previous;
+            }
+
             internal static bool TryGet(WorldSnapshot snap, MissionIntent purpose,
                 out List<WorthIt.DefenderProfile> targets)
             {

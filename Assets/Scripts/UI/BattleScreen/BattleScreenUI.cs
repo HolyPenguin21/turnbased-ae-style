@@ -112,6 +112,11 @@ namespace Game.UI
         // purely a pacing/readability delay, same idea as GameTurnController.PassAfterDelay for the
         // strategic-map turn loop.
         [SerializeField] private float aiActionDelay = 0.5f;
+        // A battle with no human in it (fought during an AI turn) runs at most one action per this
+        // interval for its whole length, so its per-action work does not pile into a few heavy
+        // frames the waiting player sees as a hitch. A long fight simply takes longer (owner,
+        // 2026-10-17). 0 restores the budget-packed pacing below.
+        [SerializeField] private float unpacedActionInterval = 0.05f;
         // Fast but smooth, per the user's own spec — same order of magnitude as
         // ArmyUnitCardUI.slotAnimDuration's own "quick but eased" convention.
         [SerializeField] private float moveAnimDuration = 0.15f;
@@ -744,9 +749,13 @@ namespace Game.UI
             // == null — AI vs. AI or AI vs. neutral, see the class comment's own Show() note) —
             // per the user's own request (2026-08-24) to stop stalling a purely AI/neutral fight
             // for spectator readability. A human-vs-AI battle keeps the beat unchanged: it's still
-            // that human's own opponent "thinking" on-screen.
+            // that human's own opponent "thinking" on-screen. Since 2026-10-17 a no-human fight is
+            // spread over frames (unpacedActionInterval) to avoid a hitch; a human's own Fast
+            // Resolve keeps the budget-packed pacing.
             if (HasInteractiveParticipant && aiActionDelay > 0f)
                 yield return new WaitForSeconds(aiActionDelay);
+            else if (_localArmy == null && unpacedActionInterval > 0f)
+                yield return new WaitForSeconds(unpacedActionInterval);
             else if (_unpacedBattleFrameStart < 0f
                 || Time.realtimeSinceStartup - _unpacedBattleFrameStart >= UnpacedBattleFrameBudgetSeconds)
             {
