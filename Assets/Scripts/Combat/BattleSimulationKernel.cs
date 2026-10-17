@@ -46,39 +46,71 @@ namespace Game.Combat
             IEnumerable<string> defenderAbilities, int hpCap, out float hitChance,
             bool secondary = false, IEnumerable<string> secondaryAbilities = null)
         {
-            attack = Mathf.Max(0, attack);
-            defense = Mathf.Max(0, defense);
-            // The result is a pure function of these numbers, the pair's modifier profile and the
-            // (constant) default magnitudes: equipment valuation asks the same exchange thousands
-            // of times per turn, so it is computed once per distinct input.
-            var profile = ChallengeResult.ModifierProfile.Of(attackerAbilities, defenderTags, defenderAbilities);
-            bool secondaryCeramic = secondary && HasAbility(secondaryAbilities, UnitAbilities.CeramicArmor);
-            var key = (attack, defense, Mathf.Max(0, hpCap),
-                profile.Bits | (secondary ? 32 : 0) | (secondaryCeramic ? 64 : 0));
-            if (s_expectedExchanges.TryGetValue(key, out (float Damage, float Hit) known))
-            {
-                hitChance = known.Hit;
-                return known.Damage;
-            }
-            float expected = ComputeExpectedExchange(attack, defense, profile, hpCap, secondary,
-                secondaryCeramic, out hitChance);
-            if (s_expectedExchanges.Count >= MaxExpectedExchanges)
-                s_expectedExchanges.Clear();
-            s_expectedExchanges[key] = (expected, hitChance);
-            return expected;
+            ExchangeEntry exchange = Exchange(attack, defense, attackerAbilities, defenderTags,
+                defenderAbilities, hpCap, secondary, secondaryAbilities);
+            hitChance = exchange.Hit;
+            return exchange.Expected;
         }
 
-        private const int MaxExpectedExchanges = 65536;
-        private static readonly Dictionary<(int, int, int, int), (float Damage, float Hit)> s_expectedExchanges =
-            new Dictionary<(int, int, int, int), (float Damage, float Hit)>();
+        // Capped damage PMF: the last bucket contains every lethal/overkill outcome. Consumers
+        // may carry HP distributions across contacts without reimplementing dice or abilities.
+        // The caller owns the returned array (a copy of the memoised one).
+        public static double[] ExchangeDamageDistribution(int attack, int defense,
+            IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTags,
+            IEnumerable<string> defenderAbilities, int hpCap, out float hitChance,
+            bool secondary = false, IEnumerable<string> secondaryAbilities = null)
+        {
+            ExchangeEntry exchange = Exchange(attack, defense, attackerAbilities, defenderTags,
+                defenderAbilities, hpCap, secondary, secondaryAbilities);
+            hitChance = exchange.Hit;
+            return (double[])exchange.Distribution.Clone();
+        }
 
-        private static float ComputeExpectedExchange(int attack, int defense,
-            ChallengeResult.ModifierProfile profile, int hpCap, bool secondary, bool secondaryCeramic,
+        private sealed class ExchangeEntry
+        {
+            internal double[] Distribution;
+            internal float Expected;
+            internal float Hit;
+        }
+
+        // The exchange is a pure function of these numbers, the pair's modifier profile and the
+        // (constant) default magnitudes: equipment valuation asks the same exchange thousands of
+        // times per turn, so it is computed once per distinct input.
+        private const int MaxExchanges = 65536;
+        private static readonly Dictionary<(int, int, int, int), ExchangeEntry> s_exchanges =
+            new Dictionary<(int, int, int, int), ExchangeEntry>();
+
+        private static ExchangeEntry Exchange(int attack, int defense,
+            IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTags,
+            IEnumerable<string> defenderAbilities, int hpCap, bool secondary, IEnumerable<string> secondaryAbilities)
+        {
+            attack = Mathf.Max(0, attack);
+            defense = Mathf.Max(0, defense);
+            int cap = Mathf.Max(0, hpCap);
+            var profile = ChallengeResult.ModifierProfile.Of(attackerAbilities, defenderTags, defenderAbilities);
+            bool secondaryCeramic = secondary && HasAbility(secondaryAbilities, UnitAbilities.CeramicArmor);
+            var key = (attack, defense, cap, profile.Bits | (secondary ? 32 : 0) | (secondaryCeramic ? 64 : 0));
+            if (s_exchanges.TryGetValue(key, out ExchangeEntry known))
+                return known;
+            double[] distribution = ComputeDistribution(attack, defense, profile, cap, secondary,
+                secondaryCeramic, out float hit);
+            double damage = 0;
+            for (int d = 1; d < distribution.Length; d++) damage += d * distribution[d];
+            var entry = new ExchangeEntry { Distribution = distribution, Expected = (float)damage, Hit = hit };
+            if (s_exchanges.Count >= MaxExchanges)
+                s_exchanges.Clear();
+            s_exchanges[key] = entry;
+            return entry;
+        }
+
+        private static double[] ComputeDistribution(int attack, int defense,
+            ChallengeResult.ModifierProfile profile, int cap, bool secondary, bool secondaryCeramic,
             out float hitChance)
         {
+            var distribution = new double[cap + 1];
             int n = attack + defense;
             int center = n / 2;
-            double mass = 0, damage = 0, hits = 0;
+            double mass = 0, hits = 0;
             void Accumulate(int successes, double weight)
             {
                 int d = ChallengeResult.ApplyAbilityModifiers(Mathf.Max(0, successes - defense),
@@ -86,7 +118,7 @@ namespace Game.Combat
                 mass += weight;
                 if (d > 0) hits += weight;
                 if (secondary) d = SecondaryDamage(d, secondaryCeramic, AbilityMagnitudes.Default);
-                damage += weight * Mathf.Min(d, Mathf.Max(0, hpCap));
+                distribution[Mathf.Min(d, cap)] += weight;
             }
             Accumulate(center, 1);
             double w = 1;
@@ -102,7 +134,8 @@ namespace Game.Combat
                 Accumulate(k + 1, w);
             }
             hitChance = (float)(hits / mass);
-            return (float)(damage / mass);
+            for (int d = 0; d < distribution.Length; d++) distribution[d] /= mass;
+            return distribution;
         }
 
         public static BattleSimExchangeOutcome ResolveExchange(int attackPool, int defensePool,

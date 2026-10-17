@@ -43,6 +43,7 @@ namespace Game.Ai.V2
                 root != null && ctx != null ? StrategicSpendability.SpendableAp(player, root, ctx) : (float?)null)
             + $"|res={resources}"
             + $"|price={PriceInputs(snapshot, player, root, ctx)}"
+            + $"|operatorForecast={OperatorForecastFacts(snapshot, player)}"
             + $"|hand={handVersion}"
             + $"|recipients={RecipientFacts(player, hand)}"
             // The need's exact inputs, not its value: computing the value runs the Monte Carlo
@@ -56,8 +57,8 @@ namespace Game.Ai.V2
 
         // Everything one (equipment, recipient) verdict of DevelopmentOpportunityEvaluator reads:
         // legality, the signed delta, the purpose label and the pending-hand check. Unlike
-        // Fingerprint it leaves out what only the price and admission read (AP, resources, price
-        // inputs, need, supply, repeat history), so verdicts survive the spending between passes.
+        // Most recipients do not read prices. Fate now forecasts affordable operator outputs,
+        // so its verdict also depends on AP, bank-aware stock, pending demand and repeat history.
         // On top of Facts/RecipientFacts it carries the live inputs the delta reads that the
         // admission key does not: own vision of known air contacts, own AA reaction state, unit
         // stealth/AA radius/permanent movement, member order (AA firing order), the strike roster.
@@ -95,6 +96,7 @@ namespace Game.Ai.V2
                 .Select(i => $"{i.IntentKey}:{i.Kind}:"
                     + string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i).OrderBy(x => x))));
             return $"turn={snapshot?.TurnNumber}"
+                + $"|operatorForecast={OperatorForecastFacts(snapshot, player)}"
                 + $"|held={held}"
                 + $"|memory={AiMapMemory.RouteMemoryVersionFor(player)}"
                 + $"|know={snapshot?.KnowledgeVersion}"
@@ -102,6 +104,22 @@ namespace Game.Ai.V2
                 + $"|live={string.Join(";", live)}"
                 + $"|strike={strike}"
                 + $"|{Facts(snapshot, activeIntents)}";
+        }
+
+        internal static string OperatorForecastFacts(WorldSnapshot snap, PlayerSetupData player)
+        {
+            string budget = string.Join(",", ResourceBundle.All.Select(t =>
+                $"{snap?.Economy?.SpendableStockpile.Get(t)}:{snap?.Self?.PerTurnIncome.Get(t)}:"
+                + ActionPrice.PendingCardResourceDemand(snap, t).ToString("R", CultureInfo.InvariantCulture)));
+            string sources = string.Join(",", (snap?.Development?.ForecastSources
+                    ?? System.Array.Empty<GenerationStep>())
+                .Select(g => $"{g.CardKey}:{g.Hero?.Fate}:{g.Mode}:{g.FacilityHex}")
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+            ApActionEconomySnapshot ap = snap?.Self?.ApEconomy;
+            return $"{snap?.Self?.ActionPoints}:{snap?.Development?.ForecastActionPoints}:{ap?.BaseActionPoints}:{ap?.WitnessedApDemand}:"
+                + $"{ap?.EstimatedArmyApDemand}:{ap?.EstimatedCardApDemand}:{budget}:{sources}:"
+                + DevelopmentDiversity.HistoryKey(player, snap?.TurnNumber ?? 0)
+                + "|preservation=" + PriceInputs(snap, player, null, null);
         }
 
         // Per resource: spendable (stock net of other owners' holds), income, and the current
@@ -112,7 +130,7 @@ namespace Game.Ai.V2
             int turn = snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0;
             return string.Join(";", ResourceBundle.All.Select(t =>
             {
-                string spend = root != null && ctx != null
+                string spend = ctx != null && root != null
                     ? StrategicSpendability.SpendableAmount(player, root, ctx, t)
                         .ToString("0.###", CultureInfo.InvariantCulture)
                     : "-";

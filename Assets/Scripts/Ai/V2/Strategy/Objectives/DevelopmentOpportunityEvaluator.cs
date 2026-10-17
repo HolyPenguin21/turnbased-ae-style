@@ -1114,9 +1114,12 @@ namespace Game.Ai.V2
             HexCoord facilityHex, CardDefinition equipment, float successChance,
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag,
-            CardData attachmentCard = null, bool futureAttachment = false)
+            CardData attachmentCard = null, bool futureAttachment = false,
+            IReadOnlyList<CardData> forecastHand = null)
         {
             var result = new List<DevelopmentOpportunity>();
+            IReadOnlyList<CardData> cardsInHand = hand?.Hand;
+            cardsInHand = cardsInHand ?? forecastHand ?? System.Array.Empty<CardData>();
             diag = "no equipment grant on the card";
             if (equipment?.equipment == null)
                 return result;
@@ -1129,7 +1132,9 @@ namespace Game.Ai.V2
             RecipientVerdict? lastNoNeed = null;
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
             // Memoised only for the standard (no explicit attachment card) call.
-            bool memoised = attachmentCard == null;
+            // Nested Fate look-ahead suppresses recursive genomes. Its temporary verdicts
+            // must neither read nor populate the ordinary persistent recipient cache.
+            bool memoised = attachmentCard == null && !EquipmentUpgradeValuation.IsOperatorForecast;
 
             // Production context of a real generation source (READY, and its materialization
             // re-enumeration), applied BEFORE the gain is priced so the task score, the card EV and
@@ -1181,7 +1186,7 @@ namespace Game.Ai.V2
                         if (!memoised || !RecipientEvaluationMemo.TryGetPending(recipient, slot, out covers))
                         {
                             using (new Game.Core.ProfileScope("AI/Dev.PendingCovers"))
-                                covers = PendingEquipmentCovers(probe, hand, snap, inv);
+                                covers = PendingEquipmentInHandCovers(probe, cardsInHand, snap, inv);
                             if (memoised) RecipientEvaluationMemo.StorePending(recipient, slot, covers);
                         }
                     }
@@ -1212,17 +1217,16 @@ namespace Game.Ai.V2
                 });
             }
 
-            if (hand?.Hand != null)
-                foreach (CardData c in hand.Hand)
-                {
-                    if (c?.Definition == null) continue;
-                    if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
-                    handChecked++;
-                    RecipientVerdict v = Evaluate(c, c, null);
-                    if (!v.Legal)
-                    { lastReject = v.Why; lastNoNeed = null; continue; }
-                    Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
-                }
+            foreach (CardData c in cardsInHand)
+            {
+                if (c?.Definition == null) continue;
+                if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
+                handChecked++;
+                RecipientVerdict v = Evaluate(c, c, null);
+                if (!v.Legal)
+                { lastReject = v.Why; lastNoNeed = null; continue; }
+                Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
+            }
 
             foreach (ArmyData army in OwnWorld.Of(player).Armies)
             {
@@ -1260,8 +1264,12 @@ namespace Game.Ai.V2
 
         internal static bool PendingEquipmentCovers(DevelopmentOpportunity op, AiHandData hand,
             WorldSnapshot snap, CapabilityInventory inv)
+            => PendingEquipmentInHandCovers(op, hand?.Hand, snap, inv);
+
+        private static bool PendingEquipmentInHandCovers(DevelopmentOpportunity op, IReadOnlyList<CardData> cards,
+            WorldSnapshot snap, CapabilityInventory inv)
         {
-            foreach (CardData pending in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+            foreach (CardData pending in cards ?? System.Array.Empty<CardData>())
             {
                 CardDefinition def = pending?.Definition;
                 if (def?.cardType != CardType.Equipment || def.attachmentSlot != op.Card.attachmentSlot)

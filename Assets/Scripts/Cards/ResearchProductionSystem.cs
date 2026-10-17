@@ -344,11 +344,16 @@ namespace Game.Cards
         // Slightly optimistic near the margin, but monotonic in every input that matters (higher
         // required ⇒ lower, more Fate ⇒ higher), which is all a ranking signal needs.
         public static float EstimateSuccessChance(UnitData hero, CardDefinition card, int maxFateSpend = int.MaxValue)
+            => EstimateSuccessChanceForFate(hero != null ? hero.Fate : 0, card, maxFateSpend);
+
+        // Pure projection used by attachment valuation; never temporarily change a live hero's Fate.
+        public static float EstimateSuccessChanceForFate(int fate, CardDefinition card,
+            int maxFateSpend = int.MaxValue)
         {
             int required = RequiredSuccesses(card);
             if (required <= 0)
                 return 1f;
-            int fateAvail = hero != null ? Mathf.Max(0, hero.Fate) : 0;
+            int fateAvail = Mathf.Max(0, fate);
             int dice = DicePoolSize + Mathf.Clamp(maxFateSpend, 0, fateAvail);
             return BinomialTailAtLeast(dice, 0.5, required);
         }
