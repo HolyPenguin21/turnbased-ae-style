@@ -106,6 +106,10 @@ namespace Game.Ai.V2
     {
         public IReadOnlyList<DevelopmentFacility> Facilities = System.Array.Empty<DevelopmentFacility>();
         public IReadOnlyList<DevelopmentOffering> Offerings = System.Array.Empty<DevelopmentOffering>();
+        // Same canonical staffed sources before today's affordability/window gates. Valuation
+        // may forecast a bounded future budget; these previews never authorize a payment.
+        public IReadOnlyList<GenerationStep> ForecastSources = System.Array.Empty<GenerationStep>();
+        internal float? ForecastActionPoints; // bank-aware AP available now; null in reference contexts
         // T06 — every card this faction's Research/Production can EVER mint (both modes, the
         // catalog's offered list, facility/operator/resources/window ignored). Challenges repeat,
         // so this is the strict upper bound of the generation source in the known pool.

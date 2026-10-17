@@ -85,6 +85,106 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void CeramicArmorPricesLethalTailsEvenWhenMeanHpAlreadySurvives()
+        {
+            var ctx = Ctx(EnemyR(1, 2, 3, 4)); ctx.KnownDistance = 1;
+            var host = S(3, 2, 5, 2);
+            // Exact enumeration: plain survival 0.935180664; Ceramic survival 0.999511719.
+            // The old mean-HP model put both at three attacks and returned zero.
+            float gain = U(host, host, ctx, None, new[] { UnitAbilities.CeramicArmor }).Combat;
+            Assert.That(gain, Is.GreaterThan(0.07f));
+            Assert.That(U(host, host, ctx).Combat, Is.Zero, "unchanged state has no gain");
+        }
+
+        [Test]
+        public void SurvivingTheHorizonHasValueEvenWithoutAnAttackInsideIt()
+        {
+            var ctx = Ctx(EnemyR(1, 2, 3, 4)); ctx.KnownDistance = 1;
+            Assert.That(U(S(0, 1, 4, 1), S(0, 2, 5, 1), ctx).Combat, Is.GreaterThan(0f),
+                "keeping the owned body is distinct from attacks already made");
+            ctx.KnownDistance = 2;
+            Assert.That(U(S(0, 1, 4, 1), S(0, 2, 5, 1), ctx).Combat, Is.Zero,
+                "no incoming fire must not invent a preservation gain");
+        }
+
+        [Test]
+        public void DamageDistributionRetainsTheLethalTail()
+        {
+            double[] p = BattleSimulationKernel.ExchangeDamageDistribution(3, 1,
+                None, new UnitTypeTag[0], None, 4, out float hit);
+            Assert.That(p, Is.EqualTo(new[] { 0.3125d, 0.375d, 0.25d, 0.0625d, 0d }).Within(1e-10));
+            Assert.That(hit, Is.EqualTo(0.6875f));
+            Assert.That(BattleSimulationKernel.ExpectedExchangeDamage(3, 1,
+                None, new UnitTypeTag[0], None, 4, out _), Is.EqualTo(1.0625f));
+        }
+
+        [Test]
+        public void KnownEmptyOperatorForecastDoesNotRestoreReferenceFateValue()
+        {
+            var ctx = new EfficiencyContext { IsHero = true, CommandsFieldArmy = false,
+                OperatorOutputs = new (float Utility, float CostIfSuccess, float PBefore, float PAfter)[0] };
+            Assert.That(U(S(0, 1, 5, 1, fate: 3), S(0, 1, 5, 1, fate: 4), ctx,
+                new[] { UnitAbilities.Researcher }).Fate, Is.Zero);
+        }
+
+        [TestCase(AttachmentSlot.Equipment, ResearchProductionMode.Production)]
+        [TestCase(AttachmentSlot.Mutator, ResearchProductionMode.Research)]
+        public void LiveOperatorFateForecastUsesBothOutputModesAndFiniteBudget(
+            AttachmentSlot slot, ResearchProductionMode mode)
+        {
+            var player = new PlayerSetupData();
+            var hero = new UnitData { IsHero = true, Fate = 3 };
+            var host = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 3, defenseRating = 1, hitPoints = 4, range = 2, initiative = 1,
+                moveMax = 3, activationApCost = 1,
+                unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry } });
+            var output = new CardDefinition { authoredKey = "test.operator.output", cardType = CardType.Equipment,
+                attachmentSlot = slot, fate = 4, apCost = 1, activationApCost = 1,
+                resourceCost = new ResourceCost { human = 1 }, equipment = new EquipmentGrant {
+                    hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Infantry },
+                    hostKinds = new List<EquipmentHostKind> { EquipmentHostKind.Unit } } };
+            output.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 4 });
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 1,
+                Self = new SelfSnapshot { Hand = new[] { host }, ActionPoints = 12 },
+                Economy = new EconomyStanding { SpendableStockpile = new ResourceBundle { Human = 1 } },
+                Development = new DevelopmentReadiness { ForecastSources = new[] {
+                    new GenerationStep { Hero = hero, CardDef = output, Mode = mode } } } };
+            var forecast = EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5);
+            Assert.That(forecast.Count, Is.EqualTo(1), "only one stake fits the shared budget");
+            Assert.That(forecast[0].PAfter, Is.GreaterThan(forecast[0].PBefore));
+            Assert.That(EquipmentUpgradeValuation.IsOperatorForecast, Is.False,
+                "nested forecast scope must end before the next ordinary recipient evaluation");
+            Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5).Count,
+                Is.EqualTo(forecast.Count), "a second ordinary evaluation cannot inherit nested suppression");
+            Assert.That(hero.Fate, Is.EqualTo(3), "projection never mutates the operator");
+            Assert.That(snap.Economy.SpendableStockpile.Human, Is.EqualTo(1f), "forecast never spends the bank");
+            string before = DevelopmentAdmission.OperatorForecastFacts(snap, player);
+            snap.Economy.SpendableStockpile = default;
+            Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5), Is.Empty,
+                "reserved/absent funds cannot finance a forecast");
+            Assert.That(DevelopmentAdmission.OperatorForecastFacts(snap, player), Is.Not.EqualTo(before));
+            snap.Economy.SpendableStockpile = new ResourceBundle { Human = 10 };
+            snap.Development.ForecastActionPoints = 0f;
+            Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5), Is.Empty,
+                "AP already reserved by another task is unavailable even while the raw pool is positive");
+            Assert.That(DevelopmentAdmission.OperatorForecastFacts(snap, player), Is.Not.EqualTo(before));
+            snap.Development.ForecastActionPoints = null;
+            snap.Self.ActionPoints = 0;
+            Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5), Is.Empty);
+            snap.Self.ActionPoints = 12;
+            var other = new UnitData { IsHero = true, Fate = 8 };
+            snap.Development.ForecastSources = new[] {
+                new GenerationStep { Hero = hero, CardDef = output, Mode = mode },
+                new GenerationStep { Hero = other, CardDef = output, Mode = mode } };
+            Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5), Is.Empty,
+                "an already better operator removes the marginal success gain");
+            snap.Development.ForecastSources = new[] { new GenerationStep { Hero = hero, CardDef = output, Mode = mode } };
+            output.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Fate, amount = 1 });
+            Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5), Is.Empty,
+                "a genome must not recursively finance itself");
+        }
+
+        [Test]
         public void Regeneration_HealsOnlyAWoundedSurvivor()
         {
             var regen = new[] { UnitAbilities.Regeneration };

@@ -65,6 +65,10 @@ namespace Game.Ai.V2
             rd.UpgradeTargetCount = targets;
 
             ResearchProductionCatalog catalog = ctx?.ResearchProductionCatalog;
+            rd.ForecastActionPoints = StrategicSpendability.SpendableAp(player, root, ctx);
+            if (catalog != null)
+                rd.ForecastSources = GenerationSource.Enumerate(player, root, ctx, hand,
+                    null, null, resourceForecast: true);
             var staffed = new List<CardDefinition>();
 
             foreach (BuildingData b in BuildingRegistry.AllBuildings())

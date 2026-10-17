@@ -56,8 +56,11 @@ namespace Game.Ai.V2
             if (!ctx.IsHero)
             {
                 IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx);
-                float cBefore = Contribution(before, beforeAbilities, ctx, ground);
-                float cAfter = Contribution(after, afterAbilities, ctx, ground);
+                // One common value of the already owned body, including its existing stat upgrades.
+                // End-of-horizon survival is separate from attacks already earned inside it.
+                float survivorValue = Base(before) * AiConfigV2.equipCardValuePerE;
+                float cBefore = Contribution(before, beforeAbilities, ctx, ground, survivorValue);
+                float cAfter = Contribution(after, afterAbilities, ctx, ground, survivorValue);
                 dC = cAfter - cBefore;
                 float scale = AiConfigV2.equipCombatCardScale;
                 if (Mathf.Approximately(ctx.OffenseMult, ctx.DefenseMult))
@@ -73,7 +76,7 @@ namespace Game.Ai.V2
                     // Defensive abilities (Regeneration, CeramicArmor) belong to the defensive share.
                     var midAbilities = afterAbilities.Where(a => !IsDefensiveAbility(a))
                         .Concat(beforeAbilities.Where(IsDefensiveAbility)).ToList();
-                    float cMid = Contribution(offensiveOnly, midAbilities, ctx, ground);
+                    float cMid = Contribution(offensiveOnly, midAbilities, ctx, ground, survivorValue);
                     offense = scale * (cMid - cBefore) * ctx.OffenseMult;
                     defense = scale * (cAfter - cMid) * ctx.DefenseMult;
                 }
@@ -138,7 +141,9 @@ namespace Game.Ai.V2
             if (ctx.IsHero && (!operatorHost || ctx.CommandsFieldArmy))
                 // Commander Fate keeps its owner weight (mean army Attack per Fate point), in card units.
                 fate += dFate * AiConfigV2.equipHeroFateFactor * ctx.ArmyAttack * AiConfigV2.equipCardValuePerE;
-            if (ctx.OperatorOutputs != null && ctx.OperatorOutputs.Count > 0)
+            // null = a reference context without witnesses; empty = a known operator with
+            // no useful affordable output. Empty must not restore the flat reference value.
+            if (ctx.OperatorOutputs != null)
                 foreach (var o in ctx.OperatorOutputs)
                     fate += (o.PAfter - o.PBefore) * Mathf.Max(0f, o.Utility - o.CostIfSuccess);
             else if (operatorHost)
@@ -242,18 +247,18 @@ namespace Game.Ai.V2
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>
             s_contributions = new System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>();
 
-        private static string ContributionKey(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx)
+        private static string ContributionKey(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx, float survivorValue)
         {
             var tags = ctx.HostTags != null ? string.Join(",", ctx.HostTags) : string.Empty;
-            return $"{s.Attack}|{s.Defense}|{s.HitPoints}|{s.Range}|{s.Initiative}|{ctx.HpSpent}|{ctx.KnownDistance}|"
+            return $"{survivorValue}|{s.Attack}|{s.Defense}|{s.HitPoints}|{s.Range}|{s.Initiative}|{ctx.HpSpent}|{ctx.KnownDistance}|"
                 + $"{ctx.HostCommanderInitiative}|{ctx.EnemyCommanderInitiative}|{ctx.SecondaryNeighbors}|{tags}|"
                 + string.Join(",", abilities);
         }
 
         // Mean over the enemy profiles of the unscaled contribution, times the body scale.
-        // Mean-field over contacts: expected wound carries, P(alive) multiplies every later contact.
+        // Each contact carries the complete surviving HP distribution, including lethal tails.
         private static float Contribution(EfficiencyStats s, IReadOnlyCollection<string> abilities,
-            EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets)
+            EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets, float survivorValue)
         {
             Dictionary<string, float> memo = null;
             string key = null;
@@ -261,14 +266,14 @@ namespace Game.Ai.V2
             if (owner != null)
             {
                 memo = s_contributions.GetValue(owner, _ => new Dictionary<string, float>());
-                key = ContributionKey(s, abilities, ctx);
+                key = ContributionKey(s, abilities, ctx, survivorValue);
                 lock (memo)
                     if (memo.TryGetValue(key, out float cached))
                         return cached;
             }
             float sum = 0f;
             foreach (var t in targets)
-                sum += ContactSeries(s, abilities, ctx, t);
+                sum += ContactSeries(s, abilities, ctx, t, survivorValue);
             float value = AiConfigV2.equipCombatBodyScale * sum / targets.Count;
             if (memo != null)
                 lock (memo)
@@ -284,7 +289,7 @@ namespace Game.Ai.V2
         // and a plain kill never both subtract from the same probability mass; an enemy Berserk that
         // survives a hit answers with the raised Attack.
         private static float ContactSeries(EfficiencyStats s, IReadOnlyCollection<string> abilities,
-            EfficiencyContext ctx, WorthIt.DefenderProfile t)
+            EfficiencyContext ctx, WorthIt.DefenderProfile t, float survivorValue)
         {
             AbilityMagnitudes mags = AbilityMagnitudes.Default;
             IReadOnlyCollection<UnitTypeTag> hostTags = ctx.HostTags ?? Array.Empty<UnitTypeTag>();
@@ -374,64 +379,69 @@ namespace Game.Ai.V2
             int targetInitiative = t.Initiative + ctx.EnemyCommanderInitiative;
             float hostFirst = hostInitiative > targetInitiative ? 1f : hostInitiative == targetInitiative ? 0.5f : 0f;
 
-            // The enemy strike depends on the wound the host carries into the contact and on whether a hit
-            // on the enemy raised its Attack (Berserk): memoised per (HP, raised).
-            var enemy = new Dictionary<(int, bool), (float expected, float hit, float dies)>();
-            (float expected, float hit, float dies) EnemyStrike(int hostHp, bool raised)
-            {
-                if (enemy.TryGetValue((hostHp, raised), out var known))
-                    return known;
-                int attack = Mathf.RoundToInt(t.Attack) + (raised ? mags.BerserkAttackGain : 0);
-                float e = BattleSimulationKernel.ExpectedExchangeDamage(attack, defense,
-                    t.Abilities, hostTags, abilities, hostHp, out float hit);
-                float below = hostHp > 1
-                    ? BattleSimulationKernel.ExpectedExchangeDamage(attack, defense,
-                        t.Abilities, hostTags, abilities, hostHp - 1, out _)
-                    : 0f;
-                return enemy[(hostHp, raised)] = (e, hit, Mathf.Clamp01(e - below));
-            }
+            // Compute both enemy damage distributions once; no mean-HP approximation and no
+            // separate combat rules. The final bucket is lethal for the host's maximum HP.
+            int maxHp = Mathf.Max(1, s.HitPoints);
+            double[] plain = BattleSimulationKernel.ExchangeDamageDistribution(
+                Mathf.RoundToInt(t.Attack), defense, t.Abilities, hostTags, abilities, maxHp, out _);
+            double[] raised = targetBerserk
+                ? BattleSimulationKernel.ExchangeDamageDistribution(
+                    Mathf.RoundToInt(t.Attack) + mags.BerserkAttackGain, defense,
+                    t.Abilities, hostTags, abilities, maxHp, out _)
+                : plain;
 
-            // adjacent: the contact is at distance 1, where a Counterattack host answers every enemy
-            // strike it survives (unless an enemy Shock hit cancelled it) with one more plain strike.
             float Series(bool hostCan, bool targetCan, bool adjacent = false)
             {
-                float hDealtA = hostCan ? dealtA : 0f, hKillA = hostCan ? killA : 0f, hHitA = hostCan ? hitA : 0f;
+                float hDealt = hostCan ? dealtA : 0f;
                 float hBoosted = hostCan ? boosted : 0f;
+                float hHit = hostCan ? hitA : 0f, hKill = hostCan ? killA : 0f;
                 bool answers = counterattack && adjacent && hostCan && targetCan;
-                float Answered((float expected, float hit, float dies) strike) =>
-                    answers ? (targetShock ? 1f - strike.hit : 1f - strike.dies) : 0f;
-                float cumulativeWound = Mathf.Max(0, ctx.HpSpent);
-                float alive = 1f, total = 0f;
+                var hpMass = new double[maxHp + 1];
+                int initialHp = Mathf.Max(0, maxHp - Mathf.Max(0, ctx.HpSpent));
+                hpMass[initialHp] = 1d;
+                double total = 0d;
                 for (int contact = 0; contact < AiConfigV2.equipContactCount; contact++)
                 {
-                    int hostHp = Mathf.Max(1, s.HitPoints - Mathf.RoundToInt(cumulativeWound));
-                    (float expected, float hit, float dies) plain = targetCan ? EnemyStrike(hostHp, false) : (0f, 0f, 0f);
-                    (float expected, float hit, float dies) raised = targetCan && targetBerserk ? EnemyStrike(hostHp, true) : plain;
-
-                    // ---- host first. The enemy answers unless it died (a kill) or, with Shock, took ANY
-                    // damage (a hit, kills included). A survivor of a hit answers with the raised Attack.
-                    AnswerWeights(hHitA, hKillA, shock, out float answerUnhurt, out float answerHurt);
-                    float woundA = answerUnhurt * plain.expected + answerHurt * raised.expected;
-                    float deathA = answerUnhurt * plain.dies + answerHurt * raised.dies;
-
-                    // ---- enemy first (at its plain Attack). The host answers unless it died or, against a
-                    // Shock enemy, was hit at all; a surviving hit raises a Berserk host.
-                    AnswerWeights(plain.hit, plain.dies, targetShock, out float hostUnhit, out float hostHitSurvives);
-                    float answerB = hostUnhit * hDealtA + hostHitSurvives * (berserk ? hBoosted : hDealtA);
-                    float woundB = plain.expected;
-                    float deathB = plain.dies;
-
-                    // Counterattack answers to the enemy strike of either ordering.
-                    float counterA = (answerUnhurt * Answered(plain) + answerHurt * Answered(raised)) * hDealtA;
-                    float counterB = Answered(plain) * hDealtA;
-
-                    total += alive * (hostFirst * (hDealtA + counterA) + (1f - hostFirst) * (answerB + counterB));
-                    cumulativeWound += hostFirst * woundA + (1f - hostFirst) * woundB;
-                    alive *= 1f - (hostFirst * deathA + (1f - hostFirst) * deathB);
-                    if (regeneration && alive > 0f)
-                        cumulativeWound = Mathf.Max(0f, cumulativeWound - 1f);   // +1 HP at the end of the owner turn
+                    var next = new double[maxHp + 1];
+                    void Survive(int hp, double weight)
+                    {
+                        if (hp <= 0 || weight <= 0d) return;
+                        next[regeneration ? Mathf.Min(maxHp, hp + 1) : hp] += weight;
+                    }
+                    for (int hp = 1; hp <= maxHp; hp++)
+                    {
+                        double mass = hpMass[hp];
+                        if (mass <= 0d) continue;
+                        double first = mass * hostFirst, second = mass * (1f - hostFirst);
+                        total += first * hDealt;
+                        AnswerWeights(hHit, hKill, shock, out float unhurt, out float hurt);
+                        // A killed or Shock-stopped enemy cannot answer this contact.
+                        if (!targetCan)
+                        {
+                            Survive(hp, first + second);
+                            total += second * hDealt;
+                            continue;
+                        }
+                        Survive(hp, first * (1d - unhurt - hurt));
+                        for (int damage = 0; damage < hp; damage++)
+                        {
+                            double pFirst = first * (unhurt * plain[damage] + hurt * raised[damage]);
+                            double pSecond = second * plain[damage];
+                            Survive(hp - damage, pFirst + pSecond);
+                            bool canAnswer = !targetShock || damage == 0;
+                            if (!canAnswer) continue;
+                            if (answers) total += (pFirst + pSecond) * hDealt;
+                            total += pSecond * (damage > 0 && berserk ? hBoosted : hDealt);
+                        }
+                    }
+                    hpMass = next;
                 }
-                return total;
+                // Salvage the same pre-upgrade body in both projections. This prices losses
+                // after the last contact without counting its already scored attacks again.
+                double alive = 0d;
+                for (int hp = 1; hp <= maxHp; hp++) alive += hpMass[hp];
+                return (float)(total + alive * survivorValue
+                    / (AiConfigV2.equipCombatCardScale * AiConfigV2.equipCombatBodyScale));
             }
 
             bool EnemyCan(int d) => t.Range < 0 || t.Range >= d;
