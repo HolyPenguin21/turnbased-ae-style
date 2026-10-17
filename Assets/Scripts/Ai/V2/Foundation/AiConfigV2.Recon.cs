@@ -90,6 +90,10 @@
         // Recon history keeps honest last-known threats after tactical sighting expires.
         // Keep the generic intel staleness ramp observable before history purges.
         public const int reconObservationMemoryTurns = 12;
+        // Bound of the "could it have left unseen" scan (AiReconMemory.GoneOnReobservation): an
+        // army missing from its visible last hex is kept while any enterable hex this far around
+        // it is out of sight. Purely a cost cap; the reach itself is MaxMovement x elapsed turns.
+        public const int reconObservationMaxHideRadius = 8;
 
         public const float scoutInfoGainNorm = 4f;               // FreshNeighbors that maps to a full info term
         public const int scoutProximityRampLo = 2;               // base-distance: at/under this -> proximity 1

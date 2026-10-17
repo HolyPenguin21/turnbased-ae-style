@@ -1440,15 +1440,29 @@ namespace Game.Combat
         // coverable — nothing to fail to cover.
         public static bool CanDamageAll(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyList<DefendingArmy> opposition, float fallbackDefenseBonus = 0f,
+            AbilityMagnitudes? magnitudes = null) =>
+            UncoveredDefenderCount(attackerUnits, opposition, fallbackDefenseBonus, magnitudes) == 0;
+
+        // How many known defending combatants no unit of `attackerUnits` can damage — the same
+        // coverage rule as CanDamageAll, counted, so a planner can tell whether a candidate
+        // reinforcement closes any of the gap (2026-10-17: a host past the power bar was fed
+        // power-only supports for six turns while one defender stayed uncovered).
+        public static int UncoveredDefenderCount(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            IReadOnlyList<DefendingArmy> opposition, float fallbackDefenseBonus = 0f,
             AbilityMagnitudes? magnitudes = null)
         {
             if (opposition == null || opposition.Count == 0)
-                return true;
+                return 0;
+            List<DefenderProfile> attackers = CombatantsOf(attackerUnits);
+            int uncovered = 0;
             foreach (DefendingArmy army in opposition)
-                if (!CanDamageAll(attackerUnits, army.Units,
-                    army.DefenseBonus(fallbackDefenseBonus), magnitudes))
-                    return false;
-            return true;
+            {
+                float extra = army.DefenseBonus(fallbackDefenseBonus);
+                foreach (DefenderProfile defender in CombatantsOf(army.Units))
+                    if (!attackers.Any(attacker => CanDamage(attacker, defender, extra, magnitudes)))
+                        uncovered++;
+            }
+            return uncovered;
         }
 
         public static bool CanDamageAll(ArmyData attacker, IReadOnlyCollection<DefenderProfile> defenders,

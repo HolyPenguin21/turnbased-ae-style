@@ -753,7 +753,7 @@ namespace Game.Ai.V2
         private static IntendedRole FacilityRole(CardDefinition def)
         {
             IReadOnlyList<string> ab = def?.grantedAbilities;
-            if (ab != null && (ab.Contains(UnitAbilities.Research) || ab.Contains(UnitAbilities.Production)))
+            if (ResearchProductionSystem.IsResearchProductionFacility(def))
                 return IntendedRole.Development;
             if (ab != null && StrategicEffectRegistry.HasGlobalRecurringEffect(ab))
                 return IntendedRole.ResourceGain;

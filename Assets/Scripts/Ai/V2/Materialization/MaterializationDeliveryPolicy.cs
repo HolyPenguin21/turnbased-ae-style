@@ -374,8 +374,8 @@ namespace Game.Ai.V2
         }
 
         // How many known defender units of `hex` none of `members` (plus the optional `extra` card
-        // body) can damage. Coverage itself stays WorthIt.CanDamageAll's — asked once per defender
-        // unit here only so a card that closes some of several gaps still counts as progress.
+        // body) can damage — WorthIt.UncoveredDefenderCount, the one counted form of the coverage
+        // rule, so a card that closes some of several gaps still counts as progress.
         internal static int UncoveredDefenderCount(WorldSnapshot snapshot, IEnumerable<UnitData> members,
             CardDefinition extra, HexCoord hex)
         {
@@ -388,12 +388,7 @@ namespace Game.Ai.V2
                 .Where(u => u != null).Select(WorthIt.FromLiveUnit).ToList();
             if (extra != null && !extra.isAviation)
                 attackers.Add(AiPower.ToDefenderProfile(extra));
-            int uncovered = 0;
-            foreach (WorthIt.DefendingArmy army in opposition)
-                foreach (WorthIt.DefenderProfile unit in army.Units)
-                    if (!WorthIt.CanDamageAll(attackers, new[] { unit }, army.DefenseBonus(hexBonus)))
-                        uncovered++;
-            return uncovered;
+            return WorthIt.UncoveredDefenderCount(attackers, opposition, hexBonus);
         }
 
         // The card lets the host damage strictly more of the target's known defenders.

@@ -369,7 +369,7 @@ namespace Game.Ai
         public static float GarrisonDefenceFloor(PlayerSetupData player, float groundAvailablePower,
             HexCoord garrisonHex, bool isCitadel) =>
             Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel),
-                GarrisonThreatFloor(player, garrisonHex));
+                GarrisonThreatFloor(player, garrisonHex, isCitadel));
 
         // The peacetime share of the ground force alone.
         public static float GarrisonDefenceFloor(float groundAvailablePower, bool isCitadel) =>
@@ -383,34 +383,67 @@ namespace Game.Ai
         // activeDefenceWithdrawMaxEnemyEta turns (hex distance against its MaxMovement: an upper
         // bound of its reach) contributes its power x aggDefenceConfidenceMargin ONCE, to the
         // nearest such garrison — the DefensiveReserve "one force contributes once" rule.
-        public static float GarrisonThreatFloor(PlayerSetupData player, HexCoord garrisonHex)
+        // 2026-10-17 (user decision) — two refinements from the playtest Cassia lost at T23:
+        //   * the Citadel is the exception to "nearest only": every enemy that reaches it also
+        //     raises its floor, since losing it ends the game (Rust Bite 72 stood nearest to Base
+        //     (-3,4), the Citadel two hexes further kept its 14.4 share and was stripped to 11);
+        //   * an army that dropped out of the live sightings but stays in the Recon history
+        //     (AiReconMemory.Historical, the same LastKnown contacts Threat reads) still counts:
+        //     its reach grows by MaxMovement per turn unseen and its power is weighted by the
+        //     history's ConfidenceDecay.
+        public static float GarrisonThreatFloor(PlayerSetupData player, HexCoord garrisonHex,
+            bool isCitadel = false)
         {
             if (player == null)
                 return 0f;
             List<HexCoord> garrisons = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && a.IsGarrison).Select(a => a.Hex).Distinct().ToList();
-            return GarrisonThreatFloor(AiMapMemory.AllKnownEnemySightings(player), garrisons, garrisonHex);
+            List<AiMapMemory.KnownEnemySighting> live = AiMapMemory.AllKnownEnemySightings(player).ToList();
+            int turn = AiReconMemory.ObservedTurn(player);
+            IEnumerable<(AiMapMemory.KnownEnemySighting, int)> historical = turn == int.MinValue
+                ? Enumerable.Empty<(AiMapMemory.KnownEnemySighting, int)>()
+                : AiReconMemory.Historical(player, AiV2Util.KnownArmyIds(live))
+                    .Select(o => (new AiMapMemory.KnownEnemySighting(o.LastObservedHex, o.Owner, null,
+                            o.MemberCount, o.DefenseSum, o.AttackSum, o.Defenders,
+                            seenTurn: o.LastObservedTurn, armyId: o.ArmyId, isGarrison: o.IsGarrison,
+                            commander: o.Commander, isAir: o.IsAir, maxMovement: o.MaxMovement),
+                        Math.Max(0, turn - o.LastObservedTurn)));
+            return GarrisonThreatFloor(live.Select(s => (s, 0)).Concat(historical), garrisons,
+                garrisonHex, isCitadel);
         }
 
         // Same rule on explicit facts: the known enemy sightings and the own garrison hexes.
         public static float GarrisonThreatFloor(IEnumerable<AiMapMemory.KnownEnemySighting> enemies,
-            IEnumerable<HexCoord> garrisonHexes, HexCoord garrisonHex)
+            IEnumerable<HexCoord> garrisonHexes, HexCoord garrisonHex, bool isCitadel = false) =>
+            GarrisonThreatFloor((enemies ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
+                .Select(s => (s, 0)), garrisonHexes, garrisonHex, isCitadel);
+
+        // `enemies` — each contact with the turns it has gone unobserved (0 = a live sighting).
+        public static float GarrisonThreatFloor(
+            IEnumerable<(AiMapMemory.KnownEnemySighting Sighting, int UnseenTurns)> enemies,
+            IEnumerable<HexCoord> garrisonHexes, HexCoord garrisonHex, bool isCitadel)
         {
             List<HexCoord> garrisons = (garrisonHexes ?? Enumerable.Empty<HexCoord>()).Distinct().ToList();
             if (!garrisons.Contains(garrisonHex))
                 garrisons.Add(garrisonHex);
             float floor = 0f;
-            foreach (AiMapMemory.KnownEnemySighting enemy in enemies ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
+            foreach ((AiMapMemory.KnownEnemySighting enemy, int unseen) in enemies
+                ?? Enumerable.Empty<(AiMapMemory.KnownEnemySighting, int)>())
             {
                 if (enemy.IsGarrison || enemy.IsAir || enemy.MaxMovement <= 0)
                     continue;
-                int reach = enemy.MaxMovement * AiConfigV2.activeDefenceWithdrawMaxEnemyEta;
-                HexCoord? nearest = garrisons
+                float confidence = unseen <= 0 ? 1f : AiReconMemory.ConfidenceDecay(unseen);
+                if (confidence <= 0f)
+                    continue;
+                int reach = enemy.MaxMovement * (AiConfigV2.activeDefenceWithdrawMaxEnemyEta + Math.Max(0, unseen));
+                if (HexGridMath.Distance(garrisonHex, enemy.Hex) > reach)
+                    continue;
+                HexCoord nearest = garrisons
                     .Where(h => HexGridMath.Distance(h, enemy.Hex) <= reach)
                     .OrderBy(h => HexGridMath.Distance(h, enemy.Hex)).ThenBy(h => h.Q).ThenBy(h => h.R)
-                    .Select(h => (HexCoord?)h).FirstOrDefault();
-                if (nearest.HasValue && nearest.Value.Equals(garrisonHex))
-                    floor += AiPower.SightingPower(enemy) * AiConfigV2.aggDefenceConfidenceMargin;
+                    .First();
+                if (isCitadel || nearest.Equals(garrisonHex))
+                    floor += AiPower.SightingPower(enemy) * AiConfigV2.aggDefenceConfidenceMargin * confidence;
             }
             return floor;
         }

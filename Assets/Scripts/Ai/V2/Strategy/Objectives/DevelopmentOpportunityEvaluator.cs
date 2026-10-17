@@ -333,13 +333,18 @@ namespace Game.Ai.V2
                 || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
                 return null;
             bool facilityOfModeExists = OwnWorld.Of(player).Buildings.Any(b => b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)));
-            bool Viable(HexCoord hex)
+            // `needsUnlock` — every slot is taken: the site first needs the paid CapacityUnlock step.
+            bool Viable(HexCoord hex, out bool needsUnlock)
             {
+                needsUnlock = false;
                 BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
-                return b != null && b.Owner == player
-                    && !b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
-                    && StructuralPreparationBlock(mode, hex, false, facilityOfModeExists, deck, player,
-                        hand, ctx, out _, out _) == null;
+                if (b == null || b.Owner != player
+                    || b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
+                    || StructuralPreparationBlock(mode, hex, false, facilityOfModeExists, deck, player,
+                        hand, ctx, out _, out BaseUpgradeTier tier) != null)
+                    return false;
+                needsUnlock = tier != null;
+                return true;
             }
             string role = ResearchProductionSystem.RoleAbility(mode);
             if (activeIntents != null)
@@ -353,13 +358,32 @@ namespace Game.Ai.V2
                         && hero.HasAbility(role)
                         && OwnWorld.Of(player).Armies.Any(a => a != null && !a.IsPrison
                             && a.Members.Contains(hero))
-                        && Viable(i.Development.FacilityHex))
+                        && Viable(i.Development.FacilityHex, out _))
                         return i.Development.FacilityHex;
                 }
-            foreach (HexCoord hex in baseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
-                if (ResearchProductionSystem.FindActor(player, hex, mode) != null && Viable(hex))
-                    return hex;
-            return null;
+            // 2026-10-17 — a staffed base whose slots are all taken does not lock the mode while
+            // another viable base still has a free slot: its path carries one more paid step
+            // (CapacityUnlock), so every viable base stays an alternative and the priced steps
+            // compete (AddPreparation adds that step's price to a walk toward a full base).
+            // Playtest: Cassia's Research operator stood in the full Citadel (-5,1), the free Bases
+            // (-6,5)/(-3,4) were never offered and the Laboratory sat in hand T16-T22.
+            HexCoord? staffed = null;
+            bool staffedNeedsUnlock = false, freeSlotElsewhere = false;
+            foreach (HexCoord hex in baseHexes.Distinct().OrderBy(h => h.Q).ThenBy(h => h.R))
+            {
+                if (!Viable(hex, out bool needsUnlock))
+                    continue;
+                if (!needsUnlock)
+                    freeSlotElsewhere = true;
+                if (ResearchProductionSystem.FindActor(player, hex, mode) == null)
+                    continue;
+                if (!staffed.HasValue || (staffedNeedsUnlock && !needsUnlock))
+                {
+                    staffed = hex;
+                    staffedNeedsUnlock = needsUnlock;
+                }
+            }
+            return staffed.HasValue && staffedNeedsUnlock && freeSlotElsewhere ? null : staffed;
         }
 
         // READY — one opportunity per affordable Equipment offering at this staffed facility.
@@ -670,10 +694,19 @@ namespace Game.Ai.V2
             string rejection = "no_current_component";
             // cardScore - the intrinsic card score of this exact step (null: a walk of an existing
             // hero, a world task priced in TaskScore).
+            // 2026-10-17 — an operator brought to a full Base only pays off after that Base's
+            // CapacityUnlock: the step carries that price, so a walk to a free-slot Base is not
+            // outranked merely by a shorter route (Cassia T13: Citadel route 1 net 7.33 vs free
+            // Base (-6,5) route 3 net 5.33, then the Citadel needed an unlock it never won).
+            float sitePrerequisite = !describeOnly && !facilityReady && capacityTier != null
+                ? StrategicMaintenancePolicy.CapacityTierPrice(capacityTier, snap) : 0f;
             void Add(DevelopmentPreparationKind kind, ResourceCost cost, CardData card,
                 GenerationStep generated, UnitData hero, ArmyData sourceArmy, int travel,
                 float? cardScore = null)
             {
+                float prerequisite = kind == DevelopmentPreparationKind.Operator ? sitePrerequisite : 0f;
+                if (cardScore.HasValue)
+                    cardScore -= prerequisite;
                 candidates++;
                 var delivery = hero != null ? OperatorDeliveryFacts(sourceArmy, hero, travel) : default;
                 float displaced = hero != null && sourceArmy != null
@@ -727,13 +760,15 @@ namespace Game.Ai.V2
                     // units (ActionPrice's own conversion) only so peer steps can be ordered.
                     float taskNet = score.Value - ActionPrice.ToTaskScore(ActionPrice.Ap(stageAp))
                         - ActionPrice.CardScoreToTaskScore(StrategicCardEvaluator.StrategicResourceCostValue(
-                            cost, snap, spendable, player));
+                            cost, snap, spendable, player))
+                        - ActionPrice.CardScoreToTaskScore(prerequisite);
                     op.PreparationRank = ActionPrice.ToCardScore(ActionPrice.FromTaskScore(taskNet));
                     string walkFacts = hero == null ? string.Empty
                         : $"hero={GenerationSource.StableHeroKey(hero)} from=#{sourceArmy?.Id} route={travel} "
                           + $"benefit={score.StrategicRelevance:0.##} apNow={delivery.ActionAp + delivery.ActivationNow:0.##} "
                           + $"recurring={delivery.RecurringActivationAp:0.##}x{delivery.EtaTurns} "
-                          + $"displaced={displaced:0.##} net={taskNet:0.##}";
+                          + $"displaced={displaced:0.##} unlock={ActionPrice.CardScoreToTaskScore(prerequisite):0.##} "
+                          + $"net={taskNet:0.##}";
                     if (!describeOnly && taskNet <= AiConfigV2.allocatorSliceEpsilon)
                     { rejection = "current_stage_opportunity_cost(" + walkFacts + ")"; return; }
                     if (!describeOnly && hero != null)

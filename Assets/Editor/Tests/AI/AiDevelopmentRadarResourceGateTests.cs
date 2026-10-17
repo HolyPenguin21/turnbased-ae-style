@@ -163,6 +163,39 @@ namespace Game.EditorTests
             Assert.That(DevelopmentInvestmentGate.CountsAsSurplus(headroom, cardNeed), Is.EqualTo(surplus));
         }
 
+        // Playtest 2026-10-17: Cassia's deck was empty and her hand held only the Laboratory, so
+        // deckNeed H/E/M/T = 1/1/0/1 was the Laboratory's own bill and kept the window closed
+        // against that very card. A Research/Production Facility is Development's spend, not the
+        // main deck's; every other card still counts.
+        [Test]
+        public void InvestmentWindow_DevelopmentFacilityCardIsNotMainDeckNeed()
+        {
+            var laboratory = new CardDefinition
+            {
+                cardType = CardType.Facility,
+                resourceCost = new ResourceCost(human: 1, energy: 1, tech: 1),
+                grantedAbilities = new System.Collections.Generic.List<string>
+                    { ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research) },
+            };
+            var factory = new CardDefinition
+            {
+                cardType = CardType.Facility,
+                resourceCost = new ResourceCost(tech: 2),
+                grantedAbilities = new System.Collections.Generic.List<string>
+                    { ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production) },
+            };
+            var tank = new CardDefinition { cardType = CardType.Unit, resourceCost = new ResourceCost(tech: 3) };
+            var hand = new[] { new CardData(laboratory) };
+            var deck = new[] { factory, tank };
+
+            Assert.That(DevelopmentInvestmentGate.MainDeckNeed(1f, hand, deck, Game.Economy.ResourceType.Energy),
+                Is.Zero);
+            Assert.That(DevelopmentInvestmentGate.MainDeckNeed(6f, hand, deck, Game.Economy.ResourceType.Tech),
+                Is.EqualTo(3f), "the tank still needs its Tech");
+            Assert.That(DevelopmentInvestmentGate.MainDeckNeed(1f, hand, System.Array.Empty<CardDefinition>(),
+                Game.Economy.ResourceType.Human), Is.Zero);
+        }
+
         [Test]
         public void ProductionNeverCreatesANeed_NoMilitaryWitnessMeansNoDevelopment()
         {
