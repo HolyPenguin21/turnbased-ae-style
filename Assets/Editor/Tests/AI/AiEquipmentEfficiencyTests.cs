@@ -10,12 +10,16 @@ namespace Game.EditorTests
         // The signed utility of a plain +N Attack on a host against the catalog prior (no enemy known),
         // in EquipmentDelta plumbing units (card value / persistence).
         internal static float IntrinsicAttack(int amount, int attack = 1, int defense = 2, int hp = 8,
-            int range = 1, int initiative = 0)
+            int range = 1, int initiative = 1)
         {
-            var before = new EfficiencyStats(attack, defense, hp, range, 3, initiative, 0, 0);
-            var after = new EfficiencyStats(attack + amount, defense, hp, range, 3, initiative, 0, 0);
-            return EquipmentEfficiency.Utility(before, new string[0], after, new string[0], new EfficiencyContext()).Combat
-                / AiConfigV2.equipmentUpgradePersistence;
+            // Use the same gameplay stat floors as an actual attachment. A hand-built raw
+            // EfficiencyStats with Initiative=0 differs from Project/Predict's legal result.
+            var host = new CardDefinition { cardType = CardType.Unit, attack = attack,
+                defenseRating = defense, hitPoints = hp, range = range, moveMax = 3,
+                initiative = initiative, activationApCost = 0 };
+            var item = new CardDefinition { cardType = CardType.Equipment };
+            item.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = amount });
+            return EquipmentUpgradeValuation.EquipmentDeltaParts(item, host).Combat;
         }
     }
 

@@ -46,11 +46,27 @@ namespace Game.Combat
             IEnumerable<string> defenderAbilities, int hpCap, out float hitChance,
             bool secondary = false, IEnumerable<string> secondaryAbilities = null)
         {
+            double[] distribution = ExchangeDamageDistribution(attack, defense, attackerAbilities,
+                defenderTags, defenderAbilities, hpCap, out hitChance, secondary, secondaryAbilities);
+            double damage = 0;
+            for (int d = 1; d < distribution.Length; d++) damage += d * distribution[d];
+            return (float)damage;
+        }
+
+        // Capped damage PMF: the last bucket contains every lethal/overkill outcome. Consumers
+        // may carry HP distributions across contacts without reimplementing dice or abilities.
+        public static double[] ExchangeDamageDistribution(int attack, int defense,
+            IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTags,
+            IEnumerable<string> defenderAbilities, int hpCap, out float hitChance,
+            bool secondary = false, IEnumerable<string> secondaryAbilities = null)
+        {
+            int cap = Mathf.Max(0, hpCap);
+            var distribution = new double[cap + 1];
             attack = Mathf.Max(0, attack);
             defense = Mathf.Max(0, defense);
             int n = attack + defense;
             int center = n / 2;
-            double mass = 0, damage = 0, hits = 0;
+            double mass = 0, hits = 0;
             void Accumulate(int successes, double weight)
             {
                 int d = ChallengeResult.ApplyAbilityModifiers(Mathf.Max(0, successes - defense),
@@ -58,7 +74,7 @@ namespace Game.Combat
                 mass += weight;
                 if (d > 0) hits += weight;
                 if (secondary) d = SecondaryDamage(d, secondaryAbilities, AbilityMagnitudes.Default);
-                damage += weight * Mathf.Min(d, Mathf.Max(0, hpCap));
+                distribution[Mathf.Min(d, cap)] += weight;
             }
             Accumulate(center, 1);
             double w = 1;
@@ -74,7 +90,8 @@ namespace Game.Combat
                 Accumulate(k + 1, w);
             }
             hitChance = (float)(hits / mass);
-            return (float)(damage / mass);
+            for (int d = 0; d < distribution.Length; d++) distribution[d] /= mass;
+            return distribution;
         }
 
         public static BattleSimExchangeOutcome ResolveExchange(int attackPool, int defensePool,
