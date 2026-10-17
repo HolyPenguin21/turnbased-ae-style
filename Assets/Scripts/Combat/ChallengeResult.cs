@@ -65,37 +65,75 @@ namespace Game.Combat
                 defenderAbilities, magnitudes, appliedAbilities);
         }
 
+        // Everything the modifier chain reads from one (attacker, defender) pair, read once. The chain
+        // below is written against these flags only, so a pair's damage is a function of
+        // (raw damage, profile, magnitudes) — a caller pricing many rolls of the same pair (the
+        // analytic exchange in BattleSimulationKernel) reads the ability lists once, not per roll.
+        // A new modifier must add its input here; the chain has no other way to see the lists.
+        public readonly struct ModifierProfile
+        {
+            public readonly bool Critical, HyperkineticVsArmored, PyrokineticVsBio, IonicVsMechanical,
+                DefenderCeramic;
+
+            private ModifierProfile(bool critical, bool hyperkinetic, bool pyrokinetic, bool ionic, bool ceramic)
+            {
+                Critical = critical;
+                HyperkineticVsArmored = hyperkinetic;
+                PyrokineticVsBio = pyrokinetic;
+                IonicVsMechanical = ionic;
+                DefenderCeramic = ceramic;
+            }
+
+            public static ModifierProfile Of(IEnumerable<string> attackerAbilities,
+                IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities) =>
+                new ModifierProfile(
+                    HasAbility(attackerAbilities, UnitAbilities.CriticalDamage),
+                    HasAbility(attackerAbilities, UnitAbilities.Hyperkinetic) && HasTag(defenderTypeTags, UnitTypeTag.Armored),
+                    HasAbility(attackerAbilities, UnitAbilities.Pyrokinetic) && HasTag(defenderTypeTags, UnitTypeTag.Bio),
+                    HasAbility(attackerAbilities, UnitAbilities.Ionic) && HasTag(defenderTypeTags, UnitTypeTag.Mechanical),
+                    HasAbility(defenderAbilities, UnitAbilities.CeramicArmor));
+
+            // A compact identity of the profile (cache keys).
+            public int Bits => (Critical ? 1 : 0) | (HyperkineticVsArmored ? 2 : 0) | (PyrokineticVsBio ? 4 : 0)
+                | (IonicVsMechanical ? 8 : 0) | (DefenderCeramic ? 16 : 0);
+        }
+
+        public static int ApplyAbilityModifiers(int rawDamage, in ModifierProfile profile, AbilityMagnitudes magnitudes)
+            => ApplyAbilityModifiersCore(rawDamage, profile, magnitudes, null);
+
         // `appliedAbilities` null: the caller only wants the number (Monte Carlo, Fate-spend
         // prediction) — no list is allocated on that hot path.
         private static int ApplyAbilityModifiersCore(int rawDamage, IEnumerable<string> attackerAbilities,
             IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
             AbilityMagnitudes magnitudes, List<string> appliedAbilities)
+            => ApplyAbilityModifiersCore(rawDamage,
+                ModifierProfile.Of(attackerAbilities, defenderTypeTags, defenderAbilities), magnitudes, appliedAbilities);
+
+        private static int ApplyAbilityModifiersCore(int rawDamage, in ModifierProfile profile,
+            AbilityMagnitudes magnitudes, List<string> appliedAbilities)
         {
             int damage = rawDamage;
-            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.CriticalDamage))
+            if (damage > 0 && profile.Critical)
             {
                 damage = Mathf.RoundToInt(damage * magnitudes.CriticalDamageMultiplier);
                 appliedAbilities?.Add(UnitAbilities.CriticalDamage);
             }
-            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Hyperkinetic)
-                && HasTag(defenderTypeTags, UnitTypeTag.Armored))
+            if (damage > 0 && profile.HyperkineticVsArmored)
             {
                 damage += magnitudes.HyperkineticBonusDamage;
                 appliedAbilities?.Add(UnitAbilities.Hyperkinetic);
             }
-            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Pyrokinetic)
-                && HasTag(defenderTypeTags, UnitTypeTag.Bio))
+            if (damage > 0 && profile.PyrokineticVsBio)
             {
                 damage += magnitudes.PyrokineticBonusDamage;
                 appliedAbilities?.Add(UnitAbilities.Pyrokinetic);
             }
-            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Ionic)
-                && HasTag(defenderTypeTags, UnitTypeTag.Mechanical))
+            if (damage > 0 && profile.IonicVsMechanical)
             {
                 damage += magnitudes.IonicBonusDamage;
                 appliedAbilities?.Add(UnitAbilities.Ionic);
             }
-            if (damage > 0 && HasAbility(defenderAbilities, UnitAbilities.CeramicArmor))
+            if (damage > 0 && profile.DefenderCeramic)
             {
                 damage = Mathf.Max(0, damage - magnitudes.CeramicArmorReduction);
                 appliedAbilities?.Add(UnitAbilities.CeramicArmor);
