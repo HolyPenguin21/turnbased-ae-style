@@ -155,6 +155,8 @@ namespace Game.Setup
 
             // --- caches ----------------------------------------------------------------------------
             new MatchStateEntry("Game.Ai.SafeStepPathing", MatchStateKind.Cache),
+            // flat grid keyed by (map, PathingVersion) + reusable search buffers
+            new MatchStateEntry("Game.HexGrid.HexPathfinder", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.WorldAnalysis", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.CombatOpportunityAnalyzer", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.ForceNeedModel", MatchStateKind.Cache),
