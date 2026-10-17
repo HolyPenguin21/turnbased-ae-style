@@ -42,6 +42,11 @@ namespace Game.UI
         [SerializeField] private TMP_Text handCountText;
         [SerializeField] private Button scrollLeftButton;
         [SerializeField] private Button scrollRightButton;
+        // The pins between neighbouring hand slots, left to right — see CreateSeparatorLayer.
+        [SerializeField] private RectTransform[] cardSeparators;
+        // Its own top-of-screen panel (not under CardHandPanel), shown/hidden together with the
+        // hand — see Show/Hide.
+        [SerializeField] private ResourceBarUI resourceBar;
         [SerializeField] private GameTurnController turnController;
         [SerializeField] private int drawApCost = 2;
         [SerializeField] private StartingDeckCatalog startingDeckCatalog;
@@ -86,7 +91,7 @@ namespace Game.UI
         [SerializeField] private float overlapFraction = 0.08f;
         // Extra gap added on top of the overlap-derived step, so slots aren't flush/overlapping
         // even at the full MaxVisible=7 width.
-        private const float cardSpacing = 4f;
+        private const float cardSpacing = 3f;
         [SerializeField] private float restingScale = 0.9f;
         [SerializeField] private float hoverScale = 1.2f;
         [SerializeField] private float hoverLift = 20f;
@@ -190,6 +195,7 @@ namespace Game.UI
                 scrollRightButton.onClick.AddListener(OnScrollRightClicked);
 
             CreateSlotBackgrounds();
+            CreateSeparatorLayer();
 
             // Reverse link so ArmyUnitCardUI's own click can route into equipment attach mode
             // (see BeginAttachMode) without every card prefab needing its own hand reference.
@@ -247,6 +253,43 @@ namespace Game.UI
             }
         }
 
+        // The separator pins overlap the corners of the cards on either side and must always
+        // draw over them — including a hovered card, which SetAsLastSibling()s itself to the top
+        // of handContainer. No sibling order inside handContainer can guarantee that, so the
+        // pins move into their own layer placed right after handContainer, with the same rect
+        // (their anchored positions keep meaning the same thing). A dragged card still renders
+        // above them through its own override-sorting Canvas (see CardUI.OnBeginDrag). Each
+        // pin's X snaps to the midpoint between its two slots, so it follows SlotX's spacing;
+        // the scene's Y is kept. Not raycast targets — they'd swallow hover/drag on the card
+        // corners they cover.
+        private void CreateSeparatorLayer()
+        {
+            if (handContainer == null || cardSeparators == null || cardSeparators.Length == 0)
+                return;
+
+            var go = new GameObject("CardSeparators", typeof(RectTransform));
+            var layer = (RectTransform)go.transform;
+            layer.SetParent(handContainer.parent, false);
+            layer.SetSiblingIndex(handContainer.GetSiblingIndex() + 1);
+            layer.anchorMin = handContainer.anchorMin;
+            layer.anchorMax = handContainer.anchorMax;
+            layer.pivot = handContainer.pivot;
+            layer.sizeDelta = handContainer.sizeDelta;
+            layer.anchoredPosition = handContainer.anchoredPosition;
+            layer.localScale = handContainer.localScale;
+
+            for (int i = 0; i < cardSeparators.Length; i++)
+            {
+                RectTransform separator = cardSeparators[i];
+                if (separator == null)
+                    continue;
+                separator.SetParent(layer, false);
+                separator.anchoredPosition = new Vector2((SlotX(i) + SlotX(i + 1)) * 0.5f, separator.anchoredPosition.y);
+                if (separator.TryGetComponent(out Graphic graphic))
+                    graphic.raycastTarget = false;
+            }
+        }
+
         // Removes and returns one random card for ordinary draws (null if the deck is empty).
         // The opening deal above uses DeckDraw.DrawStartingHand. The random mechanic lives in
         // DeckDraw.PopRandom, the one place AiHandData.DrawOne's headless mirror also calls it
@@ -254,8 +297,8 @@ namespace Game.UI
         private CardDefinition PopRandomCard() => DeckDraw.PopRandom(_remainingDeck);
 
         // Called once by GameTurnController.BeginGame, right after citadel setup. This object is
-        // CardHandPanel, which also parents ResourceBarUI and the end-turn button, so Show/Hide
-        // drive all three together. The panel starts inactive in the scene, so Awake (and so the starting-hand population above) doesn't run until this
+        // CardHandPanel, which also parents the end-turn button; ResourceBarUI is its own panel
+        // and is toggled here explicitly, so Show/Hide still drive all three together. The panel starts inactive in the scene, so Awake (and so the starting-hand population above) doesn't run until this
         // actually activates it. Also the counterpart to Hide() below — reshown once
         // BattleScreenUI closes. Relayout(animated: false) covers any card added by
         // GrantEventReward/GrantCard while a guard-fight battle screen kept the hand hidden —
@@ -265,16 +308,20 @@ namespace Game.UI
         public void Show()
         {
             gameObject.SetActive(true);
+            if (resourceBar != null)
+                resourceBar.gameObject.SetActive(true);
             Relayout(animated: false);
         }
 
-        // Called by BattleScreenUI while a battle is open (takes the resource bar and end-turn
-        // button with it — they're children of this panel) — the hand means nothing behind the
+        // Called by BattleScreenUI while a battle is open (takes the end-turn button with it as a
+        // child of this panel, and the resource bar explicitly) — the hand means nothing behind the
         // battle screen (no play-a-card-onto-the-map interaction makes sense mid-combat) and
         // would otherwise visually crowd/overlap it.
         public void Hide()
         {
             gameObject.SetActive(false);
+            if (resourceBar != null)
+                resourceBar.gameObject.SetActive(false);
         }
 
         // Hover and hand-scrolling always work regardless of whose turn it is — only actually
