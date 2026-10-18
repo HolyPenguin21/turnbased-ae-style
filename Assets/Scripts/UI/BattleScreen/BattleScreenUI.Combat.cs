@@ -78,7 +78,7 @@ namespace Game.UI
                 ShowAiThought, defenderIsRetreating,
                 defense.TerrainBonus, defense.ConstructionBonus,
                 defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve,
-                interceptor: interceptor, isCounterattack: isCounterattack);
+                interceptor: interceptor, isCounterattack: isCounterattack, tacticsCritical: _tacticsCritical);
         }
 
         private void OnAttackResolved(UnitData attacker, UnitData defender,
@@ -269,6 +269,7 @@ namespace Game.UI
             // RecomputeBlockedState's own battleScreen.IsShowing term).
             _onClosed = onClosed;
             _fastResolve = false;
+            _tacticsCritical = TacticBattleContext.IsCritical(hunterArmy.Hex, hunterArmy, targetArmy);
             hexSelectionController?.Deselect();
             rtsCamera?.SetPanningEnabled(false);
 
@@ -369,7 +370,8 @@ namespace Game.UI
 
                     RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts);
                 },
-                suppressAiThoughts ? null : ShowAiThought, automateHumanSides: _fastResolve);
+                suppressAiThoughts ? null : ShowAiThought, automateHumanSides: _fastResolve,
+                tacticsCritical: _tacticsCritical);
         }
 
         private void FinishBattleEnd(bool attackerAlive, bool defenderAlive)

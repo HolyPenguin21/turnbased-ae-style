@@ -8,12 +8,8 @@ namespace Game.Cards
         Unit,
         Facility,
         Base,
-        // Never drawn from the normal deck (see FactionCardCatalog/StartingDeckCatalog —
-        // simply never listing a Tactic card's key in a StartingDeck keeps it out of the main
-        // hand entirely, same "exists in the catalog but undrawable" precedent already used for
-        // GameConfig.extractionFacilityCards). Granted directly by a hero during battle instead
-        // (not built yet) and shown only in the battle screen's own vertical hand — see
-        // Game.UI.BattleHandUI.
+        // Match-only event rewards, held in PlayerSetupData.Tactics and used during a challenge.
+        // Excluded from the normal deck and main-hand capacity.
         Tactic,
         // The manual's "Attachment" — a permanent modifier a player hangs onto one of their
         // own Unit/Hero cards (later: Facility) via right-click → pick target, never dragged

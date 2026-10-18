@@ -125,6 +125,7 @@ namespace Game.UI
         // Fast Resolve delegates human decisions to the existing AI battle loop. Ownership
         // stays intact so results, captures, rewards and strategic notifications keep their identity.
         private bool _fastResolve;
+        private bool _tacticsCritical;
         private bool HasInteractiveParticipant => _localArmy != null && !_fastResolve;
         private bool IsHumanAction(UnitData unit) => !_fastResolve && unit?.Owner != null && unit.Owner.IsHuman;
         private bool IsAutomatedSide(ArmyData army) => army?.Owner != null && (_fastResolve || !army.Owner.IsHuman);
@@ -364,6 +365,10 @@ namespace Game.UI
 
             ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
             ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
+            _tacticsCritical = TacticBattleContext.IsCritical(hex, attacker, defender);
+            var tacticHand = GetComponentInChildren<BattleHandUI>(true);
+            tacticHand?.Bind((attacker?.Owner?.IsHuman == true ? attacker.Owner
+                : defender?.Owner?.IsHuman == true ? defender.Owner : null)?.Tactics);
             int battleSeed;
             unchecked
             {

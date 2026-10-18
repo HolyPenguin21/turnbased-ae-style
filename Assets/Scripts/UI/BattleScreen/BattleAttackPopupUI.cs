@@ -31,7 +31,7 @@ namespace Game.UI
     //
     // Result state: attacker's own art (standing in for the original's cinematic "scan" insert),
     // a text summary, and the target's outcome with a DESTROYED stamp if it died.
-    public class BattleAttackPopupUI : MonoBehaviour
+    public partial class BattleAttackPopupUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
         // Tunable magnitudes for CriticalDamage/CeramicArmor/Berserk (see ResolveDamage) — same
@@ -267,8 +267,10 @@ namespace Game.UI
             Sprite attackerLogo, Sprite defenderLogo, Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
             int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0,
-            bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false)
+            bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false, bool tacticsCritical = false)
         {
+            _tacticsCritical = tacticsCritical;
+            CloseTacticPresentation();
             int defenderBonusDice = defenderTerrainBonus + defenderConstructionBonus + defenderFormationBonus;
             // Stops a still-running RunRollAndDuel/RunDuel coroutine from a PREVIOUS Begin() on
             // this same (pooled/reused) popup instance — otherwise its delayed WaitUntil callbacks
@@ -418,7 +420,7 @@ namespace Game.UI
         //     hero skills exist.
         public void BeginCaptureKill(ArmyData hunterArmy, UnitData targetHero, Sprite hunterLogo, Sprite targetLogo,
             Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
-            bool automateHumanSides = false)
+            bool automateHumanSides = false, bool tacticsCritical = false)
         {
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
             UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
@@ -432,7 +434,7 @@ namespace Game.UI
             // FateMax for the actual roll).
             Begin(hunterFace, hunterHero, targetHero, targetHero, hunterLogo, targetLogo, null, onAiThought,
                 attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.FateMax ?? 0,
-                automateHumanSides: automateHumanSides);
+                automateHumanSides: automateHumanSides, tacticsCritical: tacticsCritical);
             _kind = ChallengeKind.CaptureKill;
             if (titleText != null)
                 titleText.text = "CAPTURE/KILL CHALLENGE";
@@ -458,6 +460,8 @@ namespace Game.UI
             // for the whole Challenge — but be safe, per spec §15).
             CleanupResearchProduction();
 
+            CloseTacticPresentation();
+            _rpTactics = new ResearchProductionChallengeSession(hero, card);
             _kind = ChallengeKind.ResearchProduction;
             _automateHumanSides = false;
             _rpHero = hero;
@@ -523,6 +527,8 @@ namespace Game.UI
             bool spentAtLeastOnce = false;
 
             _rpDice = ChallengeResolver.RollDice(ResearchProductionSystem.DicePoolSize);
+            _rpTactics.Dice = _rpDice;
+            PrepareTacticPresentation(_rpHero?.Owner);
             bool animDone = attackerRow == null;
             attackerRow?.SetDice(_rpDice, onComplete: () => animDone = true);
             yield return new WaitUntil(() => animDone);
@@ -533,21 +539,24 @@ namespace Game.UI
             while (true)
             {
                 bool canSpend = _rpHero != null
-                    && ResearchProductionSystem.CanSpendFate(_rpDice, _rpHero.Fate, _rpRequiredSuccesses);
-                if (!canSpend)
+                    && ResearchProductionSystem.CanSpendFate(_rpDice, _rpHero.Fate,
+                        _rpTactics.Required - _rpTactics.SuccessModifier);
+                if (!canSpend && !_rpTactics.HasTactic)
                     break;
 
                 _awaitingHumanDecision = true;
                 _defenderTurnActive = false;
                 _humanSpent = false;
                 _humanDeclined = false;
-                attackerRow?.SetSpendInteractable(true);
+                attackerRow?.SetSpendInteractable(canSpend);
+                OpenTacticDecision(false);
                 if (acceptButton != null)
                     acceptButton.interactable = true;
 
                 yield return new WaitUntil(() => _humanSpent || _humanDeclined);
 
                 _awaitingHumanDecision = false;
+                CloseTacticDecision();
                 attackerRow?.SetSpendInteractable(false);
                 if (acceptButton != null)
                     acceptButton.interactable = false;
@@ -558,6 +567,7 @@ namespace Game.UI
                 // OnResearchProductionSpend already mutated _rpDice + Fate and kicked the anim —
                 // wait for it to land before re-offering Spend/Accept (same gate as the duel).
                 yield return new WaitUntil(() => _rerollAnimDone);
+                RefreshTacticTotals();
                 spentAtLeastOnce = true;
             }
 
@@ -587,7 +597,7 @@ namespace Game.UI
 
             bool hasMiss = HasMiss(_rpDice);
             int successes = CountHits(_rpDice);
-            if (!hasMiss && successes >= _rpRequiredSuccesses)
+            if (!hasMiss && _rpTactics.Success)
                 return; // nothing Fate can do
 
             attackerRow?.SetSpendInteractable(false);
@@ -617,6 +627,7 @@ namespace Game.UI
                 BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
                     $"added overflow die #{_rpDice.Length} -> {hit}");
             }
+            _rpTactics.Dice = _rpDice;
             _humanSpent = true;
         }
 
@@ -627,8 +638,10 @@ namespace Game.UI
             if (acceptButton != null)
                 acceptButton.interactable = false;
 
-            int successes = CountHits(_rpDice);
-            _rpResultSuccess = successes >= _rpRequiredSuccesses;
+            CloseTacticDecision();
+            int successes = _rpTactics.Successes;
+            _rpRequiredSuccesses = _rpTactics.Required;
+            _rpResultSuccess = _rpTactics.Success;
 
             // Central, unconditional Fate restore — success or failure, before the result screen
             // or any callback (spec §3/§15).
@@ -735,6 +748,7 @@ namespace Game.UI
             _rpHero = null;
             _rpCard = null;
             _rpDice = null;
+            _rpTactics = null;
 
             callback?.Invoke(success);
         }
@@ -766,7 +780,7 @@ namespace Game.UI
                 mode, _attacker, _defender,
                 _attackerDicePoolSize, _defenderDicePoolSize,
                 _attackerFateRemaining, _defenderFateRemaining,
-                Magnitudes, _defenderIsRetreating);
+                Magnitudes, _defenderIsRetreating, tacticsCritical: _tacticsCritical);
 
             _phase = Phase.InProgress;
             if (rollButton != null)
@@ -810,6 +824,7 @@ namespace Game.UI
             if (!RunsAutomatically)
                 yield return new WaitUntil(() => attackerAnimDone && defenderAnimDone);
 
+            PrepareTacticPresentation(HumanParticipant());
             FireRollThought();
             yield return RunDuel();
             Resolve();
@@ -859,7 +874,7 @@ namespace Game.UI
         // attacker one more redundant round against dice that hadn't changed at all.
         private IEnumerator RunDuel()
         {
-            if (_challengeSession == null || !_challengeSession.HasAnyFate)
+            if (_challengeSession == null || !_challengeSession.HasAnyDecision)
             {
                 // Neither side has any Fate left to spend, so there's no Spend-or-Accept turn for
                 // anyone to take — but resolving with zero pause right after the dice land reads as
@@ -915,7 +930,7 @@ namespace Game.UI
                 // Nothing this side could possibly do this turn (no hero, no Fate, or no miss
                 // left to reroll) — auto-decline after a short beat instead of forcing a click on
                 // a decision that isn't actually one (mirrors RunAiTurn's own aiAcceptDelay pause).
-                if (!canSpend)
+                if (!canSpend && !(_challengeSession?.HasTactic(isDefenderTurn) == true))
                 {
                     if (aiAcceptDelay > 0f)
                         yield return new WaitForSeconds(aiAcceptDelay);
@@ -927,11 +942,13 @@ namespace Game.UI
                 _humanDeclined = false;
                 _awaitingHumanDecision = true;
                 if (isDefenderTurn)
-                    defenderRow?.SetSpendInteractable(true);
+                    defenderRow?.SetSpendInteractable(canSpend);
                 else
-                    attackerRow?.SetSpendInteractable(true);
+                    attackerRow?.SetSpendInteractable(canSpend);
                 if (acceptButton != null)
                     acceptButton.interactable = true;
+
+                OpenTacticDecision(isDefenderTurn);
 
                 // Diagnostics for the project owner's own report (Ground Combat, 2026-08-26):
                 // the duel sometimes ends before the defender gets to react to/make a reroll.
@@ -946,6 +963,7 @@ namespace Game.UI
                 yield return new WaitUntil(() => _humanSpent || _humanDeclined);
 
                 _awaitingHumanDecision = false;
+                CloseTacticDecision();
                 defenderRow?.SetSpendInteractable(false);
                 attackerRow?.SetSpendInteractable(false);
                 if (acceptButton != null)
@@ -958,6 +976,7 @@ namespace Game.UI
                 // Accept again — otherwise the next Spend became available while the die just
                 // spent on was still visibly mid-flip (see _rerollAnimDone's own comment).
                 yield return new WaitUntil(() => _rerollAnimDone);
+                RefreshTacticTotals();
 
                 spentThisTurn = true;
                 // A human may keep spending (even all their Fate in one turn) after any reroll,
@@ -1037,6 +1056,8 @@ namespace Game.UI
                 if (!RunsAutomatically)
                     yield return new WaitUntil(() => _rerollAnimDone);
 
+                RefreshTacticTotals();
+
                 // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
                 // just came back a miss again — this side is done trying Fate for the rest of
                 // THIS duel turn, even with Fate still left and even if ShouldSpendFate would say
@@ -1050,6 +1071,13 @@ namespace Game.UI
                 // deciding whether another reroll is still worth it.
             }
 
+            var tactic = _challengeSession?.ChooseAiTactic(isDefenderTurn, _interceptor);
+            if (tactic != null && _challengeSession.TryPlayTactic(isDefenderTurn, tactic))
+            {
+                spentThisTurn = true;
+                ShowTacticResult(tactic);
+            }
+
             if (couldSpend && !spentThisTurn)
                 _onAiThought?.Invoke(acting, AiThoughtCategory.FateSpendSkip, opposing?.Name);
             _turnSpent = spentThisTurn;
@@ -1057,7 +1085,7 @@ namespace Game.UI
 
         private void OnAcceptClicked()
         {
-            if (!_awaitingHumanDecision)
+            if (!_awaitingHumanDecision || TacticInputBlocked)
                 return;
             // See RunHumanTurn's own OPEN log — the matching close, for the same diagnostics.
             BattleDebugLog.Write($"[FateDuelDiag] Accept clicked for {(_defenderTurnActive ? "defender" : "attacker")} " +
@@ -1072,6 +1100,7 @@ namespace Game.UI
         private void Resolve()
         {
             _phase = Phase.Resolved;
+            CloseTacticDecision();
             if (_kind == ChallengeKind.CaptureKill)
                 ResolveCaptureKill();
             else
@@ -1081,7 +1110,7 @@ namespace Game.UI
         private void OnDefenderSpend()
         {
             if (!_awaitingHumanDecision || !_defenderTurnActive || _defenderHero == null
-                || _challengeSession == null)
+                || _challengeSession == null || TacticInputBlocked)
                 return;
             if (!_challengeSession.TrySpend(true, out int rerolledIndex, out _))
                 return;
@@ -1099,6 +1128,8 @@ namespace Game.UI
 
         private void OnAttackerSpend()
         {
+            if (!_awaitingHumanDecision) return;
+            if (TacticInputBlocked) return;
             if (_kind == ChallengeKind.ResearchProduction)
             {
                 OnResearchProductionSpend();
@@ -1244,7 +1275,7 @@ namespace Game.UI
             CaptureKillOutcome outcome = _challengeSession != null
                 ? _challengeSession.ResolveCaptureKillOutcome()
                 : CaptureKillOutcome.Killed;
-            var result = new ChallengeResult(_attackerDice, _defenderDice);
+            var result = _challengeSession.CurrentResult;
 
             BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} (hunter) -> {_defender?.Name} (target hero): " +
                 $"rawSuccesses(attacker={result.AttackerSuccesses},defender={result.DefenderSuccesses}) outcome={outcome}");
@@ -1368,6 +1399,7 @@ namespace Game.UI
             Action onAcknowledged, bool automateHumanSides = false)
         {
             StopAllCoroutines();
+            CloseTacticPresentation();
             CleanupResearchProduction();
 
             _automateHumanSides = automateHumanSides;
@@ -1413,6 +1445,7 @@ namespace Game.UI
             // _phase.
             if (_phase != Phase.Resolved || _okAlreadyHandled)
                 return;
+            if (_tacticInfoPopup is not null && TacticInputBlocked) return;
             _okAlreadyHandled = true;
 
             // Research/Production reports through the shared finalization path — the SAME one a
@@ -1458,6 +1491,7 @@ namespace Game.UI
 
         public void Hide()
         {
+            CloseTacticPresentation();
             _automateHumanSides = false;
             if (panelRoot == null || !panelRoot.activeSelf)
                 return;

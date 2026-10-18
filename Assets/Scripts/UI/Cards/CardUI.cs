@@ -11,7 +11,7 @@ namespace Game.UI
     // the rest of the hand LIVE as it's dragged (see PreviewDrag), not just on release, so
     // the hand visibly makes room for it while it's still being held.
     public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler,
-        IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler
+        IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler, IPointerDownHandler
     {
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
@@ -82,6 +82,17 @@ namespace Game.UI
         private bool _dragAllowed;
         private bool _dragHoverValid;
         private Canvas _canvas;
+        private bool _didDrag;
+        private bool _savedOverrideSorting;
+        private int _savedSortingOrder;
+        private int _dragSiblingIndex;
+        // Tactics use the same pickup/movement/return gesture, with a challenge slot instead
+        // of CardHandUI's map destination. The challenge owns permission and application.
+        private bool _tacticInteraction;
+        private System.Func<string> _tacticUnavailableReason;
+        private System.Func<Vector2, Camera, bool> _tacticDrop;
+        private System.Action _tacticClick;
+        private System.Action<string> _tacticError;
 
         // Frame-driven tween state — replaces the per-Retarget StartCoroutine(AnimateTo/
         // ScaleRoutine). Ticked from CardHandUI.Update via TickAnimation, so a reorder that
@@ -145,6 +156,32 @@ namespace Game.UI
             RefreshEquipmentToggle();
 
             rectTransform.localScale = Vector3.one * _restingScale;
+        }
+
+        public void ConfigureTacticInteraction(CardData data, System.Action onClick,
+            System.Func<string> unavailableReason, System.Func<Vector2, Camera, bool> onDrop,
+            System.Action<string> showError)
+        {
+            CancelDrag();
+            Data = data;
+            _tacticInteraction = true;
+            _tacticClick = onClick;
+            _tacticUnavailableReason = unavailableReason;
+            _tacticDrop = onDrop;
+            _tacticError = showError;
+            // Battle cards have their own visual component but share this interaction.
+            // A nested canvas raises only the carried card above the challenge/hand.
+            _canvas = GetComponent<Canvas>() ?? gameObject.AddComponent<Canvas>();
+            if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
+            _animDuration = 0f;
+            _hoverLift = 0f;
+            SetTacticHome(rectTransform.anchoredPosition, rectTransform.localScale.x);
+        }
+
+        public void SetTacticHome(Vector2 position, float scale)
+        {
+            _restingScale = _hoverScale = scale;
+            SetHome(position, animated: false);
         }
 
         // Re-point the equipment-art toggle at this card's current attached equipment (if any)
@@ -303,7 +340,7 @@ namespace Game.UI
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (IsDragging)
+            if (IsDragging || _tacticInteraction)
                 return;
             _isHovered = true;
             rectTransform.SetAsLastSibling();
@@ -312,7 +349,7 @@ namespace Game.UI
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            if (IsDragging)
+            if (IsDragging || _tacticInteraction)
                 return;
             _isHovered = false;
             equipmentArtToggle?.Revert();
@@ -326,8 +363,22 @@ namespace Game.UI
         // owner's own spec: right-click an Equipment card to start attaching, left-click a
         // Unit/Hero card to be its host, right-click again anywhere to cancel). A plain click
         // that isn't part of a drag; deploying a card is still the drag gesture, untouched.
+        public void OnPointerDown(PointerEventData eventData)
+        {
+            _didDrag = false;
+        }
+
         public void OnPointerClick(PointerEventData eventData)
         {
+            if (IsDragging || (_tacticInteraction && _didDrag)) return;
+            if (_tacticInteraction)
+            {
+                if (eventData.button != PointerEventData.InputButton.Left) return;
+                string reason = _tacticUnavailableReason?.Invoke();
+                if (reason != null) _tacticError?.Invoke(reason);
+                else if (!UIFocusUtility.IsGameplayInputBlocked) _tacticClick?.Invoke();
+                return;
+            }
             if (UIFocusUtility.IsGameplayInputBlocked) return;
             if (IsDragging || _hand == null || Data?.Definition == null)
                 return;
@@ -359,21 +410,31 @@ namespace Game.UI
 
         public void OnBeginDrag(PointerEventData eventData)
         {
-            _dragAllowed = !UIFocusUtility.IsGameplayInputBlocked && _hand != null && _hand.CanDragCards();
+            if (eventData.button != PointerEventData.InputButton.Left) return;
+            _didDrag = true;
+            string reason = _tacticInteraction ? _tacticUnavailableReason?.Invoke() : null;
+            if (reason != null) { _tacticError?.Invoke(reason); return; }
+            _dragAllowed = !UIFocusUtility.IsGameplayInputBlocked && (_tacticInteraction
+                ? _tacticDrop != null : _hand != null && _hand.CanDragCards());
             if (!_dragAllowed)
                 return;
 
             IsDragging = true;
             _isHovered = false;
             _dragHoverValid = false;
+            _dragSiblingIndex = rectTransform.GetSiblingIndex();
             rectTransform.SetAsLastSibling();
             // The prefab's own nested Canvas (normally just inherits the parent's batch) breaks
             // out into an independent, explicitly-ordered one for the duration of the drag —
             // see DragSortingOrder.
             if (_canvas != null)
             {
+                _savedOverrideSorting = _canvas.overrideSorting;
+                _savedSortingOrder = _canvas.sortingOrder;
                 _canvas.overrideSorting = true;
-                _canvas.sortingOrder = DragSortingOrder;
+                var parentCanvas = _canvas.transform.parent?.GetComponentInParent<Canvas>();
+                _canvas.sortingOrder = Mathf.Max(DragSortingOrder,
+                    parentCanvas != null ? parentCanvas.sortingOrder + 1 : DragSortingOrder);
             }
             // Eases from whatever scale it was at (hover or resting) to full carried size,
             // instead of snapping there instantly — the hard cut used to read as a jarring
@@ -383,7 +444,8 @@ namespace Game.UI
 
         public void OnDrag(PointerEventData eventData)
         {
-            if (UIFocusUtility.IsGameplayInputBlocked) { CancelDrag(); return; }
+            if (UIFocusUtility.IsGameplayInputBlocked || (_tacticInteraction && _tacticUnavailableReason?.Invoke() != null))
+            { CancelDrag(); return; }
             if (!_dragAllowed)
                 return;
 
@@ -395,7 +457,7 @@ namespace Game.UI
             // hand row (on its way to being played), the rest of the hand should stop reacting.
             // eventData.position (screen space) is also what lets CardHandUI figure out which
             // hex (if any) is under the card right now, for the drop-preview shrink below.
-            _hand.PreviewDrag(this, rectTransform.anchoredPosition, eventData.position);
+            _hand?.PreviewDrag(this, rectTransform.anchoredPosition, eventData.position);
         }
 
         // Called by CardHandUI while dragging, once per hex actually changed under the cursor
@@ -419,8 +481,19 @@ namespace Game.UI
                 return;
 
             IsDragging = false;
-            if (_canvas != null)
-                _canvas.overrideSorting = false;
+            _dragAllowed = false;
+            RestoreDragSorting();
+            if (_tacticInteraction)
+            {
+                // Application can remove this view. Return it before entering the session.
+                rectTransform.SetSiblingIndex(_dragSiblingIndex);
+                SnapToHome();
+                var rootCanvas = _canvas != null ? _canvas.rootCanvas : null;
+                Camera camera = rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                    ? eventData.pressEventCamera != null ? eventData.pressEventCamera : rootCanvas.worldCamera : null;
+                _tacticDrop?.Invoke(eventData.position, camera);
+                return;
+            }
             // The hand's own order already matches what PreviewDrag showed while dragging —
             // this just lets the card itself snap into that already-previewed slot (or, if it
             // was dragged clear of the hand, attempts to play it onto the map hex under
@@ -434,9 +507,19 @@ namespace Game.UI
             _dragAllowed = false;
             IsDragging = false;
             _dragHoverValid = false;
-            if (_canvas != null) _canvas.overrideSorting = false;
+            RestoreDragSorting();
+            if (_tacticInteraction) rectTransform.SetSiblingIndex(_dragSiblingIndex);
             SnapToHome();
         }
+
+        private void RestoreDragSorting()
+        {
+            if (_canvas == null) return;
+            _canvas.overrideSorting = _savedOverrideSorting;
+            _canvas.sortingOrder = _savedSortingOrder;
+        }
+
+        private void OnDisable() => CancelDrag();
 
         // Called once by CardHandUI right after a drag ends. SetHome keeps updating
         // _homePosition even while dragging (just without visually moving the card, since

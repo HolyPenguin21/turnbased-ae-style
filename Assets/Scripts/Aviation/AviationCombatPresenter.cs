@@ -177,7 +177,8 @@ namespace Game.Aviation
                         Game.Map.StealthSystem.OnUnitRemoved(target);
                     }
                 },
-                attackerPoolSize: reaction.AaUnit.Attack * 2);
+                attackerPoolSize: reaction.AaUnit.Attack * 2,
+                tacticsCritical: TacticBattleContext.IsCritical(reaction.AaArmy.Hex, reaction.AaArmy, airArmy));
             yield return new WaitUntil(() => resolved);
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
 
@@ -237,7 +238,8 @@ namespace Game.Aviation
                 if (attackPopup != null)
                 {
                     attackPopup.Begin(aircraft, null, target, defenderHero, null, null,
-                        onResolved: Apply, defenderPoolSize: defenderPoolOverride);
+                        onResolved: Apply, defenderPoolSize: defenderPoolOverride,
+                        tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy));
                     yield return new WaitUntil(() => resolved);
                 }
                 else
@@ -249,7 +251,8 @@ namespace Game.Aviation
                     var challenge = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
                         aircraft, target, aircraft.Attack, defensePool, 0, defenderHero?.Fate ?? 0,
                         AbilityMagnitudes.Default,
-                        rollDice: count => BattleSimulationKernel.RollDice(count, HeadlessRng));
+                        rollDice: count => BattleSimulationKernel.RollDice(count, HeadlessRng),
+                        tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy));
                     challenge.Roll();
                     while (challenge.TryNextFateTurn(out bool defenderTurn))
                     {
@@ -260,6 +263,8 @@ namespace Game.Aviation
                             spent = true;
                             if (!hit) break;
                         }
+                        var tactic = challenge.ChooseAiTactic(defenderTurn);
+                        if (tactic != null && challenge.TryPlayTactic(defenderTurn, tactic)) spent = true;
                         challenge.ReportFateTurn(spent);
                     }
                     Apply(challenge.ToRollResult());
