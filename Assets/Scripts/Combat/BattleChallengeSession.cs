@@ -107,6 +107,9 @@ namespace Game.Combat
         public CardData ChooseAiTactic(bool defenderSide, UnitData interceptor = null)
         {
             if (!TacticsCritical) return null;
+            // A human's cards are spent only by that human. An automated human side (Fast Resolve,
+            // headless strikes) keeps its inventory; the AI policy is for AI owners.
+            if ((defenderSide ? _defender : _attacker)?.Owner?.IsHuman == true) return null;
             var hand = HandOf(defenderSide);
             if (hand == null) return null;
             CardData best = null;

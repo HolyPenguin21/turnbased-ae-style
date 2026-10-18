@@ -276,6 +276,16 @@ namespace Game.EditorTests
             Assert.That(owner.Tactics.Version, Is.EqualTo(2));
         }
 
+        [Test]
+        public void Ai_NeverSpendsAnAutomatedHumansCards()
+        {
+            var d = new PlayerSetupData { IsHuman = true }; var card = Card(TacticEffect.AddSuccess); d.Tactics.Add(card);
+            var s = Session(Unit(new PlayerSetupData()), Unit(d, 1), new[] { true }, new[] { false }, critical: true);
+            s.TryNextFateTurn(out _);
+            Assert.That(s.ChooseAiTactic(true), Is.Null);
+            Assert.That(d.Tactics.Cards.Count, Is.EqualTo(1));
+        }
+
         [TestCase(TacticEffect.AddSuccess, 2)]
         [TestCase(TacticEffect.SuppressSuccess, 2)]
         [TestCase(TacticEffect.AddAndSuppressSuccess, 1)]
