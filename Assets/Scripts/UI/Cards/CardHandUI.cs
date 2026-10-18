@@ -29,7 +29,7 @@ namespace Game.UI
     // extras are scrolled in/out with scrollLeftButton/scrollRightButton rather than shrinking
     // every card to fit. _cards holds EVERY card the player has, in hand order; _scrollOffset
     // is the index of the first one currently shown.
-    public class CardHandUI : MonoBehaviour
+    public partial class CardHandUI : MonoBehaviour
     {
         [SerializeField] private RectTransform handContainer;
         [SerializeField] private CardUI cardPrefab;
@@ -335,7 +335,7 @@ namespace Game.UI
                 && turnController.CurrentPlayer != null
                 && turnController.CurrentPlayer.IsHuman
                 && turnController.TurnConfirmed
-                && !turnController.CardDraggingBlocked;
+                && !_showingTactics && !turnController.CardDraggingBlocked;
         }
 
         // Turn-based game, event-driven UI: the draw button's interactable state depends on
@@ -376,6 +376,7 @@ namespace Game.UI
         // OnDestroy / the next ShowAiHandDebug instead.
         private void OnDisable()
         {
+            ResetTacticPresentation();
             if (_humanRoot != null)
                 _humanRoot.ResourcesChanged -= RefreshDrawButtonInteractable;
             if (turnController != null)
@@ -630,8 +631,9 @@ namespace Game.UI
         // this is a restore, not a fresh attach — nothing is charged here.
         public bool AddCardToHand(CardData data)
         {
-            if (data?.Definition == null)
-                return false;
+            if (data?.Definition == null) return false;
+            if (data.Definition.cardType == CardType.Tactic)
+                return HumanPlayer?.Tactics.Add(data) == true;
             if (_cards.Count >= maxHandSize)
             {
                 turnController?.ShowSpawnHint($"Hand is full ({maxHandSize}) — {data.Definition.displayName} was lost.");

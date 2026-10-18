@@ -86,17 +86,19 @@ namespace Game.Combat
         // logic below applies to it — same branch as before this refactor, unchanged.
         public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
             UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes,
-            bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false) =>
+            bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false,
+            int attackerModifier = 0, int defenderModifier = 0) =>
             ShouldSpendFate(attackerDice, defenderDice, fateAvailable, isDefender,
                 attacker?.Abilities, defender?.TypeTags, defender?.Abilities, magnitudes,
-                isRetreating, defendingUnitHp, isCaptureKill);
+                isRetreating, defendingUnitHp, isCaptureKill, attackerModifier, defenderModifier);
 
         // The same decision on the ability/type facts alone — what WorthIt's simulated battles
         // carry (no live UnitData). One spending policy for the real duel and for the estimate.
         public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
             IEnumerable<string> defenderAbilities, AbilityMagnitudes magnitudes,
-            bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false)
+            bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false,
+            int attackerModifier = 0, int defenderModifier = 0)
         {
             var m = new Matchup(attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
             if (fateAvailable <= 0)
@@ -105,7 +107,7 @@ namespace Game.Combat
             if (ownDice == null || !HasMiss(ownDice))
                 return false;
 
-            var result = new ChallengeResult(attackerDice, defenderDice);
+            var result = new ChallengeResult(attackerDice, defenderDice, attackerModifier, defenderModifier);
 
             if (isCaptureKill)
                 return isDefender
@@ -179,7 +181,7 @@ namespace Game.Combat
             // Hopeless check (unchanged from the previous ShouldSpendFate) — even flipping EVERY
             // remaining defender miss to a hit still doesn't get damage under HP; spending here is
             // pure waste of a resource that won't replenish until this battle ends.
-            int bestCaseDefenderSuccesses = result.DefenderDice.Length;
+            int bestCaseDefenderSuccesses = Mathf.Max(0, result.DefenderDice.Length + result.DefenderModifier);
             int bestCaseRawDamage = Mathf.Max(0, result.AttackerSuccesses - bestCaseDefenderSuccesses);
             int bestCaseDamage = m.Damage(bestCaseRawDamage);
             if (bestCaseDamage >= defendingUnitHp)

@@ -24,13 +24,34 @@ MonoBehaviour:
     variants:
     - guardArmyName:
       resourceCount: 2
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.disruption
     - guardArmyName:
       resourceCount: 3
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.precise-execution
     - guardArmyName:
       resourceCount: 4
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.disruption
   - name: Solar farm
     image: {fileID: 21300000, guid: b8125e3b9e589a2438d6e66d8c80f7e8, type: 3}
     description: Rows of dead photovoltaic mirrors cover the salt flats. A few intact converters remain behind the perimeter fence.
@@ -50,26 +71,68 @@ MonoBehaviour:
     variants:
     - guardArmyName:
       resourceCount: 2
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.disruption
     - guardArmyName:
       resourceCount: 3
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.precise-execution
     - guardArmyName:
       resourceCount: 4
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.tactical-advantage
   - name: Orbital satellite
     image: {fileID: 21300000, guid: e110a89a93bed9345a939fd80bd2d6aa, type: 3}
     description: A fallen orbital satellite has carved a long scar through the dunes. Its surviving instruments may still be worth salvaging.
     variants:
     - guardArmyName:
       resourceCount: 2
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.precise-execution
     - guardArmyName:
       resourceCount: 3
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.disruption
     - guardArmyName:
       resourceCount: 4
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.flawless-execution
   - name: Abandoned warehouse
     image: {fileID: 21300000, guid: a220bd1f5f6eb7a4fbd3c515e0e6df1a, type: 3}
     description: A locked warehouse stands beside an old freight road. Movement behind the shutters suggests that its stock is still claimed.
@@ -123,13 +186,34 @@ MonoBehaviour:
     variants:
     - guardArmyName:
       resourceCount: 2
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.disruption
     - guardArmyName:
       resourceCount: 3
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.precise-execution
     - guardArmyName:
       resourceCount: 4
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.disruption
   - name: Auto repair shop
     image: {fileID: 21300000, guid: f182ac5c45a6b894ba60e907bc147d9e, type: 3}
     description: An old repair shop shelters a pickup truck and racks of spare parts. Salvagers are working behind the half-open shutters.
@@ -170,13 +254,34 @@ MonoBehaviour:
     variants:
     - guardArmyName:
       resourceCount: 2
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.disruption
     - guardArmyName:
       resourceCount: 3
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.precise-execution
     - guardArmyName:
       resourceCount: 4
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.tactic.total-disruption
   - name: Research bunker
     image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
     description: A disguised research bunker lies under a treatment station. Its sealed laboratories remain under guard.

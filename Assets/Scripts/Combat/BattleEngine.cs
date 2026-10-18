@@ -40,14 +40,19 @@ namespace Game.Combat
         public readonly bool[] DefenderDice;
         public readonly int AttackerFateRemaining;
         public readonly int DefenderFateRemaining;
+        public readonly int AttackerModifier;
+        public readonly int DefenderModifier;
 
         public BattleChallengeRollResult(bool[] attackerDice, bool[] defenderDice,
-            int attackerFateRemaining, int defenderFateRemaining)
+            int attackerFateRemaining, int defenderFateRemaining,
+            int attackerModifier = 0, int defenderModifier = 0)
         {
             AttackerDice = attackerDice ?? Array.Empty<bool>();
             DefenderDice = defenderDice ?? Array.Empty<bool>();
             AttackerFateRemaining = Mathf.Max(0, attackerFateRemaining);
             DefenderFateRemaining = Mathf.Max(0, defenderFateRemaining);
+            AttackerModifier = attackerModifier;
+            DefenderModifier = defenderModifier;
         }
     }
 
@@ -578,7 +583,7 @@ namespace Game.Combat
         {
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
-                roll.AttackerDice, roll.DefenderDice, attacker, defender, magnitudes);
+                roll.AttackerDice, roll.DefenderDice, attacker, defender, magnitudes, roll.AttackerModifier, roll.DefenderModifier);
             // No grid and no rounds here (air strikes / AA fire): Bodyguard, Counterattack and Drill
             // are tactical-grid skills and never apply; Ionic is already in outcome.Damage.
             var application = new BattleAttackApplication
@@ -607,7 +612,7 @@ namespace Game.Combat
         {
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
-                roll.AttackerDice, roll.DefenderDice, attacker, defender, _magnitudes);
+                roll.AttackerDice, roll.DefenderDice, attacker, defender, _magnitudes, roll.AttackerModifier, roll.DefenderModifier);
 
             UnitData victim = defender;
             int damage = outcome.Damage;
@@ -763,7 +768,7 @@ namespace Game.Combat
         {
             ApplyFateState(hunterArmy?.Commander, hero, roll);
             CaptureKillOutcome outcome = BattleResolutionRules.ResolveCaptureKill(
-                roll.AttackerDice, roll.DefenderDice);
+                roll.AttackerDice, roll.DefenderDice, roll.AttackerModifier, roll.DefenderModifier);
             return ApplyCaptureKillOutcome(state, outcome, hero, heroArmy, hunterArmy);
         }
 

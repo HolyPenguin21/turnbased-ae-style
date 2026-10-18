@@ -30,7 +30,7 @@ namespace Game.Core
             AssignAiDecks(players, config?.collectionDeckCatalog);
             if (!players.Exists(p => p.IsHuman))
             {
-                foreach (var player in players) { player.MatchLoadout = null; player.BlueprintQuota = null; }
+                foreach (var player in players) { player.Tactics.Clear(); player.MatchLoadout = null; player.BlueprintQuota = null; }
                 MatchId = System.Guid.NewGuid().ToString("N"); RewardsEligible = false;
                 return true;
             }
@@ -53,6 +53,7 @@ namespace Game.Core
             foreach (var player in players)
             {
                 player.MatchLoadout = snapshots.TryGetValue(player, out var snapshot) ? snapshot : null;
+                player.Tactics.Clear();
                 player.BlueprintQuota = player.MatchLoadout == null ? null : new Game.Cards.BlueprintQuota(player.MatchLoadout);
             }
             MatchId = System.Guid.NewGuid().ToString("N");

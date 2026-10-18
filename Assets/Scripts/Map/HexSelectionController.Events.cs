@@ -384,8 +384,13 @@ namespace Game.Map
         // handing the same instance back is a restore, not a new attach — no cost is re-applied.
         public void GrantCard(PlayerSetupData owner, CardData card)
         {
-            if (cardHandUI == null || owner == null || card?.Definition == null)
+            if (owner == null || card?.Definition == null) return;
+            if (card.Definition.cardType == CardType.Tactic)
+            {
+                owner.Tactics.Add(card);
                 return;
+            }
+            if (cardHandUI == null) return;
             if (owner.IsHuman)
                 cardHandUI.AddCardToHand(card);
             else
