@@ -1,12 +1,17 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Core;
+using Game.Economy;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Turns;
+using Game.Units;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,7 +19,7 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // Authored on Canvas_UI/Panel_Data in the Game scene; every reference is assigned there.
-    // The numbers are PlayerForceAnalysis's; this class only reads sources and formats them.
+    // Gameplay intelligence: all values come from existing read-only analysis and registries.
     [DisallowMultipleComponent]
     public sealed class PlayerDataPanelUI : MonoBehaviour
     {
@@ -22,20 +27,26 @@ namespace Game.UI
         [SerializeField] private GameObject contentPanel;
         [SerializeField] private TMP_Text dataTmpText;
         [SerializeField] private CardHandUI cardHand;
+        [SerializeField] private GameTurnController turnController;
+        [SerializeField] private HexMap map;
         private float _nextRefresh;
 
         private void Awake()
         {
-            if (dataButton == null || contentPanel == null || dataTmpText == null || cardHand == null)
+            if (dataButton == null || contentPanel == null || dataTmpText == null || cardHand == null
+                || turnController == null || map == null)
             {
                 Debug.LogWarning("PlayerDataPanelUI: assign dataButton, contentPanel, dataTmpText "
-                    + "and cardHand in the scene.", this);
+                    + "cardHand, turnController and map in the scene.", this);
+                if (dataButton != null) dataButton.gameObject.SetActive(false);
+                if (contentPanel != null) contentPanel.SetActive(false);
                 enabled = false;
                 return;
             }
             // These labels may contain player/army names; render them as plain text.
             dataTmpText.richText = false;
             contentPanel.SetActive(false);
+            UpdateAccess();
         }
 
         private void OnEnable()
@@ -46,11 +57,13 @@ namespace Game.UI
         private void OnDisable()
         {
             if (dataButton != null) dataButton.onClick.RemoveListener(Toggle);
+            if (contentPanel != null) contentPanel.SetActive(false);
+            if (dataButton != null) dataButton.gameObject.SetActive(false);
         }
 
         public void Toggle()
         {
-            if (contentPanel == null) return;
+            if (contentPanel == null || !UpdateAccess()) return;
             bool open = !contentPanel.activeSelf;
             contentPanel.SetActive(open);
             if (open) Refresh();
@@ -58,69 +71,150 @@ namespace Game.UI
 
         private void Update()
         {
+            if (!UpdateAccess()) return;
             if (contentPanel != null && contentPanel.activeInHierarchy && Time.unscaledTime >= _nextRefresh)
                 Refresh();
+        }
+
+        private bool UpdateAccess()
+        {
+            bool access = TacticalIntelligence.HasAccess(GameSession.FindHumanPlayer());
+            if (dataButton != null && dataButton.gameObject.activeSelf != access)
+                dataButton.gameObject.SetActive(access);
+            if (!access)
+            {
+                if (contentPanel != null) contentPanel.SetActive(false);
+                if (dataTmpText != null) dataTmpText.text = string.Empty;
+            }
+            return access;
         }
 
         private void Refresh()
         {
             _nextRefresh = Time.unscaledTime + 1f;
-            var output = new StringBuilder();
-            foreach (PlayerSetupData player in GameSession.Players)
+            if (!UpdateAccess()) return;
+            PlayerSetupData observer = GameSession.FindHumanPlayer();
+            // CompletedTurns advances at END of our turn. Keep that report during other
+            // players' turns; reveal the next one only when our next turn actually starts.
+            long personalTurn = turnController.CompletedTurnsFor(observer);
+            if (turnController.CurrentPlayer != observer && personalTurn > 0) personalTurn--;
+            var output = new StringBuilder("Tactical Intelligence");
+            // OrderByDescending is stable: equal-coverage players keep their match order.
+            var opponents = GameSession.Players
+                .Where(player => player != null && player != observer && !player.IsNeutral)
+                .Select(player => new
+                {
+                    Player = player,
+                    VisibleFields = TacticalIntelligence.VisibleFieldCount(observer, player,
+                        ArmyRegistry.AllForOwner(observer)),
+                })
+                .OrderByDescending(info => info.VisibleFields);
+            foreach (var opponent in opponents)
             {
-                if (player == null || player.IsNeutral) continue;
-                if (output.Length > 0) output.Append("\n\n");
+                PlayerSetupData player = opponent.Player;
                 string faction = cardHand.StartingDeckCatalog?.GetCatalog(player.Faction)?.displayName
                     ?? player.Faction.ToString();
-                output.Append(player.Nickname).Append(" — ").Append(faction);
-                if (!player.IsHuman && !string.IsNullOrEmpty(player.AiDeckName))
-                    output.Append("\nDeck: ").Append(player.AiDeckName);
+                output.Append("\n\n").Append(player.Nickname).Append(" — ").Append(faction);
                 if (player.IsEliminated)
                 {
                     output.Append(" (eliminated)");
                     continue;
                 }
-                IEnumerable<CardData> hand;
-                IEnumerable<CardDefinition> deck;
-                if (player.IsHuman)
-                {
-                    hand = cardHand.HumanHand;
-                    deck = cardHand.HumanRemainingDeck;
-                }
-                else
-                {
-                    // Read-only lookup: opening the panel never creates, deals or draws an AI hand.
-                    // Before the first AI turn the whole authored pool is its hand + remaining deck.
-                    AiHandData aiHand = AiHandRegistry.Peek(player);
-                    hand = aiHand?.Hand;
-                    deck = aiHand != null ? aiHand.RemainingDeck
-                        : cardHand.StartingDeckCatalog?.BuildDeckPool(player);
-                }
-                PlayerForceAnalysis force = PlayerForceAnalysis.Calculate(player,
-                    ArmyRegistry.AllForOwner(player), hand, deck);
-                output.Append("\nTroops on map: ")
-                    .Append(Ratio(force.DeployedPower, force.TotalAvailablePower, force.DeployedPercent))
-                    .Append(';');
-                // Attack mobilization start (B): the field force against the Attack peak (the AI's
-                // own AttackPeak); the AI's gate opens strictly above 80% of it.
-                output.Append("\nStrike force on map: ")
-                    .Append(Ratio(force.FieldStrikePotential, force.AttackPeak, force.FieldStrikePercent))
-                    .Append(';');
-                ArmyData army = force.StrongestArmy;
-                output.Append("\nStrongest field army: ");
-                if (army == null) output.Append("none");
-                else output.Append(army.Name).Append(" (").Append(army.Hex.Q).Append(", ")
-                    .Append(army.Hex.R).Append("); ").Append(army.Members.Count).Append('/')
-                    .Append(army.Capacity);
-                output.Append("; power ")
-                    .Append(Ratio(force.StrongestArmyPower, force.AttackPeak, force.ReadinessPercent))
-                    .Append(';');
-                if (!player.IsHuman)
-                    output.Append("\nAttack: ").Append(AttackIntentLabel.Describe(player)).Append(';');
+                int count = opponent.VisibleFields;
+                int mask = TacticalIntelligence.RevealMask(GameSession.MatchId,
+                    GameSession.Players.IndexOf(observer), GameSession.Players.IndexOf(player), personalTurn, count);
+                output.Append("\nIntel coverage: ").Append(count * 100 / TacticalIntelligence.FieldCount)
+                    .Append("% (").Append(count).Append('/').Append(TacticalIntelligence.FieldCount).Append(')');
+                AppendOpponent(output, player, mask);
             }
-            string value = output.Length > 0 ? output.ToString() : "No players yet.";
+            string value = output.ToString();
             if (dataTmpText.text != value) dataTmpText.text = value;
             FitTextContent();
+        }
+
+        private void AppendOpponent(StringBuilder output, PlayerSetupData player, int mask)
+        {
+            // A zero-coverage report doesn't even request the hidden force/hand data.
+            List<ArmyData> armies = mask != 0 ? ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && !a.IsPrison).ToList() : new List<ArmyData>();
+            List<UnitData> units = armies.SelectMany(a => a.Members)
+                .Where(u => u != null && !u.IsPrisoner && !u.IsSummoned && u.HitPointsCurrent > 0)
+                .Distinct().ToList();
+            PlayerForceAnalysis force = default;
+            if ((mask & 0xf) != 0)
+            {
+                // Never create/draw an AI hand or advance its mission state to show a report.
+                AiHandData hand = AiHandRegistry.Peek(player);
+                IEnumerable<CardDefinition> deck = hand != null ? hand.RemainingDeck
+                    : cardHand.StartingDeckCatalog?.BuildDeckPool(player);
+                force = PlayerForceAnalysis.Calculate(player, armies, hand?.Hand, deck);
+            }
+            List<BuildingData> buildings = mask != 0 ? BuildingRegistry.AllBuildings()
+                .Where(b => b != null && b.Owner == player).ToList() : new List<BuildingData>();
+            PlayerRoot root = mask != 0 ? PlayerRootRegistry.FindFor(player) : null;
+            for (int field = 0; field < TacticalIntelligence.FieldCount; field++)
+            {
+                output.Append('\n').Append(FieldLabel(field)).Append(": ");
+                if ((mask & (1 << field)) == 0)
+                {
+                    output.Append("???");
+                    continue;
+                }
+                switch (field)
+                {
+                    case 0: output.Append(Number(force.DeployedPower)); break;
+                    case 1: output.Append(Number(force.AttackPeak)); break;
+                    case 2: output.Append(Number(force.StrongestArmyPower)); break;
+                    case 3:
+                        ArmyData strongest = force.StrongestArmy;
+                        if (strongest == null) output.Append("none");
+                        else output.Append(strongest.Members.Count).Append('/').Append(strongest.Capacity);
+                        break;
+                    case 4: output.Append(player.IsHuman ? "unavailable" : AttackIntentLabel.Describe(player)); break;
+                    case 5: output.Append(armies.Count(a => TacticalIntelligence.IsGroundObserver(a, player))); break;
+                    case 6: output.Append(units.Count(u => !u.IsAviation && u.IsGroundCombatant)); break;
+                    case 7: output.Append(units.Count(u => u.IsAviation)); break;
+                    case 8: output.Append(units.Count(u => u.IsHero)); break;
+                    case 9: output.Append(buildings.Count(b => b.IsBase)); break;
+                    case 10: output.Append(buildings.Sum(b => b.FacilitySlots.Count(f => f != null))); break;
+                    case 11:
+                        var citadel = player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
+                            ? new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value) : (HexCoord?)null;
+                        output.Append(Number(AiPower.EffectiveArmyPower(armies
+                            .Where(a => a.IsGarrison && citadel.HasValue && a.Hex.Equals(citadel.Value))
+                            .SelectMany(a => a.Members).ToList())));
+                        break;
+                    default:
+                        if (root == null) { output.Append("unavailable"); break; }
+                        ResourceType resource = (ResourceType)(field - 12);
+                        output.Append(root.GetResource(resource)).Append(" (+")
+                            .Append(IncomeProjection.IncomeFor(player, resource, map)).Append(')');
+                        break;
+                }
+            }
+        }
+
+        private static string FieldLabel(int field)
+        {
+            switch (field)
+            {
+                case 0: return "Deployed ground power";
+                case 1: return "Strike army potential";
+                case 2: return "Strongest field army power";
+                case 3: return "Strongest field army size";
+                case 4: return "Attack operation";
+                case 5: return "Ground field armies";
+                case 6: return "Ground troops";
+                case 7: return "Aircraft";
+                case 8: return "Deployed heroes";
+                case 9: return "Bases";
+                case 10: return "Facilities";
+                case 11: return "Citadel garrison power";
+                case 12: return "Human (stock / income)";
+                case 13: return "Energy (stock / income)";
+                case 14: return "Materials (stock / income)";
+                default: return "Tech (stock / income)";
+            }
         }
 
         private void OnRectTransformDimensionsChange()
@@ -144,11 +238,6 @@ namespace Game.UI
                 Mathf.Clamp(content.anchoredPosition.y, 0f, height - scroll.viewport.rect.height));
         }
 
-        // The percent comes from the raw values (PlayerForceAnalysis), never from the rounded text.
-        private static string Ratio(float part, float whole, float percent) =>
-            part.ToString("0.0", CultureInfo.InvariantCulture) + " / "
-            + whole.ToString("0.0", CultureInfo.InvariantCulture) + " ("
-            + percent.ToString("0.00", CultureInfo.InvariantCulture) + "%)";
+        private static string Number(float value) => value.ToString("0.0", CultureInfo.InvariantCulture);
     }
 }
-

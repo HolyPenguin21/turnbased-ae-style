@@ -47,6 +47,8 @@ MonoBehaviour:
     description: Can intercept air targets
   - tag: ApBonus
     description: 'Passive: +2 AP/turn'
+  - tag: TacticalIntelligence
+    description: Unlocks opponent intelligence while in play. Ground armies closer to an enemy citadel reveal more fields; revealed fields change each turn.
   - tag: Barracks
     description: Accepts hand deploys
   - tag: Research
