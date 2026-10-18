@@ -2994,9 +2994,11 @@ namespace Game.EditorTests
             builder.Members.Add(hero);
             var garrison = new ArmyData
                 { Owner = player, Hex = home, Name = "Garrison", IsGarrison = true };
-            UnitData cheap = Body("Cheap escort", 4, 4, activation: 1);
+            // The garrison floor releases its strongest bodies first (AiArmyRoles.SpareableBodies),
+            // so the cheap escort is also the stronger one: the only body the live floor lets go.
+            UnitData cheap = Body("Cheap escort", 8, 8, activation: 1);
             cheap.MoveMax = 3;
-            UnitData expensive = Body("Expensive escort", 8, 8, activation: 4);
+            UnitData expensive = Body("Expensive escort", 4, 4, activation: 4);
             expensive.MoveMax = 2;
             garrison.Members.AddRange(new[] { cheap, expensive });
 
@@ -4429,6 +4431,79 @@ namespace Game.EditorTests
             Assert.That(DemandLayer.EconomyEscortImprovesRoute(army, route, stronger, 3), Is.True,
                 "a body unable to traverse the route cannot count as an existing escort");
         }
+
+        // Playtest 2026-10-18 (Thane T4): an extraction builder under a route threat took the
+        // Citadel garrison's only defender as its escort, and the empty Citadel fell. An economy
+        // escort is drawn only from bodies the garrison floor spares, for founding and extraction.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ExtractionEscort_NeverTakesABodyTheGarrisonFloorKeeps(bool spareable)
+        {
+            ArmySnapshot solo = EconomyBuilder(41, 1, 1f);
+            var garrison = new ArmySnapshot
+            {
+                ArmyId = 43, Hex = solo.Hex, IsGarrison = true, MemberCount = 1,
+                Members = new[] { new Game.Combat.WorthIt.DefenderProfile(
+                    8f, false, attack: 8f, hitPoints: 8f, initiative: 2) },
+                NonHeroActivationApCosts = new[] { 1 }, NonHeroMoveMax = new[] { 3 },
+                NonHeroSpareable = new[] { spareable }, MaxMovement = 3,
+            };
+            WorldSnapshot snap = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            snap.Self.Armies = new[] { solo, garrison };
+            EconomyBuilderRouteSnapshot route = BuilderRoute(solo, 3, 3, 1);
+            route.MaximumStepCost = 1;
+            route.RouteThreats = new[] { WeakEnemySighting() };
+
+            EconomyBuilderSelection.EconomyBuilderChoice choice = EconomyBuilderSelection.AssessEconomyArmy(
+                snap, new HexCoord(3, 0), route, solo, 1f, includeReturn: true);
+
+            Assert.That(choice.Suitability, Is.EqualTo(spareable
+                ? EconomyBuilderSelection.EconomyArmySuitability.ReinforceAtBase
+                : EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
+            Assert.That(choice.AddedIndices, spareable ? Is.EquivalentTo(new[] { 0 }) : Is.Empty);
+        }
+
+        // The same playtest's first step: the hero was extracted alone onto a threatened route.
+        // A threatened extraction pins its spareable escort up front, exactly as founding does.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void GarrisonHeroExtraction_ThreatenedRouteRequiresASpareableEscort(bool spareable)
+        {
+            var garrison = EconomyBuilder(41, 2, 8f); garrison.IsGarrison = true;
+            garrison.Members = new[] { new Game.Combat.WorthIt.DefenderProfile(
+                8f, false, attack: 8f, hitPoints: 8f, initiative: 2) };
+            garrison.NonHeroSpareable = new[] { spareable };
+            garrison.NonHeroMoveMax = new[] { 3 };
+            WorldSnapshot snap = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            snap.Self.Armies = new[] { garrison };
+            EconomyBuilderRouteSnapshot route = BuilderRoute(garrison, 3, 3, 1);
+            route.RequiresGarrisonExtraction = true; route.ExtractionContainerAvailable = true;
+            route.ExtractedHeroCapacity = 2; route.MaximumStepCost = 1;
+            route.RouteThreats = new[] { WeakEnemySighting() };
+
+            EconomyBuilderSelection.EconomyBuilderChoice choice = EconomyBuilderSelection.AssessEconomyArmy(
+                snap, new HexCoord(3, 0), route, garrison, 1f, includeReturn: true);
+
+            Assert.That(choice.Suitability, Is.EqualTo(spareable
+                ? EconomyBuilderSelection.EconomyArmySuitability.Ready
+                : EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
+            Assert.That(choice.MinimumEscortCount, Is.EqualTo(spareable ? 1 : 0));
+            if (!spareable)
+                Assert.That(choice.IneligibleReason, Is.EqualTo("extracted_hero_needs_sparable_garrison_body"));
+
+            route.RouteThreats = System.Array.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>();
+            WorldSnapshot rearSnap = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            rearSnap.Self.Armies = new[] { garrison };
+            EconomyBuilderSelection.EconomyBuilderChoice rear = EconomyBuilderSelection.AssessEconomyArmy(
+                rearSnap, new HexCoord(3, 0), route, garrison, 1f, includeReturn: true);
+            Assert.That(rear.Suitability, Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready));
+            Assert.That(rear.MinimumEscortCount, Is.Zero, "a safe-rear extraction still walks alone");
+        }
+
+        private static Game.Ai.AiMapMemory.KnownEnemySighting WeakEnemySighting() =>
+            new Game.Ai.AiMapMemory.KnownEnemySighting(new HexCoord(2, 0), new PlayerSetupData(),
+                "enemy", 1, 1f, 1f, new List<Game.Combat.WorthIt.DefenderProfile> {
+                    new Game.Combat.WorthIt.DefenderProfile(1f, false, attack: 1f, hitPoints: 1f) });
 
         private static ArmySnapshot EconomyBuilder(int id, int size, float power)
         {

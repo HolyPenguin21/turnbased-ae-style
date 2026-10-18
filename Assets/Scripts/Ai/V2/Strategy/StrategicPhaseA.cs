@@ -386,13 +386,15 @@ namespace Game.Ai.V2
             // Radar weight: it is NOT a late sink. Each pass of the loop below ranks its intrinsic
             // card score x its own Radar scale against the best materialization chain, so the
             // better of the two acts first and the other is re-judged on the refreshed world.
+            // An Economy global-source Facility is the same kind of plain card play (no builder,
+            // no hold): playtest 2026-10-18 Thane spent its only Energy on Intel Center (net 2.7)
+            // ahead of a threatened Citadel's garrison chain, so it competes here too.
             var arbitratedInfrastructure = states
-                .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
-                    && state.Demand.RequestingAxis == DesireAxis.Development
+                .Where(state => CompetesInCardArbitration(state.Demand)
                     && !zeroRadarInfrastructure.Contains(state))
                 .ToHashSet();
             if (arbitratedInfrastructure.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A infra — {arbitratedInfrastructure.Count} Development request(s) compete in card arbitration");
+                AiDebugLog.Write($"[AI][V2]   strat.A infra — {arbitratedInfrastructure.Count} Development/global-source request(s) compete in card arbitration");
 
             // A global-source demand (AxisDemand.EconomySourceCard) is about the card being in
             // play, not about who played it: a carrier Hero that another demand already fielded
@@ -1047,6 +1049,13 @@ namespace Game.Ai.V2
         internal static bool PendingPrerequisiteHoldIsLive(AxisDemand demand,
             MaterializationDeliveryAvailability availability) =>
             !HoldsForPendingPrerequisite(demand) || !availability.StructurallyUndeliverable;
+
+        // Infrastructure that is a plain card play (no builder walk, no Economy hold) and so ranks
+        // against the best materialization chain instead of running ahead of it.
+        internal static bool CompetesInCardArbitration(AxisDemand demand) =>
+            demand != null && InfrastructureFulfillment.Handles(demand.Capability)
+            && (demand.RequestingAxis == DesireAxis.Development
+                || demand.Capability == CapabilityKind.GlobalResourceFacility);
 
         // The same rule that makes ShouldReserveDeferredEconomyResources hold for a demand with
         // no ready builder/route: an accepted build's Hero/escort prerequisite.
