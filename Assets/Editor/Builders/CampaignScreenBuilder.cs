@@ -22,7 +22,6 @@ public static class CampaignScreenBuilder
     private static TMP_FontAsset font;
     private static Sprite endTurnSprite, actionSprite;
 
-    [MenuItem("Tools/UI/Build Campaign Screen")]
     private static void Build()
     {
         var ui = Object.FindAnyObjectByType<CampaignUI>();
@@ -188,7 +187,6 @@ public static class CampaignScreenBuilder
     // Adds the reference-layout slots (header plaques, faction bars, neighbor emblems, available attacks,
     // history columns, player emblem, map region markers) to an already built and hand-edited Campaign scene.
     // Idempotent: a slot whose CampaignUI/CampaignMapView field is already assigned is left untouched.
-    [MenuItem("Tools/UI/Add Campaign Reference Slots")]
     private static void AddReferenceSlotsMenu()
     {
         var ui = Object.FindAnyObjectByType<CampaignUI>();
