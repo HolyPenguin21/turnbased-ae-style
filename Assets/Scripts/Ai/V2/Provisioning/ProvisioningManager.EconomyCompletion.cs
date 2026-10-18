@@ -181,7 +181,7 @@ namespace Game.Ai.V2
                     && !retained.Contains(index)).ToList();
             if (choice.AddedIndices.Any(i => i < 0 || i >= reserve.Count)) return false;
             reinforcement = choice.AddedIndices.Select(i => reserve[i]).ToList();
-            if (choice.FoundsBase && reinforcement.Count > 0
+            if (reinforcement.Count > 0
                 && !AiArmyRoles.CanSpareGarrisonMembers(player, garrison, reinforcement)) return false;
             if ((unload.Count > 0 || reinforcement.Count > 0) && choice.Army.EconomyRosterProtected)
                 return false;

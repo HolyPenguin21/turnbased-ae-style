@@ -139,9 +139,9 @@ namespace Game.Ai.V2
             // copy, but must never overwrite the result observed by the next reader.
             return assessed.DetachedDecision();
 
-            // Founding must deliver a ground body, not merely prefer one. Extraction retains
-            // its existing escort policy. A defender already on the site is a frozen witness;
-            // final Materialization/Execution revalidates the physical transfer before spending.
+            // Founding must deliver a ground body, not merely prefer one. Extraction keeps its
+            // threat-driven escort, drawn only from bodies the garrison floor spares. A defender
+            // already on the site is a frozen witness; final Materialization/Execution revalidates the physical transfer before spending.
             EconomyBuilderChoice Compute()
             {
                 bool defendedSite = snap?.Self?.Armies?.Any(a => a != null && a.IsGarrison
@@ -184,14 +184,17 @@ namespace Game.Ai.V2
                         projectedRoute, buildApCost, includeReturn);
                     choice.ProjectedActivationApCost = projectedRoute.ActivationApCost;
                     choice.ProjectedMaxMovement = route.MaxMovement;
-                    if (enforceGarrisonBody)
+                    List<AiMapMemory.KnownEnemySighting> extractionThreats = (route.RouteThreats
+                        ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                        .Where(t => t.Owner?.IsNeutral != true).ToList();
+                    if (enforceGarrisonBody || extractionThreats.Count > 0)
                     {
-                        // Extracting the hero alone cannot satisfy founding. Pin a concrete body
-                        // that the original garrison can spare, then use the existing composition
-                        // preparation to put it into the resolved field container before departure.
-                        List<AiMapMemory.KnownEnemySighting> extractionThreats = (route.RouteThreats
-                            ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                            .Where(t => t.Owner?.IsNeutral != true).ToList();
+                        // Extracting the hero alone cannot satisfy founding, nor walk a threatened
+                        // route (the field path's minimum escort is 1 under any enemy threat). Pin a
+                        // concrete body that the original garrison can spare, then use the existing
+                        // composition preparation to put it into the resolved field container
+                        // before departure. Playtest 2026-10-18: Thane's hero left the Citadel
+                        // alone, then took its only defender as the escort.
                         int escort = Enumerable.Range(0, army.Members?.Count ?? 0)
                             .Where(i => AiArmyRoles.IsGroundBattleBody(army.Members[i])
                                 && GarrisonMaySpare(army, new List<int> { i })
@@ -243,7 +246,6 @@ namespace Game.Ai.V2
                     && !army.EconomyRosterProtected;
                 bool safeRear = threats.Count == 0;
                 int minimumEscort = safeRear ? 0 : 1;
-                bool protectGarrisonFloor = enforceGarrisonBody;
                 if (enforceGarrisonBody)
                     minimumEscort = Mathf.Max(minimumEscort, 1);
                 choice.MinimumEscortCount = minimumEscort;
@@ -324,9 +326,9 @@ namespace Game.Ai.V2
                     int bestMove = int.MinValue;
                     foreach (List<int> subset in Combinations(reserveIndices, add))
                     {
-                        // Founding must not strip the original garrison's protected defence,
-                        // whether the body is needed for the route or to hold the future base.
-                        if (protectGarrisonFloor && !GarrisonMaySpare(garrison, subset))
+                        // No economy escort strips the garrison's protected defence floor — the
+                        // same rule every other donor obeys (AiArmyRoles.CanSpareGarrisonMembers).
+                        if (!GarrisonMaySpare(garrison, subset))
                             continue;
                         var projected = new List<WorthIt.DefenderProfile>(current);
                         projected.AddRange(subset.Select(i => reserve[i]));
