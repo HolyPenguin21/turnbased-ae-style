@@ -8,6 +8,11 @@ Cards in hand/deck grant no access. Losing the last source hides the Intel butto
 closes the report and clears its text. Capturing a base transfers its facilities' access.
 Multiple sources provide redundancy, without adding coverage.
 
+The report uses the existing vertical ScrollRect, with a plain `PlayerDataScrollbar`
+(track, sliding area and handle) available for manual styling in the Game scene.
+The scrollbar hides when the report fits. Opponents are sorted by visible-field count
+descending; ties preserve the original match order. Sorting refreshes with coverage.
+
 Only opponents are listed; neutral players and the observer are omitted. Name, faction
 and elimination status are public. The sixteen private fields are:
 

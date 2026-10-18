@@ -99,9 +99,19 @@ namespace Game.UI
             long personalTurn = turnController.CompletedTurnsFor(observer);
             if (turnController.CurrentPlayer != observer && personalTurn > 0) personalTurn--;
             var output = new StringBuilder("Tactical Intelligence");
-            foreach (PlayerSetupData player in GameSession.Players)
+            // OrderByDescending is stable: equal-coverage players keep their match order.
+            var opponents = GameSession.Players
+                .Where(player => player != null && player != observer && !player.IsNeutral)
+                .Select(player => new
+                {
+                    Player = player,
+                    VisibleFields = TacticalIntelligence.VisibleFieldCount(observer, player,
+                        ArmyRegistry.AllForOwner(observer)),
+                })
+                .OrderByDescending(info => info.VisibleFields);
+            foreach (var opponent in opponents)
             {
-                if (player == null || player == observer || player.IsNeutral) continue;
+                PlayerSetupData player = opponent.Player;
                 string faction = cardHand.StartingDeckCatalog?.GetCatalog(player.Faction)?.displayName
                     ?? player.Faction.ToString();
                 output.Append("\n\n").Append(player.Nickname).Append(" — ").Append(faction);
@@ -110,8 +120,7 @@ namespace Game.UI
                     output.Append(" (eliminated)");
                     continue;
                 }
-                int count = TacticalIntelligence.VisibleFieldCount(observer, player,
-                    ArmyRegistry.AllForOwner(observer));
+                int count = opponent.VisibleFields;
                 int mask = TacticalIntelligence.RevealMask(GameSession.MatchId,
                     GameSession.Players.IndexOf(observer), GameSession.Players.IndexOf(player), personalTurn, count);
                 output.Append("\nIntel coverage: ").Append(count * 100 / TacticalIntelligence.FieldCount)

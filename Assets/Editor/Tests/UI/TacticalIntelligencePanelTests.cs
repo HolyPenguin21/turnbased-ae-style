@@ -134,6 +134,32 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void FourPlayerReportSortsByCoverageAndKeepsEqualCoverageStable()
+        {
+            PlaceCenter();
+            _enemy.Nickname = "Low intel";
+            var high = new PlayerSetupData { Nickname = "High intel", CitadelHexQ = 20, CitadelHexR = 0 };
+            var middle = new PlayerSetupData { Nickname = "Middle intel", CitadelHexQ = 10, CitadelHexR = 0 };
+            GameSession.Players.Add(high);
+            GameSession.Players.Add(middle);
+            foreach (int q in new[] { 3, 19, 12 })
+            {
+                var scout = new ArmyData { Owner = _human, Hex = new HexCoord(q, 0) };
+                scout.Members.Add(new UnitData { HitPointsCurrent = 3, HitPointsMax = 3 });
+                ArmyRegistry.Register(scout);
+            }
+            _panel.Toggle();
+            Assert.That(_text.text.IndexOf("High intel"), Is.LessThan(_text.text.IndexOf("Middle intel")));
+            Assert.That(_text.text.IndexOf("Middle intel"), Is.LessThan(_text.text.IndexOf("Low intel")));
+            // All three now have 25%; the original match order wins the tie.
+            high.CitadelHexQ = 22;
+            middle.CitadelHexQ = 15;
+            Call("Refresh");
+            Assert.That(_text.text.IndexOf("Low intel"), Is.LessThan(_text.text.IndexOf("High intel")));
+            Assert.That(_text.text.IndexOf("High intel"), Is.LessThan(_text.text.IndexOf("Middle intel")));
+        }
+
+        [Test]
         public void PersonalTurnChangesReportOnlyWhenObserverStartsNextTurn()
         {
             PlaceCenter();
