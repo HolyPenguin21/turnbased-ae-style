@@ -79,6 +79,8 @@ MonoBehaviour:
     description: 'Passive: +1 T/turn'
   - tag: Heal
     description: "Restores 1 HP to one random wounded living Bio ally in this army. Units activate at the start of their combat turn; heroes activate at the start of each combat round."
+  - tag: Repair
+    description: "Enables paid repair for all own units and heroes on this hex while this living ground unit is in play. Repair costs are unchanged."
   - tag: Transport
     description: "Continuously raises the movement maximum of the slowest Infantry ally slower than this carrier to this carrier's permanent maximum. Reassigns when the carrier or recipient changes armies or dies."
   - tag: Airfield

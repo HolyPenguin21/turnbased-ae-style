@@ -315,6 +315,8 @@ MonoBehaviour:
     abbreviation: pT
   - ability: Heal
     abbreviation: Heal
+  - ability: Repair
+    abbreviation: Rpr
   - ability: Transport
     abbreviation: Trn
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}

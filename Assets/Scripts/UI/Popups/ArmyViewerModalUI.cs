@@ -389,15 +389,14 @@ namespace Game.UI
         // Read by ArmyUnitCardUI.OnPointerEnter to decide whether to reveal its own Repair
         // button — read-only view (someone else's army) never offers it, same as dragging.
         public bool CanRepairUnit(UnitData unit) =>
-            !IsReadOnly && _currentArmy != null && UnitRepair.IsWounded(unit) && UnitRepair.CanRepairAt(_currentArmy.Hex, _currentArmy.Owner);
+            !IsReadOnly && UnitRepair.CanRepair(unit, _currentArmy);
 
         // Called by ArmyUnitCardUI's Repair button — same "afford-check, hint-on-fail, spend,
         // refresh" shape as BaseViewerModalUI.UpgradeBase/RepairBase, except the actual spend+heal
-        // transaction lives in UnitRepair.TryRepair so Game.Ai.AiManagementPlanner's own repair
-        // routine can call the identical logic instead of duplicating it here.
+        // transaction lives in UnitRepair.TryRepair, shared with Phase-B AI maintenance.
         public void RepairUnit(UnitData unit)
         {
-            if (_currentArmy == null)
+            if (!CanRepairUnit(unit))
                 return;
             PlayerRoot root = PlayerRootRegistry.FindFor(_currentArmy.Owner);
             if (!UnitRepair.TryRepair(unit, _currentArmy.Hex, root, out string failReason))

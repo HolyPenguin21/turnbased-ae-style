@@ -717,6 +717,7 @@ MonoBehaviour:
     unitTypeTags: 000000000300000007000000
     grantedAbilities:
     - CollectTech
+    - Repair
     resourceYield:
       human: 0
       energy: 0

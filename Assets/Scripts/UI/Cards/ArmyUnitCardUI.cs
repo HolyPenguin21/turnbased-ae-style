@@ -456,7 +456,7 @@ namespace Game.UI
         }
 
         // Repair only ever shows while the unit is actually wounded AND its army is standing on
-        // the player's own Base (see ArmyViewerModalUI.CanRepairUnit/UnitRepair.CanRepairAt) —
+        // an owned repair point (see ArmyViewerModalUI.CanRepairUnit/UnitRepair.CanRepairAt) —
         // same "hover-only, condition re-checked live" shape as BaseSlotCardUI's own Repair.
         public void OnPointerEnter(PointerEventData eventData)
         {
