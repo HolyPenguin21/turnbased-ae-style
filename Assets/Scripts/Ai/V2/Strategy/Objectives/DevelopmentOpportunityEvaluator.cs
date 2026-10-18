@@ -234,6 +234,28 @@ namespace Game.Ai.V2
             }
         }
 
+        // Phase A re-enumerates a READY output's recipients on every pass (feasible set, top-K,
+        // delivery check). Same verdict code, store and key as Enumerate with the same intents, so on
+        // an unchanged world it reuses the verdicts Demand already priced; any change the key reads
+        // (a played card, a refreshed snapshot) replaces the store and prices afresh. Without the
+        // intents the key cannot match Enumerate's: verdicts are then memoised for this call only.
+        internal static List<DevelopmentOpportunity> SettledEquipmentOpportunities(GenerationStep live,
+            WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, IReadOnlyList<MissionIntent> activeIntents)
+        {
+            RecipientEvaluationMemo.VerdictStore store;
+            if (activeIntents != null && snap?.Development?.AnyFacilityWithHero == true)
+                using (new Game.Core.ProfileScope("AI/Dev.VerdictKey"))
+                    store = RecipientEvaluationMemo.StoreFor(player,
+                        DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand));
+            else
+                store = new RecipientEvaluationMemo.VerdictStore();
+            using var recipientMemo = new RecipientEvaluationMemo(store);
+            using var targetMemo = new EquipmentUpgradeValuation.EquipmentTargetMemo();
+            return EquipmentOpportunities(live.Mode, live.FacilityHex, live.CardDef, live.SuccessChance,
+                live, snap, inv, player, root, hand, out _, futureAttachment: true);
+        }
+
         // Structural (resource/AP-free) reasons a base cannot be prepared for `mode`, or null. Also
         // yields the hand facility cards and, for a full Base, the capacity tier the step would buy.
         // The one owner of these clauses: AddPreparation and SelectedPreparationSite both read it.
@@ -1062,8 +1084,8 @@ namespace Game.Ai.V2
         // One settled Enumerate evaluates the same (equipment, recipient) pair for every mode and
         // site, and the verdict depends on neither: legality, signed delta, purpose label and the
         // pending-hand check read only the snapshot, the inventory, the hand and the registries,
-        // none of which Enumerate mutates. Memoised for that one call only; outside it (hand
-        // attachment, materialization re-enumeration) nothing is cached.
+        // none of which Enumerate mutates. Memoised inside Enumerate, the warm-up and Phase A's
+        // re-enumeration (SettledEquipmentOpportunities); hand attachment caches nothing.
         private readonly struct RecipientVerdict
         {
             public readonly bool Legal;

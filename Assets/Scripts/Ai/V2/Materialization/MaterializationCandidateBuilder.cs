@@ -227,7 +227,8 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             ActorCommitments commitments, MaterializationReservation reservation,
             System.Collections.Generic.ISet<CardData> excludeCards,
-            System.Collections.Generic.ISet<string> excludeGenKeys)
+            System.Collections.Generic.ISet<string> excludeGenKeys,
+            IReadOnlyList<MissionIntent> activeIntents = null)
         {
             if (demand?.Capability != CapabilityKind.CardUpgrade)
                 return MaterializationChainEnumerator.EnumerateForDemand(
@@ -247,8 +248,8 @@ namespace Game.Ai.V2
                 .FirstOrDefault(x => x.CardKey == g.CardKey);
             if (live == null) return new List<MaterializationPlan>();
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-            return DevelopmentOpportunityEvaluator.EquipmentOpportunities(live.Mode, live.FacilityHex,
-                    live.CardDef, live.SuccessChance, live, snap, inv, player, root, hand, out _, futureAttachment: true)
+            return DevelopmentOpportunityEvaluator.SettledEquipmentOpportunities(live, snap, inv,
+                    player, root, hand, activeIntents)
                 .Where(x => x.RecipientCard == null ||
                     ((excludeCards == null || !excludeCards.Contains(x.RecipientCard))
                      && !reservation.ClaimsDevelopmentOperatorCard(x.RecipientCard)))
@@ -259,10 +260,10 @@ namespace Game.Ai.V2
         internal static MaterializationDeliveryAvailability OperationalDeliveryAvailabilityForDemand(
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, AxisDemand demand, ActorCommitments commitments,
-            MaterializationReservation reservation)
+            MaterializationReservation reservation, IReadOnlyList<MissionIntent> activeIntents = null)
         {
             List<MaterializationPlan> raw = RawForDemand(
-                snap, player, root, hand, ctx, demand, commitments, reservation, null, null);
+                snap, player, root, hand, ctx, demand, commitments, reservation, null, null, activeIntents);
             return MaterializationFeasibility.AssessOperationalDelivery(
                 raw, player, root, hand, ctx, demand, snap);
         }
@@ -275,10 +276,12 @@ namespace Game.Ai.V2
             System.Collections.Generic.ISet<CardData> excludeCards = null,
             System.Collections.Generic.ISet<string> excludeGenKeys = null,
             float? witnessedUsefulApDemand = null,
-            IReadOnlyList<(MaterializationPlan plan, float followupAp)> fillerUniverse = null)
+            IReadOnlyList<(MaterializationPlan plan, float followupAp)> fillerUniverse = null,
+            IReadOnlyList<MissionIntent> activeIntents = null)
         {
             var raw = RawForDemand(
-                snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
+                snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys,
+                activeIntents);
             var candidates = MaterializationFeasibility.FilterForDemand(
                 raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap);
 
@@ -579,10 +582,10 @@ namespace Game.Ai.V2
         public static List<(MaterializationPlan plan, float followupAp)> AllFeasiblePlansForDemand(
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             AxisDemand demand, PhaseAApBudget apBudget, ActorCommitments commitments, float reservedFollowupAp,
-            MaterializationReservation reservation)
+            MaterializationReservation reservation, IReadOnlyList<MissionIntent> activeIntents = null)
         {
             var raw = RawForDemand(
-                snap, player, root, hand, ctx, demand, commitments, reservation, null, null);
+                snap, player, root, hand, ctx, demand, commitments, reservation, null, null, activeIntents);
             var candidates = MaterializationFeasibility.FilterForDemand(
                 raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap);
 

@@ -580,7 +580,7 @@ namespace Game.Ai.V2
                         continue;
                     }
                     if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand))
+                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand, activeIntents))
                         continue;
                     break;
                 }
@@ -613,7 +613,7 @@ namespace Game.Ai.V2
                         using (new Game.Core.ProfileScope("AI/PhaseA.AllFeasiblePlans"))
                             feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand,
                                 ctx, state.Demand, apBudget, commitments,
-                                apBudget.ReservedFollowup(), result.Reservation);
+                                apBudget.ReservedFollowup(), result.Reservation, activeIntents);
                         if (feas.Count > 0)
                             measOptions[state] = feas;
                     }
@@ -654,7 +654,7 @@ namespace Game.Ai.V2
                             apBudget, commitments, apBudget.ReservedFollowup(),
                             result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK,
                             witnessedUsefulApDemand: witnessedUsefulApDemand,
-                            fillerUniverse: fillerUniverse);
+                            fillerUniverse: fillerUniverse, activeIntents: activeIntents);
                     if (top.Count > 0)
                     {
                         options[state] = top;
@@ -671,7 +671,7 @@ namespace Game.Ai.V2
                         MaterializationDeliveryAvailability availability =
                             MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
                                 snap, player, root, hand, ctx, state.Demand, commitments,
-                                result.Reservation);
+                                result.Reservation, activeIntents);
                         if (availability.ConfirmedBlocked)
                         {
                             bool suppressed = intentState != null && intentState
@@ -766,7 +766,8 @@ namespace Game.Ai.V2
                             MaterializationDeliveryAvailability availability;
                             using (new Game.Core.ProfileScope("AI/PhaseA.DeliveryAvailability"))
                                 availability = MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
-                                    snap, player, root, hand, ctx, d, commitments, result.Reservation);
+                                    snap, player, root, hand, ctx, d, commitments, result.Reservation,
+                                    activeIntents);
                             bool structural = availability.RawCandidates == 0 || availability.ConfirmedBlocked;
                             d.StructurallyUndeliverable = structural;
                             if (structural && d.AttackFistIsPreparationHost && d.AttackFistArmyId.HasValue)
@@ -790,7 +791,7 @@ namespace Game.Ai.V2
                     // to give up on real strategic work for this pass. Before it does, give any
                     // persistence-deferred demand its no-alternative-work chance (spec Rule 2).
                     if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand))
+                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand, activeIntents))
                         continue;
                     break;
                 }
@@ -973,7 +974,8 @@ namespace Game.Ai.V2
                 {
                     MaterializationDeliveryAvailability availability =
                         MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
-                            snap, player, root, hand, ctx, state.Demand, commitments, result.Reservation);
+                            snap, player, root, hand, ctx, state.Demand, commitments, result.Reservation,
+                            activeIntents);
                     state.Demand.StructurallyUndeliverable =
                         availability.RawCandidates == 0 || availability.ConfirmedBlocked;
                 }
@@ -1120,7 +1122,8 @@ namespace Game.Ai.V2
         private static bool TryPromotePersistenceDeferred(List<DemandState> states,
             List<DemandState> deferredStates, WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget, ActorCommitments commitments,
-            MaterializationReservation reservation, float? witnessedUsefulApDemand)
+            MaterializationReservation reservation, float? witnessedUsefulApDemand,
+            IReadOnlyList<MissionIntent> activeIntents)
         {
             if (deferredStates.Count == 0)
                 return false;
@@ -1140,7 +1143,7 @@ namespace Game.Ai.V2
                 List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
                     ctx, ds.Demand, apBudget, commitments, apBudget.ReservedFollowup(),
                     reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK,
-                    witnessedUsefulApDemand: witnessedUsefulApDemand);
+                    witnessedUsefulApDemand: witnessedUsefulApDemand, activeIntents: activeIntents);
                 if (top.Count == 0)
                 {
                     // Stays a VALID, UNRESOLVED, temporarily-unfulfillable demand — must remain in
