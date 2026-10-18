@@ -504,9 +504,9 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c5c003c09a32310409a57721971c69d7, type: 3}
     faction: 4
     cardType: 1
-    apCost: 2
+    apCost: 1
     resourceCost:
-      human: 1
+      human: 0
       energy: 0
       materials: 0
       tech: 0
@@ -2336,7 +2336,7 @@ MonoBehaviour:
       materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 5
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
