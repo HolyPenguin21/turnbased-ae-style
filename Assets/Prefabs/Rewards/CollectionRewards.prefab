@@ -381,7 +381,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Choose rewards
+  m_text: "Choose 2 rewards \u2014 selected 0/2"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
   m_sharedMaterial: {fileID: 2542230976815431383, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
@@ -486,8 +486,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 88, y: -204}
-  m_SizeDelta: {x: -176, y: -462}
+  m_AnchoredPosition: {x: 120, y: -182}
+  m_SizeDelta: {x: -240, y: -462}
   m_Pivot: {x: 0, y: 1}
 --- !u!114 &1019
 MonoBehaviour:
@@ -510,7 +510,7 @@ MonoBehaviour:
   m_StartCorner: 0
   m_StartAxis: 0
   m_CellSize: {x: 240, y: 438}
-  m_Spacing: {x: 16, y: 0}
+  m_Spacing: {x: 0, y: 0}
   m_Constraint: 2
   m_ConstraintCount: 1
 --- !u!1 &1020
@@ -686,8 +686,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 130, y: -210}
-  m_SizeDelta: {x: -260, y: -460}
+  m_AnchoredPosition: {x: 150, y: -182}
+  m_SizeDelta: {x: -300, y: -462}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &1026
 CanvasRenderer:
