@@ -22,6 +22,10 @@ namespace Game.Ai.V2
 
         public bool ConfirmedBlocked => PreflightCandidates > 0
             && OperationalCandidates == 0;
+
+        // No chain shape at all, or shapes that pass the play preflight yet none delivers. An
+        // AP/resource shortfall (shapes exist, none passes preflight) is timing, not structure.
+        public bool StructurallyUndeliverable => RawCandidates == 0 || ConfirmedBlocked;
     }
 
     // ARCH-02 §9 / DoD "Feasibility отделена от enumeration/scoring" — the per-chain feasibility

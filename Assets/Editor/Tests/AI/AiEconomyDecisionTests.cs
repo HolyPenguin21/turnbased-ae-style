@@ -4271,6 +4271,112 @@ namespace Game.EditorTests
             finally { StrategicResourceReservationLedger.ClearAll(); }
         }
 
+        // Playtest 2026-10-18 (Halden T8-T10): the escort shape of a Relay Base prerequisite held
+        // 2H/3E/2M/2T every turn while no hand card could escort, and Phase A's delivery-block
+        // streak — the bound of that hold — only recognised the Hero shape.
+        [Test]
+        public void FoundBasePreparation_EscortPrerequisiteHoldIsBoundedLikeTheHeroPrerequisite()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 8;
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            var target = new HexCoord(-1, 2);
+            var baseDemand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicExpansionBase, TargetHex = target,
+                EconomyBuildCard = card,
+                EconomyBuildResourceCost = new ResourceCost(human: 2, energy: 3, materials: 2, tech: 2) };
+            AxisDemand hero = DemandLayer.EconomyHeroPrerequisite(baseDemand);
+            AxisDemand escort = DemandLayer.EconomyHeroPrerequisite(baseDemand);
+            escort.Capability = CapabilityKind.FieldCombatPower;
+            escort.EconomyEscortArmyId = 14;
+
+            Assert.That(StrategicPhaseA.IsBoundedBasePrerequisiteDemand(hero), Is.True);
+            Assert.That(StrategicPhaseA.IsBoundedBasePrerequisiteDemand(escort), Is.True,
+                "an escort prerequisite holds resources, so its delivery block must count too");
+            Assert.That(escort.EconomyHeroBuildOwner, Is.EqualTo(hero.EconomyHeroBuildOwner),
+                "both shapes are one project: one hold and one failure streak");
+
+            var alternative = DemandLayer.EconomyHeroPrerequisite(baseDemand);
+            alternative.EconomyReadyDeliveryCost = 5f;
+            Assert.That(alternative.IsEconomyNewHeroAlternative, Is.True);
+            Assert.That(StrategicPhaseA.IsBoundedBasePrerequisiteDemand(alternative), Is.False);
+            var defence = new AxisDemand { RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower, TargetHex = target };
+            Assert.That(StrategicPhaseA.IsBoundedBasePrerequisiteDemand(defence), Is.False);
+            var extraction = DemandLayer.EconomyHeroPrerequisite(new AxisDemand {
+                RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = target, EconomyResourceType = ResourceType.Energy,
+                EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Facility }),
+                EconomyBuildResourceCost = new ResourceCost(energy: 1) });
+            extraction.Capability = CapabilityKind.FieldCombatPower;
+            extraction.EconomyEscortArmyId = 14;
+            Assert.That(StrategicPhaseA.IsBoundedBasePrerequisiteDemand(extraction), Is.False,
+                "only Base projects use this streak");
+
+            try
+            {
+                StrategicResourceReservationLedger.BeginTurn(player, turn);
+                EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForPendingHero(player, turn, escort);
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.Energy), Is.EqualTo(3f));
+                // The suppression branch clears exactly this owner's hold.
+                EconomyReservationLifecycle.ClearDeferredEconomyResources(player, turn,
+                    escort.EconomyHeroBuildOwner);
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.Energy), Is.Zero);
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
+
+            // T7 Hero shape then T8 escort shape of the same project: one consecutive streak.
+            var state = new MissionIntentState();
+            Assert.That(state.Economy.RecordBaseExpansionDeliveryFailure(7, hero.EconomyBuildCard,
+                hero.TargetHex), Is.False);
+            Assert.That(state.Economy.RecordBaseExpansionDeliveryFailure(8, escort.EconomyBuildCard,
+                escort.TargetHex), Is.True);
+        }
+
+        // Owner decision 2026-10-18: a pending prerequisite holds its build's resources only while
+        // the current hand/world can still deliver it (Halden T8: heroes passed preflight, none
+        // could escort, Monolith unaffordable -> 3 Energy were frozen with a full hand).
+        [Test]
+        public void PendingPrerequisiteHold_LivesOnlyWhileThePrerequisiteIsDeliverable()
+        {
+            var baseDemand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicExpansionBase, TargetHex = new HexCoord(-1, 2),
+                EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Base }),
+                EconomyBuildResourceCost = new ResourceCost(human: 2, energy: 3, materials: 2, tech: 2) };
+            AxisDemand hero = DemandLayer.EconomyHeroPrerequisite(baseDemand);
+            AxisDemand escort = DemandLayer.EconomyHeroPrerequisite(baseDemand);
+            escort.Capability = CapabilityKind.FieldCombatPower;
+            escort.EconomyEscortArmyId = 2;
+
+            var noShape = new MaterializationDeliveryAvailability(0, 0, 0);
+            var confirmedBlocked = new MaterializationDeliveryAvailability(13, 9, 0);
+            var timingOnly = new MaterializationDeliveryAvailability(4, 0, 0);
+            var deliverable = new MaterializationDeliveryAvailability(4, 2, 1);
+            foreach (AxisDemand prerequisite in new[] { hero, escort })
+            {
+                Assert.That(StrategicPhaseA.PendingPrerequisiteHoldIsLive(prerequisite, noShape), Is.False,
+                    "no card can become the prerequisite: holding only blocks the plays that draw one");
+                Assert.That(StrategicPhaseA.PendingPrerequisiteHoldIsLive(prerequisite, confirmedBlocked), Is.False);
+                Assert.That(StrategicPhaseA.PendingPrerequisiteHoldIsLive(prerequisite, timingOnly), Is.True,
+                    "an AP/resource shortfall is timing: keep saving for the build");
+                Assert.That(StrategicPhaseA.PendingPrerequisiteHoldIsLive(prerequisite, deliverable), Is.True);
+            }
+
+            var readyBuild = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicExpansionBase, TargetHex = new HexCoord(2, 0),
+                EconomyBuildCard = baseDemand.EconomyBuildCard,
+                EconomyBuildResourceCost = baseDemand.EconomyBuildResourceCost,
+                EconomyPreferredBuilderArmyId = 14 };
+            Assert.That(StrategicPhaseA.PendingPrerequisiteHoldIsLive(readyBuild, noShape), Is.True,
+                "a build with its own builder/route is not a pending prerequisite");
+            var alternative = DemandLayer.EconomyHeroPrerequisite(baseDemand);
+            alternative.EconomyReadyDeliveryCost = 5f;
+            Assert.That(StrategicPhaseA.PendingPrerequisiteHoldIsLive(alternative, noShape), Is.True,
+                "a new-hero alternative never holds, so it is not filtered here");
+        }
+
         [Test]
         public void FoundBasePreparation_CachedBuilderDecisionCannotBeOverwrittenByItsConsumer()
         {
