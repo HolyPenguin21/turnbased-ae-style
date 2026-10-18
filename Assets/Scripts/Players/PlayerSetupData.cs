@@ -16,6 +16,7 @@ namespace Game.Players
         public System.Collections.Generic.HashSet<string> AiBlueprints;
         public Game.Cards.MatchLoadout MatchLoadout;
         public Game.Cards.BlueprintQuota BlueprintQuota;
+        public readonly Game.Cards.TacticHand Tactics = new Game.Cards.TacticHand();
         // True only for CitadelSetupController's single shared _neutralPlayer instance — never
         // set on a real player profile. Explicit flag rather than inferring it from ColorIndex/
         // Faction.None elsewhere (see BattleScreenUI.TryAssessSideRetreat's own "neutrals never

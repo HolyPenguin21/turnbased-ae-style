@@ -4047,6 +4047,246 @@ MonoBehaviour:
       - stat: 5
         amount: 1
         isOverride: 0
+  - id: 75
+    authoredKey: neutral.tactic.precise-execution
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
+    displayName: Precise Execution
+    art: {fileID: 0}
+    detailArt: {fileID: 0}
+    faction: 3
+    cardType: 4
+    tacticEffect: 1
+    tacticAmount: 1
+    apCost: 0
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags:
+      hostKinds:
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 76
+    authoredKey: neutral.tactic.disruption
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
+    displayName: Disruption
+    art: {fileID: 0}
+    detailArt: {fileID: 0}
+    faction: 3
+    cardType: 4
+    tacticEffect: 2
+    tacticAmount: 1
+    apCost: 0
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags:
+      hostKinds:
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 77
+    authoredKey: neutral.tactic.flawless-execution
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
+    displayName: Flawless Execution
+    art: {fileID: 0}
+    detailArt: {fileID: 0}
+    faction: 3
+    cardType: 4
+    tacticEffect: 1
+    tacticAmount: 2
+    apCost: 0
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags:
+      hostKinds:
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 78
+    authoredKey: neutral.tactic.total-disruption
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
+    displayName: Total Disruption
+    art: {fileID: 0}
+    detailArt: {fileID: 0}
+    faction: 3
+    cardType: 4
+    tacticEffect: 2
+    tacticAmount: 2
+    apCost: 0
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags:
+      hostKinds:
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 79
+    authoredKey: neutral.tactic.tactical-advantage
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
+    displayName: Tactical Advantage
+    art: {fileID: 0}
+    detailArt: {fileID: 0}
+    faction: 3
+    cardType: 4
+    tacticEffect: 3
+    tacticAmount: 1
+    apCost: 0
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags:
+      hostKinds:
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   citadelPrefab: {fileID: 0}
   basePrefab: {fileID: 0}
   armyPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}

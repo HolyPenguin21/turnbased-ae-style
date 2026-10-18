@@ -290,6 +290,15 @@ namespace Game.UI
             slot.PlayRoll(hit, 0, 1, DiceSlotUI.FateRerollDuration, Done);
         }
 
+        public void SetSuccessModifier(int modifier)
+        {
+            if (successText == null || _lastDice == null) return;
+            int hits = 0;
+            foreach (bool hit in _lastDice) if (hit) hits++;
+            successText.text = modifier == 0 ? hits.ToString()
+                : $"{Mathf.Max(0, hits + modifier)} ({hits}{(modifier > 0 ? "+" : "")}{modifier})";
+        }
+
         public void SetDice(bool[] dice, int rerolledIndex = -1, System.Action onComplete = null)
         {
             if (dice == null)

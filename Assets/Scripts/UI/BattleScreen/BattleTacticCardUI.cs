@@ -1,17 +1,14 @@
 using Game.Cards;
 using Game.Core;
 using Game.Economy;
+using Game.Turns;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One Tactic card's visual inside BattleHandUI's vertical hand — art, name, abilities, and cost
-    // badges (same badge convention as CardUI's own CostRow). No StatsRow (CardUI already hides
-    // it for CardType.Tactic — Tactic cards have no unit/hero/building stats to show), no drag,
-    // no hover-grow — playing a Tactic card during battle isn't wired up yet (see
-    // project_combat_design_decisions memory), so this is a static, click-free display for now.
+    // Tactical card face. CardUI owns the same drag gesture as the ordinary hand.
     public class BattleTacticCardUI : MonoBehaviour
     {
         [SerializeField] private RectTransform rectTransform;
@@ -31,6 +28,31 @@ namespace Game.UI
         [SerializeField] private TMP_Text techBadgeText;
 
         public CardData Data { get; private set; }
+        public bool IsDragging => _interaction != null && _interaction.IsDragging;
+        private CardUI _interaction;
+
+        public void SetInteraction(bool enabled, System.Action onClick,
+            System.Func<string> unavailableReason = null, System.Func<Vector2, Camera, bool> onDrop = null,
+            System.Action<string> showError = null)
+        {
+            var button = GetComponent<Button>() ?? gameObject.AddComponent<Button>();
+            button.onClick = new Button.ButtonClickedEvent();
+            button.interactable = enabled;
+            var graphic = GetComponent<Image>();
+            if (graphic == null) graphic = gameObject.AddComponent<Image>();
+            if (button.targetGraphic == null) button.targetGraphic = graphic;
+            graphic.raycastTarget = true;
+            _interaction = GetComponent<CardUI>() ?? gameObject.AddComponent<CardUI>();
+            _interaction.ConfigureTacticInteraction(Data, onClick,
+                () => unavailableReason?.Invoke() ?? (enabled ? null
+                    : "Wait for your challenge decision to use a tactical card."),
+                onDrop, showError ?? ReportError);
+        }
+
+        private static void ReportError(string reason) =>
+            FindFirstObjectByType<GameTurnController>(FindObjectsInactive.Include)?.ShowSpawnHint(reason);
+
+        public void CancelDrag() => _interaction?.CancelDrag();
 
         private void Awake()
         {
@@ -50,9 +72,7 @@ namespace Game.UI
             // Ability abbreviations only, same as every other card face (see CardUI) — never
             // the card type.
             if (typeText != null)
-                typeText.text = definition != null && config != null
-                    ? config.FormatAbilities(definition.grantedAbilities)
-                    : string.Empty;
+                typeText.text = TacticRules.Description(definition);
 
             ResourceCost cost = definition?.resourceCost;
             SetBadge(apBadgeRoot, apBadgeText, definition != null ? definition.apCost : 0);
@@ -73,11 +93,12 @@ namespace Game.UI
                 text.text = amount.ToString();
         }
 
-        // Positioned by BattleHandUI's own vertical paging — no live-reorder/drag machinery
-        // needed here (unlike CardHandUI's own hand), just a fixed slot per relayout.
+        // CardUI returns an unaccepted drag to this inventory slot.
         public void SetSlot(Vector2 anchoredPosition)
         {
-            if (rectTransform != null)
+            if (_interaction != null)
+                _interaction.SetTacticHome(anchoredPosition, rectTransform.localScale.x);
+            else if (rectTransform != null)
                 rectTransform.anchoredPosition = anchoredPosition;
         }
     }

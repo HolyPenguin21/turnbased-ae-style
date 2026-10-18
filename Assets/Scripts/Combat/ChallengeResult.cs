@@ -12,15 +12,20 @@ namespace Game.Combat
     {
         public readonly bool[] AttackerDice;
         public readonly bool[] DefenderDice;
+        public readonly int AttackerModifier;
+        public readonly int DefenderModifier;
 
-        public ChallengeResult(bool[] attackerDice, bool[] defenderDice)
+        public ChallengeResult(bool[] attackerDice, bool[] defenderDice,
+            int attackerModifier = 0, int defenderModifier = 0)
         {
             AttackerDice = attackerDice;
             DefenderDice = defenderDice;
+            AttackerModifier = attackerModifier;
+            DefenderModifier = defenderModifier;
         }
 
-        public int AttackerSuccesses => CountHits(AttackerDice);
-        public int DefenderSuccesses => CountHits(DefenderDice);
+        public int AttackerSuccesses => System.Math.Max(0, CountHits(AttackerDice) + AttackerModifier);
+        public int DefenderSuccesses => System.Math.Max(0, CountHits(DefenderDice) + DefenderModifier);
 
         // The manual: "the number of success rolls for the defender is subtracted from the
         // number of success rolls for the attacker and the damage if any is the difference

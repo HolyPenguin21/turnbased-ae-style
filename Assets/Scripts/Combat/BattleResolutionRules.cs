@@ -32,16 +32,18 @@ namespace Game.Combat
         }
 
         public static GroundAttackOutcome ResolveGroundAttack(bool[] attackerDice, bool[] defenderDice,
-            UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes)
+            UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes,
+            int attackerModifier = 0, int defenderModifier = 0)
             => ResolveGroundAttack(attackerDice, defenderDice, attacker?.Abilities, defender?.TypeTags,
-                defender?.Abilities, magnitudes);
+                defender?.Abilities, magnitudes, attackerModifier, defenderModifier);
 
         public static GroundAttackOutcome ResolveGroundAttack(bool[] attackerDice, bool[] defenderDice,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
-            IEnumerable<string> defenderAbilities, AbilityMagnitudes magnitudes)
+            IEnumerable<string> defenderAbilities, AbilityMagnitudes magnitudes,
+            int attackerModifier = 0, int defenderModifier = 0)
         {
             var challenge = new ChallengeResult(attackerDice ?? System.Array.Empty<bool>(),
-                defenderDice ?? System.Array.Empty<bool>());
+                defenderDice ?? System.Array.Empty<bool>(), attackerModifier, defenderModifier);
             int damage = ChallengeResult.ApplyAbilityModifiers(challenge.Damage, attackerAbilities,
                 defenderTypeTags, defenderAbilities, magnitudes, out List<string> appliedAbilities);
             return new GroundAttackOutcome(challenge.AttackerSuccesses, challenge.DefenderSuccesses,
@@ -52,10 +54,11 @@ namespace Game.Combat
         public static int CaptureKillHunterPool(int nonHeroUnitCount) =>
             1 + System.Math.Max(0, nonHeroUnitCount) / 2;
 
-        public static CaptureKillOutcome ResolveCaptureKill(bool[] attackerDice, bool[] defenderDice)
+        public static CaptureKillOutcome ResolveCaptureKill(bool[] attackerDice, bool[] defenderDice,
+            int attackerModifier = 0, int defenderModifier = 0)
         {
             var challenge = new ChallengeResult(attackerDice ?? System.Array.Empty<bool>(),
-                defenderDice ?? System.Array.Empty<bool>());
+                defenderDice ?? System.Array.Empty<bool>(), attackerModifier, defenderModifier);
             if (challenge.AttackerSuccesses < challenge.DefenderSuccesses)
                 return CaptureKillOutcome.Escaped;
             if (challenge.AttackerSuccesses > challenge.DefenderSuccesses)

@@ -45,6 +45,10 @@ namespace Game.Cards
         public Faction faction;
         public CardType cardType;
 
+        [Header("Tactic (CardType.Tactic only)")]
+        public TacticEffect tacticEffect;
+        [Min(1)] public int tacticAmount = 1;
+
         [Header("Cost")]
         public int apCost;
         public ResourceCost resourceCost = new ResourceCost();
