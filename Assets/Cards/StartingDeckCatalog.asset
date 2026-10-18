@@ -85,6 +85,14 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: neutral.facility.tactical
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    equipment: []
+    mutators: []
   - deckName: The Ashen Starter
     faction: 4
     cards:
@@ -134,10 +142,14 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: neutral.facility.tactical
+      count: 1
     - cardKey: neutral.equipment.bio.claws
       count: 1
     - cardKey: neutral.mutator.dermal-plating
       count: 1
+    equipment: []
+    mutators: []
   - deckName: Iron Concord Starter
     faction: 0
     cards:
@@ -189,10 +201,14 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: neutral.facility.tactical
+      count: 1
     - cardKey: neutral.equipment.bio.heavy-mg
       count: 1
     - cardKey: neutral.equipment.bio.at-launcher
       count: 1
+    equipment: []
+    mutators: []
   aiDecks:
   - deckName: Iron Concord AI Deck
     faction: 0
