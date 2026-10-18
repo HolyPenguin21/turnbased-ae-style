@@ -12,16 +12,35 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5b1afee3e364ca4943bf350e7f4b360, type: 3}
   m_Name: GameConfig
   m_EditorClassIdentifier: Assembly-CSharp::Game.Core.GameConfig
+  armyRadioChatter:
+    enabled: 1
+    ambientInterval: 18
+    minimumGap: 3
+    armyCooldown: 45
+    displaySeconds: 5
+    waitingSeconds: 12
+    maximumMessages: 3
+    fadeInSeconds: 0.18
+    fadeOutSeconds: 0.28
+    jokeIdleSeconds: 60
+    jokeChance: 0.3
+    dialogueChance: 0.25
+    replyDelay: 2
+    criticalChance: 0.6
+    operationalChance: 0.3
+    situationalChance: 0.2
+    ambientChance: 0.1
+    maximumPerMinute: 3
+    maximumPendingCandidates: 24
+    operationalTtl: 10
+    minorEventTtl: 6
+    categoryCooldown: 25
+    recentPhraseHistorySize: 16
   screenWearTexture: {fileID: 2800000, guid: e6efe6fe254c0334f90a94273179b0a5, type: 3}
   collectionDeckCatalog: {fileID: 11400000, guid: 6ae207ae03ca453cae0b8ec5f668372d, type: 2}
   collectionResearchCatalog: {fileID: 11400000, guid: d4e5f60718192a3b4c5d6e7f80911223, type: 2}
   eventMarkerPrefab: {fileID: 1514539978742884714, guid: 55c207a3e28f969499cd6921199964be, type: 3}
   eventIconOffset: {x: 0.4, y: -0.5}
-  buildingIconOffset: {x: -0.25, y: -0.15}
-  armyIconOffset: {x: 0.4, y: -0.3}
-  armySlotRight: {x: 0.375, y: 0}
-  armySlotLeft: {x: -0.375, y: 0}
-  armySlotTop: {x: 0, y: 0.375}
   armyButtonPrefab: {fileID: 1990000000000010006, guid: 653d9030c73145938c14734d2e6d04ec, type: 3}
   armyModalButtonPrefab: {fileID: 1990000000000010006, guid: 3a19175472166824ca135f784e027845, type: 3}
   armyUnitCardPrefab: {fileID: 1980000000000010005, guid: 78f3cecc3db145188cabd4b3abea979a, type: 3}
@@ -58,6 +77,9 @@ MonoBehaviour:
   extractionFacilityCards:
   - id: 0
     authoredKey: 
+    deckPointCost: 0
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Human Extractor
     art: {fileID: 21300000, guid: 81133127c384a1c4c89ba4f5ff5edbcc, type: 3}
     detailArt: {fileID: 21300000, guid: 9216ef50314fe634894883f4170f0e7a, type: 3}
@@ -92,6 +114,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -101,6 +124,9 @@ MonoBehaviour:
       statChanges: []
   - id: 0
     authoredKey: 
+    deckPointCost: 0
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Energy Extractor
     art: {fileID: 21300000, guid: 0628af61b07c6e74996de9b87cb0e839, type: 3}
     detailArt: {fileID: 21300000, guid: 2fe6e13a648f9be42a1e1931d927288e, type: 3}
@@ -135,6 +161,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -144,6 +171,9 @@ MonoBehaviour:
       statChanges: []
   - id: 0
     authoredKey: 
+    deckPointCost: 0
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Materials Extractor
     art: {fileID: 21300000, guid: 03e7d0b093c05814c9397632b6dee701, type: 3}
     detailArt: {fileID: 21300000, guid: 24f6910cd29945046b0043af16ef2f9a, type: 3}
@@ -178,6 +208,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -187,6 +218,9 @@ MonoBehaviour:
       statChanges: []
   - id: 0
     authoredKey: 
+    deckPointCost: 0
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Tech Extractor
     art: {fileID: 21300000, guid: ee2a9235ce512ad4897d04e2bf36f259, type: 3}
     detailArt: {fileID: 21300000, guid: 6a244ea68f6d8fd4795ca9a54c84dbd3, type: 3}
@@ -221,6 +255,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -269,6 +304,22 @@ MonoBehaviour:
     abbreviation: 
   - ability: RaiseTheRots
     abbreviation: 
+  - ability: Heal
+    abbreviation: Heal
+  - ability: Transport
+    abbreviation: Trn
+  - ability: Repair
+    abbreviation: Rpr
+  - ability: Airfield
+    abbreviation: 
+  - ability: Ionic
+    abbreviation: 
+  - ability: Bodyguard
+    abbreviation: 
+  - ability: Counterattack
+    abbreviation: 
+  - ability: Drill
+    abbreviation: 
   - ability: r1s0
     abbreviation: r1s0
   - ability: r1s4
@@ -313,12 +364,6 @@ MonoBehaviour:
     abbreviation: pM
   - ability: ProduceTech
     abbreviation: pT
-  - ability: Heal
-    abbreviation: Heal
-  - ability: Repair
-    abbreviation: Rpr
-  - ability: Transport
-    abbreviation: Trn
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
   maxEdgeDistance: 1
   minCityRuinsDistance: 2
@@ -340,7 +385,7 @@ MonoBehaviour:
     radius: 6
     outerRadius: 1
     blend: 0.15
-    alpha: 0.95
+    alpha: 0.9
     groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
     terrainTypes:
     - terrainName: City ruins
@@ -474,6 +519,7 @@ MonoBehaviour:
     - name: Arid acid lake single hex
       terrainName: Acid lake
       useInGeneration: 0
+      randomizeRotation: 0
       count: 2
       placementAttempts: 64
       exclusiveGroup: 
@@ -521,6 +567,7 @@ MonoBehaviour:
     - name: AridSteppe Boiling mud field
       terrainName: Boiling mud field
       useInGeneration: 1
+      randomizeRotation: 0
       count: 3
       placementAttempts: 64
       exclusiveGroup: 
@@ -568,7 +615,7 @@ MonoBehaviour:
     mountainRangeCount: 3
     mountainRangeLength: 2
     borderDepthFraction: 1
-    borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
+    borderTint: {r: 0.15, g: 0.15, b: 0.15, a: 1}
     borderRaggedness: 0.85
     borderNoiseScale: 0.22
     desertOverride:
@@ -704,6 +751,7 @@ MonoBehaviour:
       - name: Acid lake single hex
         terrainName: Acid lake
         useInGeneration: 1
+        randomizeRotation: 0
         count: 3
         placementAttempts: 64
         exclusiveGroup: 
@@ -871,6 +919,7 @@ MonoBehaviour:
       - name: Desert Boiling mud field
         terrainName: Boiling mud field
         useInGeneration: 0
+        randomizeRotation: 0
         count: 1
         placementAttempts: 64
         exclusiveGroup: 
@@ -1021,7 +1070,7 @@ MonoBehaviour:
       mountainRangeCount: 2
       mountainRangeLength: 3
       groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
-      borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
+      borderTint: {r: 0.15, g: 0.15, b: 0.15, a: 1}
   minPlayers: 2
   maxPlayers: 4
   playerRowPrefab: {fileID: 8350511687287818275, guid: a4721ff96011f6e468c7f56de46f5fec, type: 3}
@@ -1066,6 +1115,3 @@ MonoBehaviour:
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
     coordLabelOffset: {x: 0, y: -0.65}
     coordLabelSortingOrder: 6
-
-
-

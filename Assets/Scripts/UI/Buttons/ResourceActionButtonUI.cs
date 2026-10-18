@@ -7,8 +7,8 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One button on HexInfoPanelUI's extraction-Facility hex-action row (see
-    // ResourceActionRowUI) — mirrors ArmyButtonUI's Setup/click pattern. HexActionDescriptor.
+    // One button on HexInfoPanelUI's extraction-Facility hex-action row
+    // (see HexInfoPanelUI.SetResourceActions) — mirrors ArmyButtonUI's Setup/click pattern. HexActionDescriptor.
     // CostSource is set for every entry on this row now (Research/Production moved to their own
     // fixed buttons elsewhere on HexInfoPanelUI); a null CostSource still leaves the button in
     // label-only mode with no hover preview, kept as the general fallback rather than dead code.

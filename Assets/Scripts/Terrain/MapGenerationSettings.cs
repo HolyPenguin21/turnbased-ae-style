@@ -146,7 +146,7 @@ namespace Game.Terrain
         // How far past the field's outer ring these hexes extend, as a fraction of the field's
         // own world-space diameter.
         [Range(0f, 1f)] public float borderDepthFraction = 1f;
-        public Color borderTint = new Color(0.35f, 0.35f, 0.35f);
+        public Color borderTint = new Color(0.15f, 0.15f, 0.15f);
         // How much per-hex noise perturbs the dropout threshold — 0 gives a clean ring, higher
         // values give a raggedly-holed edge.
         [Range(0f, 1f)] public float borderRaggedness = 0.85f;

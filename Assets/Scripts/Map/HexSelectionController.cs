@@ -51,9 +51,6 @@ namespace Game.Map
         // use) — reused for the Research/Production Challenge via its own BeginResearchProduction
         // entry point. Wired in the scene.
         [SerializeField] private BattleAttackPopupUI attackPopup;
-        // Up to 4 "build an extraction Facility" buttons, shown next to Garrison/Base — see
-        // RefreshResourceActionRow.
-        [SerializeField] private ResourceActionRowUI resourceActionRow;
         // Shown the instant a move order makes contact with an enemy army (see
         // TryIssueMoveOrder) — "To Battle" opens battleScreen directly; "Delay" parks it in
         // DelayedBattleRegistry instead (see the manual's Delay Attack, GameTurnController
@@ -741,7 +738,7 @@ namespace Game.Map
                     });
 
                 // Same idea, for Research/Production — used to be separate entries on
-                // resourceActionRow (RefreshResourceActionRow below), now their own fixed
+                // the extractor action list (RefreshResourceActionRow below), now their own fixed
                 // buttons on this nav row. Eligibility itself is unchanged: ResearchProductionSystem.IsEligible.
                 bool researchEligible = !observerInspection
                     && ResearchProductionSystem.IsEligible(turnController?.CurrentPlayer, coord, ResearchProductionMode.Research, out _);
@@ -752,22 +749,14 @@ namespace Game.Map
                 infoPanel.SetProductionButtonVisible(productionEligible, () => OnProductionActionClicked(coord));
             }
 
-            int extractionActions = 0;
             if (observerInspection)
-                resourceActionRow?.Hide();
+                infoPanel?.SetResourceActions(null, null);
             else
-                extractionActions = RefreshResourceActionRow(coord, buildingHere, effectiveYields);
+                RefreshResourceActionRow(coord, buildingHere, effectiveYields);
 
-            if (infoPanel != null)
-            {
-                bool hasGarrison = ArmyRegistry.AllAt(coord).Exists(army => army.IsGarrison);
-                // The panel and its size follow the very actions offered by the canonical row.
-                // Resource yield alone is not an available construction action.
-                if (buildingHere != null || hasGarrison || extractionActions > 0)
-                    infoPanel.ShowHex(extractionActions);
-                else
-                    infoPanel.HideAnimated();
-            }
+            // The panel shows exactly the actions offered above, and hides itself when there are none.
+            // Resource yield alone is not an available construction action.
+            infoPanel?.ShowHex();
 
             // One button per mobile army. A lone garrison shows neither: it can't move and isn't "an army"
             // for this purpose (see the garrison button on HexInfoPanelUI for how to actually
@@ -847,7 +836,7 @@ namespace Game.Map
         // available action; there is no paging — the row is sized for all 4 at once. Research/
         // Production moved out of this row into their own fixed buttons on HexInfoPanelUI's nav
         // row (see SelectHex) — this row is extraction-only now.
-        private int RefreshResourceActionRow(HexCoord coord, BuildingData buildingHere, ResourceYields effectiveYields)
+        private void RefreshResourceActionRow(HexCoord coord, BuildingData buildingHere, ResourceYields effectiveYields)
         {
             PlayerSetupData human = turnController?.CurrentPlayer;
             var actions = new List<HexActionDescriptor>();
@@ -885,11 +874,7 @@ namespace Game.Map
                 }
             }
 
-            if (actions.Count > 0)
-                resourceActionRow?.Show(actions);
-            else
-                resourceActionRow?.Hide();
-            return actions.Count;
+            infoPanel?.SetResourceActions(actions, gameConfig != null ? gameConfig.resourceActionButtonPrefab : null);
         }
 
         // Eligibility (ResearchProductionSystem.IsEligible: on the human's own turn, an OWN
@@ -1111,7 +1096,6 @@ namespace Game.Map
             if (armyViewerModal != null) armyViewerModal.Hide();
             if (baseViewerModal != null) baseViewerModal.Hide();
             if (researchProductionModal != null) researchProductionModal.Hide();
-            if (resourceActionRow != null) resourceActionRow.Hide();
             SetSelectedArmy(null);
         }
 

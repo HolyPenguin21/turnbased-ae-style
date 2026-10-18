@@ -33,6 +33,25 @@ MonoBehaviour:
     description: 
   - tag: RaiseTheRots
     description: 
+  - tag: Heal
+    description: Restores 1 HP to one random wounded living Bio ally.
+  - tag: Transport
+    description: Continuously raises the movement maximum of the slowest Infantry
+      ally slower than this carrier to this carrier's permanent maximum. Reassigns
+      when the carrier or recipient changes armies or dies.
+  - tag: Repair
+    description: Enables paid repair for all own units and heroes on this hex while
+      this living ground unit is in play. Repair costs are unchanged.
+  - tag: Airfield
+    description: Provides a mobile airfield with the card's aircraft capacity.
+  - tag: Ionic
+    description: 
+  - tag: Bodyguard
+    description: 
+  - tag: Counterattack
+    description: 
+  - tag: Drill
+    description: 
   - tag: r1s0
     description: Vision +1
   - tag: r1s4
@@ -48,7 +67,8 @@ MonoBehaviour:
   - tag: ApBonus
     description: 'Passive: +2 AP/turn'
   - tag: TacticalIntelligence
-    description: Unlocks opponent intelligence while in play. Ground armies closer to an enemy citadel reveal more fields; revealed fields change each turn.
+    description: Unlocks opponent intelligence while in play. Ground armies closer
+      to an enemy citadel reveal more fields; revealed fields change each turn.
   - tag: Barracks
     description: Accepts hand deploys
   - tag: Research
@@ -77,20 +97,14 @@ MonoBehaviour:
     description: 'Passive: +1 M/turn'
   - tag: ProduceTech
     description: 'Passive: +1 T/turn'
-  - tag: Heal
-    description: "Restores 1 HP to one random wounded living Bio ally in this army. Units activate at the start of their combat turn; heroes activate at the start of each combat round."
-  - tag: Repair
-    description: "Enables paid repair for all own units and heroes on this hex while this living ground unit is in play. Repair costs are unchanged."
-  - tag: Transport
-    description: "Continuously raises the movement maximum of the slowest Infantry ally slower than this carrier to this carrier's permanent maximum. Reassigns when the carrier or recipient changes armies or dies."
-  - tag: Airfield
-    description: Provides a mobile airfield with the card's aircraft capacity.
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1
   berserkDefenseLoss: 1
   hyperkineticBonusDamage: 2
   pyrokineticBonusDamage: 2
+  ionicBonusDamage: 2
+  drillAttackBonus: 1
   raiseTheRotsUnitCatalog: {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   raiseTheRotsUnitKey: ashen.unit.ashdrifter
   raiseTheRotsUnitsPerSummoner: 2

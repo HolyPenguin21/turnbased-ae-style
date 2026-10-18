@@ -1297,10 +1297,20 @@ namespace Game.UI
 
         private void UpdateScrollButtons()
         {
+            // Everything fits in the hand: nothing to scroll, hide both buttons entirely.
+            bool overflow = _cards.Count > MaxVisible;
             if (scrollLeftButton != null)
+            {
+                if (scrollLeftButton.gameObject.activeSelf != overflow)
+                    scrollLeftButton.gameObject.SetActive(overflow);
                 scrollLeftButton.interactable = _scrollOffset > 0;
+            }
             if (scrollRightButton != null)
+            {
+                if (scrollRightButton.gameObject.activeSelf != overflow)
+                    scrollRightButton.gameObject.SetActive(overflow);
                 scrollRightButton.interactable = _scrollOffset + MaxVisible < _cards.Count;
+            }
         }
 
         // Fixed slot positions — every slot index always sits at the same X regardless of how

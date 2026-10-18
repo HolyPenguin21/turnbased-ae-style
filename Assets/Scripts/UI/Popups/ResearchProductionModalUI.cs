@@ -377,7 +377,8 @@ namespace Game.UI
         {
             var sb = new StringBuilder();
             sb.AppendLine(card.displayName);
-            if (_player?.BlueprintQuota != null)
+            if (_player?.BlueprintQuota != null && _mode != ResearchProductionMode.Research
+                && card.cardType != CardType.Equipment)
                 sb.AppendLine("Blueprint: unlimited production");
 
             // The upcoming Research/Production Challenge's difficulty — the SAME value the

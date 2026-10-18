@@ -97,7 +97,7 @@ namespace Game.Core
             new BaseUpgradeTier { apCost = 2, cost = new ResourceCost { human = 1, energy = 1, materials = 1, tech = 1 } },
             new BaseUpgradeTier { apCost = 4, cost = new ResourceCost { human = 2, energy = 2, materials = 2, tech = 2 } },
         };
-        // Instantiated by ResourceActionRowUI for HexInfoPanelUI's up-to-4 "build extractor"
+        // Instantiated by HexInfoPanelUI for its up-to-4 "build extractor"
         // buttons — same shared-prefab reasoning as armyButtonPrefab above.
         public ResourceActionButtonUI resourceActionButtonPrefab;
         // The marker for a hero-built resource site (see HexSelectionController.
