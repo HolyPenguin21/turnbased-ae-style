@@ -37,6 +37,7 @@ namespace Game.Ai.V2
             AppendRaid(snap, breakdown, activeIntents, objectives, committed, proposals, deferredThisPass,
                 intentState);
             AppendActiveDefence(snap, activeIntents, committed, proposals, deferredThisPass);
+            AppendGarrisonRelief(snap, committed, proposals);
             // ATK §40 — Attack is a peer lane of the same Aggression planner, appended through the
             // same one entry point; it is never orchestrated separately (§81).
             AppendAttack(snap, activeIntents, committed, proposals, ctx, deferredThisPass, intentState,

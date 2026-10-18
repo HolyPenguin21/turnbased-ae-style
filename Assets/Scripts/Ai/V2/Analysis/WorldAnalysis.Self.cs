@@ -525,6 +525,10 @@ namespace Game.Ai.V2
                 NonHeroRuntimeIds = isOwn ? nonHero.Select(u => u.RuntimeId).ToList() : System.Array.Empty<int>(),
                 NonHeroSpareable = isOwn && a.IsGarrison
                     ? nonHero.Select(u => canSpareGarrison(new[] { u })).ToList() : null,
+                GarrisonThreatFloor = isOwn && a.IsGarrison
+                    ? AiArmyRoles.GarrisonThreatFloor(viewer, a.Hex,
+                        a.Hex.Equals(AiTurnController.GarrisonHexFor(viewer)))
+                    : 0f,
                 NonHeroCurrentMovement = nonHero.Select(SoloMoveCurrent).ToList(),
                 EconomyRosterProtected = isOwn && ownIntents != null && ownIntents.All.Any(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy

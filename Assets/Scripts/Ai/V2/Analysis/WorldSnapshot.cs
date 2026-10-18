@@ -269,6 +269,10 @@ namespace Game.Ai.V2
         // scan time so Demand never has to query the live registry behind an immutable snapshot).
         // Null = not a garrison (or no floor witness): every body counts as spareable.
         public IReadOnlyList<bool> NonHeroSpareable;
+        // Own garrison only: the known-threat part of its defence floor (AiArmyRoles.
+        // GarrisonThreatFloor, read once at scan time). Zero = no known enemy reaches this base,
+        // the "safe base" that may lend spare bodies to a threatened one (GarrisonRelief).
+        public float GarrisonThreatFloor;
         public IReadOnlyList<int> NonHeroCurrentMovement = System.Array.Empty<int>();
         public int HeroCurrentMovement;
         public bool EconomyRosterProtected;

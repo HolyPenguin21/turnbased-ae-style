@@ -56,6 +56,19 @@ namespace Game.Ai.V2
             if (defence.Phase == ActiveDefencePhase.Return)
             {
                 if (actor.Hex.Equals(defence.ReturnHex)) return false;
+                // GarrisonRelief — the detachment delivers its bodies whatever became of the threat;
+                // only losing the recipient base ends it (the shell then stands free where it is).
+                if (defence.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
+                {
+                    if (!ActiveDefenceObjectiveEvaluator.IsDefendableAsset(snap,
+                            defence.ProtectedAssetKind, defence.ProtectedAssetHex))
+                    {
+                        AiDebugLog.Write($"[AI][V2][GarrisonRelief][Continuity] decision=END actor={actor.ArmyId} reason=relief_base_lost");
+                        return false;
+                    }
+                    ResumeTransientSuspension(intent);
+                    return true;
+                }
                 IReadOnlyList<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
                 HashSet<int> committed = ActorCommitments.FromIntents(intents, snap, null).ClaimedArmyIdSet;
                 if (defence.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset)

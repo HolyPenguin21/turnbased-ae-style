@@ -12,7 +12,7 @@ namespace Game.Ai.V2
     {
         // A garrison under a known threat defends that asset in place: the worst threat on this
         // hex adds the same direction / prevented-damage terms ActiveDefence prices it with.
-        private static TaskScore BuildHeldBaseGarrisonScore(WorldSnapshot snap, HexCoord baseHex)
+        internal static TaskScore BuildHeldBaseGarrisonScore(WorldSnapshot snap, HexCoord baseHex)
         {
             AssetThreatSnapshot worst = snap?.Threat?.Threats?
                 .Where(t => t?.Asset != null && t.Contact?.Army != null && t.Asset.Hex.Equals(baseHex))
@@ -29,10 +29,27 @@ namespace Game.Ai.V2
                 preventedDamage: preventedDamage);
         }
 
+        // The power this own base's garrison still lacks: the one garrison defence floor
+        // (AiArmyRoles.GarrisonDefenceFloor) on the snapshot's ground force — at least one body and
+        // the Citadel / Base share of power, raised to the known threat against this garrison
+        // (AiArmyRoles.GarrisonThreatFloor) — minus its power; an empty garrison asks for at least
+        // one body. Shared by the hand demand below and GarrisonRelief.
+        internal static float HeldBaseGarrisonShortfall(WorldSnapshot snap, ArmySnapshot garrison,
+            out float floor)
+        {
+            floor = AiArmyRoles.GarrisonDefenceFloor(snap.Observer, snap.Self.AvailablePower,
+                garrison.Hex, garrison.Hex.Equals(snap.Self.Citadel));
+            int bodies = garrison.Members?.Count(AiArmyRoles.IsGroundBattleBody) ?? 0;
+            return bodies == 0
+                ? Mathf.Max(floor, AiConfigV2.combatPowerPerBodyEstimate)
+                : floor - garrison.EffectiveArmyPower;
+        }
+
         // Every own base, including a newly founded or vacated one, whose
         // garrison is below its non-hero floor is garrisoned from hand first. If the hand cannot
         // deliver, Housekeeping fills the floor at turn end from the holding army's most wounded,
-        // then weakest, body (ArmyReorganizationCandidates, garrison fill).
+        // then weakest, body (ArmyReorganizationCandidates, garrison fill). A relief detachment
+        // already walking there (GarrisonRelief) covers its share, so the hand is not asked twice.
         private static void AppendHeldBaseGarrisonDemands(WorldSnapshot snap, List<string> diag,
             List<AxisDemand> demands)
         {
@@ -44,15 +61,8 @@ namespace Game.Ai.V2
                     && a.Hex.Equals(baseHex));
                 if (garrison == null)
                     continue;
-                // The one garrison defence floor (AiArmyRoles.GarrisonDefenceFloor) on the snapshot's
-                // ground force: at least one body and the Citadel / Base share of power, raised to
-                // the known threat against this garrison (AiArmyRoles.GarrisonThreatFloor).
-                float floor = AiArmyRoles.GarrisonDefenceFloor(snap.Observer, snap.Self.AvailablePower,
-                    baseHex, baseHex.Equals(snap.Self.Citadel));
-                int bodies = garrison.Members?.Count(AiArmyRoles.IsGroundBattleBody) ?? 0;
-                float desired = bodies == 0
-                    ? Mathf.Max(floor, AiConfigV2.combatPowerPerBodyEstimate)
-                    : floor - garrison.EffectiveArmyPower;
+                float desired = HeldBaseGarrisonShortfall(snap, garrison, out float floor)
+                    - GarrisonReliefObjectiveEvaluator.InFlightReliefPower(snap, baseHex);
                 if (desired <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 string missing = $"{desired:0.#}";
