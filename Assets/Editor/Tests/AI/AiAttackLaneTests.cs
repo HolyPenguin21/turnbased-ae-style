@@ -562,6 +562,41 @@ namespace Game.EditorTests
                 && t.Phase == AttackMissionPhase.Assault), Is.EqualTo(expected));
         }
 
+        // 2026-10-18 (log: Thane #22 held its Base next to Brynn's 71.6 army and the mobilization
+        // proposed MoveHost to another staging Base 107 turns in a row) — a pinned stronghold
+        // defender is not walked off the stronghold to host a preparation.
+        [Test]
+        public void Preparation_DoesNotWalkAPinnedStrongholdDefenderToStaging()
+        {
+            List<MissionProposal> MoveHosts(WorldSnapshot s)
+            {
+                var proposals = new List<MissionProposal>();
+                AggressionMissionLayer.AppendAttack(s, Array.Empty<MissionIntent>(),
+                    new HashSet<int>(), proposals, null,
+                    new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(s.Observer), null);
+                return proposals.Where(p => p.Target is AttackMissionTarget t && t.Preparation
+                    && t.PreparationStep == AttackPreparationStep.MoveHost).ToList();
+            }
+
+            WorldSnapshot snap = DefendedSite(new[] { Army(7, OurBase, Weak()) }, new[] { OurBase, AltBase },
+                alsoOwnBuilding: true);
+            snap.Self.TotalMilitaryPotential = 100f;
+            Assert.That(MoveHosts(snap), Has.Count.EqualTo(1), "control: the host walks to the staging Base");
+
+            var enemy = new ArmySnapshot { ArmyId = 60, Owner = Red, Hex = new HexCoord(-1, 0),
+                MemberCount = 2, MaxMovement = 2, CurrentMovement = 2, Members = Strong() };
+            var contact = new EnemyContactSnapshot { Army = enemy, Position = enemy.Hex,
+                Knowledge = ContactKnowledge.Exact, Confidence = 1f, LastObservedTurn = snap.TurnNumber };
+            snap.Threat.Contacts = new List<EnemyContactSnapshot> { contact };
+            snap.Threat.Threats = new List<AssetThreatSnapshot> { new AssetThreatSnapshot {
+                Contact = contact, CanDamage = true, EnemyEta = AiConfigV2.strongholdDefenderPinEnemyEta,
+                AttackWinChance = 1f, PotentialDamage = 1f, Severity = 1f, Confidence = 1f,
+                Asset = new StrategicAssetSnapshot { Kind = AssetKind.Citadel, Hex = OurBase, Value = 10f } } };
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, snap.Self.Armies[0]),
+                Is.True);
+            Assert.That(MoveHosts(snap), Is.Empty, "the pinned defender stays on its stronghold");
+        }
+
         [Test]
         public void AppendAttack_ProducesOneProposalNamingTheAssignedPrimaryAndTheSite()
         {

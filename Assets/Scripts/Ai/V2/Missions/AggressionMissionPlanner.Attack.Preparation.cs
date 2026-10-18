@@ -93,6 +93,15 @@ namespace Game.Ai.V2
                         $"{head} decision=HOLD host=#{fieldHost.ArmyId} reason=host_has_no_movement_to_reach_staging");
                     return;
                 }
+                // 2026-10-18 — the walk would strip the stronghold this army holds: a pinned
+                // defender stays (IsPinnedStrongholdDefender, the rule Gather and ActiveDefence
+                // already apply). Log: Thane #22 proposed MoveHost 107 turns, every one refused.
+                if (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, fieldHost))
+                {
+                    AiDebugLog.WriteDeduped(logKey,
+                        $"{head} decision=HOLD host=#{fieldHost.ArmyId} reason=host_is_pinned_stronghold_defender");
+                    return;
+                }
                 AppendPreparationStep(snap, objective, fieldHost.ArmyId, citadel,
                     AttackPreparationStep.MoveHost,
                     fieldHost.HasActivatedThisTurn ? 0f : fieldHost.ActivationApCost, null, hexBonus,
