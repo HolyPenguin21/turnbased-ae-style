@@ -129,6 +129,54 @@ namespace Game.EditorTests
             Assert.That(GarrisonReliefObjectiveEvaluator.Enumerate(snap, new HashSet<int> { 31 }), Is.Empty);
         }
 
+        // The pinned extraction is checked live the same way by Provisioning and by the executor,
+        // and nothing moves until the executor's own step.
+        [Test]
+        public void PinnedExtraction_IsCheckedLive_AndOnlyAnEmptyShellOnTheDonorHexQualifies()
+        {
+            var owner = new PlayerSetupData { Nickname = "Us" };
+            Game.Map.ArmyRegistry.Clear();
+            try
+            {
+                var donor = new Game.Map.ArmyData { Owner = owner, Hex = Citadel, IsGarrison = true };
+                var bodies = Enumerable.Range(0, 4).Select(i => new Game.Units.UnitData
+                    { Owner = owner, HitPointsCurrent = 5 }).ToList();
+                foreach (Game.Units.UnitData u in bodies) donor.Members.Add(u);
+                // The planned unit is a hero: the garrison floor (AiArmyRoles.SpareableBodies, tested
+                // on its own) never holds a hero back, so this case isolates the pinned-pair check.
+                bodies[0].IsHero = true;
+                var shell = new Game.Map.ArmyData { Owner = owner, Hex = Citadel };
+                Game.Map.ArmyRegistry.Register(donor);
+                Game.Map.ArmyRegistry.Register(shell);
+                var target = new ActiveDefenceMissionTarget
+                {
+                    Phase = ActiveDefencePhase.Return, ReturnPurpose = ActiveDefenceReturnPurpose.GarrisonRelief,
+                    PrimaryArmyId = shell.Id, ReturnHex = Front, ReliefDonorGarrisonId = donor.Id,
+                    ReliefUnitRuntimeIds = new[] { bodies[0].RuntimeId },
+                };
+
+                bool ok = ActiveDefenceProvisioner.TryResolveReliefExtraction(owner, target, shell, null,
+                    out Game.Map.ArmyData resolved, out List<Game.Units.UnitData> units, out string why);
+                Assert.That(ok, Is.True, why);
+                Assert.That(resolved, Is.SameAs(donor));
+                Assert.That(units, Is.EqualTo(new[] { bodies[0] }));
+                Assert.That(donor.Members, Has.Count.EqualTo(4), "a check moves nothing");
+
+                shell.Members.Add(new Game.Units.UnitData { Owner = owner, HitPointsCurrent = 5 });
+                Assert.That(ActiveDefenceProvisioner.TryResolveReliefExtraction(owner, target, shell, null,
+                    out _, out _, out _), Is.False, "a shell that already holds bodies is not the planned one");
+                shell.Members.Clear();
+
+                donor.Members.Remove(bodies[0]);
+                Assert.That(ActiveDefenceProvisioner.TryResolveReliefExtraction(owner, target, shell, null,
+                    out _, out _, out _), Is.False, "a planned body that left the garrison voids the plan");
+            }
+            finally
+            {
+                Game.Map.ArmyRegistry.Clear();
+            }
+        }
+
         [Test]
         public void Planner_ProposesOneGarrisonReliefReturnLegOnTheShell()
         {
@@ -146,7 +194,11 @@ namespace Game.EditorTests
             Assert.That(target.ReturnHex, Is.EqualTo(Front));
             Assert.That(target.ReliefDonorGarrisonId, Is.EqualTo(DonorId));
             Assert.That(proposals[0].PreferredMoverArmyId, Is.EqualTo(ShellId));
-            Assert.That(proposals[0].Requirements.ApMinimum, Is.EqualTo(2f), "the detachment's own activation");
+            Assert.That(proposals[0].Requirements.ApMinimum, Is.Zero,
+                "the first step is the free extraction; the walk is the durable leg's next step");
+            Assert.That((double)proposals[0].Score.Value.Value, Is.LessThan(
+                (double)AggressionDemandEvaluator.BuildHeldBaseGarrisonScore(snap, Front).Value),
+                "the value still pays for the whole walk");
             Assert.That(MissionIntentKey.For(proposals[0]),
                 Is.EqualTo(MissionIntentKey.ForActiveDefence(ActiveDefencePhase.Return, -1, ShellId, Front)),
                 "a Return leg: identified by its mover and destination");

@@ -17,6 +17,10 @@ namespace Game.Ai.V2
             {
                 MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
                     o.Detachment, o.RecipientHex, out int eta);
+                // This leg's first step is the free extraction (an empty, unactivated shell; the
+                // executor's terminal step); the walk's activation is the next step's, funded by the
+                // durable Return. The TaskScore still prices the whole walk.
+                requirements.ApMinimum = requirements.ApDesired = requirements.ApMaximum = 0f;
                 var target = new ActiveDefenceMissionTarget
                 {
                     Phase = ActiveDefencePhase.Return,
