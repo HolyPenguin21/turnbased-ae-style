@@ -17,7 +17,6 @@ public static class CollectionWindowBuilder
     private static readonly Color PanelColor = new Color(.085f, .075f, .065f, 1f);
     private static readonly Color TextColor = CollectionUIElements.CollectionText;
 
-    [MenuItem("Tools/UI/Build Collection Window")]
     private static void Build()
     {
         var menu = Object.FindAnyObjectByType<MainMenuController>();

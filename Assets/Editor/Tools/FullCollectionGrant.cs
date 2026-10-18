@@ -12,7 +12,8 @@ namespace Game.EditorTools
     // as collection-v1.json.bak (AtomicJsonFile). Decks are still capped at DeckRules.MaximumPoints.
     public static class FullCollectionGrant
     {
-        private const string MenuPath = "Tools/Full Collection";
+        private const string MenuPath = "Tools/Collection/Fill Full";
+        private const string ResetMenuPath = "Tools/Collection/Reset To Starter";
 
         [MenuItem(MenuPath)]
         public static void Grant()
@@ -45,8 +46,30 @@ namespace Game.EditorTools
             Debug.Log($"Full collection: {raised} card(s) raised to their copy limit in {Application.persistentDataPath}.");
         }
 
+        [MenuItem(ResetMenuPath)]
+        public static void ResetToStarter()
+        {
+            var config = AssetDatabase.FindAssets("t:GameConfig")
+                .Select(g => AssetDatabase.LoadAssetAtPath<GameConfig>(AssetDatabase.GUIDToAssetPath(g)))
+                .FirstOrDefault(c => c != null && c.collectionDeckCatalog != null && c.collectionResearchCatalog != null);
+            if (config == null) { Debug.LogError("Reset collection: no GameConfig with collection catalogs."); return; }
+            if (!EditorUtility.DisplayDialog("Reset collection", "Replace the local collection profile with fresh starters? Decks, rewards and owned cards are lost (previous file kept as .bak).", "Reset", "Cancel")) return;
+
+            var rules = new DeckRules(config.collectionDeckCatalog, config.collectionResearchCatalog);
+            var store = new CollectionProfileStore(Application.persistentDataPath);
+            var fresh = new CollectionProfile();
+            try
+            {
+                new CollectionService(rules, store, fresh).InitializeStarters(fresh);
+                store.Save(fresh);
+            }
+            catch (System.Exception e) { Debug.LogError("Reset collection: " + e.Message); return; }
+            Debug.Log("Reset collection: starter profile written to " + Application.persistentDataPath);
+        }
+
         // The running game holds its own profile copy (ProgressionContext) and would overwrite this edit.
         [MenuItem(MenuPath, true)]
+        [MenuItem(ResetMenuPath, true)]
         private static bool CanGrant() => !EditorApplication.isPlayingOrWillChangePlaymode;
     }
 }
