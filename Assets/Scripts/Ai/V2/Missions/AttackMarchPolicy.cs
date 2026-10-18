@@ -34,7 +34,8 @@ namespace Game.Ai.V2
     //       cannot hold without this army, this army gets there no later than the enemy and its
     //       return makes it hold -> DefendHome. The one exception: a decisive blow at the enemy's
     //       Citadel that lands no later than the enemy reaches ours (taking the Citadel ends that
-    //       player) -> Continue.
+    //       player) -> Continue. A threat whose army stands on the target and is struck decisively
+    //       this turn is removed by the march itself, so it calls nobody home (2026-10-18).
     //    2. Unknown defenders (location only) give no estimate -> Continue.
     //    3. Win chance at or above the abort floor (attackLocalMinWinChance) -> Continue: air
     //       support, reinforcement on the route and equipment keep improving the fight meanwhile.
@@ -58,8 +59,13 @@ namespace Game.Ai.V2
                 primary.Commander, opposition, 0f, hexBonus, out float win, out _, requireCoverage: false);
             bool known = opposition != null && opposition.Any(a => a.Units.Any(u => u.IsGroundCombatant));
             bool decisive = AttackForceReadiness.IsOpportunity(win, opposition);
+            // 2026-10-18 — a decisive blow that lands this very turn (before the enemy moves again)
+            // removes every threat whose army stands on the target: such a threat calls nobody home.
+            HexCoord? struckNow = decisive && primary.CurrentMovement > 0
+                && HexGridMath.Distance(primary.Hex, target.Hex) <= primary.CurrentMovement
+                ? target.Hex : (HexCoord?)null;
 
-            HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta);
+            HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta, struckNow);
             if (home.HasValue)
             {
                 bool mateFirst = decisive && target.Kind == AttackTargetKind.Citadel
@@ -81,9 +87,12 @@ namespace Game.Ai.V2
         // threat is imminent (activeDefenceWithdrawMaxEnemyEta), it does not hold without the army
         // (activeDefenceHoldWinChance), the army reaches it no later than the enemy, and with the
         // army it holds. The Citadel first, then the nearest
-        // enemy. Null when no stronghold needs this army.
+        // enemy. Null when no stronghold needs this army. `struckNow` — the hex this army strikes
+        // decisively this turn: an enemy standing there is destroyed before it can move, so its
+        // threat is no reason to keep the army (ActiveDefence leaves such an enemy to Attack:
+        // enemy_on_known_foreign_structure).
         internal static HexCoord? StrongholdNeedingArmy(WorldSnapshot snap, ArmySnapshot army,
-            out int enemyEta)
+            out int enemyEta, HexCoord? struckNow = null)
         {
             enemyEta = int.MaxValue;
             if (snap?.Self?.BaseHexes == null || army == null)
@@ -101,6 +110,9 @@ namespace Game.Ai.V2
                 // The same imminence ActiveDefence answers (threat_not_imminent beyond it): a
                 // distant contact does not call a march home.
                 if (eta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta || EtaTurns(army, t.Asset.Hex) > eta)
+                    continue;
+                if (struckNow.HasValue && t.Contact.Position.HasValue
+                    && t.Contact.Position.Value.Equals(struckNow.Value))
                     continue;
                 IReadOnlyList<WorthIt.DefendingArmy> enemy =
                     ActiveDefenceObjectiveEvaluator.Opposition(snap, t.Contact.Army.ArmyId);

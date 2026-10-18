@@ -500,6 +500,35 @@ namespace Game.EditorTests
                 "a threat that is not imminent (ActiveDefence's own horizon) does not call it back");
         }
 
+        // 2026-10-18 (log: Brynn #21 held 90 turns next to Thane's Base (-3,1) because Thane's #22
+        // on that Base threatened Brynn's (0,-1); ActiveDefence leaves an enemy on its own structure
+        // to Attack) — a decisive blow at the threat's own hex that lands this turn removes the
+        // threat, so it no longer calls the army home. A blow that needs another turn still does.
+        [Test]
+        public void AttackMarch_DecisiveBlowThisTurnAtTheThreatsHex_DoesNotCallTheArmyHome()
+        {
+            var owner = new PlayerSetupData();
+            var marcher = DefenceActor(owner, 26, new HexCoord(-3, 0), 30f, 15f, 40f);
+            WorldSnapshot snap = AssetWorld(marcher);
+            AssetThreatSnapshot threat = snap.Threat.Threats[0];
+            AttackTargetRef threatBase = AttackTargetRef.For(threat.Contact.Position.Value,
+                threat.Contact.Army.Owner, AttackTargetKind.Base);
+            AttackTargetRef elsewhere = AttackTargetRef.For(new HexCoord(3, -1),
+                threat.Contact.Army.Owner, AttackTargetKind.Base);
+
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.EqualTo(Secondary));
+            AttackMarchAssessment strike = AttackMarchPolicy.Assess(snap, threatBase, marcher);
+            Assert.That(strike.Decisive, Is.True);
+            Assert.That(strike.Verdict, Is.EqualTo(AttackMarchVerdict.Continue),
+                "the blow destroys the threat before it moves");
+            Assert.That(AttackMarchPolicy.Assess(snap, elsewhere, marcher).Verdict,
+                Is.EqualTo(AttackMarchVerdict.DefendHome), "another target leaves the threat standing");
+
+            marcher.CurrentMovement = 0;
+            Assert.That(AttackMarchPolicy.Assess(snap, threatBase, marcher).Verdict,
+                Is.EqualTo(AttackMarchVerdict.DefendHome), "a blow next turn lets the enemy move first");
+        }
+
         private static ActiveDefenceObjective AssetObjective(WorldSnapshot snap) =>
             ActiveDefenceObjectiveEvaluator.Enumerate(snap).Single();
 
