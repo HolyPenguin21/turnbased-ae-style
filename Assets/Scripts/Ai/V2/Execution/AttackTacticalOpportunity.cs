@@ -483,6 +483,8 @@ namespace Game.Ai.V2
                                 ah = ah * 31 + ability[c];
                             h += ah * 1000003;
                         }
+                    if (p.Consumption != null)
+                        foreach (char c in p.Consumption.Key) h = h * 31 + c;
                     sum += h;
                     xor ^= h * 397;
                 }

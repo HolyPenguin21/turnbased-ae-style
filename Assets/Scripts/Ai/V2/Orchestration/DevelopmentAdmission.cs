@@ -185,7 +185,8 @@ namespace Game.Ai.V2
                     + $"{c.EffectivePlayApCost}:{c.Equipment?.authoredKey}:{c.Mutator?.authoredKey}:"
                     + $"{(c.Equipment != null ? 1 : 0)}:{(c.Mutator != null ? 1 : 0)}:"
                     + string.Join(",", p.Stats.OrderBy(x => (int)x.Key).Select(x => $"{(int)x.Key}={x.Value}"))
-                    + ":" + string.Join(",", p.Abilities.OrderBy(x => x, System.StringComparer.Ordinal)));
+                    + ":" + string.Join(",", p.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))
+                    + ":consume=" + EquipmentSystem.Consumption(c.Definition, c.Equipment, c.Mutator)?.Key);
             }
             if (player != null)
                 foreach (var a in ArmyRegistry.AllForOwner(player))
@@ -201,7 +202,8 @@ namespace Game.Ai.V2
                             + $"{u.MoveMax}:{u.Initiative}:{u.ActivationApCost}:"
                             + $"{u.CommandRating}:{u.Fate}:{u.FateMax}:"
                             + string.Join(",", u.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))
-                            + ":" + string.Join(",", u.TypeTags.OrderBy(x => (int)x)));
+                            + ":" + string.Join(",", u.TypeTags.OrderBy(x => (int)x))
+                            + ":consume=" + EquipmentSystem.Consumption(u)?.Key);
                     }
                 }
             return string.Join(";", rows.OrderBy(x => x, System.StringComparer.Ordinal));
@@ -382,7 +384,7 @@ namespace Game.Ai.V2
                         .OrderBy(x => x, System.StringComparer.Ordinal));
                 rows.Add($"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
                     + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/"
-                    + $"[{tags}]/[{abilities}]");
+                    + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}");
             }
             rows.Sort(System.StringComparer.Ordinal);
             return $"{defenders.Count}:" + string.Join("|", rows);

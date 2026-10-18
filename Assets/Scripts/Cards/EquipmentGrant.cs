@@ -63,7 +63,7 @@ namespace Game.Cards
 
     // The payload of a CardType.Equipment card (see CardDefinition.equipment) — how it changes
     // whatever it's attached to. Applied once, permanently, by EquipmentSystem.Apply; there is
-    // no un-attach (the manual: "Once placed an attachment card can never be removed").
+    // no manual un-attach. SingleUse equipment is consumed after its host attacks.
     //
     // Application order (EquipmentSystem.Apply):
     //   1. clearAbilityFamilies — remove every ability tag of each listed family from the host

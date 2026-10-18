@@ -120,7 +120,11 @@ namespace Game.Ai.V2
             return WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, current.Abilities,
                 host.cardType == CardType.Hero, snap, inv,
                 EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait,
-                host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment));
+                host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment,
+                beforeConsumption: EquipmentSystem.Consumption(host, hostCard?.Equipment, hostCard?.Mutator),
+                afterConsumption: EquipmentSystem.Consumption(host,
+                    equipDef.attachmentSlot == AttachmentSlot.Equipment ? equipDef : hostCard?.Equipment,
+                    equipDef.attachmentSlot == AttachmentSlot.Mutator ? equipDef : hostCard?.Mutator)));
         }
 
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, UnitData host,
@@ -154,7 +158,8 @@ namespace Game.Ai.V2
             return WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv,
                 projected, true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
                 OwnWorld.Of(snap?.Observer).ArmyContaining(host), null,
-                Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host));
+                Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host,
+                EquipmentSystem.Consumption(host), EquipmentSystem.Consumption(host, equipDef)));
         }
 
         // The one slot weight (AiConfigV2.equipMutatorValueMult): only a positive gain of a
@@ -176,7 +181,8 @@ namespace Game.Ai.V2
             IReadOnlyList<string> hostAbilities, bool isHero, WorldSnapshot snap, CapabilityInventory inv,
             PredictedEquipmentState? projected = null, bool includeStealthTrait = true,
             IReadOnlyList<UnitTypeTag> hostTags = null, MissionIntent purpose = null, ArmyData army = null,
-            MaterializationPlan deployment = null, int hpSpent = 0, UnitData hostUnit = null)
+            MaterializationPlan deployment = null, int hpSpent = 0, UnitData hostUnit = null,
+            EquipmentConsumption beforeConsumption = null, EquipmentConsumption afterConsumption = null)
         {
             using var __scope = new Game.Core.ProfileScope("AI/Equip.ScoreDelta");
             PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
@@ -199,7 +205,8 @@ namespace Game.Ai.V2
             // no army, no world effects (a reserve has none to read). The consumer converts the result to its
             // own unit at its own boundary (WorldAnalysis.Self.EquipmentReserve).
             return ScoreEquipmentByEfficiency(before, predicted, hostAbilities, isHero, snap, inv,
-                includeStealthTrait, purpose, army, hostUnit, hostTags, deployment, hpSpent);
+                includeStealthTrait, purpose, army, hostUnit, hostTags, deployment, hpSpent,
+                beforeConsumption, afterConsumption);
         }
 
         // Operational equipment value: the change in the host's efficiency (EquipmentEfficiency),
@@ -209,7 +216,8 @@ namespace Game.Ai.V2
         private static EquipmentDelta ScoreEquipmentByEfficiency(Dictionary<EquipmentStat, int> before,
             PredictedEquipmentState predicted, IReadOnlyList<string> hostAbilities, bool isHero,
             WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait, MissionIntent purpose, ArmyData army,
-            UnitData hostUnit, IReadOnlyList<UnitTypeTag> hostTags, MaterializationPlan deployment, int hpSpent)
+            UnitData hostUnit, IReadOnlyList<UnitTypeTag> hostTags, MaterializationPlan deployment, int hpSpent,
+            EquipmentConsumption beforeConsumption, EquipmentConsumption afterConsumption)
         {
             using var __eff = new Game.Core.ProfileScope("AI/Equip.Efficiency");
             int After(EquipmentStat stat) =>
@@ -239,6 +247,8 @@ namespace Game.Ai.V2
                 Targets = targets,
                 HostTags = hostTags,
                 HpSpent = hpSpent,
+                BeforeConsumption = beforeConsumption,
+                AfterConsumption = afterConsumption,
             };
             if (targets.Count > 0 && aviation)
             {
@@ -354,10 +364,25 @@ namespace Game.Ai.V2
                     if (memoBefore)
                         EquipmentTargetMemo.StoreValueBefore(snap, hostUnit, includeStealthTrait, valueBefore);
                 }
-                tactical += StrategicEffectRegistry.AttachmentValue(predicted.Stats, unpricedAfter, hostTags, opposition, army,
+                float registry = StrategicEffectRegistry.AttachmentValue(predicted.Stats, unpricedAfter, hostTags, opposition, army,
                         isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets, hostUnit)
                     - valueBefore;
+                if (beforeConsumption != null || afterConsumption != null)
+                {
+                    var baseState = new PredictedEquipmentState(before, hostAbilities);
+                    var laterBefore = beforeConsumption?.Apply(baseState) ?? baseState;
+                    var laterAfter = afterConsumption?.Apply(predicted) ?? predicted;
+                    float Value(PredictedEquipmentState state) => StrategicEffectRegistry.AttachmentValue(state.Stats,
+                        state.Abilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList(), hostTags, opposition, army,
+                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets, hostUnit);
+                    float later = Value(laterAfter) - Value(laterBefore);
+                    registry = later + (registry - later) / Mathf.Max(1f, ctx.ExpectedActivations);
+                }
+                tactical += registry;
             }
+
+            if (beforeConsumption != null || afterConsumption != null)
+                breakdown += " single-use: first attack only";
 
             // The text is formatted only when something reads it. `before`, the predicted state and
             // the ability lists are built fresh per call and never mutated afterwards, so the

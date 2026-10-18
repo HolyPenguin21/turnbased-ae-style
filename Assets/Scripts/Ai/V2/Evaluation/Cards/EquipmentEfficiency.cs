@@ -75,6 +75,13 @@ namespace Game.Ai.V2
         public int? KnownDistance;                // a known contact distance replaces the geometry prior
         public int HostCommanderInitiative, EnemyCommanderInitiative;
         public float ExpectedActivations = AiConfigV2.equipExpectedActivations;
+        public EquipmentConsumption BeforeConsumption, AfterConsumption;
+        internal EfficiencyContext WithoutConsumption()
+        {
+            var copy = (EfficiencyContext)MemberwiseClone();
+            copy.BeforeConsumption = null; copy.AfterConsumption = null;
+            return copy;
+        }
         public int RouteLength;                   // 0: no known route (speed uses the proxy)
         // A hero is valued as a COMMANDER (battle Fate) only when it stands at the head of a field army with
         // fighters, or is not a Research/Production operator at all. An operator in a garrison is valued as an
@@ -175,6 +182,24 @@ namespace Game.Ai.V2
                     flat += dFate * AiConfigV2.equipOperatorFateGain;
             }
             sum[(int)Group.Flat] += flat;
+
+            if (ctx.BeforeConsumption != null || ctx.AfterConsumption != null)
+            {
+                // Aviation's existing non-offensive table is a proxy. Retain that table, but
+                // only until the first attack; durable changes in the other slot remain priced.
+                var plain = ctx.WithoutConsumption();
+                var steady = Delta(SpentStats(before, ctx.BeforeConsumption),
+                    ctx.BeforeConsumption?.ApplyAbilities(beforeAbilities) ?? beforeAbilities,
+                    SpentStats(after, ctx.AfterConsumption),
+                    ctx.AfterConsumption?.ApplyAbilities(afterAbilities) ?? afterAbilities, plain);
+                float first = 1f / Mathf.Max(1f, ctx.ExpectedActivations);
+                float Mix(float armed, float later) => later + (armed - later) * first;
+                return new EfficiencyBreakdown(
+                    Mix(sum[(int)Group.Offense] * ctx.OffenseMult, steady.Offense),
+                    Mix(sum[(int)Group.Defense] * ctx.DefenseMult, steady.Defense),
+                    Mix(sum[(int)Group.Skill] * ctx.SkillMult, steady.Skill),
+                    Mix(sum[(int)Group.Flat], steady.Flat));
+            }
 
             return new EfficiencyBreakdown(
                 sum[(int)Group.Offense] * ctx.OffenseMult,

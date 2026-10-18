@@ -44,6 +44,8 @@ MonoBehaviour:
       this living ground unit is in play. Repair costs are unchanged.
   - tag: Airfield
     description: Provides a mobile airfield with the card's aircraft capacity.
+  - tag: SingleUse
+    description: Equipment is consumed after its host completes an attack, even on a miss.
   - tag: Ionic
     description: 
   - tag: Bodyguard

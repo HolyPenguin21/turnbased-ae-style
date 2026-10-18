@@ -22,6 +22,26 @@ namespace Game.Units
         private UnitData(bool live, int projectionId = -1) => RuntimeId = live ? Interlocked.Increment(ref _nextRuntimeId) : projectionId;
         // Read-only AI projection, never published to the game registries.
         internal static UnitData CreateProjection(int identity = -1) => new UnitData(false, identity);
+        // Tactical lookahead may consume equipment on this private copy. In particular the
+        // ability sets are owned by the projection; neither live identity nor registries change.
+        internal UnitData CloneForCombat()
+        {
+            var copy = CreateProjection(RuntimeId);
+            copy.Name = Name; copy.Owner = Owner; copy.IsHero = IsHero; copy.IsSummoned = IsSummoned;
+            copy.Attack = Attack; copy.Defense = Defense; copy.Range = Range; copy.Initiative = Initiative;
+            copy.HitPointsMax = HitPointsMax; copy.HitPointsCurrent = HitPointsCurrent;
+            copy.FateMax = FateMax; copy.Fate = Fate; copy.CommandRating = CommandRating;
+            copy.ActivationApCost = ActivationApCost;
+            copy._moveMax = _moveMax; copy._moveCurrent = _moveCurrent; copy._moveSpent = _moveSpent;
+            copy.BerserkStacks = BerserkStacks; copy.BerserkDefenseLost = BerserkDefenseLost;
+            copy.DrillAttackBonus = DrillAttackBonus; copy.IsAviation = IsAviation;
+            copy.IsPrisoner = IsPrisoner; copy.IsHidden = IsHidden;
+            copy.OriginatingCard = OriginatingCard; copy.Equipment = Equipment; copy.Mutator = Mutator;
+            copy.AttachmentBase = AttachmentBase; copy.AttachmentApplied = AttachmentApplied;
+            copy.AttachmentResources = AttachmentResources;
+            copy.Abilities.UnionWith(Abilities); copy.TypeTags.UnionWith(TypeTags);
+            return copy;
+        }
         // Load path: a unit rebuilt under its saved identity; later units are numbered above it.
         internal static UnitData WithRuntimeId(int runtimeId)
         {

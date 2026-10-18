@@ -90,6 +90,8 @@ namespace Game.Cards
         // Opens paid repair for all own armies on the ground carrier's current hex.
         public const string Repair = "Repair";
         public const string Airfield = "Airfield";
+        // Equipment metadata: consume this attachment after its host completes an attack.
+        public const string SingleUse = "SingleUse";
 
         // "+2 damage against Mechanical-tagged targets, if the attack already dealt at least 1
         // damage" — the Mechanical counterpart of Hyperkinetic (Armored) and Pyrokinetic (Bio).
@@ -249,7 +251,7 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
-            Splash, Scorcher, RaiseTheRots, Heal, Transport, Repair, Airfield, Ionic, Bodyguard, Counterattack, Drill,
+            Splash, Scorcher, RaiseTheRots, Heal, Transport, Repair, Airfield, SingleUse, Ionic, Bodyguard, Counterattack, Drill,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus, TacticalIntelligence,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,

@@ -159,6 +159,7 @@ namespace Game.Combat
                 else if (p.Abilities.Count > 1)
                     foreach (string ability in p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))
                         hash = AccumulateAbilityHash(hash, ability);
+                if (p.Consumption != null) hash = AccumulateAbilityHash(hash, p.Consumption.Key);
                 return hash;
             }
         }
@@ -285,6 +286,7 @@ namespace Game.Combat
         // comment), only a remembered/cheat-read roster.
         private struct BattleUnit
         {
+            public EquipmentConsumption Consumption;
             public float Attack;
             public float Defense;
             public IReadOnlyList<string> Abilities;
@@ -308,6 +310,24 @@ namespace Game.Combat
             // remembered/assumed starting HitPoints, so it defaults to the same value as Hp — see
             // ToAttackerBattleUnits for the one path (our own live roster) that fills in the real one.
             public float MaxHp;
+        }
+
+        private static void ConsumeRosterEquipment(List<BattleUnit> side, int index)
+        {
+            BattleUnit unit = side[index];
+            EquipmentConsumption change = unit.Consumption;
+            if (change == null) return;
+            unit.Attack += change.Delta(EquipmentStat.Attack);
+            unit.Defense += change.Delta(EquipmentStat.Defense);
+            unit.Initiative += change.Delta(EquipmentStat.Initiative);
+            unit.Range += change.Delta(EquipmentStat.Range);
+            unit.HeroFate = Mathf.Max(0, unit.HeroFate + change.Delta(EquipmentStat.Fate));
+            int hpDelta = change.Delta(EquipmentStat.HitPoints);
+            unit.MaxHp = Mathf.Max(1f, unit.MaxHp + hpDelta);
+            unit.Hp = Mathf.Clamp(unit.Hp + hpDelta - change.HpSpentExcess, unit.Hp > 0f ? 1f : 0f, unit.MaxHp);
+            unit.Abilities = change.ApplyAbilities(unit.Abilities);
+            unit.Consumption = null;
+            side[index] = unit;
         }
 
         // Longest a single simulated battle plays before being scored a draw — map-sized rosters
@@ -349,6 +369,7 @@ namespace Game.Combat
                 HeroFate = p.FateMax,
                 IsSummoned = p.IsSummoned,
                 Range = p.Range,
+                Consumption = p.Consumption,
             };
         }
 
@@ -376,6 +397,7 @@ namespace Game.Combat
                     HeroFate = Mathf.Max(0, m.FateMax),
                     IsSummoned = m.IsSummoned,
                     Range = m.Range,
+                    Consumption = EquipmentSystem.Consumption(m),
                 });
             return list;
         }
@@ -556,6 +578,7 @@ namespace Game.Combat
             if (index < 0) return;
             BattleUnit target = side[index];
             target.Hp = BattleSimulationKernel.HealedHitPoints(target.Hp, target.MaxHp);
+            target.Consumption = target.Consumption?.AfterHpRefill();
             side[index] = target;
         }
 
@@ -664,7 +687,7 @@ namespace Game.Combat
         private static bool AnyCarries(List<BattleUnit> side, string ability)
         {
             for (int i = 0; i < side.Count; i++)
-                if (side[i].HasAbility(ability))
+                if (side[i].HasAbility(ability) || side[i].Consumption?.After.Abilities.Contains(ability) == true)
                     return true;
             return false;
         }
@@ -784,6 +807,8 @@ namespace Game.Combat
                             suppressed.Add(targetTurn);
                     }
 
+                    ConsumeRosterEquipment(ownList, turn.index);
+
                     // UnitAbilities.Counterattack — a surviving victim answers a Range-1 (or
                     // unknown-range) attacker at once: never intercepted, never answered itself.
                     if (anyCounter)
@@ -801,6 +826,7 @@ namespace Game.Combat
                                 : ResolveExchange(victim, answered, ref attackerFate, ref defenderFate, rng, magnitudes);
                             ApplyRosterHit(ownList, turn.index, victim, answer, turn.isAttacker, rng, magnitudes,
                                 scratch, ref attackerFate, ref defenderFate, attackers, defenders);
+                            ConsumeRosterEquipment(enemyList, targetIndex);
                         }
                     }
 
@@ -841,7 +867,24 @@ namespace Game.Combat
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList(),
                 unit.HitPointsMax, unit.IsGroundCombatant, unit.IsHero, unit.FateMax, unit.IsSummoned,
-                unit.Range);
+                unit.Range, EquipmentSystem.Consumption(unit));
+
+        // Asset-free counterpart of EquipmentSystem.ConsumeAfterAttack for forecasts.
+        public static DefenderProfile AfterAttack(DefenderProfile p)
+        {
+            EquipmentConsumption c = p.Consumption;
+            if (c == null) return p;
+            var abilities = c.ApplyAbilities(p.Abilities);
+            float maxHp = Mathf.Max(1f, p.MaxHitPoints + c.Delta(EquipmentStat.HitPoints));
+            float hp = Mathf.Clamp(p.HitPoints + c.Delta(EquipmentStat.HitPoints) - c.HpSpentExcess,
+                p.HitPoints > 0 ? 1f : 0f, maxHp);
+            return new DefenderProfile(p.Defense + c.Delta(EquipmentStat.Defense),
+                abilities.Contains(UnitAbilities.CeramicArmor), p.TypeTags,
+                p.Attack + c.Delta(EquipmentStat.Attack), hp,
+                p.Initiative + c.Delta(EquipmentStat.Initiative), abilities, maxHp,
+                p.IsGroundCombatant, p.IsHero, p.FateMax + c.Delta(EquipmentStat.Fate),
+                p.IsSummoned, p.Range + c.Delta(EquipmentStat.Range));
+        }
 
         // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
         // оценивает цену победы") alongside the bare win/lose verdict WinChance always returned —
@@ -1302,6 +1345,7 @@ namespace Game.Combat
         // other side; CanDamage/CanDamageAll still only read Defense/HasCeramicArmor off it.
         public readonly struct DefenderProfile : System.IEquatable<DefenderProfile>
         {
+            public readonly EquipmentConsumption Consumption;
             public readonly float Defense;
             public readonly bool HasCeramicArmor;
             public readonly IReadOnlyList<UnitTypeTag> TypeTags;
@@ -1331,8 +1375,9 @@ namespace Game.Combat
                 float attack = 0f, float hitPoints = 0f, int initiative = 0,
                 IReadOnlyList<string> abilities = null, float maxHitPoints = 0f,
                 bool isGroundCombatant = true, bool isHero = false, int fateMax = 0, bool isSummoned = false,
-                int range = -1)
+                int range = -1, EquipmentConsumption consumption = null)
             {
+                Consumption = consumption;
                 Range = range;
                 IsGroundCombatant = isGroundCombatant;
                 IsSummoned = isSummoned;
@@ -1361,7 +1406,8 @@ namespace Game.Combat
                 && HitPoints.Equals(other.HitPoints) && MaxHitPoints.Equals(other.MaxHitPoints)
                 && Initiative == other.Initiative && Equals(Abilities, other.Abilities)
                 && IsGroundCombatant == other.IsGroundCombatant && IsHero == other.IsHero
-                && FateMax == other.FateMax && IsSummoned == other.IsSummoned && Range == other.Range;
+                && FateMax == other.FateMax && IsSummoned == other.IsSummoned && Range == other.Range
+                && Consumption?.Key == other.Consumption?.Key;
 
             public override bool Equals(object obj) => obj is DefenderProfile other && Equals(other);
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Cards;
 
 namespace Game.Combat
 {
@@ -28,14 +29,14 @@ namespace Game.Combat
     // coroutine cannot carry entries into the next turn.
     public static partial class WorthIt
     {
-        private const int EstimateKeyVersion = 3;
+        private const int EstimateKeyVersion = 4;
         private const int EstimateCacheMaxEntries = 50000;
 
         // The field sets the key covers. WorthItEstimateCacheTests compares them against the real
         // struct fields by reflection, so adding a field without deciding its key fate fails a test.
         internal static readonly string[] EstimateKeyBattleUnitFields =
             { "Attack", "Defense", "Abilities", "TypeTags", "Initiative", "Hp", "MaxHp",
-                "IsHero", "HeroFate", "IsSummoned", "Range" };
+                "IsHero", "HeroFate", "IsSummoned", "Range", "Consumption" };
         internal static readonly string[] EstimateKeySideCommanderFields =
             { "Present", "Initiative", "Fate", "SupportHeroes" };
         internal static readonly string[] EstimateKeyAbilityMagnitudesFields =
@@ -49,7 +50,7 @@ namespace Game.Combat
         // the BattleUnit key. The rest are read elsewhere, never by the simulation.
         internal static readonly string[] EstimateKeyDefenderProfileSimulatedFields =
             { "Attack", "Defense", "HitPoints", "MaxHitPoints", "Initiative", "Abilities", "TypeTags",
-                "IsHero", "FateMax", "IsSummoned", "Range" };
+                "IsHero", "FateMax", "IsSummoned", "Range", "Consumption" };
         internal static readonly string[] EstimateKeyDefenderProfileNonSimulatedFields =
         {
             "HasCeramicArmor",   // CanDamage only; the simulation reads CeramicArmor from Abilities
@@ -226,6 +227,7 @@ namespace Game.Combat
             buf.Add(u.HeroFate);
             buf.Add(u.IsSummoned ? 1 : 0);
             buf.Add(u.Range);
+            AppendConsumptionKey(buf, u.Consumption);
             int abilities = u.Abilities?.Count ?? -1;
             buf.Add(abilities);
             for (int i = 0; i < abilities; i++)
@@ -235,6 +237,13 @@ namespace Game.Combat
             for (int i = 0; i < tags; i++)
                 buf.Add((int)u.TypeTags[i]);
         }
+        internal static void AppendConsumptionKey(List<int> buf, EquipmentConsumption consumption)
+        {
+            string key = consumption?.Key;
+            buf.Add(key?.Length ?? -1);
+            if (key != null) foreach (char c in key) buf.Add(c);
+        }
+
         private static int AbilityId(string ability)
         {
             if (ability == null)
