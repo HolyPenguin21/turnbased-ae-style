@@ -111,7 +111,7 @@ namespace Game.Combat
         {
             if (survivor?.Owner == null || DelayedBattleRegistry.IsHexPending(hex))
                 return false;
-            return BattleInitiator.FindEnemyAt(hex, survivor) != null;
+            return BattleInitiator.FindDefenderOnArrival(hex, survivor) != null;
         }
 
         // Domain continuation after one encounter has fully finalized. Finds and commits the next
@@ -123,7 +123,7 @@ namespace Game.Combat
                 return new BattleEncounterContinuation(hexPending, null, false);
 
             ArmyData nextEnemy = !hexPending
-                ? BattleInitiator.FindEnemyAt(hex, survivor)
+                ? BattleInitiator.FindDefenderOnArrival(hex, survivor)
                 : null;
             if (nextEnemy != null)
             {

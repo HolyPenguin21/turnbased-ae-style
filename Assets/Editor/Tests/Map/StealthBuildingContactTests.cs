@@ -84,6 +84,47 @@ namespace Game.EditorTests
             Assert.That(_building.Owner, Is.SameAs(_enemy));
         }
 
+        // 2026-10-18 (project owner's decision) — a Base's own garrison defends it even while its
+        // members are in stealth: the arriving visible army meets it (the reveal happens at the
+        // battle's start) instead of taking the Base with the garrison still inside. Route planning
+        // stays blind to it. An ordinary hidden resident still does not hold the building.
+        [Test]
+        public void HiddenGarrisonHoldsItsBase_OrdinaryHiddenResidentDoesNot()
+        {
+            _unit.IsHidden = false;
+            _building.IsBase = true;
+            var garrison = new ArmyData { Owner = _enemy, Hex = _hex, IsGarrison = true };
+            garrison.Members.Add(new UnitData { Owner = _enemy, IsHidden = true, HitPointsCurrent = 5 });
+            ArmyRegistry.Register(garrison);
+
+            BuildingRegistry.CaptureOrDestroyIfUndefended(_hex, _owner, null, _army);
+            Assert.That(_building.Owner, Is.SameAs(_enemy), "the hidden garrison holds the Base");
+            Assert.That(Game.Combat.BattleInitiator.FindEnemyAt(_hex, _army), Is.Null,
+                "planning never sees the hidden garrison");
+            Assert.That(Game.Combat.BattleInitiator.FindDefenderOnArrival(_hex, _army), Is.SameAs(garrison),
+                "the arrival meets it");
+
+            garrison.IsGarrison = false;
+            Assert.That(Game.Combat.BattleInitiator.FindDefenderOnArrival(_hex, _army), Is.Null);
+            BuildingRegistry.CaptureOrDestroyIfUndefended(_hex, _owner, null, _army);
+            Assert.That(_building.Owner, Is.SameAs(_owner), "an ordinary hidden resident does not hold it");
+        }
+
+        [Test]
+        public void HiddenGarrisonKeepsTheBaseWhenAnotherDefenderFalls()
+        {
+            _unit.IsHidden = false;
+            _building.IsBase = true;
+            var garrison = new ArmyData { Owner = _enemy, Hex = _hex, IsGarrison = true };
+            garrison.Members.Add(new UnitData { Owner = _enemy, IsHidden = true, HitPointsCurrent = 5 });
+            ArmyRegistry.Register(garrison);
+            var beaten = new ArmyData { Owner = _enemy, Hex = _hex };
+            ArmyRegistry.Register(beaten);
+
+            Game.Combat.BattleEngine.HandleBuildingOnArmyDefeat(_army, beaten, null);
+            Assert.That(_building.Owner, Is.SameAs(_enemy));
+        }
+
         [Test]
         public void FirstVisibleMemberActsWhileOtherMembersStayHidden()
         {
