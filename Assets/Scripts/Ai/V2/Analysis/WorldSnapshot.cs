@@ -219,6 +219,8 @@ namespace Game.Ai.V2
         public bool IsAir;
         public bool IsAirfield;
         public int MobileAirfieldCapacity;
+        // Own live ground Repair sources, frozen through UnitRepair's canonical source rule.
+        public int RepairSourceCount;
         public bool IsCarrierContainer;
         public float CarrierCargoPower;
         // Frozen through the canonical Recon actor/lifecycle policy, excluding strike and recovery wings.
@@ -399,12 +401,13 @@ namespace Game.Ai.V2
         public readonly WorthIt.DefenderProfile CurrentProfile;
         public readonly WorthIt.DefenderProfile FullHealthProfile;
         public readonly bool RepairCostInitialized;
+        public readonly bool IsPrisoner;
         public readonly ResourceVector RepairCost;
 
         public RaidRecoveryMemberSnapshot(int runtimeId, int unitIndex, bool isHero,
             bool isAviation, bool isGroundBattleBody, bool canSpareForRaid, int activationApCost,
             WorthIt.DefenderProfile currentProfile, WorthIt.DefenderProfile fullHealthProfile,
-            bool repairCostInitialized, ResourceVector repairCost)
+            bool repairCostInitialized, ResourceVector repairCost, bool isPrisoner = false)
         {
             RuntimeId = runtimeId;
             UnitIndex = unitIndex;
@@ -416,6 +419,7 @@ namespace Game.Ai.V2
             CurrentProfile = currentProfile;
             FullHealthProfile = fullHealthProfile;
             RepairCostInitialized = repairCostInitialized;
+            IsPrisoner = isPrisoner;
             RepairCost = repairCost;
         }
 

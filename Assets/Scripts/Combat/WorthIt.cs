@@ -1291,8 +1291,8 @@ namespace Game.Combat
         // own DefenderProfile-list overload above) to actually play a real round-by-round fight
         // instead of one flat aggregate exchange. HitPoints is the unit's CURRENT HP as of its own
         // last observation (AiMapMemory.OnVisibilityChanged, 2026-08-26 air-strike-memory fix —
-        // was MAX HP, "assume it's healed up since we last saw it"; there is no in-field regen in
-        // this game to make that assumption safe, only base-side UnitRepair, so a remembered
+        // was MAX HP, "assume it's healed up since we last saw it"; repair and regeneration
+        // may change HP after observation, but must not grant live reads through fog. A remembered
         // sighting now freezes damage the same honest way it already freezes composition,
         // corrected only by a later re-observation). A live/cheat source
         // (AiDefencePlanner.CheatEstimateRaiderThreat) already reads the real ArmyData's own

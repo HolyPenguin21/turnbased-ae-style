@@ -903,9 +903,8 @@ namespace Game.Ai
                         // damage on it is exactly as real an observed fact as its composition —
                         // freezing it at last-observed value (never auto-healed, only corrected by
                         // a later re-observation) matches the same "видимость с памятью" honesty
-                        // rule every other field here already follows for resource hexes/army sightings/event guards. There is no in-field HP regen in
-                        // this game (only UnitRepair, base-side) for that assumption to have been
-                        // protecting against.
+                        // rule every other field here already follows for resource hexes/army sightings/event guards.
+                        // Base/field repairs and regeneration become known only on observation.
                         // Preserve contact targets as well as tactical actors. A lone hero is an
                         // engageable Capture/Kill target, not an army with an unknown empty roster.
                         // Combat sums remain body-only; WorthIt owns the actor/target distinction.

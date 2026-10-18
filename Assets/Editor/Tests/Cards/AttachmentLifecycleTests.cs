@@ -251,6 +251,9 @@ namespace Game.EditorTests
             var hex = new HexCoord(88, -31);
             var building = new BuildingData { Owner = _owner, Hex = hex, IsBase = true };
             BuildingRegistry.Register(hex, building);
+            var army = new ArmyData { Owner = _owner, Hex = hex };
+            army.Members.Add(unit);
+            ArmyRegistry.Register(army);
             Assert.That(UnitRepair.TryRepair(unit, hex, _root, out var reason), Is.True, reason);
             EquipmentSystem.ApplyAttachments(unit, null,
                 AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.HitPoints, 6));

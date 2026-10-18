@@ -46,6 +46,7 @@ namespace Game.Ai.V2
         AllyHealing,       // one wounded Bio ally, per carrier action/hero round
         TransportMobility, // actual expected movement gain of the whole recipient army
         MobileAirfield,    // held/deployed aircraft not yet served by mobile deck capacity
+        MobileRepair,      // additional paid repair access for wounded own units on this hex
         FreeBattleSlots,    // summon— BaseFit scaled by min(free slots, CapacityRequirement) / CapacityRequirement
     }
 
@@ -368,6 +369,46 @@ namespace Game.Ai.V2
                     .Where(a => a != null).Sum(a => a.MobileAirfieldCapacity);
                 return Mathf.Clamp01((aircraft - capacity) / (float)card.airfieldCapacity);
             }
+        }
+
+        public float MobileRepairService
+        {
+            get
+            {
+                CardDefinition card = Plan?.BaseCardInHand?.Definition ?? Plan?.GeneratedBaseDef;
+                return card == null || card.isAviation ? 0f : RepairServiceAt(Snap, Plan.Deploy.Hex);
+            }
+        }
+
+        // Only frozen own facts. A Base or another mechanic already provides this service;
+        // no battle-power bonus, invented healing, remote rendezvous or gameplay RNG read.
+        internal static float RepairServiceAt(WorldSnapshot snap, HexCoord hex,
+            int? replacingSourceArmyId = null)
+        {
+            if (snap?.Self?.Armies == null || snap.Self.ActionPoints < 1
+                || snap.Self.BaseHexes?.Contains(hex) == true)
+                return 0f;
+            var local = snap.Self.Armies.Where(a => a != null && !a.IsPrison
+                && a.Hex.Equals(hex) && a.Owner == snap.Observer).ToList();
+            if (local.Any(a => a.RepairSourceCount
+                - (a.ArmyId == replacingSourceArmyId ? 1 : 0) > 0))
+                return 0f;
+            ResourceBundle stock = snap.Economy != null
+                ? snap.Economy.SpendableStockpile : snap.Self.Stockpile;
+            float service = 0f;
+            foreach (RaidRecoveryMemberSnapshot member in local.SelectMany(a => a.RecoveryMembers
+                ?? System.Array.Empty<RaidRecoveryMemberSnapshot>()))
+            {
+                var profile = member.CurrentProfile;
+                ResourceVector cost = member.RepairCost;
+                if (member.IsPrisoner || !member.RepairCostInitialized || profile.HitPoints <= 0
+                    || profile.HitPoints >= member.FullHealthProfile.MaxHitPoints
+                    || stock.Human < cost.Human || stock.Energy < cost.Energy
+                    || stock.Materials < cost.Materials || stock.Tech < cost.Tech)
+                    continue;
+                service += 1f - profile.HitPoints / Mathf.Max(1f, member.FullHealthProfile.MaxHitPoints);
+            }
+            return Mathf.Clamp01(service);
         }
 
         // Plan-less overloads — the non-combat lane (Base / Facility / Aviation / Equipment) has no
@@ -905,6 +946,12 @@ namespace Game.Ai.V2
                         scope: EffectScope.DestArmy, stacking: EffectStacking.Unique, stackingKey: "Airfield",
                         bodyOnly: true),
                 },
+                [UnitAbilities.Repair] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectMobileRepairFit,
+                        StrategicEffectContext.MobileRepair, EffectField.Synergy, coverage: false,
+                        scope: EffectScope.DestArmy, stacking: EffectStacking.Unique, stackingKey: "Repair"),
+                },
                 [UnitAbilities.RaiseTheRots] = new[]
                 {
                     new StrategicEffect(IntendedRole.ForceGrowth, AiConfigV2.effectRaiseTheRotsFit,
@@ -1401,6 +1448,13 @@ namespace Game.Ai.V2
                     }
                     else value = e.BaseFit * ctx.TransportMovementGain;
                 }
+                else if (e.Context == StrategicEffectContext.MobileRepair)
+                {
+                    int? replacing = UnitRepair.IsRepairSourceMember(host) ? army?.Id : null;
+                    value = host?.IsAviation == true ? 0f : e.BaseFit * (army != null
+                        ? EffectEvaluationContext.RepairServiceAt(snap, army.Hex, replacing)
+                        : ctx.MobileRepairService);
+                }
                 else if (e.Context == StrategicEffectContext.ExpectedSustain)
                 {
                     // Gameplay heals ONE HP at end of turn, only while alive and damaged.
@@ -1534,6 +1588,8 @@ namespace Game.Ai.V2
                     return e.BaseFit * ctx.TransportMovementGain;
                 case StrategicEffectContext.MobileAirfield:
                     return e.BaseFit * ctx.MobileAirfieldService;
+                case StrategicEffectContext.MobileRepair:
+                    return e.BaseFit * ctx.MobileRepairService;
                 case StrategicEffectContext.ExpectedSustain:
                 {
                     // §3.2 — regen value ≈ BaseFit × (usable rounds / norm) × HP factor × magP.

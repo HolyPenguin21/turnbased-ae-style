@@ -41,7 +41,7 @@ namespace Game.Ai.V2
             _upgradeTier = upgradeTier;
         }
 
-        // The standalone "repair a wounded unit at its own Base" maintenance task, as an ordinary
+        // The standalone "repair a wounded unit at an owned repair point" maintenance task, as an ordinary
         // Phase-B tempo spend rather than something tied to any one mission. UnitRepair does the
         // repair; this is just the strategic candidate wrapper around it.
         internal StrategicSpendCandidate(UnitData repairUnit, HexCoord repairHex)
@@ -54,6 +54,15 @@ namespace Game.Ai.V2
         public bool Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             out bool stateChanged, out bool progressed)
         {
+            // A selected repair may outlive the reservation frame that admitted it. Recheck
+            // the same Phase-B pool immediately before the shared gameplay transaction.
+            if (_repairUnit != null && (root == null || ctx == null || player != root.Setup
+                || StrategicSpendability.SpendableAp(player, root, ctx) < ApCost
+                || !StrategicSpendability.FitsSpendableResources(player, root, ctx, ResCost)))
+            {
+                stateChanged = progressed = false;
+                return false;
+            }
             bool ok = _repairUnit != null
                 ? InfrastructureBuildExecutor.RepairUnit(_repairUnit, _repairHex, root)
                 : (Revalidate == null || Revalidate())
@@ -166,8 +175,8 @@ namespace Game.Ai.V2
 
         // ------------------------------------------------------------------------- repair ----
 
-        // Every wounded, non-prison, non-airfield own-army member currently sitting on this
-        // player's own Base — garrison included (a garrison's hex IS a Base hex by definition).
+        // Every legal wounded own member on an owned Base or a friendly mechanic's hex.
+        // Stored aircraft use the same target rule as the human UI.
         // Live ArmyRegistry, not the snapshot: the executed candidate must act on the exact same
         // UnitData UnitRepair.TryRepair mutates, the same "candidate carries its own live payload"
         // convention capacity-upgrade already uses above (BuildingData, not a snapshot DTO).
@@ -176,15 +185,10 @@ namespace Game.Ai.V2
         {
             foreach (ArmyData army in OwnWorld.Of(player).Armies)
             {
-                if (army == null || army.IsPrison || AviationRules.IsAirfield(army)
-                    || !UnitRepair.CanRepairAt(army.Hex, player))
+                if (army == null || !UnitRepair.CanRepairAt(army.Hex, player))
                     continue;
                 foreach (UnitData unit in army.Members)
-                    // A captured enemy hero can be mid-escort inside a normal (non-Prison) army;
-                    // it is never ours to repair (UnitRepair.CanRepairAt checks unit.Owner, not
-                    // army ownership, and would already refuse it — skip it here too so it never
-                    // surfaces as a candidate that is guaranteed to fail on execution).
-                    if (!unit.IsPrisoner && UnitRepair.IsWounded(unit))
+                    if (UnitRepair.CanRepair(unit, army))
                         yield return (unit, army.Hex);
             }
         }
