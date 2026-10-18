@@ -94,6 +94,8 @@ namespace Game.Ai.V2
                 {
                     result.ReachedGoal = true;
                     result.StopReason = ExecutionStopReason.ReachedGoal;
+                    if (pm.ActiveDefenceTarget.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
+                        DeliverGarrisonRelief(player, ctx, army, home);
                 }
                 else if (army == null) result.StopReason = ExecutionStopReason.MoverLost;
                 else if (returnLeg.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
@@ -230,6 +232,24 @@ namespace Game.Ai.V2
                 $"flies to strike threat #{enemyId}");
             // The real strike publishes the hex (VisionSystem.NotifyContentChanged); whether the
             // threat is gone is then read from honest memory by Continuity on the next pass.
+        }
+
+        // GarrisonRelief — the plan's last action on arrival: the detachment's bodies join the
+        // recipient's garrison in one atomic transfer (the garrison's capacity rules apply; a body
+        // that does not fit stays in the shell on the base, which still defends the hex).
+        private static void DeliverGarrisonRelief(PlayerSetupData player, AiTurnContext ctx,
+            ArmyData shell, HexCoord home)
+        {
+            ArmyData garrison = OwnWorld.Of(player).Armies.FirstOrDefault(a => a != null && a.IsGarrison
+                && a.Hex.Equals(home));
+            if (garrison == null || shell.Members.Count == 0)
+                return;
+            var bodies = shell.Members.Where(u => u != null).ToList();
+            while (bodies.Count > 0
+                && !ArmyActions.TransferMembersAtomic(bodies, shell, garrison, ctx?.HexSelection, out _))
+                bodies.RemoveAt(bodies.Count - 1);
+            AiDebugLog.Write($"[AI][V2][GarrisonRelief][Execution] delivered {bodies.Count}/"
+                + $"{bodies.Count + shell.Members.Count} bodies of #{shell.Id} into garrison #{garrison.Id}@({home.Q},{home.R})");
         }
 
         private static void FinishActiveDefence(PlayerSetupData player, PlayerRoot root,

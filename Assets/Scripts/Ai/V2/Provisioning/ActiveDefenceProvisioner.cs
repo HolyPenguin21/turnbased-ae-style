@@ -161,6 +161,8 @@ namespace Game.Ai.V2
             if (!target.PrimaryArmyId.HasValue || !target.ReturnHex.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "active defence return has no actor or home"));
+            if (target.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
+                return ProvisionGarrisonRelief(player, root, ctx, session, funded, target);
             ArmyData actor = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
             if (actor == null || actor.Owner != player || actor.Members.Count == 0)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
@@ -220,6 +222,91 @@ namespace Game.Ai.V2
                 ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
             });
+        }
+
+        // GarrisonRelief — a fresh leg first moves the planned spare bodies of the donor garrison into
+        // the empty shell (the extraction Recon and Economy use: the live floor re-checked by
+        // AiArmyRoles.CanSpareGarrisonMembers, one atomic transfer), then binds the shell like any
+        // Return mover. Every refusal after the transfer sends the bodies back first. A leg already
+        // under way binds its loaded shell.
+        private static ProvisioningResult ProvisionGarrisonRelief(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            ActiveDefenceMissionTarget target)
+        {
+            HexCoord home = target.ReturnHex.Value;
+            WorldSnapshot snap = session.Snapshot;
+            if (snap?.Self?.BaseHexes?.Contains(home) != true)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("relief_base_lost"));
+            ArmyData shell = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
+            if (shell == null || shell.Owner != player)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "relief detachment is gone"));
+            if (session.ExcludedForGroundCombat(funded.Mission).Contains(shell.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "relief detachment is claimed"));
+
+            ArmyData donor = null;
+            List<UnitData> extracted = null;
+            if (target.ReliefDonorGarrisonId.HasValue)
+            {
+                donor = AiV2Util.ResolveArmy(player, target.ReliefDonorGarrisonId.Value);
+                IReadOnlyCollection<int> ids = target.ReliefUnitRuntimeIds ?? (IReadOnlyCollection<int>)System.Array.Empty<int>();
+                List<UnitData> units = donor?.Members.Where(u => u != null && ids.Contains(u.RuntimeId)).ToList();
+                ActorCommitments commitments = ActorCommitments.FromIntents(
+                    WorldSnapshot.IntentsOf(snap).Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                    snap, null);
+                if (donor == null || !donor.IsGarrison || donor.Owner != player || !donor.Hex.Equals(shell.Hex)
+                    || units == null || units.Count == 0 || units.Count != ids.Count
+                    || !ReusableArmySelector.IsReusableShell(shell, player, commitments)
+                    || session.ClaimedArmyIds.Contains(shell.Id) || shell.HasActivatedThisTurn
+                    || !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"relief donor #{target.ReliefDonorGarrisonId} / shell #{shell.Id} is no longer a usable pair"));
+                int plannedAp = units.Sum(u => u.ActivationApCost);
+                if (plannedAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon
+                    || plannedAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
+                    return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(plannedAp,
+                        "relief detachment activation does not fit the envelope / turn AP"));
+                if (!ArmyActions.TransferMembersAtomic(units, donor, shell, ctx.HexSelection, out string why))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"relief extraction #{donor.Id} -> #{shell.Id} failed: {why}"));
+                extracted = units;
+                AiDebugLog.Write($"[AI][V2][GarrisonRelief][Provision] extracted {units.Count} bodies "
+                    + $"from garrison #{donor.Id}@({donor.Hex.Q},{donor.Hex.R}) into #{shell.Id} "
+                    + $"for ({home.Q},{home.R})");
+            }
+
+            ProvisioningResult Fail(ProvisionFailure failure)
+            {
+                if (extracted == null)
+                    return ProvisioningResult.Fail(failure);
+                bool rolledBack = ArmyActions.TransferMembersAtomic(extracted, shell, donor, ctx.HexSelection,
+                    out string why);
+                if (!rolledBack)
+                    AiDebugLog.Write($"[AI][V2][GarrisonRelief] extraction rollback FAILED #{shell.Id}->#{donor.Id}: {why}");
+                return ProvisioningResult.Fail(failure, stateChanged: !rolledBack,
+                    transferredMemberCount: rolledBack ? 0 : extracted.Count);
+            }
+
+            if (shell.Members.Count == 0)
+                return Fail(ProvisionFailure.TargetInvalidated("relief detachment is empty"));
+            if (shell.Hex.Equals(home))
+                return Fail(ProvisionFailure.TargetSatisfied("relief detachment is already there"));
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, shell, home, profile: SafeRouteProfile.Combat) == null)
+                return Fail(ProvisionFailure.NoExecutableStep("relief detachment has no safe step"));
+            int ap = shell.HasActivatedThisTurn ? 0 : shell.ActivationApCost;
+            if (ap > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
+                return Fail(ProvisionFailure.EnvelopeTooSmall(ap, "relief detachment AP envelope is stale"));
+            target.ReliefDonorGarrisonId = null;
+            target.ReliefUnitRuntimeIds = null;
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
+                Kind = MissionKind.ActiveDefence, MoverArmyId = shell.Id,
+                FocusHex = home, ExecutionHex = home,
+                ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = ap,
+            }, extracted?.Count ?? 0);
         }
 
         // Re-evaluate the funded cohort together, but bind only this leg's own actor. The

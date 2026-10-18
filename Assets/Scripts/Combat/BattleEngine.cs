@@ -961,7 +961,7 @@ namespace Game.Combat
 
             bool otherDefenderRemains = ArmyRegistry.AllAt(loserArmy.Hex)
                 .Any(resident => resident != loserArmy && resident.Owner == building.Owner
-                    && BattleInitiator.IsEngageable(resident, winnerArmy?.Owner));
+                    && BattleInitiator.DefendsBuildingAgainst(resident, winnerArmy?.Owner));
             if (!otherDefenderRemains)
                 BuildingRegistry.CaptureOrDestroy(building, winnerArmy?.Owner, hexSelectionController);
         }
@@ -1031,7 +1031,7 @@ namespace Game.Combat
 
                 ArmyData contactedEnemy = DelayedBattleRegistry.IsHexPending(destination)
                     ? null
-                    : BattleInitiator.FindEnemyAt(destination, army);
+                    : BattleInitiator.FindDefenderOnArrival(destination, army);
                 if (contactedEnemy != null)
                 {
                     bool armyCanFight = BattleInitiator.IsCombatCapable(army);
@@ -1268,7 +1268,7 @@ namespace Game.Combat
 
             bool otherDefenderRemains = ArmyRegistry.AllAt(battleHex)
                 .Any(resident => resident.Owner == previousOwner
-                    && BattleInitiator.IsEngageable(resident, survivingArmy.Owner));
+                    && BattleInitiator.DefendsBuildingAgainst(resident, survivingArmy.Owner));
             if (!otherDefenderRemains)
                 BuildingRegistry.CaptureOrDestroy(building, survivingArmy.Owner, hexSelectionController);
         }

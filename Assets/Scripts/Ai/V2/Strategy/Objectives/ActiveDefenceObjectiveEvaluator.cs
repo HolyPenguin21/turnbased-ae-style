@@ -20,7 +20,10 @@ namespace Game.Ai.V2
     public enum ActiveDefencePhase { Intercept = 0, Return = 1, AirSupport = 2 }
 
     // Zero preserves old payloads as withdrawals; new regroup legs always opt in explicitly.
-    public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1 }
+    // GarrisonRelief (2026-10-18) — the Aggression relief mission: a detachment of a safe base's
+    // spare garrison bodies walks to a threatened own base and joins its garrison
+    // (GarrisonReliefObjectiveEvaluator). It answers no enemy army (EnemyArmyId = -1).
+    public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1, GarrisonRelief = 2 }
 
     // Why an Intercept exists. Zero keeps every existing intent a strategic defence of an asset.
     // ImmediateOpportunity is one fight the defender can START in the very own turn it is admitted
@@ -52,6 +55,10 @@ namespace Game.Ai.V2
         // AirSupport only: the wing (never a ground PrimaryArmyId) and its landing base.
         public int? AirSupportArmyId;
         public HexCoord? AirSupportLandingHex;
+        // GarrisonRelief only, before the detachment exists: the donor garrison and the exact spare
+        // bodies Provisioning moves into the empty shell PrimaryArmyId. Null once the shell walks.
+        public int? ReliefDonorGarrisonId;
+        public IReadOnlyList<int> ReliefUnitRuntimeIds;
     }
 
     // The ONE answer to "how does this player respond to this threat", shared by the Mission

@@ -188,13 +188,13 @@ namespace Game.Map
             // Individual stealth (see Game.Map.StealthSystem): a mover every member of which is in
             // stealth takes no action here — even if the building's owner has DETECTED it, the
             // hidden mover does not know that and does not act (stealth design): the owner just
-            // sees an army arrive and nothing happen. A hidden resident cannot hold the building as
-            // an "invisible defender" — so the defender scan filters on IsEngageable(resident,
-            // mover) (real, visible defenders only), not a raw AllAt() pass.
+            // sees an army arrive and nothing happen. A hidden ordinary resident cannot hold the
+            // building as an "invisible defender"; the building's own garrison does, hidden or not
+            // (2026-10-18 — BattleInitiator.DefendsBuildingAgainst: it meets the mover in battle).
             if (moverArmy != null && Game.Map.StealthSystem.IsArmyFullyHidden(moverArmy))
                 return;
             foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
-                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident, mover))
+                if (resident.Owner == building.Owner && BattleInitiator.DefendsBuildingAgainst(resident, mover))
                     return;
             CaptureOrDestroy(building, mover, hexSelection);
         }

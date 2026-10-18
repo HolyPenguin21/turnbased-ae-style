@@ -315,7 +315,7 @@ namespace Game.Map
                 return BattleStartResult.MoverCannotFight;
             if (DelayedBattleRegistry.IsHexPending(hex))
                 return BattleStartResult.Pending;
-            ArmyData enemy = BattleInitiator.FindEnemyAt(hex, mover);
+            ArmyData enemy = BattleInitiator.FindDefenderOnArrival(hex, mover);
             if (enemy == null)
                 return BattleStartResult.NoContact;
 
@@ -328,8 +328,9 @@ namespace Game.Map
 
             var participants = new List<ArmyData> { mover, enemy };
 
-            // STEALTH-COMBAT-01: contact has just committed to a real encounter (FindEnemyAt
-            // already refused a fully-hidden defender, CanInitiateContact refused a fully-hidden
+            // STEALTH-COMBAT-01: contact has just committed to a real encounter (FindDefenderOnArrival
+            // refused a fully-hidden defender other than the building's own garrison,
+            // CanInitiateContact refused a fully-hidden
             // mover) — this is the one authoritative reveal boundary, run BEFORE any battle/
             // pre-battle UI (including the Fight/Delay popup just below) ever shows, and BEFORE
             // the hero-only classification so it reads the true, full roster. Never touches any

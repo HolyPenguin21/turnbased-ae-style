@@ -59,6 +59,46 @@ namespace Game.Combat
             => army != null && !AviationRules.IsAirArmy(army) && !AviationRules.IsAirfield(army)
                && Game.Map.StealthSystem.HasTargetableCombatMember(army, observer);
 
+        // 2026-10-18 (project owner's decision) — a Base's own garrison defends its building even
+        // while its members are in stealth: an enemy arriving on the hex meets it, and its hidden
+        // members reveal when the battle is joined (BattleEncounterCoordinator.
+        // PrepareCommittedEncounter), so the battle screen shows them. Only an ordinary
+        // (non-garrison) army that is hidden from the arriving player stays out of the defence.
+        // Playtest 2026-10-18: Thane walked into Brynn's Base (-2,1) whose only garrison body was a
+        // hidden Hooded, took it without a fight and left Brynn's garrison inside.
+        public static bool IsBuildingGarrison(ArmyData army)
+        {
+            if (army == null || !army.IsGarrison || army.Members.Count == 0 || army.Owner == null
+                || AviationRules.IsAirArmy(army) || AviationRules.IsAirfield(army))
+                return false;
+            BuildingData building = BuildingRegistry.FindAt(army.Hex);
+            return building != null && building.Owner == army.Owner;
+        }
+
+        // THE one answer to "does `resident` still hold its owner's building against `attacker`":
+        // a resident `attacker` can engage, or the building's own garrison (hidden or not).
+        public static bool DefendsBuildingAgainst(ArmyData resident, PlayerSetupData attacker) =>
+            resident != null && resident.Owner != attacker
+            && (IsEngageable(resident, attacker) || IsBuildingGarrison(resident));
+
+        // The opponent `mover` meets on the hex it has come to stand on (a finished move, a
+        // retreat landing, the next fight after a victory, the round-end sweep): the defender
+        // FindEnemyAt picks among those `mover` can see, else the building's own hidden garrison.
+        // Never used for route planning or previews: a hidden garrison stays unknown until the
+        // army actually arrives.
+        public static ArmyData FindDefenderOnArrival(HexCoord hex, ArmyData mover)
+        {
+            ArmyData enemy = FindEnemyAt(hex, mover);
+            if (enemy != null || mover?.Owner == null)
+                return enemy;
+            bool heroOnlyMover = !IsCombatCapable(mover);
+            return ArmyRegistry.AllAt(hex)
+                .Where(a => a.Owner != mover.Owner && IsBuildingGarrison(a)
+                    && (!heroOnlyMover || IsCombatCapable(a)))
+                .OrderBy(a => a.Id)
+                .FirstOrDefault();
+        }
+
         // A visible combatant starts ground contact. A visible hero-only army also triggers
         // contact, but is the hunted side of a Capture/Kill encounter, not a tactical attacker.
         // Mixed armies still need a visible combatant; a hidden force stays passive.

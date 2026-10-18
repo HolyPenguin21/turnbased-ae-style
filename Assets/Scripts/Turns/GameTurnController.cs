@@ -731,8 +731,11 @@ namespace Game.Turns
                     if (!BattleInitiator.IsCombatCapable(mover) || !BattleInitiator.CanInitiateContact(mover))
                         continue;
 
-                    ArmyData other = BattleInitiator.FindEnemyAt(candidateHex, mover);
-                    if (other != null && Game.Map.StealthSystem.IsArmyFullyHidden(other))
+                    // A building's own garrison is the exception: hidden or not it defends its
+                    // building (BattleInitiator.FindDefenderOnArrival / IsBuildingGarrison).
+                    ArmyData other = BattleInitiator.FindDefenderOnArrival(candidateHex, mover);
+                    if (other != null && Game.Map.StealthSystem.IsArmyFullyHidden(other)
+                        && !BattleInitiator.IsBuildingGarrison(other))
                     {
                         other = null;
                         foreach (ArmyData candidate in armies)
