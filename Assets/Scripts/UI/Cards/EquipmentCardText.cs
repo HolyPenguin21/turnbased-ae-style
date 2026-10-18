@@ -72,7 +72,7 @@ namespace Game.UI
         {
             if (equip == null)
                 return string.Empty;
-            return Join(AddedAbilities(equip.equipment, config), StatChanges(equip.equipment));
+            return Join(ItemAbilities(equip, config), StatChanges(equip.equipment));
         }
 
         // The equipment/mutator card's own face (free in hand or catalog preview): who it fits
@@ -80,7 +80,13 @@ namespace Game.UI
         // (see GameConfig.FormatAbilities). Numeric changes are on the stat badges; the full
         // stat list stays in the detail panel (see Description).
         public static string CardFace(CardDefinition equip, GameConfig config)
-            => equip == null ? string.Empty : Join(AttachmentTargets(equip), AddedAbilities(equip.equipment, config));
+            => equip == null ? string.Empty : Join(AttachmentTargets(equip), ItemAbilities(equip, config));
+
+        private static string ItemAbilities(CardDefinition equip, GameConfig config)
+            => Join(AddedAbilities(equip.equipment, config),
+                EquipmentSystem.IsSingleUse(equip)
+                    && equip.equipment?.addAbilities?.Contains(UnitAbilities.SingleUse) != true
+                        ? UnitAbilities.PrettyName(UnitAbilities.SingleUse) : string.Empty);
 
         private static string AttachmentTargets(CardDefinition equip)
         {

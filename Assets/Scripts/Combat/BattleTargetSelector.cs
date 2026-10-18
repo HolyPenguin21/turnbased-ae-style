@@ -165,6 +165,19 @@ namespace Game.Combat
                 grid, actor, battleDefender, battleDefenderDefenseBonus);
             int? victimAttack = simulatedAttack != null && simulatedAttack.TryGetValue(victim, out int a) ? a : (int?)null;
             int? actorDefense = simulatedDefense != null && simulatedDefense.TryGetValue(actor, out int d) ? d : (int?)null;
+            if (EquipmentSystem.IsSingleUse(actor.Equipment))
+            {
+                // The answer comes after this actor's item has been spent. Evaluate on a
+                // private copy so a target preview cannot consume the live attachment.
+                var spent = actor.CloneForCombat();
+                spent.Defense = actorDefense ?? actor.Defense;
+                spent.HitPointsCurrent = Mathf.Max(1, Mathf.RoundToInt(actorHp));
+                int oldMax = spent.HitPointsMax;
+                EquipmentSystem.ConsumeAfterAttack(spent);
+                actorHp = Mathf.Clamp(actorHp + spent.HitPointsMax - oldMax, 1f, spent.HitPointsMax);
+                actor = spent;
+                actorDefense = spent.Defense;
+            }
             return BattleCombatOdds.Evaluate(victim, actor, actorBonus, magnitudes, actorHp,
                 victimAttack, actorDefense).ExpectedDamage;
         }

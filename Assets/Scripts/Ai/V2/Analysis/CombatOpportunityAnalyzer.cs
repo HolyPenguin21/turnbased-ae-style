@@ -674,7 +674,7 @@ namespace Game.Ai.V2
                     if (p.Abilities != null)
                         foreach (string ability in p.Abilities)
                             sb.Append(ability).Append(',');
-                    sb.Append(';');
+                    sb.Append("/consume=").Append(p.Consumption?.Key).Append(';');
                 }
             sb.Append(']');
         }

@@ -740,6 +740,7 @@ namespace Game.Ai
                     || x.Attack != y.Attack || x.Defense != y.Defense
                     || x.HitPoints != y.HitPoints || x.MaxHitPoints != y.MaxHitPoints
                     || x.Initiative != y.Initiative || x.HasCeramicArmor != y.HasCeramicArmor
+                    || x.Consumption?.Key != y.Consumption?.Key
                     || !(x.TypeTags ?? System.Array.Empty<UnitTypeTag>())
                         .SequenceEqual(y.TypeTags ?? System.Array.Empty<UnitTypeTag>())
                     || !(x.Abilities ?? System.Array.Empty<string>())

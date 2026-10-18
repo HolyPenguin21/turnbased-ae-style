@@ -112,10 +112,14 @@ namespace Game.Ai.V2
                     || snapshot.Self.Hand?.Contains(demand.EconomyBuildCard) != true)
                     return DeliveryAssessment.No(DeliveryFailureReason.RecipientMissing);
                 var line = AiPower.ProjectMaterialization(p);
+                CardDefinition planned = p.GeneratedEquipmentDef ?? p.EquipmentInHand?.Definition;
+                var consumption = EquipmentSystem.Consumption(card,
+                    planned?.attachmentSlot == AttachmentSlot.Equipment ? planned : p.BaseCardInHand?.Equipment,
+                    planned?.attachmentSlot == AttachmentSlot.Mutator ? planned : p.BaseCardInHand?.Mutator);
                 var body = new WorthIt.DefenderProfile(line.Defense,
                     line.EffectiveAbilities?.Contains(UnitAbilities.CeramicArmor) == true,
                     card.unitTypeTags, line.Attack, line.HitPoints, line.Initiative,
-                    line.EffectiveAbilities, isGroundCombatant: true);
+                    line.EffectiveAbilities, isGroundCombatant: true, range: line.Range, consumption: consumption);
                 var route = site.BuilderRoutes.First(x => x.ArmyId == recipient.ArmyId);
                 return DemandLayer.EconomyEscortImprovesRoute(recipient, route, body, line.MoveMax)
                     ? DeliveryAssessment.Ok : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);

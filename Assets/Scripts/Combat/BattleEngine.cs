@@ -601,6 +601,7 @@ namespace Game.Combat
                 ChallengeResult.ApplyBerserkOnHit(defender, magnitudes);
             }
             application.DefenderDied = defender.HitPointsCurrent <= 0;
+            EquipmentSystem.ConsumeAfterAttack(attacker);
             return application;
         }
 
@@ -638,6 +639,9 @@ namespace Game.Combat
                 _reactions.CountersUsed.Add(victim);
                 application.Counterattacker = victim;
             }
+            // All modifiers, collateral and the counterattack decision used the armed state.
+            // An actual answer now faces the already spent host, including on a missed shot.
+            EquipmentSystem.ConsumeAfterAttack(attacker);
             return application;
         }
 

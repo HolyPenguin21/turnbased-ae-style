@@ -253,7 +253,8 @@ namespace Game.Ai.V2
                 state.Stats[EquipmentStat.Attack], state.Stats[EquipmentStat.HitPoints],
                 state.Stats[EquipmentStat.Initiative], state.Abilities,
                 isGroundCombatant: c.cardType != CardType.Hero,
-                range: state.Stats[EquipmentStat.Range]);
+                range: state.Stats[EquipmentStat.Range],
+                consumption: EquipmentSystem.Consumption(c, equipment, mutator));
         }
 
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a
