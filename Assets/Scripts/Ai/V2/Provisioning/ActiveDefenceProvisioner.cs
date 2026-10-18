@@ -224,11 +224,12 @@ namespace Game.Ai.V2
             });
         }
 
-        // GarrisonRelief — a fresh leg first moves the planned spare bodies of the donor garrison into
-        // the empty shell (the extraction Recon and Economy use: the live floor re-checked by
-        // AiArmyRoles.CanSpareGarrisonMembers, one atomic transfer), then binds the shell like any
-        // Return mover. Every refusal after the transfer sends the bodies back first. A leg already
-        // under way binds its loaded shell.
+        // GarrisonRelief. A fresh leg mutates nothing here: it checks the pinned pair (donor garrison,
+        // spare bodies, empty shell) and a safe route for the detachment and hands the plan to the
+        // executor, which moves the bodies as its own terminal step (the one-mutation-per-step
+        // contract the Economy / Development extraction keeps). That step makes the leg durable, so
+        // the loaded shell is claimed from the moment it holds the bodies. A leg already under way
+        // binds its loaded shell like any Return mover.
         private static ProvisioningResult ProvisionGarrisonRelief(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             ActiveDefenceMissionTarget target)
@@ -245,60 +246,44 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "relief detachment is claimed"));
 
-            ArmyData donor = null;
-            List<UnitData> extracted = null;
             if (target.ReliefDonorGarrisonId.HasValue)
             {
-                donor = AiV2Util.ResolveArmy(player, target.ReliefDonorGarrisonId.Value);
-                IReadOnlyCollection<int> ids = target.ReliefUnitRuntimeIds ?? (IReadOnlyCollection<int>)System.Array.Empty<int>();
-                List<UnitData> units = donor?.Members.Where(u => u != null && ids.Contains(u.RuntimeId)).ToList();
                 ActorCommitments commitments = ActorCommitments.FromIntents(
                     WorldSnapshot.IntentsOf(snap).Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                     snap, null);
-                if (donor == null || !donor.IsGarrison || donor.Owner != player || !donor.Hex.Equals(shell.Hex)
-                    || units == null || units.Count == 0 || units.Count != ids.Count
-                    || !ReusableArmySelector.IsReusableShell(shell, player, commitments)
-                    || session.ClaimedArmyIds.Contains(shell.Id) || shell.HasActivatedThisTurn
-                    || !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+                if (session.ClaimedArmyIds.Contains(shell.Id))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"relief donor #{target.ReliefDonorGarrisonId} / shell #{shell.Id} is no longer a usable pair"));
-                int plannedAp = units.Sum(u => u.ActivationApCost);
-                if (plannedAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon
-                    || plannedAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
-                    return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(plannedAp,
-                        "relief detachment activation does not fit the envelope / turn AP"));
-                if (!ArmyActions.TransferMembersAtomic(units, donor, shell, ctx.HexSelection, out string why))
+                        $"relief shell #{shell.Id} is claimed this pass"));
+                if (!TryResolveReliefExtraction(player, target, shell, commitments,
+                        out ArmyData donor, out List<UnitData> units, out string why))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"relief extraction #{donor.Id} -> #{shell.Id} failed: {why}"));
-                extracted = units;
-                AiDebugLog.Write($"[AI][V2][GarrisonRelief][Provision] extracted {units.Count} bodies "
-                    + $"from garrison #{donor.Id}@({donor.Hex.Q},{donor.Hex.R}) into #{shell.Id} "
-                    + $"for ({home.Q},{home.R})");
-            }
-
-            ProvisioningResult Fail(ProvisionFailure failure)
-            {
-                if (extracted == null)
-                    return ProvisioningResult.Fail(failure);
-                bool rolledBack = ArmyActions.TransferMembersAtomic(extracted, shell, donor, ctx.HexSelection,
-                    out string why);
-                if (!rolledBack)
-                    AiDebugLog.Write($"[AI][V2][GarrisonRelief] extraction rollback FAILED #{shell.Id}->#{donor.Id}: {why}");
-                return ProvisioningResult.Fail(failure, stateChanged: !rolledBack,
-                    transferredMemberCount: rolledBack ? 0 : extracted.Count);
+                        $"relief donor #{target.ReliefDonorGarrisonId} / shell #{shell.Id}: {why}"));
+                if (SafeStepPathing.FindSafePath(ctx.Map, player, donor.Hex, home,
+                        units.Min(u => u.PermanentMoveMax), SafeRouteProfile.Combat) == null)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        "relief detachment would have no safe route"));
+                // The extraction itself is free (an empty, unactivated shell; a garrison never
+                // activates); the walk is the next step's activation.
+                return ProvisioningResult.Ok(new ProvisionedMission
+                {
+                    Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
+                    Kind = MissionKind.ActiveDefence, MoverArmyId = shell.Id,
+                    FocusHex = home, ExecutionHex = home,
+                    ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
+                    ClaimedAp = 0f,
+                });
             }
 
             if (shell.Members.Count == 0)
-                return Fail(ProvisionFailure.TargetInvalidated("relief detachment is empty"));
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("relief detachment is empty"));
             if (shell.Hex.Equals(home))
-                return Fail(ProvisionFailure.TargetSatisfied("relief detachment is already there"));
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied("relief detachment is already there"));
             if (SafeStepPathing.FindNextSafeStep(ctx.Map, shell, home, profile: SafeRouteProfile.Combat) == null)
-                return Fail(ProvisionFailure.NoExecutableStep("relief detachment has no safe step"));
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep("relief detachment has no safe step"));
             int ap = shell.HasActivatedThisTurn ? 0 : shell.ActivationApCost;
             if (ap > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
-                return Fail(ProvisionFailure.EnvelopeTooSmall(ap, "relief detachment AP envelope is stale"));
-            target.ReliefDonorGarrisonId = null;
-            target.ReliefUnitRuntimeIds = null;
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
+                    "relief detachment AP envelope is stale"));
             return ProvisioningResult.Ok(new ProvisionedMission
             {
                 Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
@@ -306,7 +291,39 @@ namespace Game.Ai.V2
                 FocusHex = home, ExecutionHex = home,
                 ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
-            }, extracted?.Count ?? 0);
+            });
+        }
+
+        // THE live check of a pinned relief extraction, read by Provisioning (preflight) and by the
+        // executor right before it moves the bodies: the donor is our garrison on the shell's hex,
+        // every planned body is still in it, its floor lets them all go together
+        // (AiArmyRoles.CanSpareGarrisonMembers) and the shell is still an empty, unclaimed,
+        // unactivated reusable container. `commitments` null skips only the claim test.
+        internal static bool TryResolveReliefExtraction(PlayerSetupData player,
+            ActiveDefenceMissionTarget target, ArmyData shell, ActorCommitments commitments,
+            out ArmyData donor, out List<UnitData> units, out string why)
+        {
+            donor = null;
+            units = null;
+            why = null;
+            IReadOnlyCollection<int> ids = target.ReliefUnitRuntimeIds
+                ?? (IReadOnlyCollection<int>)System.Array.Empty<int>();
+            if (!target.ReliefDonorGarrisonId.HasValue || ids.Count == 0 || shell == null)
+            {
+                why = "no pinned extraction";
+                return false;
+            }
+            donor = AiV2Util.ResolveArmy(player, target.ReliefDonorGarrisonId.Value);
+            units = donor?.Members.Where(u => u != null && ids.Contains(u.RuntimeId)).ToList();
+            why = donor == null || !donor.IsGarrison || donor.Owner != player ? "donor garrison gone"
+                : !donor.Hex.Equals(shell.Hex) ? "shell left the donor hex"
+                : units.Count != ids.Count ? "planned bodies left the garrison"
+                : shell.Members.Count != 0 || shell.HasActivatedThisTurn
+                    || (commitments != null && !ReusableArmySelector.IsReusableShell(shell, player, commitments))
+                    ? "shell no longer an empty free container"
+                : !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units) ? "garrison floor keeps the bodies"
+                : null;
+            return why == null;
         }
 
         // Re-evaluate the funded cohort together, but bind only this leg's own actor. The

@@ -24,7 +24,8 @@ namespace Game.Ai.V2
             for (int i = 0; i < limit; ++i)
             {
                 yield return RunActiveDefenceStepCore(player, ctx, pm, result);
-                if (result.StopReason != ExecutionStopReason.StepCompleted) break;
+                // A relief extraction is its own terminal step (one mutation per step).
+                if (result.StopReason != ExecutionStopReason.StepCompleted || result.ActorMaterialized) break;
                 // An air-support series that turned home has handed the wing to aviation recovery.
                 if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.AirSupport
                     && !GroundCombatAirSupport.SortieLive(player, pm.MoverArmyId, out _)) break;
@@ -71,6 +72,12 @@ namespace Game.Ai.V2
                     yield break;
                 }
                 HexCoord home = pm.ActiveDefenceTarget.ReturnHex.Value;
+                if (pm.ActiveDefenceTarget.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief
+                    && pm.ActiveDefenceTarget.ReliefDonorGarrisonId.HasValue)
+                {
+                    ExtractGarrisonRelief(player, ctx, pm, army, result);
+                    yield break;
+                }
                 if (army.Hex.Equals(home))
                 {
                     result.ReachedGoal = true;
@@ -232,6 +239,33 @@ namespace Game.Ai.V2
                 $"flies to strike threat #{enemyId}");
             // The real strike publishes the hex (VisionSystem.NotifyContentChanged); whether the
             // threat is gone is then read from honest memory by Continuity on the next pass.
+        }
+
+        // GarrisonRelief — the pinned extraction as one terminal step: the planned spare bodies move
+        // from the donor garrison into the empty shell in one atomic transfer, after the same live
+        // check Provisioning ran (ActiveDefenceProvisioner.TryResolveReliefExtraction). A refusal
+        // mutates nothing. Success materializes the detachment: the step is progress, Continuity
+        // makes the leg durable with the shell as its mover, and the walk is the next step.
+        private static void ExtractGarrisonRelief(PlayerSetupData player, AiTurnContext ctx,
+            ProvisionedMission pm, ArmyData shell, ExecutionResult result)
+        {
+            result.FinalHex = shell.Hex;
+            string why = null;
+            if (!ActiveDefenceProvisioner.TryResolveReliefExtraction(player, pm.ActiveDefenceTarget, shell,
+                    null, out ArmyData donor, out List<UnitData> units, out why)
+                || !ArmyActions.TransferMembersAtomic(units, donor, shell, ctx?.HexSelection, out why))
+            {
+                AiDebugLog.Write($"[AI][V2][GarrisonRelief][Execution] extraction refused into #{shell.Id}: {why}");
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                return;
+            }
+            result.ActorMaterialized = true;
+            result.ActualActorArmyId = shell.Id;
+            result.StopReason = ExecutionStopReason.StepCompleted;
+            AiDebugLog.Write($"[AI][V2][GarrisonRelief][Execution] extracted {units.Count} bodies from garrison "
+                + $"#{donor.Id}@({donor.Hex.Q},{donor.Hex.R}) into #{shell.Id} for "
+                + $"({pm.ActiveDefenceTarget.ReturnHex.Value.Q},{pm.ActiveDefenceTarget.ReturnHex.Value.R})");
         }
 
         // GarrisonRelief — the plan's last action on arrival: the detachment's bodies join the
