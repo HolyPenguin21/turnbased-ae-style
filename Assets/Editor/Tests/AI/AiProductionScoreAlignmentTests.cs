@@ -737,6 +737,28 @@ namespace Game.EditorTests
                 "The radar enters the final comparison once, linearly: no second multiplication or added desire");
         }
 
+        // Playtest 2026-10-18 (Thane T3): Intel Center (net 2.72, ECO Radar 0.20) ran in the
+        // pre-pass and took the only Energy before the threatened Citadel's garrison chain
+        // (decision 3.86, AGG Radar 0.27) was even ranked. A global-source Facility now competes.
+        [Test]
+        public void GlobalSourceFacilityCompetesWithTheGarrisonChainInsteadOfPreemptingIt()
+        {
+            Assert.That(StrategicPhaseA.CompetesInCardArbitration(new AxisDemand
+                { RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.GlobalResourceFacility }), Is.True);
+            Assert.That(StrategicPhaseA.CompetesInCardArbitration(new AxisDemand
+                { RequestingAxis = DesireAxis.Development, Capability = CapabilityKind.DevelopmentInfrastructure }), Is.True);
+            Assert.That(StrategicPhaseA.CompetesInCardArbitration(new AxisDemand
+                { RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.EconomicInfrastructure }), Is.False,
+                "an Economy build with a builder walk and a hold keeps its early admission");
+
+            var radar = new Radar();
+            foreach (DesireAxis a in DesireAxes.All) radar.Weight[a] = 0f;
+            radar.Weight[DesireAxis.Aggression] = 0.27f;
+            radar.Weight[DesireAxis.Economy] = 0.20f;
+            Assert.That(MaterializationPortfolioSolver.InfrastructureArbitrationScore(2.72f, DesireAxis.Economy, radar),
+                Is.LessThan(ChainBid(3.86f, DesireAxis.Aggression, radar)));
+        }
+
         [Test]
         public void ZeroDevelopmentRadarAndNonPositiveStepCannotWinByTheRadar()
         {
