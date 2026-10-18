@@ -148,6 +148,9 @@ namespace Game.Cards
         // GrantApBonusActionPoints/ApBonusPerSource.
         public const string ApBonus = "ApBonus";
 
+        // While the carrier is in play, unlocks the owner's opponent intelligence panel.
+        public const string TacticalIntelligence = "TacticalIntelligence";
+
         // The AP each in-play ApBonus carrier grants on its owner's turn. CANONICAL gameplay value:
         // GameTurnController.GrantApBonusActionPoints applies it, and the V2 AI's
         // StrategicEffectRegistry prices the recurring effect from THIS same number, so the two can
@@ -245,7 +248,7 @@ namespace Game.Cards
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
             Splash, Scorcher, RaiseTheRots, Heal, Transport, Airfield, Ionic, Bodyguard, Counterattack, Drill,
-            R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus,
+            R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus, TacticalIntelligence,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
             Regeneration, ProduceHuman, ProduceEnergy, ProduceMaterials, ProduceTech,

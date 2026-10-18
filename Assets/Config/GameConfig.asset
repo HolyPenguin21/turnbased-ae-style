@@ -283,6 +283,8 @@ MonoBehaviour:
     abbreviation: 
   - ability: ApBonus
     abbreviation: AP+2
+  - ability: TacticalIntelligence
+    abbreviation: Intel
   - ability: Barracks
     abbreviation: Barracks
   - ability: Research
