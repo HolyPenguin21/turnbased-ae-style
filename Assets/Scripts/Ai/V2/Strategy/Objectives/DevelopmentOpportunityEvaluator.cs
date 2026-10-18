@@ -1107,6 +1107,11 @@ namespace Game.Ai.V2
             // Pending-hand coverage depends only on the recipient and the slot being produced
             // (snapshot, inventory and hand are fixed for one Enumerate); negatives are cached too.
             private readonly Dictionary<(object, object), bool> _pending;
+            // Nested operator (Fate) look-ahead verdicts: computed with recursive genomes
+            // suppressed and against the snapshot hand, so they never mix with the ordinary ones.
+            // The store key carries every forecast input (OperatorForecastFacts).
+            private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _forecastVerdicts;
+            private readonly Dictionary<(object, object), bool> _forecastPending;
 
             // The verdicts outlive one Enumerate: one store per player, kept while the key of
             // everything a verdict reads (DevelopmentAdmission.RecipientVerdictKey) is unchanged
@@ -1117,6 +1122,8 @@ namespace Game.Ai.V2
                 internal string Key;
                 internal readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> Verdicts = new();
                 internal readonly Dictionary<(object, object), bool> Pending = new();
+                internal readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> ForecastVerdicts = new();
+                internal readonly Dictionary<(object, object), bool> ForecastPending = new();
             }
 
             private static readonly Dictionary<PlayerSetupData, VerdictStore> s_stores = new();
@@ -1134,34 +1141,41 @@ namespace Game.Ai.V2
             {
                 _verdicts = store.Verdicts;
                 _pending = store.Pending;
+                _forecastVerdicts = store.ForecastVerdicts;
+                _forecastPending = store.ForecastPending;
                 _outer = s_current;
                 s_current = this;
             }
             public void Dispose() => s_current = _outer;
+
+            private Dictionary<(CardDefinition, object, bool), RecipientVerdict> Verdicts =>
+                EquipmentUpgradeValuation.IsOperatorForecast ? _forecastVerdicts : _verdicts;
+            private Dictionary<(object, object), bool> Pending =>
+                EquipmentUpgradeValuation.IsOperatorForecast ? _forecastPending : _pending;
 
             public static bool TryGet(CardDefinition equipment, object recipient, bool future,
                 out RecipientVerdict verdict)
             {
                 verdict = default;
                 return s_current != null
-                    && s_current._verdicts.TryGetValue((equipment, recipient, future), out verdict);
+                    && s_current.Verdicts.TryGetValue((equipment, recipient, future), out verdict);
             }
 
             public static void Store(CardDefinition equipment, object recipient, bool future,
                 RecipientVerdict verdict)
             {
-                if (s_current != null) s_current._verdicts[(equipment, recipient, future)] = verdict;
+                if (s_current != null) s_current.Verdicts[(equipment, recipient, future)] = verdict;
             }
 
             public static bool TryGetPending(object recipient, object slot, out bool covers)
             {
                 covers = false;
-                return s_current != null && s_current._pending.TryGetValue((recipient, slot), out covers);
+                return s_current != null && s_current.Pending.TryGetValue((recipient, slot), out covers);
             }
 
             public static void StorePending(object recipient, object slot, bool covers)
             {
-                if (s_current != null) s_current._pending[(recipient, slot)] = covers;
+                if (s_current != null) s_current.Pending[(recipient, slot)] = covers;
             }
         }
 
@@ -1189,9 +1203,9 @@ namespace Game.Ai.V2
             RecipientVerdict? lastNoNeed = null;
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
             // Memoised only for the standard (no explicit attachment card) call.
-            // Nested Fate look-ahead suppresses recursive genomes. Its temporary verdicts
-            // must neither read nor populate the ordinary persistent recipient cache.
-            bool memoised = attachmentCard == null && !EquipmentUpgradeValuation.IsOperatorForecast;
+            // Nested Fate look-ahead suppresses recursive genomes: its verdicts live in the
+            // memo's separate forecast dictionaries, never in the ordinary recipient cache.
+            bool memoised = attachmentCard == null;
 
             // Production context of a real generation source (READY, and its materialization
             // re-enumeration), applied BEFORE the gain is priced so the task score, the card EV and
