@@ -21,27 +21,15 @@ namespace Game.Cards
             BaseRequired = ResearchProductionSystem.RequiredSuccesses(card);
         }
 
+        private TacticHand Hand => _hero?.Owner?.Tactics;
+
         public string TacticUnavailableReason(CardData card)
-        {
-            if (card == null) return "Select a tactical card first.";
-            if (Dice == null) return "Wait for the dice roll to finish.";
-            if (TacticUsed) return "You have already used a tactical card in this challenge.";
-            if (_hero?.Owner?.Tactics.Contains(card) != true) return "This tactical card is not in your hand.";
-            return TacticRules.UnavailableReason(card.Definition, Required);
-        }
+            => TacticRules.SideUnavailableReason(Hand, card, Dice != null, TacticUsed)
+                ?? TacticRules.UnavailableReason(card.Definition, Required);
 
         public bool CanPlay(CardData card) => TacticUnavailableReason(card) == null;
 
-        public bool HasTactic
-        {
-            get
-            {
-                var hand = _hero?.Owner?.Tactics;
-                if (hand == null) return false;
-                foreach (var card in hand.Cards) if (CanPlay(card)) return true;
-                return false;
-            }
-        }
+        public bool HasTactic => TacticRules.HasPlayable(Hand, CanPlay);
 
         public bool TryPlay(CardData card)
             => TryPlay(card, out _);

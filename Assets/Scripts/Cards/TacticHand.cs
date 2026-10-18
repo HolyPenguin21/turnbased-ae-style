@@ -48,6 +48,25 @@ namespace Game.Cards
                 || card.tacticEffect == TacticEffect.SuppressSuccess
                 || card.tacticEffect == TacticEffect.AddAndSuppressSuccess);
 
+        // The checks both challenge kinds (battle duel, Research/Production) share: a card is
+        // playable once per side per challenge, only after the dice are on the table, and only
+        // from the side's own match inventory. Effect-specific checks follow in UnavailableReason.
+        public static string SideUnavailableReason(TacticHand hand, CardData card, bool diceReady, bool sideUsed)
+        {
+            if (card == null) return "Select a tactical card first.";
+            if (!diceReady) return "Wait for the dice roll to finish.";
+            if (sideUsed) return "You have already used a tactical card in this challenge.";
+            if (hand?.Contains(card) != true) return "This tactical card is not in your hand.";
+            return null;
+        }
+
+        public static bool HasPlayable(TacticHand hand, Func<CardData, bool> canPlay)
+        {
+            if (hand == null) return false;
+            foreach (var card in hand.Cards) if (canPlay(card)) return true;
+            return false;
+        }
+
         public static string UnavailableReason(CardDefinition card, int opposingSuccesses)
         {
             if (!IsTactic(card)) return "This card has no usable tactical effect.";

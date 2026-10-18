@@ -1275,7 +1275,7 @@ namespace Game.UI
             CaptureKillOutcome outcome = _challengeSession != null
                 ? _challengeSession.ResolveCaptureKillOutcome()
                 : CaptureKillOutcome.Killed;
-            var result = _challengeSession.CurrentResult;
+            var result = _challengeSession?.CurrentResult ?? new ChallengeResult(_attackerDice, _defenderDice);
 
             BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} (hunter) -> {_defender?.Name} (target hero): " +
                 $"rawSuccesses(attacker={result.AttackerSuccesses},defender={result.DefenderSuccesses}) outcome={outcome}");

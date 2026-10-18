@@ -68,14 +68,13 @@ namespace Game.Combat
             AttackerDice ?? Array.Empty<bool>(), DefenderDice ?? Array.Empty<bool>(),
             AttackerModifier, DefenderModifier);
 
+        private TacticHand HandOf(bool defenderSide) => (defenderSide ? _defender : _attacker)?.Owner?.Tactics;
+
         public string TacticUnavailableReason(bool defenderSide, CardData card)
         {
-            if (card == null) return "Select a tactical card first.";
-            if (AttackerDice == null || DefenderDice == null) return "Wait for the dice roll to finish.";
-            if (defenderSide ? _defenderTacticUsed : _attackerTacticUsed)
-                return "You have already used a tactical card in this challenge.";
-            var owner = (defenderSide ? _defender : _attacker)?.Owner;
-            if (owner?.Tactics.Contains(card) != true) return "This tactical card is not in your hand.";
+            string reason = TacticRules.SideUnavailableReason(HandOf(defenderSide), card,
+                AttackerDice != null && DefenderDice != null, defenderSide ? _defenderTacticUsed : _attackerTacticUsed);
+            if (reason != null) return reason;
             var result = CurrentResult;
             return TacticRules.UnavailableReason(card.Definition,
                 defenderSide ? result.AttackerSuccesses : result.DefenderSuccesses);
@@ -83,13 +82,7 @@ namespace Game.Combat
 
         public bool CanPlayTactic(bool defenderSide, CardData card) => TacticUnavailableReason(defenderSide, card) == null;
 
-        public bool HasTactic(bool defenderSide)
-        {
-            var hand = (defenderSide ? _defender : _attacker)?.Owner?.Tactics;
-            if (hand == null) return false;
-            foreach (var card in hand.Cards) if (CanPlayTactic(defenderSide, card)) return true;
-            return false;
-        }
+        public bool HasTactic(bool defenderSide) => TacticRules.HasPlayable(HandOf(defenderSide), c => CanPlayTactic(defenderSide, c));
 
         public bool TryPlayTactic(bool defenderSide, CardData card)
             => TryPlayTactic(defenderSide, card, out _);
@@ -105,7 +98,7 @@ namespace Game.Combat
                 defenderSide ? result.AttackerSuccesses : result.DefenderSuccesses, ref a, ref d);
             if (defenderSide) _defenderTacticUsed = true; else _attackerTacticUsed = true;
             AttackerModifier = a; DefenderModifier = d;
-            (defenderSide ? _defender : _attacker).Owner.Tactics.Consume(card);
+            HandOf(defenderSide).Consume(card);
             return true;
         }
 
@@ -114,7 +107,7 @@ namespace Game.Combat
         public CardData ChooseAiTactic(bool defenderSide, UnitData interceptor = null)
         {
             if (!TacticsCritical) return null;
-            var hand = (defenderSide ? _defender : _attacker)?.Owner?.Tactics;
+            var hand = HandOf(defenderSide);
             if (hand == null) return null;
             CardData best = null;
             int bestScore = 0;
@@ -125,29 +118,36 @@ namespace Game.Combat
                 var before = CurrentResult;
                 TacticRules.Apply(card.Definition, defenderSide,
                     defenderSide ? before.AttackerSuccesses : before.DefenderSuccesses, ref a, ref d);
-                int score;
-                if (Mode == BattleChallengeMode.CaptureKill)
-                {
-                    var oldOutcome = ResolveCaptureKillOutcome();
-                    var next = BattleResolutionRules.ResolveCaptureKill(AttackerDice, DefenderDice, a, d);
-                    score = next == oldOutcome ? 0 : defenderSide
-                        ? (next == CaptureKillOutcome.Escaped ? 100 : 0)
-                        : (next == CaptureKillOutcome.Captured ? 100 : 0);
-                }
-                else
-                {
-                    int oldDamage = ProjectDamage(AttackerModifier, DefenderModifier, interceptor, out var oldVictim);
-                    int nextDamage = ProjectDamage(a, d, interceptor, out var nextVictim);
-                    int hp = nextVictim?.HitPointsCurrent ?? int.MaxValue;
-                    score = defenderSide
-                        ? oldDamage >= (oldVictim?.HitPointsCurrent ?? int.MaxValue) && nextDamage < hp ? 100
-                            : oldDamage > 0 && nextDamage == 0 ? 20 : 0
-                        : nextDamage >= hp && oldDamage < (oldVictim?.HitPointsCurrent ?? int.MaxValue) ? 100
-                            : oldDamage == 0 && nextDamage > 0 && _attacker.HasAbility(UnitAbilities.ShockAttack) ? 20 : 0;
-                }
+                int score = Mode == BattleChallengeMode.CaptureKill
+                    ? ScoreCaptureKillTactic(defenderSide, a, d)
+                    : ScoreGroundTactic(defenderSide, a, d, interceptor);
                 if (score > bestScore) { best = card; bestScore = score; }
             }
             return best;
+        }
+
+        // The target hero wants out (Escaped); the hunter wants a Capture, and a Kill over an Escape.
+        private int ScoreCaptureKillTactic(bool defenderSide, int a, int d)
+        {
+            var oldOutcome = ResolveCaptureKillOutcome();
+            var next = BattleResolutionRules.ResolveCaptureKill(AttackerDice, DefenderDice, a, d);
+            if (next == oldOutcome) return 0;
+            if (defenderSide) return next == CaptureKillOutcome.Escaped ? 100 : 0;
+            return next == CaptureKillOutcome.Captured ? 100
+                : oldOutcome == CaptureKillOutcome.Escaped ? 60 : 0;
+        }
+
+        private int ScoreGroundTactic(bool defenderSide, int a, int d, UnitData interceptor)
+        {
+            int oldDamage = ProjectDamage(AttackerModifier, DefenderModifier, interceptor, out var oldVictim);
+            int nextDamage = ProjectDamage(a, d, interceptor, out var nextVictim);
+            int oldHp = oldVictim?.HitPointsCurrent ?? int.MaxValue;
+            int nextHp = nextVictim?.HitPointsCurrent ?? int.MaxValue;
+            if (defenderSide)
+                return oldDamage >= oldHp && nextDamage < nextHp ? 100
+                    : oldDamage > 0 && nextDamage == 0 ? 20 : 0;
+            return nextDamage >= nextHp && oldDamage < oldHp ? 100
+                : oldDamage == 0 && nextDamage > 0 && _attacker.HasAbility(UnitAbilities.ShockAttack) ? 20 : 0;
         }
 
         private int ProjectDamage(int a, int d, UnitData interceptor, out UnitData victim)
