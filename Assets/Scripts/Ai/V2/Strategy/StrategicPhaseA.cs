@@ -329,6 +329,8 @@ namespace Game.Ai.V2
                             || InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(s.Demand) != null))
                     .Select(s => s.Demand)
                     .Where(d => EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(snap, d))
+                    .Where(d => PendingPrerequisiteHoldIsLive(snap, player, root, hand, ctx, d,
+                        commitments, result.Reservation, activeIntents))
                     .ToList();
             AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
@@ -662,11 +664,7 @@ namespace Game.Ai.V2
                     // A new-hero alternative (IsEconomyNewHeroAlternative) is never a delivery
                     // block: its chains are refused by price against the ready hero, and the
                     // project itself stays with that hero — it must not be suppressed here.
-                    else if (state.Demand.RequestingAxis == DesireAxis.Economy
-                        && state.Demand.Capability == CapabilityKind.Hero
-                        && !state.Demand.IsEconomyNewHeroAlternative
-                        && state.Demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
-                        && state.Demand.TargetHex.HasValue)
+                    else if (IsBoundedBasePrerequisiteDemand(state.Demand))
                     {
                         MaterializationDeliveryAvailability availability =
                             MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
@@ -768,7 +766,7 @@ namespace Game.Ai.V2
                                 availability = MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
                                     snap, player, root, hand, ctx, d, commitments, result.Reservation,
                                     activeIntents);
-                            bool structural = availability.RawCandidates == 0 || availability.ConfirmedBlocked;
+                            bool structural = availability.StructurallyUndeliverable;
                             d.StructurallyUndeliverable = structural;
                             if (structural && d.AttackFistIsPreparationHost && d.AttackFistArmyId.HasValue)
                                 PreparationDeliveryMemory.MarkNoChain(player, d.AttackFistArmyId.Value,
@@ -976,8 +974,7 @@ namespace Game.Ai.V2
                         MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
                             snap, player, root, hand, ctx, state.Demand, commitments, result.Reservation,
                             activeIntents);
-                    state.Demand.StructurallyUndeliverable =
-                        availability.RawCandidates == 0 || availability.ConfirmedBlocked;
+                    state.Demand.StructurallyUndeliverable = availability.StructurallyUndeliverable;
                 }
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
             }
@@ -1019,6 +1016,51 @@ namespace Game.Ai.V2
         {
             return EconomyContinuity.HasEconomyBuildCommitment(activeIntents, demand);
         }
+
+        // Owner decision 2026-10-18 (revises C3 2026-09-24): a pending Hero/escort prerequisite
+        // keeps its build's pre-intent H/E/M/T hold only while the current hand/world can still
+        // deliver it — a shortfall of AP/resources (timing) keeps it, a structural block drops it
+        // for this pass. Holding while nothing can deliver is self-defeating: the frozen resources
+        // stop exactly the plays that free a hand slot and draw the missing Hero/escort
+        // (playtest 2026-10-18, Halden T8-T9: 3 Energy held, hand 10/10, nothing played or drawn).
+        // Re-evaluated every pass, so the hold returns the pass a deliverable card appears.
+        private static bool PendingPrerequisiteHoldIsLive(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            ActorCommitments commitments, MaterializationReservation reservation,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            if (!HoldsForPendingPrerequisite(demand))
+                return true;
+            MaterializationDeliveryAvailability availability =
+                MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
+                    snap, player, root, hand, ctx, demand, commitments, reservation, activeIntents);
+            bool live = PendingPrerequisiteHoldIsLive(demand, availability);
+            if (!live)
+                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — skip pending "
+                    + $"{demand.Capability} @({demand.TargetHex?.Q},{demand.TargetHex?.R}): "
+                    + $"prerequisite structurally undeliverable raw={availability.RawCandidates} "
+                    + $"preflight={availability.PreflightCandidates} "
+                    + $"opDeliver={availability.OperationalCandidates}");
+            return live;
+        }
+
+        internal static bool PendingPrerequisiteHoldIsLive(AxisDemand demand,
+            MaterializationDeliveryAvailability availability) =>
+            !HoldsForPendingPrerequisite(demand) || !availability.StructurallyUndeliverable;
+
+        // The same rule that makes ShouldReserveDeferredEconomyResources hold for a demand with
+        // no ready builder/route: an accepted build's Hero/escort prerequisite.
+        private static bool HoldsForPendingPrerequisite(AxisDemand demand) =>
+            demand != null && !demand.IsEconomyNewHeroAlternative
+            && InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(demand) != null;
+
+        // A Base project's pending prerequisite whose confirmed delivery block counts toward the
+        // per-(card, site) delivery-failure streak, so a site that keeps failing is reconsidered
+        // (Demand picks another). Both prerequisite shapes count — a builder Hero or a pinned
+        // builder escort (playtest 2026-10-18: only the Hero shape counted).
+        internal static bool IsBoundedBasePrerequisiteDemand(AxisDemand demand) =>
+            HoldsForPendingPrerequisite(demand)
+            && demand.EconomyBuildCard?.Definition?.cardType == CardType.Base;
 
         private static AxisDemand CloneResidualDemand(DemandState state)
         {

@@ -38,7 +38,8 @@ namespace Game.Ai.V2
             WorldSnapshot snap, AxisDemand demand)
         {
             // The accepted build's prerequisite (Hero or its pinned escort) keeps the same
-            // persistent-resource hold before a ready builder/route exists. A speculative
+            // persistent-resource hold before a ready builder/route exists, while it is still
+            // deliverable (StrategicPhaseA.PendingPrerequisiteHoldIsLive). A speculative
             // new-Hero alternative alongside a ready builder is not a second obligation.
             if (InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(demand) != null && !demand.IsEconomyNewHeroAlternative)
                 return true;
@@ -100,9 +101,11 @@ namespace Game.Ai.V2
         }
 
         // A bare Hero or pinned escort prerequisite has no ready builder/route to witness.
-        // Its accepted build's H/E/M/T must stay protected for however many turns Economy
-        // spent waiting for a deliverable Hero, during which Phase B could spend the exact
-        // resources the build still needs. The Hero-prerequisite payload (EconomyBuildResourceCost)
+        // Its accepted build's H/E/M/T stays protected while the prerequisite is still
+        // deliverable and only waits on AP/resources, so Phase B cannot spend the exact
+        // resources the build still needs. Owner decision 2026-10-18: Phase A
+        // (StrategicPhaseA.PendingPrerequisiteHoldIsLive) does not select this hold in a pass
+        // where the prerequisite is structurally undeliverable from the current hand/world. The Hero-prerequisite payload (EconomyBuildResourceCost)
         // already carries the target build's real cost (see DemandLayer.EconomyHeroPrerequisite);
         // this reserves it the instant that demand is the accepted Economy target for this pass,
         // whether or not a builder route exists yet. Same owner key and same EconomyDeferredBuild
