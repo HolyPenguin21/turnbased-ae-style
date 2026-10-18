@@ -273,6 +273,7 @@ namespace Game.Ai.V2
             && a.IsHidden == b.IsHidden && a.IsAir == b.IsAir
             && a.IsCarrierContainer == b.IsCarrierContainer
             && a.MobileAirfieldCapacity == b.MobileAirfieldCapacity
+            && a.RepairSourceCount == b.RepairSourceCount
             && a.CarrierCargoPower == b.CarrierCargoPower
             && a.IsSoloRecce == b.IsSoloRecce
             && a.IsStructuralRaidActor == b.IsStructuralRaidActor
@@ -293,6 +294,7 @@ namespace Game.Ai.V2
                     || prior.IsAir != kv.Value.IsAir
                     || prior.IsCarrierContainer != kv.Value.IsCarrierContainer
                     || prior.MobileAirfieldCapacity != kv.Value.MobileAirfieldCapacity
+                    || prior.RepairSourceCount != kv.Value.RepairSourceCount
                     || prior.IsSoloRecce != kv.Value.IsSoloRecce
                     || prior.IsStructuralRaidActor != kv.Value.IsStructuralRaidActor
                     || prior.ActivationApCost != kv.Value.ActivationApCost

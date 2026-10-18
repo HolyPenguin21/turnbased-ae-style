@@ -181,7 +181,7 @@ namespace Game.Units
         // consumed by UnitRepair. RepairResourceCost is rolled once from this full card cost
         // when the unit enters play, then stays fixed for this exact card instance; a
         // neutral/hex-event spawn carries these too for consistency even though it's never
-        // repairable (repair is gated to the player's own Base — see UnitRepair.CanRepairAt).
+        // repairable (repair requires an owned Base or ground mechanic — see UnitRepair.CanRepairAt).
         public int ApCost;
         public ResourceCost OriginalResourceCost;
         public ResourceCost RepairResourceCost;

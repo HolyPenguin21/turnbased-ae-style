@@ -161,7 +161,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // The maintenance repair of a wounded unit at its own Base.
+        // The maintenance repair of a wounded unit at an owned repair point.
         internal static bool RepairUnit(UnitData unit, HexCoord hex, PlayerRoot root) =>
             UnitRepair.TryRepair(unit, hex, root, out _);
     }

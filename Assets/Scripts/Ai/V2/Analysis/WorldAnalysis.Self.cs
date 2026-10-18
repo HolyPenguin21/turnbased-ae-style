@@ -480,6 +480,7 @@ namespace Game.Ai.V2
                         + (u.CarrierFlightDeck?.Members.Sum(AiPower.UnitPower) ?? 0f)) : 0f,
                 MobileAirfieldCapacity = !a.IsCarrierContainer && !a.IsPrison
                     ? a.Members.Where(AviationActions.IsCarrier).Sum(u => u.AirfieldCapacity) : 0,
+                RepairSourceCount = isOwn ? UnitRepair.RepairSourceCount(a) : 0,
                 CanServeReconAir = reconAir,
                 StoredAircraft = isOwn && a.IsAirfield
                     ? a.Members.Where(AviationRules.IsAviation).Select(u => new StoredAircraftLaunchCost(
@@ -600,7 +601,7 @@ namespace Game.Ai.V2
                 && (!army.IsGarrison || canSpareGarrison(new[] { unit }));
             return new RaidRecoveryMemberSnapshot(unit.RuntimeId, index, unit.IsHero,
                 unit.IsAviation, isBody, canSpare, unit.ActivationApCost, current, full,
-                initialized, cost);
+                initialized, cost, unit.IsPrisoner);
         }
 
         private static ResourceBundle CollectionCapacityOf(ArmyData army)

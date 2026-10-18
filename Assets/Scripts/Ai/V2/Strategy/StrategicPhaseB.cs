@@ -217,7 +217,7 @@ namespace Game.Ai.V2
                             WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                                 StrategicInvalidationReason.Infrastructure
                                 | StrategicInvalidationReason.Capability);
-                        if (!exec.Succeeded) exec.FailReason = "capacity upgrade refused";
+                        if (!exec.Succeeded) exec.FailReason = "maintenance spend refused";
                         break;
                     case TempoKind.AviationRebase:
                     {
