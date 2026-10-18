@@ -72,7 +72,7 @@ namespace Game.Ai.V2
             }
             // Outside the AI turn: the player's standing intents come from the registry.
             IEnumerable<MissionIntent> intents = player == null ? null
-                : MissionIntentRegistry.GetOrCreate(player).All;
+                : MissionIntentRegistry.Peek(player)?.All;
             float fieldStrike = WorldAnalysis.FieldStrikePotential(player, own, total, intents);
             float attackPeak = AttackForcePool.Build(player,
                 new SelfSnapshot { Hand = handCards, Deck = deckCards, AvailablePower = total }, intents).Peak;
