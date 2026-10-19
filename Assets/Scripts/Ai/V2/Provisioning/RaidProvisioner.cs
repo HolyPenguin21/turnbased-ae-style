@@ -97,7 +97,12 @@ namespace Game.Ai.V2
                 }
 
                 targetHex = sighting.Value.Hex;
-                opposition = new[] { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
+                // The same fight admission priced (AiV2Util.KnownOpposition): the live target plus
+                // every other known body on its hex.
+                var fight = new List<WorthIt.DefendingArmy>
+                    { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
+                AiV2Util.AddKnownCoOccupants(snap, targetHex, raidTarget.ArmyId, fight);
+                opposition = fight;
                 targetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral;
             }
 

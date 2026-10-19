@@ -356,18 +356,21 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> None() =>
                 System.Array.Empty<WorthIt.DefenderProfile>();
 
-            var targets = new List<(IReadOnlyList<WorthIt.DefenderProfile> Defenders,
-                WorthIt.SideCommander Commander, float HexBonus)>();
+            var targets = new List<(IReadOnlyList<WorthIt.DefendingArmy> Opposition, float HexBonus)>();
             var candidates = new List<AiMapMemory.KnownEnemySighting>();
             if (snap.Known.EnemySightings != null) candidates.AddRange(snap.Known.EnemySightings);
             if (snap.Known.NeutralSightings != null) candidates.AddRange(snap.Known.NeutralSightings);
             foreach (AiMapMemory.KnownEnemySighting t in candidates)
-                targets.Add((t.Defenders ?? None(), t.Commander,
-                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, t.Hex, t.Owner)));
+            {
+                float bonus = AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, t.Hex, t.Owner);
+                targets.Add((TargetFight(snap, t.Defenders ?? None(), t.Commander, bonus, t.Hex, t.ArmyId), bonus));
+            }
             if (snap.Known.EventGuards != null)
                 foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
-                    targets.Add((g.Defenders ?? None(), g.Commander,
-                        AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null)));
+                {
+                    float bonus = AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null);
+                    targets.Add((TargetFight(snap, g.Defenders ?? None(), g.Commander, bonus, g.Hex, null), bonus));
+                }
 
             foreach (var target in targets)
             {
@@ -376,8 +379,7 @@ namespace Game.Ai.V2
                     yield return null;
                     lastYield = System.Diagnostics.Stopwatch.GetTimestamp();
                 }
-                var opposition = new[] { new WorthIt.DefendingArmy(target.Defenders,
-                    target.Commander, target.HexBonus) };
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = target.Opposition;
                 // The same opposition estimate Analyze reads (a lone hero is a Capture/Kill, not free).
                 using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
                     WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, target.HexBonus);
@@ -405,6 +407,22 @@ namespace Game.Ai.V2
                                 assemblableBodies, opposition, target.HexBonus);
                     }
             }
+        }
+
+        // The fight a mover landing on the target's hex really has: the target first, then every
+        // other known body standing there (AiV2Util.AddKnownCoOccupants) — the battle opens against
+        // the strongest. Playtest 2026-10-19: a lone drone sharing its hex with a 5-unit army
+        // was reported as an asmWin 1.00 opportunity. `armyId` null = the target is the event guard.
+        private static IReadOnlyList<WorthIt.DefendingArmy> TargetFight(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander,
+            float hexBonus, HexCoord hex, int? armyId)
+        {
+            var fight = new List<WorthIt.DefendingArmy> { new WorthIt.DefendingArmy(defenders, commander, hexBonus) };
+            if (armyId.HasValue)
+                AiV2Util.AddKnownCoOccupants(snap, hex, armyId.Value, fight);
+            else
+                AiV2Util.AddKnownSightingsAt(snap, hex, -1, fight);
+            return fight;
         }
 
         public static CombatOpportunityReport Analyze(WorldSnapshot snap)
@@ -448,12 +466,13 @@ namespace Game.Ai.V2
                 // The target defends on its own hex: terrain (and any known structure) counts.
                 float hexBonus = AiMapMemory.KnownHexDefenseBonusFor(
                     snap.Observer, t.Hex, t.Owner);
-                var opposition = new[] { new WorthIt.DefendingArmy(defenders, t.Commander, hexBonus) };
+                IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                    TargetFight(snap, defenders, t.Commander, hexBonus, t.Hex, t.ArmyId);
                 float readyWin = WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, hexBonus).WinChance;
                 HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
                     opposition, hexBonus);
                 float asmWin = assembly.WinChance;
-                bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
+                bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
                 int eta = CeilDiv(minDist, moverBudget);
                 float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
@@ -497,12 +516,13 @@ namespace Game.Ai.V2
                         ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
                     float hexBonus = AiMapMemory.KnownHexDefenseBonusFor(
                         snap.Observer, g.Hex, defendingOwner: null);
-                    var opposition = new[] { new WorthIt.DefendingArmy(defenders, g.Commander, hexBonus) };
+                    IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                        TargetFight(snap, defenders, g.Commander, hexBonus, g.Hex, null);
                     float readyWin = WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, hexBonus).WinChance;
                     HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
                         opposition, hexBonus);
                     float asmWin = assembly.WinChance;
-                    bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
+                    bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
                     int eta = CeilDiv(minDist, moverBudget);
                     float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,

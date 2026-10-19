@@ -52,9 +52,11 @@ namespace Game.EditorTests
             },
         };
 
+        // Defence 20: the equipped host (10 dice) wounds it in ~2% of exchanges, the +16 mutator
+        // host (20 dice) in ~41% — the exact dice odds of WorthIt.CanDamage.
         private static readonly IReadOnlyList<WorthIt.DefendingArmy> Wall = new[]
         {
-            new WorthIt.DefendingArmy(new[] { Unit(3f, defense: 12f) }, default),
+            new WorthIt.DefendingArmy(new[] { Unit(3f, defense: 20f) }, default),
         };
 
         [Test]

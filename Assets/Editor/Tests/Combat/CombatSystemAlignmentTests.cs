@@ -774,13 +774,31 @@ namespace Game.EditorTests
                 "the same body would be blocked if the foreign Base bonus were incorrectly shared");
         }
 
+        // Playtest 2026-10-19: Medium Tank (5) vs Null Vessel (3) on a Citadel (+2) read as
+        // "cannot scratch" under the rounded mean, so the Citadel threat priced no damage.
+        [Test]
+        public void WorthItCoverage_ReadsTheExactDiceOdds_NotTheRoundedMean()
+        {
+            var tank = new WorthIt.DefenderProfile(defense: 4, hasCeramicArmor: false, attack: 5, hitPoints: 6);
+            var vessel = new WorthIt.DefenderProfile(defense: 3, hasCeramicArmor: false, attack: 5, hitPoints: 6);
+            var weak = new WorthIt.DefenderProfile(defense: 1, hasCeramicArmor: false, attack: 3, hitPoints: 4);
+            var brick = new WorthIt.DefenderProfile(defense: 9, hasCeramicArmor: false, attack: 2, hitPoints: 6);
+
+            Assert.That(WorthIt.HitProbability(tank, vessel, 2f), Is.EqualTo(772f / 2048f).Within(1e-4f),
+                "5 dice vs 5: P(more successes) = (1 - C(10,5)/2^10) / 2");
+            Assert.That(WorthIt.CanDamage(tank, vessel, 2f), Is.True);
+            Assert.That(WorthIt.CanDamage(weak, brick), Is.False, "3 dice vs 9 wound ~2% of exchanges");
+        }
+
         [Test]
         public void WorthItCoverage_UsesProvidedAbilityMagnitudes()
         {
+            // One attack die vs no defence: a hit is exactly 1 raw damage, which the default
+            // CeramicArmor (-1) cancels and a zero reduction lets through (half the exchanges).
             var attacker = new WorthIt.DefenderProfile(
-                defense: 1, hasCeramicArmor: false, attack: 4, hitPoints: 4);
+                defense: 1, hasCeramicArmor: false, attack: 1, hitPoints: 4);
             var defender = new WorthIt.DefenderProfile(
-                defense: 2, hasCeramicArmor: true, attack: 1, hitPoints: 4);
+                defense: 0, hasCeramicArmor: true, attack: 1, hitPoints: 4);
 
             var noArmorReduction = new AbilityMagnitudes(
                 criticalDamageMultiplier: 2f,

@@ -25,8 +25,9 @@ namespace Game.Combat
     //  · HexDefenseBonus — terrain + Base-building defence, added to the DEFENDER's dice only,
     //    exactly as BattleScreenUI.Combat's BeginAttack does in a real fight.
     //  · CanDamageAll — the coverage gate: every known defender must have at least one attacker
-    //    able to scratch it (the same expected-damage read BattleTargetSelector uses), because a
-    //    win chance alone can overstate a fight nothing in the roster can actually hurt.
+    //    wounding it in at least CoverageMinHitProbability of exchanges (the exact dice odds
+    //    BattleCombatOdds gives live combat), because a win chance alone can overstate a fight
+    //    nothing in the roster can actually hurt.
     //  · CombatValue — the quick body value every strongest-first roster pick uses.
     public static partial class WorthIt
     {
@@ -1385,19 +1386,12 @@ namespace Game.Combat
             AbilityMagnitudes? magnitudes = null) =>
             Estimate(attacker, enemyUnits, hexDefenseBonus, defenderCommander, magnitudes).WinChance;
 
-        // Minimal per-defender read for the coverage check below — just enough to reuse the same
-        // expected-damage step BattleTargetSelector.TryScoreTarget already uses for a real attack
-        // pick (rawExpected = Attack*0.5 − Defense*0.5), plus the one ability that started this:
-        // CeramicArmor's flat reduction. Deliberately NOT a full UnitData/ability set — this is the
-        // "adequate, not battle-detailed" version (per the project owner's own call): every other
-        // ability (Hyperkinetic/Pyrokinetic/CriticalDamage — all attacker-side bonuses) is left out
-        // on purpose. Skipping those can only make CanDamage MORE cautious than a real hit would
-        // be, never falsely confident — the safe direction for a rough pre-contact check to be
-        // wrong in, unlike skipping the defender's own CeramicArmor would be.
+        // Per-combatant read for the coverage check below (CanDamage → HitProbability: the exact
+        // dice odds BattleCombatOdds gives a real attack pick, through the canonical ability
+        // modifier chain on Attack, Abilities, Defense and TypeTags).
         //
-        // TypeTags (added 2026-08-19, project owner's own call) — NOT read by CanDamage/
-        // CanDamageAll above, those still only need Defense/CeramicArmor. This is here purely so
-        // AiMapMemory can remember a scouted enemy's own Bio/Armored/Mechanical classification
+        // TypeTags (added 2026-08-19, project owner's own call) — also lets
+        // AiMapMemory remember a scouted enemy's own Bio/Armored/Mechanical classification
         // alongside its Defense, honestly (only ever set from an actually-observed sighting or
         // guard — see AiMapMemory's own "Видимость с памятью" principle) — AiManagementPlanner's
         // own counter-tech card scoring (Hyperkinetic vs known Armored, Pyrokinetic vs known Bio)
@@ -1418,7 +1412,7 @@ namespace Game.Combat
         // current HP the same way. This struct is now
         // used symmetrically for BOTH sides of a fight (see WinChance's own DefenderProfile-list
         // overload below) — "Defender" is a legacy name from when it only ever described the
-        // other side; CanDamage/CanDamageAll still only read Defense/HasCeramicArmor off it.
+        // other side.
         public readonly struct DefenderProfile : System.IEquatable<DefenderProfile>
         {
             public readonly bool SingleUseUnit;
@@ -1493,11 +1487,12 @@ namespace Game.Combat
                 (Defense, Attack, HitPoints, Initiative, Range, FateMax).GetHashCode();
         }
 
-        // Same rawExpected half-stat step as BattleTargetSelector.TryScoreTarget, CeramicArmor's
-        // flat reduction applied on top if the defender carries it (AbilityMagnitudes.Default —
-        // this runs long before any BattleAttackPopupUI/live battle exists to read a tuned value
-        // from). No FloorToInt/ApplyAbilityModifiers integer rounding here on purpose — this only
-        // ever asks "positive or not", so the exact rounding rule doesn't change the answer.
+        // 2026-10-19 (project owner's decision) — "can damage" is the share of one exchange's dice
+        // outcomes that wound the defender (HitProbability), at least CoverageMinHitProbability. It
+        // replaced the rounded mean `attack*0.5 - defense*0.5`, which live combat had already left
+        // (BattleCombatOdds): a Medium Tank (5) against Null Vessel (3) on a Citadel (+2) read as
+        // "cannot scratch", the threat model priced the Citadel's PotentialDamage at 0 while the
+        // same estimate gave the attack a win of 1.00, and the tank column took it next turn.
         //
         // `extraDefense` — the hex's own terrain/Base-building bonus (HexDefenseBonus), added
         // 2026-08-20 (project owner's own report). DefenderProfile.Defense is always the
@@ -1515,28 +1510,67 @@ namespace Game.Combat
         // this codebase already follows (see CanDamageAll's own comment) — no second copy of this
         // formula anywhere else.
         public static bool CanDamage(float attack, DefenderProfile defender, float extraDefense = 0f,
-            AbilityMagnitudes? magnitudesOverride = null)
-        {
-            AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
-            float expected = attack * 0.5f - (defender.Defense + extraDefense) * 0.5f;
-            if (defender.HasCeramicArmor)
-                expected -= magnitudes.CeramicArmorReduction;
-            return expected > 0f;
-        }
+            AbilityMagnitudes? magnitudesOverride = null) =>
+            CanDamage(new DefenderProfile(0f, false, attack: attack, hitPoints: 1f), defender,
+                extraDefense, magnitudesOverride);
 
-        // Composition-aware penetration check for immutable rosters. The raw expected hit must
-        // cross the same per-unit threshold as BattleTargetSelector before canonical combat skill
-        // modifiers are allowed to change its size.
+        // A defender wounded in fewer than this share of exchanges is a brick the roster cannot
+        // wear down within a battle (the coverage gate's meaning). Per exchange, pre-Fate:
+        // 5 dice vs 5 = 0.38, 4 vs 6 = 0.17, 3 vs 6 = 0.09, 3 vs 9 = 0.02.
+        public const float CoverageMinHitProbability = 0.10f;
+
+        // Composition-aware penetration check for immutable rosters.
         public static bool CanDamage(DefenderProfile attacker, DefenderProfile defender,
+            float extraDefense = 0f, AbilityMagnitudes? magnitudesOverride = null) =>
+            HitProbability(attacker, defender, extraDefense, magnitudesOverride)
+                >= CoverageMinHitProbability;
+
+        // The chance one exchange wounds `defender`: attack dice vs defence dice (+ hex bonus),
+        // 50% per die, success-count subtraction, then the canonical ability modifier chain — the
+        // same exact pre-Fate distribution BattleCombatOdds gives live target selection.
+        public static float HitProbability(DefenderProfile attacker, DefenderProfile defender,
             float extraDefense = 0f, AbilityMagnitudes? magnitudesOverride = null)
         {
             AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
-            int rawExpected = Mathf.FloorToInt(
-                ExplosionAttack.AttackPower(attacker.Attack, attacker.Abilities) * 0.5f - (defender.Defense + extraDefense) * 0.5f + 0.5f);
-            if (rawExpected <= 0)
-                return false;
-            return ChallengeResult.ApplyAbilityModifiers(rawExpected, attacker.Abilities,
-                defender.TypeTags, defender.Abilities, magnitudes) > 0;
+            int attackDice = Mathf.Max(0, Mathf.RoundToInt(
+                ExplosionAttack.AttackPower(attacker.Attack, attacker.Abilities)));
+            int defenseDice = Mathf.Max(0, Mathf.RoundToInt(defender.Defense + extraDefense));
+            double[] pa = BinomialHalf(attackDice), pd = BinomialHalf(defenseDice);
+            double hit = 0d, positive = 0d;
+            for (int raw = 1; raw <= attackDice; raw++)
+            {
+                double p = 0d;
+                for (int d = 0; d <= defenseDice && d + raw <= attackDice; d++)
+                    p += pd[d] * pa[d + raw];
+                positive += p;
+                if (ChallengeResult.ApplyAbilityModifiers(raw, attacker.Abilities,
+                        defender.TypeTags, defender.Abilities, magnitudes) > 0)
+                    hit += p;
+            }
+            // Every other outcome is a raw 0; a modifier may still turn it into a wound.
+            if (ChallengeResult.ApplyAbilityModifiers(0, attacker.Abilities,
+                    defender.TypeTags, defender.Abilities, magnitudes) > 0)
+                hit += 1d - positive;
+            return (float)hit;
+        }
+
+        private static readonly Dictionary<int, double[]> BinomialHalfCache = new Dictionary<int, double[]>();
+
+        // P(k successes of n dice), each die 50%.
+        private static double[] BinomialHalf(int n)
+        {
+            if (BinomialHalfCache.TryGetValue(n, out double[] cached))
+                return cached;
+            var p = new double[n + 1];
+            double c = 1d, scale = System.Math.Pow(0.5d, n);
+            for (int k = 0; k <= n; k++)
+            {
+                p[k] = c * scale;
+                c = c * (n - k) / (k + 1);
+            }
+            if (n <= 256)
+                BinomialHalfCache[n] = p;
+            return p;
         }
 
         public static bool CanDamageAll(IReadOnlyCollection<DefenderProfile> attackerUnits,

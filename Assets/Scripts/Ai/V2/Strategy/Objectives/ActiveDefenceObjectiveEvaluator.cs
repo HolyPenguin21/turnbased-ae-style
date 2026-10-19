@@ -440,15 +440,26 @@ namespace Game.Ai.V2
         public static ActiveDefenceObjective ForTrackedEnemy(WorldSnapshot snap, int enemyArmyId) =>
             Enumerate(snap).FirstOrDefault(o => o.Target.EnemyArmyId == enemyArmyId);
 
-        // The fight an intercept of this enemy is: its honestly-known roster and commander.
-        // Null when the contact carries no position (nothing to intercept).
+        // The fight an intercept of this enemy is: its honestly-known roster and commander FIRST
+        // (the fist HoldChanceAtAsset reads as opposition[0]), then every other known body on its
+        // hex — the mover fights them all, strongest first (AiV2Util.AddKnownCoOccupants).
+        // Each defends with its own known hex bonus (terrain; a Base's Defense only for its owner),
+        // as KnownOpposition prices a Raid target. Null when the contact carries no position.
         internal static IReadOnlyList<WorthIt.DefendingArmy> Opposition(WorldSnapshot snap,
             int enemyArmyId)
         {
             EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
                 c?.Army != null && c.Army.ArmyId == enemyArmyId && c.Position.HasValue);
-            return contact == null ? null
-                : new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander, armyId: enemyArmyId) };
+            if (contact == null)
+                return null;
+            var result = new List<WorthIt.DefendingArmy>
+            {
+                new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander,
+                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, contact.Position.Value,
+                        contact.Army.Owner), enemyArmyId),
+            };
+            AiV2Util.AddKnownCoOccupants(snap, contact.Position.Value, enemyArmyId, result);
+            return result;
         }
 
         // Armies already walking an ActiveDefence Return leg (a regroup or a withdrawal).

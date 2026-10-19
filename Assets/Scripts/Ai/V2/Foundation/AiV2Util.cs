@@ -165,10 +165,6 @@ namespace Game.Ai.V2
             if (snap?.Known == null || !target.HasValue)
                 return System.Array.Empty<WorthIt.DefendingArmy>();
 
-            IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
-                (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
-
             var result = new List<WorthIt.DefendingArmy>();
             HexCoord hex;
             int excludeArmyId = -1;
@@ -194,12 +190,43 @@ namespace Game.Ai.V2
 
             if (!includeSite) return result;
 
+            AddKnownSightingsAt(snap, hex, excludeArmyId, result);
+            return result;
+        }
+
+        // Every OTHER known body a ground mover landing on `hex` also fights besides the army it
+        // aims at: an event guard and each enemy/neutral sighting standing there. The battle opens
+        // against the strongest of them (BattleInitiator.FindEnemyAt) and the winner fights the
+        // next (WorthIt.EstimateSequential models the same order), so a fight priced against the
+        // target alone is not the fight that happens. The one source for Raid (KnownOpposition,
+        // RaidProvisioner), ActiveDefence (Opposition, its provisioner), Attack's local contacts
+        // (AttackTacticalOpportunity.OppositionOn) and CombatOpportunityAnalyzer (2026-10-19
+        // playtest: an intercept of a lone Watcher Drone estimated at win 1.00 walked into the
+        // 5-unit army sharing its hex, two turns in a row).
+        internal static void AddKnownCoOccupants(WorldSnapshot snap, HexCoord hex, int excludeArmyId,
+            List<WorthIt.DefendingArmy> into)
+        {
+            if (snap?.Known == null || into == null)
+                return;
+            AddEventGuard(snap, hex, into);
+            AddKnownSightingsAt(snap, hex, excludeArmyId, into);
+        }
+
+        // The sightings part alone (a caller whose target IS the hex's event guard).
+        // Air armies and airfields never join a ground battle (BattleInitiator.IsEngageable).
+        internal static void AddKnownSightingsAt(WorldSnapshot snap, HexCoord hex, int excludeArmyId,
+            List<WorthIt.DefendingArmy> into)
+        {
+            if (snap?.Known == null || into == null)
+                return;
+            IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
+                (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
             foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all.OrderBy(x => x.ArmyId))
                 if (s.Hex.Equals(hex) && s.ArmyId != excludeArmyId && s.Defenders != null
-                    && s.Owner != snap.Observer)
-                    result.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
+                    && s.Defenders.Count > 0 && !s.IsAir && s.Owner != snap.Observer)
+                    into.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
                         Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId));
-            return result;
         }
 
         private static void AddEventGuard(WorldSnapshot snap, HexCoord hex, List<WorthIt.DefendingArmy> into, bool includeSite = true)
