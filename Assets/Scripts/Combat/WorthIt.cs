@@ -322,9 +322,7 @@ namespace Game.Combat
             unit.Initiative += change.Delta(EquipmentStat.Initiative);
             unit.Range += change.Delta(EquipmentStat.Range);
             unit.HeroFate = Mathf.Max(0, unit.HeroFate + change.Delta(EquipmentStat.Fate));
-            int hpDelta = change.Delta(EquipmentStat.HitPoints);
-            unit.MaxHp = Mathf.Max(1f, unit.MaxHp + hpDelta);
-            unit.Hp = Mathf.Clamp(unit.Hp + hpDelta - change.HpSpentExcess, unit.Hp > 0f ? 1f : 0f, unit.MaxHp);
+            unit.Hp = change.RemainingHitPoints(unit.Hp, unit.MaxHp, out unit.MaxHp);
             unit.Abilities = change.ApplyAbilities(unit.Abilities);
             unit.Consumption = null;
             side[index] = unit;
@@ -875,9 +873,7 @@ namespace Game.Combat
             EquipmentConsumption c = p.Consumption;
             if (c == null) return p;
             var abilities = c.ApplyAbilities(p.Abilities);
-            float maxHp = Mathf.Max(1f, p.MaxHitPoints + c.Delta(EquipmentStat.HitPoints));
-            float hp = Mathf.Clamp(p.HitPoints + c.Delta(EquipmentStat.HitPoints) - c.HpSpentExcess,
-                p.HitPoints > 0 ? 1f : 0f, maxHp);
+            float hp = c.RemainingHitPoints(p.HitPoints, p.MaxHitPoints, out float maxHp);
             return new DefenderProfile(p.Defense + c.Delta(EquipmentStat.Defense),
                 abilities.Contains(UnitAbilities.CeramicArmor), p.TypeTags,
                 p.Attack + c.Delta(EquipmentStat.Attack), hp,
