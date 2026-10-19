@@ -28,7 +28,7 @@ namespace Game.Combat
     {
         // Same bounded budget as WorthIt's ground Monte Carlo.
         internal const int Trials = 25;
-        private const int KeyVersion = 5;
+        private const int KeyVersion = 6;
         private const int CacheMaxEntries = 20000;
 
         public readonly struct AirStrikeEstimate
@@ -200,13 +200,14 @@ namespace Game.Combat
                     alive.Add(i);
                 int fate = defenderFate;
                 int[] fates = currentFates != null ? (int[])currentFates.Clone() : null;
+                var armed = aircraft.ToArray();
 
                 for (int pass = 0; pass < passes; pass++)
                 {
                     for (int aircraftIndex = 0; aircraftIndex < aircraft.Count; aircraftIndex++)
                     {
                         if (pass == 0 && firstPassSpent != null && firstPassSpent[aircraftIndex] != 0) continue;
-                        WorthIt.DefenderProfile plane = aircraft[aircraftIndex];
+                        WorthIt.DefenderProfile plane = armed[aircraftIndex];
                         // Matches RunAirStrike: stop once only the policy's survivors remain.
                         if (alive.Count <= policy.MinimumSurvivors)
                             break;
@@ -237,6 +238,7 @@ namespace Game.Combat
                         hp[idx] = Mathf.Max(0f, hpLeft);
                         if (hp[idx] <= 0f)
                             alive.Remove(idx);
+                        armed[aircraftIndex] = WorthIt.AfterAttack(plane);
                     }
                 }
 
@@ -276,7 +278,7 @@ namespace Game.Combat
                 float meanDefense = defenseSum[i] / survivalCount[i];
                 expectedDefenders.Add(new WorthIt.DefenderProfile(meanDefense, o.HasCeramicArmor, o.TypeTags,
                     meanAttack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
-                    o.IsHero, o.FateMax, o.IsSummoned, o.Range));
+                    o.IsHero, o.FateMax, o.IsSummoned, o.Range, o.Consumption));
                 survivorIndices.Add(i);
                 survivingFates.Add(Mathf.RoundToInt(fateSum[i] / survivalCount[i]));
                 expectedDefense += meanDefense;
@@ -339,7 +341,10 @@ namespace Game.Combat
             IReadOnlyList<WorthIt.DefenderProfile> defenders, AirStrikePolicy policy, int passes,
             int defenderFate, AbilityMagnitudes m)
         {
-            var buf = new List<int> { KeyVersion, Trials, passes, defenderFate, (int)policy.Kind,
+            // This key also seeds the bounded trials. Keep the old layout/seed for ordinary
+            // rosters so adding consumable support does not reroll every existing matchup.
+            bool consumable = aircraft.Any(p => p.Consumption != null) || defenders.Any(p => p.Consumption != null);
+            var buf = new List<int> { consumable ? KeyVersion : 5, Trials, passes, defenderFate, (int)policy.Kind,
                 policy.ExactTargetArmyId ?? int.MinValue, policy.MinimumSurvivors,
                 System.BitConverter.SingleToInt32Bits(m.CriticalDamageMultiplier),
                 m.HyperkineticBonusDamage, m.CeramicArmorReduction, m.PyrokineticBonusDamage,
@@ -356,6 +361,7 @@ namespace Game.Combat
                 buf.Add(p.IsSummoned ? 1 : 0);
                 buf.Add(p.Initiative);
                 buf.Add(p.HasCeramicArmor ? 1 : 0);
+                if (consumable) WorthIt.AppendConsumptionKey(buf, p.Consumption);
                 int abilities = p.Abilities?.Count ?? -1;
                 buf.Add(abilities);
                 for (int i = 0; i < abilities; i++)

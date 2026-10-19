@@ -11,13 +11,73 @@ namespace Game.Cards
     // own spec: a live UnitData already in an army, or a not-yet-spawned Unit/Hero CardData
     // still in hand (the grant then rides along and is applied by ArmyActions.DeployUnitFromCard
     // when that card is finally played). Two independent permanent slots per host.
-    // There is no un-attach (the manual: "Once placed an attachment card can never be removed").
+    // There is no manual un-attach; SingleUse equipment is consumed after an attack.
     //
     // Cost to attach is the equipment card's own apCost + resourceCost (same fields every card
     // has) — spent once, here, whichever target kind it's attached to.
     public static class EquipmentSystem
     {
         public static event System.Action<ArmyData, UnitData, CardDefinition> LiveAttachmentReceived;
+        // The marker belongs to the item, never to the host's combined ability set. Support
+        // addAbilities too, so either existing ability selector on an Equipment card works.
+        public static bool IsSingleUse(CardDefinition item) => item != null
+            && item.cardType == CardType.Equipment && item.attachmentSlot == AttachmentSlot.Equipment
+            && (item.grantedAbilities?.Contains(UnitAbilities.SingleUse) == true
+                || item.equipment?.addAbilities?.Contains(UnitAbilities.SingleUse) == true);
+
+        public static EquipmentConsumption Consumption(CardDefinition host, CardDefinition equipment,
+            CardDefinition mutator)
+            => !IsSingleUse(equipment) || host == null ? null
+                : new EquipmentConsumption(Project(host, equipment, mutator), Project(host, null, mutator));
+
+        public static EquipmentConsumption Consumption(UnitData host, CardDefinition candidate = null)
+        {
+            CardDefinition equipment = candidate != null && candidate.attachmentSlot == AttachmentSlot.Equipment
+                ? candidate : host?.Equipment;
+            CardDefinition mutator = candidate != null && candidate.attachmentSlot == AttachmentSlot.Mutator
+                ? candidate : host?.Mutator;
+            if (host == null || !IsSingleUse(equipment)) return null;
+            // Every ordinary deployed host is installed through ApplyAttachments/Install.
+            // A legacy reconstructed host can still recover its permanent base from its card.
+            var baseline = host.AttachmentBase ?? (host.Equipment == null && host.Mutator == null
+                ? new PredictedEquipmentState(ReadStats(host), host.Abilities.ToList()) : host.OriginatingCard != null
+                ? new PredictedEquipmentState(DefinitionStats(host.OriginatingCard), host.OriginatingCard.grantedAbilities)
+                : throw new System.InvalidOperationException("Equipment host has no attachment baseline."));
+            // An unequipped live candidate uses the current state as its base; installation
+            // captures that identical state on execution.
+            var armed = PredictSlots(baseline, equipment, mutator);
+            int Excess(EquipmentStat stat)
+            {
+                int maximum = armed.Stats[stat];
+                if (host.AttachmentApplied.HasValue)
+                    maximum += ReadStats(host)[stat] - host.AttachmentApplied.Value.Stats[stat];
+                int spent = SpentResource(host, stat);
+                int current = candidate != null ? CurrentAfterAttachment(host, stat, maximum)
+                    : stat == EquipmentStat.HitPoints ? host.HitPointsCurrent : host.Fate;
+                return Mathf.Max(0, spent - (maximum - current));
+            }
+            return new EquipmentConsumption(armed, PredictSlots(baseline, null, mutator),
+                Excess(EquipmentStat.HitPoints), Excess(EquipmentStat.Fate));
+        }
+
+        public static bool ConsumeAfterAttack(UnitData host)
+        {
+            EquipmentConsumption change = Consumption(host);
+            if (change == null) return false;
+            if (!host.AttachmentApplied.HasValue) host.AttachmentApplied = change.Before;
+            PredictedEquipmentState next = MergeRuntimeState(host, change.After);
+            host.Equipment = null;
+            WriteStats(host, next.Stats);
+            host.Abilities.Clear();
+            host.Abilities.UnionWith(next.Abilities);
+            host.AttachmentApplied = change.After;
+            // Keep the baseline even when both slots are now empty: re-arming must not
+            // capture a Drill/Berserk bonus as the unit's permanent base.
+            if (!host.AttachmentBase.HasValue) host.AttachmentBase = new PredictedEquipmentState(
+                DefinitionStats(host.OriginatingCard), host.OriginatingCard.grantedAbilities);
+            RefreshLiveHostObservation(host, null);
+            return true;
+        }
         public static CardDefinition GetAttachment(CardData host, CardDefinition attachment)
             => attachment?.attachmentSlot == AttachmentSlot.Mutator ? host?.Mutator : host?.Equipment;
 
@@ -40,9 +100,10 @@ namespace Game.Cards
 
         private static void Install(CardDefinition attachment, UnitData unit)
         {
+            bool hadBaseline = unit.AttachmentBase.HasValue;
             if (!unit.AttachmentBase.HasValue)
                 unit.AttachmentBase = new PredictedEquipmentState(ReadStats(unit), new List<string>(unit.Abilities));
-            bool first = unit.Equipment == null && unit.Mutator == null;
+            bool first = !hadBaseline && unit.Equipment == null && unit.Mutator == null;
             if (first)
                 unit.AttachmentResources = new AttachmentResourceState(unit.HitPointsMax - unit.HitPointsCurrent,
                     unit.MovementSpent, unit.FateMax - unit.Fate, unit);
@@ -186,12 +247,19 @@ namespace Game.Cards
             PredictedEquipmentState previous = unit.AttachmentApplied.Value;
             foreach (EquipmentStat stat in new List<EquipmentStat>(stats.Keys))
                 stats[stat] += next.Stats[stat] - previous.Stats[stat];
-            var abilities = new HashSet<string>(next.Abilities);
-            foreach (string ability in unit.Abilities)
-                if (!previous.Abilities.Contains(ability)) abilities.Add(ability);
-            foreach (string ability in previous.Abilities)
-                if (!unit.Abilities.Contains(ability)) abilities.Remove(ability);
-            return new PredictedEquipmentState(stats, new List<string>(abilities));
+            return new PredictedEquipmentState(stats, MergeAbilities(previous.Abilities, next.Abilities, unit.Abilities));
+        }
+
+        // Live attachments and asset-free forecasts preserve the same temporary ability changes.
+        internal static IReadOnlyList<string> MergeAbilities(IReadOnlyList<string> previous,
+            IReadOnlyList<string> next, IReadOnlyCollection<string> current)
+        {
+            var abilities = new HashSet<string>(next);
+            foreach (string ability in current)
+                if (!previous.Contains(ability)) abilities.Add(ability);
+            foreach (string ability in previous)
+                if (!current.Contains(ability)) abilities.Remove(ability);
+            return new List<string>(abilities);
         }
 
         private static PredictedEquipmentState PredictSlots(PredictedEquipmentState baseline,
@@ -480,7 +548,7 @@ namespace Game.Cards
             army.RefreshTransport();
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(army.Hex);
-            LiveAttachmentReceived?.Invoke(army, target, attachment);
+            if (attachment != null) LiveAttachmentReceived?.Invoke(army, target, attachment);
         }
 
         private static void PayCost(CardDefinition equipment, int apCost, ResourceCost resourceCost, PlayerRoot owner)
@@ -647,6 +715,53 @@ namespace Game.Cards
                 stats[EquipmentStat.ActivationApCost] = 0;
 
             return new PredictedEquipmentState(stats, abilities);
+        }
+    }
+
+    // Immutable, asset-free transition captured when a host is observed/projected. AI memory
+    // and simulation retain this snapshot, never a hidden live equipment/UnitData reference.
+    public sealed class EquipmentConsumption
+    {
+        public readonly PredictedEquipmentState Before, After;
+        public readonly int HpSpentExcess, FateSpentExcess;
+        public readonly string Key;
+        public EquipmentConsumption(PredictedEquipmentState before, PredictedEquipmentState after,
+            int hpSpentExcess = 0, int fateSpentExcess = 0)
+        {
+            HpSpentExcess = hpSpentExcess; FateSpentExcess = fateSpentExcess;
+            PredictedEquipmentState Freeze(PredictedEquipmentState state) => new PredictedEquipmentState(
+                new System.Collections.ObjectModel.ReadOnlyDictionary<EquipmentStat, int>(
+                    state.Stats.ToDictionary(x => x.Key, x => x.Value)),
+                System.Array.AsReadOnly((state.Abilities ?? System.Array.Empty<string>()).ToArray()));
+            Before = Freeze(before); After = Freeze(after);
+            var key = new System.Text.StringBuilder();
+            foreach (var stat in Before.Stats.Keys.OrderBy(x => (int)x))
+                key.Append((int)stat).Append(':').Append(Delta(stat)).Append(';');
+            key.Append("hpSpent:").Append(HpSpentExcess).Append(";fateSpent:").Append(FateSpentExcess).Append(';');
+            foreach (string tag in Before.Abilities.Except(After.Abilities).OrderBy(x => x, System.StringComparer.Ordinal))
+                key.Append('-').Append(tag.Length).Append(':').Append(tag);
+            foreach (string tag in After.Abilities.Except(Before.Abilities).OrderBy(x => x, System.StringComparer.Ordinal))
+                key.Append('+').Append(tag.Length).Append(':').Append(tag);
+            Key = key.ToString();
+        }
+        public int Delta(EquipmentStat stat) => After.Stats[stat] - Before.Stats[stat];
+        public float RemainingHitPoints(float current, float maximum, out float nextMaximum)
+        {
+            int delta = Delta(EquipmentStat.HitPoints);
+            nextMaximum = Mathf.Max(1f, maximum + delta);
+            return Mathf.Clamp(current + delta - HpSpentExcess, current > 0f ? 1f : 0f, nextMaximum);
+        }
+        public EquipmentConsumption AfterHpRefill() => HpSpentExcess == 0 ? this
+            : new EquipmentConsumption(Before, After, 0, FateSpentExcess);
+        // Equipment valuation carries maximum HP but current (already spent) Fate.
+        public PredictedEquipmentState Apply(PredictedEquipmentState current) => new PredictedEquipmentState(
+            current.Stats.ToDictionary(x => x.Key, x => x.Value + Delta(x.Key)
+                - (x.Key == EquipmentStat.Fate ? FateSpentExcess : 0)), ApplyAbilities(current.Abilities));
+        public IReadOnlyList<string> ApplyAbilities(IEnumerable<string> current)
+        {
+            var result = EquipmentSystem.MergeAbilities(Before.Abilities, After.Abilities,
+                current as IReadOnlyCollection<string> ?? current?.ToArray() ?? System.Array.Empty<string>());
+            return result.OrderBy(x => x, System.StringComparer.Ordinal).ToArray();
         }
     }
 

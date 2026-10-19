@@ -52,6 +52,29 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ConsumingEquipmentDoesNotSpendOrRefundBankResourcesOrReservedFunds()
+        {
+            StrategicResourceReservationLedger.Upsert(_owner, 1, new StrategicResourceReservation
+            {
+                Owner = "other-build", Reason = StrategicReservationReason.EconomyBuildCompletion,
+                Resource = StrategicReservedResource.Tech, Amount = 9,
+                ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+            });
+            var item = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment);
+            item.grantedAbilities.Add(UnitAbilities.SingleUse);
+            item.activationApCost = 1;
+            item.resourceCost = new ResourceCost { tech = 5 };
+            var unit = AttachmentSlotTests.Body();
+            Assert.That(EquipmentSystem.TryAttach(ResearchProductionSystem.MintCard(item), unit, _root, out _), Is.True);
+            float ap = _root.ActionPoints;
+            float held = StrategicResourceReservationLedger.Active(_owner, 1, StrategicReservedResource.Tech);
+            EquipmentSystem.ConsumeAfterAttack(unit);
+            Assert.That(_root.ActionPoints, Is.EqualTo(ap));
+            Assert.That(_root.GetResource(ResourceType.Tech), Is.EqualTo(10));
+            Assert.That(StrategicResourceReservationLedger.Active(_owner, 1, StrategicReservedResource.Tech), Is.EqualTo(held));
+        }
+
+        [Test]
         public void DevelopmentPortfolioProtectsAnotherOwnersHoldAcrossRecipientAlternatives()
         {
             StrategicResourceReservationLedger.Upsert(_owner, 1, new StrategicResourceReservation

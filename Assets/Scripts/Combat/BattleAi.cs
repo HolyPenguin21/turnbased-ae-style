@@ -433,6 +433,37 @@ namespace Game.Combat
         private const int BattleSimulationTrials = 8;
         private const int ArrangementSimulationTrials = 4;
 
+        private static Dictionary<UnitData, UnitData> CloneConsumableState(ref BattleGrid grid,
+            ref ArmyData own, ref ArmyData enemy, ref ArmyData defender, ref ArmyData holding)
+        {
+            var copies = new Dictionary<UnitData, UnitData>();
+            foreach (UnitData u in grid.AllUnits())
+                if (EquipmentSystem.IsSingleUse(u.Equipment)) copies[u] = u.CloneForCombat();
+            if (copies.Count == 0) return copies;
+            UnitData Unit(UnitData u) => copies.TryGetValue(u, out var c) ? c : u;
+            ArmyData Army(ArmyData a)
+            {
+                if (a == null) return null;
+                var c = ArmyData.CreateVisualSnapshot();
+                c.Owner = a.Owner; c.Hex = a.Hex; c.IsGarrison = a.IsGarrison;
+                c.Members.AddRange(a.Members.Select(Unit));
+                return c;
+            }
+            ArmyData oldOwn = own, oldEnemy = enemy;
+            own = Army(own); enemy = Army(enemy);
+            defender = defender == oldOwn ? own : defender == oldEnemy ? enemy : defender;
+            holding = holding == oldOwn ? own : holding == oldEnemy ? enemy : holding;
+            var copyGrid = new BattleGrid();
+            foreach (UnitData u in grid.AllUnits())
+                if (grid.TryFindPosition(u, out int r, out int c)) copyGrid.Set(r, c, Unit(u));
+            grid = copyGrid;
+            return copies;
+        }
+
+        private static Dictionary<UnitData, T> RemapShadow<T>(Dictionary<UnitData, T> values,
+            Dictionary<UnitData, UnitData> copies) => values == null ? null
+                : values.ToDictionary(p => copies.TryGetValue(p.Key, out var c) ? c : p.Key, p => p.Value);
+
         public static SimulationOutcome SimulateRounds(BattleGrid liveGrid, ArmyData ownArmy, ArmyData enemyArmy, int rounds,
             AbilityMagnitudes magnitudes, ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0,
             int simulationTrials = BattleSimulationTrials, bool deterministic = false,
@@ -448,12 +479,16 @@ namespace Game.Combat
 
             for (int trial = 0; trial < trials; trial++)
             {
+                BattleGrid sourceGrid = liveGrid;
+                ArmyData trialOwn = ownArmy, trialEnemy = enemyArmy, trialDefender = battleDefender,
+                    trialHolding = holdingArmy;
+                CloneConsumableState(ref sourceGrid, ref trialOwn, ref trialEnemy, ref trialDefender, ref trialHolding);
                 var grid = new BattleGrid();
                 var hp = new Dictionary<UnitData, float>();
                 var ownUnits = new List<UnitData>();
                 var enemyUnits = new List<UnitData>();
-                CollectLivingMembers(liveGrid, ownArmy, grid, hp, ownUnits);
-                CollectLivingMembers(liveGrid, enemyArmy, grid, hp, enemyUnits);
+                CollectLivingMembers(sourceGrid, trialOwn, grid, hp, ownUnits);
+                CollectLivingMembers(sourceGrid, trialEnemy, grid, hp, enemyUnits);
 
                 // A live Drill bonus belongs to the round in progress; every simulated round below
                 // re-deals Drill itself (ApplySimDrill), so start from the undrilled Attack.
@@ -472,26 +507,26 @@ namespace Game.Combat
 
                 var fateByArmy = new Dictionary<ArmyData, int>
                 {
-                    [ownArmy] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, ownArmy)?.Fate ?? 0),
-                    [enemyArmy] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, enemyArmy)?.Fate ?? 0),
+                    [trialOwn] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, trialOwn)?.Fate ?? 0),
+                    [trialEnemy] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, trialEnemy)?.Fate ?? 0),
                 };
                 var rng = deterministic ? null : new System.Random(unchecked(baseSeed + trial * 7919));
                 var previousPositions = new Dictionary<UnitData, Vector2Int>();
 
                 for (int round = 0; round < rounds; round++)
                 {
-                    List<UnitData> order = BattleTurnOrder.BuildOrder(grid, ownArmy, enemyArmy,
+                    List<UnitData> order = BattleTurnOrder.BuildOrder(grid, trialOwn, trialEnemy,
                         unchecked(baseSeed * 31 + trial * 131 + round + 1));
                     List<UnitData> drilled = ApplySimDrill(grid, hp, simulatedAttack, magnitudes,
-                        ownArmy, enemyArmy);
+                        trialOwn, trialEnemy);
                     RunOneRound(grid, hp, order, magnitudes, null, smartAdvance: true,
-                        battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
+                        battleDefender: trialDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                         rng: rng, fateByArmy: fateByArmy, simulatedAttack: simulatedAttack,
-                        simulatedDefense: simulatedDefense, ownArmy: ownArmy, enemyArmy: enemyArmy,
-                        previousPositions: previousPositions, holdingArmy: holdingArmy);
+                        simulatedDefense: simulatedDefense, ownArmy: trialOwn, enemyArmy: trialEnemy,
+                        previousPositions: previousPositions, holdingArmy: trialHolding);
                     RevertSimDrill(drilled, simulatedAttack, magnitudes);
-                    if (!IsSimulationCombatCapable(grid, hp, ownArmy)
-                        || !IsSimulationCombatCapable(grid, hp, enemyArmy))
+                    if (!IsSimulationCombatCapable(grid, hp, trialOwn)
+                        || !IsSimulationCombatCapable(grid, hp, trialEnemy))
                         break;
                 }
 
@@ -589,7 +624,7 @@ namespace Game.Combat
 
                     // UnitAbilities.Counterattack — a surviving victim answers before the next
                     // turn, through the same attack path (never intercepted, never answered).
-                    if (BattleProtectionRules.CanCounterattack(grid, victim, actor,
+                    if (!suppressVictim && BattleProtectionRules.CanCounterattack(grid, victim, actor,
                             hp.TryGetValue(victim, out float victimHp) ? victimHp : 0f,
                             Mathf.RoundToInt(damage), reactions))
                     {
@@ -736,6 +771,21 @@ namespace Game.Combat
                         fateByArmy[victimArmy] = Mathf.Max(0, replacement?.Fate ?? 0);
                 }
             }
+            if (EquipmentSystem.IsSingleUse(actor.Equipment))
+            {
+                // actor is a private projection prepared by CloneConsumableState. The shadow
+                // HP/Attack/Defense contain prior simulated hits, not its original live fields.
+                float oldHp = hp[actor];
+                int observedHp = oldHp > 0f ? Mathf.Max(1, Mathf.RoundToInt(oldHp)) : 0;
+                actor.HitPointsCurrent = observedHp;
+                actor.Attack = SimulatedAttackOf(actor, simulatedAttack);
+                actor.Defense = SimulatedDefenseOf(actor, simulatedDefense);
+                EquipmentSystem.ConsumeAfterAttack(actor);
+                hp[actor] = Mathf.Clamp(oldHp + actor.HitPointsCurrent - observedHp,
+                    oldHp > 0f ? Mathf.Min(1f, oldHp) : 0f, actor.HitPointsMax);
+                if (simulatedAttack != null) simulatedAttack[actor] = actor.Attack;
+                if (simulatedDefense != null) simulatedDefense[actor] = actor.Defense;
+            }
             return victim;
         }
 
@@ -809,6 +859,11 @@ namespace Game.Combat
             {
                 UnitData target = allies[index];
                 hp[target] = BattleSimulationKernel.HealedHitPoints(hp[target], target.HitPointsMax);
+                if (EquipmentSystem.IsSingleUse(target.Equipment))
+                {
+                    target.HitPointsCurrent = Mathf.RoundToInt(hp[target]);
+                    EquipmentSystem.ReconcileResourceRefill(target, EquipmentStat.HitPoints);
+                }
             }
         }
 
@@ -1173,22 +1228,28 @@ namespace Game.Combat
                 var trialDefense = simulatedDefense != null ? new Dictionary<UnitData, int>(simulatedDefense) : null;
                 trialGrid.Set(actorRow, actorCol, null);
                 trialGrid.Set(row, col, actor);
-                RunOneRound(trialGrid, trialHp, remaining, magnitudes, null,
-                    battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
+                ArmyData trialOwn = ownArmy, trialEnemy = enemyArmy, trialDefender = battleDefender, noHolding = null;
+                var copies = CloneConsumableState(ref trialGrid, ref trialOwn, ref trialEnemy, ref trialDefender, ref noHolding);
+                UnitData trialActor = copies.TryGetValue(actor, out var actorCopy) ? actorCopy : actor;
+                trialHp = RemapShadow(trialHp, copies);
+                trialAttack = RemapShadow(trialAttack, copies); trialDefense = RemapShadow(trialDefense, copies);
+                var trialRemaining = remaining.Select(u => copies.TryGetValue(u, out var c) ? c : u).ToList();
+                RunOneRound(trialGrid, trialHp, trialRemaining, magnitudes, null,
+                    battleDefender: trialDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                     simulatedAttack: trialAttack, simulatedDefense: trialDefense,
-                    ownArmy: ownArmy, enemyArmy: enemyArmy, healHeroesAtStart: false);
+                    ownArmy: trialOwn, enemyArmy: trialEnemy, healHeroesAtStart: false);
 
                 var damageDealt = new Dictionary<UnitData, float>();
-                List<UnitData> nextOrder = BattleTurnOrder.BuildOrder(trialGrid, ownArmy, enemyArmy,
+                List<UnitData> nextOrder = BattleTurnOrder.BuildOrder(trialGrid, trialOwn, trialEnemy,
                     unchecked(BuildSimulationSeed(ownArmy, enemyArmy) * 31 + 102));
                 RunOneRound(trialGrid, trialHp, nextOrder, magnitudes, damageDealt,
-                    battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
+                    battleDefender: trialDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                     simulatedAttack: trialAttack, simulatedDefense: trialDefense,
-                    ownArmy: ownArmy, enemyArmy: enemyArmy);
-                float ownLoss = ownHp > 0f ? (ownHp - RemainingCombatHp(trialGrid, trialHp, ownArmy)) / ownHp : 0f;
-                float enemyLoss = enemyHp > 0f ? (enemyHp - RemainingCombatHp(trialGrid, trialHp, enemyArmy)) / enemyHp : 0f;
+                    ownArmy: trialOwn, enemyArmy: trialEnemy);
+                float ownLoss = ownHp > 0f ? (ownHp - RemainingCombatHp(trialGrid, trialHp, trialOwn)) / ownHp : 0f;
+                float enemyLoss = enemyHp > 0f ? (enemyHp - RemainingCombatHp(trialGrid, trialHp, trialEnemy)) / enemyHp : 0f;
                 float trade = enemyLoss - ownLoss;
-                float damage = damageDealt.TryGetValue(actor, out float dealt) ? dealt : 0f;
+                float damage = damageDealt.TryGetValue(trialActor, out float dealt) ? dealt : 0f;
                 bool reverses = previousPositions != null && previousPositions.TryGetValue(actor, out Vector2Int previous)
                     && previous.x == row && previous.y == col;
                 bool tied = Mathf.Abs(trade - bestTrade) <= 0.0001f;

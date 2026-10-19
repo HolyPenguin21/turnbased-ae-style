@@ -95,6 +95,9 @@ namespace Game.Ai.V2
         internal static float RepeatFactor(PlayerSetupData player, int turn, CardDefinition card,
             out string note)
         {
+            // Stock and occupied slots still gate opportunities. A spent missile is a new
+            // supply need, not another permanent copy whose value should fade with history.
+            if (EquipmentSystem.IsSingleUse(card)) { note = "single-use resupply "; return 1f; }
             int recent = RecentAttempts(player, turn, card);
             float factor = RepeatFactor(recent);
             note = recent > 0 ? $"diversity={factor:0.00} (recent {recent}) " : string.Empty;

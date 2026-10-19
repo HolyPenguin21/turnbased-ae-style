@@ -45,7 +45,7 @@ namespace Game.Ai.V2
             apEquivalents < 0f ? -ActionPrice.ToCardScore(-apEquivalents) : ActionPrice.ToCardScore(apEquivalents);
 
         internal static UtilityBreakdown Utility(EfficiencyStats before, IReadOnlyCollection<string> beforeAbilities,
-            EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx)
+            EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx, bool includeCombat = true)
         {
             ctx = ctx ?? new EfficiencyContext();
             beforeAbilities = beforeAbilities ?? Array.Empty<string>();
@@ -53,17 +53,18 @@ namespace Game.Ai.V2
 
             // ---- combat ---------------------------------------------------------------------------
             float dC = 0f, offense = 0f, defense = 0f;
-            if (!ctx.IsHero)
+            if (includeCombat && !ctx.IsHero)
             {
                 IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx);
                 // One common value of the already owned body, including its existing stat upgrades.
                 // End-of-horizon survival is separate from attacks already earned inside it.
                 float survivorValue = Base(before) * AiConfigV2.equipCardValuePerE;
-                float cBefore = Contribution(before, beforeAbilities, ctx, ground, survivorValue);
-                float cAfter = Contribution(after, afterAbilities, ctx, ground, survivorValue);
+                float cBefore = Contribution(before, beforeAbilities, ctx, ground, survivorValue, ctx.BeforeConsumption);
+                float cAfter = Contribution(after, afterAbilities, ctx, ground, survivorValue, ctx.AfterConsumption);
                 dC = cAfter - cBefore;
                 float scale = AiConfigV2.equipCombatCardScale;
-                if (Mathf.Approximately(ctx.OffenseMult, ctx.DefenseMult))
+                if (Mathf.Approximately(ctx.OffenseMult, ctx.DefenseMult)
+                    || ctx.BeforeConsumption != null || ctx.AfterConsumption != null)
                 {
                     offense = scale * dC * ctx.OffenseMult;
                 }
@@ -152,7 +153,25 @@ namespace Game.Ai.V2
             // ---- anti-air reactions ---------------------------------------------------------------
             float antiAir = ctx.IsHero ? 0f
                 : AiConfigV2.equipCombatCardScale
-                    * (ReactionValue(after, afterAbilities, ctx) - ReactionValue(before, beforeAbilities, ctx));
+                    * (ReactionValue(after, afterAbilities, ctx, ctx.AfterConsumption)
+                        - ReactionValue(before, beforeAbilities, ctx, ctx.BeforeConsumption));
+
+            if (ctx.BeforeConsumption != null || ctx.AfterConsumption != null)
+            {
+                // Movement, AP and global-support values already use a reserve-horizon proxy.
+                // End their equipment-only portion at the first expected activation/shot,
+                // while the stateful combat term above prices the actual first-shot outcome.
+                var steady = Utility(SpentStats(before, ctx.BeforeConsumption),
+                    ctx.BeforeConsumption?.ApplyAbilities(beforeAbilities) ?? beforeAbilities,
+                    SpentStats(after, ctx.AfterConsumption),
+                    ctx.AfterConsumption?.ApplyAbilities(afterAbilities) ?? afterAbilities,
+                    ctx.WithoutConsumption(), includeCombat: false);
+                float first = 1f / Mathf.Max(1f, ctx.ExpectedActivations);
+                float Mix(float armed, float later) => later + (armed - later) * first;
+                ap = Mix(ap, steady.Ap); move = Mix(move, steady.Move);
+                vision = Mix(vision, steady.Vision); detection = Mix(detection, steady.Detection);
+                stealth = Mix(stealth, steady.Stealth); fate = Mix(fate, steady.Fate);
+            }
 
             return new UtilityBreakdown(dC, offense, defense, ap, move, vision, detection, stealth, fate, antiAir);
         }
@@ -170,13 +189,22 @@ namespace Game.Ai.V2
             EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx)
         {
             IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx);
-            return AiConfigV2.equipCombatCardScale * (SortieValue(after, afterAbilities, ground, ctx)
-                - SortieValue(before, beforeAbilities, ground, ctx));
+            return AiConfigV2.equipCombatCardScale * (SortieValue(after, afterAbilities, ground, ctx, ctx.AfterConsumption)
+                - SortieValue(before, beforeAbilities, ground, ctx, ctx.BeforeConsumption));
         }
 
         private static float SortieValue(EfficiencyStats s, IReadOnlyCollection<string> abilities,
-            IReadOnlyList<WorthIt.DefenderProfile> targets, EfficiencyContext ctx)
+            IReadOnlyList<WorthIt.DefenderProfile> targets, EfficiencyContext ctx, EquipmentConsumption consumption = null)
         {
+            if (consumption != null)
+            {
+                float uses = Mathf.Max(0f, ctx.ExpectedActivations);
+                float first = Mathf.Min(1f, uses);
+                float armed = SortieValue(s, abilities, targets, ctx);
+                var spent = SpentStats(s, consumption);
+                float rest = SortieValue(spent, consumption.ApplyAbilities(abilities), targets, ctx);
+                return uses > 0f ? (first * armed + Mathf.Max(0f, uses - first) * rest) / uses : 0f;
+            }
             float sum = 0f;
             foreach (var t in targets)
             {
@@ -247,18 +275,21 @@ namespace Game.Ai.V2
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>
             s_contributions = new System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>();
 
-        private static string ContributionKey(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx, float survivorValue)
+        private static string ContributionKey(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx, float survivorValue,
+            EquipmentConsumption consumption)
         {
             var tags = ctx.HostTags != null ? string.Join(",", ctx.HostTags) : string.Empty;
             return $"{survivorValue}|{s.Attack}|{s.Defense}|{s.HitPoints}|{s.Range}|{s.Initiative}|{ctx.HpSpent}|{ctx.KnownDistance}|"
                 + $"{ctx.HostCommanderInitiative}|{ctx.EnemyCommanderInitiative}|{ctx.SecondaryNeighbors}|{tags}|"
-                + string.Join(",", abilities);
+                + string.Join(",", abilities) + "|stateful="
+                + (ctx.BeforeConsumption != null || ctx.AfterConsumption != null) + "|consumption=" + consumption?.Key;
         }
 
         // Mean over the enemy profiles of the unscaled contribution, times the body scale.
         // Each contact carries the complete surviving HP distribution, including lethal tails.
         private static float Contribution(EfficiencyStats s, IReadOnlyCollection<string> abilities,
-            EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets, float survivorValue)
+            EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets, float survivorValue,
+            EquipmentConsumption consumption = null)
         {
             Dictionary<string, float> memo = null;
             string key = null;
@@ -266,14 +297,16 @@ namespace Game.Ai.V2
             if (owner != null)
             {
                 memo = s_contributions.GetValue(owner, _ => new Dictionary<string, float>());
-                key = ContributionKey(s, abilities, ctx, survivorValue);
+                key = ContributionKey(s, abilities, ctx, survivorValue, consumption);
                 lock (memo)
                     if (memo.TryGetValue(key, out float cached))
                         return cached;
             }
             float sum = 0f;
             foreach (var t in targets)
-                sum += ContactSeries(s, abilities, ctx, t, survivorValue);
+                sum += ctx.BeforeConsumption != null || ctx.AfterConsumption != null || consumption != null || t.Consumption != null
+                    ? ConsumableContactSeries(s, abilities, consumption, ctx, t, survivorValue)
+                    : ContactSeries(s, abilities, ctx, t, survivorValue);
             float value = AiConfigV2.equipCombatBodyScale * sum / targets.Count;
             if (memo != null)
                 lock (memo)
@@ -305,59 +338,6 @@ namespace Game.Ai.V2
             // Splash / Scorcher recipients: the REAL neighbours of the primary target when its battle is
             // known, else the known composition stands in for unknown ones. Each neighbour is judged by its
             // own tags and HP (Scorcher only reaches a Bio neighbour, Splash any).
-            float SecondaryFraction(int attack)
-            {
-                bool splash = abilities.Contains(UnitAbilities.Splash);
-                bool scorch = abilities.Contains(UnitAbilities.Scorcher);
-                if (!splash && !scorch)
-                    return 0f;
-                float sumAll = 0f, sumBio = 0f;
-                int n;
-                float Side(WorthIt.DefenderProfile j)
-                {
-                    int hpJ = Mathf.Max(1, Mathf.CeilToInt(j.HitPoints));
-                    return BattleSimulationKernel.ExpectedExchangeDamage(attack, Mathf.RoundToInt(t.Defense),
-                        abilities, t.TypeTags, targetAbilities, hpJ, out _, true, j.Abilities) / hpJ;
-                }
-                bool IsBio(WorthIt.DefenderProfile j) => j.TypeTags?.Contains(UnitTypeTag.Bio) ?? false;
-                List<WorthIt.DefenderProfile> known = KnownNeighbours(ctx, t);
-                if (known != null)
-                {
-                    n = known.Count;
-                    foreach (var j in known)
-                    {
-                        float side = Side(j);
-                        sumAll += side;
-                        if (IsBio(j)) sumBio += side;
-                    }
-                }
-                else
-                {
-                    // Unknown neighbours: how many (mean enemy army size - 1) and what they look like (the
-                    // other known profiles, a small deterministic sample) are separate estimates.
-                    List<WorthIt.DefenderProfile> pool = NeighbourPool(ctx, t);
-                    n = Mathf.Min(Mathf.Max(0, Mathf.RoundToInt(ctx.SecondaryNeighbors)), 8);
-                    if (pool.Count == 0 || n == 0)
-                        return 0f;
-                    float allMean = 0f, bioMean = 0f;
-                    foreach (var j in pool)
-                    {
-                        float side = Side(j);
-                        allMean += side;
-                        if (IsBio(j)) bioMean += side;
-                    }
-                    sumAll = n * allMean / pool.Count;
-                    sumBio = n * bioMean / pool.Count;
-                }
-                if (n <= 0)
-                    return 0f;
-                int splashCount = splash ? Mathf.Min(2, n) : 0;
-                float fraction = splashCount / (float)n * sumAll;
-                // Scorcher picks one of the neighbours Splash left: each neighbour is its pick with 1/n.
-                if (scorch && n > splashCount)
-                    fraction += sumBio / n;
-                return fraction;
-            }
 
             // Host strike on a fresh enemy: damage as a fraction of the targets, kill and hit chances.
             float Strike(int attack, out float kill, out float hit)
@@ -369,7 +349,7 @@ namespace Game.Ai.V2
                         abilities, t.TypeTags, targetAbilities, targetHp - 1, out _)
                     : 0f;
                 kill = Mathf.Clamp01(expected - below);
-                return expected / targetHp + SecondaryFraction(attack);
+                return expected / targetHp + SecondaryFraction(attack, abilities, ctx, t);
             }
 
             int attackPool = s.Attack, defense = s.Defense;
@@ -456,6 +436,197 @@ namespace Game.Ai.V2
                 + AiConfigV2.equipDistanceShare4 * Series(s.Range >= 4, EnemyCan(4));
         }
 
+        private static EfficiencyStats SpentStats(EfficiencyStats s, EquipmentConsumption c) => c == null ? s
+            : new EfficiencyStats(s.Attack + c.Delta(EquipmentStat.Attack), s.Defense + c.Delta(EquipmentStat.Defense),
+                s.HitPoints + c.Delta(EquipmentStat.HitPoints), s.Range + c.Delta(EquipmentStat.Range),
+                s.Move + c.Delta(EquipmentStat.MoveMax), s.Initiative + c.Delta(EquipmentStat.Initiative),
+                s.ActivationAp + c.Delta(EquipmentStat.ActivationApCost),
+                s.Fate + c.Delta(EquipmentStat.Fate) - c.FateSpentExcess);
+
+        // The same contact horizon, now carrying the host's HP distribution AND armed/spent
+        // state. One real attack spends the item, not the contact/round itself. Enemy-first
+        // deaths and Shock can therefore prevent its use; a counterattack can be its first shot.
+        // Damage probabilities, armor, Berserk and Shock stay owned by the shared combat kernel.
+        private static float ConsumableContactSeries(EfficiencyStats s, IReadOnlyCollection<string> abilities,
+            EquipmentConsumption consumption, EfficiencyContext ctx, WorthIt.DefenderProfile target, float survivorValue)
+        {
+            var armed = new WorthIt.DefenderProfile(s.Defense, abilities.Contains(UnitAbilities.CeramicArmor),
+                ctx.HostTags?.ToList(), s.Attack, Mathf.Max(1, s.HitPoints - ctx.HpSpent), s.Initiative,
+                abilities.ToList(), s.HitPoints, range: s.Range, consumption: consumption);
+            var spent = WorthIt.AfterAttack(armed);
+            var mags = AbilityMagnitudes.Default;
+            WorthIt.DefenderProfile State(WorthIt.DefenderProfile p, float hp, float attack, float defense) =>
+                new WorthIt.DefenderProfile(defense, p.HasCeramicArmor, p.TypeTags, attack, hp,
+                    p.Initiative, p.Abilities, p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax,
+                    p.IsSummoned, p.Range, p.Consumption);
+            WorthIt.DefenderProfile Hit(WorthIt.DefenderProfile p, int damage)
+            {
+                int attack = Mathf.RoundToInt(p.Attack), defense = Mathf.RoundToInt(p.Defense);
+                BattleSimulationKernel.ApplyBerserkIfHit(damage > 0, p.Abilities, ref attack, ref defense, mags);
+                return State(p, Mathf.Max(0, p.HitPoints - damage), attack, defense);
+            }
+            float Series(int distance)
+            {
+                var mass = new Dictionary<(int Hp, int Attack, int Defense, bool Spent, bool Refilled), double>
+                { [(Mathf.RoundToInt(armed.HitPoints), s.Attack, s.Defense, false, false)] = 1d };
+                double total = 0d;
+                int targetHp = Mathf.Max(1, Mathf.CeilToInt(target.HitPoints));
+                for (int contact = 0; contact < AiConfigV2.equipContactCount; contact++)
+                {
+                    var next = new Dictionary<(int Hp, int Attack, int Defense, bool Spent, bool Refilled), double>();
+                    void Finish(WorthIt.DefenderProfile host, double weight)
+                    {
+                        if (host.HitPoints <= 0 || weight <= 0d) return;
+                        int hp = Mathf.RoundToInt(host.HitPoints);
+                        bool refill = consumption?.HpSpentExcess > 0 && host.Consumption?.HpSpentExcess == 0;
+                        if (host.Abilities.Contains(UnitAbilities.Regeneration))
+                        {
+                            refill |= hp < host.MaxHitPoints;
+                            hp = Mathf.Min(Mathf.RoundToInt(host.MaxHitPoints), hp + 1);
+                        }
+                        var key = (hp, Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(host.Defense),
+                            consumption != null && host.Consumption == null, refill);
+                        next.TryGetValue(key, out double prior); next[key] = prior + weight;
+                    }
+                    void HostStrike(WorthIt.DefenderProfile host, WorthIt.DefenderProfile enemy, double weight,
+                        System.Action<WorthIt.DefenderProfile, WorthIt.DefenderProfile, double, bool> then)
+                    {
+                        if (host.HitPoints <= 0 || enemy.HitPoints <= 0 || host.Range < distance)
+                        { then(host, enemy, weight, false); return; }
+                        int limit = Mathf.Max(1, Mathf.CeilToInt(enemy.HitPoints));
+                        double[] outcomes = BattleSimulationKernel.ExchangeDamageDistribution(
+                            Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(enemy.Defense), host.Abilities,
+                            enemy.TypeTags, enemy.Abilities, limit, out _);
+                        total += weight * SecondaryFraction(Mathf.RoundToInt(host.Attack), host.Abilities, ctx, enemy, target);
+                        var after = WorthIt.AfterAttack(host);
+                        for (int damage = 0; damage < outcomes.Length; damage++)
+                        {
+                            double p = weight * outcomes[damage];
+                            if (p <= 0d) continue;
+                            total += p * damage / targetHp;
+                            then(after, Hit(enemy, damage), p,
+                                BattleSimulationKernel.SuppressesTurn(damage, host.Abilities));
+                        }
+                    }
+                    void EnemyStrike(WorthIt.DefenderProfile host, WorthIt.DefenderProfile enemy, double weight,
+                        bool hostStillHasTurn)
+                    {
+                        if (host.HitPoints <= 0 || enemy.HitPoints <= 0
+                            || enemy.Range >= 0 && enemy.Range < distance)
+                        {
+                            if (hostStillHasTurn) HostStrike(host, enemy, weight, (h, e, p, shock) => Finish(h, p));
+                            else Finish(host, weight);
+                            return;
+                        }
+                        int limit = Mathf.Max(1, Mathf.CeilToInt(host.HitPoints));
+                        double[] outcomes = BattleSimulationKernel.ExchangeDamageDistribution(
+                            Mathf.RoundToInt(enemy.Attack), Mathf.RoundToInt(host.Defense), enemy.Abilities,
+                            host.TypeTags, host.Abilities, limit, out _);
+                        var afterEnemy = WorthIt.AfterAttack(enemy);
+                        for (int damage = 0; damage < outcomes.Length; damage++)
+                        {
+                            double p = weight * outcomes[damage];
+                            if (p <= 0d) continue;
+                            var hurt = Hit(host, damage);
+                            bool shock = BattleSimulationKernel.SuppressesTurn(damage, enemy.Abilities);
+                            void Continue(WorthIt.DefenderProfile h, WorthIt.DefenderProfile e, double chance, bool ignored)
+                            {
+                                if (hostStillHasTurn && !shock)
+                                    HostStrike(h, e, chance, (a, b, w, stop) => Finish(a, w));
+                                else Finish(h, chance);
+                            }
+                            if (BattleSimulationKernel.TriggersCounterattack(hurt.Abilities, false, hurt.HitPoints,
+                                distance == 1, false, damage, enemy.Abilities))
+                                HostStrike(hurt, afterEnemy, p, Continue);
+                            else Continue(hurt, afterEnemy, p, false);
+                        }
+                    }
+                    foreach (var entry in mass)
+                    {
+                        var k = entry.Key;
+                        var basis = k.Spent ? spent : armed;
+                        if (k.Refilled && basis.Consumption?.HpSpentExcess > 0)
+                            basis = new WorthIt.DefenderProfile(basis.Defense, basis.HasCeramicArmor, basis.TypeTags,
+                                basis.Attack, basis.HitPoints, basis.Initiative, basis.Abilities, basis.MaxHitPoints,
+                                range: basis.Range, consumption: basis.Consumption.AfterHpRefill());
+                        var host = State(basis, k.Hp, k.Attack, k.Defense);
+                        int hIni = host.Initiative + ctx.HostCommanderInitiative;
+                        int eIni = target.Initiative + ctx.EnemyCommanderInitiative;
+                        double first = hIni > eIni ? 1d : hIni == eIni ? 0.5d : 0d;
+                        if (first > 0d) HostStrike(host, target, entry.Value * first, (h, e, p, shock) =>
+                        {
+                            if (shock) Finish(h, p); else EnemyStrike(h, e, p, false);
+                        });
+                        if (first < 1d) EnemyStrike(host, target, entry.Value * (1d - first), true);
+                    }
+                    mass = next;
+                }
+                return (float)(total + mass.Values.Sum() * survivorValue
+                    / (AiConfigV2.equipCombatCardScale * AiConfigV2.equipCombatBodyScale));
+            }
+            if (ctx.KnownDistance.HasValue) return Series(ctx.KnownDistance.Value);
+            return AiConfigV2.equipDistanceShare1 * Series(1) + AiConfigV2.equipDistanceShare2 * Series(2)
+                + AiConfigV2.equipDistanceShare3 * Series(3) + AiConfigV2.equipDistanceShare4 * Series(4);
+        }
+
+        private static float SecondaryFraction(int attack, IReadOnlyCollection<string> abilities,
+            EfficiencyContext ctx, WorthIt.DefenderProfile t, WorthIt.DefenderProfile? referenceTarget = null)
+        {
+            IReadOnlyList<string> targetAbilities = t.Abilities ?? Array.Empty<string>();
+            bool splash = abilities.Contains(UnitAbilities.Splash);
+            bool scorch = abilities.Contains(UnitAbilities.Scorcher);
+            if (!splash && !scorch)
+                return 0f;
+            float sumAll = 0f, sumBio = 0f;
+            int n;
+            float Side(WorthIt.DefenderProfile j)
+            {
+                int hpJ = Mathf.Max(1, Mathf.CeilToInt(j.HitPoints));
+                return BattleSimulationKernel.ExpectedExchangeDamage(attack, Mathf.RoundToInt(t.Defense),
+                    abilities, t.TypeTags, targetAbilities, hpJ, out _, true, j.Abilities) / hpJ;
+            }
+            bool IsBio(WorthIt.DefenderProfile j) => j.TypeTags?.Contains(UnitTypeTag.Bio) ?? false;
+            // Projected stats may change after a shot; army membership still belongs to the observation.
+            WorthIt.DefenderProfile observed = referenceTarget ?? t;
+            List<WorthIt.DefenderProfile> known = KnownNeighbours(ctx, observed);
+            if (known != null)
+            {
+                n = known.Count;
+                foreach (var j in known)
+                {
+                    float side = Side(j);
+                    sumAll += side;
+                    if (IsBio(j)) sumBio += side;
+                }
+            }
+            else
+            {
+                // Unknown neighbours: how many (mean enemy army size - 1) and what they look like (the
+                // other known profiles, a small deterministic sample) are separate estimates.
+                List<WorthIt.DefenderProfile> pool = NeighbourPool(ctx, observed);
+                n = Mathf.Min(Mathf.Max(0, Mathf.RoundToInt(ctx.SecondaryNeighbors)), 8);
+                if (pool.Count == 0 || n == 0)
+                    return 0f;
+                float allMean = 0f, bioMean = 0f;
+                foreach (var j in pool)
+                {
+                    float side = Side(j);
+                    allMean += side;
+                    if (IsBio(j)) bioMean += side;
+                }
+                sumAll = n * allMean / pool.Count;
+                sumBio = n * bioMean / pool.Count;
+            }
+            if (n <= 0)
+                return 0f;
+            int splashCount = splash ? Mathf.Min(2, n) : 0;
+            float fraction = splashCount / (float)n * sumAll;
+            // Scorcher picks one of the neighbours Splash left: each neighbour is its pick with 1/n.
+            if (scorch && n > splashCount)
+                fraction += sumBio / n;
+            return fraction;
+        }
+
         // Joint outcomes of one strike for the side that may answer it. A kill is a SUBSET of a hit, so:
         // unhurt (answers at its plain Attack) = 1 - hit; hurt-but-alive (answers, a Berserk raised) = hit - kill,
         // and with Shock any positive damage cancels the answer, so only the unhurt answer remains.
@@ -513,12 +684,13 @@ namespace Game.Ai.V2
         //    carrier that fires earlier in the rule order (same army, lower slot) takes its share first.
         //  * RESERVE PROXY: no concrete contact, only a known air composition - a labelled estimate of one
         //    shot at that composition. Never presented as a legal reaction.
-        private static float ReactionValue(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx)
+        private static float ReactionValue(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx,
+            EquipmentConsumption consumption = null)
         {
             if (!abilities.Contains(UnitAbilities.AntiAir))
                 return 0f;
             if (ctx.AirContacts != null && ctx.AirContacts.Count > 0)
-                return ConcreteReactionValue(s, abilities, ctx);
+                return ConcreteReactionValue(s, abilities, ctx, consumption);
             return ReserveReactionProxy(s, abilities, ctx);
         }
 
@@ -530,17 +702,24 @@ namespace Game.Ai.V2
                 abilities, air.TypeTags, air.Abilities ?? Array.Empty<string>(), hp, out _) / hp;
         }
 
-        private static float ConcreteReactionValue(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx)
+        private static float ConcreteReactionValue(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx,
+            EquipmentConsumption consumption = null)
         {
             if (ctx.HostHidden || !Game.Aviation.AntiAirRules.TryGetRadius(abilities, ctx.AntiAirRadius, out int radius))
                 return 0f;
             float value = 0f;
             foreach (AirContact c in ctx.AirContacts)
             {
-                if (c.ReactionUsed || !c.OwnerSeesHex || c.Distance > radius)
+                if (!Game.Aviation.AntiAirRules.TryGetRadius(abilities, ctx.AntiAirRadius, out radius)
+                    || c.ReactionUsed || !c.OwnerSeesHex || c.Distance > radius)
                     continue;
                 float damage = Mathf.Clamp01(AirShotFraction(s, abilities, c.Air));
                 value += damage * Mathf.Pow(1f - damage, Mathf.Max(0, c.EarlierReactions));
+                if (consumption != null)
+                {
+                    s = SpentStats(s, consumption); abilities = consumption.ApplyAbilities(abilities);
+                    consumption = null;
+                }
             }
             return AiConfigV2.equipCombatBodyScale * value;
         }
