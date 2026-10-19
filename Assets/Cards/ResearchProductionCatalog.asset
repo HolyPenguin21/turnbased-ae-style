@@ -140,3 +140,16 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.vehicle.assault-conversion-kit
     factionRestriction: 2
+  - cardKey: neutral.tactic.tactical-missile
+    factionRestriction: 2
+    resultCardKey: neutral.production.unit.tactical-missile
+  - cardKey: neutral.equipment.infantry-missile
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle-missile
+    factionRestriction: 2
+  - cardKey: neutral.equipment.air-missile
+    factionRestriction: 2
+  - cardKey: neutral.equipment.air-bomb-3
+    factionRestriction: 2
+  - cardKey: neutral.equipment.air-bomb-5
+    factionRestriction: 2

@@ -413,34 +413,42 @@ namespace Game.Ai.V2
             try
             {
                 var sources = snap.Development.ForecastSources
-                    .Where(g => g?.CardDef?.cardType == CardType.Equipment
+                    .Where(g => g?.CardDef != null && (g.CardDef.cardType == CardType.Equipment || g.CardDef.isAviation)
                         && ReferenceEquals(g.Hero, hero)
                         && !(g.CardDef.equipment?.statChanges?.Any(c => c.stat == EquipmentStat.Fate) ?? false))
                     .GroupBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal)
                     .Select(g => g.First()).OrderBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal);
                 var player = snap.Observer;
                 PlayerRoot root = PlayerRootRegistry.FindFor(player);
-                var options = new List<(DevelopmentOpportunity Op, float Utility, float Before, float After)>();
+                var options = new List<(DevelopmentOpportunity Op, CardDefinition Challenge, float Utility, float Before, float After)>();
                 foreach (GenerationStep source in sources)
                 {
                     CardDefinition card = source.CardDef;
                     float alternative = snap.Development.ForecastSources
                         .Where(g => g != null && !ReferenceEquals(g.Hero, hero)
                             && ReferenceEquals(g.CardDef, card))
-                        .Select(g => ResearchProductionSystem.EstimateSuccessChance(g.Hero, card))
+                        .Select(g => ResearchProductionSystem.EstimateSuccessChance(g.Hero, g.ChallengeCard))
                         .DefaultIfEmpty(0f).Max();
                     float beforeChance = Mathf.Max(alternative,
-                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateBefore, card));
+                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateBefore, source.ChallengeCard));
                     float afterChance = Mathf.Max(alternative,
-                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateAfter, card));
+                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateAfter, source.ChallengeCard));
                     if (Mathf.Approximately(beforeChance, afterChance)) continue;
+                    if (card.isAviation)
+                    {
+                        float utility = NonCombatCardPlayer.OperatorAviationOutputValue(snap, source);
+                        if (utility > 0f) options.Add((new DevelopmentOpportunity {
+                            Card = card, RecipientLabel = "aviation:" + card.authoredKey
+                        }, source.ChallengeCard, utility, beforeChance, afterChance));
+                        continue;
+                    }
                     foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.EquipmentOpportunities(
                         source.Mode, source.FacilityHex, card, 1f, null, snap, inv, player, root,
                         null, out _, futureAttachment: true, forecastHand: snap.Self.Hand))
                     {
                         float utility = EquipmentUpgradeValue(op);
                         if (utility <= 0f) continue;
-                        options.Add((op, utility, beforeChance, afterChance));
+                        options.Add((op, source.ChallengeCard, utility, beforeChance, afterChance));
                     }
                 }
                 // The same finite horizon already used by Development. Net out pending ordinary
@@ -472,20 +480,22 @@ namespace Game.Ai.V2
                     {
                         var o = options[i];
                         CardDefinition card = o.Op.Card;
+                        CardDefinition challenge = o.Challenge;
                         float chance = Mathf.Max(o.Before, o.After);
-                        if (chance <= 0f || card.resourceCost != null && ResourceBundle.All.Any(
-                                t => card.resourceCost.Get(t) > budget.Get(t))) continue;
-                        string slot = DevelopmentOpportunityEvaluator.RecipientKey(o.Op) + ":" + card.attachmentSlot;
+                        if (chance <= 0f || challenge.resourceCost != null && ResourceBundle.All.Any(
+                                t => challenge.resourceCost.Get(t) > budget.Get(t))) continue;
+                        string slot = card.isAviation ? "aviation:" + card.authoredKey
+                            : DevelopmentOpportunityEvaluator.RecipientKey(o.Op) + ":" + card.attachmentSlot;
                         float weight = remaining.TryGetValue(slot, out float w) ? w : 1f;
                         float attachAp = Mathf.Max(0, card.activationApCost);
-                        float attemptAp = ResearchProductionSystem.AttemptApCost(card);
+                        float attemptAp = ResearchProductionSystem.AttemptApCost(challenge);
                         if (ap < attemptAp + chance * weight * attachAp) continue;
                         attempts.TryGetValue(card, out int made);
                         float repeat = DevelopmentDiversity.RepeatFactor(
                             DevelopmentDiversity.RecentAttempts(player, snap.TurnNumber, card) + made);
                         float u = o.Utility * repeat * weight;
                         float attach = ActionPrice.ToCardScore(attachAp * apScale) * weight;
-                        float price = StrategicCardEvaluator.StrategicResourceCostValue(card.resourceCost,
+                        float price = StrategicCardEvaluator.StrategicResourceCostValue(challenge.resourceCost,
                             snap, t => budget.Get(t), player) + ActionPrice.ToCardScore(attemptAp * apScale)
                             + AiConfigV2.stratChainAttachStepPenalty + AiConfigV2.stratChainGenerationStepPenalty;
                         float value = chance * (u - attach) - price;
@@ -500,8 +510,8 @@ namespace Game.Ai.V2
                     float p = Mathf.Max(selected.Before, selected.After);
                     remaining[bestSlot] = bestWeight * (1f - p);
                     foreach (ResourceType type in ResourceBundle.All)
-                        budget.Add(type, -(output.resourceCost?.Get(type) ?? 0));
-                    ap -= ResearchProductionSystem.AttemptApCost(output)
+                        budget.Add(type, -(selected.Challenge.resourceCost?.Get(type) ?? 0));
+                    ap -= ResearchProductionSystem.AttemptApCost(selected.Challenge)
                         + p * bestWeight * Mathf.Max(0, output.activationApCost);
                     attempts.TryGetValue(output, out int count);
                     attempts[output] = count + 1;

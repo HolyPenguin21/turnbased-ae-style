@@ -59,9 +59,11 @@ namespace Game.Ai.V2
                 || ctx?.ResearchProductionCatalog == null)
                 return new GenerationOutcome(false, false, null, false,
                     "no generation step/catalog/args");
+            if (!object.ReferenceEquals(ctx.ResearchProductionCatalog.ResolveResult(g.ChallengeCard), g.CardDef))
+                return new GenerationOutcome(false, false, null, false, "production output changed since planning");
             // AI-only reservation policy is checked BEFORE the shared gameplay transaction:
             // a protected resource may reject this plan, but must never reveal/pay first.
-            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.CardDef, authority))
+            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.ChallengeCard, authority))
                 return new GenerationOutcome(false, false, null, false,
                     "generation resources reserved since planning");
 
@@ -73,13 +75,13 @@ namespace Game.Ai.V2
             // All gameplay-side revalidation, canonical-root validation, Research reveal and
             // irreversible payment are owned by the same transaction the human path uses.
             if (!ResearchProductionSystem.TryStartAttempt(player, root, g.Hero, g.FacilityHex,
-                    g.Mode, g.CardDef, ctx.ResearchProductionCatalog, out string why))
+                    g.Mode, g.ChallengeCard, ctx.ResearchProductionCatalog, out string why, out ProductionAttempt attempt))
                 return new GenerationOutcome(false, false, null, false,
                     $"generation no longer valid ({why})");
 
             // Every paid attachment Challenge enters the same history, regardless of the
             // consumer or the roll result. Rejected attempts and existing hand cards do not.
-            bool historyChanged = g.CardDef.cardType == CardType.Equipment;
+            bool historyChanged = g.ChallengeCard.cardType == CardType.Equipment;
             if (historyChanged)
                 DevelopmentDiversity.RecordAttempt(player, ctx.TurnNumber, g.CardDef);
 
@@ -90,13 +92,16 @@ namespace Game.Ai.V2
                 || t0 != root.GetResource(ResourceType.Tech);
 
             ResearchProductionSystem.ChallengeOutcome outcome =
-                ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
+                ResearchProductionSystem.RollChallenge(g.Hero, g.ChallengeCard);
             if (!outcome.Success)
+            {
+                attempt.Complete(false);
                 return new GenerationOutcome(true, false, null,
                     historyChanged || costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
                     $"Challenge lost ({outcome.Successes}/{outcome.Required})");
+            }
 
-            CardData minted = ResearchProductionSystem.MintCard(g.CardDef);
+            CardData minted = attempt.Complete(true);
             hand.AddCard(minted);
             return new GenerationOutcome(true, true, minted, true, null);
         }

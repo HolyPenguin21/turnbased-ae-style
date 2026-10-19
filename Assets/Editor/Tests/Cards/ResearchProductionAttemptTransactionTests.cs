@@ -25,6 +25,7 @@ namespace Game.EditorTests
         [SetUp]
         public void SetUp()
         {
+            StrategicResourceReservationLedger.ClearAll();
             ArmyRegistry.Clear();
             BuildingRegistry.Clear();
             PlayerRootRegistry.Clear();
@@ -85,6 +86,41 @@ namespace Game.EditorTests
             _root.ActionPoints = 10;
             Assert.That(StealthSystem.TryEnterStealth(_hero, _root), Is.True);
             _root.ActionPoints = 5;
+        }
+
+        [TestCase(StrategicReservationReason.EconomyBuildCompletion, false)]
+        [TestCase(StrategicReservationReason.StrategicReactionPass, false)]
+        [TestCase(StrategicReservationReason.EconomyBuildCompletion, true)]
+        [TestCase(StrategicReservationReason.StrategicReactionPass, true)]
+        [Category("UnityEngine")]
+        public void GenerationRechecksApReservationsBeforePayment(StrategicReservationReason reason,
+            bool drawOnOwnHold)
+        {
+            const int turn = 8;
+            const string owner = "test:production-owner";
+            _root.ActionPoints = 5;
+            _root.AddResource(ResourceType.Human, 2);
+            _card.fate = 0;
+            StrategicResourceReservationLedger.BeginTurn(_player, turn);
+            StrategicResourceReservationLedger.Upsert(_player, turn, new StrategicResourceReservation
+            {
+                Owner = owner, Reason = reason, Resource = StrategicReservedResource.ActionPoints,
+                Amount = 4f, ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+            });
+            try
+            {
+                var ctx = new AiTurnContext { TurnNumber = turn, ResearchProductionCatalog = _catalog };
+                var result = MaterializationExecutor.TryGenerate(new GenerationStep
+                {
+                    CardDef = _card, Hero = _hero, FacilityHex = Site,
+                    Mode = ResearchProductionMode.Research,
+                }, _player, _root, new AiHandData(null, default, 0), ctx,
+                    drawOnOwnHold ? new SpendAuthority(owner, false) : default);
+                Assert.That(result.Attempted, Is.EqualTo(drawOnOwnHold), result.FailReason);
+                Assert.That(_root.ActionPoints, Is.EqualTo(drawOnOwnHold ? 3 : 5));
+                Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(drawOnOwnHold ? 1 : 2));
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
         }
 
         [TestCase(AttachmentSlot.Equipment, 0, true)]

@@ -77,7 +77,7 @@ namespace Game.Ai.V2
                         string useKey = StableGeneratorUseKey(mode, hero);
 
                         foreach (CardDefinition card in ResearchProductionSystem
-                            .OfferedCards(ctx.ResearchProductionCatalog, mode, player.Faction)
+                            .OfferedCards(ctx.ResearchProductionCatalog, mode, player)
                             .Where(card => card != null && !string.IsNullOrWhiteSpace(card.authoredKey))
                             .OrderBy(card => card.authoredKey, System.StringComparer.Ordinal))
                         {
@@ -94,14 +94,17 @@ namespace Game.Ai.V2
                             if (!resourceForecast && !FitsReservedAffordability(root, player, ctx, card, authority))
                                 continue;
 
+                            CardDefinition output = ctx.ResearchProductionCatalog.ResolveResult(card);
+                            if (output == null) continue;
                             result.Add(new GenerationStep
                             {
                                 Mode = mode,
                                 FacilityHex = b.Hex,
                                 Hero = hero,
-                                CardDef = card,
+                                CardDef = output,
+                                BlueprintDef = card,
                                 SuccessChance = ResearchProductionSystem.EstimateSuccessChance(hero, card),
-                                ProducesEquipment = card.cardType == CardType.Equipment,
+                                ProducesEquipment = output.cardType == CardType.Equipment,
                                 UseKey = useKey,
                                 CardKey = cardKey,
                             });
@@ -127,13 +130,16 @@ namespace Game.Ai.V2
         // Source enumeration must use the SAME owner-aware spendability authority as
         // MaterializationFeasibility and WorldAnalysis.Development. Duplicating the ledger
         // intersection here made the legality and reservation rules drift independently.
-        // Only the actually consumed resource types are checked by the canonical helper.
+        // Protect AP here as well as resources: this is the last shared AI gate before
+        // irreversible payment, including callers that generate without immediate deployment.
         internal static bool FitsReservedAffordability(PlayerRoot root, PlayerSetupData player,
             AiTurnContext ctx, CardDefinition card, SpendAuthority authority = default)
         {
             if (root == null || card == null)
                 return false;
-            return StrategicSpendability.FitsSpendableResources(
+            return ResearchProductionSystem.AttemptApCost(card)
+                    <= StrategicSpendability.SpendableAp(player, root, ctx, authority)
+                && StrategicSpendability.FitsSpendableResources(
                 player, root, ctx, card.resourceCost, authority);
         }
     }

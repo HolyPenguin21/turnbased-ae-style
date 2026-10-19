@@ -414,10 +414,10 @@ MonoBehaviour:
         amount: 2
         isOverride: 1
   - id: 8
-    authoredKey: neutral.tactic.tactical-missile
-    deckPointCost: 5
-    deckCopyLimit: 2
-    deckBuilderExcluded: 0
+    authoredKey: neutral.production.unit.tactical-missile
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
     displayName: Tactical Missile
     art: {fileID: 21300000, guid: e6408260309884f4a9276598ac07c20d, type: 3}
     detailArt: {fileID: 21300000, guid: 0b73e8ec76767734aa3f20ec775903e7, type: 3}
@@ -425,12 +425,12 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 8
+    apCost: 1
     resourceCost:
-      human: 2
-      energy: 8
-      materials: 6
-      tech: 8
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
     requiredBuildingAbility: 
     moveMax: 4
     activationApCost: 1
@@ -439,16 +439,17 @@ MonoBehaviour:
     attack: 0
     defenseRating: 0
     range: 0
-    hitPoints: 4
+    hitPoints: 1
     initiative: 1
     isAviation: 1
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
+    launchEnergyCost: 1
+    turnsWithoutRefuel: 2
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
     - Explosion10
+    - SingleUse
     resourceYield:
       human: 0
       energy: 0
@@ -4482,6 +4483,319 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 
       hostKinds: 
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 81
+    authoredKey: neutral.equipment.infantry-missile
+    deckPointCost: 2
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Infantry Missile
+    art: {fileID: 21300000, guid: cf6afee36e18b684296039b6cc21e31f, type: 3}
+    detailArt: {fileID: 21300000, guid: 67c00a27466fe1c419e9c88a2811ffeb, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 3
+      tech: 3
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities:
+    - SingleUse
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 8
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
+  - id: 82
+    authoredKey: neutral.equipment.vehicle-missile
+    deckPointCost: 2
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Vehicle Missile
+    art: {fileID: 21300000, guid: c57893037dd9239488e814636a615e5f, type: 3}
+    detailArt: {fileID: 21300000, guid: d797606dfe2cc5c4c8c8e533839eb369, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 4
+      tech: 3
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities:
+    - SingleUse
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 0400000005000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 10
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
+  - id: 83
+    authoredKey: neutral.equipment.air-missile
+    deckPointCost: 2
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Air Missile
+    art: {fileID: 21300000, guid: bb1b67dd973d35a4ab7a8ae057cf92f3, type: 3}
+    detailArt: {fileID: 21300000, guid: 0decfa5f41241414b82439e2c76f59ef, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 3
+      tech: 4
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities:
+    - SingleUse
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 06000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 12
+        isOverride: 1
+      - stat: 3
+        amount: 0
+        isOverride: 1
+  - id: 84
+    authoredKey: neutral.equipment.air-bomb-3
+    deckPointCost: 2
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Air Bomb 3
+    art: {fileID: 21300000, guid: 7257515856791434980a7f1852348b3a, type: 3}
+    detailArt: {fileID: 21300000, guid: 34ec0b501b01efc4790ff16141b01f28, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 2
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities:
+    - SingleUse
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 06000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - Explosion3
+      statChanges: []
+  - id: 85
+    authoredKey: neutral.equipment.air-bomb-5
+    deckPointCost: 3
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Air Bomb 5
+    art: {fileID: 21300000, guid: 135bd73b3b62bc74dbffbbcf3a3e5d0d, type: 3}
+    detailArt: {fileID: 21300000, guid: c5b667489fc2c1f4bbd4ce5d7c7e2037, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 5
+      tech: 4
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities:
+    - SingleUse
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 06000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - Explosion5
+      statChanges: []
+  - id: 86
+    authoredKey: neutral.tactic.tactical-missile
+    deckPointCost: 5
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Tactical Missile Blueprint
+    art: {fileID: 21300000, guid: e6408260309884f4a9276598ac07c20d, type: 3}
+    detailArt: {fileID: 21300000, guid: 0b73e8ec76767734aa3f20ec775903e7, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 6
+    resourceCost:
+      human: 0
+      energy: 5
+      materials: 6
+      tech: 5
+    requiredBuildingAbility: 
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 6
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 1
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 1
+    turnsWithoutRefuel: 2
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 02000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []

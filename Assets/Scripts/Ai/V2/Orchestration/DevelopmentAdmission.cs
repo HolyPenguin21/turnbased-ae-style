@@ -113,12 +113,16 @@ namespace Game.Ai.V2
                 + ActionPrice.PendingCardResourceDemand(snap, t).ToString("R", CultureInfo.InvariantCulture)));
             string sources = string.Join(",", (snap?.Development?.ForecastSources
                     ?? System.Array.Empty<GenerationStep>())
-                .Select(g => $"{g.CardKey}:{g.Hero?.Fate}:{g.Mode}:{g.FacilityHex}")
+                .Select(g => $"{g.CardKey}:{g.CardDef?.authoredKey}:{g.ChallengeCard?.fate}:{g.Hero?.Fate}:{g.Mode}:{g.FacilityHex}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
+            string airfields = player == null ? "" : string.Join(";",
+                Game.Aviation.AviationRules.OwnedAirfieldHexes(player).OrderBy(h => h.Q).ThenBy(h => h.R)
+                    .Select(h => $"{h}:{Game.Aviation.AviationRules.FreeAirfieldCapacity(h, player)}"));
             ApActionEconomySnapshot ap = snap?.Self?.ApEconomy;
             return $"{snap?.Self?.ActionPoints}:{snap?.Development?.ForecastActionPoints}:{ap?.BaseActionPoints}:{ap?.WitnessedApDemand}:"
                 + $"{ap?.EstimatedArmyApDemand}:{ap?.EstimatedCardApDemand}:{budget}:{sources}:"
                 + DevelopmentDiversity.HistoryKey(player, snap?.TurnNumber ?? 0)
+                + $"|airfields={airfields}|path={snap?.MapPathingVersion}"
                 + "|preservation=" + PriceInputs(snap, player, null, null);
         }
 

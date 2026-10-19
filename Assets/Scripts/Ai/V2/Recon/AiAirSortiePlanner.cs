@@ -57,6 +57,66 @@ namespace Game.Ai.V2
         public static int FreeLandingCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
             => AviationRules.FreeAirfieldCapacity(hex, owner, excluding);
 
+        // Only the unit's innate consumption permits a one-way strike. A bomb/rocket item
+        // is expended separately and leaves its carrier alive; mixed wings still need recovery.
+        internal static bool IsExpendableWing(IReadOnlyList<UnitData> aircraft) =>
+            aircraft != null && aircraft.Count > 0
+            && aircraft.All(u => AviationRules.IsAviation(u) && ExplosionAttack.IsSingleUseUnit(u));
+
+        // End-of-turn landing closes the flight. A later takeoff is another paid launch,
+        // represented by the next rebase edge rather than hidden inside a single route proof.
+        private static bool HasIntermediateLanding(HexPath path, int movement,
+            IReadOnlyList<UnitData> aircraft, PlayerSetupData owner)
+        {
+            int refreshed = aircraft.Min(AviationRules.EffectiveMoveMax);
+            if (movement <= 0 || refreshed <= 0) return false;
+            for (int stop = movement; stop < path.Hexes.Count - 1; stop += refreshed)
+                if (AviationRules.IsOwnedAirfieldAt(path.Hexes[stop], owner)) return true;
+            return false;
+        }
+
+        private static Sortie? PlanExpendableStrike(HexCoord start, int movement, HexCoord target, HexMap map, PlayerSetupData owner)
+        {
+            if (map == null || owner == null) return null;
+            HexPath outbound = HexPathfinder.FindPath(map, start, target, flatCost: true);
+            if (outbound == null || outbound.Hexes.Count - 1 > movement) return null;
+            // A zero-length second leg keeps the shared route consumers honest: the attack
+            // consumes every member, so there is no landing reservation or flight home.
+            return new Sortie(target, target, outbound,
+                HexPathfinder.FindPath(map, target, target, flatCost: true), outbound.Hexes.Count - 1);
+        }
+
+        private static MultiTurnSortie? PlanExpendableMultiTurnStrike(HexCoord start,
+            IReadOnlyList<UnitData> aircraft, int movement, HexCoord target, HexMap map, PlayerSetupData owner)
+        {
+            if (map == null || owner == null) return null;
+            HexPath outbound = HexPathfinder.FindPath(map, start, target, flatCost: true);
+            if (outbound == null || HasIntermediateLanding(outbound, movement, aircraft, owner)
+                || !AviationRange.TrySimulateHexSequence(outbound.Hexes,
+                outbound.Hexes.Count - 1, movement, aircraft, AviationRange.SafeUnlandedEndsRemaining(aircraft),
+                owner, out int turns, out int ends, out HexCoord first, out bool reaches, out _)) return null;
+            return new MultiTurnSortie(target, target, outbound,
+                HexPathfinder.FindPath(map, target, target, flatCost: true), outbound.Hexes.Count - 1,
+                turns, ends, first, reaches, false);
+        }
+
+        // End-of-turn recall must prove the remaining one-way attack from NEXT turn,
+        // not silently reintroduce the ordinary recovery requirement for a missile in transit.
+        internal static bool CanEndTurnHereAndReachStrike(ArmyData wing, HexCoord target,
+            HexMap map, PlayerSetupData owner)
+        {
+            if (!AviationRules.IsValidAirArmy(wing) || wing.Owner != owner || map == null
+                || !IsExpendableWing(wing.Members)) return false;
+            int safeEnds = AviationRange.SafeUnlandedEndsRemaining(wing);
+            if (safeEnds < 1) return false;
+            HexPath path = HexPathfinder.FindPath(map, wing.Hex, target, flatCost: true);
+            return path != null
+                && !HasIntermediateLanding(path, wing.Members.Min(AviationRules.EffectiveMoveMax), wing.Members, owner)
+                && AviationRange.TrySimulateHexSequence(path.Hexes,
+                path.Hexes.Count - 1, wing.Members.Min(AviationRules.EffectiveMoveMax),
+                wing.Members, safeEnds - 1, owner, out _, out _, out _, out _, out _);
+        }
+
         // AI-AIR-02 — can this airborne group END the current turn on the hex it is standing on
         // RIGHT NOW, taking NO further movement this turn, and still be guaranteed a legal recovery
         // to an owned airfield afterwards? This is the exact proof the recon executor's Hold /
@@ -108,10 +168,12 @@ namespace Game.Ai.V2
 
 
         public static Sortie? TryPlanSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner,
-            System.Func<HexCoord, int> additionalLandingClaims = null)
+            System.Func<HexCoord, int> additionalLandingClaims = null, bool singleUseStrike = false)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
+            if (singleUseStrike && IsExpendableWing(airArmy.Members))
+                return PlanExpendableStrike(airArmy.Hex, airArmy.CurrentMovement, actionHex, map, owner);
             return PlanSortieCore(airArmy.Hex, airArmy, army => army.CurrentMovement, path => AviationRules.PathMoveCost(airArmy, path),
                 airArmy.Members.Count, 0, actionHex, map, owner, additionalLandingClaims);
         }
@@ -126,11 +188,13 @@ namespace Game.Ai.V2
         // AviationRules.PathMoveCost's own comment — every air army pays exactly that, regardless
         // of terrain).
         public static Sortie? TryPlanSortieFromStorage(HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft,
-            HexCoord actionHex, HexMap map, PlayerSetupData owner)
+            HexCoord actionHex, HexMap map, PlayerSetupData owner, bool singleUseStrike = false)
         {
             if (aircraft == null || aircraft.Count == 0)
                 return null;
             int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
+            if (singleUseStrike && IsExpendableWing(aircraft))
+                return PlanExpendableStrike(airfieldHex, movement, actionHex, map, owner);
             return PlanSortieCore(airfieldHex, null, _ => movement, path => path.Hexes.Count - 1,
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
@@ -177,7 +241,8 @@ namespace Game.Ai.V2
                 return new RebaseRoute(destinationHex, destinationHex, cost, 1);
 
             int safeRemaining = AviationRange.SafeUnlandedEndsRemaining(aircraft);
-            if (safeRemaining <= 0
+            if ((IsExpendableWing(aircraft) && HasIntermediateLanding(path, firstTurnMovement, aircraft, owner))
+                || safeRemaining <= 0
                 || !AviationRange.TrySimulateHexSequence(path.Hexes, path.Hexes.Count - 1,
                     firstTurnMovement, aircraft, safeRemaining, owner, out int turns, out _,
                     out HexCoord firstDestination, out _, out _))
@@ -244,20 +309,24 @@ namespace Game.Ai.V2
 
 
         public static MultiTurnSortie? TryPlanMultiTurnSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner,
-            System.Func<HexCoord, int> additionalLandingClaims = null)
+            System.Func<HexCoord, int> additionalLandingClaims = null, bool singleUseStrike = false)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
+            if (singleUseStrike && IsExpendableWing(airArmy.Members))
+                return PlanExpendableMultiTurnStrike(airArmy.Hex, airArmy.Members, airArmy.CurrentMovement, actionHex, map, owner);
             return PlanMultiTurnSortieCore(airArmy.Hex, airArmy, airArmy.Members, airArmy.CurrentMovement,
                 path => AviationRules.PathMoveCost(airArmy, path), airArmy.Members.Count, 0, actionHex, map, owner, additionalLandingClaims);
         }
 
         public static MultiTurnSortie? TryPlanMultiTurnSortieFromStorage(HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft,
-            HexCoord actionHex, HexMap map, PlayerSetupData owner)
+            HexCoord actionHex, HexMap map, PlayerSetupData owner, bool singleUseStrike = false)
         {
             if (aircraft == null || aircraft.Count == 0)
                 return null;
             int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
+            if (singleUseStrike && IsExpendableWing(aircraft))
+                return PlanExpendableMultiTurnStrike(airfieldHex, aircraft, movement, actionHex, map, owner);
             return PlanMultiTurnSortieCore(airfieldHex, null, aircraft, movement, path => path.Hexes.Count - 1,
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
@@ -392,7 +461,7 @@ namespace Game.Ai.V2
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null
                 || !AviationActions.CanStrikeAtCurrentHex(airArmy, policy ?? AirStrikePolicy.Standard))
                 return false;
-            return CanRecover(airArmy, map, owner);
+            return IsExpendableWing(airArmy.Members) || CanRecover(airArmy, map, owner);
         }
 
         // A live landing route from the current hex, independent of why the wing is flying.
@@ -551,7 +620,8 @@ namespace Game.Ai.V2
             HexCoord destination = task.TargetHex;
             if (task.Outbound)
             {
-                Sortie? sortie = TryPlanSortie(task.Army, task.TargetHex, ctx.Map, player);
+                Sortie? sortie = TryPlanSortie(task.Army, task.TargetHex, ctx.Map, player,
+                    singleUseStrike: task.Kind == AirSortieKind.Strike);
                 if (sortie.HasValue)
                 {
                     task.LandingHex = sortie.Value.LandingHex;
@@ -565,7 +635,8 @@ namespace Game.Ai.V2
                     // (multi-turn aviation spec, point 10: AiAggressionPlanner/AiScoutPlanner decide
                     // to START a multi-turn sortie, but CONTINUING one re-derives the exact same
                     // full-round-trip proof every step here, never trusting a plan made turns ago).
-                    MultiTurnSortie? multi = TryPlanMultiTurnSortie(task.Army, task.TargetHex, ctx.Map, player);
+                    MultiTurnSortie? multi = TryPlanMultiTurnSortie(task.Army, task.TargetHex, ctx.Map, player,
+                        singleUseStrike: task.Kind == AirSortieKind.Strike);
                     if (multi.HasValue)
                     {
                         task.LandingHex = multi.Value.LandingHex;
@@ -653,6 +724,8 @@ namespace Game.Ai.V2
                 return null;
 
             string reason = task.Outbound ? outboundReason : "returns to land";
+            // AiDecision.Move already defaults to Transit for every air group. The combat
+            // owner explicitly authorizes only its target arrival, including mixed wings.
             return AiDecision.Move(task.Army, nextStep.Value, reason, continuationScore);
         }
 

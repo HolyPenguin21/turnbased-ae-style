@@ -29,7 +29,7 @@ namespace Game.Combat
     {
         // Same bounded budget as WorthIt's ground Monte Carlo.
         internal const int Trials = 25;
-        private const int KeyVersion = 6;
+        private const int KeyVersion = 7;
         private const int CacheMaxEntries = 20000;
 
         public readonly struct ExplosionCollateral
@@ -37,8 +37,9 @@ namespace Game.Combat
             public readonly WorthIt.DefenderProfile Profile;
             public readonly bool Friendly;
             public readonly bool OwnCitadel;
-            public ExplosionCollateral(WorthIt.DefenderProfile profile, bool friendly, bool ownCitadel = false)
-            { Profile = profile; Friendly = friendly; OwnCitadel = ownCitadel; }
+            public readonly int? ArmyId;
+            public ExplosionCollateral(WorthIt.DefenderProfile profile, bool friendly, bool ownCitadel = false, int? armyId = null)
+            { Profile = profile; Friendly = friendly; OwnCitadel = ownCitadel; ArmyId = armyId; }
         }
 
         public readonly struct AirStrikeEstimate
@@ -133,7 +134,7 @@ namespace Game.Combat
                     fates.Add(army.CurrentFates[i]);
                 }
             }
-            if (aircraft == null || aircraft.Count == 0 || defenders.Count == 0 || strikePasses <= 0)
+            if (aircraft == null || aircraft.Count == 0 || (defenders.Count == 0 && collateral?.Any(c => !c.Friendly && c.Profile.HitPoints > 0) != true) || strikePasses <= 0)
                 return new AirStrikeEstimate(SumDefense(defenders), SumAttack(defenders), defenders, 0f);
             var magnitudes = AbilityMagnitudes.Default;
             int[] spent = Enumerable.Range(0, aircraft.Count)
@@ -170,10 +171,12 @@ namespace Game.Combat
         {
             if (aircraft?.Any(p => ExplosionAttack.TargetLimit(p.Abilities) > 0) != true) collateral = null;
             if (aircraft == null || aircraft.Count == 0
-                || knownDefenders == null || knownDefenders.Count == 0 || strikePasses <= 0)
+                || ((knownDefenders == null || knownDefenders.Count == 0)
+                    && collateral?.Any(c => !c.Friendly && c.Profile.HitPoints > 0) != true) || strikePasses <= 0)
                 return new AirStrikeEstimate(SumDefense(knownDefenders), SumAttack(knownDefenders),
                     knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>(), 0f);
 
+            knownDefenders = knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
             AbilityMagnitudes magnitudes = AbilityMagnitudes.Default;
             int[] key = WithCollateralKey(BuildKey(aircraft, knownDefenders, policy, strikePasses, defenderFate, magnitudes), collateral);
             if (TryCached(key, out AirStrikeEstimate cached))
@@ -275,6 +278,12 @@ namespace Game.Combat
                         p.IsSummoned, p.Range, p.Consumption, p.SingleUseUnit);
                 }
 
+                bool Eligible(int idx) => AviationRules.CanTargetFromAir(defenders[idx].IsHero,
+                    alive.Count(j => groups == null || groups[j] == groups[idx]));
+                bool EligibleExtra(int idx) => AviationRules.CanTargetFromAir(extra[idx].IsHero,
+                    collateral[idx].ArmyId.HasValue ? Enumerable.Range(0, extra.Length).Count(j =>
+                        extraHp[j] > 0 && collateral[j].ArmyId == collateral[idx].ArmyId) : 1);
+
                 for (int pass = 0; pass < passes; pass++)
                 {
                     for (int aircraftIndex = 0; aircraftIndex < aircraft.Count; aircraftIndex++)
@@ -285,14 +294,15 @@ namespace Game.Combat
                         int explosion = ExplosionAttack.TargetLimit(plane.Abilities);
                         if (explosion > 0)
                         {
-                            if (policy.MinimumSurvivors > 0 || alive.Count == 0) continue;
+                            if (policy.MinimumSurvivors > 0 || (alive.Count == 0 && !Enumerable.Range(0, extra.Length)
+                                .Any(i => !collateral[i].Friendly && extraHp[i] > 0))) continue;
                             if (Enumerable.Range(0, extra.Length).Any(i => collateral[i].OwnCitadel
                                 && extraHp[i] > 0 && ChallengeResult.ApplyAbilityModifiers(ExplosionAttack.AttackDice,
                                     plane.Abilities, extra[i].TypeTags, extra[i].Abilities, magnitudes) >= extraHp[i])) continue;
-                            var pool = alive.Select(i => (kind: 0, index: i)).ToList();
+                            var pool = alive.Where(Eligible).Select(i => (kind: 0, index: i)).ToList();
                             for (int i = 0; i < planeHp.Length; i++)
                                 if (planeHp[i] > 0 && !(plane.SingleUseUnit && i == aircraftIndex)) pool.Add((1, i));
-                            for (int i = 0; i < extraHp.Length; i++) if (extraHp[i] > 0) pool.Add((2, i));
+                            for (int i = 0; i < extraHp.Length; i++) if (extraHp[i] > 0 && EligibleExtra(i)) pool.Add((2, i));
                             int count = Mathf.Min(explosion, pool.Count);
                             // Match the live AI's refusal to launch a losing blast, including
                             // one sacrifice of an innate missile. Do not value an attack that
@@ -339,7 +349,9 @@ namespace Game.Combat
                         // Matches RunAirStrike: stop once only the policy's survivors remain.
                         if (alive.Count <= policy.MinimumSurvivors)
                             break;
-                        int idx = alive[rng.Next(alive.Count)];
+                        var eligible = alive.Where(Eligible).ToArray();
+                        if (eligible.Length == 0) continue;
+                        int idx = eligible[rng.Next(eligible.Length)];
                         HitDefender(idx, plane, Mathf.RoundToInt(plane.Attack));
                         armed[aircraftIndex] = WorthIt.AfterAttack(plane);
                         planeHp[aircraftIndex] = Mathf.Min(planeHp[aircraftIndex], armed[aircraftIndex].HitPoints);
@@ -492,8 +504,13 @@ namespace Game.Combat
         {
             if (collateral == null || collateral.Count == 0) return key;
             var result = key.ToList(); result.Add(-19020);
+            var groups = new Dictionary<int, int>();
             foreach (var target in collateral)
             {
+                int group = -1;
+                if (target.ArmyId.HasValue && !groups.TryGetValue(target.ArmyId.Value, out group))
+                    groups[target.ArmyId.Value] = group = groups.Count;
+                result.Add(group);
                 result.Add(target.Friendly ? 1 : 0);
                 result.Add(target.OwnCitadel ? 1 : 0);
                 result.AddRange(BuildKey(System.Array.Empty<WorthIt.DefenderProfile>(), new[] { target.Profile },

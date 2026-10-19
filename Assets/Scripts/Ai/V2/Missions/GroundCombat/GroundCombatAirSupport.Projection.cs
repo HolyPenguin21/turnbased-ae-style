@@ -93,11 +93,11 @@ namespace Game.Ai.V2
             if (wing != null && wing.Controller == null) return null;
             if (TargetKnownEmpty(snap, request.Target, request.Policy)) return null;
             Sortie? same = wing != null
-                ? AiAirSortiePlanner.TryPlanSortie(wing, request.Target, map, player, additionalClaims)
-                : AiAirSortiePlanner.TryPlanSortieFromStorage(start, aircraft, request.Target, map, player);
+                ? AiAirSortiePlanner.TryPlanSortie(wing, request.Target, map, player, additionalClaims, singleUseStrike: true)
+                : AiAirSortiePlanner.TryPlanSortieFromStorage(start, aircraft, request.Target, map, player, singleUseStrike: true);
             MultiTurnSortie? multi = same.HasValue ? null : wing != null
-                ? AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, request.Target, map, player, additionalClaims)
-                : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(start, aircraft, request.Target, map, player);
+                ? AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, request.Target, map, player, additionalClaims, singleUseStrike: true)
+                : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(start, aircraft, request.Target, map, player, singleUseStrike: true);
             if (!same.HasValue && !multi.HasValue) return null;
             int outbound = (same?.OutboundPath ?? multi.Value.PathToAction).Hexes.Count - 1;
             int home = (same?.ReturnPath ?? multi.Value.PathFromActionToLanding).Hexes.Count - 1;
@@ -106,7 +106,7 @@ namespace Game.Ai.V2
             if (maxMovement <= 0 || (movement <= 0 && outbound > 0)) return null;
             int eta = 1 + Mathf.CeilToInt(Mathf.Max(0, outbound - movement) / (float)maxMovement);
             if (firstStrikeThisTurnOnly && eta != 1) return null;
-            int strikes = AviationRange.StrikeTurns(movement, maxMovement,
+            int strikes = AiAirSortiePlanner.IsExpendableWing(aircraft) ? 1 : AviationRange.StrikeTurns(movement, maxMovement,
                 AviationRange.SafeUnlandedEndsRemaining(aircraft), outbound, home);
             if (strikes <= 0 || aircraft.All(u => u.Attack <= 0 && ExplosionAttack.TargetLimit(u.Abilities) == 0)) return null;
             // Optional-mission handoff needs useful damage now. Keep the full recoverable
@@ -115,15 +115,19 @@ namespace Game.Ai.V2
             bool[] spent = aircraft.Select(u => eta == 1 && u.HasAirAttackedThisTurn).ToArray();
             if (strikes == 1 && spent.All(s => s)) return null;
             var targets = KnownAirTargets(snap, request.Target, request.Policy);
-            bool known = targets.Sum(t => t.Roster.Units.Count) > 0;
+            bool explosion = aircraft.Any(u => ExplosionAttack.TargetLimit(u.Abilities) > 0);
+            var collateral = explosion ? ExplosionCollateral(snap, request.Target, wing?.Id, request.Policy) : null;
+            bool known = targets.Sum(t => t.Roster.Units.Count) > 0
+                || collateral?.Any(c => !c.Friendly && c.Profile.HitPoints > 0) == true;
+            if (!known && HasHostileStructure(snap, request.Target)) return null;
             var estimate = known ? AviationCombatEstimator.EstimateAirStrikeAgainstArmies(aircraft,
-                targets.Select(t => t.Roster).ToList(), request.Policy, strikes, spent,
-                ExplosionCollateral(snap, request.Target, wing?.Id, request.Policy)) : default;
+                targets.Select(t => t.Roster).ToList(), request.Policy, strikes, spent, collateral) : default;
             if (known && (estimate.NetExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
                 || estimate.ExpectedDefendersAfter.Count < request.Policy.MinimumSurvivors)) return null;
             float ap = wing?.PendingActivationApCost ?? aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
             float energy = wing?.PendingActivationEnergyCost ?? aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
-            float hp = targets.Sum(t => t.Roster.Units.Sum(u => u.HitPoints));
+            float hp = targets.Sum(t => t.Roster.Units.Sum(u => u.HitPoints))
+                + (collateral?.Where(c => !c.Friendly).Sum(c => c.Profile.HitPoints) ?? 0f);
             float effect = known && hp > 0 ? Mathf.Clamp01(estimate.NetExpectedDamage / hp) : 0.5f;
             TaskScore score = ServiceScore(request.Score, effect, ap, energy, eta);
             return new CombatAirService(same?.LandingHex ?? multi.Value.LandingHex,
@@ -221,7 +225,8 @@ namespace Game.Ai.V2
                         // Only this proved wing vacates its standing slot. A following wing
                         // must also respect its landing reservation; own exclusion remains once.
                         Add(wing.Hex, -wing.Members.Count);
-                        Add(service.Value.Landing, wing.Members.Count);
+                        if (!AiAirSortiePlanner.IsExpendableWing(wing.Members))
+                            Add(service.Value.Landing, wing.Members.Count);
                         remaining.RemoveAt(i);
                         advanced = true;
                         break;

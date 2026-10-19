@@ -801,7 +801,7 @@ namespace Game.Ai.V2
             return new InfraCandidate
             {
                 Generation = live,
-                ApCost = ResearchProductionSystem.AttemptApCost(live.CardDef),
+                ApCost = ResearchProductionSystem.AttemptApCost(live.ChallengeCard),
                 ResCost = live.GenerationResourceCost,
                 DecisionScore = generatedScore, TargetHex = demand.TargetHex.Value,
                 Explain = $"generate operator {live.CardDef.displayName} at "

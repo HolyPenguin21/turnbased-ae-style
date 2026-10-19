@@ -244,6 +244,9 @@ namespace Game.Cards
                 reason = "the selected Research/Production hero no longer qualifies";
                 return false;
             }
+            CardDefinition output = catalog.ResolveResult(card);
+            if (output == null)
+            { reason = "the production result cannot be resolved"; return false; }
             if (!CanAffordCard(root, card))
             {
                 reason = "not enough AP or resources for the Research/Production attempt";
@@ -253,7 +256,7 @@ namespace Game.Cards
             var quota = player.IsHuman && player.MatchLoadout != null ? player.BlueprintQuota : null;
             if (player.IsHuman && player.MatchLoadout != null && (quota == null || !quota.TryReserve(card.authoredKey)))
             { reason = "Blueprint is not selected, exhausted, or already in use."; return false; }
-            attempt = new ProductionAttempt(card, quota);
+            attempt = new ProductionAttempt(card, quota, output);
             try { ApplyResearchReveal(mode, hero); PayCardCost(root, card); }
             catch { attempt.Dispose(); throw; }
             return true;

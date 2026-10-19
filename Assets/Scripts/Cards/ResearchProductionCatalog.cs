@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Players;
 using UnityEngine;
 
@@ -18,6 +19,8 @@ namespace Game.Cards
         // CardDefinition.authoredKey. It is independent of displayName, list index/id and faction
         // catalog ordering; those are mutable presentation/editor data.
         public string cardKey;
+        // Empty keeps the existing same-card output. Only a blueprint needs a different result.
+        public string resultCardKey;
         public Faction factionRestriction = Faction.None;
     }
 
@@ -47,6 +50,16 @@ namespace Game.Cards
         // participate in identity.
         public CardDefinition ResolveCard(string cardKey)
             => FactionCardCatalog.ResolveAcross(cardCatalogs, cardKey, false, this);
+
+        public CardDefinition ResolveResult(CardDefinition blueprint)
+        {
+            if (blueprint == null) return null;
+            var keys = (researchCards ?? new List<ResearchProductionEntry>())
+                .Concat(productionCards ?? new List<ResearchProductionEntry>())
+                .Where(e => e != null && e.cardKey == blueprint.authoredKey && !string.IsNullOrWhiteSpace(e.resultCardKey))
+                .Select(e => e.resultCardKey).Distinct().ToArray();
+            return keys.Length == 0 ? blueprint : keys.Length == 1 ? ResolveCard(keys[0]) : null;
+        }
 
         // Every resolvable CardDefinition for `mode`, in list order, after applying each entry's
         // own faction gate against `viewerFaction`. A null/unresolvable cardKey is simply skipped.

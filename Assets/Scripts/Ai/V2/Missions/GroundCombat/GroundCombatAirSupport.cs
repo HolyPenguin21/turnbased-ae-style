@@ -88,7 +88,7 @@ namespace Game.Ai.V2
                 if (own.ArmyId != wingId && own.Hex.Equals(hex))
                     foreach (var unit in own.MembersWithHeroes?.Count > 0 ? own.MembersWithHeroes
                         : own.Members ?? Array.Empty<WorthIt.DefenderProfile>())
-                        result.Add(new AviationCombatEstimator.ExplosionCollateral(unit, true));
+                        result.Add(new AviationCombatEstimator.ExplosionCollateral(unit, true, armyId: own.ArmyId));
             foreach (var building in snap?.Known?.Buildings ?? Array.Empty<AiMapMemory.KnownBuilding>())
                 if (building.Hex.Equals(hex))
                 {
@@ -101,7 +101,7 @@ namespace Game.Ai.V2
             foreach (var other in KnownAirTargets(snap, hex, AirStrikePolicy.Standard))
                 if (policy.ExactTargetArmyId.HasValue && other.ArmyId != policy.ExactTargetArmyId.Value)
                     foreach (var unit in other.Roster.Units)
-                        result.Add(new AviationCombatEstimator.ExplosionCollateral(unit, false));
+                        result.Add(new AviationCombatEstimator.ExplosionCollateral(unit, false, armyId: other.ArmyId));
             return result;
         }
         internal static bool WingLanded(PlayerSetupData player, int? armyId) =>
@@ -113,7 +113,13 @@ namespace Game.Ai.V2
             snap?.Known?.AirSightings != null
             && ReconIntelSnapshotRegistry.TryGetLastObservedTurn(snap, hex, out int observed)
             && observed == snap.TurnNumber
+            && !HasHostileStructure(snap, hex)
             && KnownAirTargets(snap, hex, policy).Sum(s => s.Roster.Units.Count) <= policy.MinimumSurvivors;
+
+        internal static bool HasHostileStructure(WorldSnapshot snap, HexCoord hex) =>
+            (snap?.Known?.Buildings ?? Array.Empty<AiMapMemory.KnownBuilding>()).Any(b =>
+                b.Hex.Equals(hex) && b.Owner != snap.Observer
+                && b.ExplosionStructures?.Any(p => p.HitPoints > 0) == true);
 
         private static List<AiMapMemory.KnownAirSighting> AirTargets(
             IEnumerable<AiMapMemory.KnownAirSighting> sightings, PlayerSetupData observer,
@@ -135,6 +141,8 @@ namespace Game.Ai.V2
         internal static bool TargetKnownEmpty(PlayerSetupData player, int turn, HexCoord hex, AirStrikePolicy policy) =>
             AiReconIntelMemory.TryGetLastObservedTurn(player, hex, out int observed)
             && observed == turn
+            && !AiMapMemory.AllKnownBuildings(player).Any(b => b.Hex.Equals(hex) && b.Owner != player
+                && b.ExplosionStructures?.Any(p => p.HitPoints > 0) == true)
             && AirTargets(AiMapMemory.AllKnownAirSightings(player), player, hex, policy)
                 .Sum(s => s.Roster.Units.Count) <= policy.MinimumSurvivors;
 
@@ -460,7 +468,9 @@ namespace Game.Ai.V2
                 if (sortie == null || sortie.Kind != AirSortieKind.Strike || wing == null
                     || !AviationRules.IsValidAirArmy(wing)
                     || AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
-                    || AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, map, player))
+                    || AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, map, player)
+                    || (sortie.Outbound && !wing.Hex.Equals(sortie.TargetHex)
+                        && AiAirSortiePlanner.CanEndTurnHereAndReachStrike(wing, sortie.TargetHex, map, player)))
                     continue;
                 SendHome(player, sortie, "cannot safely end another turn over the target");
                 if (wing.CurrentMovement > 0)
@@ -541,9 +551,9 @@ namespace Game.Ai.V2
                 failure = ProvisionFailure.TargetInvalidated("air support has no observed strike target");
                 return false;
             }
-            Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
+            Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player, singleUseStrike: true);
             MultiTurnSortie? multi = sameTurn.HasValue ? null
-                : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player);
+                : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player, singleUseStrike: true);
             if (!sameTurn.HasValue && !multi.HasValue)
             {
                 failure = ProvisionFailure.NoExecutableStep(

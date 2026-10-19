@@ -44,6 +44,8 @@ namespace Game.Ai.V2
         public HexCoord FacilityHex;
         public UnitData Hero;
         public CardDefinition CardDef;     // what a won Challenge mints
+        public CardDefinition BlueprintDef; // optional distinct challenge card; absent for existing content
+        public CardDefinition ChallengeCard => BlueprintDef ?? CardDef;
         public float SuccessChance;        // ResearchProductionSystem.EstimateSuccessChance
         public bool ProducesEquipment;     // CardDef.cardType == CardType.Equipment
 
@@ -55,7 +57,7 @@ namespace Game.Ai.V2
 
         // The ResourceCost a won/lost Challenge actually charges pre-mint (the
         // minted card's own EffectivePlayResourceCost is null once ResearchProductionCreated).
-        public ResourceCost GenerationResourceCost => CardDef != null ? CardDef.resourceCost : null;
+        public ResourceCost GenerationResourceCost => ChallengeCard != null ? ChallengeCard.resourceCost : null;
     }
 
     public sealed class MaterializationPlan

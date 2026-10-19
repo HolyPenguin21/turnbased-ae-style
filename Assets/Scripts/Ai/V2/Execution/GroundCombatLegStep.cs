@@ -31,6 +31,17 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class GroundCombatLegStep
     {
+        // Keep the physical attack receipt even when a SingleUse wing has already been
+        // removed from ArmyRegistry. Destruction by AA alone has no such receipt.
+        internal static bool RecordAirStrikeReceipt(ArmyData wing, HexCoord target, ExecutionResult result)
+        {
+            bool attacked = wing?.LastAirStrikeHex.HasValue == true
+                && wing.LastAirStrikeHex.Value.Equals(target) && wing.LastAirStrikeAttacked;
+            result.CombatChanged |= attacked;
+            result.AirSupportStrikeSucceeded |= attacked;
+            return attacked;
+        }
+
         internal static IEnumerator Transit(PlayerSetupData player, AiTurnContext ctx,
             ArmyData army, HexCoord destination, string reason, GroundLegStepResult r,
             ExecutionResult execution = null)
@@ -177,6 +188,8 @@ namespace Game.Ai.V2
                 if (!final.Equals(before))
                     result.StepsMoved++;
                 result.FinalHex = final;
+                attacked = enteringTarget && final.Equals(targetHex)
+                    && RecordAirStrikeReceipt(moved ?? wing, targetHex, result);
                 if (moved == null || !AviationRules.IsValidAirArmy(moved))
                 {
                     AirSortieRegistry.Remove(player, sortie);
@@ -197,10 +210,6 @@ namespace Game.Ai.V2
                         ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
                     yield break;
                 }
-                attacked = wing.LastAirStrikeHex.HasValue && wing.LastAirStrikeHex.Value.Equals(targetHex)
-                    && wing.LastAirStrikeAttacked;
-                result.CombatChanged |= attacked;
-                result.AirSupportStrikeSucceeded |= attacked;
             }
             // Over the target: keep striking on later turns, or end the series and go home.
             bool targetsRemain = AviationCombatPresenter.FindAirStrikeTargetsAt(wing.Hex, player,

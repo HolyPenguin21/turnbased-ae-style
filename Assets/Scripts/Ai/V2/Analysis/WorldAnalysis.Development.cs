@@ -113,7 +113,7 @@ namespace Game.Ai.V2
                     player, root, ctx, hand, null, null, analysisView: true))
                 {
                     var stake = new ResourceBundle();
-                    ResourceCost cost = g.CardDef?.resourceCost;
+                    ResourceCost cost = g.GenerationResourceCost;
                     if (cost != null)
                         foreach (ResourceType t in ResourceBundle.All)
                             stake.Add(t, cost.Get(t));
