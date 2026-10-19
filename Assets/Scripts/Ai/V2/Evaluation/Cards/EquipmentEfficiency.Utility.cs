@@ -59,12 +59,15 @@ namespace Game.Ai.V2
                 // One common value of the already owned body, including its existing stat upgrades.
                 // End-of-horizon survival is separate from attacks already earned inside it.
                 float survivorValue = Base(before) * AiConfigV2.equipCardValuePerE;
-                float cBefore = Contribution(before, beforeAbilities, ctx, ground, survivorValue, ctx.BeforeConsumption);
-                float cAfter = Contribution(after, afterAbilities, ctx, ground, survivorValue, ctx.AfterConsumption);
+                bool area = ctx.SingleUseHost || ExplosionAttack.TargetLimit(beforeAbilities) > 0 || ExplosionAttack.TargetLimit(afterAbilities) > 0;
+                float cBefore = area ? ExplosionBattleValue(before, beforeAbilities, ctx, ground, ctx.BeforeConsumption)
+                    : Contribution(before, beforeAbilities, ctx, ground, survivorValue, ctx.BeforeConsumption);
+                float cAfter = area ? ExplosionBattleValue(after, afterAbilities, ctx, ground, ctx.AfterConsumption)
+                    : Contribution(after, afterAbilities, ctx, ground, survivorValue, ctx.AfterConsumption);
                 dC = cAfter - cBefore;
                 float scale = AiConfigV2.equipCombatCardScale;
                 if (Mathf.Approximately(ctx.OffenseMult, ctx.DefenseMult)
-                    || ctx.BeforeConsumption != null || ctx.AfterConsumption != null)
+                    || ctx.BeforeConsumption != null || ctx.AfterConsumption != null || area)
                 {
                     offense = scale * dC * ctx.OffenseMult;
                 }
@@ -189,8 +192,47 @@ namespace Game.Ai.V2
             EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx)
         {
             IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx);
+            if (ctx.SingleUseHost || ExplosionAttack.TargetLimit(beforeAbilities) > 0 || ExplosionAttack.TargetLimit(afterAbilities) > 0)
+                return AiConfigV2.equipCombatCardScale * (ExplosionSortieValue(after, afterAbilities, ctx, ground, ctx.AfterConsumption)
+                    - ExplosionSortieValue(before, beforeAbilities, ctx, ground, ctx.BeforeConsumption));
             return AiConfigV2.equipCombatCardScale * (SortieValue(after, afterAbilities, ground, ctx, ctx.AfterConsumption)
                 - SortieValue(before, beforeAbilities, ground, ctx, ctx.BeforeConsumption));
+        }
+
+        private static WorthIt.DefenderProfile ExplosionHost(EfficiencyStats s, IReadOnlyCollection<string> abilities,
+            EfficiencyContext ctx, EquipmentConsumption consumption) =>
+            new WorthIt.DefenderProfile(s.Defense, abilities.Contains(UnitAbilities.CeramicArmor), ctx.HostTags?.ToArray(),
+                s.Attack, Mathf.Max(1, s.HitPoints - ctx.HpSpent), s.Initiative, abilities.ToArray(), s.HitPoints,
+                range: s.Range, consumption: consumption, singleUseUnit: ctx.SingleUseHost);
+
+        // Area attacks need a roster forecast: the one-on-one contact horizon cannot represent
+        // random distinct victims or friendly fire. Both candidate states use the same estimator.
+        private static float ExplosionBattleValue(EfficiencyStats s, IReadOnlyCollection<string> abilities,
+            EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets, EquipmentConsumption consumption)
+        {
+            var own = (ctx.ExplosionAllies ?? Array.Empty<WorthIt.DefenderProfile>()).ToList();
+            own.Add(ExplosionHost(s, abilities, ctx, consumption));
+            var battles = ctx.Battles != null && ctx.Battles.Count > 0 ? ctx.Battles
+                : new[] { (IReadOnlyList<WorthIt.DefenderProfile>)targets };
+            float value = 0;
+            foreach (var enemies in battles)
+            {
+                var outcome = WorthIt.Estimate(own, enemies.ToArray(), 0f);
+                value += outcome.WinChance * (1f + outcome.ExpectedSurvivingHpRatioOnWin);
+            }
+            return AiConfigV2.equipCombatBodyScale * value / battles.Count;
+        }
+
+        private static float ExplosionSortieValue(EfficiencyStats s, IReadOnlyCollection<string> abilities,
+            EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets, EquipmentConsumption consumption)
+        {
+            var host = ExplosionHost(s, abilities, ctx, consumption);
+            var allies = (ctx.ExplosionAllies ?? Array.Empty<WorthIt.DefenderProfile>())
+                .Select(p => new AviationCombatEstimator.ExplosionCollateral(p, true)).ToArray();
+            var forecast = AviationCombatEstimator.EstimateAirStrike(new[] { host }, targets,
+                Game.Aviation.AirStrikePolicy.Standard, Mathf.Max(1, Mathf.CeilToInt(ctx.ExpectedActivations)), collateral: allies);
+            float hp = targets.Sum(p => Mathf.Max(1, p.HitPoints));
+            return AiConfigV2.equipCombatBodyScale * forecast.NetExpectedDamage / Mathf.Max(1, hp);
         }
 
         private static float SortieValue(EfficiencyStats s, IReadOnlyCollection<string> abilities,
@@ -458,7 +500,7 @@ namespace Game.Ai.V2
             WorthIt.DefenderProfile State(WorthIt.DefenderProfile p, float hp, float attack, float defense) =>
                 new WorthIt.DefenderProfile(defense, p.HasCeramicArmor, p.TypeTags, attack, hp,
                     p.Initiative, p.Abilities, p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax,
-                    p.IsSummoned, p.Range, p.Consumption);
+                    p.IsSummoned, p.Range, p.Consumption, p.SingleUseUnit);
             WorthIt.DefenderProfile Hit(WorthIt.DefenderProfile p, int damage)
             {
                 int attack = Mathf.RoundToInt(p.Attack), defense = Mathf.RoundToInt(p.Defense);

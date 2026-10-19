@@ -5,8 +5,11 @@
 The Equipment payload's `Add Abilities` selector is also supported. Configure
 the damage/stat/skill bonuses in the ordinary Equipment payload.
 
-The marker is read from the installed item itself. An innate unit ability or
-a Mutator carrying the same marker cannot destroy an ordinary item. Existing
+The equipment marker is read from the installed item itself. An innate unit ability or
+a Mutator carrying the same marker cannot destroy an ordinary item. Innate `SingleUse`
+on a Unit card now expends that unit after its attack; an Equipment/Mutator grant does
+not make the host disposable. An explosion completes its entire victim series before
+either source is expended (see `explosion-skills.md`). Existing
 cards are unchanged; this change does not assign the marker to any catalog item.
 
 ## Lifetime

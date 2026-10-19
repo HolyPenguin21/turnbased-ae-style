@@ -108,7 +108,7 @@ namespace Game.Ai.V2
             if (firstStrikeThisTurnOnly && eta != 1) return null;
             int strikes = AviationRange.StrikeTurns(movement, maxMovement,
                 AviationRange.SafeUnlandedEndsRemaining(aircraft), outbound, home);
-            if (strikes <= 0 || aircraft.All(u => u.Attack <= 0)) return null;
+            if (strikes <= 0 || aircraft.All(u => u.Attack <= 0 && ExplosionAttack.TargetLimit(u.Abilities) == 0)) return null;
             // Optional-mission handoff needs useful damage now. Keep the full recoverable
             // route proof above, but do not count a spent aircraft's next-turn strike.
             if (firstStrikeThisTurnOnly) strikes = 1;
@@ -117,13 +117,14 @@ namespace Game.Ai.V2
             var targets = KnownAirTargets(snap, request.Target, request.Policy);
             bool known = targets.Sum(t => t.Roster.Units.Count) > 0;
             var estimate = known ? AviationCombatEstimator.EstimateAirStrikeAgainstArmies(aircraft,
-                targets.Select(t => t.Roster).ToList(), request.Policy, strikes, spent) : default;
-            if (known && (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
+                targets.Select(t => t.Roster).ToList(), request.Policy, strikes, spent,
+                ExplosionCollateral(snap, request.Target, wing?.Id, request.Policy)) : default;
+            if (known && (estimate.NetExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
                 || estimate.ExpectedDefendersAfter.Count < request.Policy.MinimumSurvivors)) return null;
             float ap = wing?.PendingActivationApCost ?? aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
             float energy = wing?.PendingActivationEnergyCost ?? aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
             float hp = targets.Sum(t => t.Roster.Units.Sum(u => u.HitPoints));
-            float effect = known && hp > 0 ? Mathf.Clamp01(estimate.ExpectedDamage / hp) : 0.5f;
+            float effect = known && hp > 0 ? Mathf.Clamp01(estimate.NetExpectedDamage / hp) : 0.5f;
             TaskScore score = ServiceScore(request.Score, effect, ap, energy, eta);
             return new CombatAirService(same?.LandingHex ?? multi.Value.LandingHex,
                 eta, strikes, outbound + home, known, ap, energy, score, estimate);

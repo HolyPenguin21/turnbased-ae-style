@@ -45,6 +45,13 @@ namespace Game.UI
             if (attackPopup == null || attacker == null || defender == null)
                 return;
 
+            if (ExplosionAttack.TargetLimit(attacker.Abilities) > 0)
+            {
+                if (!isCounterattack) _battleEngine?.CommitGroundAttack(attacker);
+                StartCoroutine(RunExplosionAttack(attacker));
+                return;
+            }
+
             // Identity (whose hero, whose Fate, whose movement gets zeroed) must come from actual
             // army membership, NOT from which grid row the attacker currently stands in — a unit
             // can advance into the opposing side's own rows to reach melee range, at which point
@@ -79,6 +86,20 @@ namespace Game.UI
                 defense.TerrainBonus, defense.ConstructionBonus,
                 defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve,
                 interceptor: interceptor, isCounterattack: isCounterattack, tacticsCritical: _tacticsCritical);
+        }
+
+        private IEnumerator RunExplosionAttack(UnitData attacker)
+        {
+            var explosion = new ExplosionAttack(attacker, _battleEngine.State.BattleHex,
+                AviationCombatPresenter.HeadlessRng, _battleEngine.State.Attacker, _battleEngine.State.Defender);
+            yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelectionController,
+                _battleEngine, _fastResolve, _tacticsCritical, (target, application) =>
+                {
+                    foreach (var removal in application.Removals) ShowUnitRemovalThought(removal);
+                    RefreshGrid();
+                }, map);
+            RefreshGrid();
+            if (!CheckBattleEnd()) EndTurn();
         }
 
         private void OnAttackResolved(UnitData attacker, UnitData defender,

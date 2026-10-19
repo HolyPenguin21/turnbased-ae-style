@@ -267,7 +267,8 @@ namespace Game.UI
             Sprite attackerLogo, Sprite defenderLogo, Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
             int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0,
-            bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false, bool tacticsCritical = false)
+            bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false, bool tacticsCritical = false,
+            string challengeTitle = null)
         {
             _tacticsCritical = tacticsCritical;
             CloseTacticPresentation();
@@ -316,7 +317,7 @@ namespace Game.UI
             // user's own request: the title should read "Capture/Kill Challenge" specifically
             // for that flow, not the generic one this popup defaults to).
             if (titleText != null)
-                titleText.text = isCounterattack ? "COUNTERATTACK" : "GROUND COMBAT";
+                titleText.text = challengeTitle ?? (isCounterattack ? "COUNTERATTACK" : "GROUND COMBAT");
 
             _attackerDicePoolSize = attackerPoolSize ?? (attacker?.Attack ?? 0);
             int defenderBaseDefense = defender == null ? 0

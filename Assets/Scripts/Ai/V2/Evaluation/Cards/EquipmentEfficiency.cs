@@ -76,6 +76,8 @@ namespace Game.Ai.V2
         public int HostCommanderInitiative, EnemyCommanderInitiative;
         public float ExpectedActivations = AiConfigV2.equipExpectedActivations;
         public EquipmentConsumption BeforeConsumption, AfterConsumption;
+        public bool SingleUseHost;
+        public IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> ExplosionAllies;
         internal EfficiencyContext WithoutConsumption()
         {
             var copy = (EfficiencyContext)MemberwiseClone();
@@ -302,6 +304,7 @@ namespace Game.Ai.V2
             UnitAbilities.Splash, UnitAbilities.Scorcher, UnitAbilities.Hyperkinetic, UnitAbilities.Pyrokinetic,
             UnitAbilities.ShockAttack, UnitAbilities.AntiAir, UnitAbilities.RapidReaction, UnitAbilities.Berserk,
             UnitAbilities.Ionic, UnitAbilities.Counterattack,
+            UnitAbilities.Explosion3, UnitAbilities.Explosion5, UnitAbilities.Explosion10,
         };
 
         internal static bool IsPriced(string ability)

@@ -196,11 +196,11 @@ namespace Game.Map
 
         // Death / removal from play / return-to-deck — drop every trace so a recycled
         // UnitData reference can never carry a stale detection.
-        public static void OnUnitRemoved(UnitData unit)
+        public static void OnUnitRemoved(UnitData unit, bool deferCarrierCleanup = false)
         {
             if (unit == null)
                 return;
-            Game.Aviation.AviationActions.RemoveCarrierContainers(unit);
+            if (!deferCarrierCleanup) Game.Aviation.AviationActions.RemoveCarrierContainers(unit);
             bool had = unit.IsHidden || _detected.ContainsKey(unit);
             unit.IsHidden = false;
             _detected.Remove(unit);

@@ -485,6 +485,7 @@ namespace Game.Ai.V2
                         }
                     if (p.Consumption != null)
                         foreach (char c in p.Consumption.Key) h = h * 31 + c;
+                    if (p.SingleUseUnit) h = h * 31 + 19019;
                     sum += h;
                     xor ^= h * 397;
                 }

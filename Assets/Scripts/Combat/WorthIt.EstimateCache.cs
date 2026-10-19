@@ -29,14 +29,14 @@ namespace Game.Combat
     // coroutine cannot carry entries into the next turn.
     public static partial class WorthIt
     {
-        private const int EstimateKeyVersion = 4;
+        private const int EstimateKeyVersion = 5;
         private const int EstimateCacheMaxEntries = 50000;
 
         // The field sets the key covers. WorthItEstimateCacheTests compares them against the real
         // struct fields by reflection, so adding a field without deciding its key fate fails a test.
         internal static readonly string[] EstimateKeyBattleUnitFields =
             { "Attack", "Defense", "Abilities", "TypeTags", "Initiative", "Hp", "MaxHp",
-                "IsHero", "HeroFate", "IsSummoned", "Range", "Consumption" };
+                "IsHero", "HeroFate", "IsSummoned", "Range", "Consumption", "SingleUseUnit" };
         internal static readonly string[] EstimateKeySideCommanderFields =
             { "Present", "Initiative", "Fate", "SupportHeroes" };
         internal static readonly string[] EstimateKeyAbilityMagnitudesFields =
@@ -50,7 +50,7 @@ namespace Game.Combat
         // the BattleUnit key. The rest are read elsewhere, never by the simulation.
         internal static readonly string[] EstimateKeyDefenderProfileSimulatedFields =
             { "Attack", "Defense", "HitPoints", "MaxHitPoints", "Initiative", "Abilities", "TypeTags",
-                "IsHero", "FateMax", "IsSummoned", "Range", "Consumption" };
+                "IsHero", "FateMax", "IsSummoned", "Range", "Consumption", "SingleUseUnit" };
         internal static readonly string[] EstimateKeyDefenderProfileNonSimulatedFields =
         {
             "HasCeramicArmor",   // CanDamage only; the simulation reads CeramicArmor from Abilities
@@ -227,6 +227,7 @@ namespace Game.Combat
             buf.Add(u.HeroFate);
             buf.Add(u.IsSummoned ? 1 : 0);
             buf.Add(u.Range);
+            if (u.SingleUseUnit) { buf.Add(-19019); buf.Add(1); }
             AppendConsumptionKey(buf, u.Consumption);
             int abilities = u.Abilities?.Count ?? -1;
             buf.Add(abilities);

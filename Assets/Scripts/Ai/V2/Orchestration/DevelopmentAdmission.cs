@@ -384,7 +384,7 @@ namespace Game.Ai.V2
                         .OrderBy(x => x, System.StringComparer.Ordinal));
                 rows.Add($"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
                     + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/"
-                    + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}");
+                    + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}/singleUnit={d.SingleUseUnit}");
             }
             rows.Sort(System.StringComparer.Ordinal);
             return $"{defenders.Count}:" + string.Join("|", rows);
