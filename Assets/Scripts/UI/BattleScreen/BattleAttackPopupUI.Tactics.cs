@@ -60,7 +60,9 @@ namespace Game.UI
                 _tacticHand.Bind(owner.Tactics);
                 // The existing full-screen modal blocks ordinary map input. Only the tactic
                 // hand is brought above it; its buttons still use the challenge decision gate.
-                var canvas = _tacticHand.GetComponent<Canvas>() ?? _tacticHand.gameObject.AddComponent<Canvas>();
+                // '??' would not work here: in the editor GetComponent returns a non-null placeholder for a missing component.
+                var canvas = _tacticHand.GetComponent<Canvas>();
+                if (canvas == null) canvas = _tacticHand.gameObject.AddComponent<Canvas>();
                 canvas.overrideSorting = true;
                 canvas.sortingOrder = 25000;
                 if (_tacticHand.GetComponent<GraphicRaycaster>() == null)

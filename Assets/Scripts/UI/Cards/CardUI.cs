@@ -171,7 +171,8 @@ namespace Game.UI
             _tacticError = showError;
             // Battle cards have their own visual component but share this interaction.
             // A nested canvas raises only the carried card above the challenge/hand.
-            _canvas = GetComponent<Canvas>() ?? gameObject.AddComponent<Canvas>();
+            _canvas = GetComponent<Canvas>();
+            if (_canvas == null) _canvas = gameObject.AddComponent<Canvas>();
             if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
             _animDuration = 0f;
             _hoverLift = 0f;
