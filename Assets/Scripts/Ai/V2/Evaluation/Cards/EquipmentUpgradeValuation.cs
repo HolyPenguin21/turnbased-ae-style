@@ -124,7 +124,8 @@ namespace Game.Ai.V2
                 beforeConsumption: EquipmentSystem.Consumption(host, hostCard?.Equipment, hostCard?.Mutator),
                 afterConsumption: EquipmentSystem.Consumption(host,
                     equipDef.attachmentSlot == AttachmentSlot.Equipment ? equipDef : hostCard?.Equipment,
-                    equipDef.attachmentSlot == AttachmentSlot.Mutator ? equipDef : hostCard?.Mutator)));
+                    equipDef.attachmentSlot == AttachmentSlot.Mutator ? equipDef : hostCard?.Mutator),
+                singleUseHost: ExplosionAttack.IsSingleUseUnit(host)));
         }
 
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, UnitData host,
@@ -182,7 +183,8 @@ namespace Game.Ai.V2
             PredictedEquipmentState? projected = null, bool includeStealthTrait = true,
             IReadOnlyList<UnitTypeTag> hostTags = null, MissionIntent purpose = null, ArmyData army = null,
             MaterializationPlan deployment = null, int hpSpent = 0, UnitData hostUnit = null,
-            EquipmentConsumption beforeConsumption = null, EquipmentConsumption afterConsumption = null)
+            EquipmentConsumption beforeConsumption = null, EquipmentConsumption afterConsumption = null,
+            bool singleUseHost = false)
         {
             using var __scope = new Game.Core.ProfileScope("AI/Equip.ScoreDelta");
             PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
@@ -206,7 +208,7 @@ namespace Game.Ai.V2
             // own unit at its own boundary (WorldAnalysis.Self.EquipmentReserve).
             return ScoreEquipmentByEfficiency(before, predicted, hostAbilities, isHero, snap, inv,
                 includeStealthTrait, purpose, army, hostUnit, hostTags, deployment, hpSpent,
-                beforeConsumption, afterConsumption);
+                beforeConsumption, afterConsumption, singleUseHost);
         }
 
         // Operational equipment value: the change in the host's efficiency (EquipmentEfficiency),
@@ -217,7 +219,7 @@ namespace Game.Ai.V2
             PredictedEquipmentState predicted, IReadOnlyList<string> hostAbilities, bool isHero,
             WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait, MissionIntent purpose, ArmyData army,
             UnitData hostUnit, IReadOnlyList<UnitTypeTag> hostTags, MaterializationPlan deployment, int hpSpent,
-            EquipmentConsumption beforeConsumption, EquipmentConsumption afterConsumption)
+            EquipmentConsumption beforeConsumption, EquipmentConsumption afterConsumption, bool singleUseHost)
         {
             using var __eff = new Game.Core.ProfileScope("AI/Equip.Efficiency");
             int After(EquipmentStat stat) =>
@@ -249,6 +251,8 @@ namespace Game.Ai.V2
                 HpSpent = hpSpent,
                 BeforeConsumption = beforeConsumption,
                 AfterConsumption = afterConsumption,
+                SingleUseHost = hostUnit != null ? ExplosionAttack.IsSingleUseUnit(hostUnit) : singleUseHost,
+                ExplosionAllies = army?.Members.Where(u => u != hostUnit).Select(WorthIt.FromLiveUnit).ToArray(),
             };
             if (targets.Count > 0 && aviation)
             {

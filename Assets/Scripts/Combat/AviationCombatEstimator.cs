@@ -3,6 +3,7 @@ using System.Linq;
 using Game.Combat;
 using Game.Aviation;
 using Game.Units;
+using Game.Cards;
 using UnityEngine;
 
 namespace Game.Combat
@@ -31,12 +32,23 @@ namespace Game.Combat
         private const int KeyVersion = 6;
         private const int CacheMaxEntries = 20000;
 
+        public readonly struct ExplosionCollateral
+        {
+            public readonly WorthIt.DefenderProfile Profile;
+            public readonly bool Friendly;
+            public readonly bool OwnCitadel;
+            public ExplosionCollateral(WorthIt.DefenderProfile profile, bool friendly, bool ownCitadel = false)
+            { Profile = profile; Friendly = friendly; OwnCitadel = ownCitadel; }
+        }
+
         public readonly struct AirStrikeEstimate
         {
             public readonly float ExpectedDefenseAfter;
             public readonly float ExpectedAttackAfter;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> ExpectedDefendersAfter;
             public readonly float ExpectedDamage;
+            public readonly float ExpectedFriendlyDamage;
+            public float NetExpectedDamage => ExpectedDamage - ExpectedFriendlyDamage;
             // Read off the same trials ExpectedDamage averages over, never a second pass.
             public readonly float KillAnyProbability;
             public readonly float ExpectedKillCount;
@@ -50,7 +62,8 @@ namespace Game.Combat
             public AirStrikeEstimate(float expectedDefenseAfter, float expectedAttackAfter,
                 IReadOnlyList<WorthIt.DefenderProfile> expectedDefendersAfter, float expectedDamage,
                 float killAnyProbability = 0f, float expectedKillCount = 0f, float wipeProbability = 0f,
-                IReadOnlyList<int> survivorSourceIndices = null, IReadOnlyList<int> expectedCurrentFatesAfter = null)
+                IReadOnlyList<int> survivorSourceIndices = null, IReadOnlyList<int> expectedCurrentFatesAfter = null,
+                float expectedFriendlyDamage = 0f)
             {
                 ExpectedCurrentFatesAfter = expectedCurrentFatesAfter == null ? null
                     : System.Array.AsReadOnly(expectedCurrentFatesAfter.ToArray());
@@ -61,6 +74,7 @@ namespace Game.Combat
                 ExpectedDefendersAfter = expectedDefendersAfter == null ? null
                     : System.Array.AsReadOnly(expectedDefendersAfter.ToArray());
                 ExpectedDamage = expectedDamage;
+                ExpectedFriendlyDamage = expectedFriendlyDamage;
                 KillAnyProbability = killAnyProbability;
                 ExpectedKillCount = expectedKillCount;
                 WipeProbability = wipeProbability;
@@ -93,14 +107,15 @@ namespace Game.Combat
 
         public static AirStrikeEstimate EstimateAirStrikeAgainstArmies(IReadOnlyList<UnitData> aircraft,
             IReadOnlyList<DefendingAirArmy> armies, AirStrikePolicy policy, int strikePasses = 1,
-            IReadOnlyList<bool> firstPassSpent = null) =>
+            IReadOnlyList<bool> firstPassSpent = null, IReadOnlyList<ExplosionCollateral> collateral = null) =>
             EstimateAirStrikeAgainstArmies(aircraft?.Where(x => x != null).Select(WorthIt.FromLiveUnit).ToList(),
-                armies, policy, strikePasses, firstPassSpent);
+                armies, policy, strikePasses, firstPassSpent, collateral);
 
         public static AirStrikeEstimate EstimateAirStrikeAgainstArmies(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
             IReadOnlyList<DefendingAirArmy> armies, AirStrikePolicy policy, int strikePasses = 1,
-            IReadOnlyList<bool> firstPassSpent = null)
+            IReadOnlyList<bool> firstPassSpent = null, IReadOnlyList<ExplosionCollateral> collateral = null)
         {
+            if (aircraft?.Any(p => ExplosionAttack.TargetLimit(p.Abilities) > 0) != true) collateral = null;
             var defenders = new List<WorthIt.DefenderProfile>();
             var groups = new List<int>();
             var fates = new List<int>();
@@ -128,9 +143,10 @@ namespace Game.Combat
                 .Concat(new[] { -4000 }).Concat(fates)
                 .Concat(new[] { -5000 }).Concat(commanders)
                 .Concat(new[] { -6000 }).Concat(spent).ToArray();
+            key = WithCollateralKey(key, collateral);
             if (TryCached(key, out AirStrikeEstimate cached)) return cached;
             AirStrikeEstimate result = Simulate(aircraft, defenders, policy, strikePasses, 0,
-                magnitudes, Seed(key), groups.ToArray(), fates.ToArray(), commanders.ToArray(), spent);
+                magnitudes, Seed(key), groups.ToArray(), fates.ToArray(), commanders.ToArray(), spent, collateral);
             Store(key, result);
             return result;
         }
@@ -138,9 +154,9 @@ namespace Game.Combat
         // Live-roster overload (the aircraft as they fly now).
         public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<UnitData> aircraft,
             IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy,
-            int strikePasses = 1, int defenderFate = 0) =>
+            int strikePasses = 1, int defenderFate = 0, IReadOnlyList<ExplosionCollateral> collateral = null) =>
             EstimateAirStrike(aircraft?.Where(x => x != null).Select(WorthIt.FromLiveUnit).ToList(),
-                knownDefenders, policy, strikePasses, defenderFate);
+                knownDefenders, policy, strikePasses, defenderFate, collateral);
 
         // `aircraft` — the attackers' current profiles (Attack and Abilities are read).
         // `knownDefenders` — the remembered target roster. Null/empty means the roster is UNKNOWN:
@@ -150,19 +166,20 @@ namespace Game.Combat
         // aircraft attacks once, wounds carry over between passes.
         public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
             IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy,
-            int strikePasses = 1, int defenderFate = 0)
+            int strikePasses = 1, int defenderFate = 0, IReadOnlyList<ExplosionCollateral> collateral = null)
         {
+            if (aircraft?.Any(p => ExplosionAttack.TargetLimit(p.Abilities) > 0) != true) collateral = null;
             if (aircraft == null || aircraft.Count == 0
                 || knownDefenders == null || knownDefenders.Count == 0 || strikePasses <= 0)
                 return new AirStrikeEstimate(SumDefense(knownDefenders), SumAttack(knownDefenders),
                     knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>(), 0f);
 
             AbilityMagnitudes magnitudes = AbilityMagnitudes.Default;
-            int[] key = BuildKey(aircraft, knownDefenders, policy, strikePasses, defenderFate, magnitudes);
+            int[] key = WithCollateralKey(BuildKey(aircraft, knownDefenders, policy, strikePasses, defenderFate, magnitudes), collateral);
             if (TryCached(key, out AirStrikeEstimate cached))
                 return cached;
             AirStrikeEstimate result = Simulate(aircraft, knownDefenders, policy, strikePasses,
-                Mathf.Max(0, defenderFate), magnitudes, Seed(key));
+                Mathf.Max(0, defenderFate), magnitudes, Seed(key), collateral: collateral);
             Store(key, result);
             return result;
         }
@@ -170,7 +187,8 @@ namespace Game.Combat
         private static AirStrikeEstimate Simulate(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, AirStrikePolicy policy, int passes,
             int defenderFate, AbilityMagnitudes magnitudes, int seed,
-            int[] groups = null, int[] currentFates = null, int[] commanders = null, int[] firstPassSpent = null)
+            int[] groups = null, int[] currentFates = null, int[] commanders = null, int[] firstPassSpent = null,
+            IReadOnlyList<ExplosionCollateral> collateral = null)
         {
             var rng = new System.Random(seed);
             int n = defenders.Count;
@@ -179,7 +197,7 @@ namespace Game.Combat
             var defenseSum = new float[n];
             var survivalCount = new int[n];
             var fateSum = new float[n];
-            float totalDamageSum = 0f;
+            float totalDamageSum = 0f, friendlyDamageSum = 0f;
             int killAnyTrials = 0, wipeTrials = 0;
             float killCountSum = 0f;
 
@@ -201,17 +219,18 @@ namespace Game.Combat
                 int fate = defenderFate;
                 int[] fates = currentFates != null ? (int[])currentFates.Clone() : null;
                 var armed = aircraft.ToArray();
+                var planeHp = aircraft.Select(p => Mathf.Max(0f, p.HitPoints)).ToArray();
+                var planeFates = aircraft.Select(p => p.FateMax).ToArray();
+                var extra = (collateral ?? System.Array.Empty<ExplosionCollateral>()).Select(c => c.Profile).ToArray();
+                var extraHp = extra.Select(p => Mathf.Max(0f, p.HitPoints)).ToArray();
+                var extraFates = extra.Select(p => p.FateMax).ToArray();
+                float friendlyStart = planeHp.Sum() + Enumerable.Range(0, extra.Length)
+                    .Where(i => collateral[i].Friendly).Sum(i => extraHp[i]);
+                float extraEnemyStart = Enumerable.Range(0, extra.Length)
+                    .Where(i => !collateral[i].Friendly).Sum(i => extraHp[i]);
 
-                for (int pass = 0; pass < passes; pass++)
+                void HitDefender(int idx, WorthIt.DefenderProfile plane, int attackDice)
                 {
-                    for (int aircraftIndex = 0; aircraftIndex < aircraft.Count; aircraftIndex++)
-                    {
-                        if (pass == 0 && firstPassSpent != null && firstPassSpent[aircraftIndex] != 0) continue;
-                        WorthIt.DefenderProfile plane = armed[aircraftIndex];
-                        // Matches RunAirStrike: stop once only the policy's survivors remain.
-                        if (alive.Count <= policy.MinimumSurvivors)
-                            break;
-                        int idx = alive[rng.Next(alive.Count)];
                         int attackerFate = 0;
                         int fateOwner = -1;
                         if (groups != null)
@@ -225,7 +244,7 @@ namespace Game.Combat
                         }
                         int remainingFate = fates == null ? fate : fateOwner >= 0 ? fates[fateOwner] : 0;
                         BattleSimExchangeOutcome outcome = BattleSimulationKernel.ResolveExchange(
-                            Mathf.RoundToInt(plane.Attack),
+                            attackDice,
                             defenders[idx].IsHero ? defenders[idx].FateMax : defense[idx], plane.Abilities,
                             defenders[idx].TypeTags, defenders[idx].Abilities, ref attackerFate, ref remainingFate,
                             Mathf.CeilToInt(hp[idx]), magnitudes, rng);
@@ -238,7 +257,92 @@ namespace Game.Combat
                         hp[idx] = Mathf.Max(0f, hpLeft);
                         if (hp[idx] <= 0f)
                             alive.Remove(idx);
+
+                }
+                WorthIt.DefenderProfile HitOther(WorthIt.DefenderProfile p, WorthIt.DefenderProfile plane,
+                    ref float hpLeft, ref int remainingFate)
+                {
+                    int a = 0;
+                    var outcome = BattleSimulationKernel.ResolveExchange(ExplosionAttack.AttackDice,
+                        Mathf.RoundToInt(p.Defense), plane.Abilities, p.TypeTags, p.Abilities,
+                        ref a, ref remainingFate, Mathf.CeilToInt(hpLeft), magnitudes, rng);
+                    int attack = Mathf.RoundToInt(p.Attack), defense = Mathf.RoundToInt(p.Defense);
+                    BattleSimulationKernel.ApplyPrimaryOutcome(outcome, plane.Abilities, p.Abilities,
+                        ref hpLeft, ref attack, ref defense, magnitudes, out _);
+                    hpLeft = Mathf.Max(0, hpLeft);
+                    return new WorthIt.DefenderProfile(defense, p.HasCeramicArmor, p.TypeTags, attack, hpLeft,
+                        p.Initiative, p.Abilities, p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax,
+                        p.IsSummoned, p.Range, p.Consumption, p.SingleUseUnit);
+                }
+
+                for (int pass = 0; pass < passes; pass++)
+                {
+                    for (int aircraftIndex = 0; aircraftIndex < aircraft.Count; aircraftIndex++)
+                    {
+                        if (pass == 0 && firstPassSpent != null && firstPassSpent[aircraftIndex] != 0) continue;
+                        WorthIt.DefenderProfile plane = armed[aircraftIndex];
+                        if (planeHp[aircraftIndex] <= 0f) continue;
+                        int explosion = ExplosionAttack.TargetLimit(plane.Abilities);
+                        if (explosion > 0)
+                        {
+                            if (policy.MinimumSurvivors > 0 || alive.Count == 0) continue;
+                            if (Enumerable.Range(0, extra.Length).Any(i => collateral[i].OwnCitadel
+                                && extraHp[i] > 0 && ChallengeResult.ApplyAbilityModifiers(ExplosionAttack.AttackDice,
+                                    plane.Abilities, extra[i].TypeTags, extra[i].Abilities, magnitudes) >= extraHp[i])) continue;
+                            var pool = alive.Select(i => (kind: 0, index: i)).ToList();
+                            for (int i = 0; i < planeHp.Length; i++)
+                                if (planeHp[i] > 0 && !(plane.SingleUseUnit && i == aircraftIndex)) pool.Add((1, i));
+                            for (int i = 0; i < extraHp.Length; i++) if (extraHp[i] > 0) pool.Add((2, i));
+                            int count = Mathf.Min(explosion, pool.Count);
+                            // Match the live AI's refusal to launch a losing blast, including
+                            // one sacrifice of an innate missile. Do not value an attack that
+                            // execution would skip, or charge its self-hit and sacrifice twice.
+                            float value = 0;
+                            foreach (var target in pool)
+                            {
+                                int k = target.index;
+                                var victim = target.kind == 0 ? defenders[k] : target.kind == 1 ? armed[k] : extra[k];
+                                float victimHp = target.kind == 0 ? hp[k] : target.kind == 1 ? planeHp[k] : extraHp[k];
+                                int victimDefense = victim.IsHero ? victim.FateMax
+                                    : target.kind == 0 ? defense[k] : Mathf.RoundToInt(victim.Defense);
+                                float victimAttack = target.kind == 0 ? attack[k] : victim.Attack;
+                                bool friendly = target.kind == 1 || target.kind == 2 && collateral[k].Friendly;
+                                value += (friendly ? -1 : 1) * ExplosionAttack.ExpectedDamageValue(plane.Abilities,
+                                    victimDefense, victim.TypeTags, victim.Abilities, victimHp, victim.MaxHitPoints,
+                                    WorthIt.CombatValue(victimAttack, victim.Defense, victim.MaxHitPoints, victim.Initiative));
+                            }
+                            value *= count / (float)pool.Count;
+                            if (plane.SingleUseUnit) value -= WorthIt.CombatValue(plane.Attack, plane.Defense,
+                                planeHp[aircraftIndex], plane.Initiative);
+                            if (value <= 0) continue;
+                            for (int i = 0; i < count; i++)
+                            {
+                                int j = rng.Next(i, pool.Count); (pool[i], pool[j]) = (pool[j], pool[i]);
+                                var target = pool[i];
+                                if (target.kind == 0) HitDefender(target.index, plane, ExplosionAttack.AttackDice);
+                                else if (target.kind == 1) armed[target.index] = HitOther(armed[target.index], plane,
+                                    ref planeHp[target.index], ref planeFates[target.index]);
+                                else extra[target.index] = HitOther(extra[target.index], plane,
+                                    ref extraHp[target.index], ref extraFates[target.index]);
+                            }
+                            // Consume once after all victims, even when the launcher hit itself.
+                            var surviving = armed[aircraftIndex];
+                            var spentPlane = WorthIt.AfterAttack(new WorthIt.DefenderProfile(surviving.Defense,
+                                surviving.HasCeramicArmor, surviving.TypeTags, surviving.Attack, planeHp[aircraftIndex],
+                                surviving.Initiative, surviving.Abilities, surviving.MaxHitPoints, surviving.IsGroundCombatant,
+                                surviving.IsHero, surviving.FateMax, surviving.IsSummoned, surviving.Range,
+                                surviving.Consumption, surviving.SingleUseUnit));
+                            armed[aircraftIndex] = spentPlane;
+                            planeHp[aircraftIndex] = Mathf.Min(planeHp[aircraftIndex], spentPlane.HitPoints);
+                            continue;
+                        }
+                        // Matches RunAirStrike: stop once only the policy's survivors remain.
+                        if (alive.Count <= policy.MinimumSurvivors)
+                            break;
+                        int idx = alive[rng.Next(alive.Count)];
+                        HitDefender(idx, plane, Mathf.RoundToInt(plane.Attack));
                         armed[aircraftIndex] = WorthIt.AfterAttack(plane);
+                        planeHp[aircraftIndex] = Mathf.Min(planeHp[aircraftIndex], armed[aircraftIndex].HitPoints);
                     }
                 }
 
@@ -253,7 +357,10 @@ namespace Game.Combat
                         defenseSum[i] += defenders[i].IsHero ? defenders[i].FateMax : defense[i];
                     }
                 }
-                totalDamageSum += startHp - hp.Sum();
+                totalDamageSum += startHp - hp.Sum() + extraEnemyStart
+                    - Enumerable.Range(0, extra.Length).Where(i => !collateral[i].Friendly).Sum(i => extraHp[i]);
+                friendlyDamageSum += friendlyStart - planeHp.Sum()
+                    - Enumerable.Range(0, extra.Length).Where(i => collateral[i].Friendly).Sum(i => extraHp[i]);
                 int killed = n - alive.Count;
                 killCountSum += killed;
                 if (killed >= 1)
@@ -278,7 +385,7 @@ namespace Game.Combat
                 float meanDefense = defenseSum[i] / survivalCount[i];
                 expectedDefenders.Add(new WorthIt.DefenderProfile(meanDefense, o.HasCeramicArmor, o.TypeTags,
                     meanAttack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
-                    o.IsHero, o.FateMax, o.IsSummoned, o.Range, o.Consumption));
+                    o.IsHero, o.FateMax, o.IsSummoned, o.Range, o.Consumption, o.SingleUseUnit));
                 survivorIndices.Add(i);
                 survivingFates.Add(Mathf.RoundToInt(fateSum[i] / survivalCount[i]));
                 expectedDefense += meanDefense;
@@ -287,7 +394,7 @@ namespace Game.Combat
 
             return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders,
                 totalDamageSum / Trials, (float)killAnyTrials / Trials, killCountSum / Trials,
-                (float)wipeTrials / Trials, survivorIndices, survivingFates);
+                (float)wipeTrials / Trials, survivorIndices, survivingFates, friendlyDamageSum / Trials);
         }
 
         private static float SumDefense(IReadOnlyList<WorthIt.DefenderProfile> d) =>
@@ -360,6 +467,7 @@ namespace Game.Combat
                 buf.Add(p.IsGroundCombatant ? 1 : 0);
                 buf.Add(p.IsSummoned ? 1 : 0);
                 buf.Add(p.Initiative);
+                if (p.SingleUseUnit) { buf.Add(-19019); buf.Add(1); }
                 buf.Add(p.HasCeramicArmor ? 1 : 0);
                 if (consumable) WorthIt.AppendConsumptionKey(buf, p.Consumption);
                 int abilities = p.Abilities?.Count ?? -1;
@@ -378,6 +486,20 @@ namespace Game.Combat
             foreach (WorthIt.DefenderProfile d in defenders)
                 Profile(d);
             return buf.ToArray();
+        }
+
+        private static int[] WithCollateralKey(int[] key, IReadOnlyList<ExplosionCollateral> collateral)
+        {
+            if (collateral == null || collateral.Count == 0) return key;
+            var result = key.ToList(); result.Add(-19020);
+            foreach (var target in collateral)
+            {
+                result.Add(target.Friendly ? 1 : 0);
+                result.Add(target.OwnCitadel ? 1 : 0);
+                result.AddRange(BuildKey(System.Array.Empty<WorthIt.DefenderProfile>(), new[] { target.Profile },
+                    AirStrikePolicy.Standard, 1, 0, AbilityMagnitudes.Default));
+            }
+            return result.ToArray();
         }
 
         // Deterministic per-matchup seed built only from the numeric key (never object hashes).

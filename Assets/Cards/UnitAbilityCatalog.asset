@@ -45,7 +45,17 @@ MonoBehaviour:
   - tag: Airfield
     description: Provides a mobile airfield with the card's aircraft capacity.
   - tag: SingleUse
-    description: Equipment is consumed after its host completes an attack, even on a miss.
+    description: Equipment is consumed after its host completes an attack. Innate on a
+      Unit, the unit is expended after attacking. An explosion completes every target first.
+  - tag: Explosion3
+    description: Replaces an attack with separate 10-die challenges against up to 3
+      random distinct units or structures on the target hex, including allies.
+  - tag: Explosion5
+    description: Replaces an attack with separate 10-die challenges against up to 5
+      random distinct units or structures on the target hex, including allies.
+  - tag: Explosion10
+    description: Replaces an attack with separate 10-die challenges against up to 10
+      random distinct units or structures on the target hex, including allies.
   - tag: Ionic
     description: 
   - tag: Bodyguard

@@ -80,6 +80,30 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static partial class GroundCombatAirSupport
     {
+        internal static IReadOnlyList<AviationCombatEstimator.ExplosionCollateral> ExplosionCollateral(
+            WorldSnapshot snap, HexCoord hex, int? wingId, AirStrikePolicy policy)
+        {
+            var result = new List<AviationCombatEstimator.ExplosionCollateral>();
+            foreach (var own in snap?.Self?.Armies ?? Array.Empty<ArmySnapshot>())
+                if (own.ArmyId != wingId && own.Hex.Equals(hex))
+                    foreach (var unit in own.MembersWithHeroes?.Count > 0 ? own.MembersWithHeroes
+                        : own.Members ?? Array.Empty<WorthIt.DefenderProfile>())
+                        result.Add(new AviationCombatEstimator.ExplosionCollateral(unit, true));
+            foreach (var building in snap?.Known?.Buildings ?? Array.Empty<AiMapMemory.KnownBuilding>())
+                if (building.Hex.Equals(hex))
+                {
+                    int index = 0;
+                    foreach (var structure in building.ExplosionStructures ?? Array.Empty<WorthIt.DefenderProfile>())
+                        result.Add(new AviationCombatEstimator.ExplosionCollateral(structure, building.Owner == snap.Observer,
+                            index++ == 0 && building.IsStartingCitadel && building.Owner == snap.Observer));
+                }
+            // Exact mission targeting selects the hex, never shields its other occupants from a bomb.
+            foreach (var other in KnownAirTargets(snap, hex, AirStrikePolicy.Standard))
+                if (policy.ExactTargetArmyId.HasValue && other.ArmyId != policy.ExactTargetArmyId.Value)
+                    foreach (var unit in other.Roster.Units)
+                        result.Add(new AviationCombatEstimator.ExplosionCollateral(unit, false));
+            return result;
+        }
         internal static bool WingLanded(PlayerSetupData player, int? armyId) =>
             armyId.HasValue && OwnWorld.Of(player).Army(armyId.Value)?.AirWingLanded == true;
 
@@ -221,7 +245,7 @@ namespace Game.Ai.V2
                         ? winAgainst(AfterAirStrike(opposition, airTargets, service.Estimate)) : currentWin;
                     result.Add(new AirSupportOption(wing.ArmyId, service.Landing, service.FirstStrikeEta,
                         service.FirstStrikeEta, service.StrikeTurns,
-                        service.RosterKnown ? service.Estimate.ExpectedDamage : 0f,
+                        service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
                         service.RosterKnown, projectedWin, service.Ap,
                         new ResourceVector(0f, 0f, service.Energy, 0f, 0f)));
                     continue;
@@ -252,15 +276,16 @@ namespace Game.Ai.V2
                     AviationCombatEstimator.AirStrikeEstimate estimate =
                         observedAir
                             ? AviationCombatEstimator.EstimateAirStrikeAgainstArmies(attackers,
-                                airTargets.Select(t => t.Roster).ToList(), policy, strikeTurns, firstPassSpent)
+                                airTargets.Select(t => t.Roster).ToList(), policy, strikeTurns, firstPassSpent,
+                                ExplosionCollateral(snap, targetHex, wing.ArmyId, policy))
                             : AviationCombatEstimator.EstimateAirStrike(attackers, defenders, policy,
-                                strikeTurns, defenderFate);
+                                strikeTurns, defenderFate, ExplosionCollateral(snap, targetHex, wing.ArmyId, policy));
                     // A wing that physically cannot hurt the known roster serves nothing; the
                     // RaidSupport survivor floor stays the raid's own policy.
-                    if (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
+                    if (estimate.NetExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
                         || estimate.ExpectedDefendersAfter.Count < policy.MinimumSurvivors)
                         continue;
-                    damage = estimate.ExpectedDamage;
+                    damage = estimate.NetExpectedDamage;
                     if (winAgainst != null)
                         winAfter = winAgainst(observedAir ? AfterAirStrike(opposition, airTargets, estimate)
                             : AfterStrike(opposition, estimate.ExpectedDefendersAfter,

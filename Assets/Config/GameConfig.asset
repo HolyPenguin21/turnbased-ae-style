@@ -312,6 +312,14 @@ MonoBehaviour:
     abbreviation: Rpr
   - ability: Airfield
     abbreviation: 
+  - ability: SingleUse
+    abbreviation: 1x
+  - ability: Explosion3
+    abbreviation: Exp 3
+  - ability: Explosion5
+    abbreviation: Exp 5
+  - ability: Explosion10
+    abbreviation: Exp 10
   - ability: Ionic
     abbreviation: 
   - ability: Bodyguard

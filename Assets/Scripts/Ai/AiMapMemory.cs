@@ -310,6 +310,7 @@ namespace Game.Ai
         // never auto-expired.
         private class BuildingSighting
         {
+            public IReadOnlyList<WorthIt.DefenderProfile> ExplosionStructures;
             public HexCoord Hex;
             public PlayerSetupData Owner;
             public bool IsStartingCitadel;
@@ -360,6 +361,7 @@ namespace Game.Ai
 
         public readonly struct KnownBuilding
         {
+            public readonly IReadOnlyList<WorthIt.DefenderProfile> ExplosionStructures;
             public readonly HexCoord Hex;
             public readonly PlayerSetupData Owner;
             public readonly bool IsStartingCitadel;
@@ -377,8 +379,11 @@ namespace Game.Ai
             public KnownBuilding(HexCoord hex, PlayerSetupData owner, bool isStartingCitadel,
                 IReadOnlyCollection<string> facilityAbilities,
                 IReadOnlyList<int> collectedAmounts = null, int freeFacilitySlots = int.MaxValue,
-                bool isBase = false, float defense = 0f, int seenTurn = 0)
+                bool isBase = false, float defense = 0f, int seenTurn = 0,
+                IReadOnlyList<WorthIt.DefenderProfile> explosionStructures = null)
             {
+                ExplosionStructures = System.Array.AsReadOnly((explosionStructures
+                    ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToArray());
                 Defense = defense;
                 SeenTurn = seenTurn;
                 Hex = hex;
@@ -740,7 +745,7 @@ namespace Game.Ai
                     || x.Attack != y.Attack || x.Defense != y.Defense
                     || x.HitPoints != y.HitPoints || x.MaxHitPoints != y.MaxHitPoints
                     || x.Initiative != y.Initiative || x.HasCeramicArmor != y.HasCeramicArmor
-                    || x.Consumption?.Key != y.Consumption?.Key
+                    || x.Consumption?.Key != y.Consumption?.Key || x.SingleUseUnit != y.SingleUseUnit
                     || !(x.TypeTags ?? System.Array.Empty<UnitTypeTag>())
                         .SequenceEqual(y.TypeTags ?? System.Array.Empty<UnitTypeTag>())
                     || !(x.Abilities ?? System.Array.Empty<string>())
@@ -757,6 +762,7 @@ namespace Game.Ai
                 && a.IsStartingCitadel == b.IsStartingCitadel && a.IsBase == b.IsBase
                 && a.Defense == b.Defense && a.SeenTurn == b.SeenTurn
                 && a.FreeFacilitySlots == b.FreeFacilitySlots
+                && SameProfiles(a.ExplosionStructures, b.ExplosionStructures)
                 && (a.FacilityAbilities ?? new HashSet<string>())
                     .SetEquals(b.FacilityAbilities ?? new HashSet<string>())
                 && (a.CollectedAmounts ?? System.Array.Empty<int>())
@@ -1001,6 +1007,9 @@ namespace Game.Ai
                         // FIX-05 — the hex is genuinely visible in this loop, so its structural
                         // defence is exactly as honest an observation as its owner or facilities.
                         Defense = building.Defense,
+                        // Only public structure stats of foreign buildings. Their internal facility
+                        // slots remain private; own slots may be priced for friendly-fire risk.
+                        ExplosionStructures = ExplosionAttack.StructureProfiles(building, includeFacilities: ownBuilding),
                         // ATK §66 — this hex is genuinely visible in this loop, so the stamp is a
                         // real observation turn, not a bookkeeping default.
                         SeenTurn = _currentTurn,
@@ -1282,7 +1291,7 @@ namespace Game.Ai
             return new KnownBuilding(sighting.Hex, sighting.Owner,
                 sighting.IsStartingCitadel, sighting.FacilityAbilities,
                 sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
-                sighting.Defense, sighting.SeenTurn);
+                sighting.Defense, sighting.SeenTurn, sighting.ExplosionStructures);
         }
 
         // FIX-05 (2026-09-22) — the ONE fog-honest answer to "what structural/terrain defence
@@ -1457,7 +1466,7 @@ namespace Game.Ai
                 yield return new KnownBuilding(sighting.Hex, sighting.Owner,
                     sighting.IsStartingCitadel, sighting.FacilityAbilities,
                     sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
-                    sighting.Defense, sighting.SeenTurn);
+                    sighting.Defense, sighting.SeenTurn, sighting.ExplosionStructures);
         }
     }
 }

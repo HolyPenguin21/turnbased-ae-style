@@ -325,7 +325,7 @@ namespace Game.Ai.V2
                 abilities.Contains(UnitAbilities.CeramicArmor), p.TypeTags, S(EquipmentStat.Attack),
                 S(EquipmentStat.HitPoints), S(EquipmentStat.Initiative), abilities, p.MaxHitPoints,
                 p.IsGroundCombatant, p.IsHero, p.FateMax, p.IsSummoned,
-                p.Range >= 0 ? S(EquipmentStat.Range) : -1);
+                p.Range >= 0 ? S(EquipmentStat.Range) : -1, singleUseUnit: p.SingleUseUnit);
         }
 
         // Frame-spreading pre-pass for Analyze (2026-10-07: one synchronous Analyze was a 50 ms frame,
@@ -674,7 +674,7 @@ namespace Game.Ai.V2
                     if (p.Abilities != null)
                         foreach (string ability in p.Abilities)
                             sb.Append(ability).Append(',');
-                    sb.Append("/consume=").Append(p.Consumption?.Key).Append(';');
+                    sb.Append("/consume=").Append(p.Consumption?.Key).Append("/singleUnit=").Append(p.SingleUseUnit).Append(';');
                 }
             sb.Append(']');
         }

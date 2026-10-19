@@ -162,7 +162,8 @@ namespace Game.Aviation
                 return false;
             if (!airArmy.Members.Any(unit => !unit.HasAirAttackedThisTurn))
                 return false;
-            return AviationCombatPresenter.FindAirStrikeTargetsAt(airArmy.Hex, airArmy.Owner,
+            return policy.MinimumSurvivors == 0 && AviationCombatPresenter.CanExplosionStrikeAt(airArmy, airArmy.Hex)
+                || AviationCombatPresenter.FindAirStrikeTargetsAt(airArmy.Hex, airArmy.Owner,
                 policy.ExactTargetArmyId).Sum(target => target.Members.Count) > policy.MinimumSurvivors;
         }
 
