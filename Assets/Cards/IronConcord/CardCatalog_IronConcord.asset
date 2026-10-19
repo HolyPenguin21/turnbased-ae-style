@@ -26,6 +26,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: ac46749229f16aa4f8e2b037497e767c, type: 3}
     faction: 0
     cardType: 3
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 6
@@ -77,6 +79,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c90ef1d7bc8095444924933ba937132f, type: 3}
     faction: 0
     cardType: 3
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 3
@@ -129,6 +133,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 19d85eabae409024aadc1ec15d7790c7, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -176,6 +182,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: bfe432bc43014f542b498e1346e00ea2, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -222,6 +230,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0631deb5f60ad604688ab66e3f212eda, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -269,6 +279,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8784b0b760c09ba4285276bdc1d66ae6, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -316,6 +328,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 61636f53d0b54db47a62f6fbffe2b9c8, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -363,6 +377,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 7141bd2242b632c469a3c81ee250382c, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -410,6 +426,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 2bfbdbfe359d3f542b8c19b3c77fd3a8, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -458,6 +476,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 5146f4b2d378d034c927b9175f79eefe, type: 3}
     faction: 0
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -505,6 +525,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f41ff7aaaf676d945aa33217453c5338, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -553,6 +575,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9e8b61860a53d9045a793adeb2bda763, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -599,6 +623,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: da5a5866dbe867d4386251a8b9147e63, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -647,6 +673,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 1038189a8d04c9a4fab8eead630c6c89, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -695,6 +723,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d8324aeac88b07f419ff7f9853789f4f, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -742,6 +772,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: eb94e659f5ed2194d9e3f5a77a431c33, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -788,6 +820,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 67722ae871778454884a8e7db6a15f8b, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 1
@@ -835,6 +869,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f5d5a338fc909d1448e8c396629781d9, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 1
@@ -881,6 +917,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a8e0a294aa9960e4486fdf6bfb1a4691, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -928,6 +966,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: ecfc07428f64ab64bb9cff02eb048e24, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 1
@@ -975,6 +1015,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 733e2b957e8487a42add869dc9f2a343, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 1
@@ -1022,6 +1064,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: dfd70ff37136ca241a283125bbc6d839, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 1
@@ -1070,6 +1114,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 800be6cd250d524478ab83e06b2a580b, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -1116,6 +1162,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 25402b65cdad49e4091481594396f4f9, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -1163,6 +1211,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9a3822a26cb6dcc4f907d483b86d8668, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1210,6 +1260,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: ba5bb2c74bc68e2438906abee131e7bd, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1257,6 +1309,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b2aae6c570e9b8c4da5a1c04314666ed, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1304,6 +1358,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0f35dac589f9dd843b865822680ec531, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 1
@@ -1350,6 +1406,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: bd7d9898b72df914f8aeb024f79ba7eb, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 1
@@ -1397,6 +1455,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 289bf6e21367b2b4ea80024d0e49e692, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1444,6 +1504,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 62545fa438591b245a309dc5bcd95923, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 1
@@ -1491,6 +1553,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 71e1f71fc5c6f1646a8d14f4d4881888, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 1
@@ -1538,6 +1602,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b3b55db2858649942916d714113af3a4, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1586,6 +1652,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: caf74b05be6da8e4b8697e88dfb471ec, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 1
@@ -1632,6 +1700,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c2b61a033e63f1b4cb8d0dab1e82319b, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -1679,6 +1749,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4185a64f8e8c18f42b5d11b6ce529673, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1726,6 +1798,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 7e27151f7677bd84994ae1ba37734176, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -1772,6 +1846,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 3caa6d33003eab940913d68ccb1935c5, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -1819,6 +1895,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 7bdf80a4c79a5d84589eefcdb957142b, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1865,6 +1943,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 93e1f8c82dda7c048a09515ba291f27a, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -1912,6 +1992,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 04cb285496a2af240a1868515b55ef60, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -1959,6 +2041,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 5f6f8873f3d78d04cab6314f4a1670ab, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -2006,6 +2090,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 59bd09b9a1ac7e84a87cf9602edb8a35, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2052,6 +2138,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c602751009e90c7459dbde88b8bde31a, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2099,6 +2187,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4dfe84cb2432243468a2f26a693387e0, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2146,6 +2236,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 89c5e1b7c62eab64c83a0b43c8fafbd9, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2193,6 +2285,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6cd0e51066815cf408c1a7dcf60c6802, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2240,6 +2334,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e484f72d2b47f2a4a9c1baf55e16c711, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2286,6 +2382,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: da74be26b32db0f4cbaeab0bde0ee1c8, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2333,6 +2431,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a7c0be14342f97348851c4b27fb3a1eb, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2380,6 +2480,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: de93d96cc52e23a4882db2a69e2be488, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2426,6 +2528,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9ff958975ba2145429be228d6e50c7cf, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 7
     resourceCost:
       human: 0
@@ -2474,6 +2578,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 82a1eb01826c5fe48a356c9d606bb610, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2521,6 +2627,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 197b0729809d0544a907fc0ea10e380a, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2568,6 +2676,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 571febf2e9a58f14f8635569eaa3efd3, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 7
     resourceCost:
       human: 0
@@ -2614,6 +2724,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 1e08c58e4b42d0642a06fd5d0cd0bb59, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 8
     resourceCost:
       human: 0
@@ -2661,6 +2773,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: ed24d56984537524a9b3f15b51c757ee, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2708,6 +2822,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e49b548ae1594c44798da5ac7354f7ef, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2754,6 +2870,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a6c5297f1394fd74a905a3249eddebfd, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 8
     resourceCost:
       human: 2
@@ -2801,6 +2919,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a090b2628767d7548927873dd31740ad, type: 3}
     faction: 0
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 9
     resourceCost:
       human: 2
@@ -2825,6 +2945,55 @@ MonoBehaviour:
     unitTypeTags: 010000000400000002000000
     grantedAbilities:
     - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 60
+    authoredKey: concord.card.Mule
+    deckPointCost: 4
+    deckCopyLimit: 2
+    deckBuilderExcluded: 0
+    displayName: Mule
+    art: {fileID: 21300000, guid: 76edb32d8b093074490fda94a48ab384, type: 3}
+    detailArt: {fileID: 21300000, guid: a090b2628767d7548927873dd31740ad, type: 3}
+    faction: 0
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 3
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 4
+    range: 1
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - Repair
     resourceYield:
       human: 0
       energy: 0
