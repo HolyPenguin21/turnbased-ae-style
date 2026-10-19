@@ -99,14 +99,14 @@ namespace Game.EditorTests
             var actor = Body("rocket", 5, UnitAbilities.SingleUse, UnitAbilities.Explosion3);
             var owner = new PlayerSetupData(); var own = Army(owner, actor, Body("ally"));
             var attack = new ExplosionAttack(actor, Hex, new Random(1), own);
-            Assert.That(attack.Targets.Select(t => t.Unit), Does.Not.Contain(actor));
+            Assert.That(attack.Targets.Select(t => t.Unit), Has.No.Member(actor));
             Assert.That(attack.Targets.Count, Is.EqualTo(1));
             ResolveAll(attack);
             Assert.That(own.Members, Does.Contain(actor));
             Assert.That(actor.HitPointsCurrent, Is.EqualTo(5));
             attack.Complete();
             Assert.That(actor.HitPointsCurrent, Is.Zero);
-            Assert.That(own.Members, Does.Not.Contain(actor));
+            Assert.That(own.Members, Has.No.Member(actor));
             Assert.That(WorthIt.FromLiveUnit(actor).SingleUseUnit, Is.True);
         }
 
@@ -158,7 +158,7 @@ namespace Game.EditorTests
             attack.Complete(); attack.Complete();
             Assert.That(actor.Equipment, Is.Null);
             Assert.That(actor.HitPointsCurrent, Is.Zero);
-            Assert.That(army.Members, Does.Not.Contain(actor));
+            Assert.That(army.Members, Has.No.Member(actor));
             Assert.That(bomb.grantedAbilities, Does.Contain(UnitAbilities.SingleUse));
         }
 
@@ -176,7 +176,7 @@ namespace Game.EditorTests
             {
                 var attack = new ExplosionAttack(actor, Hex, new Random(seed), own, enemy);
                 Assert.That(attack.Targets.Count, Is.EqualTo(limit));
-                Assert.That(attack.Targets.Select(t => t.Unit), Does.Not.Contain(actor));
+                Assert.That(attack.Targets.Select(t => t.Unit), Has.No.Member(actor));
                 sawOtherMissile |= attack.Targets.Any(t => t.Unit == otherMissile);
             }
             Assert.That(sawOtherMissile, Is.True, "Only the launching missile is exempt, not other allies.");
@@ -244,7 +244,7 @@ namespace Game.EditorTests
             var attack = new ExplosionAttack(actor, Hex, new Random(2), own);
             var self = attack.Targets.Single(t => t.Unit == actor);
             attack.Resolve(self, actor, Roll(2), AbilityMagnitudes.Default);
-            Assert.That(own.Members, Does.Not.Contain(actor));
+            Assert.That(own.Members, Has.No.Member(actor));
             foreach (var target in attack.Targets.Where(t => t != self))
                 Assert.That(attack.Resolve(target, target.Unit, Roll(2), AbilityMagnitudes.Default).Damage, Is.EqualTo(4));
             Assert.That(attack.ResolvedCount, Is.EqualTo(3));

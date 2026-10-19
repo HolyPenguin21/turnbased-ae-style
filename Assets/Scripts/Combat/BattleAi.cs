@@ -781,7 +781,7 @@ namespace Game.Combat
                         fateByArmy[victimArmy] = Mathf.Max(0, replacement?.Fate ?? 0);
                 }
             }
-            CompleteSimulatedAttack(grid, hp, actor, simulatedAttack, simulatedDefense);
+            CompleteSimulatedAttack(grid, hp, actor, simulatedAttack, simulatedDefense, fateByArmy, ownArmy, enemyArmy);
             return victim;
         }
 
@@ -836,12 +836,13 @@ namespace Game.Combat
             }
             if (dealtByUnit != null)
                 dealtByUnit[actor] = (dealtByUnit.TryGetValue(actor, out float prior) ? prior : 0) + netDamage;
-            CompleteSimulatedAttack(grid, hp, actor, attacks, defenses);
+            CompleteSimulatedAttack(grid, hp, actor, attacks, defenses, fateByArmy, ownArmy, enemyArmy);
             return netDamage;
         }
 
         private static void CompleteSimulatedAttack(BattleGrid grid, Dictionary<UnitData, float> hp,
-            UnitData actor, Dictionary<UnitData, int> simulatedAttack, Dictionary<UnitData, int> simulatedDefense)
+            UnitData actor, Dictionary<UnitData, int> simulatedAttack, Dictionary<UnitData, int> simulatedDefense,
+            Dictionary<ArmyData, int> fateByArmy, ArmyData ownArmy, ArmyData enemyArmy)
         {
             if (EquipmentSystem.IsSingleUse(actor.Equipment))
             {
@@ -862,9 +863,9 @@ namespace Game.Combat
                 // A commanding hero's battle Fate pool loses Fate the item no longer provides.
                 ArmyData actorArmy = actor.IsHero && fateByArmy != null
                     ? FindSimulationArmy(actor, ownArmy, enemyArmy) : null;
-                if (actorArmy != null && fateByArmy.TryGetValue(actorArmy, out int pool)
+                if (actorArmy != null && fateByArmy.TryGetValue(actorArmy, out int fatePool)
                     && BattleTurnOrder.LivingCommanderOnGrid(grid, actorArmy) == actor)
-                    fateByArmy[actorArmy] = Mathf.Max(0, pool + actor.Fate - oldFate);
+                    fateByArmy[actorArmy] = Mathf.Max(0, fatePool + actor.Fate - oldFate);
             }
             if (ExplosionAttack.IsSingleUseUnit(actor))
             {
