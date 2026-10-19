@@ -355,6 +355,114 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 7
+    authoredKey: neutral.science.unit.ashdrifter
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
+    displayName: s Ash Drifter
+    art: {fileID: 21300000, guid: 35502c57463bbbd4c836f03743e0660e, type: 3}
+    detailArt: {fileID: 21300000, guid: c5c003c09a32310409a57721971c69d7, type: 3}
+    faction: 3
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 3
+    defenseRating: 1
+    range: 1
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 04000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - CriticalDamage
+      - AA
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 9
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
+  - id: 8
+    authoredKey: neutral.tactic.tactical-missile
+    deckPointCost: 5
+    deckCopyLimit: 2
+    deckBuilderExcluded: 0
+    displayName: Tactical Missile
+    art: {fileID: 21300000, guid: e6408260309884f4a9276598ac07c20d, type: 3}
+    detailArt: {fileID: 21300000, guid: 0b73e8ec76767734aa3f20ec775903e7, type: 3}
+    faction: 3
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 8
+    resourceCost:
+      human: 2
+      energy: 8
+      materials: 6
+      tech: 8
+    requiredBuildingAbility: 
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 4
+    initiative: 1
+    isAviation: 1
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - Explosion10
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 9
     authoredKey: neutral.facility.tactical
     deckPointCost: 5
     deckCopyLimit: 4
@@ -409,7 +517,7 @@ MonoBehaviour:
       - stat: 0
         amount: 8
         isOverride: 1
-  - id: 8
+  - id: 10
     authoredKey: neutral.facility.intel
     deckPointCost: 5
     deckCopyLimit: 4
@@ -464,7 +572,7 @@ MonoBehaviour:
       - stat: 0
         amount: 8
         isOverride: 1
-  - id: 9
+  - id: 11
     authoredKey: neutral.facility.lab
     deckPointCost: 5
     deckCopyLimit: 4
@@ -519,7 +627,7 @@ MonoBehaviour:
       - stat: 0
         amount: 8
         isOverride: 1
-  - id: 10
+  - id: 12
     authoredKey: neutral.facility.factory
     deckPointCost: 5
     deckCopyLimit: 4
@@ -574,7 +682,7 @@ MonoBehaviour:
       - stat: 0
         amount: 8
         isOverride: 1
-  - id: 11
+  - id: 13
     authoredKey: neutral.facility.aa_defence
     deckPointCost: 5
     deckCopyLimit: 4
@@ -629,7 +737,7 @@ MonoBehaviour:
       - stat: 0
         amount: 8
         isOverride: 1
-  - id: 12
+  - id: 14
     authoredKey: neutral.equipment.bio.flamer
     deckPointCost: 2
     deckCopyLimit: 1
@@ -692,7 +800,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 13
+  - id: 15
     authoredKey: neutral.equipment.bio.plasma-gun
     deckPointCost: 1
     deckCopyLimit: 1
@@ -753,7 +861,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 14
+  - id: 16
     authoredKey: neutral.equipment.bio.at-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -815,7 +923,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 15
+  - id: 17
     authoredKey: neutral.equipment.bio.claws
     deckPointCost: 1
     deckCopyLimit: 1
@@ -877,7 +985,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 16
+  - id: 18
     authoredKey: neutral.equipment.bio.heavy-mg
     deckPointCost: 1
     deckCopyLimit: 1
@@ -938,7 +1046,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 17
+  - id: 19
     authoredKey: neutral.equipment.mechanical.armor-plate
     deckPointCost: 1
     deckCopyLimit: 1
@@ -989,7 +1097,7 @@ MonoBehaviour:
       - stat: 1
         amount: 1
         isOverride: 0
-  - id: 18
+  - id: 20
     authoredKey: neutral.equipment.armored.artillery-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1047,7 +1155,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 0
-  - id: 19
+  - id: 21
     authoredKey: neutral.equipment.armored.at-vh-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1109,7 +1217,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 20
+  - id: 22
     authoredKey: neutral.equipment.armored.double-barrel
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1158,7 +1266,7 @@ MonoBehaviour:
       addAbilities:
       - CriticalDamage
       statChanges: []
-  - id: 21
+  - id: 23
     authoredKey: neutral.equipment.mechanical.nuclear-engine
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1209,7 +1317,7 @@ MonoBehaviour:
       - stat: 5
         amount: 2
         isOverride: 0
-  - id: 22
+  - id: 24
     authoredKey: neutral.equipment.armored.plasma-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1270,114 +1378,6 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 23
-    authoredKey: neutral.science.unit.ashdrifter
-    deckPointCost: 0
-    deckCopyLimit: 0
-    deckBuilderExcluded: 1
-    displayName: s Ash Drifter
-    art: {fileID: 21300000, guid: 35502c57463bbbd4c836f03743e0660e, type: 3}
-    detailArt: {fileID: 21300000, guid: c5c003c09a32310409a57721971c69d7, type: 3}
-    faction: 3
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 2
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 0
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 3
-    attack: 3
-    defenseRating: 1
-    range: 1
-    hitPoints: 4
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0000000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 04000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - CriticalDamage
-      - AA
-      addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 9
-        isOverride: 1
-      - stat: 3
-        amount: 2
-        isOverride: 1
-  - id: 24
-    authoredKey: neutral.tactic.tactical-missile
-    deckPointCost: 0
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Tactical Missile
-    art: {fileID: 21300000, guid: e6408260309884f4a9276598ac07c20d, type: 3}
-    detailArt: {fileID: 21300000, guid: 8b9654bbea970e543a9e285d67b0f9dd, type: 3}
-    faction: 3
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 8
-    resourceCost:
-      human: 2
-      energy: 8
-      materials: 6
-      tech: 8
-    requiredBuildingAbility: 
-    moveMax: 4
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 4
-    initiative: 1
-    isAviation: 1
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities:
-    - Explosion10
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
   - id: 25
     authoredKey: neutral.mutator.chameleon-tissue
     deckPointCost: 1
