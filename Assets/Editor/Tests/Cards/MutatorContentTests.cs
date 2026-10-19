@@ -21,22 +21,22 @@ namespace Game.EditorTests
         private static IEnumerable<CardDefinition> Mutators() => Blocks(NeutralPath).Select(Read)
             .Where(c => c.authoredKey.StartsWith("neutral.mutator."));
 
-        [TestCase("dermal-plating", "Defense:2", "")]
+        [TestCase("dermal-plating", "Defense:1,HitPoints:1", "")]
         [TestCase("reactive-marrow", "HitPoints:3", "")]
         [TestCase("reinforced-skeleton", "Defense:2,HitPoints:1,Initiative:-1", "")]
         [TestCase("pain-suppression", "HitPoints:3,Defense:1,MoveMax:-1", "")]
-        [TestCase("regenerative-culture", "Attack:2", UnitAbilities.Regeneration)]
-        [TestCase("hyper-regeneration", "HitPoints:2,MoveMax:-1", "Regeneration,CeramicArmor")]
-        [TestCase("survivor-strain", "Defense:2,MoveMax:-1,HitPoints:2", UnitAbilities.Regeneration)]
-        [TestCase("adrenal-surge", "MoveMax:2,Initiative:1,Defense:-1", "")]
+        [TestCase("regenerative-culture", "", UnitAbilities.Regeneration)]
+        [TestCase("hyper-regeneration", "HitPoints:2", UnitAbilities.Regeneration)]
+        [TestCase("survivor-strain", "Defense:2,MoveMax:-1,HitPoints:2", "Regeneration,Berserk")]
+        [TestCase("adrenal-surge", "MoveMax:2,HitPoints:1,Defense:-1", "")]
         [TestCase("metabolic-overdrive", "MoveMax:2,Defense:-1", "")]
-        [TestCase("predator-reflexes", "Initiative:2,Defense:1,MoveMax:-1", "")]
-        [TestCase("neural-accelerator", "Initiative:2,Defense:1,Attack:1", "")]
-        [TestCase("rapid-synapse", "Defense:-1,Initiative:1", UnitAbilities.RapidReaction)]
+        [TestCase("predator-reflexes", "Range:1,HitPoints:1,MoveMax:-1", "")]
+        [TestCase("neural-accelerator", "Initiative:1,Defense:1,Attack:1", UnitAbilities.Counterattack)]
+        [TestCase("rapid-synapse", "Defense:-1,MoveMax:1", UnitAbilities.RapidReaction)]
         [TestCase("hunter-glands", "Defense:-1,Initiative:1", UnitAbilities.R1S4)]
         [TestCase("enhanced-senses", "Initiative:2,MoveMax:-1", "r1s4,CeramicArmor")]
         [TestCase("wanderer-strain", "MoveMax:2,Defense:-1,Attack:1", UnitAbilities.R1S4)]
-        [TestCase("chameleon-tissue", "MoveMax:-1,Initiative:2", UnitAbilities.Stealth4)]
+        [TestCase("chameleon-tissue", "MoveMax:-1,Defense:1,HitPoints:1", UnitAbilities.Stealth4)]
         [TestCase("fortunate-genome", "Fate:2", "")]
         [TestCase("ghost-genome", "Fate:1", UnitAbilities.Stealth4)]
         [TestCase("hunter-genome", "Fate:1", UnitAbilities.R1S4)]
@@ -62,13 +62,36 @@ namespace Game.EditorTests
             Assert.That(body.ActivationApCost, Is.EqualTo(predicted.Stats[EquipmentStat.ActivationApCost]));
             Assert.That(body.FateMax, Is.EqualTo(predicted.Stats[EquipmentStat.Fate]));
             Assert.That(body.Attack, Is.EqualTo(predicted.Stats[EquipmentStat.Attack]));
-            Assert.That(body.Range, Is.EqualTo(host.range));
+            Assert.That(body.Range, Is.EqualTo(predicted.Stats[EquipmentStat.Range]));
             Assert.That(body.CommandRating, Is.EqualTo(host.commandRating));
         }
 
         [Test]
         public void AllTwentyEnforceBioHostKindLimitsAndEconomy()
         {
+            var economy = new Dictionary<string, (int Difficulty, int Human, int Energy, int Tech)>
+            {
+                ["dermal-plating"] = (3, 2, 0, 0),
+                ["reactive-marrow"] = (4, 1, 1, 0),
+                ["reinforced-skeleton"] = (3, 1, 1, 1),
+                ["pain-suppression"] = (4, 1, 1, 0),
+                ["regenerative-culture"] = (4, 3, 0, 0),
+                ["hyper-regeneration"] = (5, 3, 0, 1),
+                ["survivor-strain"] = (6, 3, 1, 1),
+                ["adrenal-surge"] = (4, 1, 0, 1),
+                ["metabolic-overdrive"] = (3, 1, 1, 0),
+                ["predator-reflexes"] = (4, 1, 1, 1),
+                ["neural-accelerator"] = (4, 2, 0, 1),
+                ["rapid-synapse"] = (4, 2, 1, 1),
+                ["hunter-glands"] = (3, 2, 0, 0),
+                ["enhanced-senses"] = (5, 1, 1, 1),
+                ["wanderer-strain"] = (5, 1, 1, 1),
+                ["chameleon-tissue"] = (3, 1, 1, 0),
+                ["fortunate-genome"] = (4, 1, 1, 2),
+                ["ghost-genome"] = (4, 1, 2, 1),
+                ["hunter-genome"] = (4, 2, 1, 1),
+                ["reflex-genome"] = (4, 2, 0, 2),
+            };
             var cards = Mutators().ToList();
             Assert.That(cards.Count, Is.EqualTo(20));
             Assert.That(cards.Count(c => c.equipment.hostKinds.SequenceEqual(new[] { EquipmentHostKind.Hero })), Is.EqualTo(4));
@@ -87,25 +110,23 @@ namespace Game.EditorTests
                 foreach (var change in c.equipment.statChanges)
                 {
                     Assert.That(change.isOverride, Is.False);
-                    Assert.That(change.stat == EquipmentStat.Range
-                        || change.stat == EquipmentStat.CommandRating,
+                    Assert.That(change.stat == EquipmentStat.CommandRating,
                         Is.False, change.stat.ToString());
                     Assert.That(change.amount, Is.InRange(-1, change.stat == EquipmentStat.HitPoints && !hero ? 3 : 2));
                     if (hero) Assert.That(change.stat, Is.EqualTo(EquipmentStat.Fate));
                 }
                 Assert.That(c.apCost, Is.EqualTo(1));
                 Assert.That(c.activationApCost, Is.EqualTo(1));
-                // Challenge is authored balance, independent of this effect-only strengthening.
                 string slug = c.authoredKey.Substring("neutral.mutator.".Length);
-                int expectedDifficulty = slug == "metabolic-overdrive" ? 3
-                    : new[] { "dermal-plating", "reinforced-skeleton", "adrenal-surge", "predator-reflexes",
-                        "rapid-synapse", "hunter-glands", "chameleon-tissue", "fortunate-genome" }.Contains(slug) ? 4 : 5;
-                Assert.That(ResearchProductionSystem.RequiredSuccesses(c), Is.EqualTo(expectedDifficulty), c.displayName);
-                bool shiftedEnergy = new[] { "hyper-regeneration", "survivor-strain", "neural-accelerator",
-                    "rapid-synapse", "reflex-genome" }.Any(slug => c.authoredKey == "neutral.mutator." + slug);
-                Assert.That(c.resourceCost.human, Is.EqualTo(shiftedEnergy ? 2 : 1), c.displayName);
-                Assert.That(c.resourceCost.energy, Is.EqualTo(1), c.displayName);
+                var expected = economy[slug];
+                Assert.That(ResearchProductionSystem.RequiredSuccesses(c), Is.EqualTo(expected.Difficulty), c.displayName);
+                Assert.That(c.resourceCost.human, Is.EqualTo(expected.Human), c.displayName);
+                Assert.That(c.resourceCost.energy, Is.EqualTo(expected.Energy), c.displayName);
                 Assert.That(c.resourceCost.materials, Is.Zero, c.displayName);
+                Assert.That(c.resourceCost.tech, Is.EqualTo(expected.Tech), c.displayName);
+                if (hero)
+                    Assert.That(c.resourceCost.human + c.resourceCost.energy + c.resourceCost.tech,
+                        Is.EqualTo(4), c.displayName);
                 CardData minted = ResearchProductionSystem.MintCard(c);
                 Assert.That(minted.EffectivePlayApCost, Is.EqualTo(1));
                 Assert.That(minted.EffectivePlayResourceCost, Is.Null, "Creation already paid the stake");
@@ -137,7 +158,7 @@ namespace Game.EditorTests
             EquipmentSystem.ApplyAttachments(unit, null, Mutator("neural-accelerator"));
             Assert.That(unit.ActivationApCost, Is.EqualTo(initial));
             Assert.That(unit.Defense, Is.EqualTo(host.defenseRating + 1));
-            Assert.That(unit.Initiative, Is.EqualTo(host.initiative + 2));
+            Assert.That(unit.Initiative, Is.EqualTo(host.initiative + 1));
         }
 
         [TestCase(false)]
@@ -168,7 +189,7 @@ namespace Game.EditorTests
             string face = EquipmentCardText.CardFace(neural, null);
             Assert.That(face, Does.StartWith("Bio, Unit").And.Not.Contain("Initiative"));
             Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Is.EqualTo(face));
-            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Challenge: ").And.Contain("\nBio, Unit\n").And.Contain("Initiative: +2"));
+            Assert.That(EquipmentCardText.Description(neural, null), Does.StartWith("Challenge: ").And.Contain("\nBio, Unit\n").And.Contain("Initiative: +1"));
             Assert.That(EquipmentCardText.StatBadgeValue(neural.equipment, EquipmentStat.Defense), Is.EqualTo("1"));
             Assert.That(EquipmentCardText.Description(neural, null), Does.Contain("Defense: +1"));
             Assert.That(EquipmentCardText.Description(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
@@ -190,7 +211,10 @@ namespace Game.EditorTests
             string[] productionKeys = Regex.Matches(production, @"cardKey: (\S+)")
                 .Cast<Match>().Select(m => m.Groups[1].Value).ToArray();
             Assert.That(productionKeys, Is.Not.Empty);
-            Assert.That(productionKeys.All(k => k.StartsWith("neutral.equipment.", StringComparison.Ordinal)), Is.True);
+            var outputs = Blocks(NeutralPath).Select(Read).ToDictionary(c => c.authoredKey);
+            Assert.That(productionKeys.All(k => outputs.TryGetValue(k, out var c)
+                && (c.cardType == CardType.Equipment || c.isAviation)), Is.True,
+                "Production also includes the authored single-use missile aircraft");
             Assert.That(productionKeys.Intersect(keys), Is.Empty);
             Assert.That(production, Does.Not.Contain("mutator"));
         }

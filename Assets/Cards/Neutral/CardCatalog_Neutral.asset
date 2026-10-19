@@ -1565,14 +1565,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 1
-      energy: 0
+      energy: 1
       materials: 0
-      tech: 1
+      tech: 2
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 3
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -1616,14 +1616,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 1
-      energy: 1
+      energy: 2
       materials: 0
       tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 3
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -1651,9 +1651,6 @@ MonoBehaviour:
       - Stealth4
       statChanges:
       - stat: 9
-        amount: 1
-        isOverride: 0
-      - stat: 5
         amount: 1
         isOverride: 0
   - id: 30
@@ -2062,7 +2059,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -2113,7 +2110,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -2445,7 +2442,7 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 1
     resourceCost:
-      human: 1
+      human: 2
       energy: 1
       materials: 0
       tech: 1
@@ -2498,14 +2495,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 2
-      energy: 1
+      energy: 0
       materials: 0
       tech: 2
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
