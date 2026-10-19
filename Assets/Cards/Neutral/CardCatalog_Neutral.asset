@@ -26,6 +26,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a0fbb54c578639a4cb4fd0b9f8824c7e, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -72,6 +74,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0edb57d1f4c326e498bc7f9c4b0de95b, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -118,6 +122,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 06930fa60b885a34a8b7bb73bf89613c, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -164,6 +170,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: dfb92db8c7f5d1149a2a75cd6896d20d, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 1
@@ -211,6 +219,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 05699d9cd87e8584cb03a86845ae8966, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 2
@@ -257,6 +267,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 7082ae6e696763540ba818f2df696f2f, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -303,6 +315,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b71b215a5e304d442b419b8b2f413c02, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -350,6 +364,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0a114f99bb64e304ea3a1b40f64c80e9, type: 3}
     faction: 3
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 1
@@ -403,6 +419,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 68cf31d4e83a522489971ea254388db4, type: 3}
     faction: 3
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 1
@@ -456,6 +474,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: df5d9133e8198ad4cae4bb693c6ccae4, type: 3}
     faction: 3
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 1
@@ -509,6 +529,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d58d3f29ab617aa4ab0f3a6e7185bf50, type: 3}
     faction: 3
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 1
@@ -562,6 +584,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e1283bbd7bd96d441af157b0fbcb9822, type: 3}
     faction: 3
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 2
@@ -615,6 +639,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 98dfb02c37bc8254da5551d4882fe668, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 2
@@ -676,6 +702,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6c3eee8aa3cb483458cb1cadc6c2b7d9, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -735,6 +763,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a1b15a27335a47d41a89eb4e79a18acb, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -795,6 +825,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8191c7bdc214335499b0c93efa323474, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -855,6 +887,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0c4b31a34f354a049a1ae91aaa511362, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -914,6 +948,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8c4a1ef0f3a71d443831e2dd4280a659, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -963,6 +999,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8ff586c3c197b0949a2700913d80924c, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -1019,6 +1057,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 1106f2a06fa57dc45b4267b74bcb9270, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -1079,6 +1119,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c2593d7540db32b4ab668df266c18047, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -1126,6 +1168,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: cb1a0d5ed30550f4483fc823949fc474, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -1175,6 +1219,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 61e003d6cedaae245b2c2fee5d35923d, type: 3}
     faction: 3
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -1234,6 +1280,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c5c003c09a32310409a57721971c69d7, type: 3}
     faction: 3
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -1282,6 +1330,55 @@ MonoBehaviour:
         amount: 2
         isOverride: 1
   - id: 24
+    authoredKey: neutral.tactic.tactical-missile
+    deckPointCost: 0
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Tactical Missile
+    art: {fileID: 21300000, guid: e6408260309884f4a9276598ac07c20d, type: 3}
+    detailArt: {fileID: 21300000, guid: 8b9654bbea970e543a9e285d67b0f9dd, type: 3}
+    faction: 3
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 8
+    resourceCost:
+      human: 2
+      energy: 8
+      materials: 6
+      tech: 8
+    requiredBuildingAbility: 
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 4
+    initiative: 1
+    isAviation: 1
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - Explosion10
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 25
     authoredKey: neutral.mutator.chameleon-tissue
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1291,6 +1388,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8a8333bd81e63d240a6f9178203ca691, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1337,7 +1436,7 @@ MonoBehaviour:
       - stat: 4
         amount: 1
         isOverride: 0
-  - id: 25
+  - id: 26
     authoredKey: neutral.mutator.dermal-plating
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1347,6 +1446,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 85ff393dc8bda23408044b3155fa3c77, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 2
@@ -1389,7 +1490,7 @@ MonoBehaviour:
       - stat: 4
         amount: 1
         isOverride: 0
-  - id: 26
+  - id: 27
     authoredKey: neutral.mutator.fortunate-genome
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1399,6 +1500,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b138243b7fe1cdf42be971d14b070d83, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1438,7 +1541,7 @@ MonoBehaviour:
       - stat: 9
         amount: 2
         isOverride: 0
-  - id: 27
+  - id: 28
     authoredKey: neutral.mutator.ghost-genome
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1448,6 +1551,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: caf02b300c67a4b4f90ac27c67aa972d, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1491,7 +1596,7 @@ MonoBehaviour:
       - stat: 5
         amount: 1
         isOverride: 0
-  - id: 28
+  - id: 29
     authoredKey: neutral.mutator.metabolic-overdrive
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1501,6 +1606,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 488fc5276e3f37546994483c1679b399, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1543,7 +1650,7 @@ MonoBehaviour:
       - stat: 1
         amount: -1
         isOverride: 0
-  - id: 29
+  - id: 30
     authoredKey: neutral.mutator.adrenal-surge
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1553,6 +1660,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: dfe02b78c6c0df94a941c1a9a667749d, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1598,7 +1707,7 @@ MonoBehaviour:
       - stat: 1
         amount: -1
         isOverride: 0
-  - id: 30
+  - id: 31
     authoredKey: neutral.mutator.hunter-glands
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1608,6 +1717,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8fcf28a828e7d7e44ba62f6fcef07197, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 2
@@ -1651,7 +1762,7 @@ MonoBehaviour:
       - stat: 6
         amount: 1
         isOverride: 0
-  - id: 31
+  - id: 32
     authoredKey: neutral.mutator.predator-reflexes
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1661,6 +1772,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a959425143073b9479bc69a2105c2af1, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1706,7 +1819,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 32
+  - id: 33
     authoredKey: neutral.mutator.rapid-synapse
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1716,6 +1829,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b1777bdf86e05724eb4b053e724d1e25, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 2
@@ -1759,7 +1874,7 @@ MonoBehaviour:
       - stat: 5
         amount: 1
         isOverride: 0
-  - id: 33
+  - id: 34
     authoredKey: neutral.mutator.regenerative-culture
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1769,6 +1884,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c94e5b9890e32484891c889be2ff2b7c, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 3
@@ -1806,7 +1923,7 @@ MonoBehaviour:
       addAbilities:
       - Regeneration
       statChanges: []
-  - id: 34
+  - id: 35
     authoredKey: neutral.mutator.reinforced-skeleton
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1816,6 +1933,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 5f4bd69948efd134eba0619e6f5e4458, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1861,7 +1980,7 @@ MonoBehaviour:
       - stat: 6
         amount: -1
         isOverride: 0
-  - id: 35
+  - id: 36
     authoredKey: neutral.mutator.reactive-marrow
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1871,6 +1990,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: ea1c3e835adbdc84c9f9011d57b038de, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1910,7 +2031,7 @@ MonoBehaviour:
       - stat: 4
         amount: 3
         isOverride: 0
-  - id: 36
+  - id: 37
     authoredKey: neutral.mutator.pain-suppression
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1920,6 +2041,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4a28807faab186b40ac2a0db27880819, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -1965,7 +2088,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 37
+  - id: 38
     authoredKey: neutral.mutator.hyper-regeneration
     deckPointCost: 2
     deckCopyLimit: 1
@@ -1975,6 +2098,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 66b0aa8330af8b34c9a0542901a1454f, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 3
@@ -2015,7 +2140,7 @@ MonoBehaviour:
       - stat: 4
         amount: 2
         isOverride: 0
-  - id: 38
+  - id: 39
     authoredKey: neutral.mutator.survivor-strain
     deckPointCost: 2
     deckCopyLimit: 1
@@ -2025,6 +2150,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 265ac408dfe8aa149b54ca389103aaa3, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 3
@@ -2072,7 +2199,7 @@ MonoBehaviour:
       - stat: 4
         amount: 2
         isOverride: 0
-  - id: 39
+  - id: 40
     authoredKey: neutral.mutator.neural-accelerator
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2082,6 +2209,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 588c5ee3db81ebc43b592166cf942773, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 2
@@ -2128,7 +2257,7 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 40
+  - id: 41
     authoredKey: neutral.mutator.enhanced-senses
     deckPointCost: 2
     deckCopyLimit: 1
@@ -2138,6 +2267,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 01db794b2eb34a34b88460526acc9ee5, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -2182,7 +2313,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 41
+  - id: 42
     authoredKey: neutral.mutator.wanderer-strain
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2192,6 +2323,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e89a783c4d5e9004bb40d68282b6e4b8, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -2238,7 +2371,7 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 42
+  - id: 43
     authoredKey: neutral.mutator.hunter-genome
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2248,6 +2381,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4c2a319f1c8f12744a6bc9a850ca551e, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 1
@@ -2288,7 +2423,7 @@ MonoBehaviour:
       - stat: 9
         amount: 1
         isOverride: 0
-  - id: 43
+  - id: 44
     authoredKey: neutral.mutator.reflex-genome
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2298,6 +2433,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0c7b6fccc0c139b46a0b686f7932d56a, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 2
@@ -2338,7 +2475,7 @@ MonoBehaviour:
       - stat: 9
         amount: 1
         isOverride: 0
-  - id: 44
+  - id: 45
     authoredKey: neutral.equipment.infantry.ballistic-shield
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2348,6 +2485,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 3fec7ed3a26e09b41a030db132eef347, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2387,7 +2526,7 @@ MonoBehaviour:
       - stat: 1
         amount: 1
         isOverride: 0
-  - id: 45
+  - id: 46
     authoredKey: neutral.equipment.infantry.ceramic-vest
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2397,6 +2536,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: eeeeea33ca1373247967c9896d7e9f60, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2434,7 +2575,7 @@ MonoBehaviour:
       addAbilities:
       - CeramicArmor
       statChanges: []
-  - id: 46
+  - id: 47
     authoredKey: neutral.equipment.infantry.assault-rifle-kit
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2444,6 +2585,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f3eab4a24bbd5be44a612b08a3c8ff59, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2483,7 +2626,7 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 47
+  - id: 48
     authoredKey: neutral.equipment.infantry.marksman-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2493,6 +2636,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: ef240b547a38ad841847e27f26ca4c45, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2542,7 +2687,7 @@ MonoBehaviour:
       - stat: 3
         amount: 3
         isOverride: 1
-  - id: 48
+  - id: 49
     authoredKey: neutral.equipment.infantry.shotgun
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2552,6 +2697,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: fb38f80658c293f49b069bd703b2331c, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2601,7 +2748,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 49
+  - id: 50
     authoredKey: neutral.equipment.infantry.grenade-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2611,6 +2758,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9edc5f0bf53fe324295ac72f42c29ed9, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2658,7 +2807,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 50
+  - id: 51
     authoredKey: neutral.equipment.infantry.shock-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2668,6 +2817,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: bf40ad945f044c94b96e9a40fb42d263, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2718,7 +2869,7 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 51
+  - id: 52
     authoredKey: neutral.equipment.infantry.incendiary-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2728,6 +2879,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b593eeeff7e89d24fb092906860d5ae4, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2775,7 +2928,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 52
+  - id: 53
     authoredKey: neutral.equipment.infantry.rail-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2785,6 +2938,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6875ab8ace96450418120adde7b12b91, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2832,7 +2987,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 53
+  - id: 54
     authoredKey: neutral.equipment.infantry.twin-smg
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2842,6 +2997,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: fe266eb88e963184cbee2f270e0a3c8f, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2892,7 +3049,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 54
+  - id: 55
     authoredKey: neutral.equipment.infantry.portable-mortar
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2902,6 +3059,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a901377070e4df64cafb3a5aedc015db, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -2952,7 +3111,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 55
+  - id: 56
     authoredKey: neutral.equipment.infantry.recoil-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2962,6 +3121,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 7cc6b417cca568341b0213435f133b7a, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3014,7 +3175,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 56
+  - id: 57
     authoredKey: neutral.equipment.infantry.aa-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3024,6 +3185,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a21c64c40be8b1045b4fbd6c19297a81, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3064,7 +3227,7 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 57
+  - id: 58
     authoredKey: neutral.equipment.mechanical.reinforced-chassis
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3074,6 +3237,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 45970bef5aa05c542a4343b3d052b9f7, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3116,7 +3281,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 58
+  - id: 59
     authoredKey: neutral.equipment.mechanical.servo-actuators
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3126,6 +3291,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b4f73a2e842100a4bb73fc35ebb4a880, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3165,7 +3332,7 @@ MonoBehaviour:
       - stat: 5
         amount: 1
         isOverride: 0
-  - id: 59
+  - id: 60
     authoredKey: neutral.equipment.mechanical.ceramic-plating
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3175,6 +3342,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 65f426db3eb3f3f41b5a0eaca4c49024, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3212,7 +3381,7 @@ MonoBehaviour:
       addAbilities:
       - CeramicArmor
       statChanges: []
-  - id: 60
+  - id: 61
     authoredKey: neutral.equipment.mechanical.reactive-armor
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3222,6 +3391,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 56d7550ef8e75544bbedff2675ffe4e3, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3264,7 +3435,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 61
+  - id: 62
     authoredKey: neutral.equipment.vehicle.turbocharger
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3274,6 +3445,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 64990fc62c54fbe449217cde810b4754, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3316,7 +3489,7 @@ MonoBehaviour:
       - stat: 1
         amount: -1
         isOverride: 0
-  - id: 62
+  - id: 63
     authoredKey: neutral.equipment.vehicle.autocannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3326,6 +3499,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 43069ffb25165c445b16ae947f0fc6a4, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3375,7 +3550,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 63
+  - id: 64
     authoredKey: neutral.equipment.vehicle.he-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3385,6 +3560,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f82cb227eebae874da81db7abca78832, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3432,7 +3609,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 64
+  - id: 65
     authoredKey: neutral.equipment.vehicle.flame-projector
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3442,6 +3619,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8a40bb648c2a4cf4fb43c71191d9e6fa, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3490,7 +3669,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 65
+  - id: 66
     authoredKey: neutral.equipment.vehicle.rail-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3500,6 +3679,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 2c8caee70a2f08047bc2c1fc37254a64, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3550,7 +3731,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 66
+  - id: 67
     authoredKey: neutral.equipment.vehicle.shock-projector
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3560,6 +3741,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 20a21feb6b2a3264fa64176c1e016119, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3597,7 +3780,7 @@ MonoBehaviour:
       addAbilities:
       - ShockAttack
       statChanges: []
-  - id: 67
+  - id: 68
     authoredKey: neutral.equipment.vehicle.aa-mount
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3607,6 +3790,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e7b8a3e3d2af8ad43acdc5505b30194e, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3644,7 +3829,7 @@ MonoBehaviour:
       addAbilities:
       - AA
       statChanges: []
-  - id: 68
+  - id: 69
     authoredKey: neutral.equipment.vehicle.dozer-blade
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3654,6 +3839,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 130990f87dd193e4094dc5dbf8e615cc, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3706,7 +3893,7 @@ MonoBehaviour:
       - stat: 1
         amount: 1
         isOverride: 0
-  - id: 69
+  - id: 70
     authoredKey: neutral.equipment.vehicle.siege-ram
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3716,6 +3903,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b6d94124e3aa6204996031eb9d483138, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3766,7 +3955,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 70
+  - id: 71
     authoredKey: neutral.equipment.vehicle.spiked-ram
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3776,6 +3965,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 826b580586597ab4f86ba790c4cbf920, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3826,7 +4017,7 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 71
+  - id: 72
     authoredKey: neutral.equipment.vehicle.mortar-rack
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3836,6 +4027,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 192e578f8fd0cc64a9b4663a2417ab9a, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3886,7 +4079,7 @@ MonoBehaviour:
       - stat: 0
         amount: -1
         isOverride: 0
-  - id: 72
+  - id: 73
     authoredKey: neutral.equipment.vehicle.assault-conversion-kit
     deckPointCost: 2
     deckCopyLimit: 1
@@ -3896,6 +4089,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0da74156cb1b3a5438ec4dd719fbdefc, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3949,7 +4144,7 @@ MonoBehaviour:
       - stat: 4
         amount: 2
         isOverride: 0
-  - id: 73
+  - id: 74
     authoredKey: neutral.equipment.infantry.optical-scope
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3959,6 +4154,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 565e880cc61f8b643888938001a87bc6, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -3998,7 +4195,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 0
-  - id: 74
+  - id: 75
     authoredKey: neutral.equipment.infantry.mobility-harness
     deckPointCost: 1
     deckCopyLimit: 1
@@ -4008,6 +4205,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f62d90db95f6483d9d1d812e8ab0c49c, type: 3}
     faction: 2
     cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -4047,14 +4246,14 @@ MonoBehaviour:
       - stat: 5
         amount: 1
         isOverride: 0
-  - id: 75
+  - id: 76
     authoredKey: neutral.tactic.precise-execution
     deckPointCost: 0
     deckCopyLimit: 0
     deckBuilderExcluded: 1
     displayName: Precise Execution
-    art: {fileID: 0}
-    detailArt: {fileID: 0}
+    art: {fileID: 21300000, guid: 276ae082f0255b247923552a1db232ff, type: 3}
+    detailArt: {fileID: 21300000, guid: 276ae082f0255b247923552a1db232ff, type: 3}
     faction: 3
     cardType: 4
     tacticEffect: 1
@@ -4065,7 +4264,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
     commandRating: 0
@@ -4080,7 +4279,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -4089,20 +4288,20 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
-      hostKinds:
-      clearAbilityFamilies:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 76
+  - id: 77
     authoredKey: neutral.tactic.disruption
     deckPointCost: 0
     deckCopyLimit: 0
     deckBuilderExcluded: 1
     displayName: Disruption
-    art: {fileID: 0}
-    detailArt: {fileID: 0}
+    art: {fileID: 21300000, guid: 922970675955ca940921656d053b3fc3, type: 3}
+    detailArt: {fileID: 21300000, guid: 922970675955ca940921656d053b3fc3, type: 3}
     faction: 3
     cardType: 4
     tacticEffect: 2
@@ -4113,7 +4312,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
     commandRating: 0
@@ -4128,7 +4327,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -4137,20 +4336,20 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
-      hostKinds:
-      clearAbilityFamilies:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 77
+  - id: 78
     authoredKey: neutral.tactic.flawless-execution
     deckPointCost: 0
     deckCopyLimit: 0
     deckBuilderExcluded: 1
     displayName: Flawless Execution
-    art: {fileID: 0}
-    detailArt: {fileID: 0}
+    art: {fileID: 21300000, guid: d298a5908ca5f1a4eabb304e59f98d10, type: 3}
+    detailArt: {fileID: 21300000, guid: d298a5908ca5f1a4eabb304e59f98d10, type: 3}
     faction: 3
     cardType: 4
     tacticEffect: 1
@@ -4161,7 +4360,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
     commandRating: 0
@@ -4176,7 +4375,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -4185,20 +4384,20 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
-      hostKinds:
-      clearAbilityFamilies:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 78
+  - id: 79
     authoredKey: neutral.tactic.total-disruption
     deckPointCost: 0
     deckCopyLimit: 0
     deckBuilderExcluded: 1
     displayName: Total Disruption
-    art: {fileID: 0}
-    detailArt: {fileID: 0}
+    art: {fileID: 21300000, guid: 8bd51c40d81723945b6560b584cc2ed2, type: 3}
+    detailArt: {fileID: 21300000, guid: 8bd51c40d81723945b6560b584cc2ed2, type: 3}
     faction: 3
     cardType: 4
     tacticEffect: 2
@@ -4209,7 +4408,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
     commandRating: 0
@@ -4224,7 +4423,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -4233,20 +4432,20 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
-      hostKinds:
-      clearAbilityFamilies:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 79
+  - id: 80
     authoredKey: neutral.tactic.tactical-advantage
     deckPointCost: 0
     deckCopyLimit: 0
     deckBuilderExcluded: 1
     displayName: Tactical Advantage
-    art: {fileID: 0}
-    detailArt: {fileID: 0}
+    art: {fileID: 21300000, guid: 8b9654bbea970e543a9e285d67b0f9dd, type: 3}
+    detailArt: {fileID: 21300000, guid: 8b9654bbea970e543a9e285d67b0f9dd, type: 3}
     faction: 3
     cardType: 4
     tacticEffect: 3
@@ -4257,7 +4456,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
     commandRating: 0
@@ -4272,7 +4471,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -4281,9 +4480,9 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
-      hostKinds:
-      clearAbilityFamilies:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
