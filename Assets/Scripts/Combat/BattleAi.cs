@@ -774,17 +774,25 @@ namespace Game.Combat
             if (EquipmentSystem.IsSingleUse(actor.Equipment))
             {
                 // actor is a private projection prepared by CloneConsumableState. The shadow
-                // HP/Attack/Defense contain prior simulated hits, not its original live fields.
+                // HP/Attack/Defense contain prior simulated hits, so they move by the item's
+                // delta. A hero's defense pool is FateMax, never its Defense field.
                 float oldHp = hp[actor];
                 int observedHp = oldHp > 0f ? Mathf.Max(1, Mathf.RoundToInt(oldHp)) : 0;
                 actor.HitPointsCurrent = observedHp;
-                actor.Attack = SimulatedAttackOf(actor, simulatedAttack);
-                actor.Defense = SimulatedDefenseOf(actor, simulatedDefense);
+                int oldAttack = actor.Attack, oldPool = SimulatedDefenseOf(actor, null), oldFate = actor.Fate;
                 EquipmentSystem.ConsumeAfterAttack(actor);
                 hp[actor] = Mathf.Clamp(oldHp + actor.HitPointsCurrent - observedHp,
                     oldHp > 0f ? Mathf.Min(1f, oldHp) : 0f, actor.HitPointsMax);
-                if (simulatedAttack != null) simulatedAttack[actor] = actor.Attack;
-                if (simulatedDefense != null) simulatedDefense[actor] = actor.Defense;
+                if (simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int shadowAttack))
+                    simulatedAttack[actor] = shadowAttack + actor.Attack - oldAttack;
+                if (simulatedDefense != null && simulatedDefense.TryGetValue(actor, out int shadowDefense))
+                    simulatedDefense[actor] = shadowDefense + SimulatedDefenseOf(actor, null) - oldPool;
+                // A commanding hero's battle Fate pool loses Fate the item no longer provides.
+                ArmyData actorArmy = actor.IsHero && fateByArmy != null
+                    ? FindSimulationArmy(actor, ownArmy, enemyArmy) : null;
+                if (actorArmy != null && fateByArmy.TryGetValue(actorArmy, out int pool)
+                    && BattleTurnOrder.LivingCommanderOnGrid(grid, actorArmy) == actor)
+                    fateByArmy[actorArmy] = Mathf.Max(0, pool + actor.Fate - oldFate);
             }
             return victim;
         }

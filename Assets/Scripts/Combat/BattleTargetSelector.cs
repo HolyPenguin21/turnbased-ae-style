@@ -169,14 +169,17 @@ namespace Game.Combat
             {
                 // The answer comes after this actor's item has been spent. Evaluate on a
                 // private copy so a target preview cannot consume the live attachment.
+                // A simulated defense moves by the item's delta of the actor's own pool:
+                // FateMax for a hero (BattleCombatOdds), Defense otherwise.
                 var spent = actor.CloneForCombat();
-                spent.Defense = actorDefense ?? actor.Defense;
                 spent.HitPointsCurrent = Mathf.Max(1, Mathf.RoundToInt(actorHp));
                 int oldMax = spent.HitPointsMax;
+                int oldPool = spent.IsHero ? Mathf.Max(0, spent.FateMax) : spent.Defense;
                 EquipmentSystem.ConsumeAfterAttack(spent);
                 actorHp = Mathf.Clamp(actorHp + spent.HitPointsMax - oldMax, 1f, spent.HitPointsMax);
                 actor = spent;
-                actorDefense = spent.Defense;
+                if (actorDefense.HasValue)
+                    actorDefense += (spent.IsHero ? Mathf.Max(0, spent.FateMax) : spent.Defense) - oldPool;
             }
             return BattleCombatOdds.Evaluate(victim, actor, actorBonus, magnitudes, actorHp,
                 victimAttack, actorDefense).ExpectedDamage;
