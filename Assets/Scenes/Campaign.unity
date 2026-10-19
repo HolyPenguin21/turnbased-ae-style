@@ -1296,7 +1296,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 150, y: -152.49997}
+  m_AnchoredPosition: {x: 150, y: -203.7}
   m_SizeDelta: {x: 250, y: 52}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &182328571
@@ -2367,7 +2367,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 175, y: -377.99997}
+  m_AnchoredPosition: {x: 175, y: -313.7}
   m_SizeDelta: {x: 550, y: 30}
   m_Pivot: {x: 0, y: 1}
 --- !u!114 &328664491
@@ -4344,7 +4344,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -150, y: -152.49997}
+  m_AnchoredPosition: {x: -150, y: -203.70001}
   m_SizeDelta: {x: 250, y: 52}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &598613148
@@ -10413,7 +10413,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
-  m_AnchoredPosition: {x: 0, y: 90}
+  m_AnchoredPosition: {x: 0, y: 47.8}
   m_SizeDelta: {x: 185, y: 36}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1332640688
@@ -11259,8 +11259,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -143.42285}
-  m_SizeDelta: {x: 700, y: 125}
+  m_AnchoredPosition: {x: 0, y: -151.37854}
+  m_SizeDelta: {x: 730, y: 140.9114}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1381176011
 MonoBehaviour:
@@ -11282,9 +11282,10 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "Region: Shattered Plain\nOperation: DEFENCE\nAttacker: The Vessels  \xB7 
-    Defender: Iron Concord\nArid badlands \xB7 Balanced \xB7 Poor\nGeneration target:
-    3 far hexes, H/E/M: 1/1/1; Tech: 2"
+  m_text: "Region: Salt Crown\nOperation: DEFENCE\nAttacker: The Vessels  \xB7  Defender:
+    Iron Concord\nArid badlands \xB7 Balanced \xB7 Normal\nGeneration target: 4 far
+    hexes, H/E/M: 1\u20132 each (random remainder); Tech: 2\nInterrupted battle:
+    restart with a fresh tactical map. Territory unchanged."
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: d095f7d087314d42b29a06f3d95b8e2b, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: d095f7d087314d42b29a06f3d95b8e2b, type: 2}
@@ -11311,8 +11312,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 20
-  m_fontSizeBase: 20
+  m_fontSize: 18
+  m_fontSizeBase: 18
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -15764,8 +15765,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -306.95996}
-  m_SizeDelta: {x: 730, y: 202.08}
+  m_AnchoredPosition: {x: 0, y: -338.7871}
+  m_SizeDelta: {x: 730, y: 233.9042}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2118977909
 MonoBehaviour:
