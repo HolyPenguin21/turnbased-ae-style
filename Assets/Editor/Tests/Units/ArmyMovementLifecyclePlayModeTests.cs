@@ -7,6 +7,7 @@ using System.Reflection;
 using Game.Ai;
 using Game.Ai.V2;
 using Game.Aviation;
+using Game.Cards;
 using Game.Core;
 using Game.Economy;
 using Game.HexGrid;
