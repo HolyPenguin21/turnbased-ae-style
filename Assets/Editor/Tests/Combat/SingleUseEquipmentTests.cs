@@ -329,6 +329,53 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void TacticalForecastKeepsAHerosDefensePoolOnFateMax()
+        {
+            // A hero defends with FateMax (BattleCombatOdds): the spent item's Defense change
+            // must not move the shadow pool, its Fate change must.
+            var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+            CardDefinition HeroItem()
+            {
+                var item = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Defense, 10);
+                item.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Fate, amount = 2 });
+                item.grantedAbilities.Add(UnitAbilities.SingleUse);
+                return item;
+            }
+            var hero = Body(AttachmentSlotTests.Host(hero: true), HeroItem());
+            var foe = Body(Host(hp: 100));
+            var own = Army(new PlayerSetupData(), hero); var enemy = Army(new PlayerSetupData(), foe);
+            var grid = new BattleGrid(); grid.Set(1, 1, hero); grid.Set(2, 1, foe);
+            Assert.That(hero.FateMax, Is.EqualTo(6));
+            var hp = new Dictionary<UnitData, float> { [hero] = hero.HitPointsCurrent, [foe] = foe.HitPointsCurrent };
+            var attack = new Dictionary<UnitData, int> { [hero] = hero.Attack, [foe] = foe.Attack };
+            var defense = new Dictionary<UnitData, int> { [hero] = hero.FateMax, [foe] = foe.Defense };
+            var fate = new Dictionary<ArmyData, int> { [own] = hero.Fate, [enemy] = 0 };
+            typeof(BattleAi).GetMethod("ApplySimAttack", flags).Invoke(null, new object[] { grid, hp, hero, foe,
+                (float?)0f, false, AbilityMagnitudes.Default, null, 0, null, fate, attack, defense, own, enemy,
+                new BattleReactionState(), null, 0f, false });
+            Assert.That(hero.Equipment, Is.Null);
+            Assert.That(defense[hero], Is.EqualTo(4));
+            Assert.That(fate[own], Is.EqualTo(4));
+
+            // The Counterattack answer faces the spent hero exactly like a hero that never had the item.
+            var counter = typeof(BattleTargetSelector).GetMethod("ExpectedCounterDamage", flags);
+            float Answer(UnitData actor, int? pool)
+            {
+                var victim = Body(Host(attack: 6, hp: 100));
+                victim.Abilities.Add(UnitAbilities.Counterattack);
+                var g = new BattleGrid(); g.Set(1, 1, actor); g.Set(2, 1, victim);
+                var shadow = pool.HasValue ? new Dictionary<UnitData, int> { [actor] = pool.Value } : null;
+                return (float)counter.Invoke(null, new object[] { g, actor, victim, 10f, AbilityMagnitudes.Default,
+                    null, null, 0, null, shadow });
+            }
+            var plain = Body(AttachmentSlotTests.Host(hero: true));
+            var armed = Body(AttachmentSlotTests.Host(hero: true), HeroItem());
+            Assert.That(Answer(armed, null), Is.EqualTo(Answer(plain, null)).Within(0.0001f));
+            Assert.That(Answer(armed, armed.FateMax), Is.EqualTo(Answer(plain, plain.FateMax)).Within(0.0001f));
+            Assert.That(armed.Equipment, Is.Not.Null, "A target preview spends only a private copy");
+        }
+
+        [Test]
         public void MovementLookaheadDoesNotSpendEquipmentOrIssueLiveIdentities()
         {
             var gear = Item(10); var a = Body(Host(2), gear); var b = Body();
