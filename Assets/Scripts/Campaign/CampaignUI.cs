@@ -417,12 +417,15 @@ namespace Game.Campaign
                 var validation = ProgressionContext.Collection.Rules.Validate(deck, ProgressionContext.Collection.Owned);
                 var row = Instantiate(deckRowPrefab, deckListContent, false);
                 ((RectTransform)row.transform).anchoredPosition = new Vector2(0, -i * 105);
-                row.ButtonLabel.text = (selectedDeckId == deck.deckId ? "Selected: " : "") + deck.name + "  ·  " + validation.Points + " / 100";
+                row.ButtonLabel.text = deck.name + "  ·  " + validation.Points + " / 100";
                 row.Button.interactable = validation.IsValid;
                 row.Button.onClick.AddListener(() => { selectedDeckId = deck.deckId; OpenDeckSelection(); });
-                row.Status.text = validation.IsValid ? "Valid saved deck" : string.Join("; ", validation.Errors); i++;
+                row.Status.text = !validation.IsValid ? string.Join("; ", validation.Errors)
+                    : selectedDeckId == deck.deckId ? "Selected" : "Valid saved deck"; i++;
             }
-            deckListContent.sizeDelta = new Vector2(deckListContent.sizeDelta.x, Math.Max(310, i * 105));
+            // Content must not exceed the viewport when the rows fit, otherwise the scrollbar never hides.
+            float viewportHeight = ((RectTransform)deckListContent.parent).rect.height;
+            deckListContent.sizeDelta = new Vector2(deckListContent.sizeDelta.x, Math.Max(viewportHeight, i * 105));
             deckEmptyLabel.gameObject.SetActive(decks.Count == 0);
             var selectedDeck = decks.Find(d => d.deckId == selectedDeckId);
             deckStart.GetComponentInChildren<TMP_Text>().text = attack ? "Start Battle" : "Defend Region";
