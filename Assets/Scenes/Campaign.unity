@@ -6808,7 +6808,7 @@ MonoBehaviour:
       m_PostInfinity: 2
       m_RotationOrder: 4
     StampDelay: 0.08
-    StampSeconds: 0.65
+    StampSeconds: 1.3
     StampPopFraction: 0.22
     StampStartScale: 1.24
     StampAlpha: 0.88

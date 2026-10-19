@@ -411,12 +411,12 @@ namespace Game.Campaign
             if (!decks.Any(d => d.deckId == selectedDeckId))
                 selectedDeckId = decks.Find(d => d.deckId == op.SelectedHumanDeckId)?.deckId
                     ?? ProgressionContext.Collection.DefaultDeck(s.HumanFaction)?.deckId;
-            int i = 0;
+            int i = 0; float rowPitch = ((RectTransform)deckRowPrefab.transform).rect.height; // rows touch: no gap between decks
             foreach (var deck in decks)
             {
                 var validation = ProgressionContext.Collection.Rules.Validate(deck, ProgressionContext.Collection.Owned);
                 var row = Instantiate(deckRowPrefab, deckListContent, false);
-                ((RectTransform)row.transform).anchoredPosition = new Vector2(0, -i * 105);
+                ((RectTransform)row.transform).anchoredPosition = new Vector2(0, -i * rowPitch);
                 row.ButtonLabel.text = deck.name + "  ·  " + validation.Points + " / 100";
                 row.Button.interactable = validation.IsValid;
                 row.Button.onClick.AddListener(() => { selectedDeckId = deck.deckId; OpenDeckSelection(); });
@@ -425,7 +425,7 @@ namespace Game.Campaign
             }
             // Content must not exceed the viewport when the rows fit, otherwise the scrollbar never hides.
             float viewportHeight = ((RectTransform)deckListContent.parent).rect.height;
-            deckListContent.sizeDelta = new Vector2(deckListContent.sizeDelta.x, Math.Max(viewportHeight, i * 105));
+            deckListContent.sizeDelta = new Vector2(deckListContent.sizeDelta.x, Math.Max(viewportHeight, i * rowPitch));
             deckEmptyLabel.gameObject.SetActive(decks.Count == 0);
             var selectedDeck = decks.Find(d => d.deckId == selectedDeckId);
             deckStart.GetComponentInChildren<TMP_Text>().text = attack ? "Start Battle" : "Defend Region";

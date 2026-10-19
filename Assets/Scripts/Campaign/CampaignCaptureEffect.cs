@@ -11,7 +11,7 @@ namespace Game.Campaign
         [Range(.1f, 3f)] public float SpreadSeconds = 1.275f;
         public AnimationCurve SpreadEasing = AnimationCurve.EaseInOut(0, 0, 1, 1);
         [Range(0, .5f)] public float StampDelay = .08f;
-        [Range(.1f, 2f)] public float StampSeconds = .65f;
+        [Range(.1f, 3f)] public float StampSeconds = 1.3f;
         [Range(.1f, .5f)] public float StampPopFraction = .22f;
         [Range(1f, 1.6f)] public float StampStartScale = 1.24f;
         [Range(0, 1)] public float StampAlpha = .88f;
@@ -77,7 +77,7 @@ namespace Game.Campaign
             stampCenter = CampaignRegionGraphic.VisibleCenter(target);
             spreadSeconds = Mathf.Clamp(settings.SpreadSeconds, .1f, 3f);
             stampDelay = Mathf.Clamp(settings.StampDelay, 0, .5f);
-            stampSeconds = Mathf.Clamp(settings.StampSeconds, .1f, 2f);
+            stampSeconds = Mathf.Clamp(settings.StampSeconds, .1f, 3f);
             var ink = Color.Lerp(CampaignMapView.ColorFor(target.OwnerFaction), new Color(.88f, .81f, .65f), .5f);
             stampText.color = ink;
             var size = new Vector2(Mathf.Clamp(settings.StampSize.x, 64, 180), Mathf.Clamp(settings.StampSize.y, 24, 56));
