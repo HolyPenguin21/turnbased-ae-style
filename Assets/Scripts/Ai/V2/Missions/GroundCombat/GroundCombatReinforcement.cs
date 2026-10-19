@@ -41,7 +41,7 @@ namespace Game.Ai.V2
         // (CommandHandover)? A convoy that cannot help is never provisioned.
         internal static bool ImprovesOdds(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            out string why, bool allowCommandHandover = false, bool allowCompleteTransfer = false)
+            out string why, bool allowCommandHandover = false)
         {
             if (allowCommandHandover && CommandHandover(primary, support, opposition,
                     defenderHexDefenseBonus, null) != null)
@@ -49,7 +49,7 @@ namespace Game.Ai.V2
                 why = null;
                 return true;
             }
-            List<UnitData> sparable = SparableSupportBodies(support, allowCompleteTransfer);
+            List<UnitData> sparable = SparableSupportBodies(support);
             List<WorthIt.DefenderProfile> primaryBodies = primary.Members
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .Select(WorthIt.FromLiveUnit)
@@ -84,8 +84,7 @@ namespace Game.Ai.V2
         // with the exact `why` (both alternatives, with power before/after) when neither helps.
         // `capacityIsProgress` — 2026-10-01 (variant B): the preparation's fetched commander. Its
         // lone hero takes command (joining, or exchanged for the weakest body of a full host) and
-        // its larger Command is the progress, as for the same-hex capacity hero of a preparation;
-        // the lone-hero container may be emptied by it.
+        // its larger Command is the progress, as for the same-hex capacity hero of a preparation.
         internal static HandoffPlan PlanAttackHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, bool requireChargeNow,
             out string why, bool capacityIsProgress = false)
@@ -116,8 +115,7 @@ namespace Game.Ai.V2
             }
 
             HandoffPlan first = PlanHandoff(primary, support, opposition, hexBonus,
-                out string firstWhy, allowCompleteTransfer: true, requireChargeNow: requireChargeNow,
-                allowEmptySupport: capacityIsProgress);
+                out string firstWhy, requireChargeNow: requireChargeNow);
             string commandJudged = null;
             if (first != null)
             {
@@ -133,7 +131,7 @@ namespace Game.Ai.V2
                 commandJudged = judged;
             }
             HandoffPlan bodies = PlanHandoff(primary, support, null, 0f, out string bodiesWhy,
-                allowCompleteTransfer: true, requireChargeNow: requireChargeNow);
+                requireChargeNow: requireChargeNow);
             string bodiesJudged = null;
             if (bodies != null)
             {
@@ -164,14 +162,14 @@ namespace Game.Ai.V2
         // is exchanged for the primary's most wounded, then weakest, body. Under the hero's
         // Command the free slots take the support's strongest bodies; every further support body
         // that beats the primary's weakest remaining body is exchanged for it (the same "fresh for
-        // weakest" rule as the bodies-only swap). The support must stay a non-empty, legally sized
-        // container with what it keeps and what it receives. Null when no hero should move. Used
+        // weakest" rule as the bodies-only swap). The support must stay a legally sized container
+        // with what it keeps and what it receives; it may be emptied (the game disbands an empty
+        // army only at the end of its owner's turn). Null when no hero should move. Used
         // by the gather projection, the gather plan's donor retention, the reinforcement gate and
         // the handoff — one answer for all four.
         internal static HandoffPlan CommandHandover(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool allowEmptySupport = false,
-            bool requireChargeNow = false)
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool requireChargeNow = false)
         {
             if (primary == null || support == null || primary.IsGarrison)
                 return null;
@@ -246,25 +244,9 @@ namespace Game.Ai.V2
                         displaced.Add(weakest.Dequeue());
                     }
 
-                    // The support is never emptied: if everything would leave, its weakest moving body
-                    // stays (the last fill, or else the last exchange, which is undone as a pair).
-                    int fills = incoming.Count - 1
-                        - displaced.Count(AiArmyRoles.IsGroundBattleBody) + (heroFor != null ? 1 : 0);
-                    if (!support.Members.Except(incoming).Concat(displaced).Any() && incoming.Count > 1)
-                    {
-                        if (fills > 0)
-                            incoming.RemoveAt(fills);
-                        else
-                        {
-                            incoming.RemoveAt(incoming.Count - 1);
-                            displaced.RemoveAt(displaced.Count - 1);
-                        }
-                    }
                     // Without its hero the support must still hold what it keeps and receives; a
                     // support that cannot does not give this hero away.
-                    if (!SupportStaysLegal(support, incoming, displaced)
-                        && !(allowEmptySupport && support.Members.All(u => incoming.Contains(u))
-                            && displaced.Count == 0))
+                    if (!SupportStaysLegal(support, incoming, displaced))
                         continue;
                     var final = new[] { hero }.Concat(primary.Members.Except(displaced))
                         .Concat(incoming.Where(u => u != hero)).ToList();
@@ -289,8 +271,7 @@ namespace Game.Ai.V2
         // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
         internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
-            out string why, bool allowCompleteTransfer = false, bool requireChargeNow = true,
-            bool allowEmptySupport = false)
+            out string why, bool requireChargeNow = true)
         {
             why = "";
             if (primary == null || support == null)
@@ -300,11 +281,11 @@ namespace Game.Ai.V2
             }
             // CommandHandover returns only an exchange the armies can make (same legality check).
             HandoffPlan command = commandOpposition == null ? null : CommandHandover(primary, support,
-                commandOpposition, commandHexBonus, null, allowEmptySupport, requireChargeNow);
+                commandOpposition, commandHexBonus, null, requireChargeNow);
             if (command != null)
                 return command;
 
-            List<UnitData> sparable = SparableSupportBodies(support, allowCompleteTransfer);
+            List<UnitData> sparable = SparableSupportBodies(support);
             if (sparable.Count == 0)
             {
                 why += "support has no sparable body";
@@ -383,13 +364,13 @@ namespace Game.Ai.V2
             List<UnitData> displaced)
         {
             var remainder = support.Members.Where(u => !incoming.Contains(u)).Concat(displaced).ToList();
-            return remainder.Count >= 1
-                && ArmyData.RosterFits(remainder, support.IsGarrison);
+            return ArmyData.RosterFits(remainder, support.IsGarrison);
         }
 
-        // Attack may consume a singleton field support. All other transfers retain one member;
-        // a hero only moves through CommandHandover.
-        internal static List<UnitData> SparableSupportBodies(ArmyData support, bool allowCompleteTransfer = false)
+        // Every ground body the support can hand over, strongest first. A support may be emptied
+        // (the game disbands an empty army only at the end of its owner's turn); a hero only moves
+        // through CommandHandover.
+        internal static List<UnitData> SparableSupportBodies(ArmyData support)
         {
             var list = new List<UnitData>();
             if (support == null)
@@ -399,9 +380,6 @@ namespace Game.Ai.V2
                 .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                 .ThenBy(x => x.Name))
             {
-                if (!(allowCompleteTransfer && support.Members.Count == 1)
-                    && support.Members.Count - list.Count <= 1)
-                    break;  // Only Attack's singleton body may drain its donor; other donors retain one member
                 if (!support.CanLeaveWithoutOvercrowding(u))
                     continue;
                 list.Add(u);

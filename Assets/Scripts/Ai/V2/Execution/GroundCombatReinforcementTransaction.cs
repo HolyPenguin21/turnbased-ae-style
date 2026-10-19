@@ -63,7 +63,7 @@ namespace Game.Ai.V2
 
         // The concrete roster mutation: fill the primary's free slots first, then — if it is full —
         // swap its most critically wounded bodies for fresh ones. Executed through the SAME
-        // authoritative ArmyActions primitives a human uses; the support container is never emptied.
+        // authoritative ArmyActions primitives a human uses; the support container may be emptied.
         // `commandOpposition` (optional, the lane's fight) — when given, the support's hero may be
         // handed over to lead the primary (GroundCombatReinforcement.CommandHandover), in the same
         // atomic transfer as the bodies its Command makes room for.
@@ -71,7 +71,7 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ArmyData support, ArmyData primary,
             out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition = null, float commandHexBonus = 0f,
-            bool allowCompleteTransfer = false, bool capacityIsProgress = false)
+            bool capacityIsProgress = false)
         {
             transferred = 0;
             wasSwap = false;
@@ -84,7 +84,7 @@ namespace Game.Ai.V2
                 ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, commandOpposition,
                     commandHexBonus, requireChargeNow: true, out why, capacityIsProgress)
                 : GroundCombatReinforcement.PlanHandoff(primary, support,
-                    null, commandHexBonus, out why, allowCompleteTransfer);
+                    null, commandHexBonus, out why);
             if (plan == null)
             {
                 detail = why;

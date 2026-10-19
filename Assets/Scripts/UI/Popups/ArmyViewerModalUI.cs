@@ -104,14 +104,6 @@ namespace Game.UI
         // commits, so an aborted/invalid drag has nothing to undo.
         private ArmyUnitCardUI _draggingCard;
         private List<UnitData> _dragPreviewOrder;
-        // Every army that's had a member dragged OUT of it (see TryDropUnit) at any point during
-        // this modal's current open session — checked for actual deletion only once the modal
-        // closes (see Hide), not immediately: the player might still be mid-reorganizing (empty
-        // it, then partly refill it, before deciding) while switching between armies via the
-        // button row, all without ever closing this. HexSelectionController.DeleteArmyIfEmptied
-        // re-checks the final Members count itself, so an army that ended up non-empty again is
-        // simply a no-op there.
-        private readonly HashSet<ArmyData> _pendingEmptyCheck = new HashSet<ArmyData>();
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
@@ -307,15 +299,6 @@ namespace Game.UI
             if (armyButtonRow != null)
                 armyButtonRow.Hide();
             ClearGrid();
-
-            // Only now, on close, does an army emptied out during this session (see TryDropUnit)
-            // actually get torn down — see DeleteArmyIfEmptied and _pendingEmptyCheck's own
-            // comment for why this can't just happen the moment it empties. Before OnArmyModalClosed
-            // (Closed, below) re-selects the hex, so its button row/info panel already reflect
-            // whatever got deleted.
-            foreach (ArmyData army in _pendingEmptyCheck)
-                hexSelectionController?.DeleteArmyIfEmptied(army);
-            _pendingEmptyCheck.Clear();
 
             _currentArmy = null;
             _readOnly = false;
@@ -623,11 +606,9 @@ namespace Game.UI
 
                 ClearReorderPreview();
 
-                // _currentArmy itself may have just lost its last member — actual deletion (see
-                // DeleteArmyIfEmptied) is deferred until this modal closes, not done here, in
-                // case the player isn't done reorganizing yet (see _pendingEmptyCheck).
-                _pendingEmptyCheck.Add(_currentArmy);
-
+                // _currentArmy may have just lost its last member. It stays an empty army the
+                // player can refill this turn; HexSelectionController.DisbandEmptyArmiesOf removes
+                // it at the end of the turn if it is still empty.
                 RefreshGrid();
                 ShowArmySummary();
                 return true;

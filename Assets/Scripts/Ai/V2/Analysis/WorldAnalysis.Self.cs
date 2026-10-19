@@ -597,7 +597,7 @@ namespace Game.Ai.V2
                     unit.RepairResourceCost.Get(ResourceType.Tech))
                 : ResourceVector.Zero;
             bool isBody = AiArmyRoles.IsGroundBattleBody(unit);
-            bool canSpare = isOwn && army.Members.Count > 1 && isBody
+            bool canSpare = isOwn && isBody
                 && army.CanLeaveWithoutOvercrowding(unit)
                 && (!army.IsGarrison || canSpareGarrison(new[] { unit }));
             return new RaidRecoveryMemberSnapshot(unit.RuntimeId, index, unit.IsHero,

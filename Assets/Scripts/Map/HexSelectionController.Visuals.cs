@@ -565,9 +565,9 @@ namespace Game.Map
             // Only ever hides — never deletes. This runs for EVERY membership change on this
             // hex, including a brand-new army that was just created and hasn't been given its
             // first member yet (see ArmyViewerModalUI.CreateArmy), which is empty by design and
-            // must not be torn down for it. Actually deleting an army that's been emptied OUT
-            // (as opposed to never filled) only ever happens where a member is actually removed
-            // — see DeleteArmyIfEmptied, called explicitly from there instead.
+            // must not be torn down for it. An army emptied by a transfer is disbanded at the end
+            // of its owner's turn (DisbandEmptyArmiesOf); one wiped out in combat, where it died
+            // (DeleteArmyIfEmptied).
             foreach (ArmyData army in emptiedHere)
                 if (army.Controller != null && army.Controller.Visual != null)
                     army.Controller.Visual.SetVisible(false);

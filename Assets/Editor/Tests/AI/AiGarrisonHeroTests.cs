@@ -317,6 +317,22 @@ namespace Game.EditorTests
             Assert.That(ArmyData.RosterFits(support.Members, false), Is.True);
         }
 
+        // An emptied army is disbanded only at the end of its owner's turn, so a reinforcement
+        // hands over every body that fits — the support is not kept alive with one of them.
+        [Test]
+        public void ReinforcementHandoff_MayEmptyTheSupport()
+        {
+            UnitData lead = Hero("Lead", 6);
+            ArmyData host = Army(Staging, lead, Body("Fighter", 5));
+            ArmyData support = Army(Staging, Body("Fresh", 20), Body("Guard", 8));
+            Assert.That(GroundCombatReinforcement.SparableSupportBodies(support), Has.Count.EqualTo(2));
+            bool applied = GroundCombatReinforcementTransaction.ApplyReinforcementHandoff(Us,
+                new AiTurnContext(), null, support, host, out int moved, out _, out _, out string why);
+            Assert.That(applied, Is.True, why);
+            Assert.That(moved, Is.EqualTo(2));
+            Assert.That(support.Members, Is.Empty);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void AttackDeparture_OptimizesFreshRosterAndPreservesCommittedRoster(bool committed)

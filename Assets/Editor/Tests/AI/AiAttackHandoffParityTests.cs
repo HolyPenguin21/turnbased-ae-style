@@ -114,7 +114,7 @@ namespace Game.EditorTests
                 ArmyRegistry.Register(a);
             foreach ((ArmyData primary, ArmyData support) in new[] { (host, useful), (full, useless) })
                 Assert.That(GroundCombatAssemblyPlanner.SupportImprovesPrimary(Snapshot(primary),
-                        Snapshot(support), Site(), allowCommandHandover: true, allowCompleteTransfer: true),
+                        Snapshot(support), Site(), allowCommandHandover: true),
                     Is.EqualTo(GroundCombatReinforcement.PlanAttackHandoff(primary, support, Site(), 0f,
                         requireChargeNow: false, out _) != null));
         }
