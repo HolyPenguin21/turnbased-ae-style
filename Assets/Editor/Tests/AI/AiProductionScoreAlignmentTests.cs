@@ -8,6 +8,7 @@ using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
+using Game.Players;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -15,6 +16,104 @@ namespace Game.EditorTests
 {
     public class AiProductionScoreAlignmentTests
     {
+        // Real catalog costs, effects, hosts and opponents. Defensive outputs need a threat
+        // they can actually counter; Fate must improve the ordinary READY score, not bypass it.
+        [TestCase("IronConcord", "concord.card.vector-vance", "hyper-regeneration", "concord.card.light-infantry", "ashen.card.deadeye", false)]
+        [TestCase("IronConcord", "concord.card.vector-vance", "enhanced-senses", "concord.card.light-infantry", "ashen.card.deadeye", false)]
+        [TestCase("IronConcord", "concord.card.vector-vance", "wanderer-strain", "concord.card.atlas", "ashen.card.ash-runner", false)]
+        [TestCase("TheAshen", "ashen.card.nova-sterling", "hyper-regeneration", "ashen.card.deadeye", "concord.card.at-cannon", false)]
+        [TestCase("TheAshen", "ashen.card.nova-sterling", "enhanced-senses", "ashen.card.deadeye", "concord.card.at-cannon", false)]
+        [TestCase("TheAshen", "ashen.card.nova-sterling", "wanderer-strain", "ashen.card.deadeye", "concord.card.light-infantry", false)]
+        [TestCase("IronConcord", "concord.card.vector-vance", "wanderer-strain", "concord.card.light-infantry", "ashen.card.iron-husk", true)]
+        public void AuthoredDifficultyFiveRemainsWorthProducingAfterFortunateGenome(
+            string faction, string heroKey, string slug, string recipientKey, string enemyKey, bool mustCrossMargin)
+        {
+            CardDefinition ReadCard(string path, string key) => AttachmentContentTestData.Blocks(path)
+                .Select(AttachmentContentTestData.Read).Single(c => c.authoredKey == key);
+            string factionPath = $"Assets/Cards/{faction}/CardCatalog_{faction}.asset";
+            string enemyFaction = faction == "IronConcord" ? "TheAshen" : "IronConcord";
+            var output = ReadCard(AttachmentContentTestData.NeutralPath, "neutral.mutator." + slug);
+            var genome = ReadCard(AttachmentContentTestData.NeutralPath, "neutral.mutator.fortunate-genome");
+            var heroDef = ReadCard(factionPath, heroKey);
+            var recipient = new CardData(ReadCard(factionPath, recipientKey));
+            var enemy = ReadCard($"Assets/Cards/{enemyFaction}/CardCatalog_{enemyFaction}.asset", enemyKey);
+            var player = new PlayerSetupData { Faction = heroDef.faction };
+            var hero = AttachmentSlotTests.Body(heroDef);
+            hero.Owner = player;
+            var stock = new ResourceBundle { Human = 30, Energy = 30, Materials = 30, Tech = 30 };
+            var snapshot = new WorldSnapshot
+            {
+                Observer = player, TurnNumber = 10,
+                Self = new SelfSnapshot
+                {
+                    Hand = new[] { recipient }, Deck = Array.Empty<CardDefinition>(),
+                    ActionPoints = 20, Stockpile = stock,
+                    PerTurnIncome = new ResourceBundle { Human = 3, Energy = 3, Materials = 3, Tech = 3 },
+                    ApEconomy = new ApActionEconomySnapshot { BaseActionPoints = 20, WitnessedApDemand = 2 },
+                },
+                Economy = new EconomyStanding { SpendableStockpile = stock },
+                Development = new DevelopmentReadiness(),
+                TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { new ArmySnapshot {
+                    Members = new[] { WorthIt.FromLiveUnit(AttachmentSlotTests.Body(enemy)) },
+                } } },
+            };
+            GenerationStep Source() => new GenerationStep
+            {
+                Mode = ResearchProductionMode.Research, Hero = hero, CardDef = output,
+                ProducesEquipment = true, CardKey = "research:" + output.authoredKey,
+                SuccessChance = ResearchProductionSystem.EstimateSuccessChance(hero, output),
+            };
+            float Score(GenerationStep source)
+            {
+                var delta = EquipmentUpgradeValuation.EquipmentDeltaParts(output, recipient, snapshot);
+                var op = new DevelopmentOpportunity
+                {
+                    Card = output, RecipientCard = recipient, Generation = source,
+                    SuccessChance = source.SuccessChance,
+                    ExpectedGain = delta.Total * AiConfigV2.combatPowerPerBodyEstimate,
+                    TacticalGain = delta.Tactical * AiConfigV2.combatPowerPerBodyEstimate,
+                };
+                var plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(op, source, DesireAxis.Development);
+                Assert.That(plan.ApCost, Is.EqualTo(ResearchProductionSystem.AttemptApCost(output)));
+                Assert.That(plan.DeferredAttachmentAp, Is.EqualTo(output.activationApCost));
+                return StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(op, plan, snapshot, player, null, null);
+            }
+            Assert.That(output.fate, Is.EqualTo(5));
+            Assert.That(EquipmentSystem.FitsHost(genome, heroDef, out _), Is.True);
+            Assert.That(EquipmentSystem.FitsHost(output, recipient.Definition, out _), Is.True);
+            var before = Source();
+            snapshot.Development.ForecastSources = new[] { before };
+            string keyBefore = DevelopmentAdmission.OperatorForecastFacts(snapshot, player);
+            string verdictBefore = DevelopmentAdmission.RecipientVerdictKey(snapshot, Array.Empty<MissionIntent>(), player, null);
+            float scoreBefore = Score(before);
+            EquipmentSystem.ApplyAttachments(hero, null, genome);
+            Assert.That(DevelopmentAdmission.OperatorForecastFacts(snapshot, player), Is.Not.EqualTo(keyBefore),
+                "The operator's live Fate invalidates the forecast even before sources are rebuilt");
+            var after = Source();
+            snapshot.Development.ForecastSources = new[] { after };
+            float scoreAfter = Score(after);
+            TestContext.WriteLine($"{faction}/{slug} -> {recipient.Definition.displayName} vs {enemy.displayName}: "
+                + $"Fate {heroDef.fate}->{hero.Fate}, p {before.SuccessChance:R}->{after.SuccessChance:R}, "
+                + $"score {scoreBefore:R}->{scoreAfter:R}");
+            Assert.That(hero.Fate, Is.EqualTo(heroDef.fate + 2));
+            Assert.That(after.SuccessChance, Is.GreaterThan(before.SuccessChance));
+            Assert.That(scoreAfter, Is.GreaterThan(scoreBefore));
+            if (mustCrossMargin)
+                Assert.That(scoreBefore, Is.LessThanOrEqualTo(AiConfigV2.devEvMargin),
+                    "This witness must require the Fate upgrade to cross the investment margin");
+            Assert.That(scoreAfter, Is.GreaterThan(AiConfigV2.devEvMargin),
+                "A useful authored difficulty-five output must pass the real READY investment margin after +2 Fate");
+            Assert.That(DevelopmentAdmission.RecipientVerdictKey(snapshot, Array.Empty<MissionIntent>(), player, null),
+                Is.Not.EqualTo(verdictBefore));
+            foreach (ResourceType type in ResourceBundle.All)
+                Assert.That(snapshot.Economy.SpendableStockpile.Get(type), Is.EqualTo(stock.Get(type)),
+                    "Scoring and Fate projection never spend bank resources");
+            Assert.That(recipient.Mutator, Is.Null, "Scoring must not install the future output");
+            recipient.Mutator = output;
+            Assert.That(EquipmentSystem.CanAttachPreview(output, recipient, out _), Is.False);
+            Assert.That(Score(after), Is.LessThan(0f), "An unchanged host must not justify repeated production");
+        }
+
         [Test]
         public void RemoteOperatorDemandBecomesOneConcreteDevelopmentMission()
         {
