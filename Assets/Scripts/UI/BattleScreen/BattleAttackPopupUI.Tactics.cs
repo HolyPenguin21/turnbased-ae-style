@@ -41,8 +41,8 @@ namespace Game.UI
         private void PrepareTacticPresentation(PlayerSetupData owner)
         {
             if (owner?.IsHuman != true || _automateHumanSides || panelRoot == null) return;
-            _tacticTurnController = FindFirstObjectByType<GameTurnController>(FindObjectsInactive.Include);
-            _tacticInfoPopup = FindFirstObjectByType<PopupPanelUI>(FindObjectsInactive.Include);
+            _tacticTurnController = FindAnyObjectByType<GameTurnController>(FindObjectsInactive.Include);
+            _tacticInfoPopup = FindAnyObjectByType<PopupPanelUI>(FindObjectsInactive.Include);
             if (_tacticInfoPopup != null)
             {
                 _tacticInfoWasShowing = _tacticInfoPopup.IsShowing && !_tacticInfoPopup.IsOtherTurnShowing;
@@ -50,9 +50,9 @@ namespace Game.UI
                 _tacticInfoPopup.VisibilityChanged += OnTacticInfoVisibilityChanged;
             }
             BattleHandUI template = null;
-            foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include))
                 if (!hand.Horizontal) { template = hand; break; }
-            _mapHand = FindFirstObjectByType<CardHandUI>(FindObjectsInactive.Include);
+            _mapHand = FindAnyObjectByType<CardHandUI>(FindObjectsInactive.Include);
             _tacticHand = _mapHand != null && _mapHand.gameObject.activeInHierarchy
                 ? _mapHand.ShowTactics(template, owner.Tactics) : template;
             if (_tacticHand != null)

@@ -50,7 +50,7 @@ namespace Game.UI
         }
 
         private static void ReportError(string reason) =>
-            FindFirstObjectByType<GameTurnController>(FindObjectsInactive.Include)?.ShowSpawnHint(reason);
+            FindAnyObjectByType<GameTurnController>(FindObjectsInactive.Include)?.ShowSpawnHint(reason);
 
         public void CancelDrag() => _interaction?.CancelDrag();
 
