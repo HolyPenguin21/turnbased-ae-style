@@ -427,7 +427,7 @@ namespace Game.Ai.V2
                 string why = null;
                 RendezvousPlan? meet = null;
                 if (bound == null || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(primary, bound,
-                        opposition, hexBonus, allowCommandHandover: true, allowCompleteTransfer: true))
+                        opposition, hexBonus, allowCommandHandover: true))
                     why = "no longer improves the primary";
                 else
                     meet = GroundCombatRendezvous.SelectForward(snap, primary, bound, a.Target.Hex,
@@ -710,7 +710,7 @@ namespace Game.Ai.V2
                 // (the plan may keep it for that alone).
                 return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
-                        allowCommandHandover: true, allowCompleteTransfer: true);
+                        allowCommandHandover: true);
             }).ToList();
             if (dropped.Count > 0)
             {
@@ -802,7 +802,7 @@ namespace Game.Ai.V2
                 return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || host.MemberCount == 0
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
-                        allowCommandHandover: true, allowCompleteTransfer: true);
+                        allowCommandHandover: true);
             }).ToList();
             if (dropped.Count > 0)
             {

@@ -1143,6 +1143,7 @@ namespace Game.Turns
 
             if (CurrentPlayer != null)
             {
+                hexSelectionController?.DisbandEmptyArmiesOf(CurrentPlayer);
                 RegenerateForOwner(CurrentPlayer);
                 _completedTurns[CurrentPlayer] = CompletedTurnsFor(CurrentPlayer) + 1;
                 Game.Map.StealthSystem.PurgeExpiredFor(CurrentPlayer);

@@ -95,9 +95,9 @@ namespace Game.EditorTests
         private static void Field(object obj, string name, object value) =>
             obj.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(obj, value);
 
-        private ArmyData Army(bool air = true, int count = 1)
+        private ArmyData Army(bool air = true, int count = 1, HexCoord? hex = null)
         {
-            var army = new ArmyData { Owner = _owner, Name = "mover", Hex = _origin, IsAirArmy = air };
+            var army = new ArmyData { Owner = _owner, Name = "mover", Hex = hex ?? _origin, IsAirArmy = air };
             for (int i = 0; i < count; i++)
                 army.Members.Add(new UnitData { Owner = _owner, Name = "unit", IsAviation = air,
                     MoveMax = 5, MoveCurrent = 5, ActivationApCost = 1, LaunchEnergyCost = air ? 2 : 0,
@@ -173,6 +173,34 @@ namespace Game.EditorTests
             Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero));
             marker.Visual.SetVisible(true);
             Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero));
+        }
+
+        // An army emptied during the turn survives until the end of its owner's turn; only then is
+        // it disbanded, and never on the owner's own Barracks hex.
+        [UnityTest]
+        public IEnumerator EndOfTurnDisbandsEmptiedArmiesExceptOnOwnBarracks()
+        {
+            var barracks = new BuildingData { Name = "barracks", Hex = _first, Owner = _owner };
+            barracks.Abilities.Add(UnitAbilities.Barracks);
+            BuildingRegistry.Register(_first, barracks);
+            ArmyData emptied = Army(air: false, count: 0);
+            ArmyData atBarracks = Army(air: false, count: 0, hex: _first);
+            ArmyData manned = Army(air: false);
+            var prison = new ArmyData { Owner = _owner, Name = "Prison", Hex = _origin, IsPrison = true };
+            ArmyRegistry.Register(prison);
+            var rival = new PlayerSetupData { Nickname = "rival" };
+            var rivalEmpty = new ArmyData { Owner = rival, Name = "rival", Hex = _origin };
+            ArmyRegistry.Register(rivalEmpty);
+
+            _selection.DisbandEmptyArmiesOf(_owner);
+            yield return null;
+
+            Assert.That(ArmyRegistry.IsRegistered(emptied), Is.False, "an empty field army off Barracks is disbanded");
+            Assert.That(emptied.Controller, Is.Null);
+            Assert.That(ArmyRegistry.IsRegistered(atBarracks), Is.True, "an empty army on its own Barracks persists");
+            Assert.That(ArmyRegistry.IsRegistered(manned), Is.True);
+            Assert.That(ArmyRegistry.IsRegistered(prison), Is.True, "a Prison is never disbanded");
+            Assert.That(ArmyRegistry.IsRegistered(rivalEmpty), Is.True, "only the ending player's armies");
         }
 
         private AiTurnContext Context() => new AiTurnContext

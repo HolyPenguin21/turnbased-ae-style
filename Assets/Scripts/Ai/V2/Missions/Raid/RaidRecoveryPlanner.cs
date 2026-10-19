@@ -412,9 +412,6 @@ namespace Game.Ai.V2
             foreach ((ArmySnapshot donorArmy, RaidRecoveryMemberSnapshot donor) in donors)
             {
                 if (usedDonors.Contains(donor.RuntimeId)) continue;
-                int alreadyTaken = donors.Count(d => d.Army.ArmyId == donorArmy.ArmyId
-                    && usedDonors.Contains(d.Member.RuntimeId));
-                if (alreadyTaken >= Math.Max(0, donorArmy.MemberCount - 1)) continue;
                 if (free > 0)
                 {
                     var projected = roster.Select(x => x.Profile).ToList();

@@ -107,6 +107,20 @@ namespace Game.Map
             RestackArmiesOn(wing.Hex, null);
         }
 
+        // End of `owner`'s turn (GameTurnController.AdvanceToNextPlayer), for every player alike: an
+        // army left empty during the turn — its last member transferred out, or a created shell
+        // never filled — is disbanded only now, so until then its owner can still refill it.
+        // DeleteArmyIfEmptied keeps what persists empty: any army on its owner's own Barracks hex,
+        // an airfield container, a carrier deck. A Prison is a fixed container, never disbanded.
+        public void DisbandEmptyArmiesOf(PlayerSetupData owner)
+        {
+            if (owner == null)
+                return;
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(owner)
+                         .Where(a => a.Members.Count == 0 && !a.IsPrison).ToList())
+                DeleteArmyIfEmptied(army);
+        }
+
         public void DeleteArmyIfEmptied(ArmyData army, bool force = false)
         {
             if (army == null || army.Members.Count > 0)

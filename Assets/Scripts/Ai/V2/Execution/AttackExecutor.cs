@@ -648,7 +648,7 @@ namespace Game.Ai.V2
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
                 AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex),
-                allowCompleteTransfer: true, capacityIsProgress: target.CommanderLeg);
+                capacityIsProgress: target.CommanderLeg);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack "
                 + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "

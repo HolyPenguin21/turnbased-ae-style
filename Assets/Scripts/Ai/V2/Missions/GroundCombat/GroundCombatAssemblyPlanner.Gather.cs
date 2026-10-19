@@ -121,8 +121,7 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot s in supportSnaps)
             {
                 ArmyData live = LiveArmy(s);
-                List<UnitData> sparable = GroundCombatReinforcement.SparableSupportBodies(live,
-                    allowCompleteTransfer: true);
+                List<UnitData> sparable = GroundCombatReinforcement.SparableSupportBodies(live);
                 if (live == null || sparable.Count == 0)
                     continue;
                 int turns = AiV2Util.CeilDiv(HexGridMath.Distance(s.Hex, host.Hex),

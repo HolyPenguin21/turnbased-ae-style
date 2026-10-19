@@ -87,7 +87,7 @@ namespace Game.EditorTests
         };
 
         [Test]
-        public void AttackReinforcement_UsesSingletonFieldSupport_WhileRaidRetainsIt()
+        public void Reinforcement_UsesSingletonFieldSupport_InEveryLane()
         {
             ArmySnapshot primary = Army(7, OurBase, Weak());
             primary.Capacity = 3;
@@ -97,11 +97,13 @@ namespace Game.EditorTests
                 new WorthIt.DefendingArmy(SiteDefenders(), default(WorthIt.SideCommander)),
             };
 
+            // An emptied support is disbanded only at the end of its owner's turn, so no lane
+            // keeps a body back in the donor.
             Assert.That(GroundCombatAssemblyPlanner.SupportImprovesPrimary(primary, singleton,
-                opposition, allowCommandHandover: false, allowCompleteTransfer: false), Is.False,
-                "Raid leaves a member in its support army");
+                opposition, allowCommandHandover: false), Is.True,
+                "Raid can add the sole field body to its primary army");
             Assert.That(GroundCombatAssemblyPlanner.SupportImprovesPrimary(primary, singleton,
-                opposition, allowCommandHandover: true, allowCompleteTransfer: true), Is.True,
+                opposition, allowCommandHandover: true), Is.True,
                 "Attack can add the sole field body to its primary army");
         }
 

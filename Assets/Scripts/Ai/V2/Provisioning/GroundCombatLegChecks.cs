@@ -136,8 +136,7 @@ namespace Game.Ai.V2
                 ? GroundCombatReinforcement.ImprovesAttackForce(primary, support, opposition,
                     defenderHexDefenseBonus, out improveWhy, capacityIsProgress: capacityIsProgress)
                 : GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
-                    defenderHexDefenseBonus, out improveWhy, allowCommandHandover,
-                    allowCompleteTransfer: allowCommandHandover);
+                    defenderHexDefenseBonus, out improveWhy, allowCommandHandover);
             if (!improves)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
@@ -170,8 +169,7 @@ namespace Game.Ai.V2
                     ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, opposition,
                         defenderHexDefenseBonus, requireChargeNow: true, out planWhy, capacityIsProgress)
                     : GroundCombatReinforcement.PlanHandoff(primary, support,
-                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out planWhy,
-                        allowCompleteTransfer: allowCommandHandover);
+                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out planWhy);
                 if (plan == null)
                     return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.NoExecutableStep(

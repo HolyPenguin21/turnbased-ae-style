@@ -37,7 +37,7 @@ namespace Game.Ai.V2
             excluded.Add(primaryArmyId);
             foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
                 if (SupportImprovesPrimary(primary, candidate, opposition, defenderHexDefenseBonus,
-                        allowCommandHandover, allowCompleteTransfer: allowCommandHandover))
+                        allowCommandHandover))
                     ids.Add(candidate.ArmyId);
             return ids;
         }
@@ -50,7 +50,7 @@ namespace Game.Ai.V2
         // support that no longer helps.
         internal static bool SupportImprovesPrimary(ArmySnapshot primary, ArmySnapshot candidate,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus = 0f,
-            bool allowCommandHandover = false, bool allowCompleteTransfer = false)
+            bool allowCommandHandover = false)
         {
             if (primary == null || candidate == null)
                 return false;
@@ -62,10 +62,7 @@ namespace Game.Ai.V2
                 if (host == null || donor == null)
                 {
                     List<WorthIt.DefenderProfile> before = NonAviationProfiles(primary);
-                    List<WorthIt.DefenderProfile> sparableProfiles = NonAviationProfiles(candidate)
-                        .Take(System.Math.Max(0, candidate.MemberCount
-                            - (allowCompleteTransfer && candidate.MemberCount == 1 ? 0 : 1)))
-                        .ToList();
+                    List<WorthIt.DefenderProfile> sparableProfiles = NonAviationProfiles(candidate);
                     return TryProjectReinforcement(before, sparableProfiles, primary.Capacity,
                         primary.MemberCount, primary.Commander, opponents, out var projected,
                         out _, out _, out _, out _, defenderHexDefenseBonus,
@@ -79,16 +76,13 @@ namespace Game.Ai.V2
                     defenderHexDefenseBonus, requireChargeNow: false, out _) != null;
             }
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
-            // Mirror the live donor rule: Attack may consume one-body supports; other
-            // donors and Raid retain a member (which may be a hero).
-            int transferable = System.Math.Min(bodies.Count,
-                System.Math.Max(0, candidate.MemberCount - (allowCompleteTransfer && candidate.MemberCount == 1 ? 0 : 1)));
-            if (transferable <= 0)
+            // Mirror the live donor rule (GroundCombatReinforcement.SparableSupportBodies): every
+            // body may go, the support may be emptied.
+            if (bodies.Count == 0)
                 return false;
 
             List<WorthIt.DefenderProfile> sparable = bodies
                 .OrderByDescending(ProfileCombatValue)
-                .Take(transferable)
                 .ToList();
             return TryProjectReinforcement(NonAviationProfiles(primary), sparable, primary.Capacity,
                 primary.MemberCount, primary.Commander, opposition ?? System.Array.Empty<WorthIt.DefendingArmy>(),
@@ -140,7 +134,7 @@ namespace Game.Ai.V2
             projected = new List<WorthIt.DefenderProfile>(before);
             if (sparableSupportBodies == null || sparableSupportBodies.Count == 0)
             {
-                why = "support army has no body it may legally spare (a container is never emptied)";
+                why = "support army has no body it may legally spare";
                 return false;
             }
 
