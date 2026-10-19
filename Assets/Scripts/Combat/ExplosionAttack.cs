@@ -78,7 +78,8 @@ namespace Game.Combat
 
         public static float ExpectedNetValue(UnitData actor, IEnumerable<Target> targets)
         {
-            var pool = targets.ToArray();
+            var pool = targets.Where(t => !actor.IsAviation || t.Unit == null
+                || AviationRules.CanTargetFromAir(t.Unit, t.Army)).ToArray();
             return RisksOwnCitadel(actor, pool) ? float.NegativeInfinity
                 : ExpectedNetValue(actor, pool.Select(t => t.Combatant()));
         }
@@ -139,6 +140,8 @@ namespace Game.Combat
             _launcherArmy = (participatingArmies ?? Array.Empty<ArmyData>())
                 .FirstOrDefault(a => a != null && a.Members.Contains(launcher)) ?? ArmyRegistry.FindArmyContaining(launcher);
             var pool = CollectTargets(hex, participatingArmies);
+            if (launcher.IsAviation) pool.RemoveAll(t => t.Unit != null
+                && !AviationRules.CanTargetFromAir(t.Unit, t.Army));
             if (IsSingleUseUnit(launcher)) pool.RemoveAll(t => t.Unit == launcher);
             int count = Math.Min(TargetLimit(launcher.Abilities), pool.Count);
             // Partial Fisher-Yates: every distinct occupant has the same inclusion chance.

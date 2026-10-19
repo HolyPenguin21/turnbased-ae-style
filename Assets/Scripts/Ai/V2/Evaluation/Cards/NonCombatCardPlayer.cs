@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
+using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -111,13 +112,13 @@ namespace Game.Ai.V2
         internal static float ProjectedAviationInvestmentValue(CardDefinition card,
             ResearchProductionMode mode, HexCoord facilityHex, UnitData operatorHero,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx)
+            AiTurnContext ctx, GenerationStep source = null)
         {
             if (card == null || !card.isAviation || operatorHero == null || snap == null
                 || player == null || root == null || hand?.Hand == null || ctx == null
                 || string.IsNullOrWhiteSpace(card.authoredKey))
                 return float.NegativeInfinity;
-            var generation = new GenerationStep
+            var generation = source ?? new GenerationStep
             {
                 Mode = mode, FacilityHex = facilityHex, Hero = operatorHero, CardDef = card,
                 SuccessChance = ResearchProductionSystem.EstimateSuccessChance(operatorHero, card),
@@ -130,6 +131,32 @@ namespace Game.Ai.V2
                 investmentPreview: true);
             return preview != null && preview.Kind == PlayKind.Aviation
                 ? preview.Score : float.NegativeInfinity;
+        }
+
+        // Fate forecasts use the same real airfield and known strike service as deployment.
+        // This read-only context contains only the map/turn consumed by sortie projection.
+        internal static float OperatorAviationOutputValue(WorldSnapshot snap, GenerationStep source)
+        {
+            var card = source?.CardDef;
+            var player = snap?.Observer;
+            var root = PlayerRootRegistry.FindFor(player);
+            if (card?.isAviation != true || snap?.Map == null || root == null) return 0f;
+            var ctx = new AiTurnContext { Map = snap.Map, TurnNumber = snap.TurnNumber };
+            var objectives = ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList();
+            var targets = KnownStrikeTargets(snap, player, root, ctx, objectives);
+            var projected = ProjectedAircraft(card, player);
+            var minted = new CardData(card) { ResearchProductionCreated = true };
+            var fields = PlacementRules.EnumerateAviationPlacements(snap, player, root, minted,
+                out _, requireCurrentAp: false);
+            float best = 0f;
+            foreach (var field in fields)
+            {
+                var service = AirfieldServiceTaskScore(snap, player, ctx, projected, field,
+                    objectives, targets, false, out _, out _, out string use);
+                if (use != null) best = Mathf.Max(best, ActionPrice.ToCardScore(
+                    ActionPrice.FromTaskScore(service.Value)));
+            }
+            return best;
         }
 
         // Pure card-type router: which Phase-B lane owns this card. null => the Unit/Hero/Recce
@@ -259,9 +286,9 @@ namespace Game.Ai.V2
 
             float playAp = def.isAviation ? CardCostRules.PlayAp(card) : card.EffectivePlayApCost;
             float totalAp = playAp + (generation != null
-                ? ResearchProductionSystem.AttemptApCost(generation.CardDef) : 0f);
+                ? ResearchProductionSystem.AttemptApCost(generation.ChallengeCard) : 0f);
             ResourceCost totalRes = CombinedCost(card.EffectivePlayResourceCost,
-                generation?.CardDef?.resourceCost);
+                generation?.ChallengeCard?.resourceCost);
             int handOrdinal = hand.Hand.IndexOf(card);
             string sourceKey = generation != null
                 ? "gen:" + generation.CardKey
@@ -358,9 +385,9 @@ namespace Game.Ai.V2
 
             float playAp = CardCostRules.PlayAp(card);
             float totalAp = playAp + (generation != null
-                ? ResearchProductionSystem.AttemptApCost(generation.CardDef) : 0f);
+                ? ResearchProductionSystem.AttemptApCost(generation.ChallengeCard) : 0f);
             ResourceCost totalRes = CombinedCost(card.EffectivePlayResourceCost,
-                generation?.CardDef?.resourceCost);
+                generation?.ChallengeCard?.resourceCost);
             int handOrdinal = hand.Hand.IndexOf(card);
             string sourceKey = generation != null
                 ? "gen:" + generation.CardKey
@@ -403,14 +430,14 @@ namespace Game.Ai.V2
                 uncoveredAirJobs = Mathf.Min(airJobs, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
                     - (airborne + spare);
             }
-            List<CombatAirSupportRequest> strikeTargets = judgeUse && def.attack > 0
+            List<CombatAirSupportRequest> strikeTargets = judgeUse && ExplosionAttack.AttackPower(def.attack, def.grantedAbilities) > 0
                 ? KnownStrikeTargets(snap, player, root, ctx, objectives) : null;
             List<UnitData> projected = ProjectedAircraft(def, player);
 
             foreach (HexCoord airfield in airfields)
             {
                 TaskScore service = AirfieldServiceTaskScore(snap, player, ctx, projected, airfield,
-                    objectives, strikeTargets, uncoveredAirJobs > 0,
+                    objectives, strikeTargets, uncoveredAirJobs > 0 && !ExplosionAttack.IsSingleUseUnit(def),
                     out int coverage, out string witness, out string use);
                 if (judgeUse && use == null)
                 {
@@ -497,11 +524,13 @@ namespace Game.Ai.V2
         // granted abilities (UnitData.Abilities is filled from them at spawn), so its recce
         // radius - and with it the vision the launch rule and the route score read - is the one
         // the deployed aircraft will have when Assignment evaluates it.
-        private static List<UnitData> ProjectedAircraft(CardDefinition def, PlayerSetupData player)
+        internal static List<UnitData> ProjectedAircraft(CardDefinition def, PlayerSetupData player)
         {
             var aircraft = new UnitData
             {
-                Owner = player, IsAviation = true,
+                Owner = player, IsAviation = true, OriginatingCard = def,
+                Defense = def.defenseRating, HitPointsMax = def.hitPoints, HitPointsCurrent = def.hitPoints,
+                Initiative = def.initiative, Range = def.range,
                 MoveMax = Mathf.Max(1, def.moveMax),
                 MoveCurrent = Mathf.Max(1, def.moveMax),
                 Attack = Mathf.Max(0, def.attack),
@@ -509,6 +538,7 @@ namespace Game.Ai.V2
                 LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
                 TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
             };
+            if (def.unitTypeTags != null) aircraft.TypeTags.UnionWith(def.unitTypeTags);
             if (def.grantedAbilities != null)
                 aircraft.Abilities.UnionWith(def.grantedAbilities);
             return new List<UnitData> { aircraft };

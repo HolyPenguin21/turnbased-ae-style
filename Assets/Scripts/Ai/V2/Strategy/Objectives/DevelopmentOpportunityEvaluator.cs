@@ -429,7 +429,7 @@ namespace Game.Ai.V2
                     // The same canonical investment scorer proves force/placement need. Only
                     // Materialization may actually choose and execute a deployable output.
                     DevelopmentOpportunity future = PrepareDeployable(card, mode, hex, source.Hero,
-                        1f, snap, inv, occupied, player, root, hand, ctx);
+                        1f, snap, inv, occupied, player, root, hand, ctx, source);
                     if (future != null)
                     {
                         future.WorldTaskScore = BuildDevelopmentScore(future.SuccessChance
@@ -679,7 +679,7 @@ namespace Game.Ai.V2
                         : DevelopmentPreparationScorer.GeneratedOperator(g, hex, mode, garrison, snap, inv,
                             spendable, player)))
                     .OrderByDescending(x => x.score)
-                    .ThenBy(x => ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(x.step.CardDef))
+                    .ThenBy(x => ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(x.step.ChallengeCard))
                         + StrategicCardEvaluator.StrategicResourceCostValue(
                             x.step.GenerationResourceCost, snap))
                     .ThenBy(x => x.step.CardKey, System.StringComparer.Ordinal)
@@ -767,7 +767,7 @@ namespace Game.Ai.V2
                 // CapacityUnlock pays only the tier; its witness card is not played by this step.
                 int stageAp = kind == DevelopmentPreparationKind.CapacityUnlock ? capacityTier?.apCost ?? 0
                     : card?.EffectivePlayApCost ?? (generated == null ? 0
-                        : ResearchProductionSystem.AttemptApCost(generated.CardDef));
+                        : ResearchProductionSystem.AttemptApCost(generated.ChallengeCard));
                 if (cardScore.HasValue)
                 {
                     // Already net of the one canonical price: the number the Phase A arbiter ranks.
@@ -977,7 +977,7 @@ namespace Game.Ai.V2
             ResearchProductionMode mode, HexCoord hex, UnitData projectedActor, float operatorChance,
             WorldSnapshot snap, CapabilityInventory inv,
             ActorCommitments occupied, PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx)
+            AiTurnContext ctx, GenerationStep source = null)
         {
             // GenerationSource will not mint cards lacking an authored retry key.
             if (string.IsNullOrWhiteSpace(card.authoredKey))
@@ -987,7 +987,7 @@ namespace Game.Ai.V2
             using var __scope = new Game.Core.ProfileScope("AI/Dev.PrepareDeployable");
             float futureValue = card.isAviation
                 ? NonCombatCardPlayer.ProjectedAviationInvestmentValue(card, mode, hex,
-                    projectedActor, snap, player, root, hand, ctx)
+                    projectedActor, snap, player, root, hand, ctx, source)
                 : ProjectedDeployableInvestmentValue(card, mode, hex,
                     projectedActor, snap, player, root, hand, ctx, inv, occupied);
             if (futureValue <= 0f)
@@ -995,7 +995,7 @@ namespace Game.Ai.V2
             return new DevelopmentOpportunity
             {
                 Mode = mode, FacilityHex = hex, Card = card, ProducesEquipment = false,
-                SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
+                SuccessChance = source?.SuccessChance ?? ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
                 ExpectedGain = futureValue * operatorChance,
                 Ev = futureValue * operatorChance,
                 RecipientLabel = (card.isAviation ? "aviation:" : "deployable:") + card.displayName,

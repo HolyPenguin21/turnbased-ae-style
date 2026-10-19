@@ -33,6 +33,27 @@ namespace Game.EditorTools
         [TearDown] public void Teardown()
         { UnityEngine.Object.DestroyImmediate(starting); UnityEngine.Object.DestroyImmediate(research); UnityEngine.Object.DestroyImmediate(catalog); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         private SavedDeck Deck(int n) => new SavedDeck { deckId = "deck", name = "Test", faction = Faction.IronConcord, mainCards = new List<DeckCardEntry> { new DeckCardEntry { cardKey = card.authoredKey, count = n } } };
+        [Test] public void ProductionBlueprintResolvesExcludedAircraftWithoutChangingDeckRules()
+        {
+            card.cardType = CardType.Equipment;
+            var aircraft = new CardDefinition { authoredKey = "test.excluded.aircraft", cardType = CardType.Unit,
+                isAviation = true, deckBuilderExcluded = true, activationApCost = 1 };
+            catalog.cards.Add(aircraft); research.cardCatalogs.Add(catalog);
+            research.productionCards.Add(new ResearchProductionEntry { cardKey = card.authoredKey, resultCardKey = aircraft.authoredKey });
+            Assert.That(rules.Permitted(card, Faction.IronConcord), Is.True);
+            Assert.That(rules.Permitted(aircraft, Faction.IronConcord), Is.False);
+            Assert.That(research.ResolveResult(card), Is.SameAs(aircraft));
+            var attempt = new ProductionAttempt(card, null, research.ResolveResult(card));
+            var result = attempt.Complete(true);
+            Assert.That(result.Definition, Is.SameAs(aircraft));
+            Assert.That(result.ResearchProductionCreated, Is.True);
+            Assert.That(attempt.Complete(true), Is.Null);
+            research.productionCards[0].resultCardKey = "missing";
+            Assert.That(research.ResolveResult(card), Is.Null);
+            research.productionCards[0].resultCardKey = "";
+            Assert.That(research.ResolveResult(card), Is.SameAs(card));
+        }
+
         [Test] public void Exactly100PointsIsValid() { Assert.That(rules.Validate(Deck(4), _ => 4).IsValid, Is.True); }
         [Test] public void OwnershipAndCopyLimitsAreIndependent() { Assert.That(rules.Validate(Deck(3), _ => 2).IsValid, Is.False); card.deckCopyLimit = 2; Assert.That(rules.Validate(Deck(3), _ => 4).IsValid, Is.False); }
         [Test] public void BudgetCannotBeExceeded() { card.deckPointCost = 26; Assert.That(rules.Validate(Deck(4), _ => 4).IsValid, Is.False); }

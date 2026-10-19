@@ -1674,6 +1674,120 @@ namespace Game.EditorTests
             }
         }
 
+        [Test, Category("UnityEngine")]
+        public void SingleUseStrikeReservesNoReturnSlotButDeliveryKeepsItsLandingClaim()
+        {
+            HexCoord home = default;
+            Airfield(home, 1);
+            UnitData missile = Plane(1, 1);
+            missile.Abilities.Add(UnitAbilities.SingleUse);
+            ArmyData wing = Wing(new HexCoord(2, 0), missile);
+            var sortie = new AirSortie { Army = wing, Kind = AirSortieKind.Strike,
+                Outbound = true, LandingHex = home, TargetHex = new HexCoord(4, 0) };
+            AirSortieRegistry.Add(_owner, sortie);
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(1));
+            sortie.Kind = AirSortieKind.Rebase; sortie.Outbound = false; sortie.TargetHex = home;
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.Zero);
+        }
+
+        [Test, Category("UnityEngine")]
+        public void SingleUseStrikeHasOutboundFuelProofButNoReturnOrLandingRequirement()
+        {
+            HexMap map = Line(9, out GameObject mapObject);
+            try
+            {
+                UnitData missile = Plane(1, 1);
+                missile.Abilities.Add(UnitAbilities.SingleUse);
+                missile.MoveMax = missile.MoveCurrent = 4;
+                missile.TurnsWithoutRefuel = 1;
+                var group = new[] { missile };
+                HexCoord target = new HexCoord(8, 0);
+                Assert.That(AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(default,
+                    group, target, map, _owner), Is.Null, "ordinary sorties still need a landing field");
+                var strike = AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(default,
+                    group, target, map, _owner, singleUseStrike: true);
+                Assert.That(strike.HasValue, Is.True);
+                Assert.That(strike.Value.RequiredTurns, Is.EqualTo(2));
+                Assert.That(strike.Value.PathFromActionToLanding.Hexes.Count, Is.EqualTo(1));
+                Assert.That(AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(default,
+                    group, new HexCoord(9, 0), map, _owner, singleUseStrike: true), Is.Null,
+                    "the missile must survive fuel checks before reaching its target");
+                ArmyData wing = Wing(new HexCoord(4, 0), missile);
+                missile.MoveCurrent = 0;
+                AirSortieRegistry.Add(_owner, new AirSortie { Army = wing, Kind = AirSortieKind.Strike,
+                    TargetHex = target, LandingHex = target, Outbound = true });
+                Assert.That(GroundCombatAirSupport.RecallUnsafeStrikes(_owner, map), Is.Empty,
+                    "a safe next-turn one-way arrival must not be recalled for lacking a return base");
+                Assert.That(AirSortieRegistry.ForArmy(_owner, wing).Kind, Is.EqualTo(AirSortieKind.Strike));
+                missile.MoveCurrent = 4;
+                missile.TurnsWithoutRefuel = 0;
+                Assert.That(AiAirSortiePlanner.TryPlanSortieFromStorage(default, group,
+                    new HexCoord(4, 0), map, _owner, singleUseStrike: true).HasValue, Is.True);
+                Assert.That(AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(default,
+                    group, target, map, _owner, singleUseStrike: true), Is.Null);
+            }
+            finally { Object.DestroyImmediate(mapObject); }
+        }
+
+        [Test, Category("UnityEngine")]
+        public void MissileRebaseCanSpendSeveralTurnsAirborneBeforeLanding()
+        {
+            HexMap map = Line(9, out GameObject mapObject);
+            try
+            {
+                UnitData missile = Plane(1, 1);
+                missile.Abilities.Add(UnitAbilities.SingleUse);
+                missile.MoveMax = missile.MoveCurrent = 4;
+                missile.TurnsWithoutRefuel = 1;
+                Airfield(default, 1).Members.Add(missile);
+                Airfield(new HexCoord(8, 0), 1);
+                var stop = AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner)
+                    .Single(s => s.Hex.Equals(new HexCoord(8, 0)));
+                Assert.That(stop.Launches, Is.EqualTo(1), "one flight continues over two turns");
+                Assert.That(stop.FirstRoute.RequiredTurns, Is.EqualTo(2));
+                Assert.That(stop.FirstRoute.CurrentTurnDestination, Is.EqualTo(new HexCoord(4, 0)));
+                Assert.That(stop.FirstRoute.LandingHex, Is.EqualTo(new HexCoord(8, 0)));
+                Assert.That(missile.ConsecutiveUnlandedEnds, Is.Zero);
+                missile.TurnsWithoutRefuel = 0;
+                Assert.That(AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner),
+                    Is.Empty, "delivery requires a legal landing even for a disposable missile");
+            }
+            finally { Object.DestroyImmediate(mapObject); }
+        }
+
+        [TestCase(0), TestCase(1), Category("UnityEngine")]
+        public void MissileDeliveryUsesIntermediateBaseAndCarrierAndRechecksCapacity(int endurance)
+        {
+            HexMap map = Line(8, out GameObject mapObject);
+            try
+            {
+                UnitData missile = Plane(1, 1);
+                missile.Abilities.Add(UnitAbilities.SingleUse);
+                missile.MoveMax = missile.MoveCurrent = 4;
+                missile.TurnsWithoutRefuel = endurance;
+                Airfield(default, 1).Members.Add(missile);
+                Airfield(new HexCoord(4, 0), 1);
+                UnitData carrier = new UnitData { Owner = _owner, AirfieldCapacity = 1,
+                    HitPointsMax = 10, HitPointsCurrent = 10 };
+                var carrierArmy = new ArmyData { Owner = _owner, Hex = new HexCoord(8, 0) };
+                carrierArmy.Members.Add(carrier); ArmyRegistry.Register(carrierArmy);
+                var stops = AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner);
+                var forward = stops.Single(s => s.Hex.Equals(new HexCoord(8, 0)));
+                Assert.That(forward.FirstHop, Is.EqualTo(new HexCoord(4, 0)));
+                Assert.That(forward.Launches, Is.EqualTo(2));
+                Assert.That(forward.FirstRoute.LandingHex, Is.EqualTo(forward.FirstHop));
+                BuildingRegistry.FindAt(new HexCoord(4, 0)).Owner = new PlayerSetupData();
+                Assert.That(AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner)
+                    .Any(s => s.Hex.Equals(new HexCoord(8, 0))), Is.False,
+                    "capturing the connecting base invalidates the chain");
+                BuildingRegistry.FindAt(new HexCoord(4, 0)).Owner = _owner;
+                carrier.AirfieldCapacity = 0;
+                Assert.That(AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner)
+                    .Any(s => s.Hex.Equals(new HexCoord(8, 0))), Is.False);
+            }
+            finally { Object.DestroyImmediate(mapObject); }
+        }
+
         private UnitData Plane(int ap, int energy) => new UnitData
         {
             Owner = _owner, IsAviation = true, ActivationApCost = ap, LaunchEnergyCost = energy,

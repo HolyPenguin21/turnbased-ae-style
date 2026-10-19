@@ -228,7 +228,7 @@ namespace Game.Ai.V2
         {
             var host = ExplosionHost(s, abilities, ctx, consumption);
             var allies = (ctx.ExplosionAllies ?? Array.Empty<WorthIt.DefenderProfile>())
-                .Select(p => new AviationCombatEstimator.ExplosionCollateral(p, true)).ToArray();
+                .Select(p => new AviationCombatEstimator.ExplosionCollateral(p, true, armyId: 0)).ToArray();
             var forecast = AviationCombatEstimator.EstimateAirStrike(new[] { host }, targets,
                 Game.Aviation.AirStrikePolicy.Standard, Mathf.Max(1, Mathf.CeilToInt(ctx.ExpectedActivations)), collateral: allies);
             float hp = targets.Sum(p => Mathf.Max(1, p.HitPoints));

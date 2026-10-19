@@ -77,7 +77,7 @@ namespace Game.Ai.V2
                 || (op.RecipientCard == null && op.RecipientUnit == null))
                 return null;
 
-            ResourceCost rc = g.CardDef.resourceCost;
+            ResourceCost rc = g.ChallengeCard.resourceCost;
             var p = new MaterializationPlan
             {
                 Kind = MaterializationChainKind.GenerateAttachUpgrade,
@@ -89,7 +89,7 @@ namespace Game.Ai.V2
                 DevelopmentUpgrade = op,
                 UpgradeTargetCard = op.RecipientCard,
                 UpgradeTargetUnit = op.RecipientUnit,
-                ApCost = ResearchProductionSystem.AttemptApCost(g.CardDef),
+                ApCost = ResearchProductionSystem.AttemptApCost(g.ChallengeCard),
                 DeferredAttachmentAp = System.Math.Max(0, g.CardDef.activationApCost),
                 ResCost = rc == null ? null : new ResourceCost
                 {
@@ -130,10 +130,10 @@ namespace Game.Ai.V2
             }
             if (p.Generation != null)
             {
-                ap += ResearchProductionSystem.AttemptApCost(p.Generation.CardDef);
-                if (p.Generation.CardDef?.resourceCost != null)
+                ap += ResearchProductionSystem.AttemptApCost(p.Generation.ChallengeCard);
+                if (p.Generation.ChallengeCard?.resourceCost != null)
                 {
-                    ResourceCost rc = p.Generation.CardDef.resourceCost;
+                    ResourceCost rc = p.Generation.ChallengeCard.resourceCost;
                     human += rc.human; energy += rc.energy; materials += rc.materials; tech += rc.tech;
                 }
             }

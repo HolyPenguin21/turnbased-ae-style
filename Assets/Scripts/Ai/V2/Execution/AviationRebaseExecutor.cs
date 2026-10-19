@@ -169,6 +169,7 @@ namespace Game.Ai.V2
             // landing is still recoverable inside live endurance, take the free stationary strike
             // under the sortie's own target policy; movement remains untouched and return continues.
             if (allowRecoveryStrike
+                && !wing.Members.Any(ExplosionAttack.IsSingleUseUnit)
                 && !AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
                 && AviationActions.CanActivateForStationaryStrike(wing)
                 && AiAirSortiePlanner.CanStrikeAndRecover(wing, ctx.Map, player, task.StrikePolicy))

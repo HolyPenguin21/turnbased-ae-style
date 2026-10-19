@@ -19,6 +19,77 @@ namespace Game.EditorTests
 {
     public sealed class ExplosionAttackTests
     {
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ExpendedMissileKeepsItsAttackReceiptButAaLossIsNotAStrike(bool actuallyAttacked)
+        {
+            var target = new HexCoord(8, 0);
+            // Retained pure runtime army after its only member was consumed/removed.
+            var wing = new ArmyData { Hex = target, LastAirStrikeHex = target,
+                LastAirStrikeAttacked = actuallyAttacked };
+            var result = new ExecutionResult();
+            Assert.That(AviationRules.IsValidAirArmy(wing), Is.False);
+            Assert.That(GroundCombatLegStep.RecordAirStrikeReceipt(wing, target, result), Is.EqualTo(actuallyAttacked));
+            Assert.That(result.CombatChanged, Is.EqualTo(actuallyAttacked));
+            Assert.That(result.AirSupportStrikeSucceeded, Is.EqualTo(actuallyAttacked));
+            Assert.That(GroundCombatLegStep.RecordAirStrikeReceipt(wing, new HexCoord(7, 0),
+                new ExecutionResult()), Is.False, "an attack on another hex is not this task's receipt");
+        }
+
+        [Test]
+        public void OneWayStrikeRequiresInnateConsumptionOfEveryAircraft()
+        {
+            UnitData rocket = Body("rocket", 1, UnitAbilities.SingleUse, UnitAbilities.Explosion10);
+            rocket.IsAviation = true;
+            UnitData bomber = Body("bomber", 4);
+            bomber.IsAviation = true;
+            EquipmentSystem.ApplyAttachments(bomber, Bomb(), null);
+            Assert.That(AiAirSortiePlanner.IsExpendableWing(new[] { rocket }), Is.True);
+            Assert.That(AiAirSortiePlanner.IsExpendableWing(new[] { bomber }), Is.False,
+                "the bomb is expended, its aircraft must still land");
+            Assert.That(AiAirSortiePlanner.IsExpendableWing(new[] { rocket, bomber }), Is.False);
+            rocket.IsAviation = false;
+            Assert.That(AiAirSortiePlanner.IsExpendableWing(new[] { rocket }), Is.False);
+            Assert.That(AiAirSortiePlanner.IsExpendableWing(Array.Empty<UnitData>()), Is.False);
+        }
+
+        [TestCase(4, 0, true)]
+        [TestCase(5, 0, false)]
+        [TestCase(8, 1, true)]
+        [TestCase(9, 1, false)]
+        public void OneWayFuelProofEndsAtTheAttack(int distance, int safeEnds, bool allowed)
+        {
+            UnitData rocket = Body("rocket", 1, UnitAbilities.SingleUse);
+            rocket.IsAviation = true; rocket.MoveMax = rocket.MoveCurrent = 4;
+            rocket.TurnsWithoutRefuel = safeEnds;
+            var path = Enumerable.Range(0, distance + 1).Select(q => new HexCoord(q, 0)).ToList();
+            Assert.That(AviationRange.TrySimulateHexSequence(path, distance, 4, new[] { rocket },
+                safeEnds, new PlayerSetupData(), out _, out _, out _, out _, out _), Is.EqualTo(allowed));
+            Assert.That(rocket.ConsecutiveUnlandedEnds, Is.Zero, "route proof is read-only");
+        }
+
+        [Test]
+        public void DeliveryProjectionRefuelsFutureLaunchWithoutMutatingTheMissile()
+        {
+            UnitData rocket = Body("rocket", 1, UnitAbilities.SingleUse);
+            rocket.IsAviation = true;
+            rocket.MoveMax = 4; rocket.MoveCurrent = 1;
+            rocket.TurnsWithoutRefuel = 2; rocket.ConsecutiveUnlandedEnds = 2;
+            rocket.LaunchEnergyCost = 3; rocket.SortieLaunchPaid = true;
+            rocket.HasEmergencyFlightPenalty = true;
+            UnitData projection = AviationRebasePlanner.ProjectAfterLanding(new[] { rocket })[0];
+            Assert.That(projection.MoveCurrent, Is.EqualTo(4));
+            Assert.That(projection.TurnsWithoutRefuel, Is.EqualTo(2));
+            Assert.That(projection.ConsecutiveUnlandedEnds, Is.Zero);
+            Assert.That(projection.LaunchEnergyCost, Is.EqualTo(3));
+            Assert.That(projection.SortieLaunchPaid || projection.HasEmergencyFlightPenalty, Is.False);
+            Assert.That(AiAirSortiePlanner.IsExpendableWing(new[] { projection }), Is.True);
+            Assert.That(rocket.MoveCurrent, Is.EqualTo(1));
+            Assert.That(rocket.ConsecutiveUnlandedEnds, Is.EqualTo(2));
+            Assert.That(rocket.SortieLaunchPaid && rocket.HasEmergencyFlightPenalty, Is.True);
+            Assert.That(projection.Abilities, Is.Not.SameAs(rocket.Abilities));
+        }
+
         private static readonly HexCoord Hex = new HexCoord(2, 2);
         private static UnitData Body(string name = "body", int hp = 20, params string[] abilities)
         {
@@ -49,6 +120,148 @@ namespace Game.EditorTests
                     AbilityMagnitudes.Default, battle: battle);
         }
         [TearDown] public void Cleanup() { ArmyRegistry.Clear(); BuildingRegistry.Clear(); }
+
+        [Test]
+        public void ZeroAttackMissileProjectionKeepsCombatStatsAndDisposableIdentity()
+        {
+            var card = new CardDefinition { cardType = CardType.Unit, isAviation = true,
+                attack = 0, defenseRating = 2, hitPoints = 3,
+                initiative = 4, moveMax = 4, unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Mechanical },
+                grantedAbilities = new List<string> { UnitAbilities.Explosion10, UnitAbilities.SingleUse } };
+            var unit = NonCombatCardPlayer.ProjectedAircraft(card, new PlayerSetupData()).Single();
+            Assert.That(ExplosionAttack.AttackPower(unit.Attack, unit.Abilities), Is.EqualTo(10));
+            Assert.That(WorthIt.FromLiveUnit(unit).SingleUseUnit, Is.True);
+            Assert.That(unit.OriginatingCard, Is.SameAs(card));
+            Assert.That(unit.Defense, Is.EqualTo(2));
+            Assert.That(unit.HitPointsCurrent, Is.EqualTo(3));
+            Assert.That(unit.Initiative, Is.EqualTo(4));
+            Assert.That(unit.TypeTags, Does.Contain(UnitTypeTag.Mechanical));
+            var minted = ResearchProductionSystem.MintCard(card);
+            Assert.That(minted.Definition.cardType, Is.EqualTo(CardType.Unit));
+            Assert.That(minted.EffectivePlayResourceCost, Is.Null);
+            Assert.That(minted.EffectivePlayApCost, Is.EqualTo(card.activationApCost));
+        }
+
+        [Test]
+        public void BlueprintChallengePriceAndAircraftDeploymentRemainSeparate()
+        {
+            var blueprint = new CardDefinition { cardType = CardType.Equipment, apCost = 6, fate = 6,
+                resourceCost = new ResourceCost { energy = 5, materials = 6, tech = 5 } };
+            var aircraft = new CardDefinition { cardType = CardType.Unit, isAviation = true,
+                activationApCost = 1, fate = 0, deckBuilderExcluded = true };
+            var generation = new GenerationStep { CardDef = aircraft, BlueprintDef = blueprint };
+            Assert.That(generation.ChallengeCard, Is.SameAs(blueprint));
+            Assert.That(generation.GenerationResourceCost, Is.SameAs(blueprint.resourceCost));
+            var plan = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
+                null, generation, null, -1, false,
+                new PlacementOption(default, DeploymentKind.ExistingArmy, null), Array.Empty<string>());
+            Assert.That(plan.ApCost, Is.EqualTo(7));
+            Assert.That(plan.ResCost.energy, Is.EqualTo(5));
+            Assert.That(plan.GeneratedBaseDef, Is.SameAs(aircraft));
+            var attempt = new ProductionAttempt(blueprint, null, aircraft);
+            Assert.That(attempt.Complete(true).Definition, Is.SameAs(aircraft));
+            Assert.That(attempt.Complete(true), Is.Null);
+            Assert.That(ResearchProductionSystem.EstimateSuccessChanceForFate(4, generation.ChallengeCard),
+                Is.EqualTo(0.25390625f));
+        }
+
+        [Test]
+        public void ExplosionForecastCanStrikeAnUnguardedCitadelAndPricesCollateral()
+        {
+            var missile = new WorthIt.DefenderProfile(0, false, attack: 0, hitPoints: 1,
+                abilities: new[] { UnitAbilities.Explosion10, UnitAbilities.SingleUse }, singleUseUnit: true);
+            var citadel = new WorthIt.DefenderProfile(2, false, hitPoints: 30, isGroundCombatant: false);
+            var targets = new[] { new AviationCombatEstimator.ExplosionCollateral(citadel, false) };
+            var empty = Array.Empty<AviationCombatEstimator.DefendingAirArmy>();
+            var result = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(new[] { missile }, empty,
+                AirStrikePolicy.Standard, collateral: targets);
+            Assert.That(result.NetExpectedDamage, Is.GreaterThan(0));
+            Assert.That(result.ExpectedDefendersAfter, Is.Empty);
+            var repeated = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(new[] { missile }, empty,
+                AirStrikePolicy.Standard, 3, collateral: targets);
+            Assert.That(repeated.ExpectedDamage, Is.LessThan(10), "the missile cannot repeat an Explosion10 strike across turns");
+            var own = new[] { new AviationCombatEstimator.ExplosionCollateral(citadel, true, ownCitadel: true) };
+            Assert.That(AviationCombatEstimator.EstimateAirStrikeAgainstArmies(new[] { missile }, empty,
+                AirStrikePolicy.Standard, collateral: own).ExpectedDamage, Is.Zero);
+        }
+
+        [Test]
+        public void AirTargetPoolProtectsEscortedHeroesPerArmyAndRechecksLivingMembers()
+        {
+            var striker = new PlayerSetupData(); var enemy = new PlayerSetupData();
+            var hero = Body("protected hero"); hero.IsHero = true;
+            var escort = Body("escort"); var defended = Army(enemy, hero, escort);
+            var solo = Body("solo hero"); solo.IsHero = true; var separate = Army(enemy, solo);
+            var targets = AviationCombatPresenter.CollectStrikeTargets(new List<ArmyData> { defended, separate }, striker);
+            Assert.That(targets.Select(t => t.Item1), Is.EquivalentTo(new[] { escort, solo }));
+            escort.HitPointsCurrent = 0;
+            targets = AviationCombatPresenter.CollectStrikeTargets(new List<ArmyData> { defended }, striker);
+            Assert.That(targets.Select(t => t.Item1), Is.EqualTo(new[] { hero }));
+            Assert.That(AviationRules.CanTargetFromAir(true, 2), Is.False,
+                "a hero is eligible only as the sole living member, including armies of several heroes");
+        }
+
+        [Test]
+        public void AirExplosionProtectsEscortedHeroWhileGroundExplosionKeepsItsExistingRules()
+        {
+            var enemy = new PlayerSetupData(); var hero = Body("hero"); hero.IsHero = true;
+            var escort = Body("escort"); var defenders = Army(enemy, hero, escort);
+            var aircraft = Body("missile", 1, UnitAbilities.Explosion10, UnitAbilities.SingleUse);
+            aircraft.IsAviation = true; var wing = Army(new PlayerSetupData(), aircraft);
+            var blast = new ExplosionAttack(aircraft, Hex, new Random(1), wing, defenders);
+            Assert.That(blast.Targets.Select(t => t.Unit), Is.EqualTo(new[] { escort }));
+            escort.HitPointsCurrent = 0;
+            Assert.That(new ExplosionAttack(aircraft, Hex, new Random(1), wing, defenders)
+                .Targets.Select(t => t.Unit), Is.EqualTo(new[] { hero }));
+            escort.HitPointsCurrent = 20;
+            var ground = Body("ground", 20, UnitAbilities.Explosion10); var army = Army(wing.Owner, ground);
+            Assert.That(new ExplosionAttack(ground, Hex, new Random(1), army, defenders)
+                .Targets.Select(t => t.Unit), Does.Contain(hero));
+        }
+
+        [Test]
+        public void OrdinaryAirForecastProtectsHeroesThenTargetsThemAfterTheirLastEscortDies()
+        {
+            var plane = new WorthIt.DefenderProfile(0, false, attack: 20, hitPoints: 20);
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 1000, isHero: true);
+            var escort = new WorthIt.DefenderProfile(0, false, hitPoints: 1000);
+            var covered = AviationCombatEstimator.EstimateAirStrike(new[] { plane }, new[] { hero, escort }, AirStrikePolicy.Standard);
+            Assert.That(covered.ExpectedDefendersAfter[0].HitPoints, Is.EqualTo(1000));
+            Assert.That(covered.ExpectedDefendersAfter[1].HitPoints, Is.LessThan(1000));
+            Assert.That(AviationCombatEstimator.EstimateAirStrike(new[] { plane }, new[] { hero },
+                AirStrikePolicy.Standard).ExpectedDefendersAfter[0].HitPoints, Is.LessThan(1000));
+            var fragile = new WorthIt.DefenderProfile(0, false, hitPoints: 1);
+            var two = AviationCombatEstimator.EstimateAirStrike(new[] { plane, plane }, new[] { hero, fragile }, AirStrikePolicy.Standard);
+            Assert.That(two.ExpectedDefendersAfter[0].HitPoints, Is.LessThan(1000),
+                "the second aircraft can strike the hero after the first kills its escort");
+            var distinct = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(new[] { plane }, new[] {
+                new AviationCombatEstimator.DefendingAirArmy(1, new[] { hero }, null),
+                new AviationCombatEstimator.DefendingAirArmy(2, new[] { escort }, null) }, AirStrikePolicy.Standard);
+            Assert.That(distinct.ExpectedDefendersAfter[0].HitPoints, Is.LessThan(1000),
+                "another army on the same hex cannot shield a solo hero");
+        }
+
+        [Test]
+        public void ExplosionAirForecastKeepsProtectedHeroesAndKeysCollateralArmyGrouping()
+        {
+            var missile = new WorthIt.DefenderProfile(0, false, attack: 0, hitPoints: 1,
+                abilities: new[] { UnitAbilities.Explosion10, UnitAbilities.SingleUse }, singleUseUnit: true);
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 1000, isHero: true);
+            var escort = new WorthIt.DefenderProfile(0, false, hitPoints: 1000);
+            var protectedArmy = AviationCombatEstimator.EstimateAirStrike(new[] { missile }, new[] { hero, escort }, AirStrikePolicy.Standard);
+            Assert.That(protectedArmy.ExpectedDefendersAfter[0].HitPoints, Is.EqualTo(1000));
+            Assert.That(protectedArmy.ExpectedDefendersAfter[1].HitPoints, Is.LessThan(1000));
+            var immune = new WorthIt.DefenderProfile(1000, false, hitPoints: 1000);
+            var shared = new[] { new AviationCombatEstimator.ExplosionCollateral(hero, true, armyId: 10),
+                new AviationCombatEstimator.ExplosionCollateral(immune, true, armyId: 10) };
+            var split = new[] { new AviationCombatEstimator.ExplosionCollateral(hero, true, armyId: 11),
+                new AviationCombatEstimator.ExplosionCollateral(immune, true, armyId: 10) };
+            var a = AviationCombatEstimator.EstimateAirStrike(new[] { missile }, new[] { escort }, AirStrikePolicy.Standard, collateral: shared);
+            var b = AviationCombatEstimator.EstimateAirStrike(new[] { missile }, new[] { escort }, AirStrikePolicy.Standard, collateral: split);
+            Assert.That(a.ExpectedDamage, Is.GreaterThan(0));
+            Assert.That(a.ExpectedFriendlyDamage, Is.EqualTo(1).Within(0.01), "only the missile's sacrifice is friendly damage");
+            Assert.That(b.ExpectedDamage, Is.Zero, "without an escort the friendly hero makes this blast a bad trade");
+        }
 
         [TestCase(UnitAbilities.Explosion3, 3)]
         [TestCase(UnitAbilities.Explosion5, 5)]

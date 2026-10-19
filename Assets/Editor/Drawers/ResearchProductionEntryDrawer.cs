@@ -28,8 +28,8 @@ namespace Game.EditorTools
             EditorGUI.BeginProperty(position, label, property);
 
             Rect cardRect = new Rect(position.x, position.y,
-                position.width - FactionFieldWidth - Spacing, position.height);
-            Rect factionRect = new Rect(cardRect.xMax + Spacing, position.y, FactionFieldWidth, position.height);
+                position.width - FactionFieldWidth - Spacing, EditorGUIUtility.singleLineHeight);
+            Rect factionRect = new Rect(cardRect.xMax + Spacing, position.y, FactionFieldWidth, EditorGUIUtility.singleLineHeight);
 
             if (keys.Count == 0)
             {
@@ -50,8 +50,14 @@ namespace Game.EditorTools
 
             EditorGUI.PropertyField(factionRect, factionProp, GUIContent.none);
 
+            EditorGUI.PropertyField(new Rect(position.x, position.y + EditorGUIUtility.singleLineHeight
+                + EditorGUIUtility.standardVerticalSpacing, position.width, EditorGUIUtility.singleLineHeight),
+                property.FindPropertyRelative("resultCardKey"), new GUIContent("Result (empty = same card)"));
             EditorGUI.EndProperty();
         }
+
+        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+            => EditorGUIUtility.singleLineHeight * 2 + EditorGUIUtility.standardVerticalSpacing;
 
         private static List<string> BuildCardKeys(ResearchProductionCatalog catalog)
         {

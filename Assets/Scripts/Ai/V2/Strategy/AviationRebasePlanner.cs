@@ -208,6 +208,74 @@ namespace Game.Ai.V2
                 FormOnly = true,
             };
 
+        internal sealed class DeliveryStop
+        {
+            public HexCoord Hex;
+            public HexCoord FirstHop;
+            public AiAirSortiePlanner.RebaseRoute FirstRoute;
+            public int Launches;
+            public int Turns;
+        }
+
+        // A future turn after a real landing; never refresh the live unit while scoring.
+        internal static IReadOnlyList<UnitData> ProjectAfterLanding(IReadOnlyList<UnitData> aircraft) =>
+            aircraft.Select(u =>
+            {
+                UnitData copy = u.CloneForCombat();
+                copy.MoveCurrent = copy.MoveMax;
+                copy.TurnsWithoutRefuel = u.TurnsWithoutRefuel;
+                copy.LaunchEnergyCost = u.LaunchEnergyCost;
+                AviationRules.ResetAfterLanding(copy);
+                return copy;
+            }).ToList();
+
+        // Reuse exact rebase proofs on the current owned base/carrier network. Only the first
+        // hop is executed/reserved; ownership, capacity, carrier position and demand are read
+        // again after landing. No speculative future carrier position or new mission is created.
+        internal static IReadOnlyList<DeliveryStop> DeliveryStops(HexCoord source,
+            IReadOnlyList<UnitData> aircraft, HexMap map, PlayerSetupData player)
+        {
+            var reached = new Dictionary<HexCoord, DeliveryStop>();
+            if (aircraft == null || aircraft.Count == 0 || map == null || player == null)
+                return new List<DeliveryStop>();
+            bool multiHop = AiAirSortiePlanner.IsExpendableWing(aircraft);
+            var fields = AiAirSortiePlanner.OwnedAirfieldHexes(player)
+                .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
+            var refreshed = ProjectAfterLanding(aircraft);
+            var pending = new List<DeliveryStop> { new DeliveryStop { Hex = source } };
+            var settled = new HashSet<HexCoord>();
+            while (pending.Count > 0)
+            {
+                DeliveryStop current = pending.OrderBy(x => x.Launches).ThenBy(x => x.Turns)
+                    .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R).First();
+                pending.Remove(current);
+                if (!settled.Add(current.Hex)) continue;
+                if (current.Launches > 0 && !multiHop) continue;
+                foreach (HexCoord destination in fields)
+                {
+                    if (destination.Equals(source) || settled.Contains(destination)) continue;
+                    var route = AiAirSortiePlanner.TryPlanRebaseFromStorage(current.Hex,
+                        current.Launches == 0 ? aircraft : refreshed, destination, map, player);
+                    if (!route.HasValue) continue;
+                    int launches = current.Launches + 1;
+                    int turns = current.Turns + Mathf.Max(1, route.Value.RequiredTurns);
+                    if (reached.TryGetValue(destination, out var previous)
+                        && (previous.Launches < launches
+                            || (previous.Launches == launches && previous.Turns <= turns))) continue;
+                    var next = new DeliveryStop
+                    {
+                        Hex = destination, Launches = launches, Turns = turns,
+                        FirstHop = current.Launches == 0 ? destination : current.FirstHop,
+                        FirstRoute = current.Launches == 0 ? route.Value : current.FirstRoute,
+                    };
+                    reached[destination] = next;
+                    pending.Add(next);
+                }
+            }
+            return reached.Values.OrderBy(x => x.Launches).ThenBy(x => x.Turns)
+                .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R).ToList();
+        }
+
         internal static AviationRebasePlan BuildPlan(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, IReadOnlyList<ReconObjective> objectives)
         {
@@ -235,23 +303,19 @@ namespace Game.Ai.V2
                     if (!AiAirSortiePlanner.CanAffordLaunch(root, group))
                         continue;
                     TaskScore sourceService = NonCombatCardPlayer.AirfieldServiceTaskScore(
-                        snap, player, ctx, group, source.Hex, objectives, strikeTargets, true,
+                        snap, player, ctx, group, source.Hex, objectives, strikeTargets, !AiAirSortiePlanner.IsExpendableWing(group),
                         out _, out string sourceWitness, out _);
 
-                    foreach (HexCoord destination in AiAirSortiePlanner.OwnedAirfieldHexes(player)
-                        .Where(h => !h.Equals(source.Hex)))
+                    var afterLanding = AiAirSortiePlanner.IsExpendableWing(group)
+                        ? ProjectAfterLanding(group) : group;
+                    foreach (DeliveryStop delivery in DeliveryStops(source.Hex, group, ctx.Map, player))
                     {
+                        HexCoord destination = delivery.Hex;
                         TaskScore destinationService = NonCombatCardPlayer.AirfieldServiceTaskScore(
-                            snap, player, ctx, group, destination, objectives, strikeTargets, true,
+                            snap, player, ctx, afterLanding, destination, objectives, strikeTargets, !AiAirSortiePlanner.IsExpendableWing(group),
                             out int coverage, out string destinationWitness, out _);
                         float improvement = destinationService.Value - sourceService.Value;
                         if (coverage <= 0 || improvement <= AiConfigV2.allocatorSliceEpsilon)
-                            continue;
-
-                        AiAirSortiePlanner.RebaseRoute? route =
-                            AiAirSortiePlanner.TryPlanRebaseFromStorage(
-                                source.Hex, group, destination, ctx.Map, player);
-                        if (!route.HasValue)
                             continue;
 
                         int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
@@ -265,20 +329,20 @@ namespace Game.Ai.V2
                             continue;
 
                         TaskScore score = ScoreImprovement(
-                            sourceService, destinationService, ap, energy);
+                            sourceService, destinationService, ap * delivery.Launches, energy * delivery.Launches);
                         if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
                         var candidate = new AviationRebasePlan
                         {
                             SourceHex = source.Hex,
-                            DestinationHex = destination,
+                            DestinationHex = delivery.FirstHop,
                             Aircraft = group,
-                            Route = route.Value,
+                            Route = delivery.FirstRoute,
                             Score = score,
                             ActivationAp = ap,
                             EnergyCost = energy,
                             SourceWitness = sourceWitness,
-                            DestinationWitness = destinationWitness,
+                            DestinationWitness = $"{destinationWitness}; delivery via {delivery.Launches} launch(es) to ({destination.Q},{destination.R})",
                         };
                         if (best == null || candidate.Utility > best.Utility + AiConfigV2.allocatorSliceEpsilon
                             || (Mathf.Abs(candidate.Utility - best.Utility) <= AiConfigV2.allocatorSliceEpsilon

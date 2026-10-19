@@ -33,7 +33,7 @@ namespace Game.EditorTests
         private static List<CardDefinition> Cards() => Blocks(NeutralPath).Select(Read).ToList();
         private static CardDefinition Gear(string name) => Cards().Single(c => c.displayName == name);
         public static IEnumerable<string> ProductionNames() => Cards()
-            .Where(c => Keys("productionCards").Contains(c.authoredKey)).Select(c => c.displayName);
+            .Where(c => c.cardType == CardType.Equipment && c.equipment.hostKinds.Contains(EquipmentHostKind.Unit) && Keys("productionCards").Contains(c.authoredKey)).Select(c => c.displayName);
         private static CardDefinition Host() => AttachmentSlotTests.Host();
 
         [Test]
@@ -41,10 +41,10 @@ namespace Game.EditorTests
         {
             var cards = Cards(); var keys = Keys("productionCards");
             var physical = cards.Where(c => c.cardType == CardType.Equipment
-                && c.attachmentSlot == AttachmentSlot.Equipment).ToArray();
+                && c.attachmentSlot == AttachmentSlot.Equipment && c.equipment.hostKinds.Contains(EquipmentHostKind.Unit)).ToArray();
             Assert.That(keys.Length, Is.GreaterThanOrEqualTo(42));
             Assert.That(keys.Distinct().Count(), Is.EqualTo(keys.Length));
-            Assert.That(keys, Is.EquivalentTo(physical.Select(c => c.authoredKey)));
+            Assert.That(keys, Is.EquivalentTo(physical.Select(c => c.authoredKey).Concat(new[] { "neutral.tactic.tactical-missile" })));
             Assert.That(keys.Intersect(Keys("researchCards")), Is.Empty);
             var allKeys = FactionPaths.Concat(new[] { NeutralPath }).SelectMany(Blocks).Select(Read)
                 .Select(c => c.authoredKey).Where(k => !string.IsNullOrWhiteSpace(k)).ToList();
@@ -54,11 +54,81 @@ namespace Game.EditorTests
                 Assert.That(c.authoredKey, Does.StartWith("neutral.equipment."));
                 Assert.That(c.displayName, Does.Not.StartWith("it "));
                 Assert.That(c.equipment.hostKinds, Is.EqualTo(new[] { EquipmentHostKind.Unit }));
-                Assert.That(c.apCost, Is.EqualTo(1)); Assert.That(c.activationApCost, Is.EqualTo(1));
+                Assert.That(c.apCost, EquipmentSystem.IsSingleUse(c) ? Is.InRange(3, 5) : Is.EqualTo(1));
+                Assert.That(c.activationApCost, Is.EqualTo(1));
                 Assert.That(c.fate, Is.InRange(3, 6));
             }
             Assert.That(Gear("AT VH Launcher").authoredKey,
                 Is.EqualTo("neutral.equipment.armored.at-vh-launcher"));
+        }
+
+        [Test]
+        public void LateWeaponReferenceUtilityPricesTheFirstAttackOnly()
+        {
+            var targets = Enumerable.Repeat(new WorthIt.DefenderProfile(2, false,
+                typeTags: new[] { UnitTypeTag.Armored }, attack: 3, hitPoints: 6, initiative: 1), 5).ToArray();
+            var stats = new EfficiencyStats(1, 2, 12, 2, 3, 3, 1, 0);
+            foreach (string name in new[] { "Infantry Missile", "Vehicle Missile", "Air Missile", "Air Bomb 3", "Air Bomb 5" })
+            {
+                var gear = Gear(name);
+                var host = new CardDefinition { cardType = CardType.Unit, attack = 1, defenseRating = 2,
+                    hitPoints = 12, range = 2, moveMax = 3, initiative = 3, activationApCost = 1 };
+                var ctx = new EfficiencyContext { Targets = targets,
+                    Battles = new List<IReadOnlyList<WorthIt.DefenderProfile>> { targets },
+                    ExpectedActivations = 3, AfterConsumption = EquipmentSystem.Consumption(host, gear, null) };
+                var projected = EquipmentSystem.Project(host, gear, null);
+                var after = new EfficiencyStats(projected.Stats[EquipmentStat.Attack], 2, 12,
+                    projected.Stats[EquipmentStat.Range], 3, 3, 1, 0);
+                float utility = gear.equipment.hostTypeTags.Contains(UnitTypeTag.Aircraft)
+                    ? EquipmentEfficiency.AviationOffenseDelta(stats, Array.Empty<string>(), after, gear.equipment.addAbilities, ctx)
+                    : EquipmentEfficiency.Utility(stats, Array.Empty<string>(), after, gear.equipment.addAbilities, ctx).Total;
+                TestContext.WriteLine($"{name}: reference utility={utility:0.000} (before production price/chance)");
+                Assert.That(float.IsNaN(utility) || float.IsInfinity(utility), Is.False);
+            }
+        }
+
+        [Test]
+        public void LateWeaponsUseExistingExplosionAndConsumptionRulesWithDistinctHosts()
+        {
+            var cards = Cards();
+            var blueprint = cards.Single(c => c.authoredKey == "neutral.tactic.tactical-missile");
+            var missile = cards.Single(c => c.authoredKey == "neutral.production.unit.tactical-missile");
+            Assert.That(blueprint.cardType, Is.EqualTo(CardType.Equipment));
+            Assert.That(blueprint.isAviation, Is.False);
+            Assert.That(blueprint.equipment.hostKinds, Is.EqualTo(new[] { EquipmentHostKind.Facility }));
+            Assert.That(Text(CatalogPath), Does.Contain("resultCardKey: " + missile.authoredKey));
+            Assert.That(Scalar(Blocks(NeutralPath).Single(b => Scalar(b, "authoredKey") == missile.authoredKey), "deckBuilderExcluded"), Is.EqualTo("1"));
+            Assert.That(missile.isAviation, Is.True);
+            Assert.That(DeckRules.Category(blueprint), Is.EqualTo(DeckCategory.Equipment));
+            Assert.That(ExplosionAttack.IsSingleUseUnit(missile), Is.True);
+            Assert.That(ExplosionAttack.TargetLimit(missile.grantedAbilities), Is.EqualTo(10));
+            float before = ResearchProductionSystem.EstimateSuccessChanceForFate(4, blueprint);
+            float after = ResearchProductionSystem.EstimateSuccessChanceForFate(6, blueprint);
+            Assert.That(after, Is.GreaterThan(before));
+            TestContext.WriteLine($"Tactical Missile production: Fate4={before:0.000}, Fate6={after:0.000}");
+            string[] names = { "Infantry Missile", "Vehicle Missile", "Air Missile", "Air Bomb 3", "Air Bomb 5" };
+            foreach (string name in names)
+            {
+                var gear = Gear(name);
+                Assert.That(EquipmentSystem.IsSingleUse(gear), Is.True);
+                Assert.That(ExplosionAttack.TargetLimit(gear.equipment.addAbilities),
+                    Is.EqualTo(name.StartsWith("Air Bomb") ? name == "Air Bomb 5" ? 5 : 3 : 0));
+                if (!name.StartsWith("Air Bomb"))
+                {
+                    Assert.That(gear.equipment.addAbilities, Is.Empty);
+                    Assert.That(gear.equipment.statChanges.Single(c => c.stat == EquipmentStat.Range).amount,
+                        Is.EqualTo(name == "Air Missile" ? 0 : 2));
+                    Assert.That(gear.equipment.statChanges.Single(c => c.stat == EquipmentStat.Attack).amount,
+                        Is.EqualTo(name == "Infantry Missile" ? 8 : name == "Vehicle Missile" ? 10 : 12));
+                }
+                Assert.That(gear.equipment.addAbilities, Has.No.Member(UnitAbilities.SingleUse),
+                    "consuming the attachment must never mark the host as a disposable unit");
+                Assert.That(Keys("productionCards"), Does.Contain(gear.authoredKey));
+            }
+            Assert.That(Gear("Infantry Missile").equipment.hostTypeTags, Is.EqualTo(new[] { UnitTypeTag.Infantry }));
+            Assert.That(Gear("Vehicle Missile").equipment.hostTypeTags, Is.EquivalentTo(new[] { UnitTypeTag.Vehicle, UnitTypeTag.Mecha }));
+            foreach (string name in names.Skip(2))
+                Assert.That(Gear(name).equipment.hostTypeTags, Is.EqualTo(new[] { UnitTypeTag.Aircraft }));
         }
 
         [TestCaseSource(nameof(ProductionNames))]
@@ -346,6 +416,8 @@ namespace Game.EditorTests
                 {
                     Assert.That(c.attachmentSlot, Is.EqualTo(AttachmentSlot.Equipment));
                     Assert.That(c.art, Is.Not.Null, c.displayName); Assert.That(c.detailArt, Is.Not.Null, c.displayName);
+                    if (c.authoredKey == "neutral.tactic.tactical-missile")
+                    { Assert.That(catalog.ResolveResult(c).cardType, Is.EqualTo(CardType.Unit)); continue; }
                     var preview = EquipmentCardText.Description(c, null);
                     Assert.That(preview, Does.Contain("Unit").And.Not.Contain("required"));
                 }

@@ -50,6 +50,8 @@ namespace Game.Ai.V2
         private static int ReservedSlots(HexCoord hex, PlayerSetupData owner, ArmyData excluding)
             => For(owner).Where(s => s?.Army != null && s.Army != excluding
                 && s.Army.Owner == owner && AviationRules.IsValidAirArmy(s.Army)
+                && !(s.Kind == AirSortieKind.Strike && s.Outbound
+                    && AiAirSortiePlanner.IsExpendableWing(s.Army.Members))
                 && AviationRules.IsOwnedAirfieldAt(s.LandingHex, owner)
                 && s.LandingHex.Equals(hex) && !s.Army.Hex.Equals(hex)
                 && ArmyRegistry.AllForOwner(owner).Contains(s.Army))

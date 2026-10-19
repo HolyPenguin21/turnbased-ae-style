@@ -657,10 +657,10 @@ namespace Game.Ai.V2
             IntendedRole role;
             float apCost = actualApCost ?? (card != null ? card.EffectivePlayApCost : 0f);
             if (!actualApCost.HasValue && generation != null)
-                apCost += ResearchProductionSystem.AttemptApCost(generation.CardDef);
+                apCost += ResearchProductionSystem.AttemptApCost(generation.ChallengeCard);
             ResourceCost pricedResources = actualResourceCost ?? card?.EffectivePlayResourceCost;
-            if (actualResourceCost == null && generation?.CardDef?.resourceCost != null)
-                pricedResources = AddResourceCosts(pricedResources, generation.CardDef.resourceCost);
+            if (actualResourceCost == null && generation?.ChallengeCard?.resourceCost != null)
+                pricedResources = AddResourceCosts(pricedResources, generation.ChallengeCard.resourceCost);
 
             float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
             bool hasAirCapacity = snap?.Self != null
@@ -796,7 +796,7 @@ namespace Game.Ai.V2
                 return successfulCost;
             float chance = Mathf.Clamp01(generation.SuccessChance);
             float attemptCost = ActionPrice.ToCardScore(
-                    ResearchProductionSystem.AttemptApCost(generation.CardDef) * apScale)
+                    ResearchProductionSystem.AttemptApCost(generation.ChallengeCard) * apScale)
                 + StrategicResourceCostValue(generation.GenerationResourceCost, snap,
                     spendableResource, player);
             return chance * successfulCost + (1f - chance) * attemptCost;

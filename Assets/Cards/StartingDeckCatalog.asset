@@ -262,6 +262,18 @@ MonoBehaviour:
     - cardKey: neutral.facility.intel
       count: 1
     equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
     - cardKey: neutral.equipment.bio.flamer
       count: 1
     - cardKey: neutral.equipment.bio.at-launcher
@@ -447,6 +459,18 @@ MonoBehaviour:
     - cardKey: neutral.facility.intel
       count: 1
     equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
     - cardKey: neutral.equipment.bio.flamer
       count: 1
     - cardKey: neutral.equipment.bio.at-launcher
@@ -644,6 +668,18 @@ MonoBehaviour:
     - cardKey: neutral.facility.intel
       count: 1
     equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
     - cardKey: neutral.equipment.bio.flamer
       count: 1
     - cardKey: neutral.equipment.bio.at-launcher

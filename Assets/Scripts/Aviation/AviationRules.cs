@@ -15,6 +15,15 @@ namespace Game.Aviation
         public static bool IsAviation(UnitData unit) => unit != null && unit.IsAviation;
         // Composition is authoritative for mobile aviation: this also makes visual state recover
         // correctly after a save/load or a drag-created army whose flag was not yet refreshed.
+        // A hero can be singled out by aviation only as its army's sole living member.
+        // Count the army, not the hex: another co-located army cannot shield a solo hero.
+        public static bool CanTargetFromAir(bool isHero, int livingArmyMembers)
+            => !isHero || livingArmyMembers == 1;
+
+        public static bool CanTargetFromAir(UnitData unit, ArmyData army)
+            => unit != null && unit.HitPointsCurrent > 0 && army != null
+                && CanTargetFromAir(unit.IsHero, army.Members.Count(u => u != null && u.HitPointsCurrent > 0));
+
         public static bool IsAirArmy(ArmyData army) => army != null && !army.IsAirfield && !army.IsGarrison
             && !army.IsPrison && army.Members.Count > 0 && army.Members.All(unit => unit.IsAviation);
         public static bool IsAirfield(ArmyData army) => army != null && army.IsAirfield;

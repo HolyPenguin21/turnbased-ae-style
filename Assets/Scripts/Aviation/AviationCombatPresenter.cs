@@ -302,13 +302,13 @@ namespace Game.Aviation
             hexSelection?.DeleteArmyIfEmptied(airArmy);
         }
 
-        private static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> targetArmies, PlayerSetupData striker)
+        internal static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> targetArmies, PlayerSetupData striker)
         {
             var pool = new List<(UnitData, ArmyData)>();
             foreach (ArmyData army in targetArmies)
                 if (army.Members.Count > 0)
                     foreach (UnitData unit in army.Members)
-                        if (!Game.Map.StealthSystem.IsHiddenFrom(unit, striker))
+                        if (AviationRules.CanTargetFromAir(unit, army) && !Game.Map.StealthSystem.IsHiddenFrom(unit, striker))
                             pool.Add((unit, army));
             return pool;
         }
@@ -320,7 +320,7 @@ namespace Game.Aviation
             BuildingData building = BuildingRegistry.FindAt(hex);
             if (building != null && building.Owner != airArmy.Owner && building.StructurePointsCurrent > 0) return true;
             return ArmyRegistry.AllAt(hex).Any(a => a.Owner != airArmy.Owner
-                && a.Members.Any(u => u.HitPointsCurrent > 0 && !StealthSystem.IsHiddenFrom(u, airArmy.Owner)));
+                && a.Members.Any(u => AviationRules.CanTargetFromAir(u, a) && !StealthSystem.IsHiddenFrom(u, airArmy.Owner)));
         }
 
         // This query is shared with the move-arrow preview; event guards and aircraft
@@ -342,7 +342,8 @@ namespace Game.Aviation
                     continue;
                 if (HexEventRegistry.IsEventGuardArmy(hex, army))
                     continue;
-                if (!Game.Map.StealthSystem.HasAnyTargetableMember(army, owner))
+                if (!army.Members.Any(u => AviationRules.CanTargetFromAir(u, army)
+                    && !Game.Map.StealthSystem.IsHiddenFrom(u, owner)))
                     continue;
                 result.Add(army);
             }

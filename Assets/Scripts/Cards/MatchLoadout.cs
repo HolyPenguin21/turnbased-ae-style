@@ -54,13 +54,15 @@ namespace Game.Cards
     {
         private readonly CardDefinition card;
         private readonly BlueprintQuota quota;
+        private readonly CardDefinition output;
         private bool finished;
-        internal ProductionAttempt(CardDefinition card, BlueprintQuota quota) { this.card = card; this.quota = quota; }
+        internal ProductionAttempt(CardDefinition card, BlueprintQuota quota, CardDefinition output = null)
+        { this.card = card; this.quota = quota; this.output = output ?? card; }
         public CardData Complete(bool success)
         {
             if (finished) return null;
             finished = true; quota?.Release(card.authoredKey);
-            return success ? ResearchProductionSystem.MintCard(card) : null;
+            return success ? ResearchProductionSystem.MintCard(output) : null;
         }
         public void Dispose() { Complete(false); }
     }
