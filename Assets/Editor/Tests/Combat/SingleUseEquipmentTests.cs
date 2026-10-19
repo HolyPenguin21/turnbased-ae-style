@@ -396,6 +396,28 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void SpentEnemyRetainsItsKnownNeighboursForSplashValuation()
+        {
+            var targetDef = Host(0, 0, 100); targetDef.initiative = 10;
+            var plainTarget = WorthIt.FromLiveUnit(Body(targetDef));
+            var armedTarget = WorthIt.FromLiveUnit(Body(targetDef, Item(0)));
+            var neighbour = WorthIt.FromLiveUnit(Body(Host(0, 0, 2)));
+            float Value(WorthIt.DefenderProfile target)
+            {
+                var ctx = new EfficiencyContext
+                {
+                    Targets = new[] { target }, KnownDistance = 1, SecondaryNeighbors = 0,
+                    Battles = new IReadOnlyList<WorthIt.DefenderProfile>[] { new[] { target, neighbour } },
+                    AfterConsumption = EquipmentSystem.Consumption(Host(), Item(4, true, UnitAbilities.Splash), null),
+                };
+                return EquipmentEfficiency.Utility(Stats(2), new string[0], Stats(6),
+                    new[] { UnitAbilities.Splash }, ctx).Combat;
+            }
+            Assert.That(Value(armedTarget), Is.EqualTo(Value(plainTarget)).Within(0.00001f),
+                "A zero-effect enemy item spent before our shot must not erase its known Splash neighbours");
+        }
+
+        [Test]
         public void NewConsumableNeedIsNotDampedAsAnotherPermanentUpgrade()
         {
             var player = new PlayerSetupData(); var missile = Item(); var gun = Item(single: false);

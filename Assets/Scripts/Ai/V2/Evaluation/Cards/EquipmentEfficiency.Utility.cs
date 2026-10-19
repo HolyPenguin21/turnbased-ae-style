@@ -497,7 +497,7 @@ namespace Game.Ai.V2
                         double[] outcomes = BattleSimulationKernel.ExchangeDamageDistribution(
                             Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(enemy.Defense), host.Abilities,
                             enemy.TypeTags, enemy.Abilities, limit, out _);
-                        total += weight * SecondaryFraction(Mathf.RoundToInt(host.Attack), host.Abilities, ctx, enemy);
+                        total += weight * SecondaryFraction(Mathf.RoundToInt(host.Attack), host.Abilities, ctx, enemy, target);
                         var after = WorthIt.AfterAttack(host);
                         for (int damage = 0; damage < outcomes.Length; damage++)
                         {
@@ -570,7 +570,7 @@ namespace Game.Ai.V2
         }
 
         private static float SecondaryFraction(int attack, IReadOnlyCollection<string> abilities,
-            EfficiencyContext ctx, WorthIt.DefenderProfile t)
+            EfficiencyContext ctx, WorthIt.DefenderProfile t, WorthIt.DefenderProfile? referenceTarget = null)
         {
             IReadOnlyList<string> targetAbilities = t.Abilities ?? Array.Empty<string>();
             bool splash = abilities.Contains(UnitAbilities.Splash);
@@ -586,7 +586,9 @@ namespace Game.Ai.V2
                     abilities, t.TypeTags, targetAbilities, hpJ, out _, true, j.Abilities) / hpJ;
             }
             bool IsBio(WorthIt.DefenderProfile j) => j.TypeTags?.Contains(UnitTypeTag.Bio) ?? false;
-            List<WorthIt.DefenderProfile> known = KnownNeighbours(ctx, t);
+            // Projected stats may change after a shot; army membership still belongs to the observation.
+            WorthIt.DefenderProfile observed = referenceTarget ?? t;
+            List<WorthIt.DefenderProfile> known = KnownNeighbours(ctx, observed);
             if (known != null)
             {
                 n = known.Count;
@@ -601,7 +603,7 @@ namespace Game.Ai.V2
             {
                 // Unknown neighbours: how many (mean enemy army size - 1) and what they look like (the
                 // other known profiles, a small deterministic sample) are separate estimates.
-                List<WorthIt.DefenderProfile> pool = NeighbourPool(ctx, t);
+                List<WorthIt.DefenderProfile> pool = NeighbourPool(ctx, observed);
                 n = Mathf.Min(Mathf.Max(0, Mathf.RoundToInt(ctx.SecondaryNeighbors)), 8);
                 if (pool.Count == 0 || n == 0)
                     return 0f;

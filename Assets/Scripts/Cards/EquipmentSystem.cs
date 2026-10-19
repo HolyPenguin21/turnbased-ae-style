@@ -247,12 +247,19 @@ namespace Game.Cards
             PredictedEquipmentState previous = unit.AttachmentApplied.Value;
             foreach (EquipmentStat stat in new List<EquipmentStat>(stats.Keys))
                 stats[stat] += next.Stats[stat] - previous.Stats[stat];
-            var abilities = new HashSet<string>(next.Abilities);
-            foreach (string ability in unit.Abilities)
-                if (!previous.Abilities.Contains(ability)) abilities.Add(ability);
-            foreach (string ability in previous.Abilities)
-                if (!unit.Abilities.Contains(ability)) abilities.Remove(ability);
-            return new PredictedEquipmentState(stats, new List<string>(abilities));
+            return new PredictedEquipmentState(stats, MergeAbilities(previous.Abilities, next.Abilities, unit.Abilities));
+        }
+
+        // Live attachments and asset-free forecasts preserve the same temporary ability changes.
+        internal static IReadOnlyList<string> MergeAbilities(IReadOnlyList<string> previous,
+            IReadOnlyList<string> next, IReadOnlyCollection<string> current)
+        {
+            var abilities = new HashSet<string>(next);
+            foreach (string ability in current)
+                if (!previous.Contains(ability)) abilities.Add(ability);
+            foreach (string ability in previous)
+                if (!current.Contains(ability)) abilities.Remove(ability);
+            return new List<string>(abilities);
         }
 
         private static PredictedEquipmentState PredictSlots(PredictedEquipmentState baseline,
@@ -738,6 +745,12 @@ namespace Game.Cards
             Key = key.ToString();
         }
         public int Delta(EquipmentStat stat) => After.Stats[stat] - Before.Stats[stat];
+        public float RemainingHitPoints(float current, float maximum, out float nextMaximum)
+        {
+            int delta = Delta(EquipmentStat.HitPoints);
+            nextMaximum = Mathf.Max(1f, maximum + delta);
+            return Mathf.Clamp(current + delta - HpSpentExcess, current > 0f ? 1f : 0f, nextMaximum);
+        }
         public EquipmentConsumption AfterHpRefill() => HpSpentExcess == 0 ? this
             : new EquipmentConsumption(Before, After, 0, FateSpentExcess);
         // Equipment valuation carries maximum HP but current (already spent) Fate.
@@ -746,9 +759,8 @@ namespace Game.Cards
                 - (x.Key == EquipmentStat.Fate ? FateSpentExcess : 0)), ApplyAbilities(current.Abilities));
         public IReadOnlyList<string> ApplyAbilities(IEnumerable<string> current)
         {
-            var result = new HashSet<string>(current ?? System.Array.Empty<string>());
-            result.ExceptWith(Before.Abilities.Except(After.Abilities));
-            result.UnionWith(After.Abilities.Except(Before.Abilities));
+            var result = EquipmentSystem.MergeAbilities(Before.Abilities, After.Abilities,
+                current as IReadOnlyCollection<string> ?? current?.ToArray() ?? System.Array.Empty<string>());
             return result.OrderBy(x => x, System.StringComparer.Ordinal).ToArray();
         }
     }
