@@ -579,7 +579,7 @@ namespace Game.Combat
 
         public static BattleAttackApplication ResolveStandaloneAttack(UnitData attacker, UnitData defender,
             BattleChallengeRollResult roll, AbilityMagnitudes magnitudes,
-            UnitData attackerHero = null, UnitData defenderHero = null)
+            UnitData attackerHero = null, UnitData defenderHero = null, bool completeAttack = true)
         {
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
@@ -601,7 +601,7 @@ namespace Game.Combat
                 ChallengeResult.ApplyBerserkOnHit(defender, magnitudes);
             }
             application.DefenderDied = defender.HitPointsCurrent <= 0;
-            EquipmentSystem.ConsumeAfterAttack(attacker);
+            if (completeAttack) ExplosionAttack.CompleteLauncher(attacker);
             return application;
         }
 
@@ -641,7 +641,8 @@ namespace Game.Combat
             }
             // All modifiers, collateral and the counterattack decision used the armed state.
             // An actual answer now faces the already spent host, including on a missed shot.
-            EquipmentSystem.ConsumeAfterAttack(attacker);
+            ExplosionAttack.CompleteLauncher(attacker, this);
+            if (attacker.HitPointsCurrent <= 0) application.Counterattacker = null;
             return application;
         }
 
@@ -689,7 +690,7 @@ namespace Game.Combat
             return true;
         }
 
-        public BattleUnitRemoval RemoveUnit(UnitData unit, bool announceKiller)
+        public BattleUnitRemoval RemoveUnit(UnitData unit, bool announceKiller, bool deferCarrierCleanup = false)
         {
             ArmyData deadSide = _state.OwningArmy(unit);
             ArmyData killerSide = _state.OpposingArmy(deadSide);
@@ -700,7 +701,7 @@ namespace Game.Combat
             _state.Defender?.Members.Remove(unit);
             _state.Attacker?.RefreshTransport();
             _state.Defender?.RefreshTransport();
-            StealthSystem.OnUnitRemoved(unit);
+            StealthSystem.OnUnitRemoved(unit, deferCarrierCleanup);
 
             if (_state.TurnOrder != null)
             {

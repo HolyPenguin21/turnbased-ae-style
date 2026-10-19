@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -117,14 +118,14 @@ namespace Game.Aviation
                 yield break;
             List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner,
                 policy.ExactTargetArmyId);
-            if (targets.Count == 0)
+            if (targets.Count == 0 && !CanExplosionStrikeAt(airArmy, hex))
                 yield break;
 
             if (result != null)
                 result.DefenderCountBefore = targets.Sum(a => a.Members.Count);
             // Reuse the resolved strike result; selecting targets alone is not a completed attack.
             AirStrikeResult operationResult = result ?? (OperationCompleted != null ? new AirStrikeResult() : null);
-            yield return RunAirStrike(airArmy, targets, policy, operationResult);
+            yield return RunAirStrike(airArmy, hex, targets, policy, operationResult);
             if (result != null)
                 result.DefenderCountAfter = targets.Sum(a => a.Members.Count);
             VisionSystem.NotifyContentChanged(hex);
@@ -153,9 +154,22 @@ namespace Game.Aviation
                 yield return new WaitUntil(() => decided);
             }
 
+            if (reaction.AaUnit.Owner != null && !reaction.AaUnit.Owner.IsHuman
+                && ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0
+                && ExplosionAttack.ExpectedNetValue(reaction.AaUnit,
+                    ExplosionAttack.KnownTargets(airArmy.Hex, reaction.AaUnit.Owner, airArmy)) <= 0)
+                attack = false;
             AntiAirState.RecordPrompted(reaction.AaUnit, airArmy.Id, attack);
             if (!attack || attackPopup == null)
                 yield break;
+
+            if (ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0)
+            {
+                var explosion = new ExplosionAttack(reaction.AaUnit, airArmy.Hex, HeadlessRng, airArmy);
+                yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelection,
+                    tacticsCritical: TacticBattleContext.IsCritical(airArmy.Hex, reaction.AaArmy, airArmy));
+                yield break;
+            }
 
             UnitData target = PickRandomSurvivor(airArmy);
             if (target == null)
@@ -181,6 +195,7 @@ namespace Game.Aviation
                 tacticsCritical: TacticBattleContext.IsCritical(reaction.AaArmy.Hex, reaction.AaArmy, airArmy));
             yield return new WaitUntil(() => resolved);
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
+            hexSelection?.DeleteArmyIfEmptied(reaction.AaArmy);
 
             // An AA hit on a stationary wing changes HP/roster without an Unregister.
             // During flight CurrentHex has advanced, but ArmyRegistry still indexes the
@@ -190,13 +205,35 @@ namespace Game.Aviation
                 VisionSystem.NotifyContentChanged(airArmy.Hex);
         }
 
-        private IEnumerator RunAirStrike(ArmyData airArmy, List<ArmyData> targetArmies,
+        private IEnumerator RunAirStrike(ArmyData airArmy, HexCoord hex, List<ArmyData> targetArmies,
             AirStrikePolicy policy, AirStrikeResult result = null)
         {
             foreach (UnitData aircraft in airArmy.Members.ToList())
             {
-                if (aircraft.HasAirAttackedThisTurn || airArmy.Members.Count == 0)
+                if (aircraft.HitPointsCurrent <= 0 || !airArmy.Members.Contains(aircraft)
+                    || aircraft.HasAirAttackedThisTurn || airArmy.Members.Count == 0)
                     continue;
+
+                if (ExplosionAttack.TargetLimit(aircraft.Abilities) > 0)
+                {
+                    // Random area damage cannot guarantee the survivor floor of a capture raid.
+                    if (policy.MinimumSurvivors > 0 || !CanExplosionStrikeAt(airArmy, hex)) continue;
+                    if (airArmy.Owner != null && !airArmy.Owner.IsHuman
+                        && ExplosionAttack.ExpectedNetValue(aircraft, ExplosionAttack.KnownTargets(hex, airArmy.Owner, airArmy)) <= 0) continue;
+                    aircraft.HasAirAttackedThisTurn = true;
+                    var explosion = new ExplosionAttack(aircraft, hex, HeadlessRng, airArmy);
+                    yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelection,
+                        tacticsCritical: TacticBattleContext.IsCritical(hex, airArmy, targetArmies.FirstOrDefault()),
+                        onHit: (target, application) =>
+                        {
+                            if (result == null) return;
+                            result.Attacked = true;
+                            if (target.Army?.Owner != airArmy.Owner && target.Army != null)
+                                result.AttackedArmyId = target.Army.Id;
+                            result.DamageDealt += Mathf.Max(0, application.Damage);
+                        });
+                    continue;
+                }
 
                 if (targetArmies.Sum(a => a.Members.Count) <= policy.MinimumSurvivors)
                     break;
@@ -254,19 +291,7 @@ namespace Game.Aviation
                         rollDice: count => BattleSimulationKernel.RollDice(count, HeadlessRng),
                         tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy));
                     challenge.Roll();
-                    while (challenge.TryNextFateTurn(out bool defenderTurn))
-                    {
-                        bool spent = false;
-                        while (challenge.ShouldAiSpend(defenderTurn)
-                            && challenge.TrySpend(defenderTurn, out _, out bool hit))
-                        {
-                            spent = true;
-                            if (!hit) break;
-                        }
-                        var tactic = challenge.ChooseAiTactic(defenderTurn);
-                        if (tactic != null && challenge.TryPlayTactic(defenderTurn, tactic)) spent = true;
-                        challenge.ReportFateTurn(spent);
-                    }
+                    challenge.ResolveAiDecisions();
                     Apply(challenge.ToRollResult());
                 }
 
@@ -274,6 +299,7 @@ namespace Game.Aviation
                 if (targetArmy.Members.Count == 0)
                     hexSelection?.DeleteArmyIfEmptied(targetArmy);
             }
+            hexSelection?.DeleteArmyIfEmptied(airArmy);
         }
 
         private static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> targetArmies, PlayerSetupData striker)
@@ -285,6 +311,16 @@ namespace Game.Aviation
                         if (!Game.Map.StealthSystem.IsHiddenFrom(unit, striker))
                             pool.Add((unit, army));
             return pool;
+        }
+
+        public static bool CanExplosionStrikeAt(ArmyData airArmy, HexCoord hex)
+        {
+            if (airArmy == null || !airArmy.Members.Any(u => u.HitPointsCurrent > 0
+                && !u.HasAirAttackedThisTurn && ExplosionAttack.TargetLimit(u.Abilities) > 0)) return false;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building != null && building.Owner != airArmy.Owner && building.StructurePointsCurrent > 0) return true;
+            return ArmyRegistry.AllAt(hex).Any(a => a.Owner != airArmy.Owner
+                && a.Members.Any(u => u.HitPointsCurrent > 0 && !StealthSystem.IsHiddenFrom(u, airArmy.Owner)));
         }
 
         // This query is shared with the move-arrow preview; event guards and aircraft

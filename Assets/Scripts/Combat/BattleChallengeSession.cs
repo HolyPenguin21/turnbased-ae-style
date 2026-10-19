@@ -62,6 +62,23 @@ namespace Game.Combat
             LastSpendHit = false;
         }
 
+        // Headless presentation runs the same Fate/tactic state machine as the popup.
+        public void ResolveAiDecisions()
+        {
+            while (TryNextFateTurn(out bool defenderTurn))
+            {
+                bool spent = false;
+                while (ShouldAiSpend(defenderTurn) && TrySpend(defenderTurn, out _, out bool hit))
+                {
+                    spent = true;
+                    if (!hit) break;
+                }
+                var tactic = ChooseAiTactic(defenderTurn);
+                if (tactic != null && TryPlayTactic(defenderTurn, tactic)) spent = true;
+                ReportFateTurn(spent);
+            }
+        }
+
         public bool HasAnyFate => AttackerFateRemaining > 0 || DefenderFateRemaining > 0;
         public bool HasAnyDecision => HasAnyFate || HasTactic(false) || HasTactic(true);
         public ChallengeResult CurrentResult => new ChallengeResult(
@@ -107,6 +124,7 @@ namespace Game.Combat
         public CardData ChooseAiTactic(bool defenderSide, UnitData interceptor = null)
         {
             if (!TacticsCritical) return null;
+            if (!defenderSide && _attacker?.Owner == _defender?.Owner) return null;
             // A human's cards are spent only by that human. An automated human side (Fast Resolve,
             // headless strikes) keeps its inventory; the AI policy is for AI owners.
             if ((defenderSide ? _defender : _attacker)?.Owner?.IsHuman == true) return null;

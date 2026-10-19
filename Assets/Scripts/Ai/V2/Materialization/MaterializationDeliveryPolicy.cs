@@ -119,7 +119,8 @@ namespace Game.Ai.V2
                 var body = new WorthIt.DefenderProfile(line.Defense,
                     line.EffectiveAbilities?.Contains(UnitAbilities.CeramicArmor) == true,
                     card.unitTypeTags, line.Attack, line.HitPoints, line.Initiative,
-                    line.EffectiveAbilities, isGroundCombatant: true, range: line.Range, consumption: consumption);
+                    line.EffectiveAbilities, isGroundCombatant: true, range: line.Range, consumption: consumption,
+                    singleUseUnit: card.grantedAbilities.Contains(UnitAbilities.SingleUse));
                 var route = site.BuilderRoutes.First(x => x.ArmyId == recipient.ArmyId);
                 return DemandLayer.EconomyEscortImprovesRoute(recipient, route, body, line.MoveMax)
                     ? DeliveryAssessment.Ok : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);

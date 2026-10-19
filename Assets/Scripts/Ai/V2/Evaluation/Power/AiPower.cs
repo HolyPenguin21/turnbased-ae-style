@@ -66,7 +66,7 @@ namespace Game.Ai.V2
             float p = 0f;
             if (!isHero)
             {
-                float line = c.attack * AiConfigV2.powerAttackWeight
+                float line = ExplosionAttack.AttackPower(c.attack, c.grantedAbilities) * AiConfigV2.powerAttackWeight
                            + c.defenseRating * AiConfigV2.powerDefenseWeight
                            + c.hitPoints * AiConfigV2.powerHitPointsWeight
                            + c.initiative * AiConfigV2.powerInitiativeWeight;
@@ -87,6 +87,7 @@ namespace Game.Ai.V2
             int attack = u.Attack - u.BerserkStacks * AbilityMagnitudes.Default.BerserkAttackGain
                 - u.DrillAttackBonus;
             int defense = u.Defense + u.BerserkDefenseLost;
+            attack = Mathf.RoundToInt(ExplosionAttack.AttackPower(attack, u.Abilities));
             float line = attack * AiConfigV2.powerAttackWeight
                        + defense * AiConfigV2.powerDefenseWeight
                        + u.HitPointsCurrent * AiConfigV2.powerHitPointsWeight
@@ -167,7 +168,7 @@ namespace Game.Ai.V2
             IReadOnlyDictionary<EquipmentStat, int> stats, IReadOnlyList<string> abilities, bool anyGrant)
         {
             int S(EquipmentStat st) => stats.TryGetValue(st, out int v) ? v : 0;
-            float line = S(EquipmentStat.Attack) * AiConfigV2.powerAttackWeight
+            float line = ExplosionAttack.AttackPower(S(EquipmentStat.Attack), abilities) * AiConfigV2.powerAttackWeight
                        + S(EquipmentStat.Defense) * AiConfigV2.powerDefenseWeight
                        + S(EquipmentStat.HitPoints) * AiConfigV2.powerHitPointsWeight
                        + S(EquipmentStat.Initiative) * AiConfigV2.powerInitiativeWeight;
@@ -240,7 +241,7 @@ namespace Game.Ai.V2
                 c.initiative,
                 c.grantedAbilities,
                 isGroundCombatant: c.cardType != CardType.Hero,
-                range: c.range);
+                range: c.range, singleUseUnit: ExplosionAttack.IsSingleUseUnit(c));
 
         // Frozen card attachments use the same canonical projection as hand UI and deployment.
         public static WorthIt.DefenderProfile ToDefenderProfile(CardDefinition c,
@@ -254,7 +255,8 @@ namespace Game.Ai.V2
                 state.Stats[EquipmentStat.Initiative], state.Abilities,
                 isGroundCombatant: c.cardType != CardType.Hero,
                 range: state.Stats[EquipmentStat.Range],
-                consumption: EquipmentSystem.Consumption(c, equipment, mutator));
+                consumption: EquipmentSystem.Consumption(c, equipment, mutator),
+                singleUseUnit: ExplosionAttack.IsSingleUseUnit(c));
         }
 
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a
@@ -278,7 +280,7 @@ namespace Game.Ai.V2
                     pus.Add(new PowerUnit(0f, p.TypeTags, 1, true));
                     continue;
                 }
-                float line = p.Attack * AiConfigV2.powerAttackWeight
+                float line = ExplosionAttack.AttackPower(p.Attack, p.Abilities) * AiConfigV2.powerAttackWeight
                            + (p.Defense + extraDefense) * AiConfigV2.powerDefenseWeight
                            + p.HitPoints * AiConfigV2.powerHitPointsWeight
                            + p.Initiative * AiConfigV2.powerInitiativeWeight;
@@ -310,12 +312,12 @@ namespace Game.Ai.V2
         // comparisons (weakest body, donor, pre-filter ratio) — a Splash or RaiseTheRots body
         // must not rank as weaker than a plain body with the same stats.
         public static float SkilledCombatValue(WorthIt.DefenderProfile p, float extraDefense = 0f) =>
-            WorthIt.CombatValue(p.Attack, p.Defense + extraDefense, p.HitPoints, p.Initiative)
+            WorthIt.CombatValue(ExplosionAttack.AttackPower(p.Attack, p.Abilities), p.Defense + extraDefense, p.HitPoints, p.Initiative)
             * ProfileAbilityMultiplier(p);
 
         public static float SkilledCombatValue(UnitData u) =>
             u == null ? 0f
-                : WorthIt.CombatValue(u.Attack, u.Defense, u.HitPointsCurrent, u.Initiative)
+                : WorthIt.CombatValue(ExplosionAttack.AttackPower(u.Attack, u.Abilities), u.Defense, u.HitPointsCurrent, u.Initiative)
                   * AbilityMultiplier(u.Abilities);
 
         private static float AbilityMultiplier(IEnumerable<string> abilities)

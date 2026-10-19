@@ -90,8 +90,12 @@ namespace Game.Cards
         // Opens paid repair for all own armies on the ground carrier's current hex.
         public const string Repair = "Repair";
         public const string Airfield = "Airfield";
-        // Equipment metadata: consume this attachment after its host completes an attack.
+        // On Equipment: consume the attachment. Innate on a Unit: expend the unit after attack.
         public const string SingleUse = "SingleUse";
+        // Replace one attack with independent 10-die challenges against distinct random hex occupants.
+        public const string Explosion3 = "Explosion3";
+        public const string Explosion5 = "Explosion5";
+        public const string Explosion10 = "Explosion10";
 
         // "+2 damage against Mechanical-tagged targets, if the attack already dealt at least 1
         // damage" — the Mechanical counterpart of Hyperkinetic (Armored) and Pyrokinetic (Bio).
@@ -251,7 +255,8 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
-            Splash, Scorcher, RaiseTheRots, Heal, Transport, Repair, Airfield, SingleUse, Ionic, Bodyguard, Counterattack, Drill,
+            Splash, Scorcher, RaiseTheRots, Heal, Transport, Repair, Airfield, SingleUse,
+            Explosion3, Explosion5, Explosion10, Ionic, Bodyguard, Counterattack, Drill,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus, TacticalIntelligence,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
@@ -273,7 +278,9 @@ namespace Game.Cards
             result.Append(tag[0]);
             for (int i = 1; i < tag.Length; i++)
             {
-                if (char.IsUpper(tag[i]) && !char.IsUpper(tag[i - 1]))
+                if ((char.IsUpper(tag[i]) && !char.IsUpper(tag[i - 1]))
+                    || (char.IsDigit(tag[i]) && !char.IsDigit(tag[i - 1])
+                        && tag.StartsWith("Explosion", System.StringComparison.Ordinal)))
                     result.Append(' ');
                 result.Append(tag[i]);
             }

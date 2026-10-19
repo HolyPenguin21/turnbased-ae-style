@@ -172,7 +172,8 @@ namespace Game.Map
                 // never something the preview reveals early.
                 HexCoord destination = path.Hexes[path.Hexes.Count - 1];
                 bool hasTarget = VisionSystem.IsVisible(army.Owner, destination)
-                    && AviationCombatPresenter.FindAirStrikeTargetsAt(destination, army.Owner).Count > 0;
+                    && (AviationCombatPresenter.FindAirStrikeTargetsAt(destination, army.Owner).Count > 0
+                        || AviationCombatPresenter.CanExplosionStrikeAt(army, destination));
                 color = HasAirAttackAvailable(army) && hasTarget
                     ? gameConfig.moveArrowAttackColor
                     : gameConfig.moveArrowMoveColor;

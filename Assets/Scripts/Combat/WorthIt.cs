@@ -45,7 +45,7 @@ namespace Game.Combat
         // must not feed the "which army do I contact" power read (BattleInitiator.FindEnemyAt),
         // or an invisible heavy unit inside a mixed army would still steer the enemy's target
         // pick (project owner's own P1).
-        public static float AttackSum(IEnumerable<UnitData> members) => members == null ? 0f : CombatantsOf(members).Sum(m => m.Attack);
+        public static float AttackSum(IEnumerable<UnitData> members) => members == null ? 0f : CombatantsOf(members).Sum(m => ExplosionAttack.AttackPower(m.Attack, m.Abilities));
         public static float DefenseSum(IEnumerable<UnitData> members) => members == null ? 0f : CombatantsOf(members).Sum(m => m.Defense);
 
         // The ONE ground-combatant filter every estimator entry point below applies to BOTH sides
@@ -160,6 +160,7 @@ namespace Game.Combat
                     foreach (string ability in p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))
                         hash = AccumulateAbilityHash(hash, ability);
                 if (p.Consumption != null) hash = AccumulateAbilityHash(hash, p.Consumption.Key);
+                if (p.SingleUseUnit) hash = hash * 31 + 19019;
                 return hash;
             }
         }
@@ -286,6 +287,7 @@ namespace Game.Combat
         // comment), only a remembered/cheat-read roster.
         private struct BattleUnit
         {
+            public bool SingleUseUnit;
             public EquipmentConsumption Consumption;
             public float Attack;
             public float Defense;
@@ -315,6 +317,7 @@ namespace Game.Combat
         private static void ConsumeRosterEquipment(List<BattleUnit> side, int index)
         {
             BattleUnit unit = side[index];
+            if (unit.SingleUseUnit) { unit.Hp = 0f; side[index] = unit; return; }
             EquipmentConsumption change = unit.Consumption;
             if (change == null) return;
             unit.Attack += change.Delta(EquipmentStat.Attack);
@@ -368,6 +371,7 @@ namespace Game.Combat
                 IsSummoned = p.IsSummoned,
                 Range = p.Range,
                 Consumption = p.Consumption,
+                SingleUseUnit = p.SingleUseUnit,
             };
         }
 
@@ -396,6 +400,7 @@ namespace Game.Combat
                     IsSummoned = m.IsSummoned,
                     Range = m.Range,
                     Consumption = EquipmentSystem.Consumption(m),
+                    SingleUseUnit = ExplosionAttack.IsSingleUseUnit(m),
                 });
             return list;
         }
@@ -682,12 +687,71 @@ namespace Game.Combat
             return suppressesTurn;
         }
 
+        private static float RosterExplosionValue(BattleUnit actor, List<BattleUnit> own,
+            List<BattleUnit> enemy, int actorIndex)
+        {
+            int count = 0;
+            float value = 0;
+            void Add(BattleUnit target, bool friendly, bool self)
+            {
+                if (target.Hp <= 0 || self && actor.SingleUseUnit) return;
+                count++;
+                value += (friendly ? -1 : 1) * ExplosionAttack.ExpectedDamageValue(actor.Abilities,
+                    Mathf.RoundToInt(target.Defense), target.TypeTags, target.Abilities, target.Hp, target.MaxHp,
+                    CombatValue(target.Attack, target.Defense, target.MaxHp, target.Initiative));
+            }
+            for (int i = 0; i < own.Count; i++) Add(own[i], true, i == actorIndex);
+            foreach (var target in enemy) Add(target, false, false);
+            value *= Mathf.Min(ExplosionAttack.TargetLimit(actor.Abilities), count) / (float)Mathf.Max(1, count);
+            return value - (actor.SingleUseUnit ? CombatValue(actor.Attack, actor.Defense, actor.Hp, actor.Initiative) : 0);
+        }
+
         private static bool AnyCarries(List<BattleUnit> side, string ability)
         {
             for (int i = 0; i < side.Count; i++)
                 if (side[i].HasAbility(ability) || side[i].Consumption?.After.Abilities.Contains(ability) == true)
                     return true;
             return false;
+        }
+
+        private static void ApplyRosterExplosion(BattleUnit actor, List<BattleUnit> attackers,
+            List<BattleUnit> defenders, bool actorIsAttacker, int actorIndex, System.Random rng, AbilityMagnitudes magnitudes,
+            SimulationScratch scratch, ref int attackerFate, ref int defenderFate)
+        {
+            var pool = new List<(bool attacking, int index)>();
+            for (int i = 0; i < attackers.Count; i++)
+                if (attackers[i].Hp > 0 && !(actor.SingleUseUnit && actorIsAttacker && i == actorIndex)) pool.Add((true, i));
+            for (int i = 0; i < defenders.Count; i++)
+                if (defenders[i].Hp > 0 && !(actor.SingleUseUnit && !actorIsAttacker && i == actorIndex)) pool.Add((false, i));
+            int count = System.Math.Min(ExplosionAttack.TargetLimit(actor.Abilities), pool.Count);
+            // Area hits neither intercept nor create Splash/Counterattack chains.
+            actor.Attack = ExplosionAttack.AttackDice;
+            for (int i = 0; i < count; i++)
+            {
+                int j = rng.Next(i, pool.Count); (pool[i], pool[j]) = (pool[j], pool[i]);
+                var victim = pool[i];
+                var side = victim.attacking ? attackers : defenders;
+                BattleUnit target = side[victim.index];
+                int offensiveFate = actorIsAttacker == victim.attacking ? 0
+                    : actorIsAttacker ? attackerFate : defenderFate;
+                int targetFate = victim.attacking ? attackerFate : defenderFate;
+                var exchange = ResolveExchange(actor, target, ref offensiveFate, ref targetFate, rng, magnitudes);
+                if (actorIsAttacker != victim.attacking)
+                { if (actorIsAttacker) attackerFate = offensiveFate; else defenderFate = offensiveFate; }
+                if (victim.attacking) attackerFate = targetFate; else defenderFate = targetFate;
+                float hp = target.Hp;
+                int attack = Mathf.RoundToInt(target.Attack), defense = Mathf.RoundToInt(target.Defense);
+                BattleSimulationKernel.ApplyPrimaryOutcome(exchange, actor.Abilities, target.Abilities,
+                    ref hp, ref attack, ref defense, magnitudes, out bool suppressed);
+                target.Hp = hp; target.Attack = attack; target.Defense = defense;
+                side[victim.index] = target;
+                if (target.IsHero && hp <= 0)
+                {
+                    if (victim.attacking) TransferCommanderAfterHeroDeath(side, victim.index, ref attackerFate);
+                    else TransferCommanderAfterHeroDeath(side, victim.index, ref defenderFate);
+                }
+                if (suppressed && !scratch.Acted.Contains(victim)) scratch.Suppressed.Add(victim);
+            }
         }
 
         private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders,
@@ -770,6 +834,18 @@ namespace Game.Combat
                     if (livingTargets.Count == 0)
                         break; // this side just ran out of targets mid-round — battle's over
 
+                    if (ExplosionAttack.TargetLimit(actor.Abilities) > 0)
+                    {
+                        if (RosterExplosionValue(actor, ownList, enemyList, turn.index) > 0)
+                        {
+                            ApplyRosterExplosion(actor, attackers, defenders, turn.isAttacker, turn.index, rng, magnitudes,
+                                scratch, ref attackerFate, ref defenderFate);
+                            ConsumeRosterEquipment(ownList, turn.index);
+                        }
+                        acted.Add(turn);
+                        continue;
+                    }
+
                     int targetIndex = livingTargets[rng.Next(livingTargets.Count)];
                     BattleUnit target = enemyList[targetIndex];
 
@@ -809,7 +885,7 @@ namespace Game.Combat
 
                     // UnitAbilities.Counterattack — a surviving victim answers a Range-1 (or
                     // unknown-range) attacker at once: never intercepted, never answered itself.
-                    if (anyCounter)
+                    if (anyCounter && ownList[turn.index].Hp > 0f)
                     {
                         BattleUnit victim = enemyList[targetIndex];
                         var victimTurn = (!turn.isAttacker, targetIndex);
@@ -865,11 +941,15 @@ namespace Game.Combat
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList(),
                 unit.HitPointsMax, unit.IsGroundCombatant, unit.IsHero, unit.FateMax, unit.IsSummoned,
-                unit.Range, EquipmentSystem.Consumption(unit));
+                unit.Range, EquipmentSystem.Consumption(unit), ExplosionAttack.IsSingleUseUnit(unit));
 
         // Asset-free counterpart of EquipmentSystem.ConsumeAfterAttack for forecasts.
         public static DefenderProfile AfterAttack(DefenderProfile p)
         {
+            if (p.SingleUseUnit)
+                return new DefenderProfile(p.Defense, p.HasCeramicArmor, p.TypeTags, p.Attack, 0f,
+                    p.Initiative, p.Abilities, p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax,
+                    p.IsSummoned, p.Range, p.Consumption, true);
             EquipmentConsumption c = p.Consumption;
             if (c == null) return p;
             var abilities = c.ApplyAbilities(p.Abilities);
@@ -1341,6 +1421,7 @@ namespace Game.Combat
         // other side; CanDamage/CanDamageAll still only read Defense/HasCeramicArmor off it.
         public readonly struct DefenderProfile : System.IEquatable<DefenderProfile>
         {
+            public readonly bool SingleUseUnit;
             public readonly EquipmentConsumption Consumption;
             public readonly float Defense;
             public readonly bool HasCeramicArmor;
@@ -1371,8 +1452,9 @@ namespace Game.Combat
                 float attack = 0f, float hitPoints = 0f, int initiative = 0,
                 IReadOnlyList<string> abilities = null, float maxHitPoints = 0f,
                 bool isGroundCombatant = true, bool isHero = false, int fateMax = 0, bool isSummoned = false,
-                int range = -1, EquipmentConsumption consumption = null)
+                int range = -1, EquipmentConsumption consumption = null, bool singleUseUnit = false)
             {
+                SingleUseUnit = singleUseUnit;
                 Consumption = consumption;
                 Range = range;
                 IsGroundCombatant = isGroundCombatant;
@@ -1403,7 +1485,7 @@ namespace Game.Combat
                 && Initiative == other.Initiative && Equals(Abilities, other.Abilities)
                 && IsGroundCombatant == other.IsGroundCombatant && IsHero == other.IsHero
                 && FateMax == other.FateMax && IsSummoned == other.IsSummoned && Range == other.Range
-                && Consumption?.Key == other.Consumption?.Key;
+                && Consumption?.Key == other.Consumption?.Key && SingleUseUnit == other.SingleUseUnit;
 
             public override bool Equals(object obj) => obj is DefenderProfile other && Equals(other);
 
@@ -1450,7 +1532,7 @@ namespace Game.Combat
         {
             AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
             int rawExpected = Mathf.FloorToInt(
-                attacker.Attack * 0.5f - (defender.Defense + extraDefense) * 0.5f + 0.5f);
+                ExplosionAttack.AttackPower(attacker.Attack, attacker.Abilities) * 0.5f - (defender.Defense + extraDefense) * 0.5f + 0.5f);
             if (rawExpected <= 0)
                 return false;
             return ChallengeResult.ApplyAbilityModifiers(rawExpected, attacker.Abilities,
@@ -1523,7 +1605,7 @@ namespace Game.Combat
             if (ourUnits.Count == 0)
                 return false;
             foreach (DefenderProfile defender in defenders)
-                if (!ourUnits.Any(u => CanDamage(u.Attack, defender, extraDefense, magnitudes)))
+                if (!ourUnits.Any(u => CanDamage(ExplosionAttack.AttackPower(u.Attack, u.Abilities), defender, extraDefense, magnitudes)))
                     return false;
             return true;
         }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
 using Game.Map;
 using Game.Units;
@@ -17,7 +18,8 @@ namespace Game.Combat
         public static bool CanDamage(UnitData actor, UnitData target, AbilityMagnitudes magnitudes,
             int? attackOverride = null)
             => actor != null && target != null && ChallengeResult.ApplyAbilityModifiers(
-                Mathf.Max(0, attackOverride ?? actor.Attack), actor, target, magnitudes) > 0;
+                Mathf.Max(0, ExplosionAttack.TargetLimit(actor.Abilities) > 0
+                    ? ExplosionAttack.AttackDice : attackOverride ?? actor.Attack), actor, target, magnitudes) > 0;
 
         // Small enough next to the x10000/x10 finishing-blow/damage-efficiency tiers to only ever
         // nudge a choice between otherwise-close candidates toward "this hit also knocks the
@@ -199,6 +201,18 @@ namespace Game.Combat
         {
             bestTarget = null;
             bestDamage = 0f;
+            if (ExplosionAttack.TargetLimit(actor.Abilities) > 0)
+            {
+                float net = ExplosionAttack.ExpectedNetValue(actor, grid.AllUnits(),
+                    u => hp.TryGetValue(u, out float h) ? h : 0,
+                    u => BattleProtectionRules.GetTotalDefenseBonus(grid, u, battleDefender, battleDefenderDefenseBonus));
+                if (net <= 0) return false;
+                bestTarget = grid.AllUnits().FirstOrDefault(u => u.Owner != actor.Owner && hp.TryGetValue(u, out float h)
+                    && h > 0 && grid.TryFindPosition(u, out int r, out int c)
+                    && BattleGrid.IsInRange(actorRow, actorCol, r, c, actor.Range));
+                bestDamage = net;
+                return bestTarget != null;
+            }
             float bestScore = float.NegativeInfinity;
             float actorHp = hp.TryGetValue(actor, out float ownHp) ? ownHp : actor.HitPointsCurrent;
             foreach (UnitData candidate in grid.AllUnits())
@@ -255,6 +269,27 @@ namespace Game.Combat
             BattleReactionState reactions = null)
         {
             UnitData bestTarget = null;
+            if (ExplosionAttack.TargetLimit(actor.Abilities) > 0)
+            {
+                var pool = grid.AllUnits().ToList();
+                // The real choice also prices other armies and structures on the battle hex.
+                if (battleDefender != null)
+                {
+                    var extra = ExplosionAttack.KnownTargets(battleDefender.Hex, actor.Owner).ToArray();
+                    if (ExplosionAttack.RisksOwnCitadel(actor, extra)) { action = default; return false; }
+                    pool.AddRange(extra.Select(t => t.Combatant()).Where(u => !pool.Contains(u)));
+                }
+                float net = ExplosionAttack.ExpectedNetValue(actor, pool,
+                    defenseBonus: u => BattleProtectionRules.GetTotalDefenseBonus(grid, u, battleDefender, battleDefenderDefenseBonus));
+                var victim = net > 0 ? grid.AllUnits().FirstOrDefault(u => u.Owner != actor.Owner
+                    && grid.TryFindPosition(u, out int r, out int c)
+                    && BattleGrid.IsInRange(actorRow, actorCol, r, c, actor.Range)) : null;
+                action = default;
+                if (victim == null || !grid.TryFindPosition(victim, out int vr, out int vc)) return false;
+                action = new BattleAi.AiAction { Kind = BattleAi.AiActionKind.Attack, Target = victim,
+                    Row = vr, Col = vc, Reason = AiThoughtCategory.PriorityTarget };
+                return true;
+            }
             int bestRow = -1, bestCol = -1;
             float bestScore = float.NegativeInfinity;
             AiThoughtCategory bestReason = AiThoughtCategory.PriorityTarget;
