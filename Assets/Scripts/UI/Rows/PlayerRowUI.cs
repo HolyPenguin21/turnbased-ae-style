@@ -40,7 +40,6 @@ namespace Game.UI
         [SerializeField] private Image colorSwatch;
         [SerializeField] private TMP_Dropdown colorDropdown;
         [SerializeField] private TMP_Dropdown factionDropdown;
-        [SerializeField] private Image factionLogo;
         [SerializeField] private StartingDeckCatalog startingDeckCatalog;
         [SerializeField] private TMP_Dropdown controllerDropdown;
         [SerializeField] private Button removeButton;
@@ -81,7 +80,7 @@ namespace Game.UI
         internal void RefreshResolvedFaction()
         {
             factionDropdown?.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(SelectableFactions, Data.Faction)));
-            RefreshFactionLogo(); RefreshDeckOptions();
+            RefreshDeckOptions();
         }
         public void RefreshDeckOptions()
         {
@@ -201,23 +200,14 @@ namespace Game.UI
             factionDropdown.AddOptions(SelectableFactions.Select(FactionLabel).ToList());
             int selectedOption = Array.IndexOf(SelectableFactions, Data.Faction);
             factionDropdown.SetValueWithoutNotify(Mathf.Max(selectedOption, 0));
-            RefreshFactionLogo();
             factionDropdown.onValueChanged.RemoveAllListeners();
             factionDropdown.onValueChanged.AddListener(value =>
             {
                 if (value < 0 || value >= SelectableFactions.Length) return;
                 Data.Faction = SelectableFactions[value];
-                RefreshFactionLogo();
                 Data.SelectedDeckId = null; Data.AiDeckName = null; RefreshDeckOptions();
                 _onChanged?.Invoke();
             });
-        }
-
-        private void RefreshFactionLogo()
-        {
-            if (factionLogo == null) return;
-            factionLogo.sprite = startingDeckCatalog?.GetCatalog(Data.Faction)?.logo;
-            factionLogo.enabled = factionLogo.sprite != null;
         }
 
         private void SetupControllerDropdown()

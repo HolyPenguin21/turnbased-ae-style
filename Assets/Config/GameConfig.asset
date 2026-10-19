@@ -85,6 +85,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9216ef50314fe634894883f4170f0e7a, type: 3}
     faction: 2
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -132,6 +134,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 2fe6e13a648f9be42a1e1931d927288e, type: 3}
     faction: 2
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -179,6 +183,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 24f6910cd29945046b0043af16ef2f9a, type: 3}
     faction: 2
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -226,6 +232,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6a244ea68f6d8fd4795ca9a54c84dbd3, type: 3}
     faction: 2
     cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -285,19 +293,19 @@ MonoBehaviour:
   resourceSiteFate: 1
   abilityAbbreviations:
   - ability: CriticalDamage
-    abbreviation: Crit x2
+    abbreviation: Critical
   - ability: CeramicArmor
-    abbreviation: cArmor
+    abbreviation: 
   - ability: Berserk
-    abbreviation: Bers
+    abbreviation: 
   - ability: RapidReaction
     abbreviation: Rapid
   - ability: ShockAttack
     abbreviation: Shock
   - ability: Hyperkinetic
-    abbreviation: Hyper +2
+    abbreviation: Hyper+2
   - ability: Pyrokinetic
-    abbreviation: Pyro +2
+    abbreviation: Pyro+2
   - ability: Splash
     abbreviation: 
   - ability: Scorcher
@@ -305,15 +313,15 @@ MonoBehaviour:
   - ability: RaiseTheRots
     abbreviation: 
   - ability: Heal
-    abbreviation: Heal
+    abbreviation: 
   - ability: Transport
-    abbreviation: Trn
+    abbreviation: 
   - ability: Repair
-    abbreviation: Rpr
+    abbreviation: 
   - ability: Airfield
     abbreviation: 
   - ability: SingleUse
-    abbreviation: 1x
+    abbreviation: 
   - ability: Explosion3
     abbreviation: Exp 3
   - ability: Explosion5
@@ -337,7 +345,7 @@ MonoBehaviour:
   - ability: r1s6
     abbreviation: r1s6
   - ability: Stealth4
-    abbreviation: Stealth4
+    abbreviation: Stealth
   - ability: AA
     abbreviation: 
   - ability: ApBonus
@@ -347,13 +355,13 @@ MonoBehaviour:
   - ability: Barracks
     abbreviation: Barracks
   - ability: Research
-    abbreviation: Rsch
+    abbreviation: 
   - ability: Researcher
-    abbreviation: Rschr
+    abbreviation: 
   - ability: Production
-    abbreviation: Prod
+    abbreviation: 
   - ability: Assembler
-    abbreviation: Asmb
+    abbreviation: 
   - ability: CollectHuman
     abbreviation: cH
   - ability: CollectEnergy
@@ -363,15 +371,15 @@ MonoBehaviour:
   - ability: CollectTech
     abbreviation: cT
   - ability: Regeneration
-    abbreviation: 
+    abbreviation: Regen
   - ability: ProduceHuman
-    abbreviation: pH
+    abbreviation: Humans+1
   - ability: ProduceEnergy
-    abbreviation: pE
+    abbreviation: Energy+1
   - ability: ProduceMaterials
-    abbreviation: pM
+    abbreviation: Materials+1
   - ability: ProduceTech
-    abbreviation: pT
+    abbreviation: Tech+1
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
   maxEdgeDistance: 1
   minCityRuinsDistance: 2

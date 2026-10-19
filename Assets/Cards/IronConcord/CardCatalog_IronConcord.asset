@@ -2965,7 +2965,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Mule
     art: {fileID: 21300000, guid: 76edb32d8b093074490fda94a48ab384, type: 3}
-    detailArt: {fileID: 21300000, guid: a090b2628767d7548927873dd31740ad, type: 3}
+    detailArt: {fileID: 21300000, guid: f1cc05e230fe8fb4988b70ea08afd4ea, type: 3}
     faction: 0
     cardType: 1
     tacticEffect: 0

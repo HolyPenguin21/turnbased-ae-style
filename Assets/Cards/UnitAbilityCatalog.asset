@@ -34,30 +34,26 @@ MonoBehaviour:
   - tag: RaiseTheRots
     description: 
   - tag: Heal
-    description: Restores 1 HP to one random wounded living Bio ally.
+    description: Restores 1 HP to one random wounded living Bio ally
   - tag: Transport
-    description: Continuously raises the movement maximum of the slowest Infantry
-      ally slower than this carrier to this carrier's permanent maximum. Reassigns
-      when the carrier or recipient changes armies or dies.
+    description: Raises the movement maximum of the slowest Infantry
   - tag: Repair
-    description: Enables paid repair for all own units and heroes on this hex while
-      this living ground unit is in play. Repair costs are unchanged.
+    description: Enables paid repair for all own units on this hex
   - tag: Airfield
-    description: Provides a mobile airfield with the card's aircraft capacity.
+    description: Provides a mobile airfield
   - tag: SingleUse
-    description: Equipment is consumed after its host completes an attack. Innate on a
-      Unit, the unit is expended after attacking. An explosion completes every target first.
+    description: Equipment is consumed after an attack
   - tag: Explosion3
-    description: Replaces an attack with separate 10-die challenges against up to 3
-      random distinct units or structures on the target hex, including allies.
+    description: Replaces an attack with separate 10-die challenges against up to
+      3 random distinct units or structures on the target hex, including allies.
   - tag: Explosion5
-    description: Replaces an attack with separate 10-die challenges against up to 5
-      random distinct units or structures on the target hex, including allies.
+    description: Replaces an attack with separate 10-die challenges against up to
+      5 random distinct units or structures on the target hex, including allies.
   - tag: Explosion10
-    description: Replaces an attack with separate 10-die challenges against up to 10
-      random distinct units or structures on the target hex, including allies.
+    description: Replaces an attack with separate 10-die challenges against up to
+      10 random distinct units or structures on the target hex, including allies.
   - tag: Ionic
-    description: 
+    description: +2 DMG vs Mechanical
   - tag: Bodyguard
     description: 
   - tag: Counterattack
