@@ -352,7 +352,7 @@ namespace Game.EditorTests
             var fate = new Dictionary<ArmyData, int> { [own] = hero.Fate, [enemy] = 0 };
             typeof(BattleAi).GetMethod("ApplySimAttack", flags).Invoke(null, new object[] { grid, hp, hero, foe,
                 (float?)0f, false, AbilityMagnitudes.Default, null, 0, null, fate, attack, defense, own, enemy,
-                new BattleReactionState(), null, 0f, false });
+                new BattleReactionState(), null, 0f, false, null, null, -1 });
             Assert.That(hero.Equipment, Is.Null);
             Assert.That(defense[hero], Is.EqualTo(4));
             Assert.That(fate[own], Is.EqualTo(4));

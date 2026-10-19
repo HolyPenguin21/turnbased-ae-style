@@ -448,7 +448,7 @@ namespace Game.EditorTests
             var defense = new Dictionary<UnitData, int> { [shadow] = 2 };
             var grid = new BattleGrid(); grid.Set(3, 1, shadow);
             typeof(BattleAi).GetMethod("CompleteSimulatedAttack", BindingFlags.Static | BindingFlags.NonPublic)
-                .Invoke(null, new object[] { grid, hp, shadow, attack, defense });
+                .Invoke(null, new object[] { grid, hp, shadow, attack, defense, null, null, null });
             Assert.That(hp[shadow], Is.EqualTo(2.5f));
             Assert.That(attack[shadow], Is.EqualTo(4));
             Assert.That(defense[shadow], Is.EqualTo(2));
