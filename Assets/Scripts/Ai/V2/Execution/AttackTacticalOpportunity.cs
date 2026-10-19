@@ -364,24 +364,7 @@ namespace Game.Ai.V2
         internal static List<WorthIt.DefendingArmy> OppositionOn(WorldSnapshot snap, HexCoord hex)
         {
             var result = new List<WorthIt.DefendingArmy>();
-            if (snap?.Known == null)
-                return result;
-            if (snap.Known.EventGuards != null)
-                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
-                    if (g.Hex.Equals(hex) && g.Defenders != null && g.Defenders.Count > 0)
-                    {
-                        result.Add(new WorthIt.DefendingArmy(g.Defenders, g.Commander,
-                            AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, defendingOwner: null)));
-                        break;
-                    }
-            foreach (AiMapMemory.KnownEnemySighting s in (snap.Known.EnemySightings
-                ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings
-                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .OrderBy(x => x.ArmyId))
-                if (s.Hex.Equals(hex) && s.Owner != snap.Observer && s.Defenders != null && s.Defenders.Count > 0)
-                    result.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
-                        AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId));
+            AiV2Util.AddKnownCoOccupants(snap, hex, -1, result);
             return result;
         }
 

@@ -163,6 +163,28 @@ namespace Game.EditorTests
 
             Assert.That(opp.ReadyWinChance, Is.LessThan(1f), "an empty tactical battle is not a Capture/Kill");        }
 
+        // Playtest 2026-10-19: a weak army sharing its hex with a strong one is no free fight — the
+        // battle opens against the strongest body on the hex.
+        [Test]
+        public void CombatOpportunityAnalyzer_StrongArmyOnTheSameHex_IsPartOfTheFight()
+        {
+            var hex = new HexCoord(3, 0);
+            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 3, hex: hex,
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            CombatOpportunity alone = CombatOpportunityAnalyzer.Analyze(snap).NeutralOpportunities.Single();
+            Assert.That(alone.GatePassed, Is.True, "precondition: the weak army alone is an easy fight");
+
+            var neutral = snap.Known.NeutralSightings[0].Owner;
+            var wall = new List<WorthIt.DefenderProfile> { Unbeatable() };
+            ((List<Game.Ai.AiMapMemory.KnownEnemySighting>)snap.Known.NeutralSightings).Add(
+                new Game.Ai.AiMapMemory.KnownEnemySighting(hex, neutral, "Wall", 1, 500f, 50f, wall, armyId: 4));
+
+            CombatOpportunity weak = CombatOpportunityAnalyzer.Analyze(snap).NeutralOpportunities
+                .Single(o => o.Target.ArmyId == 3);
+            Assert.That(weak.GatePassed, Is.False);
+            Assert.That(weak.ReadyWinChance, Is.LessThan(alone.ReadyWinChance));
+        }
+
         [Test]
         public void CombatOpportunityAnalyzer_KnownEventGuard_AppearsInNeutralOpportunities()
         {
@@ -617,7 +639,7 @@ namespace Game.EditorTests
             new WorthIt.DefenderProfile(defense: 1f, hasCeramicArmor: false, attack: 1f, hitPoints: 5f, maxHitPoints: 5f);
 
         // Defense high enough that no plausible attacker (Attack far below Defense) can ever clear
-        // WorthIt.CanDamage's `attack*0.5 - defense*0.5 > 0` threshold.
+        // WorthIt.CanDamage's hit-probability threshold (CoverageMinHitProbability).
         private static WorthIt.DefenderProfile Unbeatable() =>
             new WorthIt.DefenderProfile(defense: 500f, hasCeramicArmor: false, attack: 50f, hitPoints: 50f, maxHitPoints: 50f);
 

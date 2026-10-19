@@ -1266,6 +1266,35 @@ namespace Game.EditorTests
             Assert.That(response.Reason, Is.EqualTo("immediate_response"));
         }
 
+        // Playtest 2026-10-19: a lone Watcher Drone shared its hex with a 5-unit army. The intercept
+        // was priced against the drone alone (win 1.00), but the battle opens against the strongest
+        // army on the hex — Vessel Guard walked into it and was wiped two turns in a row.
+        [Test]
+        public void Immediate_StrongArmySharingTheTargetHex_IsPartOfTheFight()
+        {
+            var owner = new PlayerSetupData();
+            var hex = new HexCoord(-2, 0);
+            WorldSnapshot snap = ImmediateWorld(owner, hex, true, true,
+                DefenceActor(owner, 7, new HexCoord(0, 0)));
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, ImmediateObjective(snap),
+                null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept),
+                "precondition: the target alone is an easy fight");
+
+            var tank = new WorthIt.DefenderProfile(10f, false, null, 12f, 20f, 3);
+            var heavy = new List<WorthIt.DefenderProfile> { tank, tank, tank, tank };
+            snap.Known.EnemySightings = snap.Known.EnemySightings.Concat(new[] {
+                new AiMapMemory.KnownEnemySighting(hex, snap.Threat.Contacts[0].Army.Owner, "column",
+                    heavy.Count, 40f, 48f, heavy, false, 0, 0, 8, 78) }).ToArray();
+
+            IReadOnlyList<WorthIt.DefendingArmy> fight = ActiveDefenceObjectiveEvaluator.Opposition(snap, 77);
+            Assert.That(fight.Select(a => a.ArmyId), Is.EqualTo(new int?[] { 77, 78 }),
+                "the target first (the fist), then every other known body on its hex");
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                ImmediateObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer));
+            Assert.That(response.Plan, Is.Null);
+        }
+
         [Test]
         public void Immediate_SufficientlyHeldBase_DoesNotBlockTheImmediateFight()
         {

@@ -56,8 +56,15 @@ namespace Game.Ai.V2
             // pinned Hard incumbent, the fresh gate otherwise), validates and applies the same-hex
             // transfers atomically and reconciles the funded AP. This lane supplies only its fight.
             StableMissionKey key = StableMissionKey.For(mission);
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = new[]
-                { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
+            // The same fight admission priced (ActiveDefenceObjectiveEvaluator.Opposition): the
+            // enemy (with its known hex bonus) plus every other known body on its hex.
+            var opposition = new List<WorthIt.DefendingArmy>
+            {
+                new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander,
+                    AiMapMemory.KnownHexDefenseBonusFor(player, ctx?.Map, sighting.Value.Hex,
+                        sighting.Value.Owner), sighting.Value.ArmyId),
+            };
+            AiV2Util.AddKnownCoOccupants(session.Snapshot, sighting.Value.Hex, target.EnemyArmyId, opposition);
             bool immediate = target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity;
             if (immediate && (!hexVisibleNow || target.ImmediateTurn != session.Snapshot?.TurnNumber))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
