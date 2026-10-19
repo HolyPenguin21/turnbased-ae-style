@@ -342,7 +342,7 @@ MonoBehaviour:
       statChanges: []
   - id: 7
     authoredKey: neutral.facility.tactical
-    deckPointCost: 1
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Tactical Center
@@ -395,7 +395,7 @@ MonoBehaviour:
         isOverride: 1
   - id: 8
     authoredKey: neutral.facility.intel
-    deckPointCost: 1
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Intel Center
@@ -448,7 +448,7 @@ MonoBehaviour:
         isOverride: 1
   - id: 9
     authoredKey: neutral.facility.lab
-    deckPointCost: 1
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Laboratory
@@ -501,7 +501,7 @@ MonoBehaviour:
         isOverride: 1
   - id: 10
     authoredKey: neutral.facility.factory
-    deckPointCost: 1
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Factory
@@ -554,7 +554,7 @@ MonoBehaviour:
         isOverride: 1
   - id: 11
     authoredKey: neutral.facility.aa_defence
-    deckPointCost: 1
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: AA Defence

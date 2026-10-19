@@ -71,7 +71,7 @@ MonoBehaviour:
       statChanges: []
   - id: 1
     authoredKey: ashen.card.ashen-base
-    deckPointCost: 2
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Ashen Base
@@ -125,7 +125,7 @@ MonoBehaviour:
       statChanges: []
   - id: 2
     authoredKey: ashen.card.miller-hayes
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Miller Hayes
@@ -174,7 +174,7 @@ MonoBehaviour:
       statChanges: []
   - id: 3
     authoredKey: ashen.card.hank-mercer
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Hank Mercer
@@ -223,7 +223,7 @@ MonoBehaviour:
       statChanges: []
   - id: 4
     authoredKey: ashen.card.rusty-miller
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Rusty Miller
@@ -272,7 +272,7 @@ MonoBehaviour:
       statChanges: []
   - id: 5
     authoredKey: ashen.card.nora-blackwell
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nora Blackwell
@@ -322,7 +322,7 @@ MonoBehaviour:
       statChanges: []
   - id: 6
     authoredKey: ashen.card.elena-hayes
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Elena Hayes
@@ -370,7 +370,7 @@ MonoBehaviour:
       statChanges: []
   - id: 7
     authoredKey: ashen.card.vera-sterling
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Vera Sterling
@@ -418,7 +418,7 @@ MonoBehaviour:
       statChanges: []
   - id: 8
     authoredKey: ashen.card.nova-sterling
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nova Sterling
@@ -467,7 +467,7 @@ MonoBehaviour:
       statChanges: []
   - id: 9
     authoredKey: ashen.card.iri-vane
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Iri Vane

@@ -71,7 +71,7 @@ MonoBehaviour:
       statChanges: []
   - id: 1
     authoredKey: concord.card.concord-base
-    deckPointCost: 2
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Concord Base
@@ -125,7 +125,7 @@ MonoBehaviour:
       statChanges: []
   - id: 2
     authoredKey: concord.card.dorian-kesh
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Dorian Kesh
@@ -174,7 +174,7 @@ MonoBehaviour:
       statChanges: []
   - id: 3
     authoredKey: concord.card.aldric-voss
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Aldric Voss
@@ -222,7 +222,7 @@ MonoBehaviour:
       statChanges: []
   - id: 4
     authoredKey: concord.card.vector-vance
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Vector Vance
@@ -271,7 +271,7 @@ MonoBehaviour:
       statChanges: []
   - id: 5
     authoredKey: concord.card.bolt-jax
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Bolt Jax
@@ -320,7 +320,7 @@ MonoBehaviour:
       statChanges: []
   - id: 6
     authoredKey: concord.card.nadia-thorne
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nadia Thorne
@@ -369,7 +369,7 @@ MonoBehaviour:
       statChanges: []
   - id: 7
     authoredKey: concord.card.kessa-vrail
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Kessa Vrail
@@ -418,7 +418,7 @@ MonoBehaviour:
       statChanges: []
   - id: 8
     authoredKey: concord.card.lira-sable
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Lira Sable
@@ -468,7 +468,7 @@ MonoBehaviour:
       statChanges: []
   - id: 9
     authoredKey: concord.card.tessa-rourke
-    deckPointCost: 3
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Tessa Rourke
