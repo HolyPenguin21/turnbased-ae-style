@@ -186,14 +186,14 @@ namespace Game.Core
         public string GetAbilityFullName(string ability) => UnitAbilities.PrettyName(ability);
 
         // Null if abilityCatalog isn't assigned, or the tag has no entry (or an empty
-        // description) there — callers skip the "- description" line entirely rather than
+        // description) there — callers skip the indented description line entirely rather than
         // showing a blank one (see FormatAbilitiesDetailed).
         public string GetAbilityDescription(string ability)
         {
             return abilityCatalog != null ? abilityCatalog.GetDescription(ability) : null;
         }
 
-        // The detail-panel counterpart to FormatAbilities: full name, then "- description" on
+        // The detail-panel counterpart to FormatAbilities: full name, then "  description" on
         // its own line — used only where a card/unit/building is shown in a dedicated detail
         // view (ArmyViewerModalUI.ShowUnitDetail, BaseViewerModalUI, BattleScreenUI.Grid's
         // detail panel), never on the compact card itself (that stays abbreviation-only, see
@@ -207,7 +207,7 @@ namespace Game.Core
             {
                 string fullName = GetAbilityFullName(ability);
                 string description = GetAbilityDescription(ability);
-                parts.Add(description == null ? fullName : $"{fullName}\n- {description}");
+                parts.Add(description == null ? fullName : $"{fullName}\n  {description}");
             }
             return string.Join("\n", parts);
         }

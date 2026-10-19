@@ -74,7 +74,7 @@ namespace Game.Cards
 
         // Looked up by GameConfig.FormatAbilitiesDetailed for a unit/building's detail-panel
         // ability list — null if this tag has no entry (or the entry's description is empty),
-        // so callers can skip the "- description" line instead of showing a blank one.
+        // so callers can skip the indented description line instead of showing a blank one.
         public string GetDescription(string tag)
         {
             if (knownAbilities != null)
