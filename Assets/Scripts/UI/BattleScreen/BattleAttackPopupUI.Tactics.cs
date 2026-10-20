@@ -53,7 +53,7 @@ namespace Game.UI
                 _tacticInfoPopup.VisibilityChanged += OnTacticInfoVisibilityChanged;
             }
             BattleHandUI template = null;
-            foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include))
                 if (!hand.Horizontal) { template = hand; break; }
             _mapHand = FindAnyObjectByType<CardHandUI>(FindObjectsInactive.Include);
             _tacticHand = _mapHand != null && _mapHand.gameObject.activeInHierarchy

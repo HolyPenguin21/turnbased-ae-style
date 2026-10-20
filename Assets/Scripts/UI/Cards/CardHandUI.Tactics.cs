@@ -90,7 +90,7 @@ namespace Game.UI
         {
             if (_tacticView != null) return;
             if (template == null)
-                foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include))
                     if (!hand.Horizontal) { template = hand; break; }
             if (_tacticView == null && template != null && handContainer != null)
             {
