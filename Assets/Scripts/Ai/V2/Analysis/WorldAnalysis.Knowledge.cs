@@ -21,7 +21,7 @@ namespace Game.Ai.V2
     // class; only this snapshot family's slice moved to its own file.
     public static partial class WorldAnalysis
     {
-        private static KnownSnapshot BuildKnown(PlayerSetupData player, IReadOnlyList<HexCoord> baseHexes)
+        internal static KnownSnapshot BuildKnown(PlayerSetupData player, IReadOnlyList<HexCoord> baseHexes)
         {
             List<HexCoord> eventGuardHexes = AiMapMemory.KnownEventGuardHexes(player).ToList();
             var known = new KnownSnapshot

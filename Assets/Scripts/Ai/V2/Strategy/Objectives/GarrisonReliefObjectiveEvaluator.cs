@@ -68,7 +68,7 @@ namespace Game.Ai.V2
                     if (donor.Hex.Equals(r.Garrison.Hex) || usedDonors.Contains(donor.ArmyId)
                         || donor.GarrisonThreatFloor > AiConfigV2.allocatorSliceEpsilon)
                         continue;
-                    ArmySnapshot shell = armies.Where(a => IsFreeShell(a, donor.Hex, committed)
+                    ArmySnapshot shell = armies.Where(a => ReusableArmySelector.IsReusableShell(a, donor.Hex, committed)
                             && !usedShells.Contains(a.ArmyId))
                         .OrderBy(a => a.ArmyId).FirstOrDefault();
                     GarrisonReliefObjective candidate = shell == null ? null
@@ -118,14 +118,6 @@ namespace Game.Ai.V2
             return power;
         }
 
-        // An empty reusable ground shell of ours on `hex` that no operation holds and that has not
-        // activated this turn (a body moved into an activated army would owe its activation now).
-        // Provisioning re-checks it live (ReusableArmySelector.IsReusableShell).
-        private static bool IsFreeShell(ArmySnapshot a, HexCoord hex, ISet<int> committed) =>
-            a != null && a.Hex.Equals(hex) && a.MemberCount == 0 && !a.IsGarrison && !a.IsPrison
-            && !a.IsAir && !a.IsAirfield && !a.IsCarrierContainer && !a.HasActivatedThisTurn
-            && a.Capacity > 0 && (committed == null || !committed.Contains(a.ArmyId));
-
         private static GarrisonReliefObjective Detachment(WorldSnapshot snap, HexCoord recipient,
             float shortfall, TaskScore intrinsic, ArmySnapshot donor, ArmySnapshot shell)
         {
@@ -134,13 +126,7 @@ namespace Game.Ai.V2
                 return null;
             var chosen = new List<int>();
             float power = 0f;
-            foreach (int i in Enumerable.Range(0, bodies.Count)
-                .Where(i => i < donor.NonHeroSpareable.Count && donor.NonHeroSpareable[i]
-                    && i < donor.NonHeroRuntimeIds.Count
-                    && !(i < donor.NonHeroIsAviation.Count && donor.NonHeroIsAviation[i])
-                    && (i >= donor.NonHeroCurrentMovement.Count || donor.NonHeroCurrentMovement[i] > 0))
-                .OrderByDescending(i => AiPower.EffectiveArmyPowerFromProfiles(new[] { bodies[i] }))
-                .ThenBy(i => donor.NonHeroRuntimeIds[i]))
+            foreach (int i in GarrisonDetachment.SpareBodyIndices(donor))
             {
                 if (chosen.Count >= shell.Capacity || power >= shortfall)
                     break;
@@ -149,19 +135,7 @@ namespace Game.Ai.V2
             }
             if (chosen.Count == 0)
                 return null;
-            int Of(IReadOnlyList<int> values, int i, int fallback) =>
-                values != null && i < values.Count ? values[i] : fallback;
-            var members = chosen.Select(i => bodies[i]).ToList();
-            var detachment = new ArmySnapshot
-            {
-                ArmyId = shell.ArmyId, Owner = snap.Observer, Hex = donor.Hex,
-                MemberCount = chosen.Count, Members = members,
-                EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),
-                MaxMovement = chosen.Min(i => Of(donor.NonHeroMoveMax, i, 1)),
-                CurrentMovement = chosen.Min(i => Of(donor.NonHeroCurrentMovement, i, 1)),
-                ActivationApCost = chosen.Sum(i => Of(donor.NonHeroActivationApCosts, i, 0)),
-                Capacity = shell.Capacity,
-            };
+            ArmySnapshot detachment = GarrisonDetachment.Project(donor, chosen, shell.ArmyId, shell.Capacity);
             int eta = AiV2Util.CeilDiv(HexGridMath.Distance(donor.Hex, recipient),
                 Mathf.Max(1, detachment.MaxMovement));
             return new GarrisonReliefObjective

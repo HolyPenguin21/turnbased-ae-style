@@ -531,6 +531,7 @@ namespace Game.Ai.V2
                         a.Hex.Equals(AiTurnController.GarrisonHexFor(viewer)))
                     : 0f,
                 NonHeroCurrentMovement = nonHero.Select(SoloMoveCurrent).ToList(),
+                NonHeroMovementSpent = nonHero.Select(u => u.MovementSpent).ToList(),
                 EconomyRosterProtected = isOwn && ownIntents != null && ownIntents.All.Any(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
                     && i.PreferredMoverArmyId == a.Id),

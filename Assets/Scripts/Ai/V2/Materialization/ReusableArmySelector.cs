@@ -47,6 +47,11 @@ namespace Game.Ai.V2
                     .OrderBy(a => a.Id)
                     .ToList();
 
+        internal static bool IsReusableShell(ArmySnapshot a, HexCoord hex, ISet<int> committed) =>
+            a != null && a.Hex.Equals(hex) && a.MemberCount == 0 && !a.IsGarrison && !a.IsPrison
+            && !a.IsAir && !a.IsAirfield && !a.IsCarrierContainer && !a.HasActivatedThisTurn
+            && a.Capacity > 0 && (committed == null || !committed.Contains(a.ArmyId));
+
         // Priority-1 pick: a reusable shell ALREADY sitting on `hex`. null if none.
         public static ArmyData FindReusableAt(PlayerSetupData player, HexCoord hex, ActorCommitments commitments) =>
             ReusableShells(player, commitments).FirstOrDefault(a => a.Hex.Equals(hex));

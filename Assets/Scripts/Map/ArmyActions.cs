@@ -34,50 +34,42 @@ namespace Game.Map
         public static ArmyData CreateArmyWithMember(PlayerSetupData owner, HexCoord hex,
             FactionCardCatalog catalog, ArmyData source, UnitData member,
             HexSelectionController hexSelectionController, out string failReason)
+            => CreateArmyWithMembers(owner, hex, catalog, source, new[] { member },
+                hexSelectionController, out failReason);
+
+        // One player-agnostic transaction: validate the complete roster before charging or
+        // transferring; publish only the final populated army. Also owns single-member creation.
+        public static ArmyData CreateArmyWithMembers(PlayerSetupData owner, HexCoord hex,
+            FactionCardCatalog catalog, ArmyData source, IReadOnlyList<UnitData> members,
+            HexSelectionController hexSelectionController, out string failReason)
         {
             failReason = null;
             if (hexSelectionController?.Map == null || !hexSelectionController.Map.CanEnter(hex))
             { failReason = "Terrain cannot host a ground army."; return null; }
-            if (owner == null || catalog == null || source == null || member == null
-                || source.Owner != owner || source.IsPrison || member.IsAviation
+            if (owner == null || catalog == null || source == null || members == null || members.Count == 0
+                || members.Any(u => u == null || u.IsAviation) || source.Owner != owner || source.IsPrison
                 || !source.Hex.Equals(hex))
-            {
-                failReason = "Invalid create-army-with-member request.";
-                return null;
-            }
-
+            { failReason = "Invalid create-army-with-members request."; return null; }
             ArmyData prospective = ArmyData.CreateVisualSnapshot();
-            prospective.Hex = hex;
-            prospective.Owner = owner;
-            prospective.IsGarrison = false;
-            if (!CanTransferMembers(new[] { member }, source, prospective, out failReason))
-                return null;
-
+            prospective.Owner = owner; prospective.Hex = hex;
+            if (!CanTransferMembers(members, source, prospective, out failReason)) return null;
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
-            {
-                failReason = $"Not enough action points to create an army ({CreateArmyApCost} AP needed).";
-                return null;
-            }
-
+            { failReason = $"Not enough action points to create an army ({CreateArmyApCost} AP needed)."; return null; }
             root.SpendActionPoints(CreateArmyApCost);
-            source.Members.Remove(member);
-            ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController, member);
-            source.RefreshTransport();
-            army.RefreshTransport();
-            army.MarkUnitActivationPaid(member);
+            foreach (UnitData unit in members) source.Members.Remove(unit);
+            ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController, members);
+            source.RefreshTransport(); army.RefreshTransport();
+            foreach (UnitData unit in members) army.MarkUnitActivationPaid(unit);
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
-            if (AbilityParams.GetBestRecceRadius(member) > 0)
-                VisionSystem.RecomputeFor(owner);
-            // RegisterNewArmy notified while the shell was still empty. The finalized
-            // transfer must be observed as well; the old event cannot represent this roster.
+            if (members.Any(u => AbilityParams.GetBestRecceRadius(u) > 0)) VisionSystem.RecomputeFor(owner);
             VisionSystem.NotifyContentChanged(hex);
             return army;
         }
 
         private static ArmyData RegisterNewArmy(PlayerSetupData owner, HexCoord hex,
             FactionCardCatalog catalog, HexSelectionController hexSelectionController,
-            UnitData firstMember = null)
+            IReadOnlyList<UnitData> firstMembers = null)
         {
             var takenNames = ArmyRegistry.AllForOwner(owner).Select(a => a.Name);
             var army = new ArmyData
@@ -89,8 +81,8 @@ namespace Game.Map
             };
             // When the caller is creating a populated army, publish the FINAL roster to the
             // registry. Observers must never see a transient empty shell for one logical action.
-            if (firstMember != null)
-                army.AddMemberSorted(firstMember);
+            if (firstMembers != null)
+                foreach (UnitData unit in firstMembers) army.AddMemberSorted(unit);
             ArmyRegistry.Register(army);
             hexSelectionController?.CreateArmyMarker(army);
             return army;
@@ -330,7 +322,7 @@ namespace Game.Map
             if (creatingArmy)
             {
                 resultingArmy = RegisterNewArmy(owner, deploymentHex, newArmyCatalog,
-                    hexSelectionController, spawned);
+                    hexSelectionController, new[] { spawned });
             }
             else
             {

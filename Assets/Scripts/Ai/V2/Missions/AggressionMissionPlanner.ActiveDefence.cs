@@ -151,9 +151,11 @@ namespace Game.Ai.V2
                         == ActiveDefenceInterceptPurpose.ImmediateOpportunity
                     && incumbent.ActiveDefence.ImmediateTurn == snap.TurnNumber))
                     continue;
-                ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
-                    snap, objective, committed, withdrawing,
-                    incumbent?.ActiveDefence?.PrimaryArmyId, activeIntents);
+                ActiveDefenceResponse response = incumbent?.ActiveDefence?.Sortie != null
+                    ? ActiveDefenceObjectiveEvaluator.AssessSortieIntercept(snap, objective,
+                        incumbent.ActiveDefence.Sortie, incumbent.ActiveDefence.PrimaryArmyId ?? -1, committed)
+                    : ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective, committed, withdrawing,
+                        incumbent?.ActiveDefence?.PrimaryArmyId, activeIntents);
                 if (response == null)
                     continue;
                 if (response.Kind == ActiveDefenceResponseKind.Intercept)
@@ -172,6 +174,24 @@ namespace Game.Ai.V2
             MissionIntent incumbent, List<MissionProposal> proposals,
             (int armyId, float value) pendingPreparationHost)
         {
+            if (response.Sortie != null)
+            {
+                GarrisonSortiePlan sortie = response.Sortie;
+                ActiveDefenceMissionTarget t = objective.Target;
+                t.Sortie = sortie; t.PrimaryArmyId = sortie.ShellArmyId;
+                t.ProjectedWinChance = sortie.WinChance; t.CoversAllDefenders = sortie.CoversAllDefenders;
+                TaskScore score = ActiveDefenceObjectiveEvaluator.WithResponse(objective, sortie.Detachment,
+                    sortie.WinChance, 1, projectedActivationAp: sortie.TotalAp);
+                var materialize = new MissionProposal { Kind = MissionKind.ActiveDefence, Target = t,
+                    BaseValue = score.Value, Score = score, LocalAdmissionScore = score.Value,
+                    PreferredMoverArmyId = sortie.Detachment.ArmyId,
+                    Requirements = new MissionRequirements { MoverKnown = true, RequiresArmy = true,
+                        ApMinimum = sortie.TotalAp, ApDesired = sortie.TotalAp, ApMaximum = sortie.TotalAp,
+                        EtaTurns = 1, EstimatedDistance = sortie.RouteCost },
+                    Explain = $"Immediate garrison sortie #{sortie.DonorGarrisonId} -> enemy #{t.EnemyArmyId}" };
+                materialize.Axes.Value[DesireAxis.Aggression] = 1;
+                proposals.Add(materialize); return;
+            }
             GroundCombatAssemblyPlan plan = response.Plan;
             ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
                 && a.ArmyId == plan.BaseArmyId);
@@ -203,6 +223,8 @@ namespace Game.Ai.V2
                 projectedActivationAp: GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan));
             ActiveDefenceMissionTarget target = objective.Target;
             target.PrimaryArmyId = actor.ArmyId;
+            target.Sortie = incumbent?.ActiveDefence?.Sortie;
+            target.SortieMaterialized = target.Sortie != null;
             target.ProjectedWinChance = plan.ProjectedWinChance;
             target.CoversAllDefenders = plan.CoversAllDefenders;
             target.EstimatedEta = eta;

@@ -158,8 +158,9 @@ namespace Game.Ai.V2
                         ? GroundContainerStillValid(actorId, snap)
                         : GroundCombatActorStillValid(actorId, snap, out _);
                     if (valid)
-                        c.Claim(i.IntentKey, actorId, ArmyMutationContract.MovingOperation(
-                            $"ActiveDefence:{i.ActiveDefence?.Phase}"));
+                        c.Claim(i.IntentKey, actorId, i.ActiveDefence?.Sortie != null
+                            ? ArmyMutationContract.FullyProtected
+                            : ArmyMutationContract.MovingOperation($"ActiveDefence:{i.ActiveDefence?.Phase}"));
                     continue;
                 }
 

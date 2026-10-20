@@ -59,6 +59,11 @@ namespace Game.Ai.V2
         // bodies Provisioning moves into the empty shell PrimaryArmyId. Null once the shell walks.
         public int? ReliefDonorGarrisonId;
         public IReadOnlyList<int> ReliefUnitRuntimeIds;
+        // Kept through the intercept, not discarded on materialization: the exact roster remains pinned.
+        public GarrisonSortiePlan Sortie;
+        public bool SortieMaterialized;
+        public bool RequiresSortieMaterialization => Sortie != null && !SortieMaterialized;
+        public bool IsMaterializedSortie => Sortie != null && SortieMaterialized;
     }
 
     // The ONE answer to "how does this player respond to this threat", shared by the Mission
@@ -78,6 +83,7 @@ namespace Game.Ai.V2
         // Intercept only: the plan and the exclusion set it was solved under (the same set the
         // proposal's admission fingerprint must use).
         public GroundCombatAssemblyPlan Plan;
+        public GarrisonSortiePlan Sortie;
         public ISet<int> ExcludedArmyIds;
         public float RequiredPower;
         public float AvailablePower;
@@ -108,7 +114,7 @@ namespace Game.Ai.V2
     // Threat -> objective is deliberately snapshot-only. One hostile army yields at most one
     // objective: the protected asset is selected by the canonical TaskScore, never by a private
     // defence-family multiplier.
-    public static class ActiveDefenceObjectiveEvaluator
+    public static partial class ActiveDefenceObjectiveEvaluator
     {
         public static List<ActiveDefenceObjective> Enumerate(WorldSnapshot snap)
         {
@@ -394,6 +400,14 @@ namespace Game.Ai.V2
                 if (pinnedActor.HasValue && plan.BaseArmyId == pinnedActor.Value)
                     break;
                 planExcluded.Add(plan.BaseArmyId);
+            }
+            if (!pinnedActor.HasValue)
+            {
+                response.Sortie = PlanGarrisonSortie(snap, objective, opposition, planExcluded);
+                if (response.Sortie != null)
+                    return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Intercept,
+                        "immediate_garrison_sortie", response.Sortie.Detachment.ArmyId,
+                        response.Sortie.Detachment.CurrentMovement, response.Sortie.RouteCost, response.Sortie.WinChance);
             }
             return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Defer,
                 "immediate_not_reachable_or_not_capable", -1, 0, 0);
@@ -751,7 +765,7 @@ namespace Game.Ai.V2
         // only defender left to intercept another enemy and the Citadel fell unopposed). Staying
         // still fights the arriving enemy, on the hex with its defence bonus.
         internal static bool IsPinnedStrongholdDefender(WorldSnapshot snap, ArmySnapshot army,
-            ISet<int> unavailable = null)
+            ISet<int> unavailable = null, IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
         {
             if (army == null || army.IsAir || army.IsAirfield || army.IsPrison
                 || army.EffectiveArmyPower <= AiConfigV2.allocatorSliceEpsilon
@@ -774,7 +788,7 @@ namespace Game.Ai.V2
                     { ProtectedAssetHex = army.Hex, ProtectedAssetKind = threat.Asset.Kind } };
                 var opposition = Opposition(snap, threat.Contact.Army.ArmyId);
                 if (opposition == null || HoldChanceAtAsset(snap, objective, null, null,
-                        opposition, without) < AiConfigV2.activeDefenceHoldWinChance)
+                        opposition, without, projectedArmies) < AiConfigV2.activeDefenceHoldWinChance)
                     return true;
             }
             return false;

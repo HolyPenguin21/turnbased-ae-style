@@ -73,6 +73,12 @@ namespace Game.Ai.V2
             ApClaimed += m.ClaimedAp;
             EnergyClaimed += m.ClaimedEnergy;
             ClaimedArmyIds.Add(m.MoverArmyId);
+            if (m.Kind == MissionKind.ActiveDefence)
+            {
+                int? donor = m.ActiveDefenceTarget.RequiresSortieMaterialization
+                    ? m.ActiveDefenceTarget.Sortie.DonorGarrisonId : m.ActiveDefenceTarget.ReliefDonorGarrisonId;
+                if (donor.HasValue) ClaimedArmyIds.Add(donor.Value);
+            }
             // A deferred garrison-extraction mission's MoverArmyId is a synthetic negative id; the
             // garrison and the chosen container (if one already exists — Shell/Host tiers) are the
             // REAL armies this mission has committed to and must not be handed to a second mission

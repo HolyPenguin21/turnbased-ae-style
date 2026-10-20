@@ -276,6 +276,7 @@ namespace Game.Ai.V2
         // the "safe base" that may lend spare bodies to a threatened one (GarrisonRelief).
         public float GarrisonThreatFloor;
         public IReadOnlyList<int> NonHeroCurrentMovement = System.Array.Empty<int>();
+        internal IReadOnlyList<int> NonHeroMovementSpent = System.Array.Empty<int>();
         public int HeroCurrentMovement;
         public bool EconomyRosterProtected;
         // Null means no route witness was published; an empty map means none is reachable.
