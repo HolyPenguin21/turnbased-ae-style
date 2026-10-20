@@ -80,10 +80,12 @@ namespace Game.Ai.V2
                     Key = key, TargetHex = sighting.Value.Hex, Opposition = opposition,
                     DefenderHexDefenseBonus = 0f, LaneLabel = "active-defence",
                     Eps = AiConfigV2.allocatorSliceEpsilon,
-                    // The projected (assembled) roster must still START the fight now: a slower recruit
-                    // lowers the shared movement. Runs before the first transfer or any AP is claimed.
-                    PreMutationVeto = !immediate ? (System.Func<ArmyData, IReadOnlyList<Game.Units.UnitData>, string>)null
-                        : (host, units) => target.IsMaterializedSortie
+                    // Re-prove timing on the roster that will actually march, before transfers/AP.
+                    // Strategic defence keeps its damage deadline; ImmediateOpportunity keeps its
+                    // stronger same-turn reach rule (and its separate sortie witness).
+                    PreMutationVeto = (host, units) => !immediate
+                        ? StrategicReachVeto(session.Snapshot, host, units, sighting.Value.Hex, target.EnemyEta)
+                        : target.IsMaterializedSortie
                             ? (TryEvaluateSortie(player, ctx, target, host.Hex, units, out string why) ? null : why)
                             : ImmediateReachVeto(ctx, player, host, units, sighting.Value.Hex, target.EnemyArmyId),
                 });
@@ -110,6 +112,20 @@ namespace Game.Ai.V2
                 // this one number exactly once.
                 ClaimedAp = assault.ActualAp,
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
+        }
+
+        // The transaction passes its final roster AFTER legal shedding/recruitment and before
+        // the first mutation. A slower or spent recruit must not turn a funded defence into a late march.
+        internal static string StrategicReachVeto(WorldSnapshot snap, ArmyData host,
+            IReadOnlyList<UnitData> units, HexCoord enemyHex, int? enemyEta)
+        {
+            if (host == null || units == null || units.Count == 0)
+                return "strategic_intercept_roster_missing";
+            int current = ArmyData.ComputeCurrentMovement(units), maximum = ArmyData.ComputeMaxMovement(units);
+            bool timely = ActiveDefenceObjectiveEvaluator.CanInterceptRosterBeforeThreat(snap,
+                host.Hex, enemyHex, enemyEta, current, maximum, out int eta);
+            return timely ? null : $"strategic_intercept_deadline_missed eta={eta} "
+                + $"enemyEta={enemyEta?.ToString() ?? "unknown"} mp={current}/{maximum}";
         }
 
         // null = the assembled roster reaches the enemy and begins the battle with its CURRENT movement.

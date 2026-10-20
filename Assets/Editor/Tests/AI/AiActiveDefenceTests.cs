@@ -954,6 +954,184 @@ namespace Game.EditorTests
                 Is.EqualTo(reserve), "changed deadline and diagnostic asset do not clone physical power");
         }
 
+        private static WorldSnapshot StrategicAssemblyWorld(int recruitMax, int recruitCurrent,
+            out Game.Map.ArmyData host, out Game.Map.ArmyData donor, out Game.Units.UnitData recruit)
+        {
+            var owner = new PlayerSetupData();
+            var start = new HexCoord(0, 1);
+            var protectedBase = new HexCoord(-2, 1);
+            host = new Game.Map.ArmyData { Owner = owner, Hex = start };
+            host.Members.Add(new Game.Units.UnitData { Name = "fast host", Owner = owner,
+                Attack = 1, Defense = 1, HitPointsCurrent = 2, HitPointsMax = 2,
+                MoveMax = 3, MoveCurrent = 3, ActivationApCost = 1 });
+            donor = new Game.Map.ArmyData { Owner = owner, Hex = start, IsGarrison = true };
+            recruit = new Game.Units.UnitData { Name = "strong recruit", Owner = owner,
+                Attack = 60, Defense = 60, HitPointsCurrent = 60, HitPointsMax = 60,
+                MoveMax = recruitMax, MoveCurrent = recruitCurrent, ActivationApCost = 1 };
+            donor.Members.Add(recruit);
+            donor.Members.Add(new Game.Units.UnitData { Name = "remaining cover", Owner = owner,
+                Attack = 50, Defense = 50, HitPointsCurrent = 50, HitPointsMax = 50,
+                MoveMax = 3, MoveCurrent = 3, ActivationApCost = 1 });
+            Game.Map.ArmyRegistry.Register(host);
+            Game.Map.ArmyRegistry.Register(donor);
+            ArmySnapshot Snapshot(Game.Map.ArmyData a) => new ArmySnapshot {
+                ArmyId = a.Id, Owner = owner, Hex = a.Hex, IsGarrison = a.IsGarrison,
+                IsStructuralRaidActor = !a.IsGarrison, MemberCount = a.Members.Count,
+                Members = a.Members.Select(WorthIt.FromLiveUnit).ToArray(),
+                Commander = WorthIt.SideCommander.Of(a.Members),
+                EffectiveArmyPower = AiPower.EffectiveArmyPower(a.Members),
+                CurrentMovement = a.CurrentMovement, MaxMovement = a.MaxMovement,
+                ActivationApCost = a.ActivationApCost,
+                ReachableOwnBaseHexes = new[] { start, protectedBase },
+            };
+            WorldSnapshot snap = AssetWorld(Snapshot(host), Snapshot(donor));
+            snap.Self.BaseHexes = new[] { start, protectedBase };
+            snap.Self.Citadel = start;
+            EnemyContactSnapshot contact = snap.Threat.Contacts.Single();
+            contact.Position = new HexCoord(-3, 1);
+            contact.Army.Hex = contact.Position.Value;
+            contact.Army.ArmyId = 900001;
+            contact.Army.MaxMovement = 1;
+            snap.Known.EnemySightings = new[] {
+                new AiMapMemory.KnownEnemySighting(contact.Position.Value, contact.Army.Owner,
+                    "hostile", 1, 8f, 8f, contact.Army.Members, false, 0, 0, 8, contact.Army.ArmyId) };
+            snap.Threat.Threats = new[] {
+                ThreatForAsset(contact, AssetKind.Base, protectedBase, 1, 10f),
+                ThreatForAsset(contact, AssetKind.Citadel, start, 3, 1000f) };
+            return snap;
+        }
+
+        [TestCase(1, 1, false)]
+        [TestCase(3, 0, false)]
+        [TestCase(3, 3, true)]
+        public void StrategicAssembly_UsesFinalRosterDeadlineInResponseAdmissionAndBinding(
+            int recruitMax, int recruitCurrent, bool timely)
+        {
+            WorldSnapshot snap = StrategicAssemblyWorld(recruitMax, recruitCurrent,
+                out var host, out var donor, out var recruit);
+            try
+            {
+                ActiveDefenceObjective objective = AssetObjective(snap);
+                var opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId);
+                GroundCombatAssemblyPlan raw = GroundCombatAssemblyPlanner.Plan(snap,
+                    new GroundCombatAssemblyRequest { Opposition = opposition });
+                Assert.That(raw.Feasible, Is.True, "the fixture must clear combat before deadline admission");
+                Assert.That(raw.NeedsAssembly, Is.True, "the fast weak host cannot win without its recruit");
+                Assert.That(raw.Transfers.Any(t => t.Unit == recruit), Is.True);
+                ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                    snap, objective, null, null, null);
+                Assert.That(response.Kind == ActiveDefenceResponseKind.Intercept, Is.EqualTo(timely));
+
+                var proposal = new MissionProposal { Kind = MissionKind.ActiveDefence,
+                    Target = objective.Target, PreferredMoverArmyId = host.Id };
+                GroundCombatAdmissionRegistry.RecordActiveDefence(proposal, snap, opposition, null);
+                Assert.That(GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible), Is.True);
+                Assert.That(eligible.Contains(host.Id), Is.EqualTo(timely));
+                using var session = new ProvisioningSession(snap);
+                session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int> {
+                    [StableMissionKey.For(proposal)] = host.Id });
+                GroundCombatAssemblyPlan bound = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
+                    session, proposal, opposition, out _, lane: "active-defence");
+                Assert.That(bound != null && bound.Feasible, Is.EqualTo(timely),
+                    "an already assigned host must be rechecked against its actual assembled roster");
+                Assert.That(host.Members, Has.Count.EqualTo(1));
+                Assert.That(donor.Members, Has.Count.EqualTo(2));
+                Assert.That(donor.Members, Does.Contain(recruit), "all gates are read-only");
+            }
+            finally { Game.Map.ArmyRegistry.Clear(); }
+        }
+
+        [TestCase(3, 3, 1, true)]
+        [TestCase(1, 1, 1, false)]
+        [TestCase(3, 0, 1, false)]
+        [TestCase(0, 3, 1, false)]
+        [TestCase(1, 1, 2, false)]
+        [TestCase(1, 1, 3, true)]
+        [TestCase(3, 3, 0, false)]
+        [TestCase(3, 3, null, false)]
+        public void StrategicRosterTiming_UsesCurrentAndMaximumMovementAndStrictDeadline(
+            int current, int maximum, int? enemyEta, bool timely)
+        {
+            WorldSnapshot snap = AssetWorld();
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanInterceptRosterBeforeThreat(snap,
+                new HexCoord(0, 0), new HexCoord(3, 0), enemyEta, current, maximum, out _),
+                Is.EqualTo(timely));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StrategicAssembly_LastVetoRechecksChangedRecruitBeforeAnyTransfer(bool spent)
+        {
+            WorldSnapshot snap = StrategicAssemblyWorld(3, 3, out var host, out var donor, out var recruit);
+            try
+            {
+                ActiveDefenceObjective objective = AssetObjective(snap);
+                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
+                    new GroundCombatAssemblyRequest {
+                        Opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId) });
+                Assert.That(ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(snap, objective.Target, plan),
+                    Is.True, "the original complete plan really meets the deadline");
+                Assert.That(ActiveDefenceProvisioner.StrategicReachVeto(snap, host,
+                    GroundCombatAssemblyPlanner.ProjectedRoster(host, plan),
+                    objective.Target.LastKnownHex, objective.Target.EnemyEta), Is.Null);
+                if (spent) recruit.MoveCurrent = 0;
+                else { recruit.MoveMax = 1; recruit.MoveCurrent = 1; }
+                string veto = ActiveDefenceProvisioner.StrategicReachVeto(snap, host,
+                    GroundCombatAssemblyPlanner.ProjectedRoster(host, plan),
+                    objective.Target.LastKnownHex, objective.Target.EnemyEta);
+                Assert.That(veto, Does.Contain("strategic_intercept_deadline_missed"));
+                Assert.That(host.HasActivatedThisTurn, Is.False);
+                Assert.That(host.Members, Has.Count.EqualTo(1));
+                Assert.That(donor.Members, Does.Contain(recruit));
+                Assert.That(donor.Members, Has.Count.EqualTo(2));
+            }
+            finally { Game.Map.ArmyRegistry.Clear(); }
+        }
+
+        [Test]
+        public void StrategicRosterTiming_PacksTerrainStepsAndRejectsImpassableEntry()
+        {
+            var go = new UnityEngine.GameObject("StrategicDeadlineRoute");
+            var map = go.AddComponent<Game.Map.HexMap>();
+            var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+            for (int q = 0; q <= 3; q++)
+                terrain[new HexCoord(q, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 2 };
+            map.SetData(4, 1f, terrain);
+            WorldSnapshot snap = AssetWorld();
+            snap.Map = map;
+            try
+            {
+                bool timely = ActiveDefenceObjectiveEvaluator.CanInterceptRosterBeforeThreat(snap,
+                    new HexCoord(0, 0), new HexCoord(3, 0), 2, 3, 3, out int eta);
+                Assert.That(eta, Is.EqualTo(2), "three 2-MP entries consume three separate 3-MP budgets");
+                Assert.That(timely, Is.False, "equal future arrival does not beat the enemy's turn");
+                Assert.That(ActiveDefenceObjectiveEvaluator.CanInterceptRosterBeforeThreat(snap,
+                    new HexCoord(0, 0), new HexCoord(3, 0), 3, 3, 1, out eta), Is.False);
+                Assert.That(eta, Is.EqualTo(int.MaxValue));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [TestCase(1, false)]
+        [TestCase(2, true)]
+        public void StrategicIncumbent_KeepsOnlyAnExactRosterThatCanStillBeatDeadline(int enemyEta, bool kept)
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(-2, 1), 50f, 50f, 50f);
+            actor.CurrentMovement = 0;
+            WorldSnapshot snap = AssetWorld(actor);
+            snap.Threat.Threats[0].EnemyEta = enemyEta;
+            MissionIntent intent = DefenceIntent(ActiveDefencePhase.Intercept, 99, 7, null);
+            var state = MissionIntentRegistry.GetOrCreate(owner);
+            state.Put(intent);
+            try
+            {
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap).Contains(intent), Is.EqualTo(kept),
+                    "spent movement may wait only when the next own turn still beats the threat");
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
         [TestCase(0, 3, 0, true)]
         [TestCase(0, 0, 1, true)]
         [TestCase(-8, 3, 2, false)]

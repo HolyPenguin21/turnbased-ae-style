@@ -147,12 +147,16 @@ namespace Game.Ai.V2
             // The actor must still be able to win this fight on its own roster (the continuation
             // floor it was admitted under). A weakened defender is released, never reinforced:
             // the fresh replan re-assesses the threat (another responder, regroup or retreat).
-            if (!GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
-                    ActiveDefenceObjectiveEvaluator.Opposition(snap, defence.EnemyArmyId),
-                    actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor).Feasible)
+            GroundCombatAssemblyPlan continuing = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
+                ActiveDefenceObjectiveEvaluator.Opposition(snap, defence.EnemyArmyId),
+                actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor);
+            bool missesDeadline = continuing.Feasible && objective.Target.EnemyEta.HasValue
+                && !ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(snap, objective.Target, continuing);
+            if (!continuing.Feasible || missesDeadline)
             {
                 AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END "
-                    + $"enemy={defence.EnemyArmyId} actor={actor.ArmyId} reason=actor_no_longer_capable");
+                    + $"enemy={defence.EnemyArmyId} actor={actor.ArmyId} reason="
+                    + (missesDeadline ? "actor_misses_threat_deadline" : "actor_no_longer_capable"));
                 return false;
             }
 

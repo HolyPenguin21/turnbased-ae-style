@@ -140,7 +140,11 @@ namespace Game.Ai.V2
                     AllowDecisivePinnedDefender = attackLane,
                     AcceptPlan = proposal.Target is AttackMissionTarget fresh && !fresh.ForceCommitted
                         ? candidate => AttackMarchPolicy.CanStart(session.Snapshot, fresh.Target,
-                            candidate, session.Snapshot.Intents, out _) : null,
+                            candidate, session.Snapshot.Intents, out _)
+                        : proposal.Target is ActiveDefenceMissionTarget defence
+                            && defence.InterceptPurpose == ActiveDefenceInterceptPurpose.StrategicDefence
+                            ? candidate => ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(
+                                session.Snapshot, defence, candidate) : (System.Func<GroundCombatAssemblyPlan, bool>)null,
                 });
             if (!plan.Feasible)
             {
