@@ -4,6 +4,7 @@ using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
+using Game.Map;
 using Game.HexGrid;
 using Game.Players;
 using NUnit.Framework;
@@ -67,7 +68,7 @@ namespace Game.EditorTests
             Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(
                 state, player, intent, demand, 24), Is.True);
 
-            Assert.That(state.All, Does.Not.Contain(intent));
+            Assert.That(state.All.Contains(intent), Is.False);
             Assert.That(state.All, Does.Contain(neighbour));
             Assert.That(StrategicResourceReservationLedger.Active(player, 24,
                 StrategicReservedResource.Materials), Is.EqualTo(2f));

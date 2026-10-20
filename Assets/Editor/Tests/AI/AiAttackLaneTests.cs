@@ -45,7 +45,7 @@ namespace Game.EditorTests
                 && t.Phase == AttackMissionPhase.Assault);
             Assert.That(attack.PreferredMoverArmyId, Is.EqualTo(28));
             Assert.That(GroundCombatAdmissionRegistry.TryGet(attack, out HashSet<int> eligible), Is.True);
-            Assert.That(eligible, Does.Not.Contain(19));
+            Assert.That(eligible.Contains(19), Is.False);
             Assert.That(eligible, Does.Contain(28));
         }
 
@@ -74,7 +74,7 @@ namespace Game.EditorTests
                     && t.Phase == AttackMissionPhase.Assault);
                 Assert.That(attack.PreferredMoverArmyId, Is.EqualTo(28));
                 Assert.That(GroundCombatAdmissionRegistry.TryGet(attack, out HashSet<int> eligible), Is.True);
-                Assert.That(eligible, Does.Not.Contain(19));
+                Assert.That(eligible.Contains(19), Is.False);
             }
             finally { UnityEngine.Object.DestroyImmediate(mapObject); }
         }
@@ -126,7 +126,7 @@ namespace Game.EditorTests
             Assert.That(attack.PreferredMoverArmyId, Is.EqualTo(28));
             Assert.That(GroundCombatAdmissionRegistry.TryGet(attack, out HashSet<int> eligible), Is.True);
             Assert.That(eligible, Does.Contain(28));
-            Assert.That(eligible, Does.Not.Contain(19));
+            Assert.That(eligible.Contains(19), Is.False);
         }
 
         [Test]

@@ -122,14 +122,17 @@ namespace Game.EditorTests
                 MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
                 Assert.That(EconomyContinuity.HasEconomyBuildCommitment(new[] { incumbent },
                     BaseDemand(card, 9, 3, -3.5f, 10f)), Is.True, "Phase A finds the refreshed same-site value");
-                Assert.That(EconomyContinuity.TryReleaseUnprofitableBase(state, player, incumbent, 2f, 4),
+                Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(state, player, incumbent,
+                    BaseDemand(card, 9, 3, 2f, 10f), 4),
                     Is.False, "a still profitable Base keeps its commitment");
                 incumbent.LastProgressTurn = 4;
                 incumbent.StepsMovedTotal = 1;
-                Assert.That(EconomyContinuity.TryReleaseUnprofitableBase(state, player, incumbent, -3.5f, 4),
+                Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(state, player, incumbent,
+                    BaseDemand(card, 9, 3, -3.5f, 10f), 4),
                     Is.False, "a builder that already advanced this turn finishes its step first");
                 Assert.That(state.Count, Is.EqualTo(1));
-                Assert.That(EconomyContinuity.TryReleaseUnprofitableBase(state, player, incumbent, -3.5f, 5),
+                Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(state, player, incumbent,
+                    BaseDemand(card, 9, 3, -3.5f, 10f), 5),
                     Is.True);
                 Assert.That(state.Count, Is.EqualTo(0));
             }
