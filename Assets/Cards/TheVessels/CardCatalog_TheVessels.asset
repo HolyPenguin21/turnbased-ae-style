@@ -630,7 +630,7 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 1
+      energy: 0
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
@@ -639,7 +639,7 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 2
-    defenseRating: 1
+    defenseRating: 2
     range: 1
     hitPoints: 4
     initiative: 2
