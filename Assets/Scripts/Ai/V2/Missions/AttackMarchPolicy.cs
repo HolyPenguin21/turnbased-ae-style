@@ -57,6 +57,12 @@ namespace Game.Ai.V2
             ArmySnapshot actor = projected.TryGetValue(plan.BaseArmyId, out ArmySnapshot changed)
                 ? changed : snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == plan.BaseArmyId);
             if (actor == null) { reason = "actor_unavailable"; return false; }
+            if (AiV2Util.TravelCost(snap, actor, target.Hex, maxMovement: actor.MaxMovement,
+                    terrainOnly: true) == int.MaxValue)
+            { reason = "main_unreachable_terrain"; return false; }
+            if (HexGridMath.Distance(actor.Hex, target.Hex) <= 1
+                && !AttackObjectiveEvaluator.HasAssaultObservation(snap, target, out reason))
+                return false;
             AttackMarchAssessment home = Assess(snap, target, actor, projected);
             if (home.Verdict == AttackMarchVerdict.DefendHome)
             { reason = "home_needs_the_army:" + home.Reason; return false; }

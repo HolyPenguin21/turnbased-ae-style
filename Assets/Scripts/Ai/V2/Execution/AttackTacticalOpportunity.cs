@@ -222,6 +222,19 @@ namespace Game.Ai.V2
         // different enemy: an Intercept holds only while the SAME army is still the chosen one;
         // otherwise the step is skipped and the mission layer re-plans. Anything the world newly
         // makes mandatory (a Retreat, a winnable contact on the path) is taken from `now`.
+        internal static AttackLocalAction Revalidate(WorldSnapshot snap, ArmyData army,
+            AttackMissionTarget target, AiTurnContext ctx, out string rejection)
+        {
+            // Assembly may have changed our roster/commander since Scan. Enemy knowledge and
+            // the funded choice stay frozen; only our own actor is refreshed.
+            ArmySnapshot current = WorldAnalysis.ToArmySnapshot(army, army.Owner, true, 0,
+                snap?.Intents, ctx);
+            AttackLocalAction now = Decide(snap, current, target.Target,
+                target.OpportunisticStrikeTurn, intermediateBaseAvailable: false,
+                ActiveDefenceObjectiveEvaluator.Enumerate(snap), snap?.Intents);
+            return ForExecution(target.Local, now, out rejection);
+        }
+
         internal static AttackLocalAction ForExecution(AttackLocalAction frozen, AttackLocalAction now,
             out string rejection)
         {

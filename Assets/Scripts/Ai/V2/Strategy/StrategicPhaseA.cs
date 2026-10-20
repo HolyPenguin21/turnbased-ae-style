@@ -168,7 +168,16 @@ namespace Game.Ai.V2
                     protectedActiveBases.Remove(build);
                     protectedActiveExtractions.Remove(build);
                     demands = demands.Where(d => !sameSite.Contains(d)).ToList();
+                    // Intent/lease changes invalidate ownership and demand views even when no
+                    // card was played and no army moved in this pass.
+                    result.StateChanged = true;
                 }
+            }
+            if (result.StateChanged)
+            {
+                activeIntents = intentState.All.Where(i => i != null
+                    && i.Status == IntentStatus.Active).ToList();
+                commitments = ActorCommitments.FromIntents(activeIntents, snap, reconObjectives);
             }
             // The FoundBase retarget/hysteresis switch below still evaluates against exactly one
             // (the highest-ranked) active Base commitment — deliberately unchanged scope: retargeting

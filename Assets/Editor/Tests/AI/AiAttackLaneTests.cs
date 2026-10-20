@@ -30,6 +30,56 @@ namespace Game.EditorTests
     public class AiAttackLaneTests
     {
         [Test]
+        public void FreshAttack_BlindAdjacentCandidateDoesNotBlockAnArmyThatCanApproach()
+        {
+            ArmySnapshot adjacent = Army(19, new HexCoord(5, 0), Strong());
+            ArmySnapshot distant = Army(28, OurBase, Strong());
+            adjacent.EffectiveArmyPower = distant.EffectiveArmyPower + 1f;
+            WorldSnapshot snap = Snap(new[] { Building(RedBase, Red, seenTurn: 1) },
+                new[] { OurBase }, new[] { adjacent, distant });
+            var proposals = new List<MissionProposal>();
+            AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(), new HashSet<int>(),
+                proposals, null, new Dictionary<MissionIntentKey, string>(),
+                MissionIntentRegistry.GetOrCreate(Us), null);
+            MissionProposal attack = proposals.Single(p => p.Target is AttackMissionTarget t
+                && t.Phase == AttackMissionPhase.Assault);
+            Assert.That(attack.PreferredMoverArmyId, Is.EqualTo(28));
+            Assert.That(GroundCombatAdmissionRegistry.TryGet(attack, out HashSet<int> eligible), Is.True);
+            Assert.That(eligible, Does.Not.Contain(19));
+            Assert.That(eligible, Does.Contain(28));
+        }
+
+        [Test]
+        public void FreshAttack_UnreachableCandidateDoesNotBlockAReachableArmy()
+        {
+            var mapObject = new UnityEngine.GameObject("attack candidate route test");
+            try
+            {
+                HexMap map = mapObject.AddComponent<HexMap>();
+                var tiles = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+                for (int q = 0; q <= RedBase.Q; q++)
+                    tiles[new HexCoord(q, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = q == 2 ? 4 : 1 };
+                map.SetData(8, 1f, tiles);
+                ArmySnapshot blocked = Army(19, OurBase, Strong());
+                ArmySnapshot reachable = Army(28, EnRoute, Strong());
+                blocked.EffectiveArmyPower = reachable.EffectiveArmyPower + 1f;
+                WorldSnapshot snap = Snap(new[] { Building(RedBase, Red) }, new[] { OurBase },
+                    new[] { blocked, reachable });
+                snap.Map = map;
+                var proposals = new List<MissionProposal>();
+                AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(), new HashSet<int>(),
+                    proposals, null, new Dictionary<MissionIntentKey, string>(),
+                    MissionIntentRegistry.GetOrCreate(Us), null);
+                MissionProposal attack = proposals.Single(p => p.Target is AttackMissionTarget t
+                    && t.Phase == AttackMissionPhase.Assault);
+                Assert.That(attack.PreferredMoverArmyId, Is.EqualTo(28));
+                Assert.That(GroundCombatAdmissionRegistry.TryGet(attack, out HashSet<int> eligible), Is.True);
+                Assert.That(eligible, Does.Not.Contain(19));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(mapObject); }
+        }
+
+        [Test]
         public void ObservationWait_StillReleasesADonorThatAlreadyReachedHome()
         {
             var adjacent = new HexCoord(RedBase.Q - 1, RedBase.R);
@@ -565,6 +615,62 @@ namespace Game.EditorTests
             Assert.That(demands, Is.Empty);
             Assert.That(diagnostics.Exists(line =>
                 line.Contains("existing_force_waits_for_movement")), Is.True);
+        }
+
+        [Test]
+        public void UnboundAttack_ClaimedArmyWithSpentMovementIsContention()
+        {
+            ArmySnapshot spent = Army(7, EnRoute, Strong());
+            spent.CurrentMovement = 0;
+            WorldSnapshot snap = Snap(new[] { Building(RedBase, Red) }, new[] { OurBase },
+                new[] { Army(8, OurBase, Weak()), spent });
+            snap.Self.BestStackPotential = 20f;
+            snap.Self.FieldPotential = 1f;
+            var claims = new ActorCommitments();
+            claims.Claim(7);
+            var demands = new List<AxisDemand>();
+            var diagnostics = new List<string>();
+            AggressionDemandEvaluator.AppendAttackDemands(snap, Array.Empty<MissionIntent>(),
+                claims, null, diagnostics, demands);
+            Assert.That(demands, Is.Empty);
+            Assert.That(diagnostics.Any(d => d.Contains("unbound_attack_mover_contended")), Is.True);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void UnboundAttack_SpentHostCountsLegalSameHexGarrisonAssembly(bool needsCommander)
+        {
+            UnitData Body(int attack, int hp, int movement) => new UnitData {
+                Owner = Us, Attack = attack, Defense = 2, HitPointsMax = hp,
+                HitPointsCurrent = hp, MoveMax = 3, MoveCurrent = movement, ActivationApCost = 1 };
+            var host = new ArmyData { Owner = Us, Hex = OurBase };
+            host.Members.Add(Body(1, 2, 0));
+            if (needsCommander) host.Members.Add(Body(1, 2, 0));
+            host.MarkActivated();
+            var donor = new ArmyData { Owner = Us, Hex = OurBase, IsGarrison = true };
+            if (needsCommander) donor.Members.Add(new UnitData { Owner = Us, IsHero = true,
+                CommandRating = 8, HitPointsMax = 6, HitPointsCurrent = 6,
+                ActivationApCost = 1, MoveMax = 3, MoveCurrent = 3 });
+            donor.Members.Add(Body(8, 20, 3));
+            donor.Members.Add(Body(40, 120, 3));
+            ArmyRegistry.Register(host);
+            ArmyRegistry.Register(donor);
+            ArmySnapshot hostSnapshot = WorldAnalysis.ToArmySnapshot(host, Us, true, 0, null);
+            ArmySnapshot donorSnapshot = WorldAnalysis.ToArmySnapshot(donor, Us, true, 0, null);
+            WorldSnapshot snap = Snap(new[] { Building(RedBase, Red) }, new[] { OurBase },
+                new[] { hostSnapshot, donorSnapshot });
+            snap.Self.AttackPeak = 20f;
+            snap.Self.BestStackPotential = 20f;
+            snap.Self.FieldPotential = 1f;
+            var demands = new List<AxisDemand>();
+            var diagnostics = new List<string>();
+            AggressionDemandEvaluator.AppendAttackDemands(snap, Array.Empty<MissionIntent>(),
+                null, null, diagnostics, demands);
+            Assert.That(demands, Is.Empty);
+            Assert.That(diagnostics.Any(d => d.Contains("existing_force_waits_for_movement")), Is.True);
+            Assert.That(host.Members.Count, Is.EqualTo(needsCommander ? 2 : 1));
+            Assert.That(donor.Members.Count, Is.EqualTo(needsCommander ? 3 : 2));
+            Assert.That(host.CurrentMovement, Is.Zero, "capability checks must not reset live MP");
         }
 
         [Test]

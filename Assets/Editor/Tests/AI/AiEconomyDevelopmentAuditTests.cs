@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Linq;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
@@ -13,6 +14,40 @@ namespace Game.EditorTests
     // Every test here fails on the pre-fix code and passes after it.
     public class AiEconomyDevelopmentAuditTests
     {
+        [TestCase(true)]
+        [TestCase(false)]
+        public void PhaseA_CancelledExtractionInvalidatesTheDecisionFrame(bool authoritative)
+        {
+            var player = new PlayerSetupData();
+            var root = PlayerRoot.Create(player, "cancel extraction test");
+            try
+            {
+                var hand = new AiHandData(null, default, 0);
+                AxisDemand demand = ExtractionDemand(new HexCoord(3, -5), ResourceType.Human);
+                MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(player, demand, 25, 23);
+                demand.Value = -1f;
+                demand.EconomyPaybackTurns = float.PositiveInfinity;
+                var snap = new WorldSnapshot { Observer = player, TurnNumber = 24,
+                    Self = new SelfSnapshot { Armies = System.Array.Empty<ArmySnapshot>(),
+                        BaseHexes = System.Array.Empty<HexCoord>(), Hand = hand.Hand }, };
+                StrategicPhaseResult result = StrategicPhaseA.FulfillDemands(snap, player, root,
+                    hand, new AiTurnContext { TurnNumber = 24 }, PhaseAApBudget.Create(root),
+                    new[] { demand }, new ActorCommitments(), MissionIntentRegistry.GetOrCreate(player),
+                    new[] { intent }, economyAxisAuthoritative: authoritative);
+                Assert.That(result.StateChanged, Is.EqualTo(authoritative),
+                    "intent-only cancellation must trigger the caller's ownership/demand refresh");
+                Assert.That(MissionIntentRegistry.GetOrCreate(player).All.Contains(intent),
+                    Is.EqualTo(!authoritative));
+                Assert.That(result.CardsPlayed, Is.Zero);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+                MissionIntentRegistry.Clear();
+                StrategicResourceReservationLedger.ClearAll();
+            }
+        }
+
         [Test]
         public void UnprofitableExtraction_ReleasesOnlyItsOwnHoldAndQueuesBuilderRecovery()
         {

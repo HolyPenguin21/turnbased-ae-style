@@ -348,6 +348,12 @@ namespace Game.Ai.V2
                 if (!demand.EconomyPreferredBuilderArmyId.HasValue
                     && HasActiveEconomyBuildIntent(activeIntents, demand))
                 {
+                    // A temporarily unavailable route must not hide an independently proven
+                    // economic failure. Emit the site's revaluation, never a new-Hero prerequisite.
+                    if (demand.Value <= AiConfigV2.allocatorSliceEpsilon
+                        || (demand.Capability == CapabilityKind.EconomicInfrastructure
+                            && demand.EconomyPaybackTurns > AiConfigV2.economyExtractionMaxPaybackTurns))
+                        yield return demand;
                     AiDebugLog.WriteDeduped($"continuity|{demand.TargetHex}",
                         $"[AI][V2][Economy][Demand] selected=continuity "
                         + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "

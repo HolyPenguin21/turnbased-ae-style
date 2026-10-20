@@ -15,6 +15,32 @@ namespace Game.EditorTests
 {
     public class AiEconomyDecisionTests
     {
+        [Test]
+        public void CommittedExtraction_UnprofitableRevaluationSurvivesAMissingBuilderRoute()
+        {
+            var player = new PlayerSetupData();
+            var target = new HexCoord(3, -5);
+            var snap = SnapshotWithDeficits(0f, 0f, true);
+            snap.Observer = player;
+            snap.Self.Armies = new[] { EconomyBuilder(25, 1, 0) };
+            snap.Economy.PerType = ResourceBundle.All.Select(type =>
+                EconomyStanding.CalculateResource(type, 20, 0, 0, 0, 0, 100, 0)).ToArray();
+            snap.Economy.ExtractionOpportunities = new[] {
+                ExtractionOpportunity(target, ResourceType.Materials, 1) };
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure, TargetHex = target,
+                EconomyResourceType = ResourceType.Materials };
+            MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(player, demand, 25, 5);
+            var demands = DemandLayer.EconomyDemands(snap, new DesireBreakdown(), player, null,
+                null, new[] { intent }).ToList();
+            AxisDemand refreshed = demands.Single(d => d.TargetHex.HasValue && d.TargetHex.Value.Equals(target)
+                && d.Capability == CapabilityKind.EconomicInfrastructure);
+            Assert.That(refreshed.EconomyPreferredBuilderArmyId, Is.Null);
+            Assert.That(refreshed.EconomyPaybackTurns, Is.EqualTo(float.PositiveInfinity));
+            Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(
+                MissionIntentRegistry.GetOrCreate(player), player, intent, refreshed, 6), Is.True);
+        }
+
         [TestCase(ResourceType.Human)]
         [TestCase(ResourceType.Energy)]
         [TestCase(ResourceType.Materials)]

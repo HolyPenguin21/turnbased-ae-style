@@ -399,22 +399,23 @@ namespace Game.Ai.V2
             }
             // This is a capability question, not a nomination for a move this turn. A
             // sufficient field army with spent MP is available again next turn.
-            ArmySnapshot futureActor = GroundCombatActorEligibility.EligibleArmies(snap, claimed,
-                    requireMovementNow: false)
-                .Where(a => a.CurrentMovement <= 0)
-                .FirstOrDefault(a =>
+            GroundCombatAssemblyPlan future = GroundCombatAssemblyPlanner.Plan(snap,
+                new GroundCombatAssemblyRequest
                 {
-                    GroundCombatAssemblyPlan future = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
-                        objective.Opposition, a.ArmyId,
-                        GroundCombatAdmissionPolicy.AttackWinChanceGate, hexBonus,
-                        minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
-                    return future.Feasible && AttackMarchPolicy.CanStart(snap, objective.Target,
-                        future, snap.Intents, out _);
+                    Opposition = objective.Opposition,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
+                    MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
+                    ExcludedArmyIds = claimed,
+                    DefenderHexDefenseBonus = hexBonus,
+                    AllowDecisivePinnedDefender = true,
+                    RequireReadyThisTurn = false,
+                    AcceptPlan = candidate => AttackMarchPolicy.CanStart(snap, objective.Target,
+                        candidate, snap.Intents, out _),
                 });
-            if (futureActor != null)
+            if (future.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
-                    + $"actor={futureActor.ArmyId} reason=unbound_attack_existing_force_waits_for_movement");
+                    + $"actor={future.BaseArmyId} reason=unbound_attack_existing_force_waits_for_movement");
                 return;
             }
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
@@ -442,6 +443,7 @@ namespace Game.Ai.V2
                     ExcludedArmyIds = new HashSet<int>(),
                     DefenderHexDefenseBonus = hexBonus,
                     AllowDecisivePinnedDefender = true,
+                    RequireReadyThisTurn = false,
                 });
             if (contended.Feasible)
             {

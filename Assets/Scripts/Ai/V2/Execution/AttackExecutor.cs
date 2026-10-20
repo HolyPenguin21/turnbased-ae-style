@@ -346,25 +346,18 @@ namespace Game.Ai.V2
             AttackLocalAction strike = AttackLocalAction.Continue();
             if (!target.IsIntermediateAssault)
             {
-                ArmySnapshot self = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
-                if (self != null)
+                strike = AttackTacticalOpportunity.Revalidate(snapshot, army, target, ctx,
+                    out string rejection);
+                if (rejection != null)
                 {
-                    AttackLocalAction now = AttackTacticalOpportunity.Decide(snapshot, self, target.Target,
-                        target.OpportunisticStrikeTurn, intermediateBaseAvailable: false,
-                        ActiveDefenceObjectiveEvaluator.Enumerate(snapshot),
-                        snapshot?.Intents);
-                    strike = AttackTacticalOpportunity.ForExecution(target.Local, now, out string rejection);
-                    if (rejection != null)
-                    {
-                        // Waiting + replan, NOT a failure: a stale local choice must not put the
-                        // shared Assault key (the main march) on a rejection cooldown.
-                        result.StopReason = ExecutionStopReason.MoveRejected;
-                        result.NeedsReplan = true;
-                        AiDebugLog.Write($"[AI][V2][Attack][Local] {player.Nickname} #{army.Id} step skipped: "
-                            + $"{rejection} frozen={target.Local.Kind}#{target.Local.EnemyArmyId} "
-                            + $"now={now.Kind}#{now.EnemyArmyId}; no movement, world unchanged");
-                        yield break;
-                    }
+                    // Waiting + replan, NOT a failure: a stale local choice must not put the
+                    // shared Assault key (the main march) on a rejection cooldown.
+                    result.StopReason = ExecutionStopReason.MoveRejected;
+                    result.NeedsReplan = true;
+                    AiDebugLog.Write($"[AI][V2][Attack][Local] {player.Nickname} #{army.Id} step skipped: "
+                        + $"{rejection} frozen={target.Local.Kind}#{target.Local.EnemyArmyId} "
+                        + $"now={strike.Kind}#{strike.EnemyArmyId}; no movement, world unchanged");
+                    yield break;
                 }
             }
             bool intercept = strike.Kind == AttackLocalActionKind.Intercept;
