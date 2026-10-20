@@ -396,23 +396,12 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 04000000
+      hostTypeTags: 
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - CriticalDamage
-      - AA
+      removeAbilities: []
       addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 9
-        isOverride: 1
-      - stat: 3
-        amount: 2
-        isOverride: 1
+      statChanges: []
   - id: 8
     authoredKey: neutral.tactic.tactical-missile
     deckPointCost: 5
@@ -517,7 +506,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -565,18 +554,12 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 03000000
+      hostTypeTags: 
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
+      removeAbilities: []
       addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 8
-        isOverride: 1
+      statChanges: []
   - id: 11
     authoredKey: neutral.facility.intel
     deckPointCost: 5
@@ -620,18 +603,12 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 03000000
+      hostTypeTags: 
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
+      removeAbilities: []
       addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 8
-        isOverride: 1
+      statChanges: []
   - id: 12
     authoredKey: neutral.facility.lab
     deckPointCost: 5
@@ -675,18 +652,12 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 03000000
+      hostTypeTags: 
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
+      removeAbilities: []
       addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 8
-        isOverride: 1
+      statChanges: []
   - id: 13
     authoredKey: neutral.facility.factory
     deckPointCost: 5
@@ -730,18 +701,12 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 03000000
+      hostTypeTags: 
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
+      removeAbilities: []
       addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 8
-        isOverride: 1
+      statChanges: []
   - id: 14
     authoredKey: neutral.facility.aa_defence
     deckPointCost: 5
@@ -785,18 +750,12 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 03000000
+      hostTypeTags: 
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
+      removeAbilities: []
       addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 8
-        isOverride: 1
+      statChanges: []
   - id: 15
     authoredKey: neutral.equipment.bio.flamer
     deckPointCost: 2
@@ -4346,7 +4305,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -4394,7 +4353,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -4442,7 +4401,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -4490,7 +4449,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -4538,7 +4497,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []

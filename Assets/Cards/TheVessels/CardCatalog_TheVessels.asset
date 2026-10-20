@@ -511,7 +511,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -561,7 +561,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -610,7 +610,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -659,7 +659,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -708,7 +708,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -756,7 +756,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -806,7 +806,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -855,7 +855,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -904,7 +904,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -953,7 +953,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -1001,7 +1001,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -3081,7 +3081,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 
+      hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
