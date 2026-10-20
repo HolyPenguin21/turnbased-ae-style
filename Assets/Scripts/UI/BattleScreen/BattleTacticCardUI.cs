@@ -35,14 +35,16 @@ namespace Game.UI
             System.Func<string> unavailableReason = null, System.Func<Vector2, Camera, bool> onDrop = null,
             System.Action<string> showError = null)
         {
-            var button = GetComponent<Button>() ?? gameObject.AddComponent<Button>();
+            var button = GetComponent<Button>();
+            if (button == null) button = gameObject.AddComponent<Button>();
             button.onClick = new Button.ButtonClickedEvent();
             button.interactable = enabled;
             var graphic = GetComponent<Image>();
             if (graphic == null) graphic = gameObject.AddComponent<Image>();
             if (button.targetGraphic == null) button.targetGraphic = graphic;
             graphic.raycastTarget = true;
-            _interaction = GetComponent<CardUI>() ?? gameObject.AddComponent<CardUI>();
+            _interaction = GetComponent<CardUI>();
+            if (_interaction == null) _interaction = gameObject.AddComponent<CardUI>();
             _interaction.ConfigureTacticInteraction(Data, onClick,
                 () => unavailableReason?.Invoke() ?? (enabled ? null
                     : "Wait for your challenge decision to use a tactical card."),

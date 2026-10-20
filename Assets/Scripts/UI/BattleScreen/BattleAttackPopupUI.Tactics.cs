@@ -14,8 +14,11 @@ namespace Game.UI
         private ResearchProductionChallengeSession _rpTactics;
         private CardData _selectedTactic;
         private Button _tacticSlot;
-        private TMP_Text _tacticSlotText;
-        private BattleTacticCardUI _tacticPreview;
+        [SerializeField] private Image tacticalCardInput;
+        [SerializeField] private TMP_Text currentResultText;
+        private Sprite _tacticInputDefaultSprite;
+        private Color _tacticInputDefaultColor;
+        private bool _tacticInputInitialized;
         private BattleHandUI _tacticHand;
         private CardHandUI _mapHand;
         private GameTurnController _tacticTurnController;
@@ -50,7 +53,7 @@ namespace Game.UI
                 _tacticInfoPopup.VisibilityChanged += OnTacticInfoVisibilityChanged;
             }
             BattleHandUI template = null;
-            foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include))
+            foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 if (!hand.Horizontal) { template = hand; break; }
             _mapHand = FindAnyObjectByType<CardHandUI>(FindObjectsInactive.Include);
             _tacticHand = _mapHand != null && _mapHand.gameObject.activeInHierarchy
@@ -68,32 +71,39 @@ namespace Game.UI
                 if (_tacticHand.GetComponent<GraphicRaycaster>() == null)
                     _tacticHand.gameObject.AddComponent<GraphicRaycaster>();
             }
-            if (_tacticSlot == null && acceptButton != null)
-            {
-                _tacticSlot = Instantiate(acceptButton, rollStateRoot != null ? rollStateRoot.transform : panelRoot.transform);
-                _tacticSlot.name = "TacticSlot";
-                _tacticSlot.onClick = new Button.ButtonClickedEvent();
-                _tacticSlot.onClick.AddListener(ApplySelectedTactic);
-                var rect = (RectTransform)_tacticSlot.transform;
-                rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
-                rect.pivot = new Vector2(0f, 0.5f);
-                rect.anchoredPosition = new Vector2(15f, 0f);
-                rect.sizeDelta = new Vector2(145f, 200f);
-                _tacticSlotText = _tacticSlot.GetComponentInChildren<TMP_Text>(true);
-                if (_tacticSlotText != null)
-                {
-                    _tacticSlotText.fontSize = 16f;
-                    var textRect = _tacticSlotText.rectTransform;
-                    textRect.anchorMin = Vector2.zero;
-                    textRect.anchorMax = new Vector2(1f, 0f);
-                    textRect.pivot = new Vector2(0.5f, 0f);
-                    textRect.anchoredPosition = Vector2.zero;
-                    textRect.sizeDelta = new Vector2(-8f, 42f);
-                }
-            }
+            InitializeTacticInput();
+            _mapHand?.SetTacticInputOverlay(true);
             CloseTacticDecision();
             OnTacticInfoVisibilityChanged();
         }
+
+        private void InitializeTacticInput()
+        {
+            if (_tacticInputInitialized || tacticalCardInput == null) return;
+            _tacticInputInitialized = true;
+            _tacticInputDefaultSprite = tacticalCardInput.sprite;
+            _tacticInputDefaultColor = tacticalCardInput.color;
+            _tacticSlot = tacticalCardInput.GetComponent<Button>();
+            if (_tacticSlot == null) _tacticSlot = tacticalCardInput.gameObject.AddComponent<Button>();
+            _tacticSlot.targetGraphic = tacticalCardInput;
+            _tacticSlot.transition = Selectable.Transition.None;
+            _tacticSlot.onClick.AddListener(ApplySelectedTactic);
+            _tacticSlot.interactable = false;
+        }
+
+        private void ResetTacticInput()
+        {
+            InitializeTacticInput();
+            if (tacticalCardInput != null && _tacticInputInitialized)
+            {
+                tacticalCardInput.sprite = _tacticInputDefaultSprite;
+                tacticalCardInput.color = _tacticInputDefaultColor;
+            }
+            if (currentResultText != null) currentResultText.text = string.Empty;
+        }
+
+        private PlayerSetupData TacticOwner() => _kind == ChallengeKind.ResearchProduction
+            ? _rpHero?.Owner : HumanParticipant();
 
         private string TacticSelectionFailure(CardData card) => TacticSelectionFailure(card, true);
 
@@ -133,6 +143,7 @@ namespace Game.UI
             if (showing) _tacticHand.CancelDrags();
             var canvas = _tacticHand.GetComponent<Canvas>();
             if (canvas != null) canvas.overrideSorting = !showing;
+            _mapHand?.SetTacticInputOverlay(!showing);
         }
 
         private void OpenTacticDecision(bool defenderSide)
@@ -140,16 +151,13 @@ namespace Game.UI
             _defenderTurnActive = defenderSide;
             _selectedTactic = null;
             int decisionVersion = ++_tacticDecisionVersion;
-            if (_tacticHand == null) return;
             var owner = (_kind == ChallengeKind.ResearchProduction ? _rpHero
                 : defenderSide ? _defender : _attacker)?.Owner;
-            _tacticHand.Bind(owner?.Tactics, CanSelectTactic, SelectTactic, TacticSelectionFailure,
+            _tacticHand?.Bind(owner?.Tactics, CanSelectTactic, SelectTactic, TacticSelectionFailure,
                 (card, point, camera) => TryDropTactic(card, point, camera, decisionVersion), ShowTacticError);
             if (_tacticSlot != null)
             {
-                _tacticSlot.gameObject.SetActive(true);
                 _tacticSlot.interactable = false;
-                if (_tacticSlotText != null) _tacticSlotText.text = "Tactic slot — select a card";
             }
             RefreshTacticTotals();
         }
@@ -158,19 +166,13 @@ namespace Game.UI
         {
             string reason = TacticSelectionFailure(card);
             if (reason != null) { ShowTacticError(reason); return; }
-            if (_tacticPreview != null) Destroy(_tacticPreview.gameObject);
-            _tacticPreview = null;
             if (ReferenceEquals(_selectedTactic, card))
             {
                 _selectedTactic = null;
                 if (_tacticSlot != null) _tacticSlot.interactable = false;
-                if (_tacticSlotText != null) _tacticSlotText.text = "Select a tactic";
                 return;
             }
             _selectedTactic = card;
-            if (_tacticSlot != null) _tacticPreview = _tacticHand.CreatePreview(_tacticSlot.transform, card);
-            if (_tacticSlotText != null)
-                _tacticSlotText.text = "Apply tactic";
             if (_tacticSlot != null) _tacticSlot.interactable = true;
         }
 
@@ -215,12 +217,18 @@ namespace Game.UI
 
         private void ShowTacticResult(CardData card)
         {
+            if (tacticalCardInput != null)
+            {
+                tacticalCardInput.sprite = card.Definition.art;
+                tacticalCardInput.color = Color.white;
+            }
             RefreshTacticTotals();
             BattleDebugLog.Write($"[Tactic] {card.Definition.authoredKey}: {TacticRules.Description(card.Definition)}");
         }
 
         private void RefreshTacticTotals()
         {
+            RefreshCurrentResult();
             if (_kind == ChallengeKind.ResearchProduction && _rpTactics != null)
             {
                 attackerRow?.SetSuccessModifier(_rpTactics.SuccessModifier);
@@ -233,25 +241,44 @@ namespace Game.UI
             }
         }
 
+        private void RefreshCurrentResult()
+        {
+            if (currentResultText == null) return;
+            bool ready;
+            bool hit;
+            if (_kind == ChallengeKind.ResearchProduction)
+            {
+                ready = _rpTactics?.Tokens != null;
+                hit = ready && _rpTactics.Success;
+            }
+            else
+            {
+                ready = _challengeSession?.AttackerTokens != null && _challengeSession.DefenderTokens != null;
+                var result = ready ? _challengeSession.CurrentResult : null;
+                hit = ready && (_kind == ChallengeKind.CaptureKill
+                    ? result.AttackerSuccesses >= result.DefenderSuccesses : result.Damage > 0);
+            }
+            currentResultText.text = ready ? (hit ? "Result : Hit" : "Result : Miss") : string.Empty;
+        }
+
         private void CloseTacticDecision()
         {
             ++_tacticDecisionVersion;
             _selectedTactic = null;
-            if (_tacticPreview != null) Destroy(_tacticPreview.gameObject);
-            _tacticPreview = null;
-            if (_tacticSlot != null) _tacticSlot.gameObject.SetActive(false);
-            if (_tacticHand != null) _tacticHand.Bind(HumanParticipant()?.Tactics);
+            if (_tacticSlot != null) _tacticSlot.interactable = false;
+            if (_tacticHand != null) _tacticHand.Bind(TacticOwner()?.Tactics);
         }
 
         private void CloseTacticPresentation()
         {
             CloseTacticDecision();
+            ResetTacticInput();
             if (_tacticInfoPopup != null) _tacticInfoPopup.VisibilityChanged -= OnTacticInfoVisibilityChanged;
             _tacticInfoPopup = null;
             _tacticInfoWasShowing = false;
             if (_tacticHand != null)
             {
-                _tacticHand.Bind(_tacticHand.Horizontal ? null : HumanParticipant()?.Tactics);
+                _tacticHand.Bind(_tacticHand.Horizontal ? null : TacticOwner()?.Tactics);
                 var canvas = _tacticHand.GetComponent<Canvas>();
                 if (canvas != null) canvas.overrideSorting = false;
             }
