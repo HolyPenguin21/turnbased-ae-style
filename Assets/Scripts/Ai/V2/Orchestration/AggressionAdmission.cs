@@ -37,6 +37,9 @@ namespace Game.Ai.V2
                 return $"axis={DesireAxis.Aggression}|none";
             CultureInfo inv = CultureInfo.InvariantCulture;
             SelfSnapshot self = snapshot.Self;
+            var sortieActors = new HashSet<int>(snapshot.AllIntents
+                .Where(i => i?.ActiveDefence?.Sortie != null && i.PreferredMoverArmyId.HasValue)
+                .Select(i => i.PreferredMoverArmyId.Value));
             string armies = string.Join(";", (self.Armies ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a != null && !a.IsAir)
                 .OrderBy(a => a.ArmyId)
@@ -44,6 +47,13 @@ namespace Game.Ai.V2
                     // The fight's own inputs: a wounded or re-equipped body changes the estimate
                     // and the local decision even when the count and the rounded power do not.
                     + $":cf{AttackRetreatWitness.OwnFingerprintOf(a)}"
+                    // Equal-stat replacements change the exact sortie witness too.
+                    + (a.IsGarrison || sortieActors.Contains(a.ArmyId) ? $":ids={string.Join(",", a.NonHeroRuntimeIds)}" : "")
+                    + (a.IsGarrison ? $":spare={string.Join(",", a.NonHeroSpareable ?? System.Array.Empty<bool>())}"
+                        + $":mp={string.Join(",", a.NonHeroCurrentMovement)}"
+                        + $":spent={string.Join(",", a.NonHeroMovementSpent)}:max={string.Join(",", a.NonHeroMoveMax)}"
+                        + $":ap={string.Join(",", a.NonHeroActivationApCosts)}" : "")
+                    + (a.MemberCount == 0 ? $":shell={a.Capacity}:{a.IsPrison}:{a.IsAirfield}:{a.IsCarrierContainer}" : "")
                     + $":{(a.IsStructuralRaidActor ? "S" : "")}{(a.IsGarrison ? "G" : "")}"
                     // A pure solo scout cannot serve a ground combat leg. Its own waypoint AP/MP
                     // is not an Aggression input; force and asset-threat facts remain in the key.
@@ -52,7 +62,7 @@ namespace Game.Ai.V2
                         : "")
                     // A hero's hex decides the preparation host's capacity hero and a lone-hero
                     // host (2026-09-30), so a hero-carrying army is positioned too.
-                    + (a.IsStructuralRaidActor || a.IsGarrison || a.HasHero ? $":{a.Hex.Q},{a.Hex.R}" : "")));
+                    + (a.IsStructuralRaidActor || a.IsGarrison || a.HasHero || a.MemberCount == 0 ? $":{a.Hex.Q},{a.Hex.R}" : "")));
             string intents = string.Join(";", snapshot.AllIntents
                 .Where(i => i != null)
                 .Select(i => $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}"
@@ -65,6 +75,9 @@ namespace Game.Ai.V2
                     // An immediate opportunity is a different task from a strategic intercept of
                     // the same enemy, and it expires with the turn that admitted it.
                     + $":ip={(int?)i.ActiveDefence?.InterceptPurpose}@{i.ActiveDefence?.ImmediateTurn}"
+                    + (i.ActiveDefence?.Sortie == null ? "" : $":sortie={i.ActiveDefence.Sortie.DonorGarrisonId}"
+                        + $":cover={i.ActiveDefence.Sortie.CoverRuntimeId}:hex={i.ActiveDefence.Sortie.EnemyHex}"
+                        + $":bodies={string.Join(",", i.ActiveDefence.Sortie.UnitRuntimeIds)}")
                     + $":{i.Raid?.SupportArmyId}{i.Attack?.SupportArmyId}"
                     + $":local={i.Attack?.IntermediateTarget.DiagnosticLabel}:{i.Attack?.LastOpportunisticStrikeTurn}"
                     // A bound support wing changes which task targets still want aviation.

@@ -14,7 +14,7 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    internal static class ActiveDefenceProvisioner
+    internal static partial class ActiveDefenceProvisioner
     {
         internal static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded)
@@ -24,6 +24,8 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "active defence has no typed target"));
 
+            if (target.RequiresSortieMaterialization)
+                return ProvisionSortie(player, root, ctx, session, funded, target);
             if (target.Phase == ActiveDefencePhase.Return)
                 return ProvisionReturn(player, root, ctx, session, funded, target);
             if (target.Phase == ActiveDefencePhase.AirSupport)
@@ -69,6 +71,8 @@ namespace Game.Ai.V2
             if (immediate && (!hexVisibleNow || target.ImmediateTurn != session.Snapshot?.TurnNumber))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"immediate intercept of #{target.EnemyArmyId} is no longer a visible same-turn opportunity"));
+            if (target.IsMaterializedSortie)
+                opposition = SortieOpposition(player, ctx, target.Sortie);
             GroundCombatAssaultOutcome assault = GroundCombatAssaultTransactionRunner.Run(
                 new GroundCombatAssaultRequest
                 {
@@ -79,8 +83,9 @@ namespace Game.Ai.V2
                     // The projected (assembled) roster must still START the fight now: a slower recruit
                     // lowers the shared movement. Runs before the first transfer or any AP is claimed.
                     PreMutationVeto = !immediate ? (System.Func<ArmyData, IReadOnlyList<Game.Units.UnitData>, string>)null
-                        : (host, units) => ImmediateReachVeto(ctx, player, host, units, sighting.Value.Hex,
-                            target.EnemyArmyId),
+                        : (host, units) => target.IsMaterializedSortie
+                            ? (TryEvaluateSortie(player, ctx, target, host.Hex, units, out string why) ? null : why)
+                            : ImmediateReachVeto(ctx, player, host, units, sighting.Value.Hex, target.EnemyArmyId),
                 });
             if (!assault.Success)
                 return assault.Failure;
@@ -310,27 +315,33 @@ namespace Game.Ai.V2
             ActiveDefenceMissionTarget target, ArmyData shell, ActorCommitments commitments,
             out ArmyData donor, out List<UnitData> units, out string why)
         {
-            donor = null;
-            units = null;
-            why = null;
-            IReadOnlyCollection<int> ids = target.ReliefUnitRuntimeIds
-                ?? (IReadOnlyCollection<int>)System.Array.Empty<int>();
-            if (!target.ReliefDonorGarrisonId.HasValue || ids.Count == 0 || shell == null)
-            {
-                why = "no pinned extraction";
-                return false;
-            }
-            donor = AiV2Util.ResolveArmy(player, target.ReliefDonorGarrisonId.Value);
-            units = donor?.Members.Where(u => u != null && ids.Contains(u.RuntimeId)).ToList();
-            why = donor == null || !donor.IsGarrison || donor.Owner != player ? "donor garrison gone"
-                : !donor.Hex.Equals(shell.Hex) ? "shell left the donor hex"
-                : units.Count != ids.Count ? "planned bodies left the garrison"
-                : shell.Members.Count != 0 || shell.HasActivatedThisTurn
-                    || (commitments != null && !ReusableArmySelector.IsReusableShell(shell, player, commitments))
-                    ? "shell no longer an empty free container"
-                : !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units) ? "garrison floor keeps the bodies"
-                : null;
-            return why == null;
+            return TryResolveGarrisonExtraction(player, target.ReliefDonorGarrisonId, shell?.Hex,
+                target.ReliefUnitRuntimeIds, shell, commitments, false, out donor, out units, out why);
+        }
+
+        internal static bool TryResolveGarrisonExtraction(PlayerSetupData player, int? donorId,
+            HexCoord? sourceHex, IReadOnlyList<int> ids, ArmyData shell, ActorCommitments commitments,
+            bool allowCreate, out ArmyData donor, out List<UnitData> units, out string why)
+        {
+            donor = null; units = null; why = "no pinned extraction";
+            if (!donorId.HasValue || !sourceHex.HasValue || ids == null || ids.Count == 0
+                || ids.Distinct().Count() != ids.Count || shell == null && !allowCreate) return false;
+            donor = AiV2Util.ResolveArmy(player, donorId.Value);
+            if (donor == null || !donor.IsGarrison || donor.IsPrison || donor.Owner != player
+                || !donor.Hex.Equals(sourceHex.Value))
+            { why = "donor garrison gone or moved"; return false; }
+            ArmyData resolved = donor;
+            units = ids.Select(id => resolved.Members.FirstOrDefault(u => u != null && u.RuntimeId == id)).ToList();
+            if (units.Any(u => u == null || u.HitPointsCurrent <= 0))
+            { why = "planned bodies left the garrison or died"; return false; }
+            if (shell != null && (shell.Owner != player || !shell.Hex.Equals(donor.Hex)
+                || shell.Members.Count != 0 || shell.HasActivatedThisTurn || shell.IsGarrison || shell.IsPrison
+                || shell.IsCarrierContainer || AviationRules.IsAirfield(shell) || AviationRules.IsAirArmy(shell)
+                || commitments != null && !ReusableArmySelector.IsReusableShell(shell, player, commitments)))
+            { why = "shell no longer an empty free container"; return false; }
+            if (!AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+            { why = "garrison floor keeps the bodies"; return false; }
+            why = null; return true;
         }
 
         // Re-evaluate the funded cohort together, but bind only this leg's own actor. The

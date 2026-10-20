@@ -154,8 +154,17 @@ namespace Game.Ai.V2
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
         // A committed Attack march is re-planned at the abort floor (AttackMarchPolicy decides it
         // each turn); only its start needs AttackWinChanceGate.
+        internal static bool PreservesDepartureRoster(MissionProposal proposal) =>
+            proposal?.Target is ActiveDefenceMissionTarget ad && ad.IsMaterializedSortie
+            || proposal?.Target is AttackMissionTarget at && at.ForceCommitted;
+        internal static bool AllowsSameHexAssembly(MissionProposal proposal) =>
+            !(proposal?.Target is ActiveDefenceMissionTarget ad && ad.IsMaterializedSortie)
+            && !(proposal?.Target is AttackMissionTarget at && at.IsIntermediateAssault);
+
         internal static float AssaultGate(MissionProposal proposal, int actorId) =>
-            proposal != null && proposal.Kind == MissionKind.Attack
+            proposal?.Target is ActiveDefenceMissionTarget ad && ad.IsMaterializedSortie
+                ? FreshStartWinChanceGate
+            : proposal != null && proposal.Kind == MissionKind.Attack
                 ? proposal.Target is AttackMissionTarget attack
                     ? attack.IsIntermediateAssault ? AttackIntermediateBaseWinChanceGate
                         : attack.ForceCommitted ? AttackLocalWinChanceGate : AttackWinChanceGate

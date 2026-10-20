@@ -16,6 +16,33 @@ namespace Game.Ai.V2
 {
     internal static class ActiveDefenceExecutor
     {
+        internal static bool TryMaterializeSortie(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
+        {
+            if (pm?.Kind != MissionKind.ActiveDefence || !pm.ActiveDefenceTarget.RequiresSortieMaterialization) return false;
+            GarrisonSortiePlan plan = pm.ActiveDefenceTarget.Sortie;
+            result.StartHex = result.FinalHex = plan.StrongholdHex;
+            var commitments = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snapshot), snapshot, null);
+            if (!ActiveDefenceProvisioner.TryResolveSortie(player, root, ctx, pm.ActiveDefenceTarget,
+                commitments, pm.ClaimedAp, out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why))
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Sortie] rejected: {why}"); return true;
+            }
+            ArmyData actor = shell;
+            if (shell == null) actor = ArmyActions.CreateArmyWithMembers(player, donor.Hex,
+                ctx.StartingDeckCatalog.GetCatalog(player.Faction), donor, units, ctx.HexSelection, out why);
+            else if (!ArmyActions.TransferMembersAtomic(units, donor, shell, ctx.HexSelection, out why)) actor = null;
+            if (actor == null)
+            { result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true; return true; }
+            pm.MoverArmyId = actor.Id; pm.ActiveDefenceTarget.PrimaryArmyId = actor.Id;
+            pm.ActiveDefenceTarget.SortieMaterialized = true;
+            result.ActorMaterialized = true; result.ActualActorArmyId = actor.Id;
+            result.StopReason = ExecutionStopReason.StepCompleted;
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Sortie] actor=#{actor.Id} donor=#{donor.Id} bodies={units.Count}");
+            return true;
+        }
+
         internal static IEnumerator RunActiveDefence(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
@@ -128,6 +155,10 @@ namespace Game.Ai.V2
                 result.NeedsReplan = true;
                 yield break;
             }
+            if (pm.ActiveDefenceTarget.IsMaterializedSortie
+                && !ActiveDefenceProvisioner.TryEvaluateSortie(player, ctx, pm.ActiveDefenceTarget,
+                    army.Hex, army.Members, out _))
+            { result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true; yield break; }
             HexCoord targetHex = witness.Value.Hex;
             pm.ExecutionHex = targetHex;
             pm.ActiveDefenceTarget.LastKnownHex = targetHex;
