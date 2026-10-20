@@ -366,6 +366,13 @@ namespace Game.Setup
         // a CardDefinition once, right here too, since EventDefinition has no back-reference to
         // eventCatalog for HexEventRewardGranter to resolve it again later (see
         // HexEventRegistry.Entry.ResolvedCardRewards).
+        // Card rewards are resolved once during map generation, before the event is visited.
+        // Tactics live outside the ordinary deck/hand, but they still have to survive this
+        // resolution step so HexSelectionController.GrantCard can route them into PlayerSetupData.Tactics.
+        private static bool IsEventCardReward(CardDefinition card) =>
+            card != null && (card.cardType == CardType.Unit || card.cardType == CardType.Equipment
+                || card.cardType == CardType.Tactic);
+
         private void PlaceEvent(HexCoord hex, EventDefinition definition)
         {
             if (!map.CanEnter(hex)) return;
@@ -413,7 +420,7 @@ namespace Game.Setup
                     if (reward.type == RewardType.Card)
                     {
                         CardDefinition card = eventCatalog.ResolveCard(reward.cardKey);
-                        if (card != null && (card.cardType == CardType.Unit || card.cardType == CardType.Equipment))
+                        if (IsEventCardReward(card))
                             resolvedCardRewards.Add((reward, card));
                     }
 

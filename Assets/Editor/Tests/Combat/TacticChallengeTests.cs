@@ -229,6 +229,17 @@ namespace Game.EditorTests
             }
         }
 
+        [TestCase(CardType.Unit)]
+        [TestCase(CardType.Equipment)]
+        [TestCase(CardType.Tactic)]
+        public void EventRewardResolution_PreservesSupportedCardRewardsIncludingTactics(CardType type)
+        {
+            MethodInfo method = typeof(Game.Setup.CitadelSetupController).GetMethod("IsEventCardReward",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            Assert.That((bool)method.Invoke(null, new object[] { new CardDefinition { cardType = type } }), Is.True);
+        }
+
         [TestCase(false, 0)]
         [TestCase(false, 2)]
         [TestCase(true, 0)]
