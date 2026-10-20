@@ -861,7 +861,7 @@ namespace Game.Ai.V2
         {
             if (b == null || !IsProductionForceOutput(generation))
                 return 0f;
-            float need = ForceNeedModel.JustifiedForceNeed(snap).Total;
+            float need = ProductionNeedScale(generation, snap);
             float valueAfterChance = Mathf.Max(0f, ContingentValue(b) + b.GenerationRiskDiscount);
             return -(1f - need) * valueAfterChance;
         }
@@ -870,6 +870,9 @@ namespace Game.Ai.V2
             generation?.CardDef != null && !generation.ProducesEquipment
             && (generation.CardDef.isAviation || generation.CardDef.cardType == CardType.Unit
                 || generation.CardDef.cardType == CardType.Hero);
+
+        internal static float ProductionNeedScale(GenerationStep generation, WorldSnapshot snap) =>
+            IsProductionForceOutput(generation) ? ForceNeedModel.JustifiedForceNeed(snap).Total : 1f;
 
         internal static ResourceCost AddResourceCosts(ResourceCost a, ResourceCost b)
         {

@@ -415,6 +415,8 @@
         //     breakdown / NetScore as Unit/Hero. Values sit in the same band as a decent combat
         //     body's ForceGrowth + gap so the two lanes are directly comparable. First-pass.
         public const float nonCombatAviationBaseValue = 1.4f;
+        // Combat value after friendly collateral and the expendable launcher's loss.
+        public const float missileStockMinNetValue = 30f;
         public const float nonCombatAviationNoAirGap = 0.6f;   // added when the AI has zero air observation capacity (no wing, no launchable storage)
         public const float nonCombatFacilityValue = 1.1f;
         public const float nonCombatEconomyRunwayBonus = 1.0f; // scales Facility RoleFit by (1 - EconomicSecurity)

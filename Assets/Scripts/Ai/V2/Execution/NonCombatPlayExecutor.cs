@@ -41,9 +41,7 @@ namespace Game.Ai.V2
 
             // Revalidate the successful-chain budget before minting too. Expected score
             // never authorizes a fractional payment or the use of a newly protected hold.
-            if (play.ApCost > StrategicSpendability.SpendableAp(player, root, ctx)
-                    + AiConfigV2.allocatorSliceEpsilon
-                || !StrategicSpendability.FitsSpendableResources(player, root, ctx, play.ResCost))
+            if (!FitsBudget(play, player, root, ctx))
             {
                 res.FailReason = "non-combat chain no longer fits AP/spendable reserves";
                 return res;
@@ -76,10 +74,12 @@ namespace Game.Ai.V2
                 // a real asset, exactly like CardPlayExecutor keeping a created empty army.
                 NonCombatCardPlayer.NonCombatPlay fresh = NonCombatCardPlayer.PlayForGeneratedCard(
                     go.Minted, snap, player, root, hand, ctx);
-                if (fresh == null || fresh.Kind != play.Kind)
+                // Minting publishes hand/resource events. Re-read the free pool after them;
+                // the successful-chain check before generation cannot authorize a new hold.
+                if (fresh == null || fresh.Kind != play.Kind || !FitsBudget(fresh, player, root, ctx))
                 {
                     res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
-                    res.FailReason = "no legal placement for the generated non-combat card";
+                    res.FailReason = "no legal funded placement for the generated non-combat card";
                     StampVersion(ref res, stateVersionBefore);
                     return res;
                 }
@@ -166,6 +166,11 @@ namespace Game.Ai.V2
             StampVersion(ref res, stateVersionBefore);
             return res;
         }
+
+        private static bool FitsBudget(NonCombatCardPlayer.NonCombatPlay play, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx) =>
+            play.ApCost <= StrategicSpendability.SpendableAp(player, root, ctx) + AiConfigV2.allocatorSliceEpsilon
+            && StrategicSpendability.FitsSpendableResources(player, root, ctx, play.ResCost);
 
         private static void StampVersion(ref NonCombatExecuteResult result, int versionBefore)
         {

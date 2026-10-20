@@ -321,9 +321,8 @@ namespace Game.Combat
                                     victimDefense, victim.TypeTags, victim.Abilities, victimHp, victim.MaxHitPoints,
                                     WorthIt.CombatValue(victimAttack, victim.Defense, victim.MaxHitPoints, victim.Initiative));
                             }
-                            value *= count / (float)pool.Count;
-                            if (plane.SingleUseUnit) value -= WorthIt.CombatValue(plane.Attack, plane.Defense,
-                                planeHp[aircraftIndex], plane.Initiative);
+                            value = ExplosionAttack.NetValue(value, pool.Count, explosion, plane.SingleUseUnit
+                                ? WorthIt.CombatValue(plane.Attack, plane.Defense, planeHp[aircraftIndex], plane.Initiative) : 0f);
                             if (value <= 0) continue;
                             for (int i = 0; i < count; i++)
                             {

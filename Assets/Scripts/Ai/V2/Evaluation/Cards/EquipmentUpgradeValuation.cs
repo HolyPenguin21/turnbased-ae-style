@@ -491,13 +491,17 @@ namespace Game.Ai.V2
                         float attemptAp = ResearchProductionSystem.AttemptApCost(challenge);
                         if (ap < attemptAp + chance * weight * attachAp) continue;
                         attempts.TryGetValue(card, out int made);
-                        float repeat = DevelopmentDiversity.RepeatFactor(
+                        // Equipment's READY evaluator discounts idle AP and repeated upgrades.
+                        // Aviation's non-combat scorer charges full AP and no attachment step.
+                        float outputApScale = card.isAviation ? 1f : apScale;
+                        float repeat = card.isAviation ? 1f : DevelopmentDiversity.RepeatFactor(
                             DevelopmentDiversity.RecentAttempts(player, snap.TurnNumber, card) + made);
                         float u = o.Utility * repeat * weight;
-                        float attach = ActionPrice.ToCardScore(attachAp * apScale) * weight;
+                        float attach = ActionPrice.ToCardScore(attachAp * outputApScale) * weight;
                         float price = StrategicCardEvaluator.StrategicResourceCostValue(challenge.resourceCost,
-                            snap, t => budget.Get(t), player) + ActionPrice.ToCardScore(attemptAp * apScale)
-                            + AiConfigV2.stratChainAttachStepPenalty + AiConfigV2.stratChainGenerationStepPenalty;
+                            snap, t => budget.Get(t), player) + ActionPrice.ToCardScore(attemptAp * outputApScale)
+                            + (card.isAviation ? 0f : AiConfigV2.stratChainAttachStepPenalty)
+                            + AiConfigV2.stratChainGenerationStepPenalty;
                         float value = chance * (u - attach) - price;
                         if (value <= AiConfigV2.devEvMargin || value <= bestValue) continue;
                         best = i; bestValue = value; bestUtility = u; bestAttach = attach;
