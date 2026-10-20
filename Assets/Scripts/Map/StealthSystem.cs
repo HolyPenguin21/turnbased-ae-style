@@ -78,6 +78,9 @@ namespace Game.Map
         // the affected hex where one is known (for a targeted content refresh).
         public static event Action StealthChanged;
         public static event Action<HexCoord> StealthChangedAt;
+        // Actual exits by a resident are arrivals for contact purposes. Detection and the
+        // reveal of already committed battle participants do not request a new encounter.
+        public static event Action<ArmyData> ResidentRevealed;
 
         public static void Clear()
         {
@@ -130,6 +133,9 @@ namespace Game.Map
         // Voluntary owner exit (0 AP) AND the involuntary reveal a directed enemy action /
         // a landed air strike triggers — same clean-up either way.
         public static void ExitStealth(UnitData unit)
+            => ExitStealth(unit, resolveContact: true);
+
+        private static void ExitStealth(UnitData unit, bool resolveContact)
         {
             if (unit == null || !unit.IsHidden)
                 return;
@@ -140,12 +146,15 @@ namespace Game.Map
             // Moving armies resolve their actual terminal hex in the movement transaction;
             // ArmyData.Hex still names their origin until that transaction completes.
             ArmyData army = ArmyRegistry.FindArmyContaining(unit);
-            if (army != null && army.Owner != null
+            bool resident = army != null && army.Owner != null
                 && !Game.Aviation.AviationRules.IsAirArmy(army)
                 && !Game.Aviation.AviationRules.IsAirfield(army)
-                && (army.Controller == null || !army.Controller.IsMoving))
+                && (army.Controller == null || !army.Controller.IsMoving);
+            if (resident)
                 BuildingRegistry.CaptureOrDestroyIfUndefended(army.Hex, army.Owner, null, army);
             Notify(unit, null);
+            if (resolveContact && resident && BattleInitiator.CanInitiateContact(army))
+                ResidentRevealed?.Invoke(army);
         }
 
         // Drop stealth on every hidden member of `army` — what the start of a battle does
@@ -157,7 +166,7 @@ namespace Game.Map
                 return;
             foreach (UnitData member in new List<UnitData>(army.Members))
                 if (member.IsHidden)
-                    ExitStealth(member);
+                    ExitStealth(member, resolveContact: false);
         }
 
         // Atomic bulk reveal for a committed battle encounter (STEALTH-COMBAT-01) — reveals every

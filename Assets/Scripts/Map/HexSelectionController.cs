@@ -95,8 +95,12 @@ namespace Game.Map
         // encounter-completion signal to the existing AI move-operation trace.
         public BattleScreenUI BattleScreen => battleScreen;
         public bool IsBattleActive =>
+            _revealedArmyContacts.Count > 0 ||
             (battleScreen != null && battleScreen.IsShowing) ||
             (battleContactPopup != null && battleContactPopup.IsShowing);
+
+        private readonly List<(ArmyData Army, HexCoord Hex)> _revealedArmyContacts
+            = new List<(ArmyData Army, HexCoord Hex)>();
 
         // The army (if any) currently playing its selected-hover animation and eligible for
         // move orders — tracked so selecting a different hex stops it, instead of leaving it
@@ -152,6 +156,7 @@ namespace Game.Map
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             StealthSystem.StealthChanged += OnStealthChanged;
+            StealthSystem.ResidentRevealed += OnResidentRevealed;
             BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
             AviationActions.AircraftReturnedToHand += GrantCard;
             AviationActions.ReturnedWingDeletionRequested += DeleteReturnedWing;
@@ -179,6 +184,8 @@ namespace Game.Map
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
             VisionSystem.VisibleContentChanged -= OnVisibleContentChanged;
             StealthSystem.StealthChanged -= OnStealthChanged;
+            StealthSystem.ResidentRevealed -= OnResidentRevealed;
+            _revealedArmyContacts.Clear();
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
             AviationActions.AircraftReturnedToHand -= GrantCard;
             AviationActions.ReturnedWingDeletionRequested -= DeleteReturnedWing;
@@ -239,6 +246,42 @@ namespace Game.Map
             if (HumanVisualMemory.Tracks(viewer))
                 RememberCurrentlyVisibleContent(viewer);
             RefreshAllVisibility();
+        }
+
+        private void OnResidentRevealed(ArmyData army)
+        {
+            var contact = (Army: army, Hex: army.Hex);
+            if (!_revealedArmyContacts.Contains(contact))
+                _revealedArmyContacts.Add(contact);
+        }
+
+        private void ResolveRevealedArmyContacts()
+        {
+            if (_revealedArmyContacts.Count == 0 || _rpTransactionActive
+                || (turnController != null && turnController.IsCombatPresentationActive)
+                || (battleScreen != null && battleScreen.IsShowing)
+                || (battleContactPopup != null && battleContactPopup.IsShowing)
+                || Game.UI.UIFocusUtility.IsGameplayInputBlocked)
+                return;
+
+            while (_revealedArmyContacts.Count > 0)
+            {
+                var contact = _revealedArmyContacts[0];
+                _revealedArmyContacts.RemoveAt(0);
+                ArmyData army = contact.Army;
+                if (!ArmyRegistry.IsRegistered(army) || !army.Hex.Equals(contact.Hex)
+                    || (army.Controller != null && army.Controller.IsMoving)
+                    || !BattleInitiator.CanInitiateContact(army)
+                    || DelayedBattleRegistry.IsHexPending(contact.Hex)
+                    || BattleInitiator.FindDefenderOnArrival(contact.Hex, army) == null)
+                    continue;
+
+                // Finish the action which revealed the unit before opening the ordinary
+                // arrival contact flow; it may have just refreshed/opened one of these modals.
+                Deselect();
+                TryBeginBattleAt(contact.Hex, army);
+                return;
+            }
         }
 
         // Moved to HexSelectionController.Visuals.cs — see that file.
@@ -381,6 +424,7 @@ namespace Game.Map
 
         private void Update()
         {
+            ResolveRevealedArmyContacts();
             if (targetCamera == null || map == null || gameConfig == null)
                 return;
 

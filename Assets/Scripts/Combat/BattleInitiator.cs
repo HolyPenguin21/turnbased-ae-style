@@ -101,7 +101,7 @@ namespace Game.Combat
 
         // A visible combatant starts ground contact. A visible hero-only army also triggers
         // contact, but is the hunted side of a Capture/Kill encounter, not a tactical attacker.
-        // Mixed armies still need a visible combatant; a hidden force stays passive.
+        // A visible hero also brings a mixed army into contact when its other members hide.
         public static bool CanInitiateContact(ArmyData mover)
         {
             if (mover == null || AviationRules.IsAirArmy(mover) || AviationRules.IsAirfield(mover))
@@ -109,7 +109,7 @@ namespace Game.Combat
             foreach (UnitData member in mover.Members)
                 if (member.IsGroundCombatant && !member.IsHidden)
                     return true;
-            return !IsCombatCapable(mover) && mover.Members.Any(member => member.IsHero && !member.IsHidden);
+            return mover.Members.Any(member => member.IsHero && !member.IsHidden);
         }
 
         // Contact selection has two forms because many callers only ask the occupancy question

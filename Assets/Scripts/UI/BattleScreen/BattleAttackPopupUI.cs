@@ -995,9 +995,9 @@ namespace Game.UI
         // AI path for a whole duel turn — mirrors the human Spend/Accept loop exactly (may spend
         // more than once), just decided via FateDuelAi.ShouldSpendFate instead of a click. Per the
         // user's own correction: the AI isn't "obligated" to keep rerolling — it evaluates the
-        // CURRENT tokens fresh before EVERY reroll (same as a human deciding again after each one)
-        // and stops the instant ShouldSpendFate says it's no longer worth it, or the instant a
-        // reroll it just made comes back a miss again (see the stop-on-failed-reroll check below);
+        // CURRENT tokens fresh before EVERY reroll (same as a human deciding again after each one).
+        // A defender keeps trying an unfavorable result even after a failed reroll; an attacker
+        // retains its stop-on-failed-reroll policy.
         // getting a turn at all only happens because the other side just spent, per RunDuel.
         private IEnumerator RunAiTurn(bool isDefenderTurn)
         {
@@ -1064,14 +1064,8 @@ namespace Game.UI
 
                 RefreshTacticTotals();
 
-                // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
-                // just came back a miss again — this side is done trying Fate for the rest of
-                // THIS duel turn, even with Fate still left and even if ShouldSpendFate would say
-                // to keep going against the fresh tokens; re-evaluating right after proving unlucky
-                // isn't what "keep trying" means here. Checked on the slot RerollOneMiss actually
-                // touched (rerolledIndex), not the whole array, since other slots may still hold
-                // pre-existing (already-resolved) misses.
-                if (!rerolledHit)
+                // Failed defensive rerolls still leave a decision while Fate remains.
+                if (!isDefenderTurn && !rerolledHit)
                     break;
                 // Loop back — re-evaluate from scratch against the now-updated tokens before
                 // deciding whether another reroll is still worth it.

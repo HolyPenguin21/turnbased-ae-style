@@ -84,6 +84,68 @@ namespace Game.EditorTests
             Assert.That(_building.Owner, Is.SameAs(_enemy));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ResidentExitRequestsArrivalContactOnceAfterReveal(bool hero)
+        {
+            _unit.IsHero = hero;
+            var guard = new ArmyData { Owner = _enemy, Hex = _hex };
+            guard.Members.Add(new UnitData { Owner = _enemy, HitPointsCurrent = 5 });
+            ArmyRegistry.Register(guard);
+            int requests = 0;
+            void OnRevealed(ArmyData army)
+            {
+                requests++;
+                Assert.That(army, Is.SameAs(_army));
+                Assert.That(_unit.IsHidden, Is.False);
+                Assert.That(Game.Combat.BattleInitiator.FindDefenderOnArrival(_hex, army), Is.SameAs(guard));
+            }
+            StealthSystem.ResidentRevealed += OnRevealed;
+            try
+            {
+                StealthSystem.ExitStealth(_unit);
+                StealthSystem.ExitStealth(_unit);
+                Assert.That(requests, Is.EqualTo(1));
+            }
+            finally { StealthSystem.ResidentRevealed -= OnRevealed; }
+        }
+
+        [Test]
+        public void BattleRevealDetectionAndRemovalDoNotRequestAnotherArrival()
+        {
+            int requests = 0;
+            void OnRevealed(ArmyData _) => requests++;
+            StealthSystem.ResidentRevealed += OnRevealed;
+            try
+            {
+                StealthSystem.MarkDetected(_unit, _enemy);
+                StealthSystem.RevealArmy(_army);
+                _unit.IsHidden = true;
+                StealthSystem.RevealForBattle(new[] { _army }, _hex);
+                _unit.IsHidden = true;
+                StealthSystem.OnUnitRemoved(_unit);
+                Assert.That(requests, Is.Zero);
+            }
+            finally { StealthSystem.ResidentRevealed -= OnRevealed; }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AviationExitDoesNotRequestGroundArrival(bool airfield)
+        {
+            _unit.IsAviation = true;
+            _army.IsAirfield = airfield;
+            int requests = 0;
+            void OnRevealed(ArmyData _) => requests++;
+            StealthSystem.ResidentRevealed += OnRevealed;
+            try
+            {
+                StealthSystem.ExitStealth(_unit);
+                Assert.That(requests, Is.Zero);
+            }
+            finally { StealthSystem.ResidentRevealed -= OnRevealed; }
+        }
+
         // 2026-10-18 (project owner's decision) — a Base's own garrison defends it even while its
         // members are in stealth: the arriving visible army meets it (the reveal happens at the
         // battle's start) instead of taking the Base with the garrison still inside. Route planning

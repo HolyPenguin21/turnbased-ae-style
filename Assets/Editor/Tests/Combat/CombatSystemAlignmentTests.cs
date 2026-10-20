@@ -22,17 +22,7 @@ namespace Game.EditorTests
                 null, null, 2, 3, 3, 3, AbilityMagnitudes.Default,
                 rollTokens: count => BattleSimulationKernel.RollTokens(count, rng));
             session.Roll();
-            while (session.TryNextFateTurn(out bool defenderTurn))
-            {
-                bool spent = false;
-                while (session.ShouldAiSpend(defenderTurn))
-                {
-                    if (!session.TrySpend(defenderTurn, out _, out bool hit)) break;
-                    spent = true;
-                    if (!hit) break;
-                }
-                session.ReportFateTurn(spent);
-            }
+            session.ResolveAiDecisions();
             int hunterFate = 3, heroFate = 3;
             CaptureKillOutcome estimated = BattleSimulationKernel.ResolveCaptureKill(2, 3,
                 ref hunterFate, ref heroFate, new System.Random(seed));
@@ -931,7 +921,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ChallengeSession_FailedFateRerollEndsCurrentSpendChain()
+        public void ChallengeSession_AttackerFailedFateRerollEndsCurrentSpendChain()
         {
             int rollCall = 0;
             bool[] Roll(int count)
@@ -956,9 +946,9 @@ namespace Game.EditorTests
                 rollTokens: Roll);
 
             session.Roll();
-            Assert.That(session.TrySpend(false, out int rerolledIndex, out bool hit), Is.True);
-            Assert.That(rerolledIndex, Is.EqualTo(0));
-            Assert.That(hit, Is.False);
+            session.ResolveAiDecisions();
+            Assert.That(rollCall, Is.EqualTo(3));
+            Assert.That(session.AttackerTokens, Is.EqualTo(new[] { false }));
             Assert.That(session.LastSpendHit, Is.False);
             Assert.That(session.AttackerFateRemaining, Is.EqualTo(1));
         }
@@ -982,6 +972,72 @@ namespace Game.EditorTests
             session.ReportFateTurn(spent: false);
 
             Assert.That(session.TryNextFateTurn(out _), Is.False);
+        }
+
+        [TestCase(false, 3, 0, 0)] // Miss, miss, success: keep trying the same token.
+        [TestCase(false, 4, 1, 0)] // Stop after blocking, retaining unused Fate.
+        [TestCase(true, 3, 0, 1)]  // Repeated misses exhaust Fate.
+        public void DefenderFate_RepeatedMissesMatchSessionAndSimulation(
+            bool alwaysMiss, int fate, int expectedFate, int expectedDamage)
+        {
+            var sessionRng = new SequenceRandom(0.1, 0.9, 0.9, 0.9, alwaysMiss ? 0.9 : 0.1);
+            var session = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
+                null, null, 1, 1, 0, fate, AbilityMagnitudes.Default,
+                rollTokens: count => BattleSimulationKernel.RollTokens(count, sessionRng));
+            session.Roll();
+            session.ResolveAiDecisions();
+
+            int attackerFate = 0, defenderFate = fate;
+            var outcome = BattleSimulationKernel.ResolveExchange(1, 1,
+                Array.Empty<string>(), Array.Empty<UnitTypeTag>(), Array.Empty<string>(),
+                ref attackerFate, ref defenderFate, 4, AbilityMagnitudes.Default,
+                new SequenceRandom(0.1, 0.9, 0.9, 0.9, alwaysMiss ? 0.9 : 0.1));
+
+            Assert.That(session.DefenderFateRemaining, Is.EqualTo(expectedFate));
+            Assert.That(session.RawDamage, Is.EqualTo(expectedDamage));
+            Assert.That(defenderFate, Is.EqualTo(expectedFate));
+            Assert.That(outcome.Damage, Is.EqualTo(expectedDamage));
+        }
+
+        [TestCase(2, 2, 4, false)] // More than one success needed for a full block.
+        [TestCase(3, 1, 1, false)] // Reduce damage even when a full block is unreachable.
+        [TestCase(1, 1, 4, true)]  // A retreating defender also tries an unfavorable result.
+        public void DefenderFate_AnyUnfavorableResultUsesAvailableRerolls(
+            int attack, int defense, int hp, bool retreating)
+        {
+            int calls = 0;
+            var defender = new UnitData { HitPointsCurrent = hp, HitPointsMax = hp };
+            var session = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
+                null, defender, attack, defense, 0, 3, AbilityMagnitudes.Default,
+                defenderIsRetreating: retreating,
+                rollTokens: count => ++calls == 1 ? Array.ConvertAll(new bool[count], _ => true)
+                    : calls == 2 ? new bool[count] : new[] { true });
+            session.Roll();
+            session.ResolveAiDecisions();
+
+            Assert.That(session.DefenderTokens, Is.All.True);
+            Assert.That(session.DefenderFateRemaining, Is.EqualTo(3 - defense));
+            Assert.That(session.RawDamage, Is.EqualTo(Math.Max(0, attack - defense)));
+        }
+
+        [Test]
+        public void CaptureKill_DefenderRetriesFailedRerollsUntilEscaped()
+        {
+            var rng = new SequenceRandom(0.1, 0.1, 0.9, 0.9, 0.9, 0.1);
+            var session = new BattleChallengeSession(BattleChallengeMode.CaptureKill,
+                null, null, 1, 2, 0, 4, AbilityMagnitudes.Default,
+                rollTokens: count => BattleSimulationKernel.RollTokens(count, rng));
+            session.Roll();
+            session.ResolveAiDecisions();
+
+            int attackerFate = 0, defenderFate = 4;
+            var outcome = BattleSimulationKernel.ResolveCaptureKill(1, 2,
+                ref attackerFate, ref defenderFate,
+                new SequenceRandom(0.1, 0.1, 0.9, 0.9, 0.9, 0.1));
+            Assert.That(session.ResolveCaptureKillOutcome(), Is.EqualTo(CaptureKillOutcome.Escaped));
+            Assert.That(outcome, Is.EqualTo(CaptureKillOutcome.Escaped));
+            Assert.That(session.DefenderFateRemaining, Is.EqualTo(1));
+            Assert.That(defenderFate, Is.EqualTo(1));
         }
 
         private sealed class SequenceRandom : System.Random
