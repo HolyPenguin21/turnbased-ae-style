@@ -18,9 +18,12 @@ namespace Game.Ai.V2
         internal readonly HexCoord Target;
         internal readonly AirStrikePolicy Policy;
         internal readonly TaskScore Score;
+        internal readonly int? StockEnemyArmyId;
+        internal bool IsStockPreparation => StockEnemyArmyId.HasValue;
+        internal string Identity => IsStockPreparation ? $"missile-stock:{StockEnemyArmyId}@{Target}" : Key.ToString();
         internal CombatAirSupportRequest(MissionIntentKey key, HexCoord target,
-            AirStrikePolicy policy, TaskScore score)
-        { Key = key; Target = target; Policy = policy; Score = score; }
+            AirStrikePolicy policy, TaskScore score, int? stockEnemyArmyId = null)
+        { Key = key; Target = target; Policy = policy; Score = score; StockEnemyArmyId = stockEnemyArmyId; }
     }
 
     internal readonly struct CombatAirService
@@ -90,6 +93,10 @@ namespace Game.Ai.V2
         {
             if (snap == null || map == null || player == null || aircraft == null || aircraft.Count == 0
                 || aircraft.Any(u => !AviationRules.IsAviation(u))) return null;
+            if (request.IsStockPreparation && !IsStockMissileGroup(aircraft)) return null;
+            float stockValue = request.IsStockPreparation
+                ? MissileStockValue(snap, aircraft, request.Target, wing?.Id) : 0f;
+            if (request.IsStockPreparation && stockValue < AiConfigV2.missileStockMinNetValue) return null;
             if (wing != null && wing.Controller == null) return null;
             if (TargetKnownEmpty(snap, request.Target, request.Policy)) return null;
             Sortie? same = wing != null
@@ -129,6 +136,10 @@ namespace Game.Ai.V2
             float hp = targets.Sum(t => t.Roster.Units.Sum(u => u.HitPoints))
                 + (collateral?.Where(c => !c.Friendly).Sum(c => c.Profile.HitPoints) ?? 0f);
             float effect = known && hp > 0 ? Mathf.Clamp01(estimate.NetExpectedDamage / hp) : 0.5f;
+            if (request.IsStockPreparation)
+            {
+                effect = MissileStockEffect(stockValue, aircraft[0]);
+            }
             TaskScore score = ServiceScore(request.Score, effect, ap, energy, eta);
             return new CombatAirService(same?.LandingHex ?? multi.Value.LandingHex,
                 eta, strikes, outbound + home, known, ap, energy, score, estimate);

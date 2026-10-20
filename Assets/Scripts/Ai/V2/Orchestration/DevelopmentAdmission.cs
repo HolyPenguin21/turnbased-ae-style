@@ -123,6 +123,7 @@ namespace Game.Ai.V2
                 + $"{ap?.EstimatedArmyApDemand}:{ap?.EstimatedCardApDemand}:{budget}:{sources}:"
                 + DevelopmentDiversity.HistoryKey(player, snap?.TurnNumber ?? 0)
                 + $"|airfields={airfields}|path={snap?.MapPathingVersion}"
+                + $"|missileStock={GroundCombatAirSupport.MissileStockFacts(snap, player)}"
                 + "|preservation=" + PriceInputs(snap, player, null, null);
         }
 

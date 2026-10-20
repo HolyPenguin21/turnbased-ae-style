@@ -57,10 +57,35 @@ namespace Game.Combat
                 value += (victim.Owner == actor.Owner ? -1f : 1f) * ExpectedDamageValue(actor.Abilities,
                     defense, victim.TypeTags, victim.Abilities, hp, victim.HitPointsMax, bodyValue);
             }
-            value *= Mathf.Min(TargetLimit(actor.Abilities), pool.Count) / (float)pool.Count;
-            return value - (expendUnit
+            return NetValue(value, pool.Count, TargetLimit(actor.Abilities), expendUnit
                 ? WorthIt.CombatValue(actor.Attack, actor.Defense, actor.HitPointsCurrent, actor.Initiative) : 0f);
         }
+
+        // The caller supplies an eligible observed pool, never reconstructed foreign live units.
+        internal static float ExpectedNetValue(WorthIt.DefenderProfile actor,
+            IEnumerable<AviationCombatEstimator.ExplosionCollateral> targets)
+        {
+            float value = 0f;
+            int count = 0;
+            foreach (var target in targets)
+            {
+                var victim = target.Profile;
+                if (victim.HitPoints <= 0) continue;
+                if (target.OwnCitadel && ChallengeResult.ApplyAbilityModifiers(AttackDice,
+                    actor.Abilities, victim.TypeTags, victim.Abilities, AbilityMagnitudes.Default) >= victim.HitPoints)
+                    return float.NegativeInfinity;
+                count++;
+                value += (target.Friendly ? -1f : 1f) * ExpectedDamageValue(actor.Abilities,
+                    victim.IsHero ? victim.FateMax : Mathf.RoundToInt(victim.Defense), victim.TypeTags,
+                    victim.Abilities, victim.HitPoints, victim.MaxHitPoints,
+                    WorthIt.CombatValue(victim.Attack, victim.Defense, victim.MaxHitPoints, victim.Initiative));
+            }
+            return NetValue(value, count, TargetLimit(actor.Abilities), actor.SingleUseUnit
+                ? WorthIt.CombatValue(actor.Attack, actor.Defense, actor.HitPoints, actor.Initiative) : 0f);
+        }
+
+        internal static float NetValue(float signedDamageValue, int count, int limit, float sacrifice) =>
+            count == 0 ? 0f : signedDamageValue * Mathf.Min(limit, count) / count - sacrifice;
 
         internal static float ExpectedDamageValue(IEnumerable<string> attackerAbilities, int defense,
             IReadOnlyCollection<UnitTypeTag> tags, IEnumerable<string> defenderAbilities,
@@ -188,7 +213,7 @@ namespace Game.Combat
             {
                 UnitData u = target.Combatant();
                 if (u.HitPointsCurrent > 0) profiles.Add(new WorthIt.DefenderProfile(u.Defense,
-                    u.HasAbility(UnitAbilities.CeramicArmor), null, hitPoints: u.HitPointsCurrent,
+                    u.HasAbility(UnitAbilities.CeramicArmor), null, hitPoints: u.HitPointsCurrent, initiative: u.Initiative,
                     abilities: u.Abilities.ToArray(), maxHitPoints: u.HitPointsMax, isGroundCombatant: false,
                     fateMax: u.Fate));
             }
