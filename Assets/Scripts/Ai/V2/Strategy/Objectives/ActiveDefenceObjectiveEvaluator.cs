@@ -112,8 +112,8 @@ namespace Game.Ai.V2
     }
 
     // Threat -> objective is deliberately snapshot-only. One hostile army yields at most one
-    // objective: the protected asset is selected by the canonical TaskScore, never by a private
-    // defence-family multiplier.
+    // objective: defend its earliest known damage deadline, then use the canonical TaskScore
+    // inside that deadline bucket. Unknown ETA never displaces a known arrival.
     public static partial class ActiveDefenceObjectiveEvaluator
     {
         public static List<ActiveDefenceObjective> Enumerate(WorldSnapshot snap)
@@ -138,32 +138,27 @@ namespace Game.Ai.V2
                     && interceptableIds.Contains(t.Contact.Army.ArmyId))
                 .GroupBy(t => t.Contact.Army.ArmyId))
             {
-                AssetThreatSnapshot chosen = group
-                    .Select(t => new { Threat = t, Score = BuildActiveDefenceScore(snap, t) })
-                    .OrderByDescending(x => x.Score.Value)
-                    .ThenByDescending(x => x.Threat.Asset.Value * x.Threat.Severity)
-                    .ThenBy(x => x.Threat.EnemyEta ?? int.MaxValue)
-                    .ThenBy(x => x.Threat.Asset.Hex.Q).ThenBy(x => x.Threat.Asset.Hex.R)
-                    .Select(x => x.Threat).First();
-                if (OnKnownForeignStructure(snap, chosen.Contact.Position.Value))
+                EnemyContactSnapshot contact = group.First().Contact;
+                if (OnKnownForeignStructure(snap, contact.Position.Value))
                 {
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                         $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
                         + "reason=enemy_on_known_foreign_structure attack_owner_required");
                     continue;
                 }
-                // 2026-09-30 (user decision) — a contact that cannot take or damage what it
-                // approaches is no defence target: ActiveDefence does not chase every sighting.
-                if (chosen.PotentialDamage <= 0f)
+                // Damage is an admission gate for EACH pair, before selecting any deadline or
+                // score. A harmless pair must never hide another asset this army can damage.
+                List<AssetThreatSnapshot> damaging = group.Where(t => t.PotentialDamage > 0f).ToList();
+                if (damaging.Count == 0)
                 {
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                         $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
                         + "reason=no_potential_damage_to_any_asset");
                     continue;
                 }
-                // 2026-10-01 (user decision) — by roster strength, not by skills: a scout or a
-                // lone weak body is not worth an army's AP.
-                float enemyPower = chosen.Contact.Army.EffectiveArmyPower;
+                // Significance belongs to the physical enemy, not to the representative asset.
+                // ImmediateOpportunity retains its separate admission for weak targets.
+                float enemyPower = contact.Army.EffectiveArmyPower;
                 if (!IsSignificantHostilePower(enemyPower))
                 {
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
@@ -171,7 +166,18 @@ namespace Game.Ai.V2
                         + $"reason=enemy_below_min_power power={enemyPower:0.0}");
                     continue;
                 }
-                TaskScore score = BuildActiveDefenceScore(snap, chosen);
+                var representative = AiV2Util.AtEarliestKnownThreatDeadline(damaging)
+                    .Select(t => new { Threat = t, Score = BuildActiveDefenceScore(snap, t) })
+                    .OrderByDescending(x => x.Score.Value)
+                    .ThenByDescending(x => x.Threat.Asset.Value * x.Threat.Severity)
+                    // Approach cost is remaining terrain-route MP, not a finer turn deadline.
+                    // It breaks strategic ties within one ETA bucket; it does not outrank score.
+                    .ThenBy(x => x.Threat.EnemyApproachCost.HasValue ? 0 : 1)
+                    .ThenBy(x => x.Threat.EnemyApproachCost.GetValueOrDefault())
+                    .ThenBy(x => x.Threat.Asset.Hex.Q).ThenBy(x => x.Threat.Asset.Hex.R)
+                    .First();
+                AssetThreatSnapshot chosen = representative.Threat;
+                TaskScore score = representative.Score;
                 var target = new ActiveDefenceMissionTarget
                 {
                     Phase = ActiveDefencePhase.Intercept,
@@ -190,6 +196,7 @@ namespace Game.Ai.V2
                 AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                     $"[AI][V2][ActiveDefence][Objective] decision=ACCEPT enemy={group.Key} "
                     + $"asset={chosen.Asset.Kind}@({chosen.Asset.Hex.Q},{chosen.Asset.Hex.R}) "
+                    + $"enemyEta={chosen.EnemyEta?.ToString(CultureInfo.InvariantCulture) ?? "unknown"} "
                     + $"task={score.Value:0.00} severity={chosen.Severity:0.00}");
             }
 

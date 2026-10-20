@@ -82,9 +82,10 @@ namespace Game.Ai.V2
             || (snap?.Threat?.Threats?.Any(t => t != null
                 && t.Severity >= AiConfigV2.threatSeverityTrigger) ?? false);
 
-        // One physical hostile force contributes once. The protected asset selects relevance and
-        // diagnostics, exactly like ActiveDefenceObjectiveEvaluator; it must not clone the same
-        // enemy power for every Citadel/Base/Facility lying inside its threat envelope.
+        // One physical hostile force contributes once, independent of representative asset.
+        // Stronghold pairs admit the force to the reserve; their asset only labels diagnostics.
+        // Diagnostics share ActiveDefence's known-deadline ordering, not its damage/significance
+        // gates or TaskScore ranking: reserve remains physical power times the confidence margin.
         internal static float DefensiveReserveForThreats(
             IReadOnlyList<AssetThreatSnapshot> threats, bool log = false)
         {
@@ -97,17 +98,19 @@ namespace Game.Ai.V2
                     && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base))
                 .GroupBy(t => t.Contact.Army.ArmyId))
             {
-                AssetThreatSnapshot best = group
-                    .OrderByDescending(t => t.Severity)
-                    .ThenByDescending(t => t.Asset.Value)
-                    .ThenBy(t => t.EnemyEta ?? int.MaxValue)
-                    .First();
                 float contribution = Mathf.Max(0f,
-                    best.Contact.Army.EffectiveArmyPower
+                    group.First().Contact.Army.EffectiveArmyPower
                     * AiConfigV2.aggDefenceConfidenceMargin);
                 reserve += contribution;
                 if (log)
                 {
+                    AssetThreatSnapshot best = AiV2Util.AtEarliestKnownThreatDeadline(group)
+                        .OrderByDescending(t => t.Severity)
+                        .ThenByDescending(t => t.Asset.Value)
+                        .ThenBy(t => t.EnemyApproachCost.HasValue ? 0 : 1)
+                        .ThenBy(t => t.EnemyApproachCost.GetValueOrDefault())
+                        .ThenBy(t => t.Asset.Hex.Q).ThenBy(t => t.Asset.Hex.R)
+                        .First();
                     string enemyLabel = $"#{best.Contact.Army.ArmyId}";
                     AiDebugLog.WriteDeduped($"reserve:{enemyLabel}:{best.Asset.Hex.Q}:{best.Asset.Hex.R}",
                         $"[AI][V2][Defence][Reserve] enemy={enemyLabel} contributes={contribution:0.##} "
