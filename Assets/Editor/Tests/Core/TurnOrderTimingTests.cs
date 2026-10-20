@@ -11,10 +11,10 @@ namespace Game.EditorTests
     public class TurnOrderTimingTests
     {
         [Test]
-        public void DiceDurations_UseFullRollAndShortFateReroll()
+        public void TokensDurations_UseFullRollAndShortFateReroll()
         {
-            Assert.That(DiceSlotUI.FullRollDuration, Is.EqualTo(1f));
-            Assert.That(DiceSlotUI.FateRerollDuration, Is.EqualTo(0.5f));
+            Assert.That(TokenSlotUI.FullRollDuration, Is.EqualTo(1f));
+            Assert.That(TokenSlotUI.FateRerollDuration, Is.EqualTo(0.5f));
         }
 
         [Test]
@@ -23,20 +23,20 @@ namespace Game.EditorTests
             var a = new PlayerSetupData { Nickname = "A" };
             var b = new PlayerSetupData { Nickname = "B" };
             var c = new PlayerSetupData { Nickname = "C" };
-            var scripted = new Queue<Dictionary<PlayerSetupData, DiceRollResult>>(new[]
+            var scripted = new Queue<Dictionary<PlayerSetupData, TokenRollResult>>(new[]
             {
-                new Dictionary<PlayerSetupData, DiceRollResult>
+                new Dictionary<PlayerSetupData, TokenRollResult>
                 {
                     [a] = Roll(true, false, false),
                     [b] = Roll(true, false, false),
                     [c] = Roll(false, false, false),
                 },
-                new Dictionary<PlayerSetupData, DiceRollResult>
+                new Dictionary<PlayerSetupData, TokenRollResult>
                 {
                     [a] = Roll(true, false, false),
                     [b] = Roll(true, false, false),
                 },
-                new Dictionary<PlayerSetupData, DiceRollResult>
+                new Dictionary<PlayerSetupData, TokenRollResult>
                 {
                     [a] = Roll(true, true, false),
                     [b] = Roll(false, false, false),
@@ -59,7 +59,7 @@ namespace Game.EditorTests
             Assert.That(resolution.FinalRolls[c].Score, Is.Zero);
         }
 
-        private static DiceRollResult Roll(params bool[] dice) => new DiceRollResult(dice);
+        private static TokenRollResult Roll(params bool[] tokens) => new TokenRollResult(tokens);
     }
 }
 #endif

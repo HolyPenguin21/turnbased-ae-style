@@ -17,6 +17,13 @@ namespace Game.EditorTests
         private static readonly PlayerSetupData Own = new PlayerSetupData();
         private static readonly PlayerSetupData Foe = new PlayerSetupData();
 
+        private sealed class CountingRandom : Random
+        {
+            public int Draws;
+            public CountingRandom() : base(42) { }
+            public override int Next(int maxValue) { Draws++; return base.Next(maxValue); }
+        }
+
         private static UnitData Body(PlayerSetupData owner, int attack = 2, int defense = 1, int hp = 6,
             params string[] abilities)
         {
@@ -50,6 +57,113 @@ namespace Game.EditorTests
         // Attacker successes - defender successes = `raw` (no Fate on either side).
         private static BattleChallengeRollResult Roll(int raw) =>
             new BattleChallengeRollResult(new bool[raw].Populate(true), new bool[0], 0, 0);
+
+        [Test]
+        public void HitEffectSummary_ListsEffectSkillsWithoutChangingCombatState()
+        {
+            UnitData attacker = Body(Own, abilities: new[]
+                { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
+            UnitData victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
+            var skills = new List<string> { UnitAbilities.CriticalDamage };
+            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, 2, new[]
+                { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
+            CollectionAssert.AreEquivalent(new[] { UnitAbilities.CriticalDamage,
+                UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher,
+                UnitAbilities.Berserk }, skills);
+            Assert.That(victim.HitPointsCurrent, Is.EqualTo(6));
+            Assert.That(victim.BerserkStacks, Is.Zero);
+        }
+
+        [TestCase(0)]
+        [TestCase(-1)]
+        public void HitEffectSummary_MissesAndAbsorbedHitsDoNotListHitEffects(int damage)
+        {
+            UnitData attacker = Body(Own, abilities: new[]
+                { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
+            UnitData victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
+            var skills = new List<string> { UnitAbilities.CeramicArmor };
+            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, damage, new[] { UnitAbilities.ShockAttack, UnitAbilities.Splash });
+            CollectionAssert.AreEqual(new[] { UnitAbilities.CeramicArmor }, skills);
+        }
+
+        [Test]
+        public void HitEffectSummary_UsesResolvedGroundEffectsAndFieldCombatOnlyAddsBerserk()
+        {
+            UnitData attacker = Body(Own, abilities: new[]
+                { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
+            UnitData victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
+            var skills = new List<string>();
+            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, 1, new[] { UnitAbilities.ShockAttack });
+            CollectionAssert.AreEquivalent(new[] { UnitAbilities.ShockAttack, UnitAbilities.Berserk }, skills);
+            skills.Clear();
+            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, 2);
+            CollectionAssert.AreEqual(new[] { UnitAbilities.Berserk }, skills);
+        }
+
+        [Test]
+        public void HitEffectPreview_DoesNotReportAbsentCollateralOrAnAlreadySpentTurn()
+        {
+            UnitData attacker = Body(Own, abilities: new[]
+                { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
+            UnitData victim = Body(Foe);
+            BattleEngine engine = Engine(Army(Own, attacker), Army(Foe, victim),
+                (attacker, 0, 0), (victim, 2, 2));
+            Assert.That(engine.PreviewGroundHitEffects(attacker, victim, 2), Is.Empty);
+            engine.State.TurnOrder = new List<UnitData> { attacker, victim };
+            CollectionAssert.AreEqual(new[] { UnitAbilities.ShockAttack },
+                engine.PreviewGroundHitEffects(attacker, victim, 2));
+            Assert.That(engine.PreviewGroundHitEffects(attacker, victim, 0), Is.Empty);
+        }
+
+        [Test]
+        public void HitEffectPreview_UsesTheSameCollateralPlanAsTheAcknowledgedAttack()
+        {
+            UnitData attacker = Body(Own, abilities: new[]
+                { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
+            UnitData victim = Body(Foe), left = Body(Foe), right = Body(Foe), above = Body(Foe);
+            foreach (var unit in new[] { left, right, above }) unit.TypeTags.Add(UnitTypeTag.Bio);
+            var grid = new BattleGrid();
+            grid.Set(0, 0, attacker);
+            grid.Set(2, 2, victim);
+            grid.Set(2, 1, left);
+            grid.Set(2, 3, right);
+            grid.Set(1, 2, above);
+            var random = new CountingRandom();
+            var engine = new BattleEngine(new BattleState(default, Army(Own, attacker),
+                Army(Foe, victim, left, right, above), grid, 42), AbilityMagnitudes.Default, random);
+            engine.State.TurnOrder = new List<UnitData> { attacker, victim };
+            var effects = engine.PreviewGroundHitEffects(attacker, victim, 2);
+            int draws = random.Draws;
+            Assert.That(draws, Is.GreaterThan(0));
+            CollectionAssert.AreEquivalent(new[]
+                { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher }, effects);
+            Assert.That(victim.HitPointsCurrent, Is.EqualTo(6));
+            Assert.That(left.HitPointsCurrent, Is.EqualTo(6));
+            Assert.That(engine.State.TurnOrder.Count, Is.EqualTo(2));
+            CollectionAssert.AreEqual(effects, engine.PreviewGroundHitEffects(attacker, victim, 2));
+            Assert.That(random.Draws, Is.EqualTo(draws), "Repeated presentation must not reroll collateral.");
+            BattleAttackApplication applied = engine.ApplyGroundAttack(attacker, victim, 2);
+            Assert.That(random.Draws, Is.EqualTo(draws), "Acknowledgement must use the displayed plan.");
+            Assert.That(applied.Shocked, Is.True);
+            CollectionAssert.AreEquivalent(new[] { UnitAbilities.Splash, UnitAbilities.Splash,
+                UnitAbilities.Scorcher }, applied.SecondaryHits.ConvertAll(hit => hit.Skill));
+            Assert.That(left.HitPointsCurrent, Is.EqualTo(5));
+        }
+
+        [Test]
+        public void HitEffectPreview_ScorcherDoesNotClaimTargetsConsumedBySplashOrNonBioTargets()
+        {
+            UnitData attacker = Body(Own, abilities: new[] { UnitAbilities.Splash, UnitAbilities.Scorcher });
+            UnitData victim = Body(Foe), neighbour = Body(Foe);
+            BattleEngine engine = Engine(Army(Own, attacker), Army(Foe, victim, neighbour),
+                (attacker, 0, 0), (victim, 2, 2), (neighbour, 2, 1));
+            CollectionAssert.AreEqual(new[] { UnitAbilities.Splash },
+                engine.PreviewGroundHitEffects(attacker, victim, 2));
+            // Finish the existing plan before the next challenge changes the actor's skills.
+            engine.ApplyGroundAttack(attacker, victim, 2);
+            attacker.Abilities.Remove(UnitAbilities.Splash);
+            Assert.That(engine.PreviewGroundHitEffects(attacker, victim, 2), Is.Empty);
+        }
 
         [Test]
         public void Ionic_AddsFlatDamageOnlyAgainstMechanical()

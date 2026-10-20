@@ -13,13 +13,13 @@ namespace Game.Combat
     // versa.
     public static class BattleTargetSelector
     {
-        // All defense dice can fail, but armor/ability modifiers can still make even the
+        // All defense tokens can fail, but armor/ability modifiers can still make even the
         // maximum roll harmless. Share this feasibility check with firing-position search.
         public static bool CanDamage(UnitData actor, UnitData target, AbilityMagnitudes magnitudes,
             int? attackOverride = null)
             => actor != null && target != null && ChallengeResult.ApplyAbilityModifiers(
                 Mathf.Max(0, ExplosionAttack.TargetLimit(actor.Abilities) > 0
-                    ? ExplosionAttack.AttackDice : attackOverride ?? actor.Attack), actor, target, magnitudes) > 0;
+                    ? ExplosionAttack.AttackTokens : attackOverride ?? actor.Attack), actor, target, magnitudes) > 0;
 
         // Small enough next to the x10000/x10 finishing-blow/damage-efficiency tiers to only ever
         // nudge a choice between otherwise-close candidates toward "this hit also knocks the
@@ -81,12 +81,12 @@ namespace Game.Combat
         // Returns false for a target this attack can't meaningfully hurt — `score`/`reason` are
         // still filled in on a false return so TryChooseAttackTarget can still compare "useless"
         // candidates against each other for its own last-resort fallback (a live Duel Challenge
-        // rolls real dice, so an ~0-expected target can still land a hit via variance or Fate);
+        // rolls real tokens, so an ~0-expected target can still land a hit via variance or Fate);
         // TryFindBestReachableTarget's deterministic expected-value model has no such variance to
         // hope for, so it skips a false return entirely and lets the actor advance instead — see
         // each caller's own handling.
         // interceptor (UnitAbilities.Bodyguard): the guard that takes any landed hit on
-        // `candidate` — the dice are still rolled against the candidate, but the damage, kill and
+        // `candidate` — the tokens are still rolled against the candidate, but the damage, kill and
         // denied-output terms describe the guard, since it is the unit that actually gets hit.
         // counterExpectedDamage (UnitAbilities.Counterattack): what the hit unit's immediate answer
         // is expected to deal the actor; it costs the score on the same x100 scale as damage dealt,
@@ -95,7 +95,7 @@ namespace Game.Combat
         public static bool TryScoreTarget(UnitData actor, UnitData candidate, float candidateHp,
             AbilityMagnitudes magnitudes, bool candidateNotYetActedThisRound,
             out float score, out float expectedDamage, out AiThoughtCategory reason,
-            int defenderBonusDice = 0, int? actorAttackOverride = null, int? candidateDefenseOverride = null,
+            int defenderBonusTokens = 0, int? actorAttackOverride = null, int? candidateDefenseOverride = null,
             int? candidateAttackOverride = null, UnitData interceptor = null, float interceptorHp = 0f,
             bool interceptorNotYetActed = false, int? interceptorAttackOverride = null,
             float counterExpectedDamage = 0f)
@@ -107,7 +107,7 @@ namespace Game.Combat
                 ?? victim.Attack;
 
             BattleCombatOdds.ExchangeOdds odds = BattleCombatOdds.Evaluate(
-                actor, candidate, defenderBonusDice, magnitudes, victimHp,
+                actor, candidate, defenderBonusTokens, magnitudes, victimHp,
                 actorAttackOverride, candidateDefenseOverride, interceptor);
             expectedDamage = odds.ExpectedDamage;
 
@@ -194,7 +194,7 @@ namespace Game.Combat
         //
         // A target this attack can't meaningfully hurt gets left out here (unlike
         // TryChooseAttackTarget's own last-resort fallback) — a deterministic expected-value
-        // playout has no dice variance to hope for, so "attacking" for a modeled 0 damage is
+        // playout has no tokens variance to hope for, so "attacking" for a modeled 0 damage is
         // strictly worse than spending the round advancing instead.
         public static bool TryFindBestReachableTarget(BattleGrid grid, Dictionary<UnitData, float> hp, UnitData actor,
             int actorRow, int actorCol, AbilityMagnitudes magnitudes, List<UnitData> order, int currentIndex,

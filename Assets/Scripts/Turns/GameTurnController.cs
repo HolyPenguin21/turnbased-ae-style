@@ -22,12 +22,12 @@ using TMPro;
 
 namespace Game.Turns
 {
-    // Owns the overall turn loop: phase 1 (dice-off for turn order, redone every turn) then
+    // Owns the overall turn loop: phase 1 (tokens-off for turn order, redone every turn) then
     // phase 2 (each player takes their turn, in that order, human or AI alike — an AI "turn"
     // just passes after a short pause for now, since there's nothing for it to actually
     // decide yet). When the last real player finishes, phase 1 runs again for the next turn.
     //
-    // The dice-off only ever sees GameSession.Players — real configured players, human or AI.
+    // The tokens-off only ever sees GameSession.Players — real configured players, human or AI.
     // The neutral faction (PlayerRoot.Create(null, "Neutral") in CitadelSetupController) was
     // never added to that list, so it's excluded from the roll automatically. It still gets a
     // fixed last slot in phase 2 (index == CurrentTurnOrder.Count, represented as `null`
@@ -593,7 +593,7 @@ namespace Game.Turns
 
         // Every player has just passed (Neutral's own fixed last slot in phase 2 — see
         // BeginPlayerTurn) — exactly when the manual's Delay Attack says a delayed battle
-        // actually starts. Drained here, one at a time, before the new round's dice-off gets
+        // actually starts. Drained here, one at a time, before the new round's tokens-off gets
         // a chance to run — see ResolveDelayedBattlesThen. Always starts the coroutine, even
         // with an empty DelayedBattleRegistry — ResolveDelayedBattlesThen's own loop already
         // falls back to TryFindNextContestedBattle in that case, which is the ONLY place that
@@ -790,7 +790,7 @@ namespace Game.Turns
             TurnNumber++;
             TurnStarted?.Invoke(TurnNumber);
             Game.Ai.AiMatchStats.OnRoundStarted(TurnNumber);
-            CurrentPlayer = null; // no one's turn during the dice-off itself
+            CurrentPlayer = null; // no one's turn during the tokens-off itself
             TurnStateChanged?.Invoke();
 
             if (endTurnButton != null)
@@ -802,7 +802,7 @@ namespace Game.Turns
                 return;
 
             // A defeated player is out of the game's economy and order from the next round on: no
-            // income, no initiative dice, no slot in the turn order (so a survivor's rank - and the
+            // income, no initiative tokens, no slot in the turn order (so a survivor's rank - and the
             // AP that rank pays - is never pushed down by someone who cannot play). Their armies
             // stay where they stand: attackable, but nothing ever moves them again (their turn
             // never runs, they never retreat - see BattleScreenUI.TryAssessSideRetreat).
@@ -812,7 +812,7 @@ namespace Game.Turns
             GrantProduceResourceIncome();
 
             foreach (PlayerSetupData player in activePlayers)
-                PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeDice();
+                PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeTokens();
 
             // Initiative has one implementation now. Every AI plans from the same immutable
             // pre-purchase state, then all paid purchases are applied before the human sees
@@ -849,12 +849,12 @@ namespace Game.Turns
             // Public record of what everyone visibly ended up buying this round — the ONLY
             // opponent information next round's Initiative AI is allowed to use (see
             // InitiativePublicHistory). Taken now, after the roll, before next turn's
-            // ResetBonusInitiativeDice wipes the counts.
+            // ResetBonusInitiativeTokens wipes the counts.
             foreach (PlayerSetupData player in GameSession.Players)
             {
                 PlayerRoot historyRoot = PlayerRootRegistry.FindFor(player);
                 if (historyRoot != null)
-                    InitiativePublicHistory.RecordFinalBonusDice(player, historyRoot.BonusInitiativeDice);
+                    InitiativePublicHistory.RecordFinalBonusTokens(player, historyRoot.BonusInitiativeTokens);
             }
 
             AllocateActionPoints(order);

@@ -130,7 +130,7 @@ namespace Game.Cards
 
         // Recce is parameterized now (r1s0/r1s4/r1s5/r1s6) — its radius/spot-strength live
         // in the tag string itself and are read via Game.Cards.AbilityParams, so there is no
-        // shared magnitude field here any more. Stealth4's hide dice are likewise encoded in
+        // shared magnitude field here any more. Stealth4's hide tokens are likewise encoded in
         // the tag. knownAbilities above still carries a hand-written description for each.
     }
 }

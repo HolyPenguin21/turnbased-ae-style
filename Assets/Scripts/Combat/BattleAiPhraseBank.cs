@@ -4,7 +4,7 @@ namespace Game.Combat
 {
     // The actual AiЕhoughts_Text content — English, personal, a little dry/funny where it fits,
     // One random line per category per trigger. BattleAiThoughtsUI finishes the visible line
-    // and retains only the latest pending event. Dice reactions precede the final result.
+    // and retains only the latest pending event. Tokens reactions precede the final result.
     public static class BattleAiPhraseBank
     {
         // Cosmetic choices must not consume ChallengeResolver's UnityEngine.Random stream.
@@ -105,7 +105,7 @@ namespace Game.Combat
             [AiThoughtCategory.FateSpendSkip] = new[]
             {
                 "Keeping Fate for another roll.",
-                "Accepting these dice. Saving Fate.",
+                "Accepting these tokens. Saving Fate.",
                 "Letting this one go — Fate's better spent elsewhere.",
                 "Not every fight needs a reroll.",
                 "Holding onto our luck for now.",
@@ -132,19 +132,19 @@ namespace Game.Combat
             [AiThoughtCategory.GoodRoll] = new[]
             {
                 "That's a promising roll.",
-                "The dice favor us so far.",
+                "The tokens favor us so far.",
                 "Good start. Let's see how it holds.",
-                "I'll take those dice.",
+                "I'll take those tokens.",
                 "That roll looks good.",
                 "Luck is on our side for now.",
             },
             [AiThoughtCategory.BadRoll] = new[]
             {
-                "Of course the dice did that. Of course.",
-                "Not our day for dice, apparently.",
+                "Of course the tokens did that. Of course.",
+                "Not our day for tokens, apparently.",
                 "That roll could have been better.",
                 "Rough luck there.",
-                "The dice aren't helping yet.",
+                "The tokens aren't helping yet.",
                 "Not the start we wanted.",
             },
             [AiThoughtCategory.UnitDied] = new[]
@@ -284,16 +284,16 @@ namespace Game.Combat
             [AiThoughtCategory.GoodRoll] = new[]
             {
                 "Favorable outcome on that roll.",
-                "The initial dice favor this side.",
+                "The initial tokens favor this side.",
                 "A strong result there.",
                 "That roll went well.",
             },
             [AiThoughtCategory.BadRoll] = new[]
             {
-                "The initial dice favor the opponent.",
+                "The initial tokens favor the opponent.",
                 "Unfavorable roll.",
                 "That attempt came up short.",
-                "The dice give no advantage yet.",
+                "The tokens give no advantage yet.",
             },
             [AiThoughtCategory.UnitDied] = new[]
             {
@@ -380,15 +380,15 @@ namespace Game.Combat
             },
             [AiThoughtCategory.GoodRoll] = new[]
             {
-                "Promising dice against {0}.",
+                "Promising tokens against {0}.",
                 "A favorable roll against {0} so far.",
-                "The dice offer an advantage against {0}.",
+                "The tokens offer an advantage against {0}.",
                 "A good start against {0}.",
             },
             [AiThoughtCategory.BadRoll] = new[]
             {
-                "Unfavorable dice against {0}.",
-                "The dice favor {0} for now.",
+                "Unfavorable tokens against {0}.",
+                "The tokens favor {0} for now.",
                 "A rough start against {0}.",
                 "The roll gives {0} an advantage so far.",
             },
@@ -402,7 +402,7 @@ namespace Game.Combat
             [AiThoughtCategory.FateSpendSkip] = new[]
             {
                 "Keeping Fate after this roll against {0}.",
-                "Accepting these dice against {0}.",
+                "Accepting these tokens against {0}.",
                 "Saving Fate against {0}.",
                 "Not the moment to burn Fate on {0}.",
             },

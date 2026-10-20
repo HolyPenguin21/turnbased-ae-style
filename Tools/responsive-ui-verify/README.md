@@ -36,7 +36,7 @@ In Unity 6000.5.4f1:
    its viewport. Test transfers into another army, deployment from the hand, hover actions,
    card paging and animation after closing/reopening modals.
 6. Open Panel_Data with six AI players; scroll to the last player and confirm refreshes keep
-   the reading position. Exercise 0..4 resource actions, many armies on one hex, long player/unit names, many dice,
+   the reading position. Exercise 0..4 resource actions, many armies on one hex, long player/unit names, many tokens,
    and window resizing during an animation/drag. Confirm no masked entries remain clickable.
 
 The canvas reference remains 1280x720 intentionally: at Full HD its scale is 1.5, preserving

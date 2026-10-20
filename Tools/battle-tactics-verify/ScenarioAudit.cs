@@ -199,7 +199,7 @@ namespace Game.EditorTests
                 +BattleProtectionRules.GetGuardedDefenseBonus(state.Grid,target,state.Defender);
             var duel=new BattleChallengeSession(BattleChallengeMode.GroundCombat,actor,target,actor.Attack,defense,
                 hero?.Fate??0,enemyHero?.Fate??0,AbilityMagnitudes.Default,
-                rollDice:n=>BattleSimulationKernel.RollDice(n,rng));
+                rollTokens:n=>BattleSimulationKernel.RollTokens(n,rng));
             duel.Roll();
             while(duel.TryNextFateTurn(out bool defending))
             {

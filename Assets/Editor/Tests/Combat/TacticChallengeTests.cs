@@ -29,7 +29,7 @@ namespace Game.EditorTests
             int call = 0;
             var session = new BattleChallengeSession(mode, attacker, defender, attack.Length, defense.Length,
                 attackerFate, 0, AbilityMagnitudes.Default,
-                rollDice: n => call++ == 0 ? (bool[])attack.Clone() : call == 2 ? (bool[])defense.Clone() : new[] { true },
+                rollTokens: n => call++ == 0 ? (bool[])attack.Clone() : call == 2 ? (bool[])defense.Clone() : new[] { true },
                 tacticsCritical: critical);
             session.Roll();
             return session;
@@ -73,14 +73,14 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void GuaranteedSuccess_CanExceedPool_AndDoesNotMutateOriginalDice()
+        public void GuaranteedSuccess_CanExceedPool_AndDoesNotMutateOriginalTokens()
         {
             var a = new PlayerSetupData(); var card = Card(TacticEffect.AddSuccess); a.Tactics.Add(card);
             var s = Session(Unit(a), Unit(new PlayerSetupData()), new[] { true }, new[] { true });
             s.TryNextFateTurn(out _); s.ReportFateTurn(false); s.TryNextFateTurn(out _);
             Assert.That(s.TryPlayTactic(false, card), Is.True);
             Assert.That(s.CurrentResult.AttackerSuccesses, Is.EqualTo(2));
-            Assert.That(s.AttackerDice, Is.EqualTo(new[] { true }));
+            Assert.That(s.AttackerTokens, Is.EqualTo(new[] { true }));
         }
 
         [Test]
@@ -92,7 +92,7 @@ namespace Game.EditorTests
             Assert.That(s.TryPlayTactic(true, card), Is.True);
             Assert.That(s.CurrentResult.AttackerSuccesses, Is.Zero);
             Assert.That(s.CanSpend(false), Is.False);
-            Assert.That(s.AttackerDice[0], Is.True);
+            Assert.That(s.AttackerTokens[0], Is.True);
         }
 
         [Test]
@@ -147,7 +147,7 @@ namespace Game.EditorTests
             Assert.That(s.ResolveCaptureKillOutcome(), Is.EqualTo(CaptureKillOutcome.Killed));
             s.TryNextFateTurn(out _); s.TryPlayTactic(true, card);
             var roll = s.ToRollResult();
-            Assert.That(BattleResolutionRules.ResolveCaptureKill(roll.AttackerDice, roll.DefenderDice,
+            Assert.That(BattleResolutionRules.ResolveCaptureKill(roll.AttackerTokens, roll.DefenderTokens,
                 roll.AttackerModifier, roll.DefenderModifier), Is.EqualTo(CaptureKillOutcome.Escaped));
         }
 
@@ -161,7 +161,7 @@ namespace Game.EditorTests
             var owner = new PlayerSetupData(); var hero = Unit(owner); var product = new CardDefinition { fate = 4 };
             var card = Card(effect, amount); owner.Tactics.Add(card);
             var session = new ResearchProductionChallengeSession(hero, product)
-                { Dice = new[] { true, true, true, false, false } };
+                { Tokens = new[] { true, true, true, false, false } };
             Assert.That(session.Success, Is.False);
             Assert.That(session.HasTactic, Is.True);
             Assert.That(session.TryPlay(card), Is.True);
@@ -237,11 +237,11 @@ namespace Game.EditorTests
         {
             var owner = new PlayerSetupData(); var card = Card(TacticEffect.AddAndSuppressSuccess);
             owner.Tactics.Add(card);
-            var ownDice = new[] { false, false };
-            var opposingDice = Enumerable.Repeat(true, opposing).ToArray();
+            var ownTokens = new[] { false, false };
+            var opposingTokens = Enumerable.Repeat(true, opposing).ToArray();
             var s = Session(Unit(defending ? new PlayerSetupData() : owner),
                 Unit(defending ? owner : new PlayerSetupData()),
-                defending ? opposingDice : ownDice, defending ? ownDice : opposingDice);
+                defending ? opposingTokens : ownTokens, defending ? ownTokens : opposingTokens);
             s.TryNextFateTurn(out _);
             if (!defending) { s.ReportFateTurn(false); s.TryNextFateTurn(out _); }
             Assert.That(s.TryPlayTactic(defending, card), Is.True);
@@ -249,21 +249,21 @@ namespace Game.EditorTests
             Assert.That(defending ? result.DefenderSuccesses : result.AttackerSuccesses, Is.EqualTo(1));
             Assert.That(defending ? result.AttackerSuccesses : result.DefenderSuccesses,
                 Is.EqualTo(Math.Max(0, opposing - 1)));
-            Assert.That(s.AttackerDice, Is.EqualTo(defending ? opposingDice : ownDice));
-            Assert.That(s.DefenderDice, Is.EqualTo(defending ? ownDice : opposingDice));
+            Assert.That(s.AttackerTokens, Is.EqualTo(defending ? opposingTokens : ownTokens));
+            Assert.That(s.DefenderTokens, Is.EqualTo(defending ? ownTokens : opposingTokens));
             Assert.That(s.TryPlayTactic(defending, card), Is.False);
             Assert.That(owner.Tactics.Cards, Is.Empty);
             Assert.That(owner.Tactics.Version, Is.EqualTo(2));
         }
 
         [Test]
-        public void ProductionCombinedCard_ClosesTwoSuccessGap_WithoutChangingProductOrDice()
+        public void ProductionCombinedCard_ClosesTwoSuccessGap_WithoutChangingProductOrTokens()
         {
             var owner = new PlayerSetupData(); var card = Card(TacticEffect.AddAndSuppressSuccess);
             owner.Tactics.Add(card);
             var product = new CardDefinition { fate = 4 };
-            var dice = new[] { true, true, false, false, false };
-            var s = new ResearchProductionChallengeSession(Unit(owner), product) { Dice = dice };
+            var tokens = new[] { true, true, false, false, false };
+            var s = new ResearchProductionChallengeSession(Unit(owner), product) { Tokens = tokens };
             Assert.That(s.Success, Is.False);
             Assert.That(s.TryPlay(card), Is.True);
             Assert.That(s.SuccessModifier, Is.EqualTo(1));
@@ -272,7 +272,7 @@ namespace Game.EditorTests
             Assert.That(s.Required, Is.EqualTo(3));
             Assert.That(s.Success, Is.True);
             Assert.That(product.fate, Is.EqualTo(4));
-            Assert.That(s.Dice, Is.EqualTo(new[] { true, true, false, false, false }));
+            Assert.That(s.Tokens, Is.EqualTo(new[] { true, true, false, false, false }));
             Assert.That(owner.Tactics.Version, Is.EqualTo(2));
         }
 
@@ -322,7 +322,7 @@ namespace Game.EditorTests
             session.TryNextFateTurn(out _);
             Assert.That(session.TryPlayTactic(true, card, out string reason), Is.False);
             var production = new ResearchProductionChallengeSession(Unit(owner), new CardDefinition { fate = 0 })
-                { Dice = new[] { true } };
+                { Tokens = new[] { true } };
             Assert.That(production.TryPlay(card, out string productionReason), Is.False);
             Assert.That(reason, Is.EqualTo("There are no opposing successes to remove."));
             Assert.That(productionReason, Is.EqualTo(reason));
@@ -352,7 +352,7 @@ namespace Game.EditorTests
             var owner = new PlayerSetupData(); var card = Card(TacticEffect.AddSuccess); owner.Tactics.Add(card);
             var production = new ResearchProductionChallengeSession(Unit(owner), new CardDefinition { fate = 4 });
             Assert.That(production.TryPlay(card, out string reason), Is.False);
-            Assert.That(reason, Does.Contain("dice roll"));
+            Assert.That(reason, Does.Contain("tokens roll"));
             Assert.That(owner.Tactics.Cards.Count, Is.EqualTo(1));
         }
 

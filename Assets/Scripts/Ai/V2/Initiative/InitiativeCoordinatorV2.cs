@@ -27,13 +27,13 @@ namespace Game.Ai.V2.Initiative
                 if (root == null)
                     continue;
 
-                var opponentDice = new List<int>();
+                var opponentTokens = new List<int>();
                 foreach (PlayerSetupData o in players)
                 {
                     if (o == null || ReferenceEquals(o, p) || o.IsNeutral || o.IsEliminated)
                         continue;
-                    int est = InitiativeRules.BaseDice + InitiativePublicHistory.EstimatedBonusDice(o);
-                    opponentDice.Add(Mathf.Clamp(est, InitiativeRules.BaseDice, InitiativeRules.MaxTotalDice));
+                    int est = InitiativeRules.BaseTokens + InitiativePublicHistory.EstimatedBonusTokens(o);
+                    opponentTokens.Add(Mathf.Clamp(est, InitiativeRules.BaseTokens, InitiativeRules.MaxTotalTokens));
                 }
 
                 // Only already accepted, still-held Economy builds are hard commitments.
@@ -49,7 +49,7 @@ namespace Game.Ai.V2.Initiative
                     .Select(i => i.Economy.BuildResourceCost);
                 PreTurnCapacityAnalysis analysis = PreTurnCapacityAnalysis.Build(
                     p, root, map, deckCatalog, committedBuildCosts);
-                InitiativePlan plan = InitiativePlanner.Plan(analysis, opponentDice);
+                InitiativePlan plan = InitiativePlanner.Plan(analysis, opponentTokens);
                 planned.Add((p, root, plan));
                 string bottleneck = InitiativeBottleneckDiagnostics.Describe(p, analysis);
 
@@ -59,64 +59,64 @@ namespace Game.Ai.V2.Initiative
                     + $"armies={analysis.ActionableFieldArmyCount} power={analysis.ActionableMilitaryPower:0.0} apCards={analysis.ApCostingActionsAvailable}, "
                     + $"avail H/E/M/T={analysis.Available[0]}/{analysis.Available[1]}/{analysis.Available[2]}/{analysis.Available[3]}, "
                     + $"committed H/E/M/T={analysis.CommittedResourceFloor[0]}/{analysis.CommittedResourceFloor[1]}/{analysis.CommittedResourceFloor[2]}/{analysis.CommittedResourceFloor[3]}, "
-                    + $"oppDice=[{string.Join(",", opponentDice)}] => plan: {plan.Rationale}");
+                    + $"oppTokens=[{string.Join(",", opponentTokens)}] => plan: {plan.Rationale}");
             }
 
             foreach ((PlayerSetupData Player, PlayerRoot Root, InitiativePlan Plan) entry in planned)
             {
-                if (entry.Plan.DiceToBuy <= 0)
+                if (entry.Plan.TokensToBuy <= 0)
                     continue;
 
                 // Cross-turn spendability feedback: when the previous turn stranded a configured
                 // fraction of AP, the planner's theoretical AP pressure is not enough evidence to
                 // spend scarce H/E/M/T on more initiative. One clean turn with low leftover removes
                 // this guard automatically.
-                if (InitiativeBottleneckDiagnostics.ShouldSuppressBonusDice(entry.Player, out string suppressReason))
+                if (InitiativeBottleneckDiagnostics.ShouldSuppressBonusTokens(entry.Player, out string suppressReason))
                 {
                     AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — suppress "
-                        + $"{entry.Plan.DiceToBuy} planned bonus dice: {suppressReason}.");
+                        + $"{entry.Plan.TokensToBuy} planned bonus tokens: {suppressReason}.");
                     AiMatchStats.RecordInitiativeSuppressed(entry.Player);
                     continue;
                 }
 
                 // Plan.PaymentUnits is flat — one H/E/M/T entry per resource UNIT, across every
                 // planned die, in purchase order (see InitiativeFundingOptimizer). Slice off
-                // NextInitiativeDieCost entries per die and pay them one unit at a time, mixing
+                // NextInitiativeTokenCost entries per die and pay them one unit at a time, mixing
                 // resources within a single die exactly like the human buy panel now can.
                 int applied = 0;
                 var spent = new int[4];
                 int unitCursor = 0;
-                for (int dieNum = 0; dieNum < entry.Plan.DiceToBuy; dieNum++)
+                for (int tokenNum = 0; tokenNum < entry.Plan.TokensToBuy; tokenNum++)
                 {
-                    int dieCost = entry.Root.NextInitiativeDieCost;
-                    var paidUnits = new List<ResourceType>(dieCost);
-                    bool dieComplete = true;
-                    for (int u = 0; u < dieCost; u++)
+                    int tokenCost = entry.Root.NextInitiativeTokenCost;
+                    var paidUnits = new List<ResourceType>(tokenCost);
+                    bool tokenComplete = true;
+                    for (int u = 0; u < tokenCost; u++)
                     {
                         if (unitCursor >= entry.Plan.PaymentUnits.Count)
                         {
-                            dieComplete = false;
+                            tokenComplete = false;
                             break;
                         }
                         ResourceType resource = entry.Plan.PaymentUnits[unitCursor];
-                        if (!entry.Root.CanBuyInitiativeDie(resource) || !entry.Root.PurchaseInitiativeDie(resource))
+                        if (!entry.Root.CanBuyInitiativeToken(resource) || !entry.Root.PurchaseInitiativeToken(resource))
                         {
-                            dieComplete = false;
+                            tokenComplete = false;
                             break;
                         }
                         paidUnits.Add(resource);
                         unitCursor++;
                     }
 
-                    if (!dieComplete)
+                    if (!tokenComplete)
                     {
                         // Can't finish this die live (planned resources ran out or a live check
                         // failed) — undo exactly the units just paid, most-recent-first, each
                         // with the resource that actually paid it (PlayerRoot only allows
                         // refunding the single most recent contribution), and stop planning
-                        // further dice this turn.
+                        // further tokens this turn.
                         for (int i = paidUnits.Count - 1; i >= 0; i--)
-                            entry.Root.RefundLastInitiativeDie(paidUnits[i]);
+                            entry.Root.RefundLastInitiativeToken(paidUnits[i]);
                         break;
                     }
 
@@ -126,11 +126,11 @@ namespace Game.Ai.V2.Initiative
                 }
                 AiMatchStats.RecordInitiativeBought(entry.Player, applied, spent);
 
-                if (applied != entry.Plan.DiceToBuy)
-                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — applied {applied}/{entry.Plan.DiceToBuy} planned dice "
-                        + "(remaining dice failed live revalidation).");
+                if (applied != entry.Plan.TokensToBuy)
+                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — applied {applied}/{entry.Plan.TokensToBuy} planned tokens "
+                        + "(remaining tokens failed live revalidation).");
                 else if (applied > 0)
-                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — bought {applied} bonus dice "
+                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — bought {applied} bonus tokens "
                         + $"for H/E/M/T={spent[0]}/{spent[1]}/{spent[2]}/{spent[3]}.");
             }
         }

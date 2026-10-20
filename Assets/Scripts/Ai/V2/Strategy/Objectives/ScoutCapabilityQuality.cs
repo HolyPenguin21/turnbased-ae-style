@@ -85,7 +85,7 @@ namespace Game.Ai.V2
 
             // ---- spot strength: only a real Scout-quality term when the objective is about
             //      re-acquiring / observing a potentially hidden target. Own detection pressure
-            //      is deliberately NOT enough: spot dice detect the other side, not our scout. ----
+            //      is deliberately NOT enough: spot tokens detect the other side, not our scout. ----
             if (x.SpotStrength > 0)
             {
                 float spotNorm = Mathf.Clamp01(x.SpotStrength / Mathf.Max(0.0001f, (float)AiConfigV2.scoutQualitySpotNorm));

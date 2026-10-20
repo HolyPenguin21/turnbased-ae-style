@@ -261,15 +261,39 @@ namespace Game.EditorTests
             };
             refresh.Invoke(selection, new object[] { storage });
             Assert.That(_row.gameObject.activeSelf, Is.False);
-            storage.Add(new ArmyData { Name = "mobile", IsAirArmy = true });
+            var empty = new ArmyData { Name = "empty" };
+            storage.Add(empty);
+            refresh.Invoke(selection, new object[] { storage });
+            Assert.That(_row.gameObject.activeSelf, Is.False, "Empty mobile armies have no map button.");
+            var mobile = new ArmyData { Name = "mobile", IsAirArmy = true };
+            mobile.Members.Add(new Game.Units.UnitData());
+            storage.Add(mobile);
             refresh.Invoke(selection, new object[] { storage });
             yield return new WaitForSecondsRealtime(0.5f);
             Assert.That(_row.gameObject.activeSelf, Is.True);
             Assert.That(_row.Buttons.Count, Is.EqualTo(1));
             Assert.That(_row.Buttons[0].Army.Name, Is.EqualTo("mobile"));
+            mobile.Members.Clear();
+            refresh.Invoke(selection, new object[] { storage });
+            yield return new WaitForSecondsRealtime(0.4f);
+            Assert.That(_row.gameObject.activeSelf, Is.False, "Removing the last member hides the map row.");
             refresh.Invoke(selection, new object[] { new List<ArmyData>() });
             yield return new WaitForSecondsRealtime(0.4f);
             Assert.That(_row.gameObject.activeSelf, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator ModalOrdersPrisonAirfieldGarrisonThenMobileArmiesInArrivalOrder()
+        {
+            var first = new ArmyData { Name = "first" };
+            var newest = new ArmyData { Name = "newest" };
+            var prison = new ArmyData { IsPrison = true };
+            var airfield = new ArmyData { IsAirfield = true };
+            var garrison = new ArmyData { IsGarrison = true };
+            _row.Show(new[] { first, newest, garrison, prison, airfield }, null);
+            CollectionAssert.AreEqual(new[] { prison, airfield, garrison, first, newest },
+                new List<ArmyButtonUI>(_row.Buttons).ConvertAll(button => button.Army));
+            yield return null;
         }
 
         [UnityTest]

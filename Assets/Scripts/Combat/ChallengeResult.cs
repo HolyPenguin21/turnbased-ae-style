@@ -5,27 +5,27 @@ using UnityEngine;
 
 namespace Game.Combat
 {
-    // One resolved Challenge (see ChallengeResolver) — mirrors Game.Turns.DiceRollResult's
+    // One resolved Challenge (see ChallengeResolver) — mirrors Game.Turns.TokenRollResult's
     // bool-array-of-hits shape so a future battle UI can reuse the same per-die "1"/"X" display
-    // convention already established for turn-order dice (see DiceRowUI).
+    // convention already established for turn-order tokens (see TokenRowUI).
     public class ChallengeResult
     {
-        public readonly bool[] AttackerDice;
-        public readonly bool[] DefenderDice;
+        public readonly bool[] AttackerTokens;
+        public readonly bool[] DefenderTokens;
         public readonly int AttackerModifier;
         public readonly int DefenderModifier;
 
-        public ChallengeResult(bool[] attackerDice, bool[] defenderDice,
+        public ChallengeResult(bool[] attackerTokens, bool[] defenderTokens,
             int attackerModifier = 0, int defenderModifier = 0)
         {
-            AttackerDice = attackerDice;
-            DefenderDice = defenderDice;
+            AttackerTokens = attackerTokens;
+            DefenderTokens = defenderTokens;
             AttackerModifier = attackerModifier;
             DefenderModifier = defenderModifier;
         }
 
-        public int AttackerSuccesses => System.Math.Max(0, CountHits(AttackerDice) + AttackerModifier);
-        public int DefenderSuccesses => System.Math.Max(0, CountHits(DefenderDice) + DefenderModifier);
+        public int AttackerSuccesses => System.Math.Max(0, CountHits(AttackerTokens) + AttackerModifier);
+        public int DefenderSuccesses => System.Math.Max(0, CountHits(DefenderTokens) + DefenderModifier);
 
         // The manual: "the number of success rolls for the defender is subtracted from the
         // number of success rolls for the attacker and the damage if any is the difference
@@ -43,7 +43,7 @@ namespace Game.Combat
         // AI's Fate-spend prediction) so none of them can ever disagree — see the bug this fixed:
         // Fate-spend logic used to compare fateAvailable against this raw Damage value directly,
         // so a defender's own CeramicArmor (which would've reduced a real hit to 0 for free) or an
-        // attacker's Hyperkinetic (which could push a real hit's true size past what the raw dice
+        // attacker's Hyperkinetic (which could push a real hit's true size past what the raw tokens
         // alone showed) never factored into whether spending Fate was actually worth it.
         public static int ApplyAbilityModifiers(int rawDamage, UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes)
             => ApplyAbilityModifiers(rawDamage, attacker, defender, magnitudes, out _);
@@ -204,10 +204,10 @@ namespace Game.Combat
             return false;
         }
 
-        private static int CountHits(bool[] dice)
+        private static int CountHits(bool[] tokens)
         {
             int hits = 0;
-            foreach (bool hit in dice)
+            foreach (bool hit in tokens)
                 if (hit) hits++;
             return hits;
         }

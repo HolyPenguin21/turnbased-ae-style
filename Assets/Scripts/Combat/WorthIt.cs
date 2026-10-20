@@ -15,17 +15,17 @@ namespace Game.Combat
     //  · DefenderProfile — one combatant as the estimator sees it: our own live units
     //    (FromLiveUnit) or an enemy's fog-honest remembered roster (AiMapMemory).
     //  · Estimate / WinChance — MonteCarloTrials complete battles (SimulateOneBattle): each round a
-    //    shuffle-then-Initiative turn order, every living actor rolls real dice (50% per die)
+    //    shuffle-then-Initiative turn order, every living actor rolls real tokens (50% per die)
     //    against a random living enemy, the canonical ability-modifier chain, and the Fate duel of
     //    every exchange (ResolveExchange, spending decided by FateDuelAi). Each side may have a
     //    commander (SideCommander — ArmyData.Commander, the army's first hero): its Initiative is
     //    added to every combatant of its side and its Fate buys rerolls. No grid positions.
     //  · EstimateSequential — a hex held by several armies: one battle per defending army,
     //    strongest first, wounds carry over, Fate refills.
-    //  · HexDefenseBonus — terrain + Base-building defence, added to the DEFENDER's dice only,
+    //  · HexDefenseBonus — terrain + Base-building defence, added to the DEFENDER's tokens only,
     //    exactly as BattleScreenUI.Combat's BeginAttack does in a real fight.
     //  · CanDamageAll — the coverage gate: every known defender must have at least one attacker
-    //    wounding it in at least CoverageMinHitProbability of exchanges (the exact dice odds
+    //    wounding it in at least CoverageMinHitProbability of exchanges (the exact tokens odds
     //    BattleCombatOdds gives live combat), because a win chance alone can overstate a fight
     //    nothing in the roster can actually hurt.
     //  · CombatValue — the quick body value every strongest-first roster pick uses.
@@ -282,7 +282,7 @@ namespace Game.Combat
         // real live roster directly. Whenever a real per-unit roster is available on BOTH sides,
         // WinChance below plays MonteCarloTrials complete battles to actual HP-zero instead of one
         // flat exchange — same round structure BattleTurnOrder uses (shuffle for a random
-        // Initiative tie-break, then sort descending), same dice, just with a
+        // Initiative tie-break, then sort descending), same tokens, just with a
         // RANDOM target each attack rather than BattleTargetSelector's scored pick — this class
         // still never has a live grid/position/range to be smart about (see this file's own top
         // comment), only a remembered/cheat-read roster.
@@ -530,7 +530,7 @@ namespace Game.Combat
         }
 
         // One full battle: rounds of shuffle-then-sort-by-Initiative turn order, every living
-        // actor rolling real dice against a random living enemy, until one side has nobody left or
+        // actor rolling real tokens against a random living enemy, until one side has nobody left or
         // MaxSimulatedRounds runs out. Returns +1 (attackers wiped the defenders), -1 (defenders
         // wiped the attackers), or 0 (mutual wipe, or neither side finished the other off in time —
         // a draw, which every readout counts as half a win).
@@ -726,7 +726,7 @@ namespace Game.Combat
                 if (defenders[i].Hp > 0 && !(actor.SingleUseUnit && !actorIsAttacker && i == actorIndex)) pool.Add((false, i));
             int count = System.Math.Min(ExplosionAttack.TargetLimit(actor.Abilities), pool.Count);
             // Area hits neither intercept nor create Splash/Counterattack chains.
-            actor.Attack = ExplosionAttack.AttackDice;
+            actor.Attack = ExplosionAttack.AttackTokens;
             for (int i = 0; i < count; i++)
             {
                 int j = rng.Next(i, pool.Count); (pool[i], pool[j]) = (pool[j], pool[i]);
@@ -1387,7 +1387,7 @@ namespace Game.Combat
             Estimate(attacker, enemyUnits, hexDefenseBonus, defenderCommander, magnitudes).WinChance;
 
         // Per-combatant read for the coverage check below (CanDamage → HitProbability: the exact
-        // dice odds BattleCombatOdds gives a real attack pick, through the canonical ability
+        // tokens odds BattleCombatOdds gives a real attack pick, through the canonical ability
         // modifier chain on Attack, Abilities, Defense and TypeTags).
         //
         // TypeTags (added 2026-08-19, project owner's own call) — also lets
@@ -1487,7 +1487,7 @@ namespace Game.Combat
                 (Defense, Attack, HitPoints, Initiative, Range, FateMax).GetHashCode();
         }
 
-        // 2026-10-19 (project owner's decision) — "can damage" is the share of one exchange's dice
+        // 2026-10-19 (project owner's decision) — "can damage" is the share of one exchange's tokens
         // outcomes that wound the defender (HitProbability), at least CoverageMinHitProbability. It
         // replaced the rounded mean `attack*0.5 - defense*0.5`, which live combat had already left
         // (BattleCombatOdds): a Medium Tank (5) against Null Vessel (3) on a Citadel (+2) read as
@@ -1516,7 +1516,7 @@ namespace Game.Combat
 
         // A defender wounded in fewer than this share of exchanges is a brick the roster cannot
         // wear down within a battle (the coverage gate's meaning). Per exchange, pre-Fate:
-        // 5 dice vs 5 = 0.38, 4 vs 6 = 0.17, 3 vs 6 = 0.09, 3 vs 9 = 0.02.
+        // 5 tokens vs 5 = 0.38, 4 vs 6 = 0.17, 3 vs 6 = 0.09, 3 vs 9 = 0.02.
         public const float CoverageMinHitProbability = 0.10f;
 
         // Composition-aware penetration check for immutable rosters.
@@ -1525,22 +1525,22 @@ namespace Game.Combat
             HitProbability(attacker, defender, extraDefense, magnitudesOverride)
                 >= CoverageMinHitProbability;
 
-        // The chance one exchange wounds `defender`: attack dice vs defence dice (+ hex bonus),
+        // The chance one exchange wounds `defender`: attack tokens vs defence tokens (+ hex bonus),
         // 50% per die, success-count subtraction, then the canonical ability modifier chain — the
         // same exact pre-Fate distribution BattleCombatOdds gives live target selection.
         public static float HitProbability(DefenderProfile attacker, DefenderProfile defender,
             float extraDefense = 0f, AbilityMagnitudes? magnitudesOverride = null)
         {
             AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
-            int attackDice = Mathf.Max(0, Mathf.RoundToInt(
+            int attackTokens = Mathf.Max(0, Mathf.RoundToInt(
                 ExplosionAttack.AttackPower(attacker.Attack, attacker.Abilities)));
-            int defenseDice = Mathf.Max(0, Mathf.RoundToInt(defender.Defense + extraDefense));
-            double[] pa = BinomialHalf(attackDice), pd = BinomialHalf(defenseDice);
+            int defenseTokens = Mathf.Max(0, Mathf.RoundToInt(defender.Defense + extraDefense));
+            double[] pa = BinomialHalf(attackTokens), pd = BinomialHalf(defenseTokens);
             double hit = 0d, positive = 0d;
-            for (int raw = 1; raw <= attackDice; raw++)
+            for (int raw = 1; raw <= attackTokens; raw++)
             {
                 double p = 0d;
-                for (int d = 0; d <= defenseDice && d + raw <= attackDice; d++)
+                for (int d = 0; d <= defenseTokens && d + raw <= attackTokens; d++)
                     p += pd[d] * pa[d + raw];
                 positive += p;
                 if (ChallengeResult.ApplyAbilityModifiers(raw, attacker.Abilities,
@@ -1556,7 +1556,7 @@ namespace Game.Combat
 
         private static readonly Dictionary<int, double[]> BinomialHalfCache = new Dictionary<int, double[]>();
 
-        // P(k successes of n dice), each die 50%.
+        // P(k successes of n tokens), each die 50%.
         private static double[] BinomialHalf(int n)
         {
             if (BinomialHalfCache.TryGetValue(n, out double[] cached))
@@ -1645,7 +1645,7 @@ namespace Game.Combat
         }
 
         // The hex's own contribution alone, no army — terrain.defenseModifier (see
-        // TerrainTypeEntry's own comment: added to the defender's dice pool only, in every real
+        // TerrainTypeEntry's own comment: added to the defender's tokens pool only, in every real
         // fight) plus a Base building's own Defense stat if one sits here (see
         // BuildingData.IsBase — only Base buildings carry this, per BattingScreenUI.Combat.cs's
         // own gate). Needed on its own for a Hex Event's card-stat guard (AiMapMemory.

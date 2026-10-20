@@ -38,7 +38,7 @@ namespace Game.Terrain
         // Existing terrain, including mountains, remains passable by default.
         public bool blocksGroundMovement;
 
-        // Added to the DEFENDING side's dice pool only, in any Ground Combat fought on a hex of
+        // Added to the DEFENDING side's tokens pool only, in any Ground Combat fought on a hex of
         // this type (see BattleScreenUI.Combat.cs's BeginAttack) — the manual's own terrain
         // modifier, simplified: it never touches the attacker's pool, per the user's own call.
         // Per-entry, tuned in the Inspector same as moveCost/resourceYields; defaults to 0

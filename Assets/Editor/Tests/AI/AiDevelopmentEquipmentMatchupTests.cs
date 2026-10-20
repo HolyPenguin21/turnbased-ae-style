@@ -539,7 +539,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ExchangeExpectationMatchesExhaustiveDiceIncludingSecondaryArmour()
+        public void ExchangeExpectationMatchesExhaustiveTokensIncludingSecondaryArmour()
         {
             for (int a = 0; a <= 5; a++) for (int d = 0; d <= 5; d++)
             {

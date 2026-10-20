@@ -47,7 +47,7 @@ Add deployable aircraft and helicopters as a separate army type with airfields, 
 - An AA unit may make one actual AA attack until the start of its owner’s next turn. Skipping a reaction does not consume the shot.
 - Track first entry per `(AA unit, air army)` for the current AA-owner turn. If that air army leaves and re-enters the radius after a skipped popup, do not show it again. A different air army may still cause a popup.
 - When an enemy air army first enters an AA radius, ready AA units trigger in deterministic sequence. Humans receive an attack/skip popup; AI always attacks.
-- AA attacks use `BattleAttackPopupUI`: attacker is the AA unit with doubled attack dice; defender is a random aircraft in the air army. The AA shot is consumed only after attacking.
+- AA attacks use `BattleAttackPopupUI`: attacker is the AA unit with doubled attack tokens; defender is a random aircraft in the air army. The AA shot is consumed only after attacking.
 - A ground army containing AA may also trigger this sequence while it moves if it can see an enemy air army over a normal hex inside its AA radius. Using that shot prevents later reactive AA until reset.
 - Before an air strike is resolved, all AA reactions triggered by the movement step resolve first. This includes hidden AA whose own hex is visible but whose neighboring hexes were not visible to the air attacker. If AA destroys the air army, no strike follows.
 

@@ -16,7 +16,7 @@ namespace Game.Combat
     // Shape — the real air strike, not a ground battle: each aircraft attacks once per strike turn,
     // one uniformly-random still-alive defender, with no return fire. Mechanics — the real one:
     // every attack is ONE armed exchange of the shared BattleSimulationKernel.ResolveExchange
-    // (the same dice, Fate duel and BattleResolutionRules.ResolveGroundAttack the real
+    // (the same tokens, Fate duel and BattleResolutionRules.ResolveGroundAttack the real
     // BattleEngine.ResolveStandaloneAttack applies), the aircraft's attack pool against the
     // target's Defense — a hero's FateMax, already folded into DefenderProfile.Defense — with the
     // target hero's own current Fate, or its army commander's current Fate for a body target.
@@ -232,7 +232,7 @@ namespace Game.Combat
                 float extraEnemyStart = Enumerable.Range(0, extra.Length)
                     .Where(i => !collateral[i].Friendly).Sum(i => extraHp[i]);
 
-                void HitDefender(int idx, WorthIt.DefenderProfile plane, int attackDice)
+                void HitDefender(int idx, WorthIt.DefenderProfile plane, int attackTokens)
                 {
                         int attackerFate = 0;
                         int fateOwner = -1;
@@ -247,7 +247,7 @@ namespace Game.Combat
                         }
                         int remainingFate = fates == null ? fate : fateOwner >= 0 ? fates[fateOwner] : 0;
                         BattleSimExchangeOutcome outcome = BattleSimulationKernel.ResolveExchange(
-                            attackDice,
+                            attackTokens,
                             defenders[idx].IsHero ? defenders[idx].FateMax : defense[idx], plane.Abilities,
                             defenders[idx].TypeTags, defenders[idx].Abilities, ref attackerFate, ref remainingFate,
                             Mathf.CeilToInt(hp[idx]), magnitudes, rng);
@@ -266,7 +266,7 @@ namespace Game.Combat
                     ref float hpLeft, ref int remainingFate)
                 {
                     int a = 0;
-                    var outcome = BattleSimulationKernel.ResolveExchange(ExplosionAttack.AttackDice,
+                    var outcome = BattleSimulationKernel.ResolveExchange(ExplosionAttack.AttackTokens,
                         Mathf.RoundToInt(p.Defense), plane.Abilities, p.TypeTags, p.Abilities,
                         ref a, ref remainingFate, Mathf.CeilToInt(hpLeft), magnitudes, rng);
                     int attack = Mathf.RoundToInt(p.Attack), defense = Mathf.RoundToInt(p.Defense);
@@ -297,7 +297,7 @@ namespace Game.Combat
                             if (policy.MinimumSurvivors > 0 || (alive.Count == 0 && !Enumerable.Range(0, extra.Length)
                                 .Any(i => !collateral[i].Friendly && extraHp[i] > 0))) continue;
                             if (Enumerable.Range(0, extra.Length).Any(i => collateral[i].OwnCitadel
-                                && extraHp[i] > 0 && ChallengeResult.ApplyAbilityModifiers(ExplosionAttack.AttackDice,
+                                && extraHp[i] > 0 && ChallengeResult.ApplyAbilityModifiers(ExplosionAttack.AttackTokens,
                                     plane.Abilities, extra[i].TypeTags, extra[i].Abilities, magnitudes) >= extraHp[i])) continue;
                             var pool = alive.Where(Eligible).Select(i => (kind: 0, index: i)).ToList();
                             for (int i = 0; i < planeHp.Length; i++)
@@ -328,7 +328,7 @@ namespace Game.Combat
                             {
                                 int j = rng.Next(i, pool.Count); (pool[i], pool[j]) = (pool[j], pool[i]);
                                 var target = pool[i];
-                                if (target.kind == 0) HitDefender(target.index, plane, ExplosionAttack.AttackDice);
+                                if (target.kind == 0) HitDefender(target.index, plane, ExplosionAttack.AttackTokens);
                                 else if (target.kind == 1) armed[target.index] = HitOther(armed[target.index], plane,
                                     ref planeHp[target.index], ref planeFates[target.index]);
                                 else extra[target.index] = HitOther(extra[target.index], plane,

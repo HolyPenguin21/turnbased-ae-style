@@ -15,9 +15,9 @@ Implemented against upstream `9acade34c0ddaad50c796b4261fd38235c8acf21`.
 - A human decision waits for input when either Fate or a legal tactic remains. No hero and zero
   Fate do not prevent tactic use. A pure suppression card is unavailable against zero effective successes.
 - Existing result-screen auto-close still applies after both decisions are complete.
-- An added success is guaranteed and may exceed the original dice pool. Suppression removes
+- An added success is guaranteed and may exceed the original tokens pool. Suppression removes
   existing effective successes and never creates a missed die eligible for a Fate reroll.
-- The original dice remain unchanged. Signed modifiers are carried in `BattleChallengeRollResult`
+- The original tokens remain unchanged. Signed modifiers are carried in `BattleChallengeRollResult`
   into the same rules the engine uses for damage, abilities and Capture/Kill.
 - AddAndSuppressSuccess applies both parts atomically: add own successes and remove opposing
   successes, using `tacticAmount` for each part. With no opposing successes it still adds own
@@ -75,7 +75,7 @@ The critical-encounter flag is captured when the encounter opens and survives in
 counterattacks and casualties. Critical means a player citadel fight, or a fight between substantial
 hero-led field forces, using the existing hostile-power significance bar. Neutral fights are excluded.
 
-AI follows the existing Fate policy first, then evaluates one tactic against the resulting dice.
+AI follows the existing Fate policy first, then evaluates one tactic against the resulting tokens.
 It preserves cards outside critical encounters and when no meaningful result changes. It can prevent
 a lethal hit, fully block damage, secure a kill, enable ShockAttack, or improve Capture/Kill to escape
 or capture. Bodyguard/armor and damage abilities are included in this comparison. The same policy is

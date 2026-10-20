@@ -103,7 +103,7 @@ namespace Game.Cards
         public const string Ionic = "Ionic";
 
         // Once per round, a primary Ground Combat hit on an orthogonally-adjacent ally of the
-        // carrier (same owner) lands on the carrier instead: the rolled dice stand, the damage is
+        // carrier (same owner) lands on the carrier instead: the rolled tokens stand, the damage is
         // re-run through ApplyAbilityModifiers against the carrier (its own tags/CeramicArmor),
         // and the carrier becomes the victim for Berserk/Shock/Splash/Counterattack. Several
         // eligible carriers: the one with the most current HP. A hero never guards, and a
@@ -112,7 +112,7 @@ namespace Game.Cards
 
         // Once per round, a carrier that survives a primary Ground Combat attack made from within
         // 1 cell (square range, diagonals included) immediately attacks the attacker back — an
-        // ordinary Challenge with dice, Fate and every attacker-side skill, except that it is
+        // ordinary Challenge with tokens, Fate and every attacker-side skill, except that it is
         // never countered or intercepted itself. A ShockAttack hit, a hero carrier or a retreating
         // army cancels it. See BattleProtectionRules.CanCounterattack.
         public const string Counterattack = "Counterattack";
@@ -126,7 +126,7 @@ namespace Game.Cards
         // Parameterized reconnaissance tags (replaced the old bool "Recce" + shared
         // UnitAbilityCatalog.recceRadius/recceStrength — project owner's own call, see the
         // stealth design). Grammar is r<radius>s<spot>: army vision +<radius> hexes (see
-        // Game.Map.VisionSystem), and <spot> spot dice brought to a stealth-detection
+        // Game.Map.VisionSystem), and <spot> spot tokens brought to a stealth-detection
         // Challenge (see Game.Map.StealthSystem). Numbers are parsed by Game.Cards.
         // AbilityParams — nobody re-parses these strings. Radii/pools take the max across
         // members and across observers, never a sum. r1s0 widens vision and reveals
@@ -137,8 +137,8 @@ namespace Game.Cards
         public const string R1S6 = "r1s6";
 
         // A unit carrying this MAY be put into stealth (1 AP per unit to enter, 0 to leave)
-        // — hide-dice pool is <level> plus a terrain bump (see Game.Map.StealthSystem.
-        // HideDiceFor). Stealth state lives per-UnitData (UnitData.IsHidden), never on the
+        // — hide-tokens pool is <level> plus a terrain bump (see Game.Map.StealthSystem.
+        // HideTokensFor). Stealth state lives per-UnitData (UnitData.IsHidden), never on the
         // army. Not assigned to any shipped card yet — the project owner adds carriers.
         public const string Stealth4 = "Stealth4";
 

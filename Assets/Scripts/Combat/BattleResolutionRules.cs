@@ -5,7 +5,7 @@ using Game.Units;
 namespace Game.Combat
 {
     /// <summary>
-    /// Pure resolution rules for already-rolled challenge dice. UI and simulations must both
+    /// Pure resolution rules for already-rolled challenge tokens. UI and simulations must both
     /// consume these results rather than restating success subtraction or capture/kill thresholds.
     /// </summary>
     public static class BattleResolutionRules
@@ -31,34 +31,51 @@ namespace Game.Combat
             }
         }
 
-        public static GroundAttackOutcome ResolveGroundAttack(bool[] attackerDice, bool[] defenderDice,
+        public static GroundAttackOutcome ResolveGroundAttack(bool[] attackerTokens, bool[] defenderTokens,
             UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes,
             int attackerModifier = 0, int defenderModifier = 0)
-            => ResolveGroundAttack(attackerDice, defenderDice, attacker?.Abilities, defender?.TypeTags,
+            => ResolveGroundAttack(attackerTokens, defenderTokens, attacker?.Abilities, defender?.TypeTags,
                 defender?.Abilities, magnitudes, attackerModifier, defenderModifier);
 
-        public static GroundAttackOutcome ResolveGroundAttack(bool[] attackerDice, bool[] defenderDice,
+        public static GroundAttackOutcome ResolveGroundAttack(bool[] attackerTokens, bool[] defenderTokens,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
             IEnumerable<string> defenderAbilities, AbilityMagnitudes magnitudes,
             int attackerModifier = 0, int defenderModifier = 0)
         {
-            var challenge = new ChallengeResult(attackerDice ?? System.Array.Empty<bool>(),
-                defenderDice ?? System.Array.Empty<bool>(), attackerModifier, defenderModifier);
+            var challenge = new ChallengeResult(attackerTokens ?? System.Array.Empty<bool>(),
+                defenderTokens ?? System.Array.Empty<bool>(), attackerModifier, defenderModifier);
             int damage = ChallengeResult.ApplyAbilityModifiers(challenge.Damage, attackerAbilities,
                 defenderTypeTags, defenderAbilities, magnitudes, out List<string> appliedAbilities);
             return new GroundAttackOutcome(challenge.AttackerSuccesses, challenge.DefenderSuccesses,
                 challenge.Damage, damage, appliedAbilities);
         }
 
+        // Ground effects come from the engine's actual collateral plan and pending turn state.
+        // Field attacks (aviation/AA/explosions) pass no ground effects, but still apply Berserk.
+        public static void AppendHitEffectAbilities(List<string> appliedAbilities, UnitData attacker,
+            UnitData victim, int damage, IReadOnlyList<string> groundEffects = null)
+        {
+            if (appliedAbilities == null || attacker == null || victim == null || damage <= 0)
+                return;
+            if (groundEffects != null)
+                foreach (string effect in groundEffects) Add(effect);
+            if (victim.HasAbility(UnitAbilities.Berserk)) Add(UnitAbilities.Berserk);
+
+            void Add(string ability)
+            {
+                if (!appliedAbilities.Contains(ability)) appliedAbilities.Add(ability);
+            }
+        }
+
         // The live popup and the knowledge-only estimate use the same hunter pool.
         public static int CaptureKillHunterPool(int nonHeroUnitCount) =>
             1 + System.Math.Max(0, nonHeroUnitCount) / 2;
 
-        public static CaptureKillOutcome ResolveCaptureKill(bool[] attackerDice, bool[] defenderDice,
+        public static CaptureKillOutcome ResolveCaptureKill(bool[] attackerTokens, bool[] defenderTokens,
             int attackerModifier = 0, int defenderModifier = 0)
         {
-            var challenge = new ChallengeResult(attackerDice ?? System.Array.Empty<bool>(),
-                defenderDice ?? System.Array.Empty<bool>(), attackerModifier, defenderModifier);
+            var challenge = new ChallengeResult(attackerTokens ?? System.Array.Empty<bool>(),
+                defenderTokens ?? System.Array.Empty<bool>(), attackerModifier, defenderModifier);
             if (challenge.AttackerSuccesses < challenge.DefenderSuccesses)
                 return CaptureKillOutcome.Escaped;
             if (challenge.AttackerSuccesses > challenge.DefenderSuccesses)

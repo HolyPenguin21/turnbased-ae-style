@@ -22218,7 +22218,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc091a2214c24a449ae0bc2fee956a9d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyDiceRowUI
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyTokenRowUI
   iconImage: {fileID: 1187038634}
   amountText: {fileID: 6660000000000000027}
   buyButton: {fileID: 6660000000000000033}
@@ -22927,7 +22927,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc091a2214c24a449ae0bc2fee956a9d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyDiceRowUI
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyTokenRowUI
   iconImage: {fileID: 480841376}
   amountText: {fileID: 36342851}
   buyButton: {fileID: 1460155621}
@@ -22983,7 +22983,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc091a2214c24a449ae0bc2fee956a9d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyDiceRowUI
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyTokenRowUI
   iconImage: {fileID: 1949747689}
   amountText: {fileID: 1967245093}
   buyButton: {fileID: 1558794032}
@@ -23039,7 +23039,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc091a2214c24a449ae0bc2fee956a9d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyDiceRowUI
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BuyTokenRowUI
   iconImage: {fileID: 546359393}
   amountText: {fileID: 784086867}
   buyButton: {fileID: 1910809261}
@@ -34144,7 +34144,7 @@ GameObject:
   - component: {fileID: 8880000000000000192}
   - component: {fileID: 8880000000000000420}
   m_Layer: 5
-  m_Name: DiceSlotTemplate
+  m_Name: TokenSlotTemplate
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -34330,10 +34330,10 @@ MonoBehaviour:
   fateRoot: {fileID: 8880000000000000216}
   fateText: {fileID: 8880000000000000221}
   spendButton: {fileID: 8880000000000000228}
-  diceContainer: {fileID: 8880000000000000235}
-  diceSlotPrefab: {fileID: 8880000000000000420}
+  tokenContainer: {fileID: 8880000000000000235}
+  tokenSlotPrefab: {fileID: 8880000000000000420}
   successText: {fileID: 8880000000000000240}
-  diceCountText: {fileID: 8880000000000099103}
+  tokenCountText: {fileID: 8880000000000099103}
 --- !u!1 &8880000000000000201
 GameObject:
   m_ObjectHideFlags: 0
@@ -35126,7 +35126,7 @@ GameObject:
   - component: {fileID: 8880000000000000235}
   - component: {fileID: 8880000000000000236}
   m_Layer: 5
-  m_Name: DiceContainer
+  m_Name: TokenContainer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -35375,10 +35375,10 @@ MonoBehaviour:
   fateRoot: {fileID: 8880000000000000263}
   fateText: {fileID: 8880000000000000268}
   spendButton: {fileID: 8880000000000000275}
-  diceContainer: {fileID: 8880000000000000282}
-  diceSlotPrefab: {fileID: 8880000000000000420}
+  tokenContainer: {fileID: 8880000000000000282}
+  tokenSlotPrefab: {fileID: 8880000000000000420}
   successText: {fileID: 8880000000000000287}
-  diceCountText: {fileID: 8880000000000099113}
+  tokenCountText: {fileID: 8880000000000099113}
 --- !u!1 &8880000000000000248
 GameObject:
   m_ObjectHideFlags: 0
@@ -36171,7 +36171,7 @@ GameObject:
   - component: {fileID: 8880000000000000282}
   - component: {fileID: 8880000000000000283}
   m_Layer: 5
-  m_Name: DiceContainer
+  m_Name: TokenContainer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -38527,7 +38527,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 955d478754b796ac25fa33b001a6d356, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.DiceSlotUI
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.TokenSlotUI
   image: {fileID: 8880000000000000190}
   baseSprite: {fileID: 21300000, guid: 8680d7e7f2054244284887d83e45cab4, type: 3}
   hitSprite: {fileID: 21300000, guid: 943b864ce4a213d4086df7c82c71e164, type: 3}
@@ -39428,7 +39428,7 @@ GameObject:
   - component: {fileID: 8880000000000099103}
   - component: {fileID: 8880000000000099104}
   m_Layer: 5
-  m_Name: DiceCountText
+  m_Name: TokenCountText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -39473,7 +39473,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Attack Dices: 10'
+  m_text: 'Attack Tokens: 10'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
   m_sharedMaterial: {fileID: 2542230976815431383, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
@@ -39565,7 +39565,7 @@ GameObject:
   - component: {fileID: 8880000000000099113}
   - component: {fileID: 8880000000000099114}
   m_Layer: 5
-  m_Name: DiceCountText
+  m_Name: TokenCountText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -39610,7 +39610,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Dice: 10'
+  m_text: 'Tokens: 10'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
   m_sharedMaterial: {fileID: 2542230976815431383, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}

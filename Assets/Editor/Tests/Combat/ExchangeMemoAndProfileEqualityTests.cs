@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace Game.EditorTests
 {
     // 2026-10-17 — the analytic exchange is memoised by (attack, defense, hp cap, modifier profile):
-    // every combination of the modifier inputs must still equal the exhaustive dice, on the first
+    // every combination of the modifier inputs must still equal the exhaustive tokens, on the first
     // call and on the cached one. DefenderProfile equality keeps the default struct semantics.
     public sealed class ExchangeMemoAndProfileEqualityTests
     {
@@ -33,7 +33,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EveryModifierCombination_FirstAndCachedCall_EqualTheExhaustiveDice()
+        public void EveryModifierCombination_FirstAndCachedCall_EqualTheExhaustiveTokens()
         {
             for (int flags = 0; flags < 32; flags++)
             for (int secondary = 0; secondary < 2; secondary++)

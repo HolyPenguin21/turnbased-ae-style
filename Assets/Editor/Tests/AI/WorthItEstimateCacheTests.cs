@@ -330,7 +330,7 @@ namespace Game.EditorTests
             WorthIt.Estimate(attackers, defenders, 0);
             long allocated = bytes() - before;
             TestContext.WriteLine($"single estimate allocated: {allocated}");
-            // The original implementation uses 48,648 bytes here under Mono. Dice arrays are
+            // The original implementation uses 48,648 bytes here under Mono. Tokens arrays are
             // still allocated by the shared combat kernel; this guards removal of trial lists.
             Assert.That(allocated, Is.LessThan(24 * 1024),
                 "Trial scratch must be reused across all 25 virtual battles");

@@ -2,16 +2,16 @@ using Game.Units;
 
 namespace Game.Cards
 {
-    // One paid attempt's mutable dice and tactic state. Fate belongs to the existing attempt loop.
+    // One paid attempt's mutable tokens and tactic state. Fate belongs to the existing attempt loop.
     public sealed class ResearchProductionChallengeSession
     {
         private readonly UnitData _hero;
-        public bool[] Dice { get; set; }
+        public bool[] Tokens { get; set; }
         public int BaseRequired { get; }
         public int SuccessModifier { get; private set; }
         public int DifficultyModifier { get; private set; }
         public bool TacticUsed { get; private set; }
-        public int Successes => System.Math.Max(0, ResearchProductionSystem.CountHits(Dice) + SuccessModifier);
+        public int Successes => System.Math.Max(0, ResearchProductionSystem.CountHits(Tokens) + SuccessModifier);
         public int Required => System.Math.Max(0, BaseRequired + DifficultyModifier);
         public bool Success => Successes >= Required;
 
@@ -24,7 +24,7 @@ namespace Game.Cards
         private TacticHand Hand => _hero?.Owner?.Tactics;
 
         public string TacticUnavailableReason(CardData card)
-            => TacticRules.SideUnavailableReason(Hand, card, Dice != null, TacticUsed)
+            => TacticRules.SideUnavailableReason(Hand, card, Tokens != null, TacticUsed)
                 ?? TacticRules.UnavailableReason(card.Definition, Required);
 
         public bool CanPlay(CardData card) => TacticUnavailableReason(card) == null;

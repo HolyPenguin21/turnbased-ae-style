@@ -53,7 +53,7 @@ Unity проекта: `6000.5.4f1`.
 ## Случайность и игровые ресурсы
 
 Исходный `BattleAiPhraseBank` вызывал `UnityEngine.Random.Range`, а
-`ChallengeResolver.RollDice` использует `UnityEngine.Random.value`. Выбор реплики
+`ChallengeResolver.RollTokens` использует `UnityEngine.Random.value`. Выбор реплики
 потреблял тот же поток случайности, что и реальные кубики. Изменение числа реплик,
 в том числе напоминаний при ожидании, могло менять последующий бросок.
 

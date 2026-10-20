@@ -52,7 +52,7 @@ namespace Game.Map
         public int StructurePointsCurrent;
         public int StructurePointsMax;
         public int Defense;
-        // Same idea as UnitData.Fate. The manual's own Siege Challenge (a separate dice roll
+        // Same idea as UnitData.Fate. The manual's own Siege Challenge (a separate tokens roll
         // against the building itself, using this stat) is explicitly NOT implemented, per the
         // user's own call — see BattleScreenUI.Combat.cs's BeginAttack, which instead folds
         // terrain + Defense straight into the same Ground Combat roll. Still not consumed

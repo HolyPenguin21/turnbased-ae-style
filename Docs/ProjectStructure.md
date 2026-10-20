@@ -10,11 +10,11 @@
 | `Assets/Textures/UI/Icons` | UI-иконки и иконки действий |
 | `Assets/Textures/UI/Indicators` | Индикаторы состояния |
 | `Assets/Textures/UI/Backgrounds` | Фоны интерфейса |
-| `Assets/Textures/UI/Cards`, `Dice`, `Decorations` | Элементы карточек, кубики и декор |
+| `Assets/Textures/UI/Cards`, `Tokens`, `Decorations` | Элементы карточек, кубики и декор |
 | `Assets/Textures/General/Armies`, `Bases`, `Citadel`, `Events` | Изображения объектов карты |
 | `Assets/Textures/General/Flags`, `Factions`, `Icons`, `MapMarkers` | Флаги, логотипы, иконки карты и маркеры |
 | `Assets/Audio/Music`, `Effects`, `Mixers` | Музыка, звуки и микшеры |
-| `Assets/Prefabs/UI/Buttons`, `Panels`, `Cards`, `Dice`, `Rows` | Переиспользуемые UI-префабы по типу |
+| `Assets/Prefabs/UI/Buttons`, `Panels`, `Cards`, `Tokens`, `Rows` | Переиспользуемые UI-префабы по типу |
 | `Assets/Prefabs/UI/ArmyRadio`, `BattleScreen`, `Campaign`, `Collection` | Связанные элементы конкретного экрана или функции |
 | `Assets/Scripts/UI` | UI-скрипты в подпапках по типу или функции |
 | `Assets/Editor/Drawers` | Инспекторные отрисовщики |

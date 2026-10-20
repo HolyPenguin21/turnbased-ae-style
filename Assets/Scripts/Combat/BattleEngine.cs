@@ -36,19 +36,19 @@ namespace Game.Combat
 
     public readonly struct BattleChallengeRollResult
     {
-        public readonly bool[] AttackerDice;
-        public readonly bool[] DefenderDice;
+        public readonly bool[] AttackerTokens;
+        public readonly bool[] DefenderTokens;
         public readonly int AttackerFateRemaining;
         public readonly int DefenderFateRemaining;
         public readonly int AttackerModifier;
         public readonly int DefenderModifier;
 
-        public BattleChallengeRollResult(bool[] attackerDice, bool[] defenderDice,
+        public BattleChallengeRollResult(bool[] attackerTokens, bool[] defenderTokens,
             int attackerFateRemaining, int defenderFateRemaining,
             int attackerModifier = 0, int defenderModifier = 0)
         {
-            AttackerDice = attackerDice ?? Array.Empty<bool>();
-            DefenderDice = defenderDice ?? Array.Empty<bool>();
+            AttackerTokens = attackerTokens ?? Array.Empty<bool>();
+            DefenderTokens = defenderTokens ?? Array.Empty<bool>();
             AttackerFateRemaining = Mathf.Max(0, attackerFateRemaining);
             DefenderFateRemaining = Mathf.Max(0, defenderFateRemaining);
             AttackerModifier = attackerModifier;
@@ -289,6 +289,10 @@ namespace Game.Combat
         private readonly HashSet<UnitData> _startedTurns = new HashSet<UnitData>();
         private readonly BattleReactionState _reactions = new BattleReactionState();
         private readonly List<UnitData> _drilled = new List<UnitData>();
+        private UnitData _plannedSecondaryAttacker;
+        private UnitData _plannedSecondaryVictim;
+        private int _plannedSecondaryDamage;
+        private List<(UnitData Victim, string Skill)> _plannedSecondaryTargets;
         public event Action<UnitData> UnitHealed;
         // A ground combatant just received this round's UnitAbilities.Drill bonus.
         public event Action<UnitData> UnitDrilled;
@@ -318,6 +322,8 @@ namespace Game.Combat
         {
             if (_startedRound == _state.Round) return;
             _startedRound = _state.Round;
+            _plannedSecondaryTargets = null;
+            _plannedSecondaryAttacker = _plannedSecondaryVictim = null;
             _startedTurns.Clear();
             _reactions.Clear();
             RevertRoundDrill();
@@ -583,7 +589,7 @@ namespace Game.Combat
         {
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
-                roll.AttackerDice, roll.DefenderDice, attacker, defender, magnitudes, roll.AttackerModifier, roll.DefenderModifier);
+                roll.AttackerTokens, roll.DefenderTokens, attacker, defender, magnitudes, roll.AttackerModifier, roll.DefenderModifier);
             // No grid and no rounds here (air strikes / AA fire): Bodyguard, Counterattack and Drill
             // are tactical-grid skills and never apply; Ionic is already in outcome.Damage.
             var application = new BattleAttackApplication
@@ -613,7 +619,7 @@ namespace Game.Combat
         {
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
-                roll.AttackerDice, roll.DefenderDice, attacker, defender, _magnitudes, roll.AttackerModifier, roll.DefenderModifier);
+                roll.AttackerTokens, roll.DefenderTokens, attacker, defender, _magnitudes, roll.AttackerModifier, roll.DefenderModifier);
 
             UnitData victim = defender;
             int damage = outcome.Damage;
@@ -773,7 +779,7 @@ namespace Game.Combat
         {
             ApplyFateState(hunterArmy?.Commander, hero, roll);
             CaptureKillOutcome outcome = BattleResolutionRules.ResolveCaptureKill(
-                roll.AttackerDice, roll.DefenderDice, roll.AttackerModifier, roll.DefenderModifier);
+                roll.AttackerTokens, roll.DefenderTokens, roll.AttackerModifier, roll.DefenderModifier);
             return ApplyCaptureKillOutcome(state, outcome, hero, heroArmy, hunterArmy);
         }
 
@@ -1115,22 +1121,65 @@ namespace Game.Combat
             return false;
         }
 
+        // Resolve the random collateral selection once, while the result popup is being built.
+        // Applying the acknowledged hit consumes this same plan, so the displayed skills cannot
+        // disagree with a second random selection. No HP, stats or turn order change here.
+        public IReadOnlyList<string> PreviewGroundHitEffects(UnitData attacker, UnitData victim, int damage,
+            bool isCounterattack = false)
+        {
+            var effects = new List<string>();
+            if (attacker == null || victim == null || damage <= 0) return effects;
+            if (_plannedSecondaryTargets == null || _plannedSecondaryAttacker != attacker
+                || _plannedSecondaryVictim != victim || _plannedSecondaryDamage != damage)
+            {
+                _plannedSecondaryAttacker = attacker;
+                _plannedSecondaryVictim = victim;
+                _plannedSecondaryDamage = damage;
+                _plannedSecondaryTargets = SelectSecondarySkills(attacker, victim, damage);
+            }
+            bool survives = victim.HitPointsCurrent > damage;
+            bool pendingTurn = _state.TurnOrder != null
+                && _state.TurnOrder.IndexOf(victim) > _state.TurnIndex;
+            bool wouldCounter = !isCounterattack && _state.OwningArmy(victim) != _state.RetreatingArmy
+                && BattleProtectionRules.CanCounterattack(_state.Grid, victim, attacker,
+                    victim.HitPointsCurrent - damage, 0, _reactions);
+            if (survives && (pendingTurn || wouldCounter)
+                && BattleSimulationKernel.SuppressesTurn(damage, attacker.Abilities))
+                effects.Add(UnitAbilities.ShockAttack);
+            foreach (var target in _plannedSecondaryTargets)
+                if (!effects.Contains(target.Skill)) effects.Add(target.Skill);
+            return effects;
+        }
+
         private void ResolveSecondarySkills(UnitData attacker, UnitData defender, int primaryDamage,
             BattleAttackApplication application)
         {
+            var targets = _plannedSecondaryTargets != null && _plannedSecondaryAttacker == attacker
+                && _plannedSecondaryVictim == defender && _plannedSecondaryDamage == primaryDamage
+                    ? _plannedSecondaryTargets : SelectSecondarySkills(attacker, defender, primaryDamage);
+            _plannedSecondaryTargets = null;
+            _plannedSecondaryAttacker = _plannedSecondaryVictim = null;
+            foreach (var target in targets)
+                ApplySecondaryHit(attacker, target.Victim, primaryDamage, target.Skill, application);
+        }
+
+        private List<(UnitData Victim, string Skill)> SelectSecondarySkills(UnitData attacker,
+            UnitData defender, int primaryDamage)
+        {
+            var targets = new List<(UnitData Victim, string Skill)>();
             if (attacker == null || defender == null || primaryDamage <= 0 || _state.Grid == null)
-                return;
+                return targets;
 
             bool splash = attacker.HasAbility(UnitAbilities.Splash);
             bool scorcher = attacker.HasAbility(UnitAbilities.Scorcher);
             if (!splash && !scorcher)
-                return;
+                return targets;
             if (!_state.Grid.TryFindPosition(defender, out int row, out int col))
-                return;
+                return targets;
 
             int half = Mathf.FloorToInt(primaryDamage / 2f);
             if (half <= 0)
-                return;
+                return targets;
 
             var neighbours = new List<UnitData>();
             int[] dr = { -1, 1, 0, 0 };
@@ -1142,7 +1191,7 @@ namespace Game.Combat
                     neighbours.Add(unit);
             }
             if (neighbours.Count == 0)
-                return;
+                return targets;
 
             List<BattleSimSecondaryTarget> secondaryTargets =
                 BattleSimulationKernel.SelectSecondaryTargets(
@@ -1150,8 +1199,8 @@ namespace Game.Combat
                     i => neighbours[i].TypeTags.Contains(UnitTypeTag.Bio),
                     splash, scorcher, _random);
             foreach (BattleSimSecondaryTarget selected in secondaryTargets)
-                ApplySecondaryHit(attacker, neighbours[selected.Index], primaryDamage,
-                    selected.Skill, application);
+                targets.Add((neighbours[selected.Index], selected.Skill));
+            return targets;
         }
 
         private void ApplySecondaryHit(UnitData attacker, UnitData victim, int primaryDamage, string skill,

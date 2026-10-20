@@ -65,7 +65,7 @@ namespace Game.EditorTests
         public void FundingPreservesEachResourceOfAnAcceptedBuild()
         {
             // An accepted Concord Base costs 3H/2E/1M/2T. Other resources may still fund
-            // initiative; neither two affordable dice nor the greedy unit choice may eat the
+            // initiative; neither two affordable tokens nor the greedy unit choice may eat the
             // exact vector needed to complete that build.
             var analysis = new PreTurnCapacityAnalysis();
             int[] available = { 4, 3, 3, 4 };

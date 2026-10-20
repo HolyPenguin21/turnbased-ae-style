@@ -31,8 +31,8 @@ namespace Game.Ai
             public int AiTurns;
             public long ApStart, ApSpent, ApEnd;
             public int StrandedTurns;              // ended with >= initiativeWasteLeftoverFrac of start AP
-            public int DiceBought;
-            public readonly int[] DiceSpent = new int[4];
+            public int TokensBought;
+            public readonly int[] TokensSpent = new int[4];
             public int InitiativeSuppressed;
             public int WinVsPlayer, LossVsPlayer, DrawVsPlayer;
             public int WinVsNeutral, LossVsNeutral, DrawVsNeutral;
@@ -138,14 +138,14 @@ namespace Game.Ai
                 s.StrandedTurns++;
         }
 
-        // InitiativeCoordinatorV2 — dice actually applied, and the H/E/M/T units that paid them.
-        public static void RecordInitiativeBought(PlayerSetupData player, int dice, int[] spent)
+        // InitiativeCoordinatorV2 — tokens actually applied, and the H/E/M/T units that paid them.
+        public static void RecordInitiativeBought(PlayerSetupData player, int tokens, int[] spent)
         {
-            if (!TryGet(player, out PlayerStats s) || dice <= 0)
+            if (!TryGet(player, out PlayerStats s) || tokens <= 0)
                 return;
-            s.DiceBought += dice;
+            s.TokensBought += tokens;
             for (int i = 0; i < 4 && spent != null && i < spent.Length; i++)
-                s.DiceSpent[i] += spent[i];
+                s.TokensSpent[i] += spent[i];
         }
 
         public static void RecordInitiativeSuppressed(PlayerSetupData player)
@@ -297,7 +297,7 @@ namespace Game.Ai
                         + $"avgLeft={(float)s.ApEnd / s.AiTurns:0.0} ({leftover:P0} unused)  strandedTurns={s.StrandedTurns}");
                 }
                 if (!p.IsHuman)
-                    sb.AppendLine($"  initiative: diceBought={s.DiceBought}  paid H/E/M/T={s.DiceSpent[0]}/{s.DiceSpent[1]}/{s.DiceSpent[2]}/{s.DiceSpent[3]}  suppressedTurns={s.InitiativeSuppressed}");
+                    sb.AppendLine($"  initiative: tokensBought={s.TokensBought}  paid H/E/M/T={s.TokensSpent[0]}/{s.TokensSpent[1]}/{s.TokensSpent[2]}/{s.TokensSpent[3]}  suppressedTurns={s.InitiativeSuppressed}");
                 sb.AppendLine();
             }
             try { File.WriteAllText(_summaryPath, sb.ToString()); }

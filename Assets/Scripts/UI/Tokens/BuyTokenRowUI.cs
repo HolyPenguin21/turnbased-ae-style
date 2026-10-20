@@ -10,8 +10,8 @@ namespace Game.UI
     // One resource row in the initiative buy panel: coloured icon + current amount + "-" to spend
     // 1 unit of this resource toward the die currently being assembled / "+" to undo the single
     // most recent unit spent, only enabled when this resource paid for it (see
-    // PlayerRoot.CanRefundInitiativeDie — always the last contribution, regardless of resource).
-    public class BuyDiceRowUI : MonoBehaviour
+    // PlayerRoot.CanRefundInitiativeToken — always the last contribution, regardless of resource).
+    public class BuyTokenRowUI : MonoBehaviour
     {
         [SerializeField] private Image iconImage;
         [SerializeField] private TMP_Text amountText;
@@ -52,9 +52,9 @@ namespace Game.UI
             if (amountText != null)
                 amountText.text = root.GetResource(_type).ToString();
             if (buyButton != null)
-                buyButton.interactable = !locked && root.CanBuyInitiativeDie(_type);
+                buyButton.interactable = !locked && root.CanBuyInitiativeToken(_type);
             if (refundButton != null)
-                refundButton.interactable = !locked && root.CanRefundInitiativeDie(_type);
+                refundButton.interactable = !locked && root.CanRefundInitiativeToken(_type);
         }
     }
 }

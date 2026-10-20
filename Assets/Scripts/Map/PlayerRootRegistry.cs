@@ -6,7 +6,7 @@ namespace Game.Map
     // Every player's PlayerRoot, keyed by their PlayerSetupData — mirrors ArmyRegistry/
     // BuildingRegistry. Needed wherever turn/economy logic (GameTurnController,
     // TurnOrderResolver, AI) has a PlayerSetupData and needs that player's live state
-    // (resources, bonus initiative dice) without a scene reference to their PlayerRoot.
+    // (resources, bonus initiative tokens) without a scene reference to their PlayerRoot.
     public static class PlayerRootRegistry
     {
         private static readonly Dictionary<PlayerSetupData, PlayerRoot> ByPlayer = new Dictionary<PlayerSetupData, PlayerRoot>();

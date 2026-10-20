@@ -14,7 +14,7 @@ namespace Game.UI
     // The "Ground Combat" popup (two references the user supplied: the roll/spend screen and the
     // result screen) — one component, two states swapped via rollStateRoot/resultStateRoot.
     //
-    // Roll state: both sides' BattleCombatantRowUI, a Roll Die button, and a single shared Accept
+    // Roll state: both sides' BattleCombatantRowUI, a Roll Token button, and a single shared Accept
     // button whose meaning depends on whose turn it currently is in the Fate duel (see RunDuel).
     // Per the user's own spec: the defender always gets the first say (Defender's Prerogative);
     // declining there hands the turn to the attacker rather than ending the duel outright — the
@@ -46,7 +46,7 @@ namespace Game.UI
         [SerializeField] private BattleCombatantRowUI defenderRow;
         [SerializeField] private Button rollButton;
         [SerializeField] private Button acceptButton;
-        // Player-facing "auto-press Roll Die for me" checkbox (Autoroll_Toggle, under
+        // Player-facing "auto-press Roll Token for me" checkbox (Autoroll_Toggle, under
         // rollStateRoot) — persisted across sessions via PlayerPrefs (see Awake/
         // OnAutorollToggleChanged), separate from AutoRollIfNoHuman's own AI-vs-AI gate below:
         // this fires even on a human's own turn once they've opted in.
@@ -57,7 +57,7 @@ namespace Game.UI
         // read as the AI (most visibly the defender, exercising Defender's Prerogative on the
         // fresh first roll) accepting suspiciously fast, per the user's own report.
         [SerializeField] private float aiAcceptDelay = 0.5f;
-        // How long before Roll Die auto-presses itself when neither side is human (see
+        // How long before Roll Token auto-presses itself when neither side is human (see
         // AutoRollIfNoHuman) — otherwise an AI-vs-AI or AI-vs-neutral encounter just sits on
         // Phase.NotRolled forever, since rollButton only ever fires from an explicit click.
         [SerializeField] private float aiRollDelay = 0.5f;
@@ -112,7 +112,7 @@ namespace Game.UI
         // `yield return RunTurn(...)` returns, since a coroutine can't hand back an ordinary
         // return value.
         private bool _turnSpent;
-        // Set false right before a Fate-spend reroll's SetDice call, true once that die's own
+        // Set false right before a Fate-spend reroll's SetTokens call, true once that die's own
         // flip animation lands (or immediately if the row is missing — nothing to wait for).
         // Both RunHumanTurn and RunAiTurn wait on this before re-opening Spend/Accept (human) or
         // re-evaluating whether to keep spending (AI) — every reroll is gated the same way the
@@ -124,7 +124,7 @@ namespace Game.UI
         // Which win condition Resolve() applies once both sides have accepted — every Challenge
         // in the manual (Ground Combat, Capture Kill, and eventually Retreat/Assassination/
         // Sabotage/Sniper/...) shares this same Roll/Defender's-Prerogative/Accept shell, they
-        // just differ in how dice-pool sizes are computed and what the result means. See
+        // just differ in how tokens-pool sizes are computed and what the result means. See
         // BeginCaptureKill for the second one; add further Begin*/Resolve* pairs here rather than
         // a whole new popup component per challenge type.
         private enum ChallengeKind { GroundCombat, CaptureKill, Announcement, ResearchProduction }
@@ -135,6 +135,7 @@ namespace Game.UI
         // Ground Combat only: the UnitAbilities.Bodyguard that takes a landed hit instead of
         // _defender (BattleEngine.FindInterceptingBodyguard, asked by the caller before the roll).
         private UnitData _interceptor;
+        private Func<UnitData, int, IReadOnlyList<string>> _groundHitEffects;
         private UnitData _attackerHero;
         private UnitData _defenderHero;
         // Whether the DEFENDER's own army is the one currently retreating (see BattleScreenUI.
@@ -143,33 +144,33 @@ namespace Game.UI
         // OnStartRoundClicked), only get attacked. Feeds FateDuelAi.ShouldSpendFate's own Fate-
         // conservation rule for that case (see RunAiTurn).
         private bool _defenderIsRetreating;
-        // GroundCombat only — the ACTUAL dice-pool sizes the roll uses, resolved once in Begin
+        // GroundCombat only — the ACTUAL tokens-pool sizes the roll uses, resolved once in Begin
         // (attackerPoolSize/defenderPoolSize ?? the plain Attack/Defense+bonus default) and read
         // back by RunRollAndDuel instead of recomputing from _attacker.Attack/_defender.Defense
-        // directly. Must stay in lockstep with what attackerRow/defenderRow.SetDicePoolSize was
+        // directly. Must stay in lockstep with what attackerRow/defenderRow.SetTokenPoolSize was
         // just told to DISPLAY in Begin — see the bug this fixed: a hero defender's displayed
         // pool is its FateMax (defenderPoolSize, see BeginAttack's own "target hero" comment),
         // but the roll used to always fall back to _defender.Defense regardless, which is 0 for
         // every hero card (attack/defenseRating are both 0 in the hero cards' own data — heroes
-        // fight via Fate, not a Defense stat). Rolling 0 dice for the defender meant no dice
+        // fight via Fate, not a Defense stat). Rolling 0 tokens for the defender meant no tokens
         // slots at all for that side and a duel forced to whatever the attacker alone rolled,
-        // even though the row up top still correctly showed "Dice: {FateMax}" (the project
+        // even though the row up top still correctly showed "Tokens: {FateMax}" (the project
         // owner's own report: "у героя не крутятся кубики... количество кубиков написано, но
         // визуально их нет").
-        private int _attackerDicePoolSize;
-        private int _defenderDicePoolSize;
-        // CaptureKill mode only — the hunter's computed dice-pool size (see BeginCaptureKill;
+        private int _attackerTokenPoolSize;
+        private int _defenderTokenPoolSize;
+        // CaptureKill mode only — the hunter's computed tokens-pool size (see BeginCaptureKill;
         // there's no per-unit Attack stat to roll against, unlike Ground Combat) and how many
-        // dice the target hero rolls (their Fate stat, per the manual: "the target hero receives
-        // a dice pool equal to his fate"), captured once at OnRollClicked time so a later reroll
-        // spending that same Fate down doesn't change how many dice were actually in this roll.
+        // tokens the target hero rolls (their Fate stat, per the manual: "the target hero receives
+        // a tokens pool equal to his fate"), captured once at OnRollClicked time so a later reroll
+        // spending that same Fate down doesn't change how many tokens were actually in this roll.
         // Outcome itself (see ResolveCaptureKill) compares actual successes only, not this pool
         // size — per the user's own call, dropping the manual's separate "capture threshold".
-        private int _hunterDicePool;
+        private int _hunterTokenPool;
         private BattleChallengeSession _challengeSession;
         // Presentation mirrors of the domain session below; the popup never mutates them directly.
-        private bool[] _attackerDice;
-        private bool[] _defenderDice;
+        private bool[] _attackerTokens;
+        private bool[] _defenderTokens;
         private int _attackerFateRemaining;
         private int _defenderFateRemaining;
         private Action<BattleChallengeRollResult> _onResolved;
@@ -184,7 +185,7 @@ namespace Game.UI
         private UnitData _rpHero;
         private CardDefinition _rpCard;
         private int _rpRequiredSuccesses;
-        private bool[] _rpDice;
+        private bool[] _rpTokens;
         // hero.Fate as it was the instant BeginResearchProduction ran — restored verbatim once
         // the Challenge ends, win or lose, so a Research/Production attempt never permanently
         // costs Fate (spec §3/§15). NOT hero.FateMax — a hero that walked in on 2/4 leaves on
@@ -257,10 +258,10 @@ namespace Game.UI
         // itself needs to be a hero to use (see BattleCombatantRowUI's own comment); the caller
         // (BattleScreenUI) already has the grid to look these up from.
         // attackerPoolSize/defenderPoolSize (optional): only BeginCaptureKill needs to override
-        // these — its pools are _hunterDicePool/the target hero's own Fate, nothing to do with
+        // these — its pools are _hunterTokenPool/the target hero's own Fate, nothing to do with
         // Attack/Defense (see BeginCaptureKill's own comment). Ground Combat's default is attacker.
         // Attack versus defender.Defense (or hero.FateMax) + battlefield defense bonuses, matching
-        // exactly what OnRollClicked itself rolls against, just surfaced before Roll Die is even
+        // exactly what OnRollClicked itself rolls against, just surfaced before Roll Token is even
         // clicked (see the user's own request to see each side's pool size up front, not just its
         // post-roll success count).
         public void Begin(UnitData attacker, UnitData attackerHero, UnitData defender, UnitData defenderHero,
@@ -268,11 +269,11 @@ namespace Game.UI
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
             int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0,
             bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false, bool tacticsCritical = false,
-            string challengeTitle = null)
+            string challengeTitle = null, Func<UnitData, int, IReadOnlyList<string>> groundHitEffects = null)
         {
             _tacticsCritical = tacticsCritical;
             CloseTacticPresentation();
-            int defenderBonusDice = defenderTerrainBonus + defenderConstructionBonus + defenderFormationBonus;
+            int defenderBonusTokens = defenderTerrainBonus + defenderConstructionBonus + defenderFormationBonus;
             // Stops a still-running RunRollAndDuel/RunDuel coroutine from a PREVIOUS Begin() on
             // this same (pooled/reused) popup instance — otherwise its delayed WaitUntil callbacks
             // could fire against the fields this call is about to overwrite.
@@ -286,6 +287,7 @@ namespace Game.UI
             _attacker = attacker;
             _defender = defender;
             _interceptor = interceptor;
+            _groundHitEffects = groundHitEffects;
             _attackerHero = attackerHero;
             _defenderHero = defenderHero;
             _attackerFateRemaining = Mathf.Max(0, attackerHero?.Fate ?? 0);
@@ -294,8 +296,8 @@ namespace Game.UI
             _onResolved = onResolved;
             _onAiThought = onAiThought;
             _challengeSession = null;
-            _attackerDice = null;
-            _defenderDice = null;
+            _attackerTokens = null;
+            _defenderTokens = null;
             _phase = Phase.NotRolled;
             _okAlreadyHandled = false;
             _awaitingHumanDecision = false;
@@ -319,17 +321,17 @@ namespace Game.UI
             if (titleText != null)
                 titleText.text = challengeTitle ?? (isCounterattack ? "COUNTERATTACK" : "GROUND COMBAT");
 
-            _attackerDicePoolSize = attackerPoolSize ?? (attacker?.Attack ?? 0);
+            _attackerTokenPoolSize = attackerPoolSize ?? (attacker?.Attack ?? 0);
             int defenderBaseDefense = defender == null ? 0
                 : (defender.IsHero ? Mathf.Max(0, defender.FateMax) : defender.Defense);
-            _defenderDicePoolSize = defenderPoolSize ?? (defenderBaseDefense + defenderBonusDice);
+            _defenderTokenPoolSize = defenderPoolSize ?? (defenderBaseDefense + defenderBonusTokens);
 
             attackerRow?.Setup(attacker, attackerHero, attackerLogo);
             defenderRow?.Setup(defender, defenderHero, defenderLogo);
             attackerRow?.SetFateDisplay(_attackerFateRemaining);
             defenderRow?.SetFateDisplay(_defenderFateRemaining);
-            attackerRow?.SetDicePoolSize(_attackerDicePoolSize);
-            defenderRow?.SetDicePoolSize(_defenderDicePoolSize,
+            attackerRow?.SetTokenPoolSize(_attackerTokenPoolSize);
+            defenderRow?.SetTokenPoolSize(_defenderTokenPoolSize,
                 defenderTerrainBonus, defenderConstructionBonus, defenderBaseDefense, defenderFormationBonus);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetSpendInteractable(false);
@@ -343,14 +345,14 @@ namespace Game.UI
         }
 
         // The Autoroll_Toggle checkbox (see Awake/OnAutorollToggleChanged) — lets a human player
-        // opt into the same auto-press-Roll-Die behavior AutoRollIfNoHuman already gives an
+        // opt into the same auto-press-Roll-Token behavior AutoRollIfNoHuman already gives an
         // AI-vs-AI encounter (see RunsAutomatically's own call site in Begin), so they don't have to
-        // click Roll Die themselves every single Ground Combat/Capture Kill challenge.
+        // click Roll Token themselves every single Ground Combat/Capture Kill challenge.
         private bool IsAutorollEnabled => autorollToggle != null && autorollToggle.isOn;
 
         // The ChallengeResultRoot checkbox's own read — same principle as IsAutorollEnabled
         // above, just gating AutoCloseResultIfNoHuman's three call sites (ShowResult/
-        // ShowCaptureKillResult/ShowSecondaryAttackResult) instead of Begin's Roll-Die auto-press.
+        // ShowCaptureKillResult/ShowSecondaryAttackResult) instead of Begin's Roll-Token auto-press.
         private bool IsAutoCloseResultEnabled => autoCloseResultToggle != null && autoCloseResultToggle.isOn;
 
         private bool _automateHumanSides;
@@ -385,7 +387,7 @@ namespace Game.UI
         // AI-vs-AI/AI-vs-neutral encounter would otherwise sit on Phase.Resolved forever waiting
         // for a click nobody's there to make. Also started when IsAutoCloseResultEnabled (see its
         // own comment) even with a human on both sides — same opt-in idea as IsAutorollEnabled,
-        // just for dismissing the result instead of pressing Roll Die. OnOkClicked's own
+        // just for dismissing the result instead of pressing Roll Token. OnOkClicked's own
         // _okAlreadyHandled guard makes this safe even if a human elsewhere in the scene somehow
         // also clicks Ok around the same time.
         private IEnumerator AutoCloseResultIfNoHuman()
@@ -400,14 +402,14 @@ namespace Game.UI
         }
 
         // The manual's "Capture Kill Challenge" (pg. 24) — same Roll/Defender's-Prerogative/
-        // Accept shell as Ground Combat (see Begin, reused verbatim here), but the dice pools and
+        // Accept shell as Ground Combat (see Begin, reused verbatim here), but the tokens pools and
         // the win condition are entirely different, so this sets them up itself instead of going
         // through Begin's Attack/Defense-stat plumbing:
         //   - Hunter's pool = 1 + (hunterArmy's own non-hero unit count / 2). The manual also adds
         //     "highest observation strength in hex" — Observation/Recce doesn't exist in this
         //     project yet (see BattleInitiator's own Stealth note), so that term is 0 for now.
         //   - Target's pool = the hunted hero's own Fate stat (see the manual: "The target hero
-        //     receives a dice pool equal to his fate").
+        //     receives a tokens pool equal to his fate").
         //   - The hunter side gets a Fate row exactly when the hunting army itself has a hero
         //     along for the ride — that hero's own Fate, same as any Ground Combat attacker (per
         //     the user's own call: no separate "Bounty Hunter" skill gate, unlike the manual's
@@ -426,15 +428,15 @@ namespace Game.UI
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
             UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
             int hunterUnits = hunterArmy?.Members.FindAll(m => !m.IsHero).Count ?? 0;
-            _hunterDicePool = BattleResolutionRules.CaptureKillHunterPool(hunterUnits);
+            _hunterTokenPool = BattleResolutionRules.CaptureKillHunterPool(hunterUnits);
             _onCaptureKillResolved = onResolved;
 
-            // The manual: "the target hero receives a dice pool equal to his fate" — his FULL
+            // The manual: "the target hero receives a tokens pool equal to his fate" — his FULL
             // Fate stat, not whatever he happens to have left after spending some earlier this
             // same battle (see the user's own correction; RunRollAndDuel below reads the same
             // FateMax for the actual roll).
             Begin(hunterFace, hunterHero, targetHero, targetHero, hunterLogo, targetLogo, null, onAiThought,
-                attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.FateMax ?? 0,
+                attackerPoolSize: _hunterTokenPool, defenderPoolSize: targetHero?.FateMax ?? 0,
                 automateHumanSides: automateHumanSides, tacticsCritical: tacticsCritical);
             _kind = ChallengeKind.CaptureKill;
             if (titleText != null)
@@ -445,8 +447,8 @@ namespace Game.UI
         // A new, separate entry point (per the spec): it does NOT go through Begin(), never runs
         // RunRollAndDuel/RunDuel/Resolve, and never touches Ground Combat / Capture Kill / Aviation
         // rules. Attacker = the producing Hero, rolling a fixed pool of 5 (see ChallengeResolver.
-        // RollDice) with unchanged per-die success probability. Defender = the chosen card: a
-        // fixed CardDefinition.fate guaranteed successes, no dice, no Fate. Win = attacker
+        // RollTokens) with unchanged per-die success probability. Defender = the chosen card: a
+        // fixed CardDefinition.fate guaranteed successes, no tokens, no Fate. Win = attacker
         // successes >= card.fate. The Fate the Hero spends here is temporary — restored to its
         // pre-Challenge value on the way out (RestoreResearchProductionFate).
         //
@@ -471,7 +473,7 @@ namespace Game.UI
             _rpFateSnapshot = hero != null ? hero.Fate : 0;
             _rpActive = true;
             _rpResultSuccess = false;
-            _rpDice = null;
+            _rpTokens = null;
             _onResearchProductionResolved = onResolved;
 
             // The Hero is a real UnitData and a legitimate attacker (only the DEFENDER must not
@@ -482,8 +484,8 @@ namespace Game.UI
             _interceptor = null;
             _attackerHero = hero;
             _defenderHero = null;
-            _attackerDice = null;
-            _defenderDice = null;
+            _attackerTokens = null;
+            _defenderTokens = null;
             _phase = Phase.InProgress;
             _okAlreadyHandled = false;
             _awaitingHumanDecision = false;
@@ -505,7 +507,7 @@ namespace Game.UI
                     ? "RESEARCH CHALLENGE" : "PRODUCTION CHALLENGE";
 
             attackerRow?.Setup(hero, hero, heroLogo);
-            attackerRow?.SetDicePoolSize(ResearchProductionSystem.DicePoolSize);
+            attackerRow?.SetTokenPoolSize(ResearchProductionSystem.TokenPoolSize);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, null);
 
@@ -527,20 +529,20 @@ namespace Game.UI
             defenderRow?.SetFixedSuccesses(_rpRequiredSuccesses);
             bool spentAtLeastOnce = false;
 
-            _rpDice = ChallengeResolver.RollDice(ResearchProductionSystem.DicePoolSize);
-            _rpTactics.Dice = _rpDice;
+            _rpTokens = ChallengeResolver.RollTokens(ResearchProductionSystem.TokenPoolSize);
+            _rpTactics.Tokens = _rpTokens;
             PrepareTacticPresentation(_rpHero?.Owner);
             bool animDone = attackerRow == null;
-            attackerRow?.SetDice(_rpDice, onComplete: () => animDone = true);
+            attackerRow?.SetTokens(_rpTokens, onComplete: () => animDone = true);
             yield return new WaitUntil(() => animDone);
 
             BattleDebugLog.Write($"[RollDiag] ResearchProduction: {_rpHero?.Name} -> {_rpCard?.displayName} " +
-                $"target={_rpRequiredSuccesses}, roll={BattleDebugLog.DiceString(_rpDice)} ({CountHits(_rpDice)} hits)");
+                $"target={_rpRequiredSuccesses}, roll={BattleDebugLog.TokenString(_rpTokens)} ({CountHits(_rpTokens)} hits)");
 
             while (true)
             {
                 bool canSpend = _rpHero != null
-                    && ResearchProductionSystem.CanSpendFate(_rpDice, _rpHero.Fate,
+                    && ResearchProductionSystem.CanSpendFate(_rpTokens, _rpHero.Fate,
                         _rpTactics.Required - _rpTactics.SuccessModifier);
                 if (!canSpend && !_rpTactics.HasTactic)
                     break;
@@ -565,7 +567,7 @@ namespace Game.UI
                 if (_humanDeclined)
                     break;
 
-                // OnResearchProductionSpend already mutated _rpDice + Fate and kicked the anim —
+                // OnResearchProductionSpend already mutated _rpTokens + Fate and kicked the anim —
                 // wait for it to land before re-offering Spend/Accept (same gate as the duel).
                 yield return new WaitUntil(() => _rerollAnimDone);
                 RefreshTacticTotals();
@@ -596,8 +598,8 @@ namespace Game.UI
             if (!_awaitingHumanDecision || _rpHero == null || _rpHero.Fate <= 0)
                 return;
 
-            bool hasMiss = HasMiss(_rpDice);
-            int successes = CountHits(_rpDice);
+            bool hasMiss = HasMiss(_rpTokens);
+            int successes = CountHits(_rpTokens);
             if (!hasMiss && _rpTactics.Success)
                 return; // nothing Fate can do
 
@@ -609,26 +611,26 @@ namespace Game.UI
 
             if (hasMiss)
             {
-                RerollOneMiss(ref _rpDice, out int rerolledIndex);
-                attackerRow?.SetDice(_rpDice, rerolledIndex, () => _rerollAnimDone = true);
+                RerollOneMiss(ref _rpTokens, out int rerolledIndex);
+                attackerRow?.SetTokens(_rpTokens, rerolledIndex, () => _rerollAnimDone = true);
                 attackerRow?.OnFateSpent();
                 BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
-                    $"rerolled slot {rerolledIndex} -> {_rpDice[rerolledIndex]}");
+                    $"rerolled slot {rerolledIndex} -> {_rpTokens[rerolledIndex]}");
             }
             else
             {
-                bool hit = ChallengeResolver.RollDice(1)[0];
-                var grown = new bool[_rpDice.Length + 1];
-                System.Array.Copy(_rpDice, grown, _rpDice.Length);
+                bool hit = ChallengeResolver.RollTokens(1)[0];
+                var grown = new bool[_rpTokens.Length + 1];
+                System.Array.Copy(_rpTokens, grown, _rpTokens.Length);
                 grown[grown.Length - 1] = hit;
-                _rpDice = grown;
-                attackerRow?.SetDicePoolSize(_rpDice.Length);
-                attackerRow?.AppendDie(hit, () => _rerollAnimDone = true);
+                _rpTokens = grown;
+                attackerRow?.SetTokenPoolSize(_rpTokens.Length);
+                attackerRow?.AppendToken(hit, () => _rerollAnimDone = true);
                 attackerRow?.OnFateSpent();
                 BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
-                    $"added overflow die #{_rpDice.Length} -> {hit}");
+                    $"added overflow die #{_rpTokens.Length} -> {hit}");
             }
-            _rpTactics.Dice = _rpDice;
+            _rpTactics.Tokens = _rpTokens;
             _humanSpent = true;
         }
 
@@ -748,7 +750,7 @@ namespace Game.UI
             _awaitingHumanDecision = false;
             _rpHero = null;
             _rpCard = null;
-            _rpDice = null;
+            _rpTokens = null;
             _rpTactics = null;
 
             callback?.Invoke(success);
@@ -759,12 +761,12 @@ namespace Game.UI
         // failure — no card minted, Fate restored, callback fired exactly once.
         private void CleanupResearchProduction() => FinalizeResearchProduction(false);
 
-        private static int CountHits(bool[] dice)
+        private static int CountHits(bool[] tokens)
         {
-            if (dice == null)
+            if (tokens == null)
                 return 0;
             int hits = 0;
-            foreach (bool hit in dice)
+            foreach (bool hit in tokens)
                 if (hit) hits++;
             return hits;
         }
@@ -779,7 +781,7 @@ namespace Game.UI
                 : BattleChallengeMode.GroundCombat;
             _challengeSession = new BattleChallengeSession(
                 mode, _attacker, _defender,
-                _attackerDicePoolSize, _defenderDicePoolSize,
+                _attackerTokenPoolSize, _defenderTokenPoolSize,
                 _attackerFateRemaining, _defenderFateRemaining,
                 Magnitudes, _defenderIsRetreating, tacticsCritical: _tacticsCritical);
 
@@ -792,7 +794,7 @@ namespace Game.UI
         // Rolls, reveals both rows, then runs the Fate duel (see RunDuel) and resolves once it's
         // actually over — waits for both rows' own flip animation to actually land before opening
         // the duel (per the user's own request, 2026-08-24: Spend/Accept shouldn't become
-        // available, and an AI shouldn't react, before the dice are visibly done spinning).
+        // available, and an AI shouldn't react, before the tokens are visibly done spinning).
         private IEnumerator RunRollAndDuel()
         {
             if (_challengeSession == null)
@@ -801,27 +803,27 @@ namespace Game.UI
             _challengeSession.Roll();
             SyncChallengePresentationState();
 
-            var result = new ChallengeResult(_attackerDice, _defenderDice);
+            var result = new ChallengeResult(_attackerTokens, _defenderTokens);
 
             BattleDebugLog.Write($"[RollDiag] {_kind}: {_attacker?.Name} ({_attacker?.Owner?.Nickname}) " +
                 $"vs {_defender?.Name} ({_defender?.Owner?.Nickname}) -> " +
-                $"attacker={BattleDebugLog.DiceString(_attackerDice)} ({result.AttackerSuccesses} hits), " +
-                $"defender={BattleDebugLog.DiceString(_defenderDice)} ({result.DefenderSuccesses} hits), rawDamage={result.Damage}");
+                $"attacker={BattleDebugLog.TokenString(_attackerTokens)} ({result.AttackerSuccesses} hits), " +
+                $"defender={BattleDebugLog.TokenString(_defenderTokens)} ({result.DefenderSuccesses} hits), rawDamage={result.Damage}");
 
             // Wait for the initial roll's own flip animation to actually land before anything
             // downstream happens — the success counts, the Fate duel, and Spend/Accept becoming
-            // interactable all used to fire the instant the dice were rolled, which let a human
+            // interactable all used to fire the instant the tokens were rolled, which let a human
             // click Spend (or an AI decide) while the strip was still visibly mid-flip (per the
             // user's own request, 2026-08-24). Every later Fate-spend reroll inside the duel gets
             // the same treatment via RunHumanTurn/RunAiTurn's own wait on _rerollAnimDone.
             bool attackerAnimDone = attackerRow == null;
             bool defenderAnimDone = defenderRow == null;
-            attackerRow?.SetDice(_attackerDice, onComplete: () => attackerAnimDone = true);
-            defenderRow?.SetDice(_defenderDice, onComplete: () => defenderAnimDone = true);
+            attackerRow?.SetTokens(_attackerTokens, onComplete: () => attackerAnimDone = true);
+            defenderRow?.SetTokens(_defenderTokens, onComplete: () => defenderAnimDone = true);
             // Nobody human is watching this roll land (see RunsAutomatically) — don't gate the duel
             // on the flip animation actually finishing, per the user's own request (2026-08-24) to
-            // stop pacing an AI-vs-AI/AI-vs-neutral fight for a spectator's benefit. SetDice already
-            // ran above so _attackerDice/_defenderDice are the real values either way.
+            // stop pacing an AI-vs-AI/AI-vs-neutral fight for a spectator's benefit. SetTokens already
+            // ran above so _attackerTokens/_defenderTokens are the real values either way.
             if (!RunsAutomatically)
                 yield return new WaitUntil(() => attackerAnimDone && defenderAnimDone);
 
@@ -839,7 +841,7 @@ namespace Game.UI
             if (_challengeSession == null || _onAiThought == null)
                 return;
             // Equal successes kill the hunted hero, so a tie favors the hunter in Capture/Kill.
-            // These are provisional dice reactions; Fate and ability modifiers can change the result.
+            // These are provisional tokens reactions; Fate and ability modifiers can change the result.
             bool attackerFavored = _challengeSession.Mode == BattleChallengeMode.CaptureKill
                 ? _challengeSession.ResolveCaptureKillOutcome() != CaptureKillOutcome.Escaped
                 : _challengeSession.RawDamage > 0;
@@ -855,14 +857,14 @@ namespace Game.UI
         // Fate to spend from a human's own hand (an AI side spends automatically instead, see
         // RunAiTurn). NOT the same question as "should this turn pause for Accept" — a human side
         // with no hero (e.g. a CaptureKill hunter army with no hero of its own — see
-        // BeginCaptureKill's own note) still has nothing to SPEND, but still clicked Roll Die and
+        // BeginCaptureKill's own note) still has nothing to SPEND, but still clicked Roll Token and
         // still needs to see the result and click Accept themselves.
         private bool CanSpend(UnitData hero) => !_automateHumanSides && IsHumanSide(hero);
 
         // The Fate duel itself. Defender's Prerogative: the defender always goes first. Declining
         // (Accept, or an AI/no-Fate side auto-declining — see RunHumanTurn/RunAiTurn) hands the
         // turn to the OTHER side rather than ending the duel — that side still gets its own look
-        // at the roll and a chance to spend, since the dice it would be reacting to just changed.
+        // at the roll and a chance to spend, since the tokens it would be reacting to just changed.
         // Tracked per side (defenderDone/attackerDone) rather than a single "two declines in a
         // row" counter: a side is done the instant ITS OWN turn ends (RunHumanTurn/RunAiTurn
         // always end in a decline, whether chosen or forced by having nothing left to spend), and
@@ -872,13 +874,13 @@ namespace Game.UI
         // hero (permanently nothing to decide, e.g. an army without a hero) still counted as a
         // fresh decline every time it was asked, so its second forced auto-decline — after the
         // attacker had already spent, reconsidered, and explicitly declined — wrongly earned the
-        // attacker one more redundant round against dice that hadn't changed at all.
+        // attacker one more redundant round against tokens that hadn't changed at all.
         private IEnumerator RunDuel()
         {
             if (_challengeSession == null || !_challengeSession.HasAnyDecision)
             {
                 // Neither side has any Fate left to spend, so there's no Spend-or-Accept turn for
-                // anyone to take — but resolving with zero pause right after the dice land reads as
+                // anyone to take — but resolving with zero pause right after the tokens land reads as
                 // the roll being skipped entirely. Same beat as RunHumanTurn/RunAiTurn's own
                 // auto-decline (aiAcceptDelay) so this case doesn't feel instant/broken — except
                 // when nobody human is in this fight at all (2026-08-24), where instant IS the goal.
@@ -923,7 +925,7 @@ namespace Game.UI
             while (true)
             {
                 UnitData hero = isDefenderTurn ? _defenderHero : _attackerHero;
-                bool[] ownDice = isDefenderTurn ? _defenderDice : _attackerDice;
+                bool[] ownTokens = isDefenderTurn ? _defenderTokens : _attackerTokens;
                 int fateRemaining = isDefenderTurn ? _defenderFateRemaining : _attackerFateRemaining;
                 bool canSpend = CanSpend(hero) && _challengeSession != null
                     && _challengeSession.CanSpend(isDefenderTurn);
@@ -959,7 +961,7 @@ namespace Game.UI
                 // closes) rather than guessing at a fix blind; compare timestamps/sequence next
                 // time this reproduces.
                 BattleDebugLog.Write($"[FateDuelDiag] Spend/Accept OPEN for {(isDefenderTurn ? "defender" : "attacker")} " +
-                    $"{hero?.Name} (fate={fateRemaining}, dice={BattleDebugLog.DiceString(ownDice)})");
+                    $"{hero?.Name} (fate={fateRemaining}, tokens={BattleDebugLog.TokenString(ownTokens)})");
 
                 yield return new WaitUntil(() => _humanSpent || _humanDeclined);
 
@@ -990,7 +992,7 @@ namespace Game.UI
         // AI path for a whole duel turn — mirrors the human Spend/Accept loop exactly (may spend
         // more than once), just decided via FateDuelAi.ShouldSpendFate instead of a click. Per the
         // user's own correction: the AI isn't "obligated" to keep rerolling — it evaluates the
-        // CURRENT dice fresh before EVERY reroll (same as a human deciding again after each one)
+        // CURRENT tokens fresh before EVERY reroll (same as a human deciding again after each one)
         // and stops the instant ShouldSpendFate says it's no longer worth it, or the instant a
         // reroll it just made comes back a miss again (see the stop-on-failed-reroll check below);
         // getting a turn at all only happens because the other side just spent, per RunDuel.
@@ -1005,7 +1007,7 @@ namespace Game.UI
 
             while (true)
             {
-                bool[] ownDice = isDefenderTurn ? _defenderDice : _attackerDice;
+                bool[] ownTokens = isDefenderTurn ? _defenderTokens : _attackerTokens;
                 int fateRemaining = isDefenderTurn ? _defenderFateRemaining : _attackerFateRemaining;
                 bool isRetreating = isDefenderTurn && _defenderIsRetreating;
                 int defendingUnitHp = _defender != null ? _defender.HitPointsCurrent : int.MaxValue;
@@ -1014,7 +1016,7 @@ namespace Game.UI
                 BattleDebugLog.Write($"[FateDuelDiag] {(isDefenderTurn ? "defender" : "attacker")} " +
                     $"{(isDefenderTurn ? _defender?.Name : _attacker?.Name)} (hero {hero?.Name}, fate={fateRemaining}, " +
                     $"isRetreating={isRetreating}, defendingUnitHp={defendingUnitHp}): " +
-                    $"attacker={BattleDebugLog.DiceString(_attackerDice)} defender={BattleDebugLog.DiceString(_defenderDice)} " +
+                    $"attacker={BattleDebugLog.TokenString(_attackerTokens)} defender={BattleDebugLog.TokenString(_defenderTokens)} " +
                     $"-> shouldSpend={shouldSpend}");
                 if (!shouldSpend)
                 {
@@ -1036,17 +1038,17 @@ namespace Game.UI
                 spentThisTurn = true;
                 BattleDebugLog.Write($"[FateDuelDiag] {(isDefenderTurn ? "defender" : "attacker")} {hero.Name} spent Fate " +
                     $"(remaining={remainingAfterSpend}), rerolled slot {rerolledIndex} -> " +
-                    $"{(isDefenderTurn ? _defenderDice : _attackerDice)[rerolledIndex]}");
+                    $"{(isDefenderTurn ? _defenderTokens : _attackerTokens)[rerolledIndex]}");
 
                 _rerollAnimDone = isDefenderTurn ? defenderRow == null : attackerRow == null;
                 if (isDefenderTurn)
                 {
-                    defenderRow?.SetDice(_defenderDice, rerolledIndex, () => _rerollAnimDone = true);
+                    defenderRow?.SetTokens(_defenderTokens, rerolledIndex, () => _rerollAnimDone = true);
                     defenderRow?.SetFateDisplay(_defenderFateRemaining);
                 }
                 else
                 {
-                    attackerRow?.SetDice(_attackerDice, rerolledIndex, () => _rerollAnimDone = true);
+                    attackerRow?.SetTokens(_attackerTokens, rerolledIndex, () => _rerollAnimDone = true);
                     attackerRow?.SetFateDisplay(_attackerFateRemaining);
                 }
                 // Wait for this reroll's own flip animation to land before deciding whether to
@@ -1062,13 +1064,13 @@ namespace Game.UI
                 // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
                 // just came back a miss again — this side is done trying Fate for the rest of
                 // THIS duel turn, even with Fate still left and even if ShouldSpendFate would say
-                // to keep going against the fresh dice; re-evaluating right after proving unlucky
+                // to keep going against the fresh tokens; re-evaluating right after proving unlucky
                 // isn't what "keep trying" means here. Checked on the slot RerollOneMiss actually
                 // touched (rerolledIndex), not the whole array, since other slots may still hold
                 // pre-existing (already-resolved) misses.
                 if (!rerolledHit)
                     break;
-                // Loop back — re-evaluate from scratch against the now-updated dice before
+                // Loop back — re-evaluate from scratch against the now-updated tokens before
                 // deciding whether another reroll is still worth it.
             }
 
@@ -1120,11 +1122,11 @@ namespace Game.UI
             if (acceptButton != null)
                 acceptButton.interactable = false;
             _rerollAnimDone = defenderRow == null;
-            defenderRow?.SetDice(_defenderDice, rerolledIndex, () => _rerollAnimDone = true);
+            defenderRow?.SetTokens(_defenderTokens, rerolledIndex, () => _rerollAnimDone = true);
             defenderRow?.SetFateDisplay(_defenderFateRemaining);
             _humanSpent = true;
             BattleDebugLog.Write($"[FateDuelDiag] defender {_defenderHero.Name} (human) spent Fate " +
-                $"(remaining={_defenderFateRemaining}), rerolled slot {rerolledIndex} -> {_defenderDice[rerolledIndex]}");
+                $"(remaining={_defenderFateRemaining}), rerolled slot {rerolledIndex} -> {_defenderTokens[rerolledIndex]}");
         }
 
         private void OnAttackerSpend()
@@ -1146,28 +1148,28 @@ namespace Game.UI
             if (acceptButton != null)
                 acceptButton.interactable = false;
             _rerollAnimDone = attackerRow == null;
-            attackerRow?.SetDice(_attackerDice, rerolledIndex, () => _rerollAnimDone = true);
+            attackerRow?.SetTokens(_attackerTokens, rerolledIndex, () => _rerollAnimDone = true);
             attackerRow?.SetFateDisplay(_attackerFateRemaining);
             _humanSpent = true;
             BattleDebugLog.Write($"[FateDuelDiag] attacker {_attackerHero.Name} (human) spent Fate " +
-                $"(remaining={_attackerFateRemaining}), rerolled slot {rerolledIndex} -> {_attackerDice[rerolledIndex]}");
+                $"(remaining={_attackerFateRemaining}), rerolled slot {rerolledIndex} -> {_attackerTokens[rerolledIndex]}");
         }
 
         private void SyncChallengePresentationState()
         {
             if (_challengeSession == null)
                 return;
-            _attackerDice = _challengeSession.AttackerDice;
-            _defenderDice = _challengeSession.DefenderDice;
+            _attackerTokens = _challengeSession.AttackerTokens;
+            _defenderTokens = _challengeSession.DefenderTokens;
             _attackerFateRemaining = _challengeSession.AttackerFateRemaining;
             _defenderFateRemaining = _challengeSession.DefenderFateRemaining;
         }
 
-        private static bool HasMiss(bool[] dice)
+        private static bool HasMiss(bool[] tokens)
         {
-            if (dice == null)
+            if (tokens == null)
                 return false;
-            foreach (bool hit in dice)
+            foreach (bool hit in tokens)
                 if (!hit)
                     return true;
             return false;
@@ -1177,17 +1179,17 @@ namespace Game.UI
         // reference's single Spend button, not a click-a-die-to-target interaction).
         // rerolledIndex (out): which slot actually got rerolled, so the caller can force THAT
         // slot's flip animation regardless of whether the new value happens to match the old one
-        // (see BattleCombatantRowUI.SetDice's own comment — a plain before/after value diff
+        // (see BattleCombatantRowUI.SetTokens's own comment — a plain before/after value diff
         // can't tell "unchanged" apart from "rerolled back to the same result").
-        private static bool RerollOneMiss(ref bool[] dice, out int rerolledIndex)
+        private static bool RerollOneMiss(ref bool[] tokens, out int rerolledIndex)
         {
             rerolledIndex = -1;
-            if (dice == null)
+            if (tokens == null)
                 return false;
-            for (int i = 0; i < dice.Length; i++)
-                if (!dice[i])
+            for (int i = 0; i < tokens.Length; i++)
+                if (!tokens[i])
                 {
-                    dice[i] = ChallengeResolver.RollDice(1)[0];
+                    tokens[i] = ChallengeResolver.RollTokens(1)[0];
                     rerolledIndex = i;
                     return true;
                 }
@@ -1224,6 +1226,9 @@ namespace Game.UI
                 appliedAbilities.Add(UnitAbilities.Bodyguard);
             }
 
+            BattleResolutionRules.AppendHitEffectAbilities(appliedAbilities, _attacker, victim,
+                damage, _groundHitEffects?.Invoke(victim, damage));
+
             // Presentation only: BattleEngine applies HP/Berserk/removal after the player
             // acknowledges this result. Keep a projected HP here so the Result panel can display
             // the post-hit value without mutating battle state inside the UI.
@@ -1259,8 +1264,8 @@ namespace Game.UI
 
         // Purely the rolled successes decide this — per the user's own call, dropping the
         // manual's separate "capture threshold" (comparing the hunter's successes against the
-        // target's full original dice-pool size) since that let a clean win still resolve as a
-        // kill for reasons the player can't see on the dice themselves:
+        // target's full original tokens-pool size) since that let a clean win still resolve as a
+        // kill for reasons the player can't see on the tokens themselves:
         //   Escaped  — attacker successes < defender successes.
         //   Killed   — attacker successes == defender successes (a bare, even win).
         //   Captured — attacker successes > defender successes (a clean win).
@@ -1276,7 +1281,7 @@ namespace Game.UI
             CaptureKillOutcome outcome = _challengeSession != null
                 ? _challengeSession.ResolveCaptureKillOutcome()
                 : CaptureKillOutcome.Killed;
-            var result = _challengeSession?.CurrentResult ?? new ChallengeResult(_attackerDice, _defenderDice);
+            var result = _challengeSession?.CurrentResult ?? new ChallengeResult(_attackerTokens, _defenderTokens);
 
             BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} (hunter) -> {_defender?.Name} (target hero): " +
                 $"rawSuccesses(attacker={result.AttackerSuccesses},defender={result.DefenderSuccesses}) outcome={outcome}");
@@ -1335,8 +1340,7 @@ namespace Game.UI
         {
             string hitLine = wasHit ? "Hit!" : "Miss";
             string outcomeLine = died ? "\nThe target was destroyed." : string.Empty;
-            // Only shown when an ability actually changed the outcome (e.g. CeramicArmor
-            // absorbing an otherwise-landed hit down to 0) — a plain unmodified hit/miss
+            // Damage modifiers and on-hit effects share this list; an unmodified hit/miss
             // gets no extra line.
             string skillsLine = appliedAbilities != null && appliedAbilities.Count > 0
                 ? $"\nAffected by Skill{(appliedAbilities.Count > 1 ? "s" : string.Empty)}: {string.Join(", ", appliedAbilities)}"
@@ -1469,7 +1473,7 @@ namespace Game.UI
                 callback?.Invoke(_challengeSession != null
                     ? _challengeSession.ToRollResult()
                     : new BattleChallengeRollResult(
-                        _attackerDice, _defenderDice, _attackerFateRemaining, _defenderFateRemaining));
+                        _attackerTokens, _defenderTokens, _attackerFateRemaining, _defenderFateRemaining));
             }
             else if (_kind == ChallengeKind.Announcement)
             {
@@ -1486,7 +1490,7 @@ namespace Game.UI
                 callback?.Invoke(_challengeSession != null
                     ? _challengeSession.ToRollResult()
                     : new BattleChallengeRollResult(
-                        _attackerDice, _defenderDice, _attackerFateRemaining, _defenderFateRemaining));
+                        _attackerTokens, _defenderTokens, _attackerFateRemaining, _defenderFateRemaining));
             }
         }
 

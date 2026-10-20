@@ -563,7 +563,7 @@ namespace Game.EditorTests
             }
         }
 
-        // ---- real repeated strike (headless presenter, deterministic dice) ---------------------
+        // ---- real repeated strike (headless presenter, deterministic tokens) ---------------------
 
         [Test]
         public void RepeatedStrikes_ReallyDamageTheTarget_OncePerAircraftPerTurn()

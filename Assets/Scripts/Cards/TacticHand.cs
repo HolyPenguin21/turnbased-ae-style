@@ -49,12 +49,12 @@ namespace Game.Cards
                 || card.tacticEffect == TacticEffect.AddAndSuppressSuccess);
 
         // The checks both challenge kinds (battle duel, Research/Production) share: a card is
-        // playable once per side per challenge, only after the dice are on the table, and only
+        // playable once per side per challenge, only after the tokens are on the table, and only
         // from the side's own match inventory. Effect-specific checks follow in UnavailableReason.
-        public static string SideUnavailableReason(TacticHand hand, CardData card, bool diceReady, bool sideUsed)
+        public static string SideUnavailableReason(TacticHand hand, CardData card, bool tokensReady, bool sideUsed)
         {
             if (card == null) return "Select a tactical card first.";
-            if (!diceReady) return "Wait for the dice roll to finish.";
+            if (!tokensReady) return "Wait for the tokens roll to finish.";
             if (sideUsed) return "You have already used a tactical card in this challenge.";
             if (hand?.Contains(card) != true) return "This tactical card is not in your hand.";
             return null;
@@ -89,7 +89,7 @@ namespace Game.Cards
         }
 
         // Suppression removes only successes present at play time. Fate never rerolls a suppressed
-        // success: modifiers are separate from the original rolled dice.
+        // success: modifiers are separate from the original rolled tokens.
         public static void Apply(CardDefinition card, bool defenderSide, int opposingSuccesses,
             ref int attackerModifier, ref int defenderModifier)
         {

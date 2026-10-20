@@ -107,7 +107,7 @@ namespace Game.EditorTests
             var gear = Item(); var host = Body(item: gear); var defender = Body();
             var session = new BattleChallengeSession(BattleChallengeMode.GroundCombat, host, defender,
                 host.Attack, defender.Defense, 0, 0, AbilityMagnitudes.Default,
-                rollDice: n => Enumerable.Repeat(true, n).ToArray());
+                rollTokens: n => Enumerable.Repeat(true, n).ToArray());
             session.Roll(); session.ResolveGroundOutcome(); session.ResolveGroundOutcome();
             BattleCombatOdds.Evaluate(host, defender, 0, AbilityMagnitudes.Default, defender.HitPointsCurrent);
             Assert.That(host.Equipment, Is.SameAs(gear));

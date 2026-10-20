@@ -5,7 +5,7 @@ using Game.Units;
 namespace Game.Cards
 {
     // The one place ability tags whose NUMBERS matter (Recce vision/detection strength,
-    // Stealth hide dice) get parsed — replaces the old bool UnitAbilities.Recce +
+    // Stealth hide tokens) get parsed — replaces the old bool UnitAbilities.Recce +
     // UnitAbilityCatalog.recceRadius/recceStrength scheme (project owner's own call, see
     // the stealth design). Every consumer (VisionSystem, StealthSystem, combat, movement,
     // AI, UI) reads these instead of re-parsing the strings itself, so the tag grammar
@@ -16,7 +16,7 @@ namespace Game.Cards
     //                       (r1s0 / r1s4 / r1s5 / r1s6 are the ones in UnitAbilities.All;
     //                        the parser accepts any r<N>s<M> so a new data-only tag needs
     //                        no code change).
-    //   Stealth<level>    — unit may enter stealth with <level> base hide dice (Stealth4
+    //   Stealth<level>    — unit may enter stealth with <level> base hide tokens (Stealth4
     //                       in UnitAbilities.All).
     public static class AbilityParams
     {
@@ -53,7 +53,7 @@ namespace Game.Cards
         }
 
         // Best (max, never summed — see the stealth design's "several observers don't stack
-        // dice" rule and the same reasoning for several Recce members) vision radius bonus
+        // tokens" rule and the same reasoning for several Recce members) vision radius bonus
         // any member of `army` carries. 0 for an army with no Recce-tagged member — the
         // drop-in replacement for the old ArmyData.HasRecce flag is GetBestRecceRadius > 0
         // (see ArmyHasAnyRecce).
