@@ -90,6 +90,8 @@ namespace Game.UI
             if (_inventory != null) _cards.AddRange(_inventory.Cards);
             _scrollOffset = Mathf.Clamp(_scrollOffset, 0, Mathf.Max(0, _cards.Count - MaxVisible));
             Relayout();
+            // The map hand owns its flip animation; the standalone battle hand hides itself.
+            if (!Horizontal) gameObject.SetActive(_cards.Count > 0);
         }
 
         public void RefreshInteraction() => Relayout();

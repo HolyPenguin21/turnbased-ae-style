@@ -40,7 +40,16 @@ namespace Game.UI
         private void RefreshTacticSwitch()
         {
             bool hasCards = _tacticInventory?.Cards.Count > 0 && !_showingDebugHand;
-            if (!hasCards && _showingTactics && !_tacticChallengeActive) RestoreMainHand();
+            if (!hasCards && _showingTactics)
+            {
+                if (_tacticChallengeActive)
+                {
+                    // Keep the challenge's bindings while returning to the ordinary hand.
+                    _showingTactics = false;
+                    StartTacticFlip(false);
+                }
+                else RestoreMainHand();
+            }
             if (cardsTypeSwitchButton == null) return;
             cardsTypeSwitchButton.gameObject.SetActive(hasCards);
             cardsTypeSwitchButton.GetComponent<ArmyButtonUI>()?.SetSelected(_showingTactics);
@@ -101,6 +110,7 @@ namespace Game.UI
 
         public BattleHandUI ShowTactics(BattleHandUI template, TacticHand inventory)
         {
+            if (!(inventory?.Cards.Count > 0)) return null;
             EnsureTacticView(template);
             if (_tacticView == null) return null;
             _tacticChallengeActive = true;
