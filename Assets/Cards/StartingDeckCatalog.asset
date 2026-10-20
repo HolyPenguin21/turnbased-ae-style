@@ -661,6 +661,70 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.27.lens-watcher
       count: 1
+    - cardKey: vessels.unit.anchor-warden
+      count: 1
+    - cardKey: vessels.unit.bell-breacher
+      count: 1
+    - cardKey: vessels.unit.bell-tortoise
+      count: 1
+    - cardKey: vessels.unit.casket-ram
+      count: 1
+    - cardKey: vessels.unit.censer-battery
+      count: 1
+    - cardKey: vessels.unit.censer-keeper
+      count: 1
+    - cardKey: vessels.unit.chime-grenadier
+      count: 1
+    - cardKey: vessels.unit.chime-suppressor
+      count: 1
+    - cardKey: vessels.unit.choir-roller
+      count: 1
+    - cardKey: vessels.unit.chord-tug
+      count: 1
+    - cardKey: vessels.unit.chordbreaker
+      count: 1
+    - cardKey: vessels.unit.core-tender
+      count: 1
+    - cardKey: vessels.unit.counterweight-lobber
+      count: 1
+    - cardKey: vessels.unit.duplex-crawler
+      count: 1
+    - cardKey: vessels.unit.halo-interceptor
+      count: 1
+    - cardKey: vessels.unit.halo-kite
+      count: 1
+    - cardKey: vessels.unit.lensbreaker
+      count: 1
+    - cardKey: vessels.unit.mantle-skirmisher
+      count: 1
+    - cardKey: vessels.unit.mirror-duelist
+      count: 1
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 1
+    - cardKey: vessels.unit.mnemonic-loom
+      count: 1
+    - cardKey: vessels.unit.moth-bomber
+      count: 1
+    - cardKey: vessels.unit.palisade-frame
+      count: 1
+    - cardKey: vessels.unit.pendulum-frame
+      count: 1
+    - cardKey: vessels.unit.pilgrim-strider
+      count: 1
+    - cardKey: vessels.unit.prism-lancer
+      count: 1
+    - cardKey: vessels.unit.reliquary-crab
+      count: 1
+    - cardKey: vessels.unit.shear-vessel
+      count: 1
+    - cardKey: vessels.unit.silt-pilgrim
+      count: 1
+    - cardKey: vessels.unit.spindle-gunner
+      count: 1
+    - cardKey: vessels.unit.tuning-blade
+      count: 1
+    - cardKey: vessels.unit.tuning-fork
+      count: 1
     - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory

@@ -154,7 +154,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
     grantedAbilities:
@@ -203,7 +203,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
     grantedAbilities: []
@@ -349,7 +349,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
     grantedAbilities:
@@ -398,7 +398,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
     grantedAbilities:
@@ -447,7 +447,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
     grantedAbilities:
@@ -546,7 +546,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
@@ -596,7 +596,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000003000000
     grantedAbilities: []
@@ -644,7 +644,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000003000000
     grantedAbilities:
@@ -694,7 +694,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 000000000300000007000000
     grantedAbilities:
@@ -890,7 +890,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000003000000
     grantedAbilities: []
@@ -938,7 +938,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
     grantedAbilities:
@@ -987,7 +987,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000003000000
     grantedAbilities:
@@ -1085,7 +1085,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000003000000
     grantedAbilities:
@@ -1379,7 +1379,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
     grantedAbilities:
@@ -1623,7 +1623,7 @@ MonoBehaviour:
     isAviation: 1
     launchEnergyCost: 1
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
@@ -1770,7 +1770,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
     grantedAbilities:
@@ -1916,7 +1916,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
@@ -2013,7 +2013,7 @@ MonoBehaviour:
     isAviation: 1
     launchEnergyCost: 1
     turnsWithoutRefuel: 1
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
@@ -2258,7 +2258,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 010000000400000002000000
     grantedAbilities: []
@@ -2550,7 +2550,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 010000000400000002000000
     grantedAbilities:
@@ -2599,7 +2599,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
     grantedAbilities:
@@ -2842,7 +2842,7 @@ MonoBehaviour:
     isAviation: 1
     launchEnergyCost: 2
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
@@ -2892,7 +2892,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
     grantedAbilities:
@@ -2990,7 +2990,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 010000000400000002000000
     grantedAbilities:
