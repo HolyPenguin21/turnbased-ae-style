@@ -71,7 +71,7 @@ namespace Game.Combat
                 while (ShouldAiSpend(defenderTurn) && TrySpend(defenderTurn, out _, out bool hit))
                 {
                     spent = true;
-                    if (!hit) break;
+                    if (!defenderTurn && !hit) break;
                 }
                 var tactic = ChooseAiTactic(defenderTurn);
                 if (tactic != null && TryPlayTactic(defenderTurn, tactic)) spent = true;

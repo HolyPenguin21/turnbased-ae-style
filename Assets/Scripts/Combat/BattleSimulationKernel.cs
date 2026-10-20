@@ -331,7 +331,7 @@ namespace Game.Combat
                 ownTokens[miss] = rng.NextDouble() < 0.5d;
                 fate--;
                 spent = true;
-                if (!ownTokens[miss])
+                if (!isDefender && !ownTokens[miss])
                     break;
             }
             return spent;

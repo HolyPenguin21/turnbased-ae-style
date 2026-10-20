@@ -257,8 +257,8 @@ namespace Game.Combat
 
         // One armed exchange as the real battle resolves it: both pools rolled, then the Fate duel
         // (FateDuelOrder — defender first, sides alternate while anyone spends; each
-        // spend rerolls the first miss with an ordinary die and a failed reroll ends that side's
-        // turn), every spend decided by the ONE policy FateDuelAi owns. Returns the damage after
+        // spend rerolls the first miss with an ordinary die; only attackers stop after a failed
+        // reroll), every spend decided by the ONE policy FateDuelAi owns. Returns the damage after
         // the canonical ability modifier chain.
         private static BattleSimExchangeOutcome ResolveExchange(BattleUnit actor, BattleUnit target,
             ref int actorFate, ref int targetFate, System.Random rng, AbilityMagnitudes magnitudes)
