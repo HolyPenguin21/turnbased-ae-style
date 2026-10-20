@@ -2186,7 +2186,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
       energy: 2
@@ -2198,9 +2198,9 @@ MonoBehaviour:
     commandRating: 0
     fate: 2
     attack: 5
-    defenseRating: 3
+    defenseRating: 2
     range: 2
-    hitPoints: 6
+    hitPoints: 5
     initiative: 2
     isAviation: 1
     launchEnergyCost: 1
