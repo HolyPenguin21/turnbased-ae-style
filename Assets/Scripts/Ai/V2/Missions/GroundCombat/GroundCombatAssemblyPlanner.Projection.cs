@@ -11,6 +11,45 @@ namespace Game.Ai.V2
 {
     public static partial class GroundCombatAssemblyPlanner
     {
+        // Overrides for the departing host and every changed donor; never mutates live armies.
+        internal static Dictionary<int, ArmySnapshot> ProjectedDepartureArmies(WorldSnapshot snap,
+            GroundCombatAssemblyPlan plan)
+        {
+            var result = new Dictionary<int, ArmySnapshot>();
+            if (snap?.Self?.Armies == null || plan?.Feasible != true) return result;
+            var ids = new HashSet<int>(plan.Transfers.Select(t => t.DonorArmyId)) { plan.BaseArmyId };
+            if (plan.HeroReturnArmyId.HasValue) ids.Add(plan.HeroReturnArmyId.Value);
+            foreach (int id in ids)
+            {
+                ArmySnapshot original = snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == id);
+                ArmyData live = LiveArmy(original);
+                if (original == null || live == null) continue;
+                List<UnitData> roster;
+                if (id == plan.BaseArmyId) roster = ProjectedRoster(live, plan);
+                else
+                {
+                    roster = live.Members.Where(u => !plan.Transfers.Any(t =>
+                        t.DonorArmyId == id && t.Unit == u)).ToList();
+                    if (id == plan.HeroReturnArmyId) roster.AddRange(plan.ReturnHeroes);
+                }
+                result[id] = new ArmySnapshot {
+                    ArmyId = id, Owner = original.Owner, Hex = original.Hex,
+                    IsGarrison = original.IsGarrison, IsPrison = original.IsPrison,
+                    IsAir = original.IsAir, IsAirfield = original.IsAirfield,
+                    IsStructuralRaidActor = original.IsStructuralRaidActor,
+                    MemberCount = roster.Count, HasHero = roster.Any(u => u.IsHero),
+                    Members = roster.Where(u => !u.IsHero).Select(WorthIt.FromLiveUnit).ToList(),
+                    Commander = WorthIt.SideCommander.Of(roster),
+                    EffectiveArmyPower = AiPower.EffectiveArmyPower(roster),
+                    CurrentMovement = ArmyData.ComputeCurrentMovement(roster),
+                    MaxMovement = ArmyData.ComputeMaxMovement(roster),
+                    HasActivatedThisTurn = original.HasActivatedThisTurn,
+                    ActivationApCost = ArmyData.ComputeActivationApCost(roster),
+                };
+            }
+            return result;
+        }
+
         // AI-01 — the roster this plan would ACTUALLY produce: the live host's own members plus
         // every body the plan promises to transfer in. This is the one place that answers
         // "what will the assembled force look like", so cost/movement/AP pricing in Missions and
@@ -35,11 +74,11 @@ namespace Game.Ai.V2
         private static GroundCombatAssemblyPlan PlanDepartureRoster(WorldSnapshot snap, ArmyData host,
             IReadOnlyList<UnitData> members, IReadOnlyList<GroundCombatAssemblyTransfer> transfers,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float gate, float hexBonus,
-            float minimumPower, bool? requireCoverage)
+            float minimumPower, bool? requireCoverage, bool requireReadyThisTurn = true)
         {
             ArmyData home = snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Contains(host.Hex)
                 ? OwnWorld.Of(host.Owner).ArmiesAt(host.Hex).FirstOrDefault(a => a.IsGarrison
-                    && !a.HasActivatedThisTurn) : null;
+                    && (!requireReadyThisTurn || !a.HasActivatedThisTurn)) : null;
             var heroes = members.Where(u => u != null && u.IsHero && !u.IsPrisoner).ToList();
             var leaders = heroes.Count > 0 ? heroes : new List<UnitData> { null };
             GroundCombatAssemblyPlan best = null;
@@ -59,7 +98,8 @@ namespace Game.Ai.V2
                 // on-hex relocation is allowed; leaving a served facility is not.
                 if (roster.Any(u => u != null && u.IsHero
                     && AiArmyRoles.IsFacilityOperator(host.Owner, host.Hex, u))) return null;
-                if (returning.Count > 0 && !CanApplyHeroReturn(host, home, lead, returning)) return null;
+                if (returning.Count > 0 && !CanApplyHeroReturn(host, home, lead, returning,
+                    requireReadyThisTurn)) return null;
                 float power = AiPower.EffectiveArmyPower(roster);
                 if (!GroundCombatFeasibility.Clears(roster.Select(WorthIt.FromLiveUnit).ToList(),
                     WorthIt.SideCommander.Of(roster), opposition, gate, hexBonus,
@@ -164,13 +204,13 @@ namespace Game.Ai.V2
         // commander is promoted before returning heroes only if the untouched host fits it;
         // otherwise returns happen under the old commander and promotion follows recruitment.
         internal static bool CanApplyHeroReturn(ArmyData host, ArmyData home, UnitData lead,
-            IReadOnlyList<UnitData> returning)
+            IReadOnlyList<UnitData> returning, bool requireReadyThisTurn = true)
         {
             if (host == null || home == null || !home.IsGarrison || home.Owner != host.Owner
-                || !home.Hex.Equals(host.Hex) || home.HasActivatedThisTurn
+                || !home.Hex.Equals(host.Hex) || (requireReadyThisTurn && home.HasActivatedThisTurn)
                 || returning == null || returning.Count == 0
                 || returning.Any(h => h == null || !h.IsHero || h == lead || !host.Members.Contains(h))
-                || ArmyActions.TransferMembersApCost(returning, home) != 0) return false;
+                || (requireReadyThisTurn && ArmyActions.TransferMembersApCost(returning, home) != 0)) return false;
             var preview = ArmyData.CreateVisualSnapshot();
             preview.Owner = host.Owner;
             preview.Hex = host.Hex;
@@ -189,11 +229,11 @@ namespace Game.Ai.V2
                 && ArmyData.RosterFits(new[] { lead }.Concat(host.Members.Where(u => u != lead)).ToList(), false);
 
         private static bool HasDepartureRoom(WorldSnapshot snap, ArmyData host,
-            IReadOnlyList<UnitData> members)
+            IReadOnlyList<UnitData> members, bool requireReadyThisTurn = true)
         {
             return PlanDepartureRoster(snap, host, members,
                 System.Array.Empty<GroundCombatAssemblyTransfer>(),
-                System.Array.Empty<WorthIt.DefendingArmy>(), 0f, 0f, 0f, false).Feasible;
+                System.Array.Empty<WorthIt.DefendingArmy>(), 0f, 0f, 0f, false, requireReadyThisTurn).Feasible;
         }
 
         // The FULL activation AP of the roster this plan would produce, priced by the canonical

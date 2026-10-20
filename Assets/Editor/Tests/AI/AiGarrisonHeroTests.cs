@@ -230,6 +230,23 @@ namespace Game.EditorTests
             Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline, returned), Is.Zero);
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void HeroReturn_CapabilityIgnoresTodaysActivationButStillRequiresRoom(bool requireReadyThisTurn)
+        {
+            ArmyData home = DepartureHome();
+            home.MarkActivated();
+            UnitData keep = Hero("Keep", 7), extra = Hero("Extra", 8);
+            extra.ActivationApCost = 1;
+            ArmyData host = Army(Staging, keep, extra, Body("Fighter", 20));
+            Assert.That(GroundCombatAssemblyPlanner.CanApplyHeroReturn(host, home, keep,
+                new[] { extra }, requireReadyThisTurn), Is.EqualTo(!requireReadyThisTurn));
+            while (home.Members.Count < home.Capacity) home.Members.Add(Body("Guard", 12));
+            Assert.That(GroundCombatAssemblyPlanner.CanApplyHeroReturn(host, home, keep,
+                new[] { extra }, requireReadyThisTurn), Is.False, "future capability must still fit both rosters");
+            Assert.That(host.Members, Does.Contain(extra));
+        }
+
         [Test]
         public void UsefulSecondaryTransportHero_IsNotRemovedForACheaperActivation()
         {

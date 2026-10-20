@@ -162,6 +162,17 @@ namespace Game.Ai.V2
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
                         DefenderHexDefenseBonus = hexBonus,
+                        AcceptPlan = marching != null ? null : candidate =>
+                        {
+                            bool allowed = AttackMarchPolicy.CanStart(snap, objective.Target,
+                                candidate, intentState, out string why);
+                            if (!allowed)
+                                AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#" + candidate.BaseArmyId,
+                                    $"[AI][V2][Attack][Assembly] decision=REJECT_CANDIDATE "
+                                    + $"target={objective.Target.DiagnosticLabel} actor=#{candidate.BaseArmyId} "
+                                    + $"reason={why}; checking remaining candidates");
+                            return allowed;
+                        },
                     });
 
                 if (!plan.Feasible)
@@ -194,60 +205,29 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // A march that has not started yet meets the same mandatory rule: it is simply not
-                // proposed while a relevant hostile army on its path is unwinnable (nothing is
-                // withdrawn - nothing was sent). Voluntary targets never apply to a fresh march.
-                if (marching == null && actor.IsStructuralRaidActor)
+                bool observedDefence = AttackObjectiveEvaluator.HasAssaultObservation(snap,
+                    assaultObjective.Target, out string intelWhy);
+                if (!observedDefence && HexGridMath.Distance(actor.Hex, assaultObjective.Hex) <= 1
+                    && !local.IsLocalFight)
                 {
-                    // lastLocalTurn = this turn: only the mandatory evaluation runs, no voluntary search
-                    AttackLocalAction fresh = AttackTacticalOpportunity.Decide(snap, actor, objective.Target,
-                        snap.TurnNumber, false, null, intentState);
-                    if (fresh.Kind == AttackLocalActionKind.Retreat)
-                    {
-                        AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat-fresh",
-                            $"[AI][V2][Attack][Local] decision=HOLD target={objective.Target.DiagnosticLabel} "
-                            + $"actor=#{actor.ArmyId} enemy=#{fresh.EnemyArmyId} win={F(fresh.WinChance)} "
-                            + "reason=hostile_contact_below_threshold; not started, nothing proposed");
-                        if (incumbent != null)
-                            assaultWhy[incumbent.IntentKey] = "attack_assault_hostile_contact_on_path";
-                        continue;
-                    }
-                    // 2026-10-16 — nor while an own stronghold falls without this army
-                    // (AttackMarchPolicy: the defence of home outranks a fresh march).
-                    AttackMarchAssessment home = AttackMarchPolicy.Assess(snap, objective.Target, actor);
-                    if (home.Verdict == AttackMarchVerdict.DefendHome)
-                    {
-                        AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#defend-home",
-                            $"[AI][V2][Attack][March] decision=HOLD target={objective.Target.DiagnosticLabel} "
-                            + $"actor=#{actor.ArmyId} reason={home.Reason}; not started, nothing proposed");
-                        if (incumbent != null)
-                            assaultWhy[incumbent.IntentKey] = "attack_assault_home_needs_the_army";
-                        continue;
-                    }
+                    if (incumbent != null) assaultWhy[incumbent.IntentKey] = "attack_assault_" + intelWhy;
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#observation",
+                        $"[AI][V2][Attack][Assembly] decision=HOLD target={objective.Target.DiagnosticLabel} "
+                        + $"actor=#{actor.ArmyId} blocker={intelWhy}; awaiting Recon before entry");
+                    continue;
                 }
 
-                // 2026-10-08 — an operation that withdrew from an unwinnable hostile army does not
-                // march out again against the same unchanged obstacle. Only a real change of the
-                // fight (our roster / equipment / HP, the enemy's visible state, the enemy gone)
-                // that the shared estimator confirms lifts it: a new turn number, AP or a timer
-                // is not a reason. A march already under way is governed by Continuity's edge.
-                bool witnessBlocks = false;
-                string witnessWhy = null;
+                // Safety was tested per candidate before selection. Apply only the chosen
+                // projected roster's witness revision; rejected candidates do not own this target.
                 if (!assaultStarted)
                 {
-                    witnessBlocks = AttackRetreatWitness.Blocks(intentState, snap, objective.Target, actor,
-                        out witnessWhy, out RetreatWitnessRevision revision);
+                    var projected = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
+                    ArmySnapshot departure = projected.TryGetValue(actor.ArmyId, out ArmySnapshot assembled)
+                        ? assembled : actor;
+                    AttackRetreatWitness.Blocks(intentState, snap, objective.Target, departure,
+                        out _, out RetreatWitnessRevision revision);
                     if (revision.Kind != RetreatWitnessRevisionKind.None)
                         witnessRevisions?.Add(revision);
-                }
-                if (witnessBlocks)
-                {
-                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#witness",
-                        $"[AI][V2][Attack][Retreat] decision=HOLD target={objective.Target.DiagnosticLabel} "
-                        + $"actor=#{actor.ArmyId} reason=withdrew_from_unchanged_obstacle:{witnessWhy}");
-                    if (incumbent != null)
-                        assaultWhy[incumbent.IntentKey] = "attack_assault_waiting_for_changed_odds";
-                    continue;
                 }
 
                 // Price and time the force this plan will ACTUALLY field, through the same
@@ -268,7 +248,7 @@ namespace Game.Ai.V2
                     Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
                 int? projectedAp = GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan);
                 TaskScore score = AttackObjectiveEvaluator.WithResponse(assaultObjective, actor,
-                    plan.ProjectedWinChance, eta, 0f, projectedAp);
+                    observedDefence ? plan.ProjectedWinChance : 0f, eta, 0f, projectedAp);
 
                 // Once the assembled actor strictly clears the force threshold, it may march.
 
@@ -281,7 +261,7 @@ namespace Game.Ai.V2
                     DestinationHex = assaultObjective.Hex,
                     DefenderHexDefenseBonus = hexBonus,
                     DefenderCount = assaultObjective.DefenderCount,
-                    ProjectedWinChance = plan.ProjectedWinChance,
+                    ProjectedWinChance = observedDefence ? plan.ProjectedWinChance : 0f,
                     CoversAllDefenders = plan.CoversAllDefenders,
                     ForceCommitted = assaultStarted,
                     EstimatedEta = eta,
@@ -315,7 +295,7 @@ namespace Game.Ai.V2
                     },
                     Explain = $"Attack {objective.Target.DiagnosticLabel} "
                         + (intermediate == null ? "" : $"via {intermediate.Target.DiagnosticLabel} ")
-                        + $"task {F(score.Value)} win {F(plan.ProjectedWinChance)} "
+                        + $"task {F(score.Value)} win {(observedDefence ? F(plan.ProjectedWinChance) : "unknown")} "
                         + $"defenders {assaultObjective.DefenderCount} hexDef {F(hexBonus)} eta {eta}",
                 };
                 proposal.Axes.Value[DesireAxis.Aggression] = 1f;

@@ -35,7 +35,7 @@ namespace Game.Ai.V2
             PlayerSetupData owner, ArmyData host, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ISet<int> excludeArmyIds, float minWinChance, float defenderHexDefenseBonus,
             float minimumArmyPower, bool preparation, bool? requireCoverage = null,
-            bool preserveDepartureRoster = false)
+            bool preserveDepartureRoster = false, bool requireReadyThisTurn = true)
         {
             float hostPower = AiPower.EffectiveArmyPower(host.Members);
             var projectedUnits = new List<UnitData>(host.Members);
@@ -55,7 +55,7 @@ namespace Game.Ai.V2
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {
                 (ArmyData heroDonor, UnitData hero) = GroundCombatDonorPolicy.PickAttachableHero(owner, host,
-                    excludeArmyIds, opposition, defenderHexDefenseBonus, preparation);
+                    excludeArmyIds, opposition, defenderHexDefenseBonus, preparation, requireReadyThisTurn);
                 if (hero != null)
                 {
                     var withHero = new List<UnitData>(projectedUnits) { hero };
@@ -73,7 +73,8 @@ namespace Game.Ai.V2
                         {
                             GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
                                 projectedUnits, selected, opposition, minWinChance,
-                                defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster);
+                                defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster,
+                                requireReadyThisTurn);
                             if (ready.Feasible) return ready;
                         }
                     }
@@ -100,7 +101,7 @@ namespace Game.Ai.V2
                     .Where(u => AiArmyRoles.IsGroundBattleBody(u)
                         && donor.Members.Count > 1
                         && donor.CanLeaveWithoutOvercrowding(u)
-                        && (!host.HasActivatedThisTurn || u.ActivationApCost <= 0))
+                        && (!requireReadyThisTurn || !host.HasActivatedThisTurn || u.ActivationApCost <= 0))
                     .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                     .ThenBy(u => u.Name)
                     .ToList();
@@ -120,7 +121,8 @@ namespace Game.Ai.V2
                     }
                     var withPick = new List<UnitData>(projectedUnits) { pick };
                     if (!ArmyData.RosterFits(withPick, host.IsGarrison)
-                        && (preparation || preserveDepartureRoster || !HasDepartureRoom(snap, host, withPick)))
+                        && (preparation || preserveDepartureRoster
+                            || !HasDepartureRoom(snap, host, withPick, requireReadyThisTurn)))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         break;
@@ -139,7 +141,8 @@ namespace Game.Ai.V2
                     {
                         GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
                             projectedUnits, selected, opposition, minWinChance,
-                            defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster);
+                            defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster,
+                            requireReadyThisTurn);
                         if (ready.Feasible) return ready;
                     }
                 }
@@ -166,7 +169,8 @@ namespace Game.Ai.V2
             {
                 GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
                     projectedUnits, selected, opposition, minWinChance,
-                    defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster);
+                    defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster,
+                    requireReadyThisTurn);
                 if (ready.Feasible) return ready;
             }
 
@@ -177,11 +181,12 @@ namespace Game.Ai.V2
             ArmyData host, IReadOnlyList<UnitData> members,
             IReadOnlyList<GroundCombatAssemblyTransfer> transfers,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float gate, float hexBonus,
-            float minimumPower, bool? requireCoverage, bool preserveDepartureRoster)
+            float minimumPower, bool? requireCoverage, bool preserveDepartureRoster,
+            bool requireReadyThisTurn = true)
         {
             if (!preserveDepartureRoster)
                 return PlanDepartureRoster(snap, host, members, transfers, opposition,
-                    gate, hexBonus, minimumPower, requireCoverage);
+                    gate, hexBonus, minimumPower, requireCoverage, requireReadyThisTurn);
             if (GroundCombatFeasibility.Clears(members.Select(WorthIt.FromLiveUnit).ToList(),
                     WorthIt.SideCommander.Of(members), opposition, gate, hexBonus,
                     out float win, out bool cover, requireCoverage)

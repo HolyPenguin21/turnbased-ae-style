@@ -169,8 +169,8 @@ namespace Game.Ai.V2
         public float BaseValue => TaskScore.Value;
         // T01 — a sanctioned location-only starting Citadel: its coordinates and original owner
         // are allowed knowledge, but the site itself was never observed. Opposition is UNKNOWN
-        // (not "observed empty"): preparation may aim at it. Current policy permits a force-ready
-        // host to march using the sanctioned location; ObservationNeeds may still publish it.
+        // (not "observed empty"): preparation and safe approach may aim at it; final entry
+        // requires HasAssaultObservation. ObservationNeeds asks the existing Recon lane.
         public bool LocationOnly;
 
         public HexCoord Hex => Target.Hex;
@@ -371,6 +371,27 @@ namespace Game.Ai.V2
                 ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>();
             return !buildings.Any(b => b.Hex.Equals(target.Hex))
                 && IsUnobservedSanctionedCitadel(target, EverObserved(snap, target.Hex));
+        }
+
+        // Empty opposition is a known empty site only after a current observation of the hex.
+        // Share Recon's freshness rule and use this snapshot's captured knowledge revision.
+        internal static bool HasAssaultObservation(WorldSnapshot snap, AttackTargetRef target,
+            out string reason)
+        {
+            reason = "defenders_unknown";
+            if (snap == null || !target.HasValue) return false;
+            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, target.Hex, out int age))
+            {
+                int observed = (snap.Known?.Buildings ?? Array.Empty<AiMapMemory.KnownBuilding>())
+                    .Where(b => b.Hex.Equals(target.Hex) && b.SeenTurn > 0)
+                    .Select(b => b.SeenTurn).DefaultIfEmpty(-1).Max();
+                if (observed < 0) return false;
+                age = Mathf.Max(0, snap.TurnNumber - observed);
+            }
+            if (ReconIntelSnapshotRegistry.IsStaleAge(age))
+            { reason = "defenders_stale"; return false; }
+            reason = null;
+            return true;
         }
 
         private static bool EverObserved(WorldSnapshot snap, HexCoord hex) =>

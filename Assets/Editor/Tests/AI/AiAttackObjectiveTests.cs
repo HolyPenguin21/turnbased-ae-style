@@ -21,6 +21,42 @@ namespace Game.EditorTests
     // ===========================================================================================
     public class AiAttackObjectiveTests
     {
+        [SetUp]
+        public void ClearObservationSnapshots() => ReconIntelSnapshotRegistry.Clear();
+
+        [Test]
+        public void UnknownDefence_IsNotAnObservedEmptyStronghold()
+        {
+            WorldSnapshot snap = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            var target = AttackTargetRef.For(RedBase, Red, AttackTargetKind.Citadel);
+            Assert.That(AttackObjectiveEvaluator.HasAssaultObservation(snap, target, out string why), Is.False);
+            Assert.That(why, Is.EqualTo("defenders_unknown"));
+        }
+
+        [TestCase(0, true)]
+        [TestCase(AiConfigV2.reconIntelStaleTurnsLo, false)]
+        public void AssaultObservation_UsesTheExistingReconFreshnessRule(int age, bool allowed)
+        {
+            WorldSnapshot snap = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            ReconIntelSnapshotRegistry.Capture(snap.Observer, snap.TurnNumber, snap.KnowledgeVersion,
+                new Dictionary<HexCoord, int> { [RedBase] = snap.TurnNumber - age });
+            Assert.That(AttackObjectiveEvaluator.HasAssaultObservation(snap,
+                AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base), out _), Is.EqualTo(allowed));
+        }
+
+        [Test]
+        public void ObservedEmptyStronghold_StillClearsTheOrdinaryCombatEstimator()
+        {
+            WorldSnapshot snap = Snap(new[] { B(RedBase, Red, seenTurn: 10) }, new[] { OurBase });
+            snap.TurnNumber = 10;
+            Assert.That(AttackObjectiveEvaluator.HasAssaultObservation(snap,
+                AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base), out _), Is.True);
+            Assert.That(GroundCombatFeasibility.Clears(new[] { Body(3, 1, 5, 2) }, default,
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, RedBase),
+                0.8f, 0f, out float win, out _), Is.True);
+            Assert.That(win, Is.EqualTo(1f));
+        }
+
         [TestCase(79f, false)]
         [TestCase(80f, false)]
         [TestCase(80.001f, true)]

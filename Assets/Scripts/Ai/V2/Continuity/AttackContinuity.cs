@@ -199,6 +199,32 @@ namespace Game.Ai.V2
                     + $"lost; binding released, phase={a.Phase}");
             }
 
+            // Safe approach is legal without defenders; the final hostile entry is not.
+            ArmySnapshot perimeter = a.Phase == AttackMissionPhase.Assault && a.PrimaryArmyId.HasValue
+                ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value) : null;
+            if (perimeter != null && HexGridMath.Distance(perimeter.Hex, a.Target.Hex) <= 1
+                && !AttackObjectiveEvaluator.HasAssaultObservation(snap, a.Target, out string intelWhy))
+            {
+                if (a.AssaultObservationWaitSinceTurn < 0)
+                    a.AssaultObservationWaitSinceTurn = snap.TurnNumber;
+                if (snap.TurnNumber - a.AssaultObservationWaitSinceTurn >= AiConfigV2.commitmentMaxTurns)
+                {
+                    HexCoord? home = a.OperationStarted
+                        ? AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId) : null;
+                    if (!home.HasValue) return false;
+                    WithdrawTo(intent, a, home.Value, "observation_wait_expired");
+                }
+                else
+                {
+                    intent.LastProtectedTurn = snap.TurnNumber;
+                    AiDebugLog.WriteDeduped(intent.IntentKey + "#observation",
+                        $"[AI][V2][Attack] {intent.IntentKey} HOLD {intelWhy}; "
+                        + "awaiting Recon observation before the terminal assault");
+                    return true;
+                }
+            }
+            else a.AssaultObservationWaitSinceTurn = -1;
+
             // ---- walking-home legs: arrival is the end of the leg ------------------------------
             if (a.Phase == AttackMissionPhase.SupportReturn)
             {
@@ -1032,7 +1058,8 @@ namespace Game.Ai.V2
                 : readiness.Ready;
             if (clears)
             {
-                a.ProjectedWinChance = readiness.ProjectedWinChance;
+                a.ProjectedWinChance = AttackObjectiveEvaluator.HasAssaultObservation(snap, a.Target, out _)
+                    ? readiness.ProjectedWinChance : 0f;
                 a.CoversAllDefenders = readiness.CoversAllDefenders;
             }
             return clears;

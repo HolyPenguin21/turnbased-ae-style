@@ -346,25 +346,18 @@ namespace Game.Ai.V2
             AttackLocalAction strike = AttackLocalAction.Continue();
             if (!target.IsIntermediateAssault)
             {
-                ArmySnapshot self = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
-                if (self != null)
+                strike = AttackTacticalOpportunity.Revalidate(snapshot, army, target, ctx,
+                    out string rejection);
+                if (rejection != null)
                 {
-                    AttackLocalAction now = AttackTacticalOpportunity.Decide(snapshot, self, target.Target,
-                        target.OpportunisticStrikeTurn, intermediateBaseAvailable: false,
-                        ActiveDefenceObjectiveEvaluator.Enumerate(snapshot),
-                        snapshot?.Intents);
-                    strike = AttackTacticalOpportunity.ForExecution(target.Local, now, out string rejection);
-                    if (rejection != null)
-                    {
-                        // Waiting + replan, NOT a failure: a stale local choice must not put the
-                        // shared Assault key (the main march) on a rejection cooldown.
-                        result.StopReason = ExecutionStopReason.MoveRejected;
-                        result.NeedsReplan = true;
-                        AiDebugLog.Write($"[AI][V2][Attack][Local] {player.Nickname} #{army.Id} step skipped: "
-                            + $"{rejection} frozen={target.Local.Kind}#{target.Local.EnemyArmyId} "
-                            + $"now={now.Kind}#{now.EnemyArmyId}; no movement, world unchanged");
-                        yield break;
-                    }
+                    // Waiting + replan, NOT a failure: a stale local choice must not put the
+                    // shared Assault key (the main march) on a rejection cooldown.
+                    result.StopReason = ExecutionStopReason.MoveRejected;
+                    result.NeedsReplan = true;
+                    AiDebugLog.Write($"[AI][V2][Attack][Local] {player.Nickname} #{army.Id} step skipped: "
+                        + $"{rejection} frozen={target.Local.Kind}#{target.Local.EnemyArmyId} "
+                        + $"now={strike.Kind}#{strike.EnemyArmyId}; no movement, world unchanged");
+                    yield break;
                 }
             }
             bool intercept = strike.Kind == AttackLocalActionKind.Intercept;
@@ -390,6 +383,18 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Attack][Route] {player.Nickname} #{army.Id} ({army.Hex.Q},{army.Hex.R}) -> "
                     + $"({waypoint.Q},{waypoint.R}) no executable step reason=tactical_block "
                     + $"mp={army.CurrentMovement}/{army.MaxMovement}");
+                yield break;
+            }
+
+            // A stale/unknown final site never authorizes combat, capture or its activation cost.
+            if (next.Value.Equals(targetHex)
+                && !AttackObjectiveEvaluator.HasAssaultObservation(snapshot, target.AssaultTarget,
+                    out string intelWhy))
+            {
+                result.StopReason = ExecutionStopReason.NoSafeStep;
+                result.NeedsReplan = true;
+                result.TacticalBlockReason = intelWhy;
+                AiDebugLog.Write($"[AI][V2][Attack][Observation] #{army.Id} HOLD {intelWhy}; no payment or movement");
                 yield break;
             }
 

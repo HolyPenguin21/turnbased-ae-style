@@ -52,6 +52,29 @@ namespace Game.EditorTests
                 default(WorthIt.SideCommander)),
         };
 
+        [Test]
+        public void DepartureProjection_RemovesDonatedBodiesFromTheRemainingHomeDefence()
+        {
+            ArmyData host = Army(Host, Body("host", 3, 5));
+            UnitData donated = Body("tank", 14, 16);
+            ArmyData donor = Army(Host, Body("guard", 1, 3), donated);
+            donor.IsGarrison = true;
+            ArmyRegistry.Register(host);
+            ArmyRegistry.Register(donor);
+            var snap = new WorldSnapshot { Observer = Us, Self = new SelfSnapshot {
+                Armies = new[] { Snapshot(host), Snapshot(donor) } } };
+            snap.Self.Armies[1].IsGarrison = true;
+            var plan = new GroundCombatAssemblyPlan { Feasible = true, NeedsAssembly = true,
+                BaseArmyId = host.Id };
+            plan.Transfers.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = donated });
+            var projected = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
+            Assert.That(projected[host.Id].MemberCount, Is.EqualTo(2));
+            Assert.That(projected[donor.Id].MemberCount, Is.EqualTo(1));
+            Assert.That(projected[donor.Id].IsGarrison, Is.True);
+            Assert.That(projected[donor.Id].Members.Single().Attack, Is.EqualTo(1f));
+            Assert.That(donor.Members, Does.Contain(donated));
+        }
+
         // Kryll T12: the host already acted this turn and today's AP is gone, while the support is
         // still walking. The arrival handoff strengthens the host; only its charge is today's.
         [Test]

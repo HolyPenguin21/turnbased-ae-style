@@ -171,7 +171,8 @@ namespace Game.Ai.V2
             target.DestinationHex = targetHex;
             target.DefenderHexDefenseBonus = hexBonus;
             target.DefenderCount = WorthIt.UnitsOf(opposition).Count;
-            target.ProjectedWinChance = assault.Plan.ProjectedWinChance;
+            target.ProjectedWinChance = AttackObjectiveEvaluator.HasAssaultObservation(
+                snap, target.AssaultTarget, out _) ? assault.Plan.ProjectedWinChance : 0f;
             target.CoversAllDefenders = assault.Plan.CoversAllDefenders;
 
             return ProvisioningResult.Ok(new ProvisionedMission

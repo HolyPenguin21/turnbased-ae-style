@@ -18,6 +18,26 @@ namespace Game.EditorTests
     // ===========================================================================================
     public class AiGroundCombatKernelContractTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AssemblyPlanner_RejectedDepartureTriesNextCandidate_UnlessPrimaryIsPinned(bool pinned)
+        {
+            var snap = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] {
+                new ArmySnapshot { ArmyId = 19, IsStructuralRaidActor = true, CurrentMovement = 3,
+                    Members = Attackers(), EffectiveArmyPower = 30f },
+                new ArmySnapshot { ArmyId = 28, IsStructuralRaidActor = true, CurrentMovement = 3,
+                    Members = Attackers(), EffectiveArmyPower = 25f },
+            } } };
+            var request = new GroundCombatAssemblyRequest { WinChanceGate = 0f,
+                AllowSameHexAssembly = false, PreferredPrimaryArmyId = pinned ? 19 : (int?)null,
+                PinToPreferred = pinned, AcceptPlan = p => p.BaseArmyId != 19 };
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap, request);
+            Assert.That(plan.Feasible, Is.EqualTo(!pinned));
+            if (!pinned) Assert.That(plan.BaseArmyId, Is.EqualTo(28));
+            Assert.That(GroundCombatAssemblyPlanner.EligibleActorIds(snap, request),
+                Is.EquivalentTo(pinned ? new int[0] : new[] { 28 }));
+        }
+
         private static WorthIt.DefenderProfile Body(float atk, float def, float hp, int init) =>
             new WorthIt.DefenderProfile(def, false, null, atk, hp, init, null, hp);
 

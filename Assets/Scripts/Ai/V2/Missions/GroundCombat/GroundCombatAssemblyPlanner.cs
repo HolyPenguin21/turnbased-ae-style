@@ -201,6 +201,9 @@ namespace Game.Ai.V2
         // May the kernel build a package out of same-hex donors, or must it find an
         // already-sufficient army?
         public bool AllowSameHexAssembly = true;
+        // Demand may count next-turn capability. Nomination/provisioning keep today's movement
+        // and activation constraints; physical capacity, duties and donor safety always apply.
+        public bool RequireReadyThisTurn = true;
         // A started Attack keeps its committed members; fresh departures may return excess heroes.
         public bool PreserveDepartureRoster;
         // The result must be an army OTHER than PreferredPrimaryArmyId (a separate support actor).
@@ -217,6 +220,8 @@ namespace Game.Ai.V2
         // when the fight is decisive and the stronghold stays covered
         // (ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered).
         public bool AllowDecisivePinnedDefender;
+        // Test lane-specific departure constraints on each complete candidate, before selection.
+        public System.Func<GroundCombatAssemblyPlan, bool> AcceptPlan;
         // Overrides GroundCombatAdmissionPolicy.RequiresCoverage(WinChanceGate) for a request whose
         // ACTION, not its gate value, decides (an optional intermediate Base at 0.40 needs none).
         // Honoured by the exact and assembled departure-roster checks alike.
@@ -258,10 +263,11 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(
                     snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.RequireCoverage,
-                    request.MinimumArmyPower, request.PreserveDepartureRoster);
+                    request.MinimumArmyPower, request.PreserveDepartureRoster, request.RequireReadyThisTurn);
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
-                    && DecisiveIfPinned(snap, request, a, exact, opposition))
+                    && DecisiveIfPinned(snap, request, a, exact, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(exact)))
                     return exact;
             }
 
@@ -278,8 +284,9 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan assembled = TryAssembleForHost(
                     snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.MinimumArmyPower, request.RequireCoverage,
-                    request.PreserveDepartureRoster);
-                if (assembled.Feasible && DecisiveIfPinned(snap, request, a, assembled, opposition))
+                    request.PreserveDepartureRoster, request.RequireReadyThisTurn);
+                if (assembled.Feasible && DecisiveIfPinned(snap, request, a, assembled, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(assembled)))
                     return assembled;
             }
 
@@ -305,10 +312,12 @@ namespace Game.Ai.V2
             {
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(snap, opposition,
                     a.ArmyId, request.WinChanceGate, request.DefenderHexDefenseBonus,
-                    request.RequireCoverage, request.MinimumArmyPower, request.PreserveDepartureRoster);
+                    request.RequireCoverage, request.MinimumArmyPower, request.PreserveDepartureRoster,
+                    request.RequireReadyThisTurn);
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
-                    && DecisiveIfPinned(snap, request, a, exact, opposition))
+                    && DecisiveIfPinned(snap, request, a, exact, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(exact)))
                     ids.Add(a.ArmyId);
             }
             if (!request.AllowSameHexAssembly)
@@ -323,8 +332,10 @@ namespace Game.Ai.V2
                     continue;
                 GroundCombatAssemblyPlan assembledHost = TryAssembleForHost(snap, opposition, a,
                     excluded, request.WinChanceGate, request.DefenderHexDefenseBonus,
-                    request.MinimumArmyPower, request.RequireCoverage, request.PreserveDepartureRoster);
-                if (assembledHost.Feasible && DecisiveIfPinned(snap, request, a, assembledHost, opposition))
+                    request.MinimumArmyPower, request.RequireCoverage, request.PreserveDepartureRoster,
+                    request.RequireReadyThisTurn);
+                if (assembledHost.Feasible && DecisiveIfPinned(snap, request, a, assembledHost, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(assembledHost)))
                 {
                     ids.Add(a.ArmyId);
                     excluded.Add(a.ArmyId);
@@ -341,14 +352,14 @@ namespace Game.Ai.V2
             GroundCombatAssemblyRequest request)
         {
             IEnumerable<ArmySnapshot> ready = GroundCombatActorEligibility
-                .EligibleReadyArmies(snap, request.ExcludedArmyIds,
+                .EligibleArmies(snap, request.ExcludedArmyIds, request.RequireReadyThisTurn,
                     allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f);
             // A pinned stronghold defender joins the candidates only for a request that allows a
             // decisive departure and only while its stronghold stays covered; Plan then accepts it
             // only for a decisive fight (DecisiveIfPinned).
             if (request.AllowDecisivePinnedDefender)
                 ready = ready.Concat(snap.Self.Armies.Where(a => a != null && a.IsStructuralRaidActor
-                    && a.CurrentMovement > 0
+                    && (!request.RequireReadyThisTurn || a.CurrentMovement > 0)
                     && (request.ExcludedArmyIds == null || !request.ExcludedArmyIds.Contains(a.ArmyId))
                     && ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)
                     && ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered(snap, a,
@@ -404,7 +415,8 @@ namespace Game.Ai.V2
         internal static GroundCombatAssemblyPlan PlanForArmyAtThreshold(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, int armyId, float minWinChance,
             float defenderHexDefenseBonus = 0f, bool? requireCoverage = null,
-            float minimumArmyPower = 0f, bool preserveDepartureRoster = false)
+            float minimumArmyPower = 0f, bool preserveDepartureRoster = false,
+            bool requireReadyThisTurn = true)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatAssemblyPlan.Infeasible("no own-force snapshot");
@@ -417,7 +429,7 @@ namespace Game.Ai.V2
             if (live != null && !preserveDepartureRoster)
                 return PlanDepartureRoster(snap, live, live.Members,
                     System.Array.Empty<GroundCombatAssemblyTransfer>(), opposition, minWinChance,
-                    defenderHexDefenseBonus, minimumArmyPower, requireCoverage);
+                    defenderHexDefenseBonus, minimumArmyPower, requireCoverage, requireReadyThisTurn);
 
             opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             List<WorthIt.DefenderProfile> roster =
@@ -444,18 +456,19 @@ namespace Game.Ai.V2
         private static GroundCombatAssemblyPlan TryAssembleForHost(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ArmySnapshot hostSnap, ISet<int> excludeArmyIds,
             float minWinChance, float defenderHexDefenseBonus, float minimumArmyPower = 0f,
-            bool? requireCoverage = null, bool preserveDepartureRoster = false)
+            bool? requireCoverage = null, bool preserveDepartureRoster = false,
+            bool requireReadyThisTurn = true)
         {
             PlayerSetupData owner = hostSnap?.Owner;
             if (owner == null)
                 return GroundCombatAssemblyPlan.Infeasible("assembly host has no owner");
             ArmyData host = OwnWorld.Of(owner).Armies
                 .FirstOrDefault(a => a != null && a.Id == hostSnap.ArmyId);
-            if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0)
+            if (host == null || host.Members.Count == 0 || (requireReadyThisTurn && host.CurrentMovement <= 0))
                 return GroundCombatAssemblyPlan.Infeasible("assembly host is no longer live/mobile");
             return AssembleSameHex(snap, owner, host, opposition, excludeArmyIds, minWinChance,
                 defenderHexDefenseBonus, minimumArmyPower, preparation: false, requireCoverage: requireCoverage,
-                preserveDepartureRoster: preserveDepartureRoster);
+                preserveDepartureRoster: preserveDepartureRoster, requireReadyThisTurn: requireReadyThisTurn);
         }
 
     }
