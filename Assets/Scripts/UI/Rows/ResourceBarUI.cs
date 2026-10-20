@@ -87,7 +87,7 @@ namespace Game.UI
 
         // Driven by PlayerRoot.ResourcesChanged now instead of polling every frame — AP and the
         // four stockpiled resources only actually change on a handful of discrete actions
-        // (spend, citadel income, dice purchase/refund), not continuously, so there was never a
+        // (spend, citadel income, tokens purchase/refund), not continuously, so there was never a
         // reason to re-format and re-assign five TMP strings 60 times a second.
         private void RefreshResourceText()
         {

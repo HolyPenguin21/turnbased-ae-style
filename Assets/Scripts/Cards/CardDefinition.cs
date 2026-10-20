@@ -80,12 +80,12 @@ namespace Game.Cards
         public int fate;
 
         // Combat stats (see Game.Combat.ChallengeResolver) — only meaningful for Hero/Unit
-        // cards. attack is this card's dice-pool size when it attacks a Ground-to-Ground
+        // cards. attack is this card's tokens-pool size when it attacks a Ground-to-Ground
         // Challenge; range is how many rows ahead it can reach; hitPoints is how much damage it
         // can take before being destroyed.
         public int attack;
         // Named defenseRating rather than defense — this is UnitData.Defense: the defender's
-        // dice-pool size in a Ground-to-Ground Challenge. A CardType.Base card reads the exact
+        // tokens-pool size in a Ground-to-Ground Challenge. A CardType.Base card reads the exact
         // same field for its spawned BuildingData.Defense (see HexSelectionController.
         // SpawnBuilding/CitadelSetupController.SpawnCitadelMarker) rather than keeping a
         // separate copy — Hero/Unit and Base cards share this one Stats block.

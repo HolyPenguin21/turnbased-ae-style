@@ -20,7 +20,7 @@ namespace Game.EditorTests
             var rng = new System.Random(seed);
             var session = new BattleChallengeSession(BattleChallengeMode.CaptureKill,
                 null, null, 2, 3, 3, 3, AbilityMagnitudes.Default,
-                rollDice: count => BattleSimulationKernel.RollDice(count, rng));
+                rollTokens: count => BattleSimulationKernel.RollTokens(count, rng));
             session.Roll();
             while (session.TryNextFateTurn(out bool defenderTurn))
             {
@@ -264,7 +264,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void GuardedBackRow_GainsOneDefenseDie()
+        public void GuardedBackRow_GainsOneDefenseToken()
         {
             var owner = new PlayerSetupData { Nickname = "D" };
             var defenderArmy = new ArmyData { Owner = owner };
@@ -777,7 +777,7 @@ namespace Game.EditorTests
         // Playtest 2026-10-19: Medium Tank (5) vs Null Vessel (3) on a Citadel (+2) read as
         // "cannot scratch" under the rounded mean, so the Citadel threat priced no damage.
         [Test]
-        public void WorthItCoverage_ReadsTheExactDiceOdds_NotTheRoundedMean()
+        public void WorthItCoverage_ReadsTheExactTokensOdds_NotTheRoundedMean()
         {
             var tank = new WorthIt.DefenderProfile(defense: 4, hasCeramicArmor: false, attack: 5, hitPoints: 6);
             var vessel = new WorthIt.DefenderProfile(defense: 3, hasCeramicArmor: false, attack: 5, hitPoints: 6);
@@ -785,9 +785,9 @@ namespace Game.EditorTests
             var brick = new WorthIt.DefenderProfile(defense: 9, hasCeramicArmor: false, attack: 2, hitPoints: 6);
 
             Assert.That(WorthIt.HitProbability(tank, vessel, 2f), Is.EqualTo(772f / 2048f).Within(1e-4f),
-                "5 dice vs 5: P(more successes) = (1 - C(10,5)/2^10) / 2");
+                "5 tokens vs 5: P(more successes) = (1 - C(10,5)/2^10) / 2");
             Assert.That(WorthIt.CanDamage(tank, vessel, 2f), Is.True);
-            Assert.That(WorthIt.CanDamage(weak, brick), Is.False, "3 dice vs 9 wound ~2% of exchanges");
+            Assert.That(WorthIt.CanDamage(weak, brick), Is.False, "3 tokens vs 9 wound ~2% of exchanges");
         }
 
         [Test]
@@ -939,7 +939,7 @@ namespace Game.EditorTests
                 rollCall++;
                 if (count <= 0)
                     return Array.Empty<bool>();
-                // Initial attacker die misses, defender has no dice, then the Fate reroll misses.
+                // Initial attacker die misses, defender has no tokens, then the Fate reroll misses.
                 if (rollCall == 1)
                     return new[] { false };
                 if (rollCall == 2)
@@ -953,7 +953,7 @@ namespace Game.EditorTests
                 attackerPoolSize: 1, defenderPoolSize: 0,
                 attackerFate: 2, defenderFate: 0,
                 AbilityMagnitudes.Default,
-                rollDice: Roll);
+                rollTokens: Roll);
 
             session.Roll();
             Assert.That(session.TrySpend(false, out int rerolledIndex, out bool hit), Is.True);

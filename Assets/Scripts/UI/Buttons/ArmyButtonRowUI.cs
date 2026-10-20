@@ -47,7 +47,7 @@ namespace Game.UI
             ArmyData selectedArmy = null, bool showStats = false, object presentationContext = null)
         {
             var next = armies == null ? new List<ArmyData>() : armies.Where(a => a != null)
-                .OrderBy(a => a.IsAirfield ? 0 : a.IsGarrison ? 1 : 2).ToList();
+                .OrderBy(a => a.IsPrison ? 0 : a.IsAirfield ? 1 : a.IsGarrison ? 2 : 3).ToList();
             // The map row follows the selected army across hexes. Only a count change
             // needs new slots and a slide; roster/context changes just rebind those slots.
             bool samePresentation = _wantsVisible && _showStats == showStats

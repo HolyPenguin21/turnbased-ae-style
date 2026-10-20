@@ -5,7 +5,7 @@ namespace Game.Combat
 {
     /// <summary>
     /// Exact pre-Fate odds for one Ground Combat exchange. This is deliberately deterministic:
-    /// live combat still rolls actual dice, while target selection needs an expectation that obeys
+    /// live combat still rolls actual tokens, while target selection needs an expectation that obeys
     /// the same success-count subtraction and ability modifier chain instead of Attack*0.5-Defense*0.5.
     /// </summary>
     public static class BattleCombatOdds
@@ -25,31 +25,31 @@ namespace Game.Combat
         }
 
         // interceptor: the UnitAbilities.Bodyguard that takes any landed hit on `defender` — the
-        // dice stay attacker vs defender, a hit's damage is re-run against the interceptor, and
+        // tokens stay attacker vs defender, a hit's damage is re-run against the interceptor, and
         // `defenderHp` must then be the interceptor's HP (it is the one that can die).
-        public static ExchangeOdds Evaluate(UnitData attacker, UnitData defender, int defenderBonusDice,
-            AbilityMagnitudes magnitudes, float defenderHp, int? attackDiceOverride = null,
+        public static ExchangeOdds Evaluate(UnitData attacker, UnitData defender, int defenderBonusTokens,
+            AbilityMagnitudes magnitudes, float defenderHp, int? attackTokensOverride = null,
             int? defenderDefenseOverride = null, UnitData interceptor = null)
         {
             if (attacker == null || defender == null)
                 return default;
 
-            int attackDice = Mathf.Max(0, attackDiceOverride ?? attacker.Attack);
+            int attackTokens = Mathf.Max(0, attackTokensOverride ?? attacker.Attack);
             int baseDefense = defenderDefenseOverride
                 ?? (defender.IsHero ? Mathf.Max(0, defender.FateMax) : defender.Defense);
-            int defenseDice = Mathf.Max(0, baseDefense + defenderBonusDice);
+            int defenseTokens = Mathf.Max(0, baseDefense + defenderBonusTokens);
             float expected = 0f;
             float hitProbability = 0f;
             float killProbability = 0f;
 
-            for (int a = 0; a <= attackDice; a++)
+            for (int a = 0; a <= attackTokens; a++)
             {
-                float pa = BinomialHalfProbability(attackDice, a);
+                float pa = BinomialHalfProbability(attackTokens, a);
                 if (pa <= 0f)
                     continue;
-                for (int d = 0; d <= defenseDice; d++)
+                for (int d = 0; d <= defenseTokens; d++)
                 {
-                    float probability = pa * BinomialHalfProbability(defenseDice, d);
+                    float probability = pa * BinomialHalfProbability(defenseTokens, d);
                     if (probability <= 0f)
                         continue;
 

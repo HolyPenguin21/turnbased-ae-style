@@ -97,7 +97,7 @@ namespace Game.Aviation
             airArmy.LastAirStrikeAttacked = result.Attacked;
         }
 
-        // Dice source of the headless strike path only (never used while a popup exists).
+        // Tokens source of the headless strike path only (never used while a popup exists).
         public static System.Random HeadlessRng = new System.Random();
 
         public sealed class AirStrikeResult
@@ -283,12 +283,12 @@ namespace Game.Aviation
                 {
                     // Headless (no popup in the scene, e.g. automated tests): the same pools the
                     // popup rolls — aircraft Attack vs the target's Defense (a hero's FateMax) —
-                    // through the same ResolveStandaloneAttack; dice and the AI Fate duel from HeadlessRng.
+                    // through the same ResolveStandaloneAttack; tokens and the AI Fate duel from HeadlessRng.
                     int defensePool = defenderPoolOverride ?? target.Defense;
                     var challenge = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
                         aircraft, target, aircraft.Attack, defensePool, 0, defenderHero?.Fate ?? 0,
                         AbilityMagnitudes.Default,
-                        rollDice: count => BattleSimulationKernel.RollDice(count, HeadlessRng),
+                        rollTokens: count => BattleSimulationKernel.RollTokens(count, HeadlessRng),
                         tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy));
                     challenge.Roll();
                     challenge.ResolveAiDecisions();

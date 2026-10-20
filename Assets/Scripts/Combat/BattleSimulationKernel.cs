@@ -40,7 +40,7 @@ namespace Game.Combat
     {
         // Exact expectation of ONE exchange, without Fate or geometry. Production uses this
         // bounded projection; full battle decisions still use WorthIt. The difference of the
-        // two fair dice pools is Binomial(attack + defense, .5) - defense.
+        // two fair tokens pools is Binomial(attack + defense, .5) - defense.
         public static float ExpectedExchangeDamage(int attack, int defense,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTags,
             IEnumerable<string> defenderAbilities, int hpCap, out float hitChance,
@@ -53,7 +53,7 @@ namespace Game.Combat
         }
 
         // Capped damage PMF: the last bucket contains every lethal/overkill outcome. Consumers
-        // may carry HP distributions across contacts without reimplementing dice or abilities.
+        // may carry HP distributions across contacts without reimplementing tokens or abilities.
         // The caller owns the returned array (a copy of the memoised one).
         public static double[] ExchangeDamageDistribution(int attack, int defense,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTags,
@@ -147,15 +147,15 @@ namespace Game.Combat
             if (rng == null)
                 throw new ArgumentNullException(nameof(rng));
 
-            bool[] attackDice = RollDice(Mathf.Max(0, attackPool), rng);
-            bool[] defenseDice = RollDice(Mathf.Max(0, defensePool), rng);
+            bool[] attackTokens = RollTokens(Mathf.Max(0, attackPool), rng);
+            bool[] defenseTokens = RollTokens(Mathf.Max(0, defensePool), rng);
 
-            ResolveFateDuel(attackDice, defenseDice, attackerAbilities, defenderTypeTags,
+            ResolveFateDuel(attackTokens, defenseTokens, attackerAbilities, defenderTypeTags,
                 defenderAbilities, ref attackerFate, ref defenderFate, defenderHp,
                 magnitudes, rng, defenderIsRetreating, isCaptureKill: false);
 
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
-                attackDice, defenseDice, attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
+                attackTokens, defenseTokens, attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
             return new BattleSimExchangeOutcome(outcome.Damage, outcome.Damage > 0,
                 outcome.AttackerSuccesses, outcome.DefenderSuccesses);
         }
@@ -165,15 +165,15 @@ namespace Game.Combat
         {
             if (rng == null)
                 throw new ArgumentNullException(nameof(rng));
-            bool[] hunterDice = RollDice(hunterPool, rng);
-            bool[] heroDice = RollDice(heroPool, rng);
-            ResolveFateDuel(hunterDice, heroDice, null, null, null,
+            bool[] hunterTokens = RollTokens(hunterPool, rng);
+            bool[] heroTokens = RollTokens(heroPool, rng);
+            ResolveFateDuel(hunterTokens, heroTokens, null, null, null,
                 ref hunterFate, ref heroFate, int.MaxValue, AbilityMagnitudes.Default,
                 rng, defenderIsRetreating: false, isCaptureKill: true);
-            return BattleResolutionRules.ResolveCaptureKill(hunterDice, heroDice);
+            return BattleResolutionRules.ResolveCaptureKill(hunterTokens, heroTokens);
         }
 
-        private static void ResolveFateDuel(bool[] attackDice, bool[] defenseDice,
+        private static void ResolveFateDuel(bool[] attackTokens, bool[] defenseTokens,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
             IEnumerable<string> defenderAbilities, ref int attackerFate, ref int defenderFate,
             int defenderHp, AbilityMagnitudes magnitudes, System.Random rng,
@@ -185,10 +185,10 @@ namespace Game.Combat
                 while (order.TryNext(out bool defenderTurn))
                 {
                     bool spent = defenderTurn
-                        ? RunFateTurn(attackDice, defenseDice, defenseDice, true, ref defenderFate,
+                        ? RunFateTurn(attackTokens, defenseTokens, defenseTokens, true, ref defenderFate,
                             attackerAbilities, defenderTypeTags, defenderAbilities, defenderHp,
                             magnitudes, rng, defenderIsRetreating, isCaptureKill)
-                        : RunFateTurn(attackDice, defenseDice, attackDice, false, ref attackerFate,
+                        : RunFateTurn(attackTokens, defenseTokens, attackTokens, false, ref attackerFate,
                             attackerAbilities, defenderTypeTags, defenderAbilities, defenderHp,
                             magnitudes, rng, false, isCaptureKill);
                     order.Report(spent);
@@ -219,7 +219,7 @@ namespace Game.Combat
         public static bool SuppressesTurn(int damage, IEnumerable<string> attackerAbilities) =>
             damage > 0 && HasAbility(attackerAbilities, UnitAbilities.ShockAttack);
 
-        // UnitAbilities.Bodyguard — the intercepted hit keeps its rolled dice (raw = attacker
+        // UnitAbilities.Bodyguard — the intercepted hit keeps its rolled tokens (raw = attacker
         // successes - defender successes) and is re-run through the canonical modifier chain
         // against the guard's own tags and abilities.
         public static int InterceptedDamage(int rawDamage, IEnumerable<string> attackerAbilities,
@@ -305,15 +305,15 @@ namespace Game.Combat
             return damage;
         }
 
-        public static bool[] RollDice(int count, System.Random rng)
+        public static bool[] RollTokens(int count, System.Random rng)
         {
-            var dice = new bool[Mathf.Max(0, count)];
-            for (int i = 0; i < dice.Length; i++)
-                dice[i] = rng.NextDouble() < 0.5d;
-            return dice;
+            var tokens = new bool[Mathf.Max(0, count)];
+            for (int i = 0; i < tokens.Length; i++)
+                tokens[i] = rng.NextDouble() < 0.5d;
+            return tokens;
         }
 
-        private static bool RunFateTurn(bool[] attackerDice, bool[] defenderDice, bool[] ownDice,
+        private static bool RunFateTurn(bool[] attackerTokens, bool[] defenderTokens, bool[] ownTokens,
             bool isDefender, ref int fate, IEnumerable<string> attackerAbilities,
             IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
             int defenderHp, AbilityMagnitudes magnitudes, System.Random rng, bool defenderIsRetreating,
@@ -321,17 +321,17 @@ namespace Game.Combat
         {
             bool spent = false;
             while (fate > 0 && FateDuelAi.ShouldSpendFate(
-                       attackerDice, defenderDice, fate, isDefender,
+                       attackerTokens, defenderTokens, fate, isDefender,
                        attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes,
                        defenderIsRetreating, defenderHp, isCaptureKill))
             {
-                int miss = Array.IndexOf(ownDice, false);
+                int miss = Array.IndexOf(ownTokens, false);
                 if (miss < 0)
                     break;
-                ownDice[miss] = rng.NextDouble() < 0.5d;
+                ownTokens[miss] = rng.NextDouble() < 0.5d;
                 fate--;
                 spent = true;
-                if (!ownDice[miss])
+                if (!ownTokens[miss])
                     break;
             }
             return spent;

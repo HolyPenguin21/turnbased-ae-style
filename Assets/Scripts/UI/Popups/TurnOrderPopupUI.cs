@@ -9,14 +9,14 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Phase 1 of every turn: everyone rolls InitiativeRules.BaseDice plus any purchased bonus
-    // dice, highest score goes first, and tied players visibly reroll until the tie is broken
-    // (see TurnOrderResolver). One DiceRowUI per player is spawned fresh each turn.
+    // Phase 1 of every turn: everyone rolls InitiativeRules.BaseTokens plus any purchased bonus
+    // tokens, highest score goes first, and tied players visibly reroll until the tie is broken
+    // (see TurnOrderResolver). One TokenRowUI per player is spawned fresh each turn.
     public class TurnOrderPopupUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private Transform rowContainer;
-        [SerializeField] private DiceRowUI rowPrefab;
+        [SerializeField] private TokenRowUI rowPrefab;
         [SerializeField] private Button rollButton;
         [SerializeField] private Button continueButton;
         [SerializeField] private InitiativeBuyPanelUI buyPanel;
@@ -29,8 +29,8 @@ namespace Game.UI
         [SerializeField] private float autoContinueDelay = 0.5f;
         private const string AutoRollPrefKey = "TurnOrderPopup.AutoRollEnabled";
 
-        private readonly List<DiceRowUI> _rows = new List<DiceRowUI>();
-        private readonly Dictionary<PlayerSetupData, DiceRowUI> _rowByPlayer = new Dictionary<PlayerSetupData, DiceRowUI>();
+        private readonly List<TokenRowUI> _rows = new List<TokenRowUI>();
+        private readonly Dictionary<PlayerSetupData, TokenRowUI> _rowByPlayer = new Dictionary<PlayerSetupData, TokenRowUI>();
         private List<PlayerSetupData> _players;
         private List<PlayerSetupData> _pendingOrder;
         private Action<List<PlayerSetupData>> _onResolved;
@@ -83,9 +83,9 @@ namespace Game.UI
             {
                 foreach (PlayerSetupData player in players)
                 {
-                    DiceRowUI row = Instantiate(rowPrefab, rowContainer);
+                    TokenRowUI row = Instantiate(rowPrefab, rowContainer);
                     Game.Audio.SceneUIAudioBinder.BindCreatedRoot(row);
-                    row.SetPlayer(player, TurnOrderResolver.DiceCountFor(player));
+                    row.SetPlayer(player, TurnOrderResolver.TokenCountFor(player));
                     _rows.Add(row);
                     _rowByPlayer[player] = row;
                 }
@@ -126,15 +126,15 @@ namespace Game.UI
                 Finish(order);
         }
 
-        // Only the human player buys dice through this panel. AI purchases are already
+        // Only the human player buys tokens through this panel. AI purchases are already
         // applied by InitiativeCoordinatorV2 before Show is called.
         private void ShowBuyPanel(List<PlayerSetupData> players)
         {
             if (buyPanel == null)
                 return;
 
-            buyPanel.DiceCountChanged -= OnBuyPanelDiceCountChanged;
-            buyPanel.DiceCountChanged += OnBuyPanelDiceCountChanged;
+            buyPanel.TokenCountChanged -= OnBuyPanelTokenCountChanged;
+            buyPanel.TokenCountChanged += OnBuyPanelTokenCountChanged;
 
             PlayerSetupData human = players.Find(p => p != null && p.IsHuman);
             if (human != null)
@@ -145,13 +145,13 @@ namespace Game.UI
             buyPanel.Show(null, null);
         }
 
-        // The human just bought/refunded a die — resize their row's dice slots to match so
+        // The human just bought/refunded a die — resize their row's tokens slots to match so
         // Roll doesn't visually snap the count when it's actually pressed.
-        private void OnBuyPanelDiceCountChanged()
+        private void OnBuyPanelTokenCountChanged()
         {
             PlayerSetupData human = _players?.Find(p => p != null && p.IsHuman);
-            if (human != null && _rowByPlayer.TryGetValue(human, out DiceRowUI row))
-                row.SetPlayer(human, TurnOrderResolver.DiceCountFor(human));
+            if (human != null && _rowByPlayer.TryGetValue(human, out TokenRowUI row))
+                row.SetPlayer(human, TurnOrderResolver.TokenCountFor(human));
         }
 
         private void RollAll()
@@ -175,8 +175,8 @@ namespace Game.UI
             foreach (InitiativeRollRound round in resolution.Rounds)
             {
                 int pending = 0;
-                foreach (KeyValuePair<PlayerSetupData, DiceRollResult> entry in round.Rolls)
-                    if (_rowByPlayer.TryGetValue(entry.Key, out DiceRowUI row))
+                foreach (KeyValuePair<PlayerSetupData, TokenRollResult> entry in round.Rolls)
+                    if (_rowByPlayer.TryGetValue(entry.Key, out TokenRowUI row))
                     {
                         pending++;
                         row.ShowRoll(entry.Value, () => pending--);
@@ -185,7 +185,7 @@ namespace Game.UI
             }
 
             for (int i = 0; i < resolution.Order.Count; i++)
-                if (_rowByPlayer.TryGetValue(resolution.Order[i], out DiceRowUI row))
+                if (_rowByPlayer.TryGetValue(resolution.Order[i], out TokenRowUI row))
                     row.ShowRank(i + 1);
 
             if (continueButton != null)

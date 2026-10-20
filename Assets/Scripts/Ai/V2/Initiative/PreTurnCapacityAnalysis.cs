@@ -39,7 +39,7 @@ namespace Game.Ai.V2.Initiative
         public readonly int[] Available = new int[4];              // raw stockpile (PlayerRoot.GetResource)
         public readonly int[] IncomePerTurn = new int[4];
         public readonly int[] DeckDemand = new int[4];             // remaining-game resource appetite
-        public readonly int[] CommittedResourceFloor = new int[4]; // already accepted Economy builds; never spent on dice
+        public readonly int[] CommittedResourceFloor = new int[4]; // already accepted Economy builds; never spent on tokens
 
         public static readonly ResourceType[] Types = InitiativeDeckDemand.Types;
 

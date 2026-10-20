@@ -6,8 +6,8 @@ using Game.Turns;
 namespace Game.Ai.V2.Initiative
 {
     // Pure, deterministic, RNG-free N-player evaluator for the REAL TurnOrderResolver semantics:
-    // every player rolls independent 50/50 dice; higher score ranks earlier; a tied subgroup
-    // rerolls, recursively, using each tied player's OWN dice pool.
+    // every player rolls independent 50/50 tokens; higher score ranks earlier; a tied subgroup
+    // rerolls, recursively, using each tied player's OWN tokens pool.
     //
     // Unequal pools are therefore NOT uniform inside a tie. A 6-die player tied with a 5-die
     // player still has the stronger distribution on the reroll. This evaluator solves that exact
@@ -49,23 +49,23 @@ namespace Game.Ai.V2.Initiative
         }
 
         private static readonly Dictionary<int, double[]> PmfByPool = new Dictionary<int, double[]>();
-        private static readonly int PoolKinds = InitiativeRules.MaxTotalDice - InitiativeRules.BaseDice + 1;
+        private static readonly int PoolKinds = InitiativeRules.MaxTotalTokens - InitiativeRules.BaseTokens + 1;
 
-        public static InitiativeOutcome Evaluate(int myTotalDice, IReadOnlyList<int> opponentTotalDice)
+        public static InitiativeOutcome Evaluate(int myTotalTokens, IReadOnlyList<int> opponentTotalTokens)
         {
-            int myDice = ClampDice(myTotalDice);
+            int myTokens = ClampTokens(myTotalTokens);
             var counts = new int[PoolKinds];
-            if (opponentTotalDice != null)
+            if (opponentTotalTokens != null)
             {
-                for (int i = 0; i < opponentTotalDice.Count; i++)
+                for (int i = 0; i < opponentTotalTokens.Count; i++)
                 {
-                    int dice = ClampDice(opponentTotalDice[i]);
-                    counts[dice - InitiativeRules.BaseDice]++;
+                    int tokens = ClampTokens(opponentTotalTokens[i]);
+                    counts[tokens - InitiativeRules.BaseTokens]++;
                 }
             }
 
             var memo = new Dictionary<string, Top2>();
-            Top2 top = SolveTop2(myDice, counts, memo);
+            Top2 top = SolveTop2(myTokens, counts, memo);
 
             double p1 = Math.Max(0.0, Math.Min(1.0, top.First));
             double p2 = Math.Max(0.0, Math.Min(1.0, top.Second));
@@ -80,17 +80,17 @@ namespace Game.Ai.V2.Initiative
             return new InitiativeOutcome(p1, p2, p3);
         }
 
-        private static Top2 SolveTop2(int myDice, int[] opponentCounts, Dictionary<string, Top2> memo)
+        private static Top2 SolveTop2(int myTokens, int[] opponentCounts, Dictionary<string, Top2> memo)
         {
             int opponentCount = Count(opponentCounts);
             if (opponentCount == 0)
                 return new Top2(1.0, 0.0);
 
-            string key = StateKey(myDice, opponentCounts);
+            string key = StateKey(myTokens, opponentCounts);
             if (memo.TryGetValue(key, out Top2 cached))
                 return cached;
 
-            double[] myPmf = Pmf(myDice);
+            double[] myPmf = Pmf(myTokens);
             double firstNumerator = 0.0;
             double secondNumerator = 0.0;
             double selfLoop = 0.0;
@@ -102,7 +102,7 @@ namespace Game.Ai.V2.Initiative
                     continue;
 
                 var equalCounts = new int[PoolKinds];
-                EnumerateEqualStates(myDice, opponentCounts, score, 0, equalCounts,
+                EnumerateEqualStates(myTokens, opponentCounts, score, 0, equalCounts,
                     1.0, 0.0, (equal, zeroAboveProb, oneAboveProb) =>
                     {
                         if (zeroAboveProb <= 0.0 && oneAboveProb <= 0.0)
@@ -119,7 +119,7 @@ namespace Game.Ai.V2.Initiative
                             return;
                         }
 
-                        Top2 sub = SolveTop2(myDice, equal, memo);
+                        Top2 sub = SolveTop2(myTokens, equal, memo);
 
                         // Nobody was already above us: our final first/second place is exactly our
                         // place inside the recursively resolved tied subgroup.
@@ -140,10 +140,10 @@ namespace Game.Ai.V2.Initiative
             return result;
         }
 
-        // Enumerates only how many opponents of each dice-pool size TIED our current score.
+        // Enumerates only how many opponents of each tokens-pool size TIED our current score.
         // Opponents above us are collapsed to two useful cases: zero above or exactly one above;
         // two-or-more can never produce a top-two finish and are intentionally discarded.
-        private static void EnumerateEqualStates(int myDice, int[] opponentCounts, int score,
+        private static void EnumerateEqualStates(int myTokens, int[] opponentCounts, int score,
             int poolIndex, int[] equalCounts, double zeroAboveSoFar, double oneAboveSoFar,
             Action<int[], double, double> onState)
         {
@@ -157,13 +157,13 @@ namespace Game.Ai.V2.Initiative
             if (n == 0)
             {
                 equalCounts[poolIndex] = 0;
-                EnumerateEqualStates(myDice, opponentCounts, score, poolIndex + 1, equalCounts,
+                EnumerateEqualStates(myTokens, opponentCounts, score, poolIndex + 1, equalCounts,
                     zeroAboveSoFar, oneAboveSoFar, onState);
                 return;
             }
 
-            int opponentDice = InitiativeRules.BaseDice + poolIndex;
-            double[] pmf = Pmf(opponentDice);
+            int opponentTokens = InitiativeRules.BaseTokens + poolIndex;
+            double[] pmf = Pmf(opponentTokens);
             double pEqual = ProbEqual(pmf, score);
             double pAbove = ProbGreater(pmf, score);
             double pBelow = ProbLess(pmf, score);
@@ -188,18 +188,18 @@ namespace Game.Ai.V2.Initiative
                     continue;
 
                 equalCounts[poolIndex] = equal;
-                EnumerateEqualStates(myDice, opponentCounts, score, poolIndex + 1, equalCounts,
+                EnumerateEqualStates(myTokens, opponentCounts, score, poolIndex + 1, equalCounts,
                     nextZero, nextOne, onState);
             }
         }
 
-        private static int ClampDice(int dice)
+        private static int ClampTokens(int tokens)
         {
-            if (dice < InitiativeRules.BaseDice)
-                return InitiativeRules.BaseDice;
-            if (dice > InitiativeRules.MaxTotalDice)
-                return InitiativeRules.MaxTotalDice;
-            return dice;
+            if (tokens < InitiativeRules.BaseTokens)
+                return InitiativeRules.BaseTokens;
+            if (tokens > InitiativeRules.MaxTotalTokens)
+                return InitiativeRules.MaxTotalTokens;
+            return tokens;
         }
 
         private static double[] Pmf(int poolSize)
@@ -268,10 +268,10 @@ namespace Game.Ai.V2.Initiative
             return true;
         }
 
-        private static string StateKey(int myDice, int[] counts)
+        private static string StateKey(int myTokens, int[] counts)
         {
             var sb = new StringBuilder();
-            sb.Append(myDice).Append('|');
+            sb.Append(myTokens).Append('|');
             for (int i = 0; i < counts.Length; i++)
                 sb.Append(counts[i]).Append(',');
             return sb.ToString();

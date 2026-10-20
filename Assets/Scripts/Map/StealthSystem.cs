@@ -34,7 +34,7 @@ namespace Game.Map
     //                                ObserverTakingTurnProvider.
     //
     // The hidden challenge itself reuses Game.Combat.ChallengeResolver (the one deterministic/
-    // testable dice path) and is SILENT: no popup, no combat UI, no player-facing or owner-
+    // testable tokens path) and is SILENT: no popup, no combat UI, no player-facing or owner-
     // facing log.
     public static class StealthSystem
     {
@@ -52,11 +52,11 @@ namespace Game.Map
         // PurgeExpiredFor lapses at the end of the very same turn (project owner's own P1).
         public static Func<PlayerSetupData, bool> ObserverTakingTurnProvider = _ => false;
 
-        // Terrain move cost at a hex — hideDice = stealthLevel + (moveCost - 1). Set by
+        // Terrain move cost at a hex — hideTokens = stealthLevel + (moveCost - 1). Set by
         // whoever owns the HexMap at setup; default flat 1 (no terrain bump) for the sim.
         public static Func<HexCoord, int> TerrainMoveCostProvider = _ => 1;
 
-        // The hidden challenge's dice roll — the shared ChallengeResolver path by default
+        // The hidden challenge's tokens roll — the shared ChallengeResolver path by default
         // (project owner's spec §2). A single injectable seam so the standalone stealth
         // simulation can drive exact spot/hide-success counts without UnityEngine.Random.
         public static Func<int, int, ChallengeResult> ChallengeRoller = ChallengeResolver.Resolve;
@@ -352,7 +352,7 @@ namespace Game.Map
         // ---------------------------------------------------------- the hidden challenge ----
 
         // stealthLevel + terrain bump (ordinary hex +0, move-cost 2 +1, cost 3 / mountains +2).
-        public static int HideDiceFor(UnitData unit, HexCoord hex)
+        public static int HideTokensFor(UnitData unit, HexCoord hex)
         {
             int level = AbilityParams.GetStealthLevel(unit);
             int bump = Math.Max(0, TerrainMoveCostProvider(hex) - 1);
@@ -360,7 +360,7 @@ namespace Game.Map
         }
 
         // The MAX spot-die pool any ONE of `observer`'s vision sources brings to bear on
-        // `hiddenHex` — observers never sum their dice (§2). An ordinary source has spot
+        // `hiddenHex` — observers never sum their tokens (§2). An ordinary source has spot
         // strength 0 and contributes max(1, 0) = 1 IN ITS OWN HEX only; an r1sX source also
         // reaches an ADJACENT hex, contributing its raw spot strength there (so r1s0 -> 0,
         // i.e. it reveals the hex and ordinary units but never detects an adjacent stealth).
@@ -433,7 +433,7 @@ namespace Game.Map
             if (spot <= 0)
                 return false;
 
-            int hide = HideDiceFor(unit, hex);
+            int hide = HideTokensFor(unit, hex);
             ChallengeResult result = ChallengeRoller(spot, hide);
             // Tie keeps stealth — strictly more spot successes than hide successes to detect.
             bool detected = result.AttackerSuccesses > result.DefenderSuccesses;
@@ -512,7 +512,7 @@ namespace Game.Map
 
         // B. A concrete card just created or widened one vision source. Detection belongs to
         //    that event source only: an unrelated Recce army elsewhere on the map must not lend
-        //    its dice or turn every already-visible enemy into a fresh challenge.
+        //    its tokens or turn every already-visible enemy into a fresh challenge.
         public static void RunChecksForNewVisionSource(ArmyData army, UnitData unit)
         {
             if (army?.Owner == null || army.IsCarrierContainer || unit == null)

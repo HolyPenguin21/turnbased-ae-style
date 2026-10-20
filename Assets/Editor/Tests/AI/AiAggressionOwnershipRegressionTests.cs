@@ -145,7 +145,7 @@ namespace Game.EditorTests
         public void AbovePowerBar_ReadyOnlyWhenTheFistCoversTheDefenders(bool canDamage)
         {
             ArmySnapshot host = Actor(7, Home);
-            // No attack dice at all cannot wound the defender (1 die vs 2 still does, 12.5%).
+            // No attack tokens at all cannot wound the defender (1 die vs 2 still does, 12.5%).
             var body = new WorthIt.DefenderProfile(4f, false, null, canDamage ? 8f : 0f, 12f, 3);
             host.Members = new[] { body, body, body };
             AttackPreparationAssessment result = AttackPreparationReadiness.Assess(host, 100f,

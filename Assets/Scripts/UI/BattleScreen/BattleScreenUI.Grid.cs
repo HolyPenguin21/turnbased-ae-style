@@ -298,7 +298,7 @@ namespace Game.UI
 
             // Defense includes the same terrain/Base-building bonus BeginAttack actually rolls
             // with (only ever nonzero for the battle's original _defender — see
-            // GetDisplayedDefenseBonus's own comment), so this always matches the real dice pool.
+            // GetDisplayedDefenseBonus's own comment), so this always matches the real tokens pool.
             detailText.text = UnitDetailFormatter.Format(unit, gameConfig, GetDisplayedDefenseBonus(unit));
         }
     }

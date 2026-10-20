@@ -264,7 +264,7 @@ namespace Game.EditorTests
             {
                 yield return null;
                 // Inject the post-AA roster, then run the real presenter's terminal deletion branch.
-                // Dice/popup interaction is deliberately outside this lifecycle fixture.
+                // Tokens/popup interaction is deliberately outside this lifecycle fixture.
                 army.Members.Clear();
                 yield return (IEnumerator)typeof(AviationCombatPresenter)
                     .GetMethod("ResolveAirArmyStep", BindingFlags.Instance | BindingFlags.NonPublic)

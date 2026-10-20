@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Game.Combat
 {
     // A plain-text trace of every AI decision/action made during a Tactical Battle Module fight
-    // (arrangement, retreat assessment, per-unit move/attack choice, dice rolls, Fate-spend
+    // (arrangement, retreat assessment, per-unit move/attack choice, tokens rolls, Fate-spend
     // decisions) — the battle-side twin of Game.Ai.AiDebugLog (see that file's own comment for
     // the full reasoning: separate from Unity's own Console so the project owner can review a
     // fight after the fact without keeping Play Mode running). Deliberately its own file/class
@@ -119,18 +119,18 @@ namespace Game.Combat
             }
         }
 
-        // Renders a dice-roll result as a compact hit/miss string (e.g. "X.XX." for hit/hit/miss/
+        // Renders a tokens-roll result as a compact hit/miss string (e.g. "X.XX." for hit/hit/miss/
         // hit/miss) — shared by every roll/reroll log line below instead of each site re-deriving
         // its own formatting, so the same array always reads the same way in the log.
-        public static string DiceString(bool[] dice)
+        public static string TokenString(bool[] tokens)
         {
-            if (dice == null)
+            if (tokens == null)
                 return "(none)";
-            if (dice.Length == 0)
-                return "(0 dice)";
-            var chars = new char[dice.Length];
-            for (int i = 0; i < dice.Length; i++)
-                chars[i] = dice[i] ? 'X' : '.';
+            if (tokens.Length == 0)
+                return "(0 tokens)";
+            var chars = new char[tokens.Length];
+            for (int i = 0; i < tokens.Length; i++)
+                chars[i] = tokens[i] ? 'X' : '.';
             return new string(chars);
         }
     }

@@ -11,9 +11,9 @@ namespace Game.UI
     // One side's row in BattleAttackPopupUI's Roll state — faction logo, the acting/defending
     // unit's name and HP, that SIDE's Fate (from its hero, if any — Fate is a shared per-side
     // resource the hero contributes, per the manual, not something the attacking/defending unit
-    // card itself needs to be a hero to use) + a Spend button, and a dice-slot strip. Dice slots
-    // are DiceSlotUI (see its own comment) — same shared component/sprites as DiceRowUI's turn-
-    // order dice.
+    // card itself needs to be a hero to use) + a Spend button, and a tokens-slot strip. Tokens slots
+    // are TokenSlotUI (see its own comment) — same shared component/sprites as TokenRowUI's turn-
+    // order tokens.
     public class BattleCombatantRowUI : MonoBehaviour
     {
         [SerializeField] private Image logoImage;
@@ -24,22 +24,22 @@ namespace Game.UI
         [SerializeField] private GameObject fateRoot;
         [SerializeField] private TMP_Text fateText;
         [SerializeField] private Button spendButton;
-        [SerializeField] private Transform diceContainer;
-        [SerializeField] private DiceSlotUI diceSlotPrefab;
+        [SerializeField] private Transform tokenContainer;
+        [SerializeField] private TokenSlotUI tokenSlotPrefab;
         [SerializeField] private TMP_Text successText;
-        // How many dice this side's pool is about to roll (or just rolled) — set by
-        // BattleAttackPopupUI.SetDicePoolSize before/at Roll time, alongside successText's own
+        // How many tokens this side's pool is about to roll (or just rolled) — set by
+        // BattleAttackPopupUI.SetTokenPoolSize before/at Roll time, alongside successText's own
         // after-the-roll hit count, so the player can see the pool size up front instead of only
-        // inferring it by counting dice slots once they've already appeared (see the user's own
+        // inferring it by counting tokens slots once they've already appeared (see the user's own
         // request).
-        [SerializeField] private TMP_Text diceCountText;
+        [SerializeField] private TMP_Text tokenCountText;
 
-        private readonly List<DiceSlotUI> _diceSlots = new List<DiceSlotUI>();
-        // Last dice array SetDice was actually given — a Fate-spend reroll calls SetDice again
+        private readonly List<TokenSlotUI> _tokenSlots = new List<TokenSlotUI>();
+        // Last tokens array SetTokens was actually given — a Fate-spend reroll calls SetTokens again
         // with the SAME length array, only one entry actually changed (see BattleAttackPopupUI.
         // RerollOneMiss). Diffed against this so only that one slot replays its roll animation
         // instead of the whole row spinning again on every single Spend click.
-        private bool[] _lastDice;
+        private bool[] _lastTokens;
         private UnitData _sideHero;
 
         public event Action SpendClicked;
@@ -54,7 +54,7 @@ namespace Game.UI
             DisableDecorativeRaycasts(transform);
         }
 
-        // Purely decorative graphics (labels, dice slots) must not swallow clicks aimed at the
+        // Purely decorative graphics (labels, tokens slots) must not swallow clicks aimed at the
         // Spend button when they overlap it. Graphics belonging to a Selectable are left alone.
         private static void DisableDecorativeRaycasts(Transform root)
         {
@@ -93,32 +93,32 @@ namespace Game.UI
                 fateRoot.SetActive(sideHero != null);
             RefreshFate();
 
-            UIListUtility.DestroyAndClear(_diceSlots);
-            _lastDice = null;
+            UIListUtility.DestroyAndClear(_tokenSlots);
+            _lastTokens = null;
             if (successText != null)
                 successText.text = string.Empty;
-            if (diceCountText != null)
-                diceCountText.text = string.Empty;
+            if (tokenCountText != null)
+                tokenCountText.text = string.Empty;
         }
 
-        // Pool size is known as soon as this side's Attack/Defense (+ any bonus dice) or
+        // Pool size is known as soon as this side's Attack/Defense (+ any bonus tokens) or
         // Capture Kill pool is computed — BattleAttackPopupUI calls this at the same point it
-        // sets up the rest of the row, so it's visible before Roll Die is even clicked.
+        // sets up the rest of the row, so it's visible before Roll Token is even clicked.
         //
         // terrainBonus/constructionBonus/baseDefense (defender side only — see BattleAttackPopupUI.
         // Begin, the attacker row and Capture Kill's pool-size override both leave these at their
         // default 0): when the hex is contributing to this side's pool, the count alone doesn't
         // say why it's bigger than the unit's own stat, so the prefix spells out the breakdown
-        // instead (per the user's own request) — plain "Dice: {count}" otherwise, unchanged.
-        public void SetDicePoolSize(int count, int terrainBonus = 0, int constructionBonus = 0,
+        // instead (per the user's own request) — plain "Tokens: {count}" otherwise, unchanged.
+        public void SetTokenPoolSize(int count, int terrainBonus = 0, int constructionBonus = 0,
             int baseDefense = 0, int formationBonus = 0)
         {
-            if (diceCountText == null)
+            if (tokenCountText == null)
                 return;
 
             if (terrainBonus == 0 && constructionBonus == 0 && formationBonus == 0)
             {
-                diceCountText.text = $"Dice: {count}";
+                tokenCountText.text = $"Tokens: {count}";
                 return;
             }
 
@@ -130,7 +130,7 @@ namespace Game.UI
             if (formationBonus != 0)
                 parts.Add($"Guarded({formationBonus})");
             parts.Add($"Defence({baseDefense})");
-            diceCountText.text = $"{string.Join(" + ", parts)}, Dices: {count}";
+            tokenCountText.text = $"{string.Join(" + ", parts)}, Tokens: {count}";
         }
 
         private void RefreshFate()
@@ -165,7 +165,7 @@ namespace Game.UI
         // spins every slot. A reroll (see BattleAttackPopupUI.RerollOneMiss) calls this again
         // with the SAME-length array where only the rerolled die actually changed — those
         // existing slots are reused and only the changed one plays its roll animation, so
-        // spending Fate doesn't re-spin dice that already settled.
+        // spending Fate doesn't re-spin tokens that already settled.
         //
         // rerolledIndex (optional): the slot Fate was JUST spent on, if any — a plain by-value
         // diff (below) misses a reroll that lands on the SAME hit/miss result as before (still a
@@ -177,10 +177,10 @@ namespace Game.UI
         // revealed (see ShowResults above). BattleAttackPopupUI waits on this both for the
         // initial roll (RunRollAndDuel, before opening the Fate duel/enabling Spend) and for
         // every later Fate-spend reroll (RunHumanTurn/RunAiTurn's own _rerollAnimDone wait), so
-        // nothing becomes available to click, and no side reacts, before the dice have actually
+        // nothing becomes available to click, and no side reacts, before the tokens have actually
         // landed (per the user's own request, 2026-08-24).
         // --- Research/Production Challenge helpers (see BattleAttackPopupUI.BeginResearchProduction) ---
-        // Deliberately isolated from SetDice so its behaviour is untouched for Ground Combat /
+        // Deliberately isolated from SetTokens so its behaviour is untouched for Ground Combat /
         // Capture Kill / Aviation.
 
         // A Research/Production DEFENDER is a card, not a UnitData — just a name + logo, no HP,
@@ -204,139 +204,139 @@ namespace Game.UI
                 fateRoot.SetActive(false);
             if (spendButton != null)
                 spendButton.interactable = false;
-            UIListUtility.DestroyAndClear(_diceSlots);
-            _lastDice = null;
+            UIListUtility.DestroyAndClear(_tokenSlots);
+            _lastTokens = null;
             if (successText != null)
                 successText.text = string.Empty;
-            if (diceCountText != null)
-                diceCountText.text = string.Empty;
+            if (tokenCountText != null)
+                tokenCountText.text = string.Empty;
         }
 
         // The card defender's fixed defence: CardDefinition.fate guaranteed successes, shown at
         // full immediately with NO roll animation (a card doesn't roll its own defence). Rebuilds
-        // the strip like SetDice's count-changed branch, but every slot lands on hit via
-        // DiceSlotUI.SetImmediate.
+        // the strip like SetTokens's count-changed branch, but every slot lands on hit via
+        // TokenSlotUI.SetImmediate.
         public void SetFixedSuccesses(int count)
         {
             count = Mathf.Max(0, count);
-            UIListUtility.DestroyAndClear(_diceSlots);
-            if (diceContainer != null && diceSlotPrefab != null)
+            UIListUtility.DestroyAndClear(_tokenSlots);
+            if (tokenContainer != null && tokenSlotPrefab != null)
             {
                 for (int i = 0; i < count; i++)
                 {
-                    DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                    TokenSlotUI slot = Instantiate(tokenSlotPrefab, tokenContainer);
                     Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
                     slot.gameObject.SetActive(true);
                     DisableDecorativeRaycasts(slot.transform);
                     slot.SetImmediate(true);
-                    _diceSlots.Add(slot);
+                    _tokenSlots.Add(slot);
                 }
             }
-            _lastDice = new bool[count];
+            _lastTokens = new bool[count];
             for (int i = 0; i < count; i++)
-                _lastDice[i] = true;
+                _lastTokens[i] = true;
             if (successText != null)
                 successText.text = count.ToString();
-            if (diceCountText != null)
-                diceCountText.text = $"Defense: {count}";
+            if (tokenCountText != null)
+                tokenCountText.text = $"Defense: {count}";
         }
 
         // The R/P Fate-overflow rule: when every existing attacker die is already a hit but the
         // success count is still below target, a spent Fate ADDS a die instead of rerolling one.
         // Appends exactly one new slot, rolls only it, leaves every existing slot untouched, then
-        // refreshes _lastDice / the success counter. onComplete fires when the new die lands.
-        public void AppendDie(bool hit, System.Action onComplete = null)
+        // refreshes _lastTokens / the success counter. onComplete fires when the new die lands.
+        public void AppendToken(bool hit, System.Action onComplete = null)
         {
-            if (diceContainer == null || diceSlotPrefab == null)
+            if (tokenContainer == null || tokenSlotPrefab == null)
             {
-                if (_lastDice != null)
+                if (_lastTokens != null)
                 {
-                    var grown = new bool[_lastDice.Length + 1];
-                    System.Array.Copy(_lastDice, grown, _lastDice.Length);
+                    var grown = new bool[_lastTokens.Length + 1];
+                    System.Array.Copy(_lastTokens, grown, _lastTokens.Length);
                     grown[grown.Length - 1] = hit;
-                    _lastDice = grown;
+                    _lastTokens = grown;
                 }
                 onComplete?.Invoke();
                 return;
             }
 
-            DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+            TokenSlotUI slot = Instantiate(tokenSlotPrefab, tokenContainer);
             Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
             slot.gameObject.SetActive(true);
             DisableDecorativeRaycasts(slot.transform);
-            _diceSlots.Add(slot);
+            _tokenSlots.Add(slot);
 
-            int prevLen = _lastDice != null ? _lastDice.Length : 0;
+            int prevLen = _lastTokens != null ? _lastTokens.Length : 0;
             var next = new bool[prevLen + 1];
-            if (_lastDice != null)
-                System.Array.Copy(_lastDice, next, prevLen);
+            if (_lastTokens != null)
+                System.Array.Copy(_lastTokens, next, prevLen);
             next[prevLen] = hit;
-            _lastDice = next;
+            _lastTokens = next;
 
-            if (diceCountText != null)
-                diceCountText.text = $"Dice: {next.Length}";
+            if (tokenCountText != null)
+                tokenCountText.text = $"Tokens: {next.Length}";
 
             void Done()
             {
                 if (successText != null)
                 {
                     int successes = 0;
-                    foreach (bool h in _lastDice)
+                    foreach (bool h in _lastTokens)
                         if (h) successes++;
                     successText.text = successes.ToString();
                 }
                 onComplete?.Invoke();
             }
-            slot.PlayRoll(hit, 0, 1, DiceSlotUI.FateRerollDuration, Done);
+            slot.PlayRoll(hit, 0, 1, TokenSlotUI.FateRerollDuration, Done);
         }
 
         public void SetSuccessModifier(int modifier)
         {
-            if (successText == null || _lastDice == null) return;
+            if (successText == null || _lastTokens == null) return;
             int hits = 0;
-            foreach (bool hit in _lastDice) if (hit) hits++;
+            foreach (bool hit in _lastTokens) if (hit) hits++;
             successText.text = modifier == 0 ? hits.ToString()
                 : $"{Mathf.Max(0, hits + modifier)} ({hits}{(modifier > 0 ? "+" : "")}{modifier})";
         }
 
-        public void SetDice(bool[] dice, int rerolledIndex = -1, System.Action onComplete = null)
+        public void SetTokens(bool[] tokens, int rerolledIndex = -1, System.Action onComplete = null)
         {
-            if (dice == null)
+            if (tokens == null)
             {
                 onComplete?.Invoke();
                 return;
             }
 
             var toAnimate = new List<int>();
-            if (diceContainer != null && diceSlotPrefab != null && _diceSlots.Count != dice.Length)
+            if (tokenContainer != null && tokenSlotPrefab != null && _tokenSlots.Count != tokens.Length)
             {
-                UIListUtility.DestroyAndClear(_diceSlots);
-                for (int i = 0; i < dice.Length; i++)
+                UIListUtility.DestroyAndClear(_tokenSlots);
+                for (int i = 0; i < tokens.Length; i++)
                 {
-                    DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                    TokenSlotUI slot = Instantiate(tokenSlotPrefab, tokenContainer);
                     Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
-                    // diceSlotPrefab is wired (in the scene) to an inactive template object
-                    // rather than DiceRow.prefab's always-active DiceSlot prefab asset — Unity's
+                    // tokenSlotPrefab is wired (in the scene) to an inactive template object
+                    // rather than TokenRow.prefab's always-active TokenSlot prefab asset — Unity's
                     // Instantiate carries an inactive source's activeSelf over to the clone, so
                     // without this the clone starts inactive and PlayRoll's own
                     // !gameObject.activeInHierarchy check silently skips straight to
                     // SetImmediate, no flip animation at all (see the user's own report: no
-                    // animated dice in the attack popup, unlike DiceRowUI's turn-order roll).
+                    // animated tokens in the attack popup, unlike TokenRowUI's turn-order roll).
                     slot.gameObject.SetActive(true);
                     DisableDecorativeRaycasts(slot.transform);
-                    _diceSlots.Add(slot);
+                    _tokenSlots.Add(slot);
                     toAnimate.Add(i);
                 }
             }
             else
             {
-                for (int i = 0; i < dice.Length && i < _diceSlots.Count; i++)
-                    if (i == rerolledIndex || _lastDice == null || i >= _lastDice.Length || _lastDice[i] != dice[i])
+                for (int i = 0; i < tokens.Length && i < _tokenSlots.Count; i++)
+                    if (i == rerolledIndex || _lastTokens == null || i >= _lastTokens.Length || _lastTokens[i] != tokens[i])
                         toAnimate.Add(i);
             }
-            _lastDice = (bool[])dice.Clone();
+            _lastTokens = (bool[])tokens.Clone();
 
-            // Success count is revealed together with the dice landing, not before — showing the
+            // Success count is revealed together with the tokens landing, not before — showing the
             // number while the strip is still mid-flip let a player read the outcome ahead of the
             // animation (per the user's own request, 2026-08-24: results only appear once the roll
             // animation has actually finished).
@@ -345,7 +345,7 @@ namespace Game.UI
                 if (successText != null)
                 {
                     int successes = 0;
-                    foreach (bool hit in dice)
+                    foreach (bool hit in tokens)
                         if (hit) successes++;
                     successText.text = successes.ToString();
                 }
@@ -364,15 +364,15 @@ namespace Game.UI
                 if (pending == 0)
                     ShowResults();
             }
-            // index/count (position within THIS call's own toAnimate list, not the whole dice
-            // array) so a full first roll lands its dice one after another across the row, and a
+            // index/count (position within THIS call's own toAnimate list, not the whole tokens
+            // array) so a full first roll lands its tokens one after another across the row, and a
             // later single-die Fate reroll still gets the full Fate-reroll duration to itself
             // rather than landing near-instantly as if it were still part of an N-die group.
             for (int pos = 0; pos < toAnimate.Count; pos++)
             {
                 int i = toAnimate[pos];
-                float duration = rerolledIndex >= 0 ? DiceSlotUI.FateRerollDuration : DiceSlotUI.FullRollDuration;
-                _diceSlots[i].PlayRoll(dice[i], pos, toAnimate.Count, duration, SlotDone);
+                float duration = rerolledIndex >= 0 ? TokenSlotUI.FateRerollDuration : TokenSlotUI.FullRollDuration;
+                _tokenSlots[i].PlayRoll(tokens[i], pos, toAnimate.Count, duration, SlotDone);
             }
         }
     }

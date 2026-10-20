@@ -28,7 +28,7 @@ namespace Game.Ai.V2.Initiative
             return $"capacity-balanced(prevEnd={last.EndAp}/{last.TotalStartAp})";
         }
 
-        public static bool ShouldSuppressBonusDice(PlayerSetupData player, out string reason)
+        public static bool ShouldSuppressBonusTokens(PlayerSetupData player, out string reason)
         {
             reason = null;
             var history = InitiativeAnalyticsHistory.For(player);

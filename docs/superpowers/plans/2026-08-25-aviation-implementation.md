@@ -162,16 +162,16 @@ order; human gets Attack/Skip, AI always attacks.
 `AviationCombatPresenter` queues `BattleAttackPopupUI.Begin` calls and resumes the movement
 coroutine only from the existing resolve callback.  It provides two challenge forms:
 
-* **AA:** attacker dice pool is `AA unit Attack * 2`; target is a random surviving aircraft;
+* **AA:** attacker tokens pool is `AA unit Attack * 2`; target is a random surviving aircraft;
   it consumes the AA shot only after Attack, not Skip.
 * **Air strike:** each surviving aircraft that has not attacked this turn attacks once, in army
   slot order; each picks a random eligible unit from all enemy ground armies/garrison on that
   hex.  Heroes defend with `FateMax`.  A targetless remembered-FOW hex produces no popup.
-  Against an unlanded enemy air army, choose a random aircraft; no dice doubling.
+  Against an unlanded enemy air army, choose a random aircraft; no tokens doubling.
 
-Add optional explicit attacker/defender dice-pool overrides to `BattleAttackPopupUI.Begin` rather
+Add optional explicit attacker/defender tokens-pool overrides to `BattleAttackPopupUI.Begin` rather
 than modifying `UnitData.Attack` temporarily.  That keeps normal ground combat unchanged and
-makes AA's double dice a local, auditable input.  Air strike never launches `BattleScreenUI`,
+makes AA's double tokens a local, auditable input.  Air strike never launches `BattleScreenUI`,
 never captures an empty building, and never commits the attacker to a ground battle.
 
 At every owner turn start, reset `HasAirAttackedThisTurn` for that owner's aircraft and AA
@@ -228,7 +228,7 @@ In Unity Play Mode verify:
 4. plane 0 / helicopter 1 endurance timelines, 50% current-HP damage, half MP rounded down,
    second overdue destruction, and repair after landing;
 5. air strike runs one challenge per eligible aircraft, then permits continued movement;
-6. AA range, ordered multiple prompts, skip/re-entry suppression, AI attack, doubled AA dice,
+6. AA range, ordered multiple prompts, skip/re-entry suppression, AI attack, doubled AA tokens,
    air-to-air non-doubled attack, and ground-AA movement opportunity;
 7. captured/destroyed base returns only stored aircraft cards; airborne forces remain;
 8. FOW remembered target behavior, hidden-AA-before-strike behavior, modal order/eight-entry

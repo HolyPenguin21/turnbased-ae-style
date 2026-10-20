@@ -7,22 +7,22 @@ using UnityEngine;
 
 namespace Game.UI
 {
-    // One player's row in the turn-order popup: name + dice slots + resulting rank. Dice
+    // One player's row in the turn-order popup: name + tokens slots + resulting rank. Tokens
     // slots are spawned fresh per SetPlayer call (not a fixed count any more — a player who
-    // bought bonus dice this turn rolls more than the 3 base ones, see
-    // TurnOrderResolver.DiceCountFor). Each slot is a DiceSlotUI (see its own comment) —
-    // DiceFace_Hit.png/DiceFace_Miss.png swapped via a coin-flip spin instead of the old
+    // bought bonus tokens this turn rolls more than the 3 base ones, see
+    // TurnOrderResolver.TokenCountFor). Each slot is a TokenSlotUI (see its own comment) —
+    // Token_1.png/Token_2.png swapped via a coin-flip spin instead of the old
     // "1"/"X" text placeholder.
-    public class DiceRowUI : MonoBehaviour
+    public class TokenRowUI : MonoBehaviour
     {
         [SerializeField] private TMP_Text nameText;
-        [SerializeField] private Transform diceContainer;
-        [SerializeField] private DiceSlotUI diceSlotPrefab;
+        [SerializeField] private Transform tokenContainer;
+        [SerializeField] private TokenSlotUI tokenSlotPrefab;
         [SerializeField] private TMP_Text rankText;
 
-        private readonly List<DiceSlotUI> _diceSlots = new List<DiceSlotUI>();
+        private readonly List<TokenSlotUI> _tokenSlots = new List<TokenSlotUI>();
 
-        public void SetPlayer(PlayerSetupData player, int diceCount)
+        public void SetPlayer(PlayerSetupData player, int tokenCount)
         {
             if (nameText != null)
             {
@@ -31,14 +31,14 @@ namespace Game.UI
             }
             if (rankText != null)
                 rankText.text = string.Empty;
-            SpawnSlots(diceCount);
+            SpawnSlots(tokenCount);
         }
 
         // onComplete (optional): fired once every slot in this row has finished flipping
         // (immediately, if there's nothing to animate) — TurnOrderPopupUI waits on this across
         // every row before revealing rank/enabling Continue, so nobody sees the outcome before
-        // the dice actually land (per the user's own request, 2026-08-24).
-        public void ShowRoll(DiceRollResult roll, System.Action onComplete = null)
+        // the tokens actually land (per the user's own request, 2026-08-24).
+        public void ShowRoll(TokenRollResult roll, System.Action onComplete = null)
         {
             if (roll == null)
             {
@@ -46,9 +46,9 @@ namespace Game.UI
                 return;
             }
 
-            // index/count so the whole row's dice land one after another but the ROW as a whole
-            // still finishes in DiceSlotUI's fixed full-roll duration regardless of dice count.
-            int count = Mathf.Min(_diceSlots.Count, roll.Dice.Length);
+            // index/count so the whole row's tokens land one after another but the ROW as a whole
+            // still finishes in TokenSlotUI's fixed full-roll duration regardless of tokens count.
+            int count = Mathf.Min(_tokenSlots.Count, roll.Tokens.Length);
             if (count == 0)
             {
                 onComplete?.Invoke();
@@ -62,7 +62,7 @@ namespace Game.UI
                     onComplete?.Invoke();
             }
             for (int i = 0; i < count; i++)
-                _diceSlots[i].PlayRoll(roll.Dice[i], i, count, SlotDone);
+                _tokenSlots[i].PlayRoll(roll.Tokens[i], i, count, SlotDone);
         }
 
         public void ShowRank(int rank)
@@ -73,16 +73,16 @@ namespace Game.UI
 
         private void SpawnSlots(int count)
         {
-            UIListUtility.DestroyAndClear(_diceSlots);
+            UIListUtility.DestroyAndClear(_tokenSlots);
 
-            if (diceContainer == null || diceSlotPrefab == null)
+            if (tokenContainer == null || tokenSlotPrefab == null)
                 return;
 
             for (int i = 0; i < count; i++)
             {
-                DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                TokenSlotUI slot = Instantiate(tokenSlotPrefab, tokenContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
-                _diceSlots.Add(slot);
+                _tokenSlots.Add(slot);
             }
         }
     }

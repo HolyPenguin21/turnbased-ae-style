@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 5551000000000005}
   - component: {fileID: 5551000000000006}
   m_Layer: 5
-  m_Name: DiceSlot
+  m_Name: TokenSlot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -108,7 +108,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 955d478754b796ac25fa33b001a6d356, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.DiceSlotUI
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.TokenSlotUI
   image: {fileID: 5551000000000004}
   baseSprite: {fileID: 21300000, guid: 8680d7e7f2054244284887d83e45cab4, type: 3}
   hitSprite: {fileID: 21300000, guid: 943b864ce4a213d4086df7c82c71e164, type: 3}

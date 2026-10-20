@@ -4,24 +4,24 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One die face — an Image swapped between hitSprite/missSprite (see DiceFace_Hit.png/
-    // DiceFace_Miss.png, Assets/Textures/UI/Dice) — with PlayRoll animating a coin-flip-style
+    // One die face — an Image swapped between hitSprite/missSprite (see TokenFace_Hit.png/
+    // TokenFace_Miss.png, Assets/Textures/UI/Tokens) — with PlayRoll animating a coin-flip-style
     // spin instead of a hard cut: RectTransform.localScale.x oscillates through 0 a few times,
     // swapping to a random face each time it passes through zero, and lands on the real result
-    // on the last cycle. Sells "rolling" without needing actual in-between spin art (no dice
-    // model/sprite sheet exists — see DiceRowUI's own former comment on this).
-    public class DiceSlotUI : MonoBehaviour
+    // on the last cycle. Sells "rolling" without needing actual in-between spin art (no tokens
+    // model/sprite sheet exists — see TokenRowUI's own former comment on this).
+    public class TokenSlotUI : MonoBehaviour
     {
         [SerializeField] private Image image;
-        // Idle placeholder before this slot has ever rolled — Dice_Base.png, the neutral
+        // Idle placeholder before this slot has ever rolled — Tokens_Base.png, the neutral
         // unmarked die the two faces themselves were generated from (see the user's own
         // request), rather than defaulting to missSprite as if a roll had already happened.
         [SerializeField] private Sprite baseSprite;
         [SerializeField] private Sprite hitSprite;
         [SerializeField] private Sprite missSprite;
 
-        // Every roll GROUP (one whole DiceRowUI.ShowRoll/BattleCombatantRowUI.SetDice call)
-        // takes exactly this long overall, no matter how many dice are in it — individual dice
+        // Every roll GROUP (one whole TokenRowUI.ShowRoll/BattleCombatantRowUI.SetTokens call)
+        // takes exactly this long overall, no matter how many tokens are in it — individual tokens
         // within the group land one after another (index 0 first, the last index landing at
         // exactly the requested group duration) rather than all landing together
         // (2026-08-24). See the index/count overload of PlayRoll.
@@ -59,12 +59,12 @@ namespace Game.UI
         }
 
         // onComplete (optional): fired once the flip settles on its final face.
-        // index/count: this die's position (0-based) among the `count` dice rolled together in
-        // this same call (see DiceRowUI.ShowRoll/BattleCombatantRowUI.SetDice) — dice land one
+        // index/count: this die's position (0-based) among the `count` tokens rolled together in
+        // this same call (see TokenRowUI.ShowRoll/BattleCombatantRowUI.SetTokens) — tokens land one
         // after another from index 0 to count-1, spaced evenly across the supplied duration, so
-        // the whole group finishes in the same time regardless of how many dice it contains,
+        // the whole group finishes in the same time regardless of how many tokens it contains,
         // than every die spinning for a fixed length and the group as a whole taking longer the
-        // more dice it has (per the user's own request, 2026-08-24).
+        // more tokens it has (per the user's own request, 2026-08-24).
         public void PlayRoll(bool hit, int index, int count, System.Action onComplete = null)
         {
             PlayRoll(hit, index, count, FullRollDuration, onComplete);

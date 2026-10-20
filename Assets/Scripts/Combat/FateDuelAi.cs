@@ -12,7 +12,7 @@ namespace Game.Combat
     // ---- Priority-cap model (per the user's own spec) ----
     // Both sides always want ONE outcome: attacker wants damage > 0, defender wants damage <= 0.
     // Ability combos never change WHAT is being pursued, only how many of the side's own CURRENT
-    // missed dice it's willing to spend Fate rerolling toward it — `cap` = 2 when the attacker
+    // missed tokens it's willing to spend Fate rerolling toward it — `cap` = 2 when the attacker
     // carries ShockAttack, or a type-matched Hyperkinetic-vs-Armored/Pyrokinetic-vs-Bio/
     // Ionic-vs-Mechanical combo (see
     // AttackerCap/DefenderCap — both read the ATTACKER's own abilities, since it's the attacker's
@@ -84,17 +84,17 @@ namespace Game.Combat
         // safe non-event a 0-damage tie is in Ground Combat, so the defending hero must keep
         // rerolling on a tie too. That challenge deals no HP damage, so none of the ability-cap
         // logic below applies to it — same branch as before this refactor, unchanged.
-        public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
+        public static bool ShouldSpendFate(bool[] attackerTokens, bool[] defenderTokens, int fateAvailable, bool isDefender,
             UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes,
             bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false,
             int attackerModifier = 0, int defenderModifier = 0) =>
-            ShouldSpendFate(attackerDice, defenderDice, fateAvailable, isDefender,
+            ShouldSpendFate(attackerTokens, defenderTokens, fateAvailable, isDefender,
                 attacker?.Abilities, defender?.TypeTags, defender?.Abilities, magnitudes,
                 isRetreating, defendingUnitHp, isCaptureKill, attackerModifier, defenderModifier);
 
         // The same decision on the ability/type facts alone — what WorthIt's simulated battles
         // carry (no live UnitData). One spending policy for the real duel and for the estimate.
-        public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
+        public static bool ShouldSpendFate(bool[] attackerTokens, bool[] defenderTokens, int fateAvailable, bool isDefender,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
             IEnumerable<string> defenderAbilities, AbilityMagnitudes magnitudes,
             bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false,
@@ -103,11 +103,11 @@ namespace Game.Combat
             var m = new Matchup(attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
             if (fateAvailable <= 0)
                 return false;
-            bool[] ownDice = isDefender ? defenderDice : attackerDice;
-            if (ownDice == null || !HasMiss(ownDice))
+            bool[] ownTokens = isDefender ? defenderTokens : attackerTokens;
+            if (ownTokens == null || !HasMiss(ownTokens))
                 return false;
 
-            var result = new ChallengeResult(attackerDice, defenderDice, attackerModifier, defenderModifier);
+            var result = new ChallengeResult(attackerTokens, defenderTokens, attackerModifier, defenderModifier);
 
             if (isCaptureKill)
                 return isDefender
@@ -166,7 +166,7 @@ namespace Game.Combat
             if (currentDamage > 0)
                 return false; // already lands, nothing to fix
 
-            int ownMisses = CountMisses(result.AttackerDice);
+            int ownMisses = CountMisses(result.AttackerTokens);
             if (!TryMinRerollsForAttackerDamage(result, m, ownMisses, out int minRerolls))
                 return false; // physically unreachable within the misses actually on the table
             return minRerolls <= AttackerCap(m);
@@ -181,7 +181,7 @@ namespace Game.Combat
             // Hopeless check (unchanged from the previous ShouldSpendFate) — even flipping EVERY
             // remaining defender miss to a hit still doesn't get damage under HP; spending here is
             // pure waste of a resource that won't replenish until this battle ends.
-            int bestCaseDefenderSuccesses = Mathf.Max(0, result.DefenderDice.Length + result.DefenderModifier);
+            int bestCaseDefenderSuccesses = Mathf.Max(0, result.DefenderTokens.Length + result.DefenderModifier);
             int bestCaseRawDamage = Mathf.Max(0, result.AttackerSuccesses - bestCaseDefenderSuccesses);
             int bestCaseDamage = m.Damage(bestCaseRawDamage);
             if (bestCaseDamage >= defendingUnitHp)
@@ -194,7 +194,7 @@ namespace Game.Combat
             // Reachability is already guaranteed by the hopeless check just above: not hopeless
             // means rerolling every remaining miss gets damage under defendingUnitHp. Per the
             // user's own report: HP 2 / Defense 2 against a 3-hit roll (0 defender successes)
-            // can never reach a full block (only 2 dice to reroll, so raw damage bottoms out at
+            // can never reach a full block (only 2 tokens to reroll, so raw damage bottoms out at
             // 1, never 0) — the old "reroll until damage <= 0" goal judged that unreachable and
             // let the AI sit on 2 unspent Fate while its own unit died to a roll it could have
             // survived.
@@ -208,7 +208,7 @@ namespace Game.Combat
             if (isRetreating)
                 return false;
 
-            int ownMisses = CountMisses(result.DefenderDice);
+            int ownMisses = CountMisses(result.DefenderTokens);
             if (!TryMinRerollsForDefenderSafety(result, m, ownMisses, out int minRerolls))
                 return false;
             return minRerolls <= DefenderCap(m);
@@ -266,19 +266,19 @@ namespace Game.Combat
             return false;
         }
 
-        private static int CountMisses(bool[] dice)
+        private static int CountMisses(bool[] tokens)
         {
             int misses = 0;
-            foreach (bool hit in dice)
+            foreach (bool hit in tokens)
                 if (!hit) misses++;
             return misses;
         }
 
-        private static bool HasMiss(bool[] dice)
+        private static bool HasMiss(bool[] tokens)
         {
-            if (dice == null)
+            if (tokens == null)
                 return false;
-            foreach (bool hit in dice)
+            foreach (bool hit in tokens)
                 if (!hit)
                     return true;
             return false;

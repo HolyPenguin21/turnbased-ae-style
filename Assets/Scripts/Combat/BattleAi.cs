@@ -92,7 +92,7 @@ namespace Game.Combat
                 }
 
             // Holding a shooter out of opening range must beat a ready line against an enemy
-            // that holds its ground as well. Average equal-initiative orders, not just dice.
+            // that holds its ground as well. Average equal-initiative orders, not just tokens.
             int earliestParticipation = candidates.Min(c => c.moves);
             var ready = candidates.Where(c => c.moves == earliestParticipation).ToList();
             float readyScore = ready.Max(c => c.score);
@@ -663,7 +663,7 @@ namespace Game.Combat
         }
 
         // One attack of the shadow battle — a primary attack or a Counterattack answer — in the
-        // live BattleEngine order: resolve (real dice with `rng`, else the expected value), Bodyguard
+        // live BattleEngine order: resolve (real tokens with `rng`, else the expected value), Bodyguard
         // interception (primary only), the victim's Berserk and the actor's Shock, Splash around
         // the victim, Commander hand-over and removal. Returns the unit the hit landed on.
         // expectedDamage: the deterministic path's damage; null computes it here (a counterattack
@@ -796,7 +796,7 @@ namespace Game.Combat
                 && hp.TryGetValue(u, out float h) && h > 0).ToList();
             int count = Mathf.Min(ExplosionAttack.TargetLimit(actor.Abilities), pool.Count);
             float probability = count / (float)Mathf.Max(1, pool.Count);
-            var shot = actor.CloneForCombat(); shot.Attack = ExplosionAttack.AttackDice;
+            var shot = actor.CloneForCombat(); shot.Attack = ExplosionAttack.AttackTokens;
             float netDamage = 0;
             int iterations = rng == null ? pool.Count : count;
             for (int i = 0; i < iterations; i++)
@@ -807,12 +807,12 @@ namespace Game.Combat
                 if (rng == null)
                     damage = probability * BattleCombatOdds.Evaluate(shot, victim,
                         BattleProtectionRules.GetTotalDefenseBonus(grid, victim, battleDefender, defenderBonus),
-                        magnitudes, hp[victim], ExplosionAttack.AttackDice,
+                        magnitudes, hp[victim], ExplosionAttack.AttackTokens,
                         defenses != null && defenses.TryGetValue(victim, out int d) ? d : (int?)null).ExpectedDamage;
                 else
                     damage = ResolveSimulatedExchange(grid, actor, victim, hp, magnitudes, battleDefender,
                         defenderBonus, rng, fateByArmy, attacks, defenses, ownArmy, enemyArmy,
-                        ExplosionAttack.AttackDice).Damage;
+                        ExplosionAttack.AttackTokens).Damage;
                 float landed = Mathf.Min(hp[victim], damage);
                 hp[victim] = Mathf.Max(0, hp[victim] - damage);
                 if (hp[victim] > 0 && BattleSimulationKernel.SuppressesTurn(Mathf.RoundToInt(damage), actor.Abilities)
@@ -956,9 +956,9 @@ namespace Game.Combat
             Dictionary<UnitData, float> hp, AbilityMagnitudes magnitudes, ArmyData battleDefender,
             int battleDefenderDefenseBonus, System.Random rng, Dictionary<ArmyData, int> fateByArmy,
             Dictionary<UnitData, int> simulatedAttack, Dictionary<UnitData, int> simulatedDefense,
-            ArmyData ownArmy, ArmyData enemyArmy, int? attackDiceOverride = null)
+            ArmyData ownArmy, ArmyData enemyArmy, int? attackTokensOverride = null)
         {
-            int attackPool = attackDiceOverride ?? (simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int simAtk)
+            int attackPool = attackTokensOverride ?? (simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int simAtk)
                 ? simAtk : actor.Attack);
             int defensePool = simulatedDefense != null && simulatedDefense.TryGetValue(target, out int simDef)
                 ? simDef : (target.IsHero ? Mathf.Max(0, target.FateMax) : target.Defense);
@@ -969,7 +969,7 @@ namespace Game.Combat
             ArmyData targetArmy = FindSimulationArmy(target, ownArmy, enemyArmy);
             int actorFate = actorArmy != null && fateByArmy != null
                 && fateByArmy.TryGetValue(actorArmy, out int af) ? af : 0;
-            if (attackDiceOverride.HasValue && actorArmy == targetArmy) actorFate = 0;
+            if (attackTokensOverride.HasValue && actorArmy == targetArmy) actorFate = 0;
             int targetFate = targetArmy != null && fateByArmy != null
                 && fateByArmy.TryGetValue(targetArmy, out int tf) ? tf : 0;
 
@@ -979,7 +979,7 @@ namespace Game.Combat
                 hp.TryGetValue(target, out float targetHp) ? Mathf.CeilToInt(targetHp) : int.MaxValue,
                 magnitudes, rng);
 
-            if (actorArmy != null && fateByArmy != null && !(attackDiceOverride.HasValue && actorArmy == targetArmy))
+            if (actorArmy != null && fateByArmy != null && !(attackTokensOverride.HasValue && actorArmy == targetArmy))
                 fateByArmy[actorArmy] = actorFate;
             if (targetArmy != null && fateByArmy != null)
                 fateByArmy[targetArmy] = targetFate;

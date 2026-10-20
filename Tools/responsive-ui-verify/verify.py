@@ -224,8 +224,8 @@ def check_layout(game, menu, assets):
                  "Assets/Prefabs/UI/Buttons/ArmyButton_Modal.prefab",
                  "Assets/Prefabs/UI/BattleScreen/BattleTurnOrderIcon.prefab"]:
         assert all(obj["m_Maskable"] == 1 for _, obj in assets[path].values() if "m_Maskable" in obj), path
-    dice = assets["Assets/Prefabs/UI/Dice/DiceRow.prefab"][5551000000000103][1]
-    assert dice["m_ChildControlWidth"] == 1 and dice["m_ChildControlHeight"] == 1
+    tokens = assets["Assets/Prefabs/UI/Tokens/TokenRow.prefab"][5551000000000103][1]
+    assert tokens["m_ChildControlWidth"] == 1 and tokens["m_ChildControlHeight"] == 1
 
 
 def main():

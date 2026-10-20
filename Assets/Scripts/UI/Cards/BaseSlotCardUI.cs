@@ -39,7 +39,7 @@ namespace Game.UI
         [SerializeField] private Button repairButton;
         // Sits in the gap between the name (top) and the hover Improve/Repair buttons (bottom) —
         // shown there while hovering Improve on cell 0, one coloured circle badge per non-zero
-        // cost component, same "icon + number" convention as ResourceBarUI/BuyDiceRowUI. Order:
+        // cost component, same "icon + number" convention as ResourceBarUI/BuyTokenRowUI. Order:
         // AP, Human, Energy, Materials, Tech. Title and skills give way to hover actions.
         [SerializeField] private GameObject costPreviewRoot;
         [SerializeField] private Image[] costBadgeIcons;

@@ -127,7 +127,7 @@ namespace Game.Setup
             // need to already be known by then, not set afterward.
             VisionSystem.Configure(gameConfig);
             // Stealth detection needs the terrain move-cost at a hidden unit's hex for its
-            // hide-dice bump; hand StealthSystem a lookup into the live map here, same
+            // hide-tokens bump; hand StealthSystem a lookup into the live map here, same
             // ordering rationale as VisionSystem.Configure above.
             StealthSystem.TerrainMoveCostProvider = hex =>
                 map.TryGetTerrainAt(hex, out TerrainTypeEntry terrainEntry) && terrainEntry != null
@@ -611,7 +611,7 @@ namespace Game.Setup
 
             // Fog needs an actual viewer the instant citadel placement ends — otherwise it stays
             // off (VisionSystem.IsVisibleToCurrentViewer fails open with no CurrentViewer) for
-            // the whole dice-off phase and however many AI turns come before the human's own
+            // the whole tokens-off phase and however many AI turns come before the human's own
             // first one, which is exactly the gap the project owner flagged: resource hexes and
             // every army sitting fully visible right up until GameTurnController.BeginPlayerTurn
             // eventually reaches a human. GameTurnController's own turn loop still owns
@@ -660,7 +660,7 @@ namespace Game.Setup
             }
 
             // A real PlayerSetupData (never added to _allPlayers/GameSession.Players, so it
-            // never gets a turn slot or a dice-off roll) rather than a bare null Owner — plain
+            // never gets a turn slot or a tokens-off roll) rather than a bare null Owner — plain
             // null is explicitly rejected by CreateArmyMarker (no marker, no visible presence at
             // all), and most of the codebase already assumes Owner resolves to a real profile
             // (colour, nickname, ...) rather than guarding for null everywhere. See

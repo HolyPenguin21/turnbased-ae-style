@@ -386,7 +386,7 @@ namespace Game.Map
 
             // Hex selection is only ever the local human's to drive — allowed during citadel
             // placement (before the turn system starts) and on the human's own turn, blocked
-            // during the dice-off and any AI/Neutral turn.
+            // during the tokens-off and any AI/Neutral turn.
             if (!IsInputAllowed())
                 return;
 
@@ -427,7 +427,7 @@ namespace Game.Map
 
         // TurnNumber is still 0 before GameTurnController.BeginGame() runs — i.e. citadel
         // placement is still in progress. Once it's started, only a human's own turn (not the
-        // dice-off, not an AI/Neutral turn, both of which leave CurrentPlayer without a human
+        // tokens-off, not an AI/Neutral turn, both of which leave CurrentPlayer without a human
         // owner) lets the player touch the map — and even then, only after they've dismissed
         // popupPanel's Confirm button (TurnConfirmed), not the instant it becomes their turn.
         private bool IsInputAllowed()
@@ -765,7 +765,7 @@ namespace Game.Map
             // for, not something to select/command from this panel.
             List<ArmyData> armies = ArmyRegistry.AllAt(coord).FindAll(a => a.Owner == turnController?.CurrentPlayer);
             List<ArmyData> mobileArmies = armies.FindAll(a => !a.IsGarrison && !a.IsAirfield && !a.IsPrison
-                && (!a.IsCarrierFlightDeck || a.Members.Count > 0));
+                && a.Members.Count > 0);
             ArmyData soleArmy = mobileArmies.Count == 1 ? mobileArmies[0] : null;
 
             if (observerInspection)
@@ -803,7 +803,7 @@ namespace Game.Map
             // worth a button of its own on the hex-side row at all.
             armies = armies.FindAll(a => a.Owner == turnController?.CurrentPlayer
                 && !a.IsPrison && !a.IsAirfield && !a.IsGarrison
-                && (!a.IsCarrierFlightDeck || a.Members.Count > 0));
+                && a.Members.Count > 0);
             // Show even a single MOBILE army (garrison/airfield/prison
             // don't count), and never over an open army/base modal — both re-run SelectHex on
             // close, which re-evaluates this.

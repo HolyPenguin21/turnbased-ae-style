@@ -261,7 +261,7 @@ namespace Game.Ai.V2
         private static int EffectiveAp(EfficiencyStats s, IReadOnlyCollection<string> abilities) =>
             abilities.Contains(UnitAbilities.RapidReaction) ? 0 : Mathf.Max(0, s.ActivationAp);
 
-        // P(spot successes > hide successes) for fair dice pools.
+        // P(spot successes > hide successes) for fair tokens pools.
         internal static float DetectProbability(int spot, int hide)
         {
             spot = Mathf.Max(0, spot); hide = Mathf.Max(0, hide);

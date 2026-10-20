@@ -1,6 +1,6 @@
 # Hex explosion skills
 
-| Ability tag | Maximum distinct targets | Attack dice per challenge |
+| Ability tag | Maximum distinct targets | Attack tokens per challenge |
 | --- | ---: | ---: |
 | `Explosion3` | 3 | 10 |
 | `Explosion5` | 5 | 10 |
@@ -50,7 +50,7 @@ targets. Merely remembered/unspawned event guards are not physical occupants.
 Ground encounters include both participating armies even while the attacker is still
 indexed at its pre-contact map hex. Passing aircraft use their actual step hex.
 
-Each selected target gets its own full existing dice/Fate/tactic/result challenge,
+Each selected target gets its own full existing tokens/Fate/tactic/result challenge,
 in sequence. The title shows `EXPLOSION (i/N)`. A short pool produces fewer challenges;
 the same occupant is never picked twice. Heroes defend with FateMax, ordinary units
 with Defense and their existing ground-battle bonuses, structures with their own

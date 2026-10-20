@@ -131,11 +131,11 @@ namespace Game.EditorTests
         }
 
         private static (BattleAttackPopupUI popup, List<AiThoughtCategory> thoughts, BattleChallengeSession session) FatePopup(
-            bool hasHero, int fate, bool[] attackerDice, bool[] defenderDice, int targetHp)
+            bool hasHero, int fate, bool[] attackerTokens, bool[] defenderTokens, int targetHp)
         {
-            var attacker = new UnitData { Owner = new PlayerSetupData(), Name = "Attacker", Attack = attackerDice.Length };
+            var attacker = new UnitData { Owner = new PlayerSetupData(), Name = "Attacker", Attack = attackerTokens.Length };
             var defender = new UnitData { Owner = new PlayerSetupData(), Name = "Defender", HitPointsCurrent = targetHp, HitPointsMax = targetHp };
-            var session = Session(BattleChallengeMode.GroundCombat, attacker, defender, attackerDice, defenderDice, fate, 0);
+            var session = Session(BattleChallengeMode.GroundCombat, attacker, defender, attackerTokens, defenderTokens, fate, 0);
             var popup = Shell<BattleAttackPopupUI>();
             Set(popup, "_attacker", attacker);
             Set(popup, "_defender", defender);
@@ -148,12 +148,12 @@ namespace Game.EditorTests
         }
 
         private static BattleChallengeSession Session(BattleChallengeMode mode, UnitData attacker, UnitData defender,
-            bool[] attackerDice, bool[] defenderDice, int attackerFate, int defenderFate)
+            bool[] attackerTokens, bool[] defenderTokens, int attackerFate, int defenderFate)
         {
             int roll = 0;
-            var session = new BattleChallengeSession(mode, attacker, defender, attackerDice.Length, defenderDice.Length,
+            var session = new BattleChallengeSession(mode, attacker, defender, attackerTokens.Length, defenderTokens.Length,
                 attackerFate, defenderFate, AbilityMagnitudes.Default,
-                rollDice: count => roll++ == 0 ? (bool[])attackerDice.Clone() : roll == 2 ? (bool[])defenderDice.Clone() : new[] { true });
+                rollTokens: count => roll++ == 0 ? (bool[])attackerTokens.Clone() : roll == 2 ? (bool[])defenderTokens.Clone() : new[] { true });
             session.Roll();
             return session;
         }

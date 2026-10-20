@@ -13,12 +13,12 @@ namespace Game.Cards
     // Production gameplay-систему, которую одинаково используют человеческий UI и AI"). Everything
     // that used to be inlined in HexSelectionController's own R/P transaction lives here now:
     // eligibility, the exact acting Hero, the still-qualifies re-check, ResourceCost affordability
-    // + payment, the Research Stealth reveal, the Challenge dice rules, a headless roll, and
+    // + payment, the Research Stealth reveal, the Challenge tokens rules, a headless roll, and
     // minting the produced CardData.
     //
     // The human path (HexSelectionController + the animated Spend/Accept loop in
     // BattleAttackPopupUI) and the AI path (AiDevelopmentPlanner) both call in here. Presentation
-    // — the popup's dice animation and the manual Fate button — stays in BattleAttackPopupUI, but
+    // — the popup's tokens animation and the manual Fate button — stays in BattleAttackPopupUI, but
     // it now reads its pool size / required-successes / spend-eligibility from HERE so there is
     // exactly one rule set. Ground Combat, Capture and Aviation are untouched (spec §4).
     //
@@ -44,9 +44,9 @@ namespace Game.Cards
 
         // ---- Challenge rules (shared with BattleAttackPopupUI's interactive loop) ----------
 
-        // The producing Hero always rolls this many dice — BattleAttackPopupUI.
+        // The producing Hero always rolls this many tokens — BattleAttackPopupUI.
         // BeginResearchProduction used a bare literal 5 in two places before this.
-        public const int DicePoolSize = 5;
+        public const int TokenPoolSize = 5;
 
         // The card's own CardDefinition.fate, reused as the fixed number of guaranteed defender
         // successes the roll must meet or beat (see CardDefinition.fate's own comment). Never
@@ -54,20 +54,20 @@ namespace Game.Cards
         public static int RequiredSuccesses(CardDefinition card)
             => Mathf.Max(0, card != null ? card.fate : 0);
 
-        public static int CountHits(bool[] dice)
+        public static int CountHits(bool[] tokens)
         {
             int n = 0;
-            if (dice != null)
-                foreach (bool hit in dice)
+            if (tokens != null)
+                foreach (bool hit in tokens)
                     if (hit)
                         n++;
             return n;
         }
 
-        public static bool HasMiss(bool[] dice)
+        public static bool HasMiss(bool[] tokens)
         {
-            if (dice != null)
-                foreach (bool hit in dice)
+            if (tokens != null)
+                foreach (bool hit in tokens)
                     if (!hit)
                         return true;
             return false;
@@ -77,8 +77,8 @@ namespace Game.Cards
         // roll — BattleAttackPopupUI's interactive loop gates its Spend button on exactly this:
         // there is a miss to reroll, OR the target isn't met yet and an overflow die could still
         // help. Fate at 0 → nothing to spend.
-        public static bool CanSpendFate(bool[] dice, int fate, int required)
-            => fate > 0 && (HasMiss(dice) || CountHits(dice) < required);
+        public static bool CanSpendFate(bool[] tokens, int fate, int required)
+            => fate > 0 && (HasMiss(tokens) || CountHits(tokens) < required);
 
         // ---- eligibility -----------------------------------------------------------------
 
@@ -293,7 +293,7 @@ namespace Game.Cards
             public int FateAvailable; // hero.Fate at roll time (never mutated by the roll)
         }
 
-        // Headless equivalent of BattleAttackPopupUI.RunResearchProductionChallenge — same dice
+        // Headless equivalent of BattleAttackPopupUI.RunResearchProductionChallenge — same tokens
         // pool, same Fate-spend moves (reroll a miss; else, still short of target, append one
         // overflow die), with no UI and no animation. The Hero's real Fate is NOT mutated: the
         // interactive popup restores it verbatim on the way out (RestoreResearchProductionFate),
@@ -309,31 +309,31 @@ namespace Game.Cards
             int fateBudget = Mathf.Clamp(maxFateSpend, 0, fateAvail);
             int fateSpent = 0;
 
-            bool[] dice = ChallengeResolver.RollDice(DicePoolSize);
-            while (fateSpent < fateBudget && CountHits(dice) < required)
+            bool[] tokens = ChallengeResolver.RollTokens(TokenPoolSize);
+            while (fateSpent < fateBudget && CountHits(tokens) < required)
             {
                 // Same move order as the interactive loop: a miss is always rerolled before any
                 // overflow die is appended.
-                if (HasMiss(dice))
+                if (HasMiss(tokens))
                 {
-                    for (int i = 0; i < dice.Length; i++)
-                        if (!dice[i])
+                    for (int i = 0; i < tokens.Length; i++)
+                        if (!tokens[i])
                         {
-                            dice[i] = ChallengeResolver.RollDice(1)[0];
+                            tokens[i] = ChallengeResolver.RollTokens(1)[0];
                             break;
                         }
                 }
                 else
                 {
-                    var grown = new bool[dice.Length + 1];
-                    Array.Copy(dice, grown, dice.Length);
-                    grown[dice.Length] = ChallengeResolver.RollDice(1)[0];
-                    dice = grown;
+                    var grown = new bool[tokens.Length + 1];
+                    Array.Copy(tokens, grown, tokens.Length);
+                    grown[tokens.Length] = ChallengeResolver.RollTokens(1)[0];
+                    tokens = grown;
                 }
                 fateSpent++;
             }
 
-            int hits = CountHits(dice);
+            int hits = CountHits(tokens);
             return new ChallengeOutcome
             {
                 Success = hits >= required,
@@ -347,7 +347,7 @@ namespace Game.Cards
         // A deterministic estimate of RollChallenge's success probability, for AI card-value
         // scoring (spec §8) — NOT a Monte-Carlo run (the AI arbiter must score the same state the
         // same way every step; UnityEngine.Random would make it jitter). Closed-form
-        // approximation: model the Hero's spendable Fate as that many extra 50/50 dice on top of
+        // approximation: model the Hero's spendable Fate as that many extra 50/50 tokens on top of
         // the base pool (each Fate point buys roughly one more attempt at a hit, whether spent as
         // a miss-reroll or an overflow die), then take the binomial tail P(hits >= required).
         // Slightly optimistic near the margin, but monotonic in every input that matters (higher
@@ -363,8 +363,8 @@ namespace Game.Cards
             if (required <= 0)
                 return 1f;
             int fateAvail = Mathf.Max(0, fate);
-            int dice = DicePoolSize + Mathf.Clamp(maxFateSpend, 0, fateAvail);
-            return BinomialTailAtLeast(dice, 0.5, required);
+            int tokens = TokenPoolSize + Mathf.Clamp(maxFateSpend, 0, fateAvail);
+            return BinomialTailAtLeast(tokens, 0.5, required);
         }
 
         // P(X >= k) for X ~ Binomial(n, p). Iterative pmf, no factorials — n is tiny here (5..~15).

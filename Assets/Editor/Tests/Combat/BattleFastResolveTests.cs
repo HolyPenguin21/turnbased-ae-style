@@ -32,8 +32,8 @@ namespace Game.EditorTests
             BattleChallengeSession allAi = RunAutomaticDuel(mode,
                 new PlayerSetupData(), new PlayerSetupData(), false);
 
-            Assert.That(fast.AttackerDice, Is.EqualTo(allAi.AttackerDice));
-            Assert.That(fast.DefenderDice, Is.EqualTo(allAi.DefenderDice));
+            Assert.That(fast.AttackerTokens, Is.EqualTo(allAi.AttackerTokens));
+            Assert.That(fast.DefenderTokens, Is.EqualTo(allAi.DefenderTokens));
             Assert.That(fast.AttackerFateRemaining, Is.EqualTo(allAi.AttackerFateRemaining));
             Assert.That(fast.DefenderFateRemaining, Is.EqualTo(allAi.DefenderFateRemaining));
             Assert.That(fast.AttackerFateRemaining + fast.DefenderFateRemaining, Is.LessThan(5),
@@ -89,7 +89,7 @@ namespace Game.EditorTests
                 HitPointsCurrent = 5, HitPointsMax = 5 };
             int roll = 0;
             var session = new BattleChallengeSession(mode, attacker, defender, 3, 2, 3, 2,
-                AbilityMagnitudes.Default, rollDice: count =>
+                AbilityMagnitudes.Default, rollTokens: count =>
                 {
                     if (roll++ == 0) return new[] { true, true, false };
                     if (roll == 2) return new[] { true, false };

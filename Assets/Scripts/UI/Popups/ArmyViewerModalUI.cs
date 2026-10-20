@@ -734,7 +734,7 @@ namespace Game.UI
                 return;
             }
             // Prison then Airfield then Garrison, per the user's own spec.  The airfield appears
-            // only once it actually stores aircraft; Garrison follows. Everyone else keeps ArmyRegistry's
+            // when its container exists; Garrison follows. Everyone else keeps ArmyRegistry's
             // own natural (registration) order, same as before this existed, rather than a full
             // sort that could otherwise reshuffle them unpredictably (List.Sort isn't stable).
             List<ArmyData> atHex = ArmyRegistry.AllAt(_currentArmy.Hex).FindAll(a => a.Owner == _currentArmy.Owner);

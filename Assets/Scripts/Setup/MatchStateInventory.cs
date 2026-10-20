@@ -64,7 +64,7 @@ namespace Game.Setup
     //  Only STATIC state is listed. A save also needs the instance state the World registries do
     //  not reach: HexMap terrain (HexMap._hexData), the turn position in GameTurnController
     //  (TurnNumber, current player index, game over), each PlayerRoot (AP, stock, initiative
-    //  dice) and PlayerSetupData (elimination, citadel hex). Objects the registries hold
+    //  tokens) and PlayerSetupData (elimination, citadel hex). Objects the registries hold
     //  (ArmyData, UnitData, BuildingData, AiHandData) are written with them.
     // ===========================================================================================
     public static class MatchStateInventory

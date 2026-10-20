@@ -55,7 +55,7 @@ namespace Game.EditorTests
             int roll = 0;
             _session = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
                 attacker, defender, 1, 1, 0, 0, AbilityMagnitudes.Default,
-                rollDice: n => new[] { roll++ == 0 });
+                rollTokens: n => new[] { roll++ == 0 });
             _session.Roll();
             _session.TryNextFateTurn(out _);
 

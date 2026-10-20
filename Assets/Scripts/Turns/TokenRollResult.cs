@@ -2,15 +2,15 @@ namespace Game.Turns
 {
     // One roll of a 5-die pool — each die is an independent 50/50 coin flip. A hit scores 1
     // point; a miss shows as "X" and scores 0. Used for turn-order rolls now, likely other
-    // dice-pool mechanics later (same "1d1 pool, count the hits" pattern from the original
+    // tokens-pool mechanics later (same "1d1 pool, count the hits" pattern from the original
     // game).
-    public class DiceRollResult
+    public class TokenRollResult
     {
-        public readonly bool[] Dice;
+        public readonly bool[] Tokens;
 
-        public DiceRollResult(bool[] dice)
+        public TokenRollResult(bool[] tokens)
         {
-            Dice = dice;
+            Tokens = tokens;
         }
 
         public int Score
@@ -18,7 +18,7 @@ namespace Game.Turns
             get
             {
                 int score = 0;
-                foreach (bool hit in Dice)
+                foreach (bool hit in Tokens)
                     if (hit) score++;
                 return score;
             }

@@ -26,7 +26,7 @@ namespace Game.UI
     // file (EndTurn, Show/Hide, ShowAiThought) automatically via `partial`.
     public partial class BattleScreenUI
     {
-        // Same terrain + Base-building defense bonus BeginAttack folds into the real dice roll,
+        // Same terrain + Base-building defense bonus BeginAttack folds into the real tokens roll,
         // exposed for card/detail display so a unit's shown Defense always matches what it would
         // actually roll with right now. Only ever the original battle _defender's own hex — see
         // BeginAttack's own comment for why the attacker (or a mid-exchange role reversal) never
@@ -85,7 +85,9 @@ namespace Game.UI
                 ShowAiThought, defenderIsRetreating,
                 defense.TerrainBonus, defense.ConstructionBonus,
                 defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve,
-                interceptor: interceptor, isCounterattack: isCounterattack, tacticsCritical: _tacticsCritical);
+                interceptor: interceptor, isCounterattack: isCounterattack, tacticsCritical: _tacticsCritical,
+                groundHitEffects: (victim, damage) =>
+                    _battleEngine.PreviewGroundHitEffects(attacker, victim, damage, isCounterattack));
         }
 
         private IEnumerator RunExplosionAttack(UnitData attacker)

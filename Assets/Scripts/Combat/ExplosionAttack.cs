@@ -15,9 +15,9 @@ namespace Game.Combat
     // of the launcher; equipment and an innate SingleUse unit are spent only at completion.
     public sealed class ExplosionAttack
     {
-        public const int AttackDice = 10;
+        public const int AttackTokens = 10;
         public static float AttackPower(float ordinaryAttack, IEnumerable<string> abilities)
-            => TargetLimit(abilities) > 0 ? AttackDice : ordinaryAttack;
+            => TargetLimit(abilities) > 0 ? AttackTokens : ordinaryAttack;
         public static int TargetLimit(IEnumerable<string> abilities)
         {
             int limit = 0;
@@ -71,7 +71,7 @@ namespace Game.Combat
             {
                 var victim = target.Profile;
                 if (victim.HitPoints <= 0) continue;
-                if (target.OwnCitadel && ChallengeResult.ApplyAbilityModifiers(AttackDice,
+                if (target.OwnCitadel && ChallengeResult.ApplyAbilityModifiers(AttackTokens,
                     actor.Abilities, victim.TypeTags, victim.Abilities, AbilityMagnitudes.Default) >= victim.HitPoints)
                     return float.NegativeInfinity;
                 count++;
@@ -91,14 +91,14 @@ namespace Game.Combat
             IReadOnlyCollection<UnitTypeTag> tags, IEnumerable<string> defenderAbilities,
             float hp, float maxHp, float bodyValue)
         {
-            float damage = BattleSimulationKernel.ExpectedExchangeDamage(AttackDice, defense,
+            float damage = BattleSimulationKernel.ExpectedExchangeDamage(AttackTokens, defense,
                 attackerAbilities, tags, defenderAbilities, Mathf.Max(1, Mathf.CeilToInt(hp)), out _);
             return damage / Mathf.Max(1, maxHp) * bodyValue;
         }
 
         public static bool RisksOwnCitadel(UnitData actor, IEnumerable<Target> targets) => targets.Any(t =>
             t.Facility == null && t.Building != null && t.Building.IsStartingCitadel && t.Building.Owner == actor.Owner
-            && ChallengeResult.ApplyAbilityModifiers(AttackDice, actor, t.Combatant(), AbilityMagnitudes.Default)
+            && ChallengeResult.ApplyAbilityModifiers(AttackTokens, actor, t.Combatant(), AbilityMagnitudes.Default)
                 >= t.Building.StructurePointsCurrent);
 
         public static float ExpectedNetValue(UnitData actor, IEnumerable<Target> targets)
@@ -161,7 +161,7 @@ namespace Game.Combat
             Launcher = launcher ?? throw new ArgumentNullException(nameof(launcher));
             Hex = hex;
             Actor = launcher.CloneForCombat();
-            Actor.Attack = AttackDice;
+            Actor.Attack = AttackTokens;
             _launcherArmy = (participatingArmies ?? Array.Empty<ArmyData>())
                 .FirstOrDefault(a => a != null && a.Members.Contains(launcher)) ?? ArmyRegistry.FindArmyContaining(launcher);
             var pool = CollectTargets(hex, participatingArmies);

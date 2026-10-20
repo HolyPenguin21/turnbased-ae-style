@@ -245,7 +245,7 @@ namespace Game.Units
         // reach during Ground Combat (see the manual); a unit with Range 1 must be in the Front
         // row to attack at all.
         public int Attack;
-        // The defender's own dice-pool size in a Ground-to-Ground Challenge (see the manual) —
+        // The defender's own tokens-pool size in a Ground-to-Ground Challenge (see the manual) —
         // carried over from CardDefinition.defenseRating, named to avoid colliding with that
         // same class's unrelated BuildingData-facing `defense` field.
         public int Defense = 1;

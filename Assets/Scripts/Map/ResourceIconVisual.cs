@@ -26,7 +26,7 @@ namespace Game.Map
 
         private int _amount;
 
-        // Lets other UI (e.g. the initiative dice buy panel) match these same per-resource
+        // Lets other UI (e.g. the initiative tokens buy panel) match these same per-resource
         // colours without duplicating the map's colour choices.
         public static Color GetColor(ResourceType type) => ResourceColors[type];
 

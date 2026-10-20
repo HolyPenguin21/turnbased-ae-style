@@ -26,7 +26,7 @@ namespace Game.Map
 
         // Action Points — separate from the four stockpiled ResourceType resources below: AP
         // is spent during the player's own turn and replenished at the start of it, not part
-        // of the citadel-yield/dice-buying economy. Allocated fresh every turn by
+        // of the citadel-yield/tokens-buying economy. Allocated fresh every turn by
         // GameTurnController.AllocateActionPoints (based on initiative rank, not cumulative);
         // spend rules land separately later. Backing field + explicit setter (rather than an
         // auto-property) so ResourcesChanged fires from every mutation, direct assignment
@@ -76,61 +76,61 @@ namespace Game.Map
             ActionPoints -= amount;
         }
 
-        // Extra initiative dice bought for this turn's dice-off, on top of InitiativeRules.BaseDice.
+        // Extra initiative tokens bought for this turn's tokens-off, on top of InitiativeRules.BaseTokens.
         // There is now exactly ONE path to obtain a bonus die: the paid purchase API below. The old
-        // free/random InitiativeDiceAI path is gone, so BonusInitiativeDice and the contribution
+        // free/random InitiativeTokensAI path is gone, so BonusInitiativeTokens and the contribution
         // ledger are a strict 1:1 invariant for the whole round.
         //
         // One entry per 1-unit resource contribution, in the exact order the player spent them —
         // across the WHOLE turn, not reset per die. A die's progressive cost (see
-        // InitiativeRules.NextBonusDieCost) no longer has to come from one resource in one
+        // InitiativeRules.NextBonusTokenCost) no longer has to come from one resource in one
         // purchase: the player can mix any H/E/M/T in any order, one unit per click, and the die
         // completes automatically once the running total clears its threshold (see
-        // InitiativeRules.CumulativeUnitsForDiceCount). BonusInitiativeDice and "how far into the
+        // InitiativeRules.CumulativeUnitsForTokenCount). BonusInitiativeTokens and "how far into the
         // current die" are therefore both DERIVED from this list rather than tracked separately,
-        // so refunding a single unit (always the most recent one — see RefundLastInitiativeDie)
+        // so refunding a single unit (always the most recent one — see RefundLastInitiativeToken)
         // can walk back across a just-completed die boundary for free.
         private readonly List<ResourceType> _initiativeUnitContributions = new List<ResourceType>();
 
-        public int BonusInitiativeDice
+        public int BonusInitiativeTokens
         {
             get
             {
-                int dice = 0;
-                while (dice < Game.Turns.InitiativeRules.MaxBonusDice
-                    && _initiativeUnitContributions.Count >= Game.Turns.InitiativeRules.CumulativeUnitsForDiceCount(dice + 1))
-                    dice++;
-                return dice;
+                int tokens = 0;
+                while (tokens < Game.Turns.InitiativeRules.MaxBonusTokens
+                    && _initiativeUnitContributions.Count >= Game.Turns.InitiativeRules.CumulativeUnitsForTokenCount(tokens + 1))
+                    tokens++;
+                return tokens;
             }
         }
 
         // Units already paid toward the die currently being assembled — 0 right after a die
-        // completes, resets automatically once BonusInitiativeDice ticks over.
-        public int CurrentDieUnitsContributed =>
-            _initiativeUnitContributions.Count - Game.Turns.InitiativeRules.CumulativeUnitsForDiceCount(BonusInitiativeDice);
+        // completes, resets automatically once BonusInitiativeTokens ticks over.
+        public int CurrentTokenUnitsContributed =>
+            _initiativeUnitContributions.Count - Game.Turns.InitiativeRules.CumulativeUnitsForTokenCount(BonusInitiativeTokens);
 
         // Total cost (in resource units, any mix) of the die currently being assembled.
-        public int NextInitiativeDieCost => Game.Turns.InitiativeRules.NextBonusDieCost(BonusInitiativeDice);
-        public bool CanBuyMoreInitiativeDice => BonusInitiativeDice < Game.Turns.InitiativeRules.MaxBonusDice;
+        public int NextInitiativeTokenCost => Game.Turns.InitiativeRules.NextBonusTokenCost(BonusInitiativeTokens);
+        public bool CanBuyMoreInitiativeTokens => BonusInitiativeTokens < Game.Turns.InitiativeRules.MaxBonusTokens;
 
-        public void ResetBonusInitiativeDice()
+        public void ResetBonusInitiativeTokens()
         {
             _initiativeUnitContributions.Clear();
         }
 
         // Canonical initiative purchase path for BOTH the human UI and Strategy V2. Spends exactly
         // 1 unit of `resource` toward the die currently being assembled — call repeatedly, mixing
-        // any H/E/M/T in any order the player likes, until NextInitiativeDieCost units are in.
-        public bool CanBuyInitiativeDie(ResourceType resource)
+        // any H/E/M/T in any order the player likes, until NextInitiativeTokenCost units are in.
+        public bool CanBuyInitiativeToken(ResourceType resource)
         {
-            return CanBuyMoreInitiativeDice
+            return CanBuyMoreInitiativeTokens
                 && _resources.ContainsKey(resource)
                 && GetResource(resource) >= 1;
         }
 
-        public bool PurchaseInitiativeDie(ResourceType resource)
+        public bool PurchaseInitiativeToken(ResourceType resource)
         {
-            if (!CanBuyInitiativeDie(resource))
+            if (!CanBuyInitiativeToken(resource))
                 return false;
 
             AddResource(resource, -1);
@@ -141,16 +141,16 @@ namespace Game.Map
         // Only the resource that paid the single most recent unit can undo it — same
         // last-purchase-only rule as before, now at unit granularity, so it can also un-complete
         // a die that just finished (as long as nothing has been paid toward the next one yet).
-        public bool CanRefundInitiativeDie(ResourceType resource)
+        public bool CanRefundInitiativeToken(ResourceType resource)
         {
             if (_initiativeUnitContributions.Count == 0)
                 return false;
             return _initiativeUnitContributions[_initiativeUnitContributions.Count - 1] == resource;
         }
 
-        public bool RefundLastInitiativeDie(ResourceType resource)
+        public bool RefundLastInitiativeToken(ResourceType resource)
         {
-            if (!CanRefundInitiativeDie(resource))
+            if (!CanRefundInitiativeToken(resource))
                 return false;
 
             int last = _initiativeUnitContributions.Count - 1;

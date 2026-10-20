@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Game.UI
 {
     // Ground combat and aviation use the same sequential challenge presentation. No nested
-    // attacks, extra battle screen, alternate dice roller or per-victim equipment consumption.
+    // attacks, extra battle screen, alternate tokens roller or per-victim equipment consumption.
     public static class ExplosionAttackPresenter
     {
         public static IEnumerator Run(ExplosionAttack attack, BattleAttackPopupUI popup,
@@ -45,7 +45,7 @@ namespace Game.UI
                     if (popup != null)
                     {
                         popup.Begin(attack.Actor, attackerHero, defender, defenderHero, null, null, Apply,
-                            attackerPoolSize: ExplosionAttack.AttackDice, defenderPoolSize: defensePool,
+                            attackerPoolSize: ExplosionAttack.AttackTokens, defenderPoolSize: defensePool,
                             automateHumanSides: fastResolve, tacticsCritical: tacticsCritical,
                             challengeTitle: $"EXPLOSION ({index}/{attack.Targets.Count})");
                         yield return new WaitUntil(() => resolved);
@@ -53,9 +53,9 @@ namespace Game.UI
                     else
                     {
                         var challenge = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
-                            attack.Actor, defender, ExplosionAttack.AttackDice, defensePool,
+                            attack.Actor, defender, ExplosionAttack.AttackTokens, defensePool,
                             attackerHero?.Fate ?? 0, defenderHero?.Fate ?? 0, AbilityMagnitudes.Default,
-                            rollDice: n => BattleSimulationKernel.RollDice(n, AviationCombatPresenter.HeadlessRng),
+                            rollTokens: n => BattleSimulationKernel.RollTokens(n, AviationCombatPresenter.HeadlessRng),
                             tacticsCritical: tacticsCritical);
                         challenge.Roll();
                         challenge.ResolveAiDecisions();

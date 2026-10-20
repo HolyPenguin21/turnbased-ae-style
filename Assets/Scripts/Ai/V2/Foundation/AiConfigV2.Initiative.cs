@@ -6,9 +6,9 @@ namespace Game.Ai.V2
     {
         // =======================================================================================
         //  ADAPTIVE INITIATIVE INVESTMENT  (pre-budget, one-way isolated — Game.Ai.V2.Initiative)
-        //  Prices excess Human/Energy/Materials/Tech into extra initiative dice ONLY when the AI
+        //  Prices excess Human/Energy/Materials/Tech into extra initiative tokens ONLY when the AI
         //  has enough real AP workload to justify the cost. NOT a DesireAxis / mission / demand /
-        //  StrategicManager action; its output never re-enters the strategic pipeline. The dice
+        //  StrategicManager action; its output never re-enters the strategic pipeline. The tokens
         //  count, price ladder and AP-by-rank live in Game.Turns.InitiativeRules, NOT here.
         //  All first-pass, meant to be tuned against real AiDebug.log runs.
         // =======================================================================================

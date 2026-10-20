@@ -7,18 +7,18 @@ using UnityEngine;
 
 namespace Game.UI
 {
-    // "Buy Initiative Die" block: shown only for the human player. AI purchases are already
+    // "Buy Initiative Token" block: shown only for the human player. AI purchases are already
     // planned/applied by InitiativeCoordinatorV2 before the popup opens. Each row spends 1 unit
     // of that resource per click toward the die currently being assembled — the player can mix
     // any of the four resources, in any order, to cover one die's progressive cost (see
-    // PlayerRoot.PurchaseInitiativeDie). Locked once TurnOrderPopupUI.RollAll fires, so nothing
-    // can change after dice start rolling.
+    // PlayerRoot.PurchaseInitiativeToken). Locked once TurnOrderPopupUI.RollAll fires, so nothing
+    // can change after tokens start rolling.
     public class InitiativeBuyPanelUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text priceText;
         // Exactly 4, wired in the Editor in this fixed order: Human, Energy, Materials, Tech.
-        [SerializeField] private BuyDiceRowUI[] resourceRows;
+        [SerializeField] private BuyTokenRowUI[] resourceRows;
 
         private static readonly ResourceType[] RowOrder =
         {
@@ -29,14 +29,14 @@ namespace Game.UI
         private bool _locked;
 
         // Total cost of the die currently being assembled: 1 -> 2 -> 4 -> 8 -> 16. Paid off in
-        // 1-unit clicks that can mix any H/E/M/T (see PlayerRoot.PurchaseInitiativeDie), so the
+        // 1-unit clicks that can mix any H/E/M/T (see PlayerRoot.PurchaseInitiativeToken), so the
         // panel shows progress toward it rather than a single one-shot price.
-        private int CurrentDieCost => _root != null ? _root.NextInitiativeDieCost : 0;
-        private int CurrentDieProgress => _root != null ? _root.CurrentDieUnitsContributed : 0;
+        private int CurrentTokenCost => _root != null ? _root.NextInitiativeTokenCost : 0;
+        private int CurrentTokenProgress => _root != null ? _root.CurrentTokenUnitsContributed : 0;
 
-        // Fired whenever a purchase/refund changes the player's bonus dice count, so
-        // TurnOrderPopupUI can resize that player's DiceRowUI slots to match.
-        public event Action DiceCountChanged;
+        // Fired whenever a purchase/refund changes the player's bonus tokens count, so
+        // TurnOrderPopupUI can resize that player's TokenRowUI slots to match.
+        public event Action TokenCountChanged;
 
         public void Show(PlayerSetupData player, PlayerRoot root)
         {
@@ -64,18 +64,18 @@ namespace Game.UI
 
         private void OnBuy(ResourceType type)
         {
-            if (_locked || _root == null || !_root.PurchaseInitiativeDie(type))
+            if (_locked || _root == null || !_root.PurchaseInitiativeToken(type))
                 return;
             RefreshRows();
-            DiceCountChanged?.Invoke();
+            TokenCountChanged?.Invoke();
         }
 
         private void OnRefund(ResourceType type)
         {
-            if (_locked || _root == null || !_root.RefundLastInitiativeDie(type))
+            if (_locked || _root == null || !_root.RefundLastInitiativeToken(type))
                 return;
             RefreshRows();
-            DiceCountChanged?.Invoke();
+            TokenCountChanged?.Invoke();
         }
 
         private void RefreshRows()
@@ -84,8 +84,8 @@ namespace Game.UI
                 return;
 
             if (priceText != null)
-                priceText.text = _root.CanBuyMoreInitiativeDice ? $"{CurrentDieProgress}/{CurrentDieCost}" : "—";
-            foreach (BuyDiceRowUI row in resourceRows)
+                priceText.text = _root.CanBuyMoreInitiativeTokens ? $"{CurrentTokenProgress}/{CurrentTokenCost}" : "—";
+            foreach (BuyTokenRowUI row in resourceRows)
                 if (row != null)
                     row.Refresh(_root, _locked);
         }
