@@ -131,8 +131,8 @@ namespace Game.Ai.V2
                     ExcludedArmyIds = excluded,
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
                     RequireCoverage = GroundCombatAdmissionPolicy.AssaultCoverage(proposal),
-                    AllowSameHexAssembly = !(proposal.Target is AttackMissionTarget local && local.IsIntermediateAssault),
-                    PreserveDepartureRoster = proposal.Target is AttackMissionTarget committed && committed.ForceCommitted,
+                    AllowSameHexAssembly = GroundCombatAdmissionPolicy.AllowsSameHexAssembly(proposal),
+                    PreserveDepartureRoster = GroundCombatAdmissionPolicy.PreservesDepartureRoster(proposal),
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
                         && !attackTarget.ForceCommitted
                         ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,

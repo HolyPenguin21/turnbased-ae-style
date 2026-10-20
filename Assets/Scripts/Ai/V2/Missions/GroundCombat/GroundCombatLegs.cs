@@ -27,9 +27,12 @@ namespace Game.Ai.V2
             support = null;
             if (mission?.Target is ActiveDefenceMissionTarget ad)
             {
+                if (ad.RequiresSortieMaterialization)
+                { primary = ad.Sortie.ShellArmyId; support = ad.Sortie.DonorGarrisonId; return true; }
                 if (ad.Phase != ActiveDefencePhase.Return || !ad.PrimaryArmyId.HasValue)
                     return false;
                 primary = ad.PrimaryArmyId;
+                support = ad.ReliefDonorGarrisonId;
                 return true;
             }
             if (mission?.Kind == MissionKind.Attack && mission.Target is AttackMissionTarget at)
@@ -59,7 +62,7 @@ namespace Game.Ai.V2
                 return rt.Phase == RaidMissionPhase.Assault
                     || (rt.Phase == RaidMissionPhase.Reinforcement && !rt.SupportArmyId.HasValue);
             if (mission?.Target is ActiveDefenceMissionTarget ad)
-                return ad.Phase == ActiveDefencePhase.Intercept;
+                return ad.Phase == ActiveDefencePhase.Intercept && !ad.RequiresSortieMaterialization;
             if (mission?.Target is AttackMissionTarget at)
                 return at.Phase == AttackMissionPhase.Assault
                     || (at.Phase == AttackMissionPhase.Reinforcement && !at.SupportArmyId.HasValue);
@@ -89,8 +92,10 @@ namespace Game.Ai.V2
                                 && attack.PrimaryRendezvousLeg))
                         && attack.PrimaryArmyId == armyId);
             if (mission?.Target is ActiveDefenceMissionTarget defence)
-                return defence.Phase == ActiveDefencePhase.Return
-                    && defence.PrimaryArmyId == armyId;
+                return defence.RequiresSortieMaterialization
+                    ? defence.Sortie.DonorGarrisonId == armyId || defence.Sortie.ShellArmyId == armyId
+                    : defence.Phase == ActiveDefencePhase.Return
+                        && (defence.PrimaryArmyId == armyId || defence.ReliefDonorGarrisonId == armyId);
             return false;
         }
 

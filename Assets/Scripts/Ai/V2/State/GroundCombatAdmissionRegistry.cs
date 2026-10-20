@@ -201,9 +201,12 @@ namespace Game.Ai.V2
                 || target.Phase != ActiveDefencePhase.Intercept)
                 return;
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
-                GroundCombatAdmissionPolicy.PinnedOrFreshGate(proposal.FromDurableIntent),
+                target.IsMaterializedSortie ? GroundCombatAdmissionPolicy.FreshStartWinChanceGate
+                    : GroundCombatAdmissionPolicy.PinnedOrFreshGate(proposal.FromDurableIntent),
                 0f,
-                proposal.FromDurableIntent ? proposal.PreferredMoverArmyId : null);
+                proposal.FromDurableIntent ? proposal.PreferredMoverArmyId : null,
+                allowSameHexAssembly: GroundCombatAdmissionPolicy.AllowsSameHexAssembly(proposal),
+                preserveDepartureRoster: GroundCombatAdmissionPolicy.PreservesDepartureRoster(proposal));
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
         }

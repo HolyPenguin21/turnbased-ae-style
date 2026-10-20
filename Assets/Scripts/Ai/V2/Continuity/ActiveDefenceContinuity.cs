@@ -182,6 +182,9 @@ namespace Game.Ai.V2
                 defence.EnemyArmyId, ActiveDefenceInterceptPurpose.ImmediateOpportunity);
             string end = defence.ImmediateTurn != (snap?.TurnNumber ?? 0) ? "immediate_turn_over"
                 : objective == null ? "immediate_contact_lost"
+                : defence.Sortie != null
+                    ? (ActiveDefenceObjectiveEvaluator.AssessSortieIntercept(snap, objective, defence.Sortie,
+                        actor.ArmyId, null).Kind == ActiveDefenceResponseKind.Intercept ? null : "sortie_witness_invalid")
                 : !ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, objective.Target.LastKnownHex,
                     out _) ? "immediate_unreachable"
                 : !GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
@@ -262,6 +265,7 @@ namespace Game.Ai.V2
                     : o.MoverArmyId ?? t.PrimaryArmyId,
                 ReturnHex = t.ReturnHex, ReturnPurpose = t.ReturnPurpose, EnemyEta = t.EnemyEta,
                 InterceptPurpose = t.InterceptPurpose, ImmediateTurn = t.ImmediateTurn,
+                Sortie = t.IsMaterializedSortie ? t.Sortie : null,
                 ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,
                 AirSupportArmyId = t.Phase == ActiveDefencePhase.AirSupport

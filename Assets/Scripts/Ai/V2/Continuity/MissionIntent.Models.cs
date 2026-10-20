@@ -324,6 +324,7 @@ namespace Game.Ai.V2
         public ActiveDefenceReturnPurpose ReturnPurpose;
         public ActiveDefenceInterceptPurpose InterceptPurpose;
         public int ImmediateTurn;
+        public GarrisonSortiePlan Sortie;
         public int? EnemyEta;
         public int EnemyArmyId;
         public HexCoord LastKnownHex;
