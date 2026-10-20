@@ -686,7 +686,8 @@ namespace Game.Ai.V2
         // other asset (a facility is not held by standing on it) or when no defender exists.
         internal static float HoldChanceAtAsset(WorldSnapshot snap, ActiveDefenceObjective objective,
             HexCoord? regroupHex, IReadOnlyList<ArmySnapshot> gatherable,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> committed = null)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> committed = null,
+            IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
         {
             if (snap?.Self?.Armies == null || objective == null || opposition == null
                 || opposition.Count == 0 || snap.Observer == null)
@@ -709,6 +710,8 @@ namespace Game.Ai.V2
             var defenders = new List<WorthIt.DefendingArmy>();
             void Add(ArmySnapshot a)
             {
+                if (a != null && projectedArmies != null
+                    && projectedArmies.TryGetValue(a.ArmyId, out ArmySnapshot projected)) a = projected;
                 if (a == null || a.IsAir || a.IsPrison || a.Members == null || a.Members.Count == 0
                     || !seen.Add(a.ArmyId))
                     return;

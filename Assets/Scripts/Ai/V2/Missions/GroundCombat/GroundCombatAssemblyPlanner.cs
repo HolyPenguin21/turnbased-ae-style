@@ -217,6 +217,8 @@ namespace Game.Ai.V2
         // when the fight is decisive and the stronghold stays covered
         // (ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered).
         public bool AllowDecisivePinnedDefender;
+        // Test lane-specific departure constraints on each complete candidate, before selection.
+        public System.Func<GroundCombatAssemblyPlan, bool> AcceptPlan;
         // Overrides GroundCombatAdmissionPolicy.RequiresCoverage(WinChanceGate) for a request whose
         // ACTION, not its gate value, decides (an optional intermediate Base at 0.40 needs none).
         // Honoured by the exact and assembled departure-roster checks alike.
@@ -261,7 +263,8 @@ namespace Game.Ai.V2
                     request.MinimumArmyPower, request.PreserveDepartureRoster);
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
-                    && DecisiveIfPinned(snap, request, a, exact, opposition))
+                    && DecisiveIfPinned(snap, request, a, exact, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(exact)))
                     return exact;
             }
 
@@ -279,7 +282,8 @@ namespace Game.Ai.V2
                     snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.MinimumArmyPower, request.RequireCoverage,
                     request.PreserveDepartureRoster);
-                if (assembled.Feasible && DecisiveIfPinned(snap, request, a, assembled, opposition))
+                if (assembled.Feasible && DecisiveIfPinned(snap, request, a, assembled, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(assembled)))
                     return assembled;
             }
 
@@ -308,7 +312,8 @@ namespace Game.Ai.V2
                     request.RequireCoverage, request.MinimumArmyPower, request.PreserveDepartureRoster);
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
-                    && DecisiveIfPinned(snap, request, a, exact, opposition))
+                    && DecisiveIfPinned(snap, request, a, exact, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(exact)))
                     ids.Add(a.ArmyId);
             }
             if (!request.AllowSameHexAssembly)
@@ -324,7 +329,8 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan assembledHost = TryAssembleForHost(snap, opposition, a,
                     excluded, request.WinChanceGate, request.DefenderHexDefenseBonus,
                     request.MinimumArmyPower, request.RequireCoverage, request.PreserveDepartureRoster);
-                if (assembledHost.Feasible && DecisiveIfPinned(snap, request, a, assembledHost, opposition))
+                if (assembledHost.Feasible && DecisiveIfPinned(snap, request, a, assembledHost, opposition)
+                    && (request.AcceptPlan == null || request.AcceptPlan(assembledHost)))
                 {
                     ids.Add(a.ArmyId);
                     excluded.Add(a.ArmyId);

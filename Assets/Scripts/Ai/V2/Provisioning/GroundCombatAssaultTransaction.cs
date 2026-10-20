@@ -96,6 +96,16 @@ namespace Game.Ai.V2
             // off a threatened own Citadel/Base.
             ArmySnapshot assigned = session.Snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
                 && a.ArmyId == actorId);
+            if (assigned != null && proposal.Target is AttackMissionTarget assault
+                && HexGridMath.Distance(assigned.Hex, assault.AssaultTarget.Hex) <= 1
+                && !assault.Local.IsLocalFight
+                && !AttackObjectiveEvaluator.HasAssaultObservation(session.Snapshot,
+                    assault.AssaultTarget, out string intelWhy))
+            {
+                failure = ProvisionFailure.MoverContended(
+                    $"attack #{actorId} awaits observation before entry: {intelWhy}");
+                return null;
+            }
             // 2026-10-16 — an Attack may take it for a decisive fight while the stronghold stays
             // covered (Plan below re-checks the fight: GroundCombatAssemblyPlanner.DecisiveIfPinned).
             bool attackLane = proposal.Kind == MissionKind.Attack;
@@ -128,6 +138,9 @@ namespace Game.Ai.V2
                         ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                     AllowDecisivePinnedDefender = attackLane,
+                    AcceptPlan = proposal.Target is AttackMissionTarget fresh && !fresh.ForceCommitted
+                        ? candidate => AttackMarchPolicy.CanStart(session.Snapshot, fresh.Target,
+                            candidate, session.Snapshot.Intents, out _) : null,
                 });
             if (!plan.Feasible)
             {
@@ -386,9 +399,12 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — host #{host.Id} "
                     + $"commander -> {lead.Name} for this fight");
 
+            string winLabel = m.Target is AttackMissionTarget attack
+                && !AttackObjectiveEvaluator.HasAssaultObservation(session.Snapshot, attack.AssaultTarget, out _)
+                ? "unknown" : plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture);
             AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — OK host #{host.Id} "
                 + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}"
-                + $"win~{plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
+                + $"win~{winLabel} "
                 + $"ap {N(actualAp)} (projected {N(activationAp)}) -> ({targetHex.Q},{targetHex.R})");
 
             return new GroundCombatAssaultOutcome

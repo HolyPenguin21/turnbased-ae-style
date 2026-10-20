@@ -880,37 +880,42 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // A Base project is admitted on a positive net TaskScore (DemandLayer.Economy). While its
-        // founding card is still in hand nothing irreversible is spent, so the SAME predicate is
-        // re-read on the refreshed value of the same site/card: once it no longer clears, the
-        // commitment ends instead of freezing the bank for a loss (playtest 2026-10-16: a Base
-        // admitted at +0.4 held every resource and the air recon card for three turns at -2..-7).
-        // Release path of a retarget (both lease owners) plus an ordinary retirement (builder
-        // recovery, loan repayment).
-        internal static bool TryReleaseUnprofitableBase(MissionIntentState state, PlayerSetupData player,
-            MissionIntent incumbent, float refreshedValue, int turn)
+        // Phase A supplies an authoritative revaluation of this build: future benefit and the
+        // pinned builder's remaining route, never cumulative sunk AP or already-settled steps.
+        internal static bool TryReleaseUnprofitableBuild(MissionIntentState state, PlayerSetupData player,
+            MissionIntent incumbent, AxisDemand refreshed, int turn)
         {
             if (state == null || player == null || !IsLiveEconomyBuild(incumbent)
-                || incumbent.Economy.Kind != EconomyTaskKind.FoundBase
-                || refreshedValue > AiConfigV2.allocatorSliceEpsilon
-                || (incumbent.LastProgressTurn == turn && incumbent.StepsMovedTotal > 0))
-                return false; // an actor that already advanced this turn finishes its step first
+                || refreshed == null || !HasEconomyBuildCommitment(new[] { incumbent }, refreshed))
+                return false;
+            bool extraction = incumbent.Economy.Kind == EconomyTaskKind.BuildExtraction;
+            bool profitable = refreshed.Value > AiConfigV2.allocatorSliceEpsilon
+                && (!extraction || refreshed.EconomyPaybackTurns <= AiConfigV2.economyExtractionMaxPaybackTurns);
+            if (profitable || (!extraction && incumbent.LastProgressTurn == turn
+                    && incumbent.StepsMovedTotal > 0))
+                return false;
             if (!state.TryGet(incumbent.IntentKey, out MissionIntent owned)
                 || !object.ReferenceEquals(owned, incumbent))
                 return false;
             string owner = EconomyMissionPlanner.OwnerKey(incumbent.LastAttemptKey);
             string targetOwner = InfrastructureFulfillment.EconomyReservationOwner(new AxisDemand
             {
-                Capability = CapabilityKind.EconomicExpansionBase,
+                Capability = extraction ? CapabilityKind.EconomicInfrastructure
+                    : CapabilityKind.EconomicExpansionBase,
                 TargetHex = incumbent.Economy.TargetHex,
+                EconomyResourceType = incumbent.Economy.ResourceType,
             });
             MissionLeaseBook.ReleaseByOwner(player, turn, owner);
             if (targetOwner != owner)
                 MissionLeaseBook.ReleaseByOwner(player, turn, targetOwner);
             RecordEndedOutboundBuilder(state, incumbent);
             RetireEconomyIntent(state, incumbent, null, turn);
-            AiDebugLog.Write($"[AI][V2][Economy] release {incumbent.IntentKey} — refreshed Base value "
-                + $"{refreshedValue:0.##} no longer clears admission; card stays in hand, bank freed");
+            if (extraction)
+                state.Economy.SuppressExtractionDelivery(turn, incumbent.Economy.ResourceType,
+                    incumbent.Economy.TargetHex);
+            AiDebugLog.Write($"[AI][V2][Economy] release {incumbent.IntentKey} — refreshed "
+                + $"{incumbent.Economy.Kind} value={refreshed.Value:0.##} "
+                + $"payback={refreshed.EconomyPaybackTurns:0.##} no longer clears admission; bank freed");
             return true;
         }
 

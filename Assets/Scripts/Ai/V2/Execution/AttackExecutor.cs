@@ -393,6 +393,18 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // A stale/unknown final site never authorizes combat, capture or its activation cost.
+            if (next.Value.Equals(targetHex)
+                && !AttackObjectiveEvaluator.HasAssaultObservation(snapshot, target.AssaultTarget,
+                    out string intelWhy))
+            {
+                result.StopReason = ExecutionStopReason.NoSafeStep;
+                result.NeedsReplan = true;
+                result.TacticalBlockReason = intelWhy;
+                AiDebugLog.Write($"[AI][V2][Attack][Observation] #{army.Id} HOLD {intelWhy}; no payment or movement");
+                yield break;
+            }
+
             HexCoord before = army.Hex;
             // A side strike may fight but must NEVER take a structure: only the terminal step into
             // the Attack's own target carries capture authority (§26/§27). The eligibility gate has

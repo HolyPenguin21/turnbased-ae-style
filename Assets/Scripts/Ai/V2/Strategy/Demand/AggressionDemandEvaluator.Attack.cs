@@ -386,6 +386,9 @@ namespace Game.Ai.V2
                     MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = claimed,
                     DefenderHexDefenseBonus = hexBonus,
+                    AllowDecisivePinnedDefender = true,
+                    AcceptPlan = candidate => AttackMarchPolicy.CanStart(snap, objective.Target,
+                        candidate, snap.Intents, out _),
                 });
             if (plan.Feasible)
             {
@@ -399,11 +402,15 @@ namespace Game.Ai.V2
             ArmySnapshot futureActor = GroundCombatActorEligibility.EligibleArmies(snap, claimed,
                     requireMovementNow: false)
                 .Where(a => a.CurrentMovement <= 0)
-                .FirstOrDefault(a => GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
-                    objective.Opposition, a.ArmyId,
-                    GroundCombatAdmissionPolicy.AttackWinChanceGate, hexBonus).Feasible
-                    && AttackForceReadiness.ForceReady(a.EffectiveArmyPower,
-                        snap.Self.AttackPeak));
+                .FirstOrDefault(a =>
+                {
+                    GroundCombatAssemblyPlan future = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
+                        objective.Opposition, a.ArmyId,
+                        GroundCombatAdmissionPolicy.AttackWinChanceGate, hexBonus,
+                        minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
+                    return future.Feasible && AttackMarchPolicy.CanStart(snap, objective.Target,
+                        future, snap.Intents, out _);
+                });
             if (futureActor != null)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -434,6 +441,7 @@ namespace Game.Ai.V2
                     MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = new HashSet<int>(),
                     DefenderHexDefenseBonus = hexBonus,
+                    AllowDecisivePinnedDefender = true,
                 });
             if (contended.Feasible)
             {

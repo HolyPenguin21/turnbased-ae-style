@@ -147,25 +147,26 @@ namespace Game.Ai.V2
                 ?? Enumerable.Empty<MissionIntent>()).ToList();
             List<MissionIntent> protectedActiveExtractions = ProtectedActiveBuilds(EconomyTaskKind.BuildExtraction);
             List<MissionIntent> protectedActiveBases = ProtectedActiveBuilds(EconomyTaskKind.FoundBase);
-            // Same stage and safety as the retarget below (card still in hand, Economy's view
-            // complete): a committed Base whose refreshed value no longer clears admission is
-            // released by Continuity instead of protected. No same-site demand: Continuity owns it.
+            // Revalue live builds before renewing holds or paying the next action. An absent
+            // demand in a partial/blocked view is not evidence of economic failure.
             if (economyAxisAuthoritative)
             {
-                foreach (MissionIntent committedBase in protectedActiveBases.ToList())
+                foreach (MissionIntent build in protectedActiveBases.Concat(protectedActiveExtractions).ToList())
                 {
-                    if (committedBase.Economy.BuildCard == null
-                        || !hand.Hand.Contains(committedBase.Economy.BuildCard))
+                    if (build.Economy.Kind == EconomyTaskKind.FoundBase
+                        && (build.Economy.BuildCard == null || !hand.Hand.Contains(build.Economy.BuildCard)))
                         continue;
-                    var committed = new[] { committedBase };
+                    var committed = new[] { build };
                     List<AxisDemand> sameSite = demands.Where(d => d != null
-                        && d.Capability == CapabilityKind.EconomicExpansionBase
+                        && (d.Capability == CapabilityKind.EconomicExpansionBase
+                            || d.Capability == CapabilityKind.EconomicInfrastructure)
                         && EconomyContinuity.HasEconomyBuildCommitment(committed, d)).ToList();
                     if (sameSite.Count == 0
-                        || !EconomyContinuity.TryReleaseUnprofitableBase(intentState, player,
-                            committedBase, sameSite.Max(d => d.Value), ctx.TurnNumber))
+                        || !EconomyContinuity.TryReleaseUnprofitableBuild(intentState, player,
+                            build, sameSite.OrderByDescending(d => d.Value).First(), ctx.TurnNumber))
                         continue;
-                    protectedActiveBases.Remove(committedBase);
+                    protectedActiveBases.Remove(build);
+                    protectedActiveExtractions.Remove(build);
                     demands = demands.Where(d => !sameSite.Contains(d)).ToList();
                 }
             }

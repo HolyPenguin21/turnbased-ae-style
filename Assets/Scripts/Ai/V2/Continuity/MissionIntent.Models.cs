@@ -373,6 +373,8 @@ namespace Game.Ai.V2
         // Gather support movement starts the intent, but the force threshold remains live
         // until the primary actually starts the assault march.
         public bool AssaultStarted;
+        // Bounded wait at the target's perimeter; observation is not physical progress.
+        public int AssaultObservationWaitSinceTurn = -1;
         // Successful intermediate capture: two local hand-card service windows, no waiting phase.
         public HexCoord? RefitBaseHex;
         public int RefitCaptureTurn = -1;

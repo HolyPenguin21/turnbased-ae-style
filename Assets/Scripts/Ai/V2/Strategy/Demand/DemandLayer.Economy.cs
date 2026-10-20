@@ -145,8 +145,6 @@ namespace Game.Ai.V2
 
                 float resourcePriority = TaskScoreEvaluator.ResourcePriority(rs);
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
-                if (gain <= AiConfigV2.allocatorSliceEpsilon)
-                    continue;
 
                 // Continuity owns the actor for an existing objective. A later, cheaper builder
                 // must not supply a different delivery cost for that same durable operation.
@@ -155,12 +153,11 @@ namespace Game.Ai.V2
                     && i.Economy.Kind == EconomyTaskKind.BuildExtraction
                     && i.Economy.ResourceType == site.ResourceType
                     && i.PreferredMoverArmyId.HasValue);
-                // Same deliberate exception as a committed Base (AddBaseCandidates): Continuity
-                // already owns this delivery's lifecycle (stall/idle reap), EconomyMissionPlanner
-                // keeps walking its builder from the durable intent, and Phase A can only build
-                // it from THIS demand. Dropping it on dipped surplus/payback/value economics
-                // strands the builder on the site with its resources held and nothing to build.
+                // Keep negative committed revaluations so Phase A can retire the build through
+                // Continuity, freeing its own reservations and recovering the pinned builder.
                 bool committed = pinnedExtraction != null;
+                if (gain <= AiConfigV2.allocatorSliceEpsilon && !committed)
+                    continue;
 
                 // Keep raw income for execution; value and payback use only
                 // economically useful marginal income from the frozen snapshot.

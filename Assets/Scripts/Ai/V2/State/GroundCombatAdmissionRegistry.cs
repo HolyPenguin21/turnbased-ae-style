@@ -73,7 +73,9 @@ namespace Game.Ai.V2
                 allowSameHexAssembly: !target.IsIntermediateAssault,
                 requireCoverage: GroundCombatAdmissionPolicy.AssaultCoverage(proposal),
                 preserveDepartureRoster: target.ForceCommitted,
-                allowDecisivePinnedDefender: true);
+                allowDecisivePinnedDefender: true,
+                acceptPlan: target.ForceCommitted ? null : candidate =>
+                    AttackMarchPolicy.CanStart(snap, target.Target, candidate, snap.Intents, out _));
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -87,7 +89,8 @@ namespace Game.Ai.V2
             float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null,
             float minimumArmyPower = 0f, bool allowSameHexAssembly = true,
             bool? requireCoverage = null, bool preserveDepartureRoster = false,
-            bool allowDecisivePinnedDefender = false) =>
+            bool allowDecisivePinnedDefender = false,
+            Func<GroundCombatAssemblyPlan, bool> acceptPlan = null) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
                 Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
@@ -101,6 +104,7 @@ namespace Game.Ai.V2
                 PinToPreferred = pinnedArmyId.HasValue,
                 RequireCoverage = requireCoverage,
                 AllowDecisivePinnedDefender = allowDecisivePinnedDefender,
+                AcceptPlan = acceptPlan,
             });
 
         // A started Hard operation is not a fresh admission decision. Its PreferredMover already

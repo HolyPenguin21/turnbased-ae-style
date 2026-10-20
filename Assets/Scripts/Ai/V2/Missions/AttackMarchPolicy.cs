@@ -47,8 +47,30 @@ namespace Game.Ai.V2
     {
         internal static float AbortFloor => GroundCombatAdmissionPolicy.AttackLocalWinChanceGate;
 
+        // The same departure decision for nomination, admission and the capability view.
+        internal static bool CanStart(WorldSnapshot snap, AttackTargetRef target,
+            GroundCombatAssemblyPlan plan, IMissionIntentView intents, out string reason)
+        {
+            reason = null;
+            if (plan?.Feasible != true) { reason = "plan_infeasible"; return false; }
+            var projected = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
+            ArmySnapshot actor = projected.TryGetValue(plan.BaseArmyId, out ArmySnapshot changed)
+                ? changed : snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == plan.BaseArmyId);
+            if (actor == null) { reason = "actor_unavailable"; return false; }
+            AttackMarchAssessment home = Assess(snap, target, actor, projected);
+            if (home.Verdict == AttackMarchVerdict.DefendHome)
+            { reason = "home_needs_the_army:" + home.Reason; return false; }
+            AttackLocalAction contact = AttackTacticalOpportunity.Decide(snap, actor, target,
+                snap.TurnNumber, false, null, intents);
+            if (contact.Kind == AttackLocalActionKind.Retreat)
+            { reason = "hostile_contact_on_path"; return false; }
+            if (AttackRetreatWitness.Blocks(intents, snap, target, actor, out string why, out _))
+            { reason = "waiting_for_changed_odds:" + why; return false; }
+            return true;
+        }
+
         internal static AttackMarchAssessment Assess(WorldSnapshot snap, AttackTargetRef target,
-            ArmySnapshot primary)
+            ArmySnapshot primary, IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
         {
             if (snap?.Self == null || primary == null)
                 return new AttackMarchAssessment(AttackMarchVerdict.Continue, 0f, false, null, "no_primary");
@@ -58,14 +80,15 @@ namespace Game.Ai.V2
             GroundCombatFeasibility.Clears(primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(),
                 primary.Commander, opposition, 0f, hexBonus, out float win, out _, requireCoverage: false);
             bool known = opposition != null && opposition.Any(a => a.Units.Any(u => u.IsGroundCombatant));
-            bool decisive = AttackForceReadiness.IsOpportunity(win, opposition);
+            bool observed = AttackObjectiveEvaluator.HasAssaultObservation(snap, target, out _);
+            bool decisive = observed && AttackForceReadiness.IsOpportunity(win, opposition);
             // 2026-10-18 — a decisive blow that lands this very turn (before the enemy moves again)
             // removes every threat whose army stands on the target: such a threat calls nobody home.
             HexCoord? struckNow = decisive && primary.CurrentMovement > 0
                 && HexGridMath.Distance(primary.Hex, target.Hex) <= primary.CurrentMovement
                 ? target.Hex : (HexCoord?)null;
 
-            HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta, struckNow);
+            HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta, struckNow, projectedArmies);
             if (home.HasValue)
             {
                 bool mateFirst = decisive && target.Kind == AttackTargetKind.Citadel
@@ -74,8 +97,11 @@ namespace Game.Ai.V2
                     return new AttackMarchAssessment(AttackMarchVerdict.DefendHome, win, decisive, home,
                         $"own stronghold ({home.Value.Q},{home.Value.R}) falls without this army (enemy eta {enemyEta})");
             }
+            if (!observed)
+                return new AttackMarchAssessment(AttackMarchVerdict.Continue, 0f, false, null,
+                    "defenders_unknown_or_stale; approach_only");
             if (!known)
-                return new AttackMarchAssessment(AttackMarchVerdict.Continue, win, false, null, "defenders_unknown");
+                return new AttackMarchAssessment(AttackMarchVerdict.Continue, win, false, null, "observed_empty");
             if (win >= AbortFloor)
                 return new AttackMarchAssessment(AttackMarchVerdict.Continue, win, decisive, null,
                     decisive ? "decisive" : "contested");
@@ -92,7 +118,8 @@ namespace Game.Ai.V2
         // threat is no reason to keep the army (ActiveDefence leaves such an enemy to Attack:
         // enemy_on_known_foreign_structure).
         internal static HexCoord? StrongholdNeedingArmy(WorldSnapshot snap, ArmySnapshot army,
-            out int enemyEta, HexCoord? struckNow = null)
+            out int enemyEta, HexCoord? struckNow = null,
+            IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
         {
             enemyEta = int.MaxValue;
             if (snap?.Self?.BaseHexes == null || army == null)
@@ -121,10 +148,10 @@ namespace Game.Ai.V2
                 var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
                     { ProtectedAssetHex = t.Asset.Hex, ProtectedAssetKind = t.Asset.Kind } };
                 if (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, null, null, enemy,
-                        without) >= AiConfigV2.activeDefenceHoldWinChance)
+                        without, projectedArmies) >= AiConfigV2.activeDefenceHoldWinChance)
                     continue;
                 if (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, t.Asset.Hex,
-                        new[] { army }, enemy) < AiConfigV2.activeDefenceHoldWinChance)
+                        new[] { army }, enemy, projectedArmies: projectedArmies) < AiConfigV2.activeDefenceHoldWinChance)
                     continue;
                 bool citadel = t.Asset.Kind == AssetKind.Citadel;
                 if (best == null || (citadel && !bestCitadel) || (citadel == bestCitadel && eta < enemyEta))

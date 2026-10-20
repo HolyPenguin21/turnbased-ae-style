@@ -13,6 +13,75 @@ namespace Game.EditorTests
     // Every test here fails on the pre-fix code and passes after it.
     public class AiEconomyDevelopmentAuditTests
     {
+        [Test]
+        public void UnprofitableExtraction_ReleasesOnlyItsOwnHoldAndQueuesBuilderRecovery()
+        {
+            var player = new PlayerSetupData();
+            AxisDemand demand = ExtractionDemand(new HexCoord(3, -5), ResourceType.Human);
+            MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(player, demand, 25, 23);
+            AxisDemand other = ExtractionDemand(new HexCoord(4, -5), ResourceType.Materials);
+            MissionIntent neighbour = EconomyContinuity.BeginEconomyDelivery(player, other, 28, 23);
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(player, 24, intent);
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(player, 24, neighbour);
+            intent.LastProgressTurn = 24;
+            intent.StepsMovedTotal = 4;
+            demand.Value = -6.54f;
+            demand.EconomyPaybackTurns = float.PositiveInfinity;
+            var state = MissionIntentRegistry.GetOrCreate(player);
+
+            Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(
+                state, player, intent, demand, 24), Is.True);
+
+            Assert.That(state.All, Does.Not.Contain(intent));
+            Assert.That(state.All, Does.Contain(neighbour));
+            Assert.That(StrategicResourceReservationLedger.Active(player, 24,
+                StrategicReservedResource.Materials), Is.EqualTo(2f));
+            Assert.That(state.Economy.TakeEndedOutboundBuilders().Single().BuilderArmyId, Is.EqualTo(25));
+            Assert.That(state.Economy.IsExtractionDeliverySuppressed(24, ResourceType.Human,
+                demand.TargetHex.Value), Is.True);
+            Assert.That(state.Economy.IsExtractionDeliverySuppressed(
+                25 + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns), ResourceType.Human,
+                demand.TargetHex.Value), Is.False);
+        }
+
+        [TestCase(-1f, 1f, true)]
+        [TestCase(10f, float.PositiveInfinity, true)]
+        [TestCase(10f, 1f, false)]
+        public void ExtractionContinuation_UsesRemainingEconomics(float value, float payback, bool release)
+        {
+            var player = new PlayerSetupData();
+            AxisDemand demand = ExtractionDemand(new HexCoord(3, -5), ResourceType.Human);
+            MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(player, demand, 25, 20);
+            intent.CumulativeApSpent = 100f;
+            intent.StepsMovedTotal = 40;
+            demand.Value = value;
+            demand.EconomyPaybackTurns = payback;
+            Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(
+                MissionIntentRegistry.GetOrCreate(player), player, intent, demand, 24), Is.EqualTo(release));
+        }
+
+        [Test]
+        public void CancelledExtraction_ResumesItsBorrowedScout()
+        {
+            var player = new PlayerSetupData();
+            AxisDemand demand = ExtractionDemand(new HexCoord(3, -5), ResourceType.Human);
+            MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(player, demand, 25, 20);
+            var scout = new MissionIntent { Kind = MissionKind.Scout,
+                PreferredMoverArmyId = 25, Status = IntentStatus.Suspended,
+                Suspended = SuspendReason.EconomyLoan,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(9, 9) } };
+            scout.IntentKey = MissionIntentKey.For(scout);
+            var state = MissionIntentRegistry.GetOrCreate(player);
+            state.Put(scout);
+            intent.Economy.Loaned = true;
+            intent.Economy.LoanSource = scout.IntentKey;
+            demand.Value = -1f;
+            Assert.That(EconomyContinuity.TryReleaseUnprofitableBuild(
+                state, player, intent, demand, 24), Is.True);
+            Assert.That(scout.Status, Is.EqualTo(IntentStatus.Active));
+            Assert.That(scout.Suspended, Is.EqualTo(SuspendReason.None));
+        }
+
         private static AxisDemand ExtractionDemand(HexCoord target, ResourceType type,
             CardData buildCard = null) => new AxisDemand
         {

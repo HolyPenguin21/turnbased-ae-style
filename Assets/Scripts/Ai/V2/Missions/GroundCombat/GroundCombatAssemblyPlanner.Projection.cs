@@ -11,6 +11,45 @@ namespace Game.Ai.V2
 {
     public static partial class GroundCombatAssemblyPlanner
     {
+        // Overrides for the departing host and every changed donor; never mutates live armies.
+        internal static Dictionary<int, ArmySnapshot> ProjectedDepartureArmies(WorldSnapshot snap,
+            GroundCombatAssemblyPlan plan)
+        {
+            var result = new Dictionary<int, ArmySnapshot>();
+            if (snap?.Self?.Armies == null || plan?.Feasible != true) return result;
+            var ids = new HashSet<int>(plan.Transfers.Select(t => t.DonorArmyId)) { plan.BaseArmyId };
+            if (plan.HeroReturnArmyId.HasValue) ids.Add(plan.HeroReturnArmyId.Value);
+            foreach (int id in ids)
+            {
+                ArmySnapshot original = snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == id);
+                ArmyData live = LiveArmy(original);
+                if (original == null || live == null) continue;
+                List<UnitData> roster;
+                if (id == plan.BaseArmyId) roster = ProjectedRoster(live, plan);
+                else
+                {
+                    roster = live.Members.Where(u => !plan.Transfers.Any(t =>
+                        t.DonorArmyId == id && t.Unit == u)).ToList();
+                    if (id == plan.HeroReturnArmyId) roster.AddRange(plan.ReturnHeroes);
+                }
+                result[id] = new ArmySnapshot {
+                    ArmyId = id, Owner = original.Owner, Hex = original.Hex,
+                    IsGarrison = original.IsGarrison, IsPrison = original.IsPrison,
+                    IsAir = original.IsAir, IsAirfield = original.IsAirfield,
+                    IsStructuralRaidActor = original.IsStructuralRaidActor,
+                    MemberCount = roster.Count, HasHero = roster.Any(u => u.IsHero),
+                    Members = roster.Where(u => !u.IsHero).Select(WorthIt.FromLiveUnit).ToList(),
+                    Commander = WorthIt.SideCommander.Of(roster),
+                    EffectiveArmyPower = AiPower.EffectiveArmyPower(roster),
+                    CurrentMovement = ArmyData.ComputeCurrentMovement(roster),
+                    MaxMovement = ArmyData.ComputeMaxMovement(roster),
+                    HasActivatedThisTurn = original.HasActivatedThisTurn,
+                    ActivationApCost = ArmyData.ComputeActivationApCost(roster),
+                };
+            }
+            return result;
+        }
+
         // AI-01 — the roster this plan would ACTUALLY produce: the live host's own members plus
         // every body the plan promises to transfer in. This is the one place that answers
         // "what will the assembled force look like", so cost/movement/AP pricing in Missions and

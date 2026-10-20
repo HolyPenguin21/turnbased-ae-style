@@ -60,6 +60,13 @@ namespace Game.Ai.V2
             public bool IsSuppressed(int turn, TKey key) =>
                 _suppressedUntilTurn.TryGetValue(key, out int until) && turn < until;
 
+            public void Suppress(int turn, TKey key)
+            {
+                _suppressedUntilTurn[key] = turn
+                    + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
+                _failures.Remove(key);
+            }
+
             public bool Record(int turn, TKey key)
             {
                 if (IsSuppressed(turn, key))
@@ -76,9 +83,7 @@ namespace Game.Ai.V2
                 if (count < System.Math.Max(1, AiConfigV2.commitmentStallTurns))
                     return false;
 
-                _suppressedUntilTurn[key] = turn
-                    + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
-                _failures.Remove(key);
+                Suppress(turn, key);
                 return true;
             }
         }
@@ -112,6 +117,9 @@ namespace Game.Ai.V2
 
         internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target) =>
             _extractionDeliveryFailures.Record(turn, (resourceType, target));
+
+        internal void SuppressExtractionDelivery(int turn, ResourceType? resourceType, HexCoord target) =>
+            _extractionDeliveryFailures.Suppress(turn, (resourceType, target));
 
         // Builders whose outbound build was retired by an execution outcome (a proven route
         // failure, a reap, a failed step), which carries no world snapshot to decide the
