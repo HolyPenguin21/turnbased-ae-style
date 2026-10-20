@@ -1041,6 +1041,93 @@ namespace Game.EditorTests
             finally { Game.Map.ArmyRegistry.Clear(); }
         }
 
+        [Test]
+        public void StrategicDeadline_RejectedLateActorDoesNotMaskAnotherTimelyActor()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot late = DefenceActor(owner, 700001, new HexCoord(1, 1), 70f, 70f, 70f);
+            late.CurrentMovement = late.MaxMovement = 1;
+            ArmySnapshot timely = DefenceActor(owner, 700002, new HexCoord(-3, 0), 60f, 60f, 60f);
+            WorldSnapshot snap = AssetWorld(late, timely);
+            ActiveDefenceObjective objective = AssetObjective(snap);
+            var opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId);
+            GroundCombatAssemblyPlan first = GroundCombatAssemblyPlanner.Plan(snap,
+                new GroundCombatAssemblyRequest { Opposition = opposition });
+            Assert.That(first.BaseArmyId, Is.EqualTo(late.ArmyId),
+                "without a deadline the stronger late actor must win this fixture");
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(snap, objective.Target, first),
+                Is.False);
+
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+            Assert.That(response.Plan.BaseArmyId, Is.EqualTo(timely.ArmyId));
+            var proposal = new MissionProposal { Kind = MissionKind.ActiveDefence, Target = objective.Target };
+            GroundCombatAdmissionRegistry.RecordActiveDefence(proposal, snap, opposition, null);
+            Assert.That(GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible), Is.True);
+            Assert.That(eligible, Is.EquivalentTo(new[] { timely.ArmyId }));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StrategicAssembly_TransactionRunsFinalDeadlineVetoBeforeAnyTransfer(bool spent)
+        {
+            WorldSnapshot snap = StrategicAssemblyWorld(3, 3, out var host, out var donor, out var recruit);
+            var go = new UnityEngine.GameObject("StrategicDeadlineTransaction");
+            try
+            {
+                var map = go.AddComponent<Game.Map.HexMap>();
+                var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+                for (int q = -3; q <= 0; q++)
+                    terrain[new HexCoord(q, 1)] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 };
+                map.SetData(4, 1f, terrain);
+                snap.Map = map;
+                ActiveDefenceObjective objective = AssetObjective(snap);
+                var opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId);
+                var proposal = new MissionProposal { Kind = MissionKind.ActiveDefence, Target = objective.Target };
+                using var session = new ProvisioningSession(snap);
+                StableMissionKey key = StableMissionKey.For(proposal);
+                session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int> { [key] = host.Id });
+                bool vetoReached = false;
+                GroundCombatAssaultOutcome outcome = GroundCombatAssaultTransactionRunner.Run(
+                    new GroundCombatAssaultRequest {
+                        Player = snap.Observer, Ctx = new AiTurnContext { Map = map }, Session = session,
+                        Funded = new FundedEntry { Mission = proposal, Tentative = new ResourceVector(10f) },
+                        Key = key, TargetHex = objective.Target.LastKnownHex, Opposition = opposition,
+                        LaneLabel = "active-defence",
+                        PreMutationVeto = (actualHost, units) => {
+                            vetoReached = true;
+                            Assert.That(actualHost, Is.SameAs(host));
+                            Assert.That(units, Is.EquivalentTo(new[] { host.Members.Single(), recruit }),
+                                "the runner must pass the final host-plus-recruit roster");
+                            Assert.That(donor.Members, Does.Contain(recruit),
+                                "the veto must run while the recruit still belongs to its donor");
+                            // Simulate movement changing after binding and the safe-first-step check.
+                            if (spent) recruit.MoveCurrent = 0;
+                            else { recruit.MoveMax = 1; recruit.MoveCurrent = 1; }
+                            return ActiveDefenceProvisioner.StrategicReachVeto(snap, actualHost, units,
+                                objective.Target.LastKnownHex, objective.Target.EnemyEta);
+                        },
+                    });
+                Assert.That(vetoReached, Is.True, "earlier combat, binding and route checks must all pass");
+                Assert.That(outcome.Success, Is.False);
+                Assert.That(outcome.Failure.Failure.Detail, Does.Contain("strategic_intercept_deadline_missed"));
+                Assert.That(outcome.Failure.StateChanged, Is.False);
+                Assert.That(outcome.Failure.TransferredMemberCount, Is.Zero);
+                Assert.That(host.Members, Has.Count.EqualTo(1));
+                Assert.That(donor.Members, Has.Count.EqualTo(2));
+                Assert.That(donor.Members, Does.Contain(recruit));
+                Assert.That(host.HasActivatedThisTurn, Is.False);
+                Assert.That(session.ApClaimed, Is.Zero);
+                Assert.That(session.ClaimedArmyIds, Is.Empty);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+                Game.Map.ArmyRegistry.Clear();
+            }
+        }
+
         [TestCase(3, 3, 1, true)]
         [TestCase(1, 1, 1, false)]
         [TestCase(3, 0, 1, false)]
@@ -1108,6 +1195,39 @@ namespace Game.EditorTests
                 Assert.That(ActiveDefenceObjectiveEvaluator.CanInterceptRosterBeforeThreat(snap,
                     new HexCoord(0, 0), new HexCoord(3, 0), 3, 3, 1, out eta), Is.False);
                 Assert.That(eta, Is.EqualTo(int.MaxValue));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void StrategicDeadline_UsesExecutableFastestRouteInsteadOfCheapestTerrainRoute()
+        {
+            var go = new UnityEngine.GameObject("StrategicFastestDeadlineRoute");
+            try
+            {
+                var map = go.AddComponent<Game.Map.HexMap>();
+                var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+                void Add(int q, int r, int cost) =>
+                    terrain[new HexCoord(q, r)] = new Game.Terrain.TerrainTypeEntry { moveCost = cost };
+                Add(-2, 0, 3); Add(-1, 0, 1); Add(0, 0, 3); Add(1, 0, 1); Add(2, 0, 3);
+                Add(-1, 1, 2); Add(0, 1, 2); Add(1, 1, 1);
+                map.SetData(3, 1f, terrain);
+                WorldSnapshot snap = AssetWorld();
+                snap.Map = map;
+                var from = new HexCoord(-2, 0);
+                var destination = new HexCoord(2, 0);
+                var actor = new ArmySnapshot { Hex = from, CurrentMovement = 3, MaxMovement = 3 };
+                HexPath cheap = SafeStepPathing.FindSafePath(map, snap.Observer, from, destination,
+                    3, SafeRouteProfile.Combat);
+                Assert.That(cheap.TotalCost, Is.EqualTo(8));
+                Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, destination), Is.EqualTo(3),
+                    "reinforcement timing keeps its existing cheapest-route contract");
+
+                bool timely = ActiveDefenceObjectiveEvaluator.CanInterceptRosterBeforeThreat(snap,
+                    from, destination, 3, 3, 3, out int eta);
+                Assert.That(eta, Is.EqualTo(2),
+                    "the 9-MP bypass arrives a turn earlier than the 8-MP straight route");
+                Assert.That(timely, Is.True, "execution can beat EnemyEta=3 using its fastest route");
             }
             finally { UnityEngine.Object.DestroyImmediate(go); }
         }

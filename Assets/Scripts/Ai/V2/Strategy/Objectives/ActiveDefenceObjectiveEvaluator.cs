@@ -643,19 +643,23 @@ namespace Game.Ai.V2
             return GroundArrivalEta(snap, actor.Hex, destination, actor.CurrentMovement, actor.MaxMovement);
         }
 
-        // The same route/turn packing for an owned-base reinforcement and a projected intercept.
-        // Movement belongs to the final roster, not necessarily to the untouched host.
+        // Preserve the reinforcement route contract. Intercept deadlines instead use execution's
+        // turn-optimal route; movement belongs to the final roster rather than the untouched host.
         private static int GroundArrivalEta(WorldSnapshot snap, HexCoord from, HexCoord destination,
-            int currentMovement, int maxMovement)
+            int currentMovement, int maxMovement, bool fastestByTurns = false)
         {
             if (from.Equals(destination)) return 0;
             if (maxMovement <= 0) return int.MaxValue;
             HexPath route = ReferenceEquals(snap?.Map, null)
                 ? AiV2Util.StraightLine(from, destination)
-                : SafeStepPathing.FindSafePath(snap.Map, snap.Observer, from,
-                    destination, maxMovement, SafeRouteProfile.Combat);
+                : fastestByTurns
+                    ? SafeStepPathing.FindSafePathByTurns(snap.Map, snap.Observer, from,
+                        destination, currentMovement, maxMovement, SafeRouteProfile.Combat)
+                    : SafeStepPathing.FindSafePath(snap.Map, snap.Observer, from,
+                        destination, maxMovement, SafeRouteProfile.Combat);
             if (route == null) return int.MaxValue;
-            int turns = 0, remaining = Math.Max(0, currentMovement);
+            int turns = 0, remaining = Math.Max(0, fastestByTurns
+                ? Math.Min(currentMovement, maxMovement) : currentMovement);
             for (int i = 1; i < route.Hexes.Count; i++)
             {
                 int cost = 1;
@@ -997,7 +1001,8 @@ namespace Game.Ai.V2
         internal static bool CanInterceptRosterBeforeThreat(WorldSnapshot snap, HexCoord from,
             HexCoord enemyHex, int? enemyEta, int currentMovement, int maxMovement, out int arrivalEta)
         {
-            arrivalEta = GroundArrivalEta(snap, from, enemyHex, currentMovement, maxMovement);
+            arrivalEta = GroundArrivalEta(snap, from, enemyHex, currentMovement, maxMovement,
+                fastestByTurns: true);
             return arrivalEta != int.MaxValue && enemyEta.HasValue && arrivalEta < enemyEta.Value;
         }
 
