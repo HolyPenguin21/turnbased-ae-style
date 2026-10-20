@@ -182,7 +182,7 @@ namespace Game.EditorTests
             Assert.That(shell, Is.EqualTo(30)); Assert.That(donor, Is.EqualTo(1));
             using var session = new ProvisioningSession(s);
             session.SetGroundCombatConstraints(null, new HashSet<int> { 1, 30 }, new[] { proposal });
-            Assert.That(session.ExcludedForGroundCombat(proposal), Does.Not.Contain(1));
+            Assert.That(session.ExcludedForGroundCombat(proposal), Has.No.Member(1));
             Assert.That(session.ExcludedForGroundCombat(new MissionProposal { Kind = MissionKind.Raid }), Is.SupersetOf(new[] { 1, 30 }));
             var bound = new ProvisionedMission { Kind = MissionKind.ActiveDefence, MoverArmyId = 30,
                 Mission = proposal, ActiveDefenceTarget = target, ClaimedAp = target.Sortie.TotalAp };
