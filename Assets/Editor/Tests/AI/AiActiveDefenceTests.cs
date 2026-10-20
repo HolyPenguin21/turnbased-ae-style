@@ -804,6 +804,157 @@ namespace Game.EditorTests
             Assert.That(snap.Threat.Threats, Has.Count.EqualTo(2));
         }
 
+        [Test]
+        public void EarliestDeadline_PropagatesIntoShortageResponseAndCapabilityDemand()
+        {
+            WorldSnapshot snap = AssetWorld();
+            AssetThreatSnapshot local = snap.Threat.Threats.Single();
+            local.EnemyEta = 1;
+            snap.Threat.Threats = new[] {
+                ThreatForAsset(local.Contact, AssetKind.Citadel, Home, 3, 1000f), local };
+            ActiveDefenceObjective objective = AssetObjective(snap);
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage),
+                "an undefended local base must not inherit the distant Citadel's threat_not_imminent");
+            IReadOnlyList<AxisDemand> demands = AggressionDemandEvaluator.BuildActiveDefenceDemands(
+                snap, null, Array.Empty<MissionIntent>(), new ActorCommitments(), snap.Observer, out _);
+            AxisDemand demand = demands.Single();
+            Assert.That(demand.TargetHex, Is.EqualTo(Secondary));
+            Assert.That(demand.ActiveDefenceEnemyEta, Is.EqualTo(1));
+            Assert.That(demand.ConsumerIntentKey, Is.EqualTo(objective.IntentKey));
+            Assert.That(demand.Value, Is.EqualTo(objective.TaskScore.Value));
+            Assert.That(snap.Threat.Threats, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void EarliestDeadline_PropagatesThroughStrategicProposalAndAllocation()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = AssetWorld(DefenceActor(owner, 7, new HexCoord(-3, 0), 50f, 50f, 50f));
+            snap.Self.ActionPoints = 8;
+            AssetThreatSnapshot local = snap.Threat.Threats.Single();
+            local.EnemyEta = 1;
+            snap.Threat.Threats = new[] {
+                ThreatForAsset(local.Contact, AssetKind.Citadel, Home, 3, 1000f), local };
+            try
+            {
+                List<MissionProposal> proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
+                    Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>(),
+                    MissionIntentRegistry.GetOrCreate(owner))
+                    .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
+                MissionProposal proposal = proposals.Single();
+                var target = (ActiveDefenceMissionTarget)proposal.Target;
+                Assert.That(target.Phase, Is.EqualTo(ActiveDefencePhase.Intercept));
+                Assert.That(target.InterceptPurpose, Is.EqualTo(ActiveDefenceInterceptPurpose.StrategicDefence));
+                Assert.That(target.ProtectedAssetHex, Is.EqualTo(Secondary));
+                Assert.That(target.EnemyEta, Is.EqualTo(1));
+                Assert.That(target.PrimaryArmyId, Is.EqualTo(7));
+                Assert.That(GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible), Is.True);
+                Assert.That(eligible, Is.EquivalentTo(new[] { 7 }));
+                var radar = Radar.Even();
+                foreach (DesireAxis axis in DesireAxes.All)
+                    radar.Weight[axis] = axis == DesireAxis.Aggression ? 1f : 0f;
+                TentativeAllocation allocation = ResourceAllocator.BeginTurn(snap, radar,
+                    proposals, new List<Commitment>(), owner).Pack();
+                MissionProposal funded = allocation.Funded.Single().Mission;
+                Assert.That(funded, Is.SameAs(proposal));
+                Assert.That(((ActiveDefenceMissionTarget)funded.Target).ProtectedAssetHex, Is.EqualTo(Secondary));
+                Assert.That(((ActiveDefenceMissionTarget)funded.Target).EnemyEta, Is.EqualTo(1));
+                Assert.That(StableMissionKey.For(funded), Is.EqualTo(StableMissionKey.For(proposal)));
+                Assert.That(MissionIntentKey.For(funded), Is.EqualTo(MissionIntentKey.ForActiveDefence(99)));
+            }
+            finally { AiAllocatorStateRegistry.Clear(); MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void EarlierAsset_RefreshesExistingInterceptWithoutChangingEnemyIdentity()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = AssetWorld(DefenceActor(owner, 7, new HexCoord(-3, 0), 50f, 50f, 50f));
+            AssetThreatSnapshot local = snap.Threat.Threats.Single();
+            local.EnemyEta = 1;
+            snap.Threat.Threats = new[] {
+                ThreatForAsset(local.Contact, AssetKind.Citadel, Home, 3, 1000f), local };
+            MissionIntent intent = DefenceIntent(ActiveDefencePhase.Intercept, 99, 7, null);
+            intent.ActiveDefence.ProtectedAssetHex = Home;
+            intent.ActiveDefence.ProtectedAssetKind = AssetKind.Citadel;
+            intent.ActiveDefence.EnemyEta = 3;
+            MissionIntentKey key = intent.IntentKey;
+            var state = MissionIntentRegistry.GetOrCreate(owner);
+            state.Put(intent);
+            try
+            {
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Does.Contain(intent));
+                Assert.That(intent.IntentKey, Is.EqualTo(key));
+                Assert.That(state.All, Has.Count.EqualTo(1));
+                Assert.That(intent.ActiveDefence.ProtectedAssetHex, Is.EqualTo(Secondary));
+                Assert.That(intent.ActiveDefence.ProtectedAssetKind, Is.EqualTo(AssetKind.Base));
+                Assert.That(intent.ActiveDefence.EnemyEta, Is.EqualTo(1));
+                Assert.That(intent.ActiveDefence.LastKnownHex, Is.EqualTo(local.Contact.Position.Value));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void EarlierAsset_RetiresOldRegroupAndReleasesOnlyItsLease()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = AssetWorld(DefenceActor(owner, 1, Home, 9f, 7f, 12f),
+                DefenceActor(owner, 2, new HexCoord(2, 1), 9f, 7f, 12f));
+            AssetThreatSnapshot local = snap.Threat.Threats.Single();
+            local.EnemyEta = 1;
+            snap.Threat.Threats = new[] {
+                ThreatForAsset(local.Contact, AssetKind.Citadel, Home, 2, 1000f), local };
+            using var turn = AiTurnSession.Begin(owner, null, null, null, snap.TurnNumber);
+            MissionIntent oldRegroup = DefenceIntent(ActiveDefencePhase.Return, 99, 2, Home);
+            oldRegroup.ActiveDefence.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
+            oldRegroup.ActiveDefence.ProtectedAssetHex = Home;
+            oldRegroup.ActiveDefence.ProtectedAssetKind = AssetKind.Citadel;
+            oldRegroup.ActiveDefence.EnemyEta = 2;
+            MissionIntentKey oldKey = oldRegroup.IntentKey;
+            turn.PersistentState.Put(oldRegroup);
+            turn.Leases.For(oldKey).Claim(2);
+            var economyKey = MissionIntentKey.ForEconomy(EconomyTaskKind.FoundBase, 0, Home);
+            var economy = turn.Leases.For(economyKey);
+            economy.Reserve(StrategicReservationReason.EconomyDeferredBuild, StrategicReservedResource.Materials, 4f);
+            try
+            {
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+                Assert.That(turn.PersistentState.TryGet(oldKey, out _), Is.False);
+                Assert.That(turn.Leases.IsClaimed(2), Is.False);
+                Assert.That(economy.ResourceClaims.Single().Amount, Is.EqualTo(4f));
+                Assert.That(oldRegroup.ActiveDefence.ReturnHex, Is.EqualTo(Home),
+                    "a former regroup is retired, not silently redirected to another asset");
+                Assert.That(snap.Self.Armies.Single(a => a.ArmyId == 2).Hex, Is.EqualTo(new HexCoord(2, 1)));
+            }
+            finally { turn.Leases.Retire(economyKey); }
+        }
+
+        [Test]
+        public void DeadlineChange_ChangesAdmissionFingerprintAndRefreshesTrackedEnemy()
+        {
+            WorldSnapshot snap = AssetWorld();
+            AssetThreatSnapshot local = snap.Threat.Threats.Single();
+            local.EnemyEta = 3;
+            snap.Threat.Threats = new[] {
+                ThreatForAsset(local.Contact, AssetKind.Citadel, Home, 2, 1000f), local };
+            ActiveDefenceObjective before = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, 99);
+            string threatKey = WorldAnalysis.ThreatKey(local);
+            string fingerprint = AggressionAdmission.Fingerprint(snap, snap.Observer);
+            float reserve = ForceNeedModel.DefensiveReserveForThreats(snap.Threat.Threats);
+            Assert.That(before.Target.ProtectedAssetHex, Is.EqualTo(Home));
+            local.EnemyEta = 1;
+            Assert.That(WorldAnalysis.ThreatKey(local), Is.Not.EqualTo(threatKey));
+            Assert.That(AggressionAdmission.Fingerprint(snap, snap.Observer), Is.Not.EqualTo(fingerprint));
+            ActiveDefenceObjective after = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, 99);
+            Assert.That(after.Target.ProtectedAssetHex, Is.EqualTo(Secondary));
+            Assert.That(after.Target.EnemyEta, Is.EqualTo(1));
+            Assert.That(after.IntentKey, Is.EqualTo(before.IntentKey));
+            Assert.That(ForceNeedModel.DefensiveReserveForThreats(snap.Threat.Threats, log: true),
+                Is.EqualTo(reserve), "changed deadline and diagnostic asset do not clone physical power");
+        }
+
         [TestCase(0, 3, 0, true)]
         [TestCase(0, 0, 1, true)]
         [TestCase(-8, 3, 2, false)]
