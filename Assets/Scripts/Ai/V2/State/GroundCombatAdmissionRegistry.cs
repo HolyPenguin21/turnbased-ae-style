@@ -206,7 +206,10 @@ namespace Game.Ai.V2
                 0f,
                 proposal.FromDurableIntent ? proposal.PreferredMoverArmyId : null,
                 allowSameHexAssembly: GroundCombatAdmissionPolicy.AllowsSameHexAssembly(proposal),
-                preserveDepartureRoster: GroundCombatAdmissionPolicy.PreservesDepartureRoster(proposal));
+                preserveDepartureRoster: GroundCombatAdmissionPolicy.PreservesDepartureRoster(proposal),
+                acceptPlan: target.InterceptPurpose == ActiveDefenceInterceptPurpose.StrategicDefence
+                    ? candidate => ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(snap, target, candidate)
+                    : (Func<GroundCombatAssemblyPlan, bool>)null);
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
         }

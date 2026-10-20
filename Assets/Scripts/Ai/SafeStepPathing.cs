@@ -107,6 +107,19 @@ namespace Game.Ai
             return cached == null ? null : new HexPath(new List<HexCoord>(cached.Hexes), cached.TotalCost);
         }
 
+        // Deadline witnesses use the same turn-optimal search as FindAffordableStep. Keep this
+        // separate from cost-route caching: currentMovement changes the fastest route.
+        public static HexPath FindSafePathByTurns(HexMap map, PlayerSetupData owner,
+            HexCoord from, HexCoord targetHex, int currentMovement, int maxMovement,
+            SafeRouteProfile profile = SafeRouteProfile.Standard)
+        {
+            if (map == null || owner == null)
+                return null;
+            PlayerRouteCache cache = EnsureCacheState(map, owner);
+            return HexPathfinder.FindPathByTurns(map, from, targetHex, currentMovement, maxMovement,
+                SafeRouteBlocker(BlockersFor(cache, profile, false), targetHex));
+        }
+
         // Economy's PreparationTravelCost is min(base -> target), for many target hexes but
         // fixed base positions. One forward cost field per base is built lazily and reused
         // across candidates, refreshes and turns while map and remembered blockers stay equal.

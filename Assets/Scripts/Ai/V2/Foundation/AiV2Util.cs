@@ -44,6 +44,17 @@ namespace Game.Ai.V2
             return ids;
         }
 
+        // Snapshot-only deadline bucket shared by strategic defence and reserve diagnostics.
+        // Callers admit their own candidates first. A known arrival always precedes uncertainty;
+        // if every ETA is unknown, keep that unknown bucket for the caller's conservative policy.
+        // Nullable Min skips nulls and preserves a known int.MaxValue as distinct from unknown.
+        internal static IEnumerable<AssetThreatSnapshot> AtEarliestKnownThreatDeadline(
+            IEnumerable<AssetThreatSnapshot> threats)
+        {
+            int? earliest = threats.Min(t => t.EnemyEta);
+            return threats.Where(t => t.EnemyEta == earliest);
+        }
+
         // Turns an army needs to cover `distance`: this turn's remaining movement first, then its
         // full movement per turn (a distance within reach is one turn).
         internal static int TurnsToCover(ArmySnapshot army, int distance)

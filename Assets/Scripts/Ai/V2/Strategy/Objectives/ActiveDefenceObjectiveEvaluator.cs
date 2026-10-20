@@ -112,8 +112,8 @@ namespace Game.Ai.V2
     }
 
     // Threat -> objective is deliberately snapshot-only. One hostile army yields at most one
-    // objective: the protected asset is selected by the canonical TaskScore, never by a private
-    // defence-family multiplier.
+    // objective: defend its earliest known damage deadline, then use the canonical TaskScore
+    // inside that deadline bucket. Unknown ETA never displaces a known arrival.
     public static partial class ActiveDefenceObjectiveEvaluator
     {
         public static List<ActiveDefenceObjective> Enumerate(WorldSnapshot snap)
@@ -138,32 +138,27 @@ namespace Game.Ai.V2
                     && interceptableIds.Contains(t.Contact.Army.ArmyId))
                 .GroupBy(t => t.Contact.Army.ArmyId))
             {
-                AssetThreatSnapshot chosen = group
-                    .Select(t => new { Threat = t, Score = BuildActiveDefenceScore(snap, t) })
-                    .OrderByDescending(x => x.Score.Value)
-                    .ThenByDescending(x => x.Threat.Asset.Value * x.Threat.Severity)
-                    .ThenBy(x => x.Threat.EnemyEta ?? int.MaxValue)
-                    .ThenBy(x => x.Threat.Asset.Hex.Q).ThenBy(x => x.Threat.Asset.Hex.R)
-                    .Select(x => x.Threat).First();
-                if (OnKnownForeignStructure(snap, chosen.Contact.Position.Value))
+                EnemyContactSnapshot contact = group.First().Contact;
+                if (OnKnownForeignStructure(snap, contact.Position.Value))
                 {
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                         $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
                         + "reason=enemy_on_known_foreign_structure attack_owner_required");
                     continue;
                 }
-                // 2026-09-30 (user decision) — a contact that cannot take or damage what it
-                // approaches is no defence target: ActiveDefence does not chase every sighting.
-                if (chosen.PotentialDamage <= 0f)
+                // Damage is an admission gate for EACH pair, before selecting any deadline or
+                // score. A harmless pair must never hide another asset this army can damage.
+                List<AssetThreatSnapshot> damaging = group.Where(t => t.PotentialDamage > 0f).ToList();
+                if (damaging.Count == 0)
                 {
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                         $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
                         + "reason=no_potential_damage_to_any_asset");
                     continue;
                 }
-                // 2026-10-01 (user decision) — by roster strength, not by skills: a scout or a
-                // lone weak body is not worth an army's AP.
-                float enemyPower = chosen.Contact.Army.EffectiveArmyPower;
+                // Significance belongs to the physical enemy, not to the representative asset.
+                // ImmediateOpportunity retains its separate admission for weak targets.
+                float enemyPower = contact.Army.EffectiveArmyPower;
                 if (!IsSignificantHostilePower(enemyPower))
                 {
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
@@ -171,7 +166,18 @@ namespace Game.Ai.V2
                         + $"reason=enemy_below_min_power power={enemyPower:0.0}");
                     continue;
                 }
-                TaskScore score = BuildActiveDefenceScore(snap, chosen);
+                var representative = AiV2Util.AtEarliestKnownThreatDeadline(damaging)
+                    .Select(t => new { Threat = t, Score = BuildActiveDefenceScore(snap, t) })
+                    .OrderByDescending(x => x.Score.Value)
+                    .ThenByDescending(x => x.Threat.Asset.Value * x.Threat.Severity)
+                    // Approach cost is remaining terrain-route MP, not a finer turn deadline.
+                    // It breaks strategic ties within one ETA bucket; it does not outrank score.
+                    .ThenBy(x => x.Threat.EnemyApproachCost.HasValue ? 0 : 1)
+                    .ThenBy(x => x.Threat.EnemyApproachCost.GetValueOrDefault())
+                    .ThenBy(x => x.Threat.Asset.Hex.Q).ThenBy(x => x.Threat.Asset.Hex.R)
+                    .First();
+                AssetThreatSnapshot chosen = representative.Threat;
+                TaskScore score = representative.Score;
                 var target = new ActiveDefenceMissionTarget
                 {
                     Phase = ActiveDefencePhase.Intercept,
@@ -190,6 +196,7 @@ namespace Game.Ai.V2
                 AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                     $"[AI][V2][ActiveDefence][Objective] decision=ACCEPT enemy={group.Key} "
                     + $"asset={chosen.Asset.Kind}@({chosen.Asset.Hex.Q},{chosen.Asset.Hex.R}) "
+                    + $"enemyEta={chosen.EnemyEta?.ToString(CultureInfo.InvariantCulture) ?? "unknown"} "
                     + $"task={score.Value:0.00} severity={chosen.Severity:0.00}");
             }
 
@@ -631,26 +638,35 @@ namespace Game.Ai.V2
         internal static int ArrivalEta(WorldSnapshot snap, ArmySnapshot actor, HexCoord destination)
         {
             if (actor == null) return int.MaxValue;
-            if (actor.Hex.Equals(destination)) return 0;
-            if (actor.MaxMovement <= 0) return int.MaxValue;
-            HexPath route;
-            if (ReferenceEquals(snap?.Map, null))
-            {
-                if (actor.ReachableOwnBaseHexes?.Contains(destination) != true) return int.MaxValue;
-                route = AiV2Util.StraightLine(actor.Hex, destination);
-            }
-            else
-                route = SafeStepPathing.FindSafePath(snap.Map, snap.Observer, actor.Hex,
-                    destination, actor.MaxMovement, SafeRouteProfile.Combat);
+            if (ReferenceEquals(snap?.Map, null) && !actor.Hex.Equals(destination)
+                && actor.ReachableOwnBaseHexes?.Contains(destination) != true) return int.MaxValue;
+            return GroundArrivalEta(snap, actor.Hex, destination, actor.CurrentMovement, actor.MaxMovement);
+        }
+
+        // Preserve the reinforcement route contract. Intercept deadlines instead use execution's
+        // turn-optimal route; movement belongs to the final roster rather than the untouched host.
+        private static int GroundArrivalEta(WorldSnapshot snap, HexCoord from, HexCoord destination,
+            int currentMovement, int maxMovement, bool fastestByTurns = false)
+        {
+            if (from.Equals(destination)) return 0;
+            if (maxMovement <= 0) return int.MaxValue;
+            HexPath route = ReferenceEquals(snap?.Map, null)
+                ? AiV2Util.StraightLine(from, destination)
+                : fastestByTurns
+                    ? SafeStepPathing.FindSafePathByTurns(snap.Map, snap.Observer, from,
+                        destination, currentMovement, maxMovement, SafeRouteProfile.Combat)
+                    : SafeStepPathing.FindSafePath(snap.Map, snap.Observer, from,
+                        destination, maxMovement, SafeRouteProfile.Combat);
             if (route == null) return int.MaxValue;
-            int turns = 0, remaining = Math.Max(0, actor.CurrentMovement);
+            int turns = 0, remaining = Math.Max(0, fastestByTurns
+                ? Math.Min(currentMovement, maxMovement) : currentMovement);
             for (int i = 1; i < route.Hexes.Count; i++)
             {
                 int cost = 1;
                 if (!ReferenceEquals(snap?.Map, null) && snap.Map.TryGetTerrainAt(route.Hexes[i], out var entry))
                     cost = Math.Max(1, entry.moveCost);
-                if (cost > actor.MaxMovement) return int.MaxValue;
-                if (cost > remaining) { turns++; remaining = actor.MaxMovement; }
+                if (cost > maxMovement) return int.MaxValue;
+                if (cost > remaining) { turns++; remaining = maxMovement; }
                 remaining -= cost;
             }
             return turns;
@@ -903,8 +919,9 @@ namespace Game.Ai.V2
             if (withdrawing != null) planExcluded.UnionWith(withdrawing);
             if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
             foreach (ArmySnapshot a in snap.Self.Armies.Where(GroundCombatActorEligibility.IsStructuralActor))
-                if (!CanInterceptBeforeThreat(snap, a, objective)
-                    || IsPinnedStrongholdDefender(snap, a, committed)) planExcluded.Add(a.ArmyId);
+                if (IsPinnedStrongholdDefender(snap, a, committed)) planExcluded.Add(a.ArmyId);
+            // Timing is a complete-plan constraint. Filtering the original host here misses slow
+            // recruits and can also discard a host whose legal departure roster becomes faster.
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest
                 {
@@ -913,6 +930,7 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = pinnedActor,
                     PinToPreferred = pinnedActor.HasValue,
                     ExcludedArmyIds = planExcluded,
+                    AcceptPlan = candidate => CanInterceptPlanBeforeThreat(snap, objective.Target, candidate),
                 });
             if (plan.Feasible)
             {
@@ -922,7 +940,10 @@ namespace Game.Ai.V2
                 response.Reason = "direct_response";
                 return true;
             }
-            if (pinnedActor.HasValue && !planExcluded.Contains(pinnedActor.Value))
+            if (pinnedActor.HasValue && !planExcluded.Contains(pinnedActor.Value)
+                && CanInterceptPlanBeforeThreat(snap, objective.Target,
+                    GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,
+                        pinnedActor.Value, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor)))
             {
                 // Continuity already re-tested the incumbent's capability this pass; failing the
                 // ready plan here only means it cannot move right now.
@@ -939,9 +960,9 @@ namespace Game.Ai.V2
                 && (committed == null || !committed.Contains(a.ArmyId))
                 && !IsPinnedStrongholdDefender(snap, a, committed)
                 && (withdrawing == null || !withdrawing.Contains(a.ArmyId))
-                && CanInterceptBeforeThreat(snap, a, objective)
-                && GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,
-                    a.ArmyId, freshGate).Feasible);
+                && CanInterceptPlanBeforeThreat(snap, objective.Target,
+                    GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,
+                        a.ArmyId, freshGate)));
             if (capable != null)
             {
                 response.Kind = ActiveDefenceResponseKind.Defer;
@@ -961,19 +982,30 @@ namespace Game.Ai.V2
                 powerExcluded, requireMovementNow: false);
         }
 
-        private static bool CanInterceptBeforeThreat(WorldSnapshot snap, ArmySnapshot actor,
-            ActiveDefenceObjective objective)
+        // Shared by response selection, actor admission, assigned binding and continuity.
+        // Our own live roster projection is the same one already used to price the proposal.
+        internal static bool CanInterceptPlanBeforeThreat(WorldSnapshot snap,
+            ActiveDefenceMissionTarget target, GroundCombatAssemblyPlan plan)
         {
-            // Intercept's target is not an own base, so use the same route witness directly.
-            if (ReferenceEquals(snap?.Map, null))
-            {
-                int cost = AiV2Util.TravelCost(snap, actor, objective.Target.LastKnownHex);
-                int eta = actor.Hex.Equals(objective.Target.LastKnownHex) ? 0 : AiV2Util.TurnsToCover(actor, cost) - 1;
-                return objective.Target.EnemyEta.HasValue && eta < objective.Target.EnemyEta.Value;
-            }
-            return CanArriveBeforeThreat(snap, actor, objective.Target.LastKnownHex,
-                objective.Target.EnemyEta, out _);
+            if (plan?.Feasible != true || snap?.Self?.Armies == null) return false;
+            ArmySnapshot host = snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == plan.BaseArmyId);
+            if (host == null) return false;
+            int current = GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, plan) ?? host.CurrentMovement;
+            int maximum = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan) ?? host.MaxMovement;
+            return CanInterceptRosterBeforeThreat(snap, host.Hex, target.LastKnownHex,
+                target.EnemyEta, current, maximum, out _);
         }
+
+        // Final-roster seam used again before any provisioning mutation. Unknown is uncertainty;
+        // arrival at the same future ETA is too late under the existing conservative turn order.
+        internal static bool CanInterceptRosterBeforeThreat(WorldSnapshot snap, HexCoord from,
+            HexCoord enemyHex, int? enemyEta, int currentMovement, int maxMovement, out int arrivalEta)
+        {
+            arrivalEta = GroundArrivalEta(snap, from, enemyHex, currentMovement, maxMovement,
+                fastestByTurns: true);
+            return arrivalEta != int.MaxValue && enemyEta.HasValue && arrivalEta < enemyEta.Value;
+        }
+
     }
 }
 
