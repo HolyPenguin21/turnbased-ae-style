@@ -33,6 +33,25 @@ namespace Game.Cards
                     : card.attachmentSlot == AttachmentSlot.Equipment ? DeckCategory.Equipment : DeckCategory.System;
             return card.cardType == CardType.Hero || card.cardType == CardType.Unit || card.cardType == CardType.Base || card.cardType == CardType.Facility ? DeckCategory.Main : DeckCategory.System;
         }
+        // Shared card order (collection, deck list, Research/Production modal): Buildings, Heroes, Units, Equipment, Mutators.
+        public static int SectionOrder(CardDefinition card)
+            => card == null ? 5 : card.cardType == CardType.Base || card.cardType == CardType.Facility ? 0
+                : card.cardType == CardType.Hero ? 1 : card.cardType == CardType.Unit ? 2
+                : Category(card) == DeckCategory.Equipment ? 3 : 4;
+        // Equipment and mutators are ordered by production Challenge difficulty (CardDefinition.fate), everything else by AP;
+        // the total ResourceCost breaks ties at both levels.
+        public static IOrderedEnumerable<T> OrderCards<T>(IEnumerable<T> rows, Func<T, CardDefinition> resolve)
+            => rows.OrderBy(row => SectionOrder(resolve(row)))
+                .ThenBy(row => SortsByChallenge(resolve(row)) ? resolve(row).fate : resolve(row)?.apCost ?? 0)
+                .ThenBy(row => TotalResourceCost(resolve(row)))
+                .ThenBy(row => resolve(row)?.deckPointCost ?? 0)
+                .ThenBy(row => resolve(row)?.displayName ?? "", StringComparer.Ordinal);
+        private static bool SortsByChallenge(CardDefinition card) => card != null && card.cardType == CardType.Equipment;
+        private static int TotalResourceCost(CardDefinition card)
+        {
+            var cost = card?.resourceCost;
+            return cost == null ? 0 : cost.human + cost.energy + cost.materials + cost.tech;
+        }
         // Equipment and mutators are blueprints: one owned copy and one deck slot unlock unlimited production in a match.
         public static int CopyLimit(CardDefinition card)
         {

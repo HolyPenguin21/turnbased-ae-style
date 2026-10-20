@@ -196,23 +196,13 @@ namespace Game.UI
             for (int i = 0; i < visible.Count; i++) cells[i].SetCounts(collection.Owned(visible[i].authoredKey), Used(visible[i].authoredKey),
                 collection.Rules.CanAdd(draft, visible[i].authoredKey, collection.Owned));
         }
-        private static int CollectionOrder(CardDefinition card)
-            => card == null ? 5 : card.cardType == CardType.Base || card.cardType == CardType.Facility ? 0
-                : card.cardType == CardType.Hero ? 1 : card.cardType == CardType.Unit ? 2
-                : DeckRules.Category(card) == DeckCategory.Equipment ? 3 : 4;
         private static int DeckSection(CardDefinition card)
         {
-            int order = CollectionOrder(card);
+            int order = DeckRules.SectionOrder(card);
             return card == null || order > 4 ? 5 : order;
         }
-        // Equipment and mutators are ordered by production Challenge difficulty (CardDefinition.fate) within their section.
-        private static bool SortsByChallenge(CardDefinition card) => card != null && card.cardType == CardType.Equipment;
         private static IOrderedEnumerable<T> OrderCards<T>(IEnumerable<T> rows, Func<T, CardDefinition> resolve)
-            => rows.OrderBy(row => CollectionOrder(resolve(row)))
-                .ThenBy(row => SortsByChallenge(resolve(row)) ? resolve(row).fate : 0)
-                .ThenBy(row => resolve(row)?.apCost ?? 0)
-                .ThenBy(row => resolve(row)?.deckPointCost ?? 0)
-                .ThenBy(row => resolve(row)?.displayName ?? "", StringComparer.Ordinal);
+            => DeckRules.OrderCards(rows, resolve);
         // The highlight frame is authored on the CollectionCard prefab ("Selection"); only toggled here.
         private void UpdateSelectionGlow()
         {

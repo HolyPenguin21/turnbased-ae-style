@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Game.Cards;
 using Game.Core;
@@ -126,7 +127,7 @@ namespace Game.UI
             _mode = mode;
             _hero = hero;
             Faction viewerFaction = player != null ? player.Faction : Faction.None;
-            _cards = ResearchProductionSystem.OfferedCards(catalog, mode, player);
+            _cards = DeckRules.OrderCards(ResearchProductionSystem.OfferedCards(catalog, mode, player), c => c).ToList();
             _page = 0;
             _selected = null;
             _busy = false;
@@ -207,7 +208,7 @@ namespace Game.UI
             _busy = busy;
             if (!busy)
             {
-                _cards = ResearchProductionSystem.OfferedCards(catalog, _mode, _player);
+                _cards = DeckRules.OrderCards(ResearchProductionSystem.OfferedCards(catalog, _mode, _player), c => c).ToList();
                 if (!_cards.Contains(_selected)) _selected = null;
                 _page = Mathf.Min(_page, PageCount - 1);
                 RefreshGrid();
