@@ -861,7 +861,6 @@ namespace Game.EditorTests
                 Assert.That(funded, Is.SameAs(proposal));
                 Assert.That(((ActiveDefenceMissionTarget)funded.Target).ProtectedAssetHex, Is.EqualTo(Secondary));
                 Assert.That(((ActiveDefenceMissionTarget)funded.Target).EnemyEta, Is.EqualTo(1));
-                Assert.That(StableMissionKey.For(funded), Is.EqualTo(StableMissionKey.For(proposal)));
                 Assert.That(MissionIntentKey.For(funded), Is.EqualTo(MissionIntentKey.ForActiveDefence(99)));
             }
             finally { AiAllocatorStateRegistry.Clear(); MissionIntentRegistry.Clear(); }
