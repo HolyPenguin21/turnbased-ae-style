@@ -125,6 +125,50 @@ namespace Game.EditorTests
             return controller;
         }
 
+        private IEnumerator RevealResidentIntoEnemy(bool hero)
+        {
+            ArmyData mover = Army(air: false);
+            mover.Members[0].IsHero = hero;
+            mover.Members[0].IsHidden = true;
+            var enemy = new ArmyData { Owner = new PlayerSetupData(), Hex = _origin };
+            enemy.Members.Add(new UnitData { Owner = enemy.Owner, HitPointsCurrent = 5 });
+            ArmyRegistry.Register(enemy);
+
+            StealthSystem.ExitStealth(mover.Members[0]);
+            Assert.That(_selection.IsBattleActive, Is.True, "Queued contact must pause further AI orders.");
+            yield return null;
+            yield return null;
+
+            Assert.That(mover.Members[0].MoveCurrent, Is.Zero,
+                "Revealing must commit the same attack action as an arrival without another move order.");
+            Assert.That(mover.Hex, Is.EqualTo(_origin));
+            Assert.That(ArmyRegistry.IsRegistered(mover), Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator RevealingResidentUnitStartsArrivalContact() => RevealResidentIntoEnemy(false);
+
+        [UnityTest]
+        public IEnumerator RevealingResidentHeroStartsArrivalContact() => RevealResidentIntoEnemy(true);
+
+        [UnityTest]
+        public IEnumerator RevealDoesNotEngageAnUnseenEnemy()
+        {
+            ArmyData mover = Army(air: false);
+            mover.Members[0].IsHidden = true;
+            var enemy = new ArmyData { Owner = new PlayerSetupData(), Hex = _origin };
+            enemy.Members.Add(new UnitData { Owner = enemy.Owner, IsHidden = true, HitPointsCurrent = 5 });
+            ArmyRegistry.Register(enemy);
+
+            StealthSystem.ExitStealth(mover.Members[0]);
+            yield return null;
+            yield return null;
+
+            Assert.That(mover.Members[0].MoveCurrent, Is.EqualTo(5));
+            Assert.That(enemy.Members[0].IsHidden, Is.True);
+            Assert.That(_selection.IsBattleActive, Is.False);
+        }
+
         [UnityTest]
         public IEnumerator RepeatedReconciliationDoesNotRestartLayoutTransition()
         {

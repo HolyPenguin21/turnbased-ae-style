@@ -64,6 +64,20 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void RevealedHeroInitiatesContactEvenWhileItsCombatantsRemainHidden()
+        {
+            _hero.Members[0].IsHidden = true;
+            _hero.Members.Add(new UnitData { Owner = _hero.Owner, IsHidden = true, HitPointsCurrent = 5 });
+            Assert.That(BattleInitiator.CanInitiateContact(_hero), Is.False);
+
+            StealthSystem.ExitStealth(_hero.Members[0]);
+
+            Assert.That(BattleInitiator.CanInitiateContact(_hero), Is.True);
+            Assert.That(_hero.Members[1].IsHidden, Is.True,
+                "Other members reveal only when the encounter is committed.");
+        }
+
+        [Test]
         public void HeroSkipsSoloHeroToFindActualHunter()
         {
             ArmyRegistry.Register(Army(_enemy, true));

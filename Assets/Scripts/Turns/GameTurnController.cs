@@ -168,7 +168,7 @@ namespace Game.Turns
         // Re-derives both cached bools from the underlying popups' current IsShowing/
         // IsRenamePopupShowing state — called once up front (OnEnable) and again every time one
         // of them raises VisibilityChanged, never on a timer/every frame.
-        private bool IsCombatPresentationActive =>
+        public bool IsCombatPresentationActive =>
             (battleContactPopup != null && battleContactPopup.IsShowing)
             || (battleScreen != null && battleScreen.IsShowing)
             || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
