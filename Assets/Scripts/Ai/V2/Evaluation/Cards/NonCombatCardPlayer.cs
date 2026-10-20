@@ -145,6 +145,8 @@ namespace Game.Ai.V2
             var objectives = ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList();
             var targets = KnownStrikeTargets(snap, player, root, ctx, objectives);
             var projected = ProjectedAircraft(card, player);
+            targets = GroundCombatAirSupport.UncoveredMissileStock(snap, projected, targets,
+                snap.Self?.Hand, snap.Map);
             var minted = new CardData(card) { ResearchProductionCreated = true };
             var fields = PlacementRules.EnumerateAviationPlacements(snap, player, root, minted,
                 out _, requireCurrentAp: false);
@@ -153,10 +155,21 @@ namespace Game.Ai.V2
             {
                 var service = AirfieldServiceTaskScore(snap, player, ctx, projected, field,
                     objectives, targets, false, out _, out _, out string use);
-                if (use != null) best = Mathf.Max(best, ActionPrice.ToCardScore(
-                    ActionPrice.FromTaskScore(service.Value)));
+                if (use != null) best = Mathf.Max(best, OperatorAviationServiceValue(snap, source, service));
             }
             return best;
+        }
+
+        // Successful-output utility on the same scale as real production. The operator portfolio
+        // applies success probability, attempt cost and success-contingent deployment cost later.
+        internal static float OperatorAviationServiceValue(WorldSnapshot snap, GenerationStep source,
+            TaskScore service)
+        {
+            var card = ResearchProductionSystem.MintCard(source.CardDef);
+            var successful = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Aviation,
+                card, snap, null, null, 0f, actualApCost: 0f, actualResourceCost: new ResourceCost(),
+                player: snap.Observer, operationalTask: service);
+            return Mathf.Max(0f, successful.NetScore) * StrategicCardEvaluator.ProductionNeedScale(source, snap);
         }
 
         // Pure card-type router: which Phase-B lane owns this card. null => the Unit/Hero/Recce
@@ -434,6 +447,10 @@ namespace Game.Ai.V2
                 ? KnownStrikeTargets(snap, player, root, ctx, objectives) : null;
             List<UnitData> projected = ProjectedAircraft(def, player);
 
+            if (strikeTargets != null)
+                strikeTargets = GroundCombatAirSupport.UncoveredMissileStock(snap, projected,
+                    strikeTargets, hand.Hand, ctx.Map, card);
+
             foreach (HexCoord airfield in airfields)
             {
                 TaskScore service = AirfieldServiceTaskScore(snap, player, ctx, projected, airfield,
@@ -498,17 +515,15 @@ namespace Game.Ai.V2
                     || (use != null && combat.Value.Score.Value <= service.Value)) continue;
                 service = combat.Value.Score;
                 coverage = 1;
-                witness = $"{target.Key}; first strike in {combat.Value.FirstStrikeEta} turn(s)";
-                use = $"strike@({target.Target.Q},{target.Target.R})";
+                witness = $"{target.Identity}; first strike in {combat.Value.FirstStrikeEta} turn(s)";
+                use = $"{(target.IsStockPreparation ? "missile-stock" : "strike")}@({target.Target.Q},{target.Target.R})";
             }
             return service;
         }
 
-        // Ground-combat targets a new aircraft would actually serve: the targets of EXISTING tasks
-        // (Attack in Assault, weak Raid, ActiveDefence threats) that still want air support and are
-        // not covered by a free formed wing — the same demand wing formation reads
-        // (AviationRebasePlanner.CombatSupportTargets). Never an arbitrary sighting outside a
-        // task, and never a Hex Event guard: aviation does not interact with events at all.
+        // Executable support plus honest missile-preparation witnesses. Formation still reads
+        // only CombatSupportTargets; a reserve witness never owns or launches an attack.
+        // Inventory is filtered at production/deployment, not rebase (self must not hide demand).
         internal static List<CombatAirSupportRequest> KnownStrikeTargets(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ReconObjective> objectives)
@@ -517,7 +532,8 @@ namespace Game.Ai.V2
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
             return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,
-                AviationRebasePlanner.CombatSupportTargets(snap, intents), commitments);
+                AviationRebasePlanner.CombatSupportTargets(snap, intents), commitments)
+                .Concat(GroundCombatAirSupport.MissileStockTargets(snap)).ToList();
         }
 
         // The not-yet-deployed aircraft as the sortie planners see it. It carries the card's
