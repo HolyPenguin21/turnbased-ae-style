@@ -26,6 +26,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: da0d54dcbe205ce489ece2c9e8a23ff2, type: 3}
     faction: 5
     cardType: 3
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 6
@@ -77,6 +79,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: bf21b67d522ea064fa490539b2cb0a55, type: 3}
     faction: 5
     cardType: 3
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 2
@@ -129,6 +133,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 59d77303432e0654597b2db7f2d902cd, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -176,6 +182,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d8184348426f8b54b93b46e5b4f9dd2e, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -223,6 +231,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: daf5b83dfc25ba2438b2edb6feefc105, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -270,6 +280,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d9d228f694ab7bc4c91b2cd5acb62bf4, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -317,6 +329,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4dd249ca9c014d3439c9a49c16eed89a, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -364,6 +378,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e8919f2b6e8c88e4faf9b0d7b572c941, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -412,6 +428,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9c6c10a839f307d4abe29b1a42030d6c, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -459,6 +477,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 505d8b70a72fe274d9868de714c42c5e, type: 3}
     faction: 5
     cardType: 0
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -491,7 +511,7 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -506,6 +526,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 1b2209b9d7f9d22408bf18d2fb6e7410, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -539,59 +561,12 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 11
-    authoredKey: vessels.11.glass-runner
-    deckPointCost: 2
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Glass Runner
-    art: {fileID: 21300000, guid: cfd62e85aaef0dc468d0a4a6d7a25b3b, type: 3}
-    detailArt: {fileID: 21300000, guid: c0982e566af8015498bf9c1713f88490, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 4
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - r1s5
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 12
     authoredKey: vessels.12.salvage-drone
     deckPointCost: 1
     deckCopyLimit: 4
@@ -601,6 +576,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 30c6a1490948f7142a8392c75c716244, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -633,59 +610,12 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 13
-    authoredKey: vessels.13.arc-sentry
-    deckPointCost: 2
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Arc Sentry
-    art: {fileID: 21300000, guid: 28869c7719831194b8c6d326c4aad691, type: 3}
-    detailArt: {fileID: 21300000, guid: 7394993431a00b44a8732ee443cfb51e, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 0
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000007000000
-    grantedAbilities:
-    - AA
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 14
+  - id: 12
     authoredKey: vessels.14.shard-wanderer
     deckPointCost: 1
     deckCopyLimit: 4
@@ -695,6 +625,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 230baa9dc3256834191852cbd6020bb3, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
@@ -709,7 +641,7 @@ MonoBehaviour:
     attack: 2
     defenseRating: 1
     range: 1
-    hitPoints: 5
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -717,7 +649,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000003000000
-    grantedAbilities: []
+    grantedAbilities:
+    - RapidReaction
     resourceYield:
       human: 0
       energy: 0
@@ -726,12 +659,61 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 15
+  - id: 13
+    authoredKey: vessels.unit.silt-pilgrim
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Silt Pilgrim
+    art: {fileID: 21300000, guid: a98e261d38e15844490d804ba1c97730, type: 3}
+    detailArt: {fileID: 21300000, guid: 24fead8a09f060745be0b845f9e93654, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    range: 1
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - Drill
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 14
     authoredKey: vessels.15.vessel-rifleman
     deckPointCost: 1
     deckCopyLimit: 4
@@ -741,11 +723,13 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: caa76e0de0b0f6f4792b9a2b2d193d45, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 1
     resourceCost:
       human: 0
-      energy: 1
-      materials: 0
+      energy: 0
+      materials: 1
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
@@ -772,12 +756,12 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 16
+  - id: 15
     authoredKey: vessels.27.arc-cantor
     deckPointCost: 2
     deckCopyLimit: 4
@@ -787,6 +771,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a06fbe592e8a13c4db4cf26d5911e5bf, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -820,12 +806,12 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 17
+  - id: 16
     authoredKey: vessels.16.bulwark-vessel
     deckPointCost: 2
     deckCopyLimit: 4
@@ -835,6 +821,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: cc319ccd30a3f5a49ab5b7449ca95fa5, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -858,7 +846,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 0100000003000000
     grantedAbilities:
-    - RapidReaction
+    - Bodyguard
     resourceYield:
       human: 0
       energy: 0
@@ -867,34 +855,36 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 18
-    authoredKey: vessels.17.relay-carrier
+  - id: 17
+    authoredKey: vessels.11.glass-runner
     deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Relay Carrier
-    art: {fileID: 21300000, guid: 1e6024ece4a8dda4583a77dd3c5e523f, type: 3}
-    detailArt: {fileID: 21300000, guid: f8c9ec906a566f34aba9841682ac6940, type: 3}
+    displayName: Glass Runner
+    art: {fileID: 21300000, guid: cfd62e85aaef0dc468d0a4a6d7a25b3b, type: 3}
+    detailArt: {fileID: 21300000, guid: c0982e566af8015498bf9c1713f88490, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
-      energy: 1
-      materials: 1
-      tech: 1
+      energy: 0
+      materials: 2
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 3
-    defenseRating: 1
+    defenseRating: 2
     range: 2
     hitPoints: 4
     initiative: 1
@@ -906,7 +896,6 @@ MonoBehaviour:
     unitTypeTags: 0100000004000000
     grantedAbilities:
     - r1s5
-    - Transport
     resourceYield:
       human: 0
       energy: 0
@@ -915,12 +904,109 @@ MonoBehaviour:
     attachmentSlot: 0
     equipment:
       hostTypeTags: 
-      hostKinds: 00000000
+      hostKinds: 
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 18
+    authoredKey: vessels.unit.mantle-skirmisher
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Mantle Skirmisher
+    art: {fileID: 21300000, guid: 61a354e15615a7d4ca285ca7fac573e9, type: 3}
+    detailArt: {fileID: 21300000, guid: 2ffdb0196b4f4cd4c9a19eb3bee1fe01, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - CriticalDamage
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 19
+    authoredKey: vessels.unit.tuning-blade
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Tuning Blade
+    art: {fileID: 21300000, guid: d718dadcbbe315b4093b93a3d696581d, type: 3}
+    detailArt: {fileID: 21300000, guid: cfa1b9637e7227f44a315253b620f305, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 2
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 1
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 20
     authoredKey: vessels.18.bastion-frame
     deckPointCost: 2
     deckCopyLimit: 4
@@ -930,6 +1016,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9a19f270c97a2254c84854339c9559a8, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -967,7 +1055,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 20
+  - id: 21
     authoredKey: vessels.19.heavy-sentinel
     deckPointCost: 2
     deckCopyLimit: 4
@@ -977,6 +1065,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 81d1e4212164606468902a6a9d8be400, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -1014,7 +1104,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 21
+  - id: 22
     authoredKey: vessels.20.siege-walker
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1024,6 +1114,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c81547030d04f474cbaca3b6b9928a34, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -1060,7 +1152,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 22
+  - id: 23
     authoredKey: vessels.21.resonance-tank
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1070,6 +1162,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e0723383a0674c54eb343ed8192e3924, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1107,7 +1201,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 23
+  - id: 24
     authoredKey: vessels.22.monolith
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1117,6 +1211,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 238fcf58290242d4b8fffb446bd73dae, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -1154,7 +1250,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 24
+  - id: 25
     authoredKey: vessels.23.echo-mortar
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1164,6 +1260,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6d044fbc4c7806b42ae58e516d5ed5ea, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -1201,7 +1299,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 25
+  - id: 26
     authoredKey: vessels.24.prism-engine
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1211,6 +1309,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: eb054e7ae60fa9b4c971bc7bfcec9c2e, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1248,7 +1348,56 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 26
+  - id: 27
+    authoredKey: vessels.13.arc-sentry
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Arc Sentry
+    art: {fileID: 21300000, guid: 28869c7719831194b8c6d326c4aad691, type: 3}
+    detailArt: {fileID: 21300000, guid: 7394993431a00b44a8732ee443cfb51e, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 28
     authoredKey: vessels.25.harmonic-howitzer
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1258,6 +1407,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 219ed894ee6967b409c894aa65e7c418, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1296,7 +1447,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 27
+  - id: 29
     authoredKey: vessels.26.skimmer
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1306,6 +1457,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0759e5a2604d95142ad2e2436b65363d, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -1343,53 +1496,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 28
-    authoredKey: vessels.28.dreadnought
-    deckPointCost: 2
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Dreadnought
-    art: {fileID: 21300000, guid: 2486b42d5617b784188165166284338d, type: 3}
-    detailArt: {fileID: 21300000, guid: c01965a8b73307e4797d3c7d744f00d7, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 6
-    resourceCost:
-      human: 0
-      energy: 3
-      materials: 3
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 5
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 4
-    range: 3
-    hitPoints: 8
-    initiative: 1
-    isAviation: 1
-    launchEnergyCost: 3
-    turnsWithoutRefuel: 2
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 29
+  - id: 30
     authoredKey: vessels.27.gyrocopter
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1399,6 +1506,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6f9bf8d5d1e6be644882257e28418780, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -1436,7 +1545,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 30
+  - id: 31
     authoredKey: vessels.27.null-vessel
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1446,6 +1555,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 79d4cead0a93fcc46b1a4f179607e630, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1483,7 +1594,57 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 31
+  - id: 32
+    authoredKey: vessels.17.relay-carrier
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Relay Carrier
+    art: {fileID: 21300000, guid: 1e6024ece4a8dda4583a77dd3c5e523f, type: 3}
+    detailArt: {fileID: 21300000, guid: f8c9ec906a566f34aba9841682ac6940, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - r1s5
+    - Transport
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 33
     authoredKey: vessels.27.lens-watcher
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1493,6 +1654,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e61f9b8e2cbbcc64bbd2921cd2dcc6fe, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -1529,7 +1692,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 32
+  - id: 34
     authoredKey: vessels.unit.anchor-warden
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1539,6 +1702,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 1aeff58901602d849a9fff8173eacd47, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1569,13 +1734,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 33
+  - id: 35
     authoredKey: vessels.unit.bell-breacher
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1585,6 +1750,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: bb6531b895c06be4399ee71800358b8c, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1615,13 +1782,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 34
+  - id: 36
     authoredKey: vessels.unit.bell-tortoise
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1631,6 +1798,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c413faa2829d191469f45199a60aec59, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1661,13 +1830,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 35
+  - id: 37
     authoredKey: vessels.unit.casket-ram
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1677,6 +1846,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0459be2e2b172fc428303ffcd4db3bf9, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1707,13 +1878,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 36
+  - id: 38
     authoredKey: vessels.unit.censer-battery
     deckPointCost: 6
     deckCopyLimit: 4
@@ -1723,21 +1894,23 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 22a54de8545decb4cbb360d910117440, type: 3}
     faction: 5
     cardType: 1
-    apCost: 8
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
     resourceCost:
       human: 0
-      energy: 5
-      materials: 2
-      tech: 4
+      energy: 2
+      materials: 3
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 7
+    attack: 1
     defenseRating: 2
-    range: 4
-    hitPoints: 5
+    range: 1
+    hitPoints: 6
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1745,7 +1918,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 010000000400000007000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Drill
     resourceYield:
       human: 0
       energy: 0
@@ -1753,13 +1927,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 37
+  - id: 39
     authoredKey: vessels.unit.censer-keeper
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1769,6 +1943,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 404a214075ec2354ab8d6737245005df, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -1799,13 +1975,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 38
+  - id: 40
     authoredKey: vessels.unit.chime-grenadier
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1815,6 +1991,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 60facb9d68bd0144da6b045ae84b7294, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1845,13 +2023,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 39
+  - id: 41
     authoredKey: vessels.unit.chime-suppressor
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1861,6 +2039,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 2d615d994ca3ddc4890dd50ba667ca34, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -1891,13 +2071,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 40
+  - id: 42
     authoredKey: vessels.unit.choir-roller
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1907,6 +2087,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: ad51125a412132e4196bf11bb9f0d7f3, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1937,13 +2119,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 41
+  - id: 43
     authoredKey: vessels.unit.chord-tug
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1953,6 +2135,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f98a8bb442bd0b24bb2586334db38365, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 4
     resourceCost:
       human: 0
@@ -1983,13 +2167,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 42
+  - id: 44
     authoredKey: vessels.unit.chordbreaker
     deckPointCost: 5
     deckCopyLimit: 4
@@ -1999,6 +2183,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 5bf80d56731331141980c2f04fc60a46, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2029,13 +2215,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 43
+  - id: 45
     authoredKey: vessels.unit.core-tender
     deckPointCost: 2
     deckCopyLimit: 4
@@ -2045,7 +2231,9 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f65ff71272076b449bf87f5501379bdd, type: 3}
     faction: 5
     cardType: 1
-    apCost: 2
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
@@ -2075,13 +2263,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 44
+  - id: 46
     authoredKey: vessels.unit.counterweight-lobber
     deckPointCost: 4
     deckCopyLimit: 4
@@ -2091,6 +2279,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4e18c5149d6d06b46890a5229ef1ea69, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2121,13 +2311,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 45
+  - id: 47
     authoredKey: vessels.unit.duplex-crawler
     deckPointCost: 3
     deckCopyLimit: 4
@@ -2137,6 +2327,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 8517933311e081448ac82d60698ad189, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -2167,13 +2359,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 46
+  - id: 48
     authoredKey: vessels.unit.halo-interceptor
     deckPointCost: 4
     deckCopyLimit: 4
@@ -2183,6 +2375,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 3fce155fe7f9e914f8d88c6eb7fdbbba, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2213,13 +2407,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 47
+  - id: 49
     authoredKey: vessels.unit.halo-kite
     deckPointCost: 2
     deckCopyLimit: 4
@@ -2229,7 +2423,9 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c166ab18921b7ef4cb6acf4950f29e56, type: 3}
     faction: 5
     cardType: 1
-    apCost: 2
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
@@ -2259,13 +2455,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 48
+  - id: 50
     authoredKey: vessels.unit.lensbreaker
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2275,6 +2471,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d086e125d7a45724ca146062434b693a, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2305,59 +2503,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 49
-    authoredKey: vessels.unit.mantle-skirmisher
-    deckPointCost: 2
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Mantle Skirmisher
-    art: {fileID: 21300000, guid: 61a354e15615a7d4ca285ca7fac573e9, type: 3}
-    detailArt: {fileID: 21300000, guid: 2ffdb0196b4f4cd4c9a19eb3bee1fe01, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 2
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags:
-      hostKinds: 00000000
-      clearAbilityFamilies:
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 50
+  - id: 51
     authoredKey: vessels.unit.mirror-duelist
     deckPointCost: 3
     deckCopyLimit: 4
@@ -2367,6 +2519,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d68d44ab82b3d2a40a8bdc7f25f87c8c, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -2397,13 +2551,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 51
+  - id: 52
     authoredKey: vessels.unit.mnemonic-carrier
     deckPointCost: 3
     deckCopyLimit: 4
@@ -2413,6 +2567,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a58fa4cd8642fd0448fd0b2a800cd98f, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -2443,13 +2599,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 52
+  - id: 53
     authoredKey: vessels.unit.mnemonic-loom
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2459,6 +2615,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9cffaffdad6ba6346af80343b3c391e5, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 7
     resourceCost:
       human: 0
@@ -2489,13 +2647,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 53
+  - id: 54
     authoredKey: vessels.unit.moth-bomber
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2505,6 +2663,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a2f1bbbc5316c2344bf47923328c34d6, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2535,13 +2695,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 54
+  - id: 55
     authoredKey: vessels.unit.palisade-frame
     deckPointCost: 6
     deckCopyLimit: 4
@@ -2551,6 +2711,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 695702e3e123c234ba474221be6ffa06, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 7
     resourceCost:
       human: 0
@@ -2581,55 +2743,9 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 55
-    authoredKey: vessels.unit.pendulum-frame
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Pendulum Frame
-    art: {fileID: 21300000, guid: 9f4cba691d0387849a8c962fccebdcd8, type: 3}
-    detailArt: {fileID: 21300000, guid: 8a37fe6d568560d48b18512f5c56ade6, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 4
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000200000005000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags:
-      hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -2643,6 +2759,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d6b364f655b634e429c7e29b7c8c23d0, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -2673,9 +2791,9 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -2689,6 +2807,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a3ed8becc5be5d9409013f1114c85b80, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -2719,9 +2839,9 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -2735,6 +2855,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 615c0e870968b9d4eaf3bcddf53f8cd7, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 5
     resourceCost:
       human: 0
@@ -2765,9 +2887,9 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -2781,6 +2903,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: d9bf50670cad8804196456281a442937, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 3
     resourceCost:
       human: 0
@@ -2811,59 +2935,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 60
-    authoredKey: vessels.unit.silt-pilgrim
-    deckPointCost: 1
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Silt Pilgrim
-    art: {fileID: 21300000, guid: a98e261d38e15844490d804ba1c97730, type: 3}
-    detailArt: {fileID: 21300000, guid: 24fead8a09f060745be0b845f9e93654, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 0
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 1
-    range: 1
-    hitPoints: 4
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags:
-      hostKinds: 00000000
-      clearAbilityFamilies:
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 61
     authoredKey: vessels.unit.spindle-gunner
     deckPointCost: 3
     deckCopyLimit: 4
@@ -2873,6 +2951,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: cefa99ee55abdae49872c5479e2064bb, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 2
     resourceCost:
       human: 0
@@ -2903,59 +2983,13 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 62
-    authoredKey: vessels.unit.tuning-blade
-    deckPointCost: 2
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Tuning Blade
-    art: {fileID: 21300000, guid: d718dadcbbe315b4093b93a3d696581d, type: 3}
-    detailArt: {fileID: 21300000, guid: cfa1b9637e7227f44a315253b620f305, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 2
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 1
-    hitPoints: 4
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags:
-      hostKinds: 00000000
-      clearAbilityFamilies:
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 63
+  - id: 61
     authoredKey: vessels.unit.tuning-fork
     deckPointCost: 5
     deckCopyLimit: 4
@@ -2965,6 +2999,8 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6ba45a9abad270b449a87b916a0ebeb0, type: 3}
     faction: 5
     cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
     apCost: 6
     resourceCost:
       human: 0
@@ -2995,9 +3031,106 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 62
+    authoredKey: vessels.28.dreadnought
+    deckPointCost: 8
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Dreadnought
+    art: {fileID: 21300000, guid: 2486b42d5617b784188165166284338d, type: 3}
+    detailArt: {fileID: 21300000, guid: c01965a8b73307e4797d3c7d744f00d7, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 8
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 3
+      tech: 4
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 8
+    defenseRating: 4
+    range: 1
+    hitPoints: 8
+    initiative: 1
+    isAviation: 1
+    launchEnergyCost: 3
+    turnsWithoutRefuel: 5
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - Airfield
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 63
+    authoredKey: vessels.unit.pendulum-frame
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Pendulum Frame
+    art: {fileID: 21300000, guid: 9f4cba691d0387849a8c962fccebdcd8, type: 3}
+    detailArt: {fileID: 21300000, guid: 8a37fe6d568560d48b18512f5c56ade6, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 9
+    resourceCost:
+      human: 0
+      energy: 5
+      materials: 3
+      tech: 5
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 9
+    defenseRating: 5
+    range: 1
+    hitPoints: 12
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000005000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
