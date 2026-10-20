@@ -162,6 +162,8 @@ namespace Game.UI
             System.Func<string> unavailableReason, System.Func<Vector2, Camera, bool> onDrop,
             System.Action<string> showError)
         {
+            // A tactical hand is populated while hidden, before AddComponent can run Awake.
+            if (rectTransform == null) rectTransform = (RectTransform)transform;
             CancelDrag();
             Data = data;
             _tacticInteraction = true;

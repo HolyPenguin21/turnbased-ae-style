@@ -187,6 +187,7 @@ namespace Game.UI
 
         private void Awake()
         {
+            InitializeTacticSwitch();
             if (drawButton != null)
                 drawButton.onClick.AddListener(OnDrawClicked);
             if (scrollLeftButton != null)
@@ -345,6 +346,7 @@ namespace Game.UI
         // there's nothing left that only a per-frame poll could catch.
         private void OnEnable()
         {
+            BindTacticInventory();
             _humanRoot = FindHumanRoot();
             if (_humanRoot != null)
                 _humanRoot.ResourcesChanged += RefreshDrawButtonInteractable;
@@ -376,6 +378,7 @@ namespace Game.UI
         // OnDestroy / the next ShowAiHandDebug instead.
         private void OnDisable()
         {
+            UnbindTacticInventory();
             ResetTacticPresentation();
             if (_humanRoot != null)
                 _humanRoot.ResourcesChanged -= RefreshDrawButtonInteractable;
@@ -534,6 +537,8 @@ namespace Game.UI
             foreach (CardUI card in _cards)
                 card.gameObject.SetActive(false);
             _showingDebugHand = true;
+            ResetTacticPresentation();
+            RefreshTacticSwitch();
 
             RenderDebugHand(hand);
         }
@@ -586,6 +591,7 @@ namespace Game.UI
             if (!_showingDebugHand)
                 return;
             _showingDebugHand = false;
+            RefreshTacticSwitch();
 
             if (_debugHand != null)
                 _debugHand.HandChanged -= OnDebugHandChanged;

@@ -205,6 +205,7 @@ namespace Game.UI
 
         private void Awake()
         {
+            InitializeTacticInput();
             if (rollButton != null)
                 rollButton.onClick.AddListener(OnRollClicked);
             if (acceptButton != null)
@@ -535,6 +536,7 @@ namespace Game.UI
             bool animDone = attackerRow == null;
             attackerRow?.SetTokens(_rpTokens, onComplete: () => animDone = true);
             yield return new WaitUntil(() => animDone);
+            RefreshTacticTotals();
 
             BattleDebugLog.Write($"[RollDiag] ResearchProduction: {_rpHero?.Name} -> {_rpCard?.displayName} " +
                 $"target={_rpRequiredSuccesses}, roll={BattleDebugLog.TokenString(_rpTokens)} ({CountHits(_rpTokens)} hits)");
@@ -828,6 +830,7 @@ namespace Game.UI
                 yield return new WaitUntil(() => attackerAnimDone && defenderAnimDone);
 
             PrepareTacticPresentation(HumanParticipant());
+            RefreshTacticTotals();
             FireRollThought();
             yield return RunDuel();
             Resolve();

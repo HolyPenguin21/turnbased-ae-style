@@ -29287,6 +29287,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 52dbd05f1a934425a5eef724c8251028, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.CardHandUI
+  cardsTypeSwitchButton: {fileID: 3047303003194306107}
+  tacticHandTemplate: {fileID: 8880000000000000090}
   handContainer: {fileID: 136068550}
   cardPrefab: {fileID: 7770000000000000005, guid: 94ecf6c810ad4bfaa65372ad5b5af5da, type: 3}
   drawButton: {fileID: 7770000000000010010}
@@ -38544,6 +38546,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BattleAttackPopupUI
   panelRoot: {fileID: 8880000000000000180}
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
+  tacticalCardInput: {fileID: 1266070869}
+  currentResultText: {fileID: 449339845}
   rollStateRoot: {fileID: 8880000000000000193}
   titleText: {fileID: 8880000000000000186}
   attackerRow: {fileID: 8880000000000000200}

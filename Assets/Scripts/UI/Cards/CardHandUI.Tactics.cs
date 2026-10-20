@@ -1,18 +1,88 @@
-using System;
 using System.Collections;
 using Game.Cards;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Game.UI
 {
     public partial class CardHandUI
     {
+        [SerializeField] private Button cardsTypeSwitchButton;
+        [SerializeField] private BattleHandUI tacticHandTemplate;
+        private TacticHand _tacticInventory;
+        private bool _tacticChallengeActive;
         private bool _showingTactics;
         private BattleHandUI _tacticView;
         private Coroutine _tacticFlip;
 
-        public BattleHandUI ShowTactics(BattleHandUI template, TacticHand inventory)
+        private void InitializeTacticSwitch()
         {
+            if (cardsTypeSwitchButton == null) return;
+            cardsTypeSwitchButton.onClick.RemoveListener(OnCardsTypeSwitchClicked);
+            cardsTypeSwitchButton.onClick.AddListener(OnCardsTypeSwitchClicked);
+            RefreshTacticSwitch();
+        }
+
+        private void BindTacticInventory()
+        {
+            UnbindTacticInventory();
+            _tacticInventory = HumanPlayer?.Tactics;
+            if (_tacticInventory != null) _tacticInventory.Changed += RefreshTacticSwitch;
+            RefreshTacticSwitch();
+        }
+
+        private void UnbindTacticInventory()
+        {
+            if (_tacticInventory != null) _tacticInventory.Changed -= RefreshTacticSwitch;
+            _tacticInventory = null;
+        }
+
+        private void RefreshTacticSwitch()
+        {
+            bool hasCards = _tacticInventory?.Cards.Count > 0 && !_showingDebugHand;
+            if (!hasCards && _showingTactics && !_tacticChallengeActive) RestoreMainHand();
+            if (cardsTypeSwitchButton == null) return;
+            cardsTypeSwitchButton.gameObject.SetActive(hasCards);
+            cardsTypeSwitchButton.GetComponent<ArmyButtonUI>()?.SetSelected(_showingTactics);
+        }
+
+        private void OnCardsTypeSwitchClicked()
+        {
+            if (UIFocusUtility.IsGameplayInputBlocked || !(_tacticInventory?.Cards.Count > 0)) return;
+            if (!_showingTactics)
+            {
+                EnsureTacticView(tacticHandTemplate);
+                if (_tacticView == null) return;
+                // A challenge owns the callbacks even while its hand is temporarily hidden.
+                if (!_tacticChallengeActive) _tacticView.Bind(_tacticInventory);
+            }
+            else _tacticView?.CancelDrags();
+            _showingTactics = !_showingTactics;
+            CancelAttachMode();
+            StartTacticFlip(_showingTactics);
+            RefreshTacticSwitch();
+        }
+
+        public void SetTacticInputOverlay(bool raised)
+        {
+            if (cardsTypeSwitchButton == null) return;
+            var canvas = cardsTypeSwitchButton.GetComponent<Canvas>();
+            if (canvas == null && raised) canvas = cardsTypeSwitchButton.gameObject.AddComponent<Canvas>();
+            if (canvas != null)
+            {
+                canvas.overrideSorting = raised;
+                canvas.sortingOrder = 25000;
+            }
+            if (raised && cardsTypeSwitchButton.GetComponent<GraphicRaycaster>() == null)
+                cardsTypeSwitchButton.gameObject.AddComponent<GraphicRaycaster>();
+        }
+
+        private void EnsureTacticView(BattleHandUI template)
+        {
+            if (_tacticView != null) return;
+            if (template == null)
+                foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    if (!hand.Horizontal) { template = hand; break; }
             if (_tacticView == null && template != null && handContainer != null)
             {
                 _tacticView = Instantiate(template, handContainer.parent);
@@ -27,6 +97,13 @@ namespace Game.UI
                 rt.localScale = Vector3.one;
                 _tacticView.gameObject.SetActive(false);
             }
+        }
+
+        public BattleHandUI ShowTactics(BattleHandUI template, TacticHand inventory)
+        {
+            EnsureTacticView(template);
+            if (_tacticView == null) return null;
+            _tacticChallengeActive = true;
             _tacticView?.Bind(inventory);
             if (!_showingTactics)
             {
@@ -34,15 +111,21 @@ namespace Game.UI
                 CancelAttachMode();
                 StartTacticFlip(true);
             }
+            RefreshTacticSwitch();
             return _tacticView;
         }
 
         public void RestoreMainHand()
         {
-            if (!_showingTactics) return;
-            _showingTactics = false;
+            _tacticChallengeActive = false;
             _tacticView?.Bind(null);
-            StartTacticFlip(false);
+            SetTacticInputOverlay(false);
+            if (_showingTactics)
+            {
+                _showingTactics = false;
+                StartTacticFlip(false);
+            }
+            RefreshTacticSwitch();
         }
 
         private void ResetTacticPresentation()
@@ -50,7 +133,9 @@ namespace Game.UI
             if (_tacticFlip != null) StopCoroutine(_tacticFlip);
             _tacticFlip = null;
             _showingTactics = false;
+            _tacticChallengeActive = false;
             _tacticView?.Bind(null);
+            SetTacticInputOverlay(false);
             SetTacticFace(false);
             if (handContainer != null) handContainer.localScale = Vector3.one;
             if (_tacticView != null) _tacticView.transform.localScale = Vector3.one;
@@ -59,6 +144,9 @@ namespace Game.UI
         private void StartTacticFlip(bool tactics)
         {
             if (_tacticFlip != null) StopCoroutine(_tacticFlip);
+            _tacticFlip = null;
+            if (handContainer != null) handContainer.localScale = Vector3.one;
+            if (_tacticView != null) _tacticView.transform.localScale = Vector3.one;
             if (!gameObject.activeInHierarchy) { SetTacticFace(tactics); return; }
             _tacticFlip = StartCoroutine(FlipTacticHand(tactics));
         }
@@ -85,6 +173,7 @@ namespace Game.UI
 
         private void SetTacticFace(bool tactics)
         {
+            cardsTypeSwitchButton?.GetComponent<ArmyButtonUI>()?.SetSelected(tactics);
             if (handContainer != null) handContainer.gameObject.SetActive(!tactics);
             if (_tacticView != null) _tacticView.gameObject.SetActive(tactics);
             if (drawButton != null) drawButton.gameObject.SetActive(!tactics);
