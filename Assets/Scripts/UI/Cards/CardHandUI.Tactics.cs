@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using Game.Cards;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,12 +10,23 @@ namespace Game.UI
     public partial class CardHandUI
     {
         [SerializeField] private Button cardsTypeSwitchButton;
-        [SerializeField] private BattleHandUI tacticHandTemplate;
+        [SerializeField, Min(0.01f)] private float tacticFlipDuration = 0.24f;
+        [SerializeField, Min(0f)] private float tacticFlipInterval = 0.05f;
         private TacticHand _tacticInventory;
+        private TacticHand _tacticSource;
+        private readonly List<CardUI> _tacticCards = new List<CardUI>();
+        private int _tacticScrollOffset;
         private bool _tacticChallengeActive;
         private bool _showingTactics;
-        private BattleHandUI _tacticView;
         private Coroutine _tacticFlip;
+        private bool _tacticFlipping;
+        public bool IsHandTransitioning => _tacticFlipping;
+        private Func<CardData, bool> _canSelectTactic;
+        private Action<CardData> _onSelectTactic;
+        private Func<CardData, string> _tacticUnavailableReason;
+        private Func<CardData, Vector2, Camera, bool> _onDropTactic;
+        private Action<string> _showTacticError;
+        private CardData _excludedTactic;
 
         private void InitializeTacticSwitch()
         {
@@ -28,6 +41,7 @@ namespace Game.UI
             UnbindTacticInventory();
             _tacticInventory = HumanPlayer?.Tactics;
             if (_tacticInventory != null) _tacticInventory.Changed += RefreshTacticSwitch;
+            BindTactics(_tacticInventory);
             RefreshTacticSwitch();
         }
 
@@ -35,163 +49,253 @@ namespace Game.UI
         {
             if (_tacticInventory != null) _tacticInventory.Changed -= RefreshTacticSwitch;
             _tacticInventory = null;
+            if (_tacticSource != null) _tacticSource.Changed -= RebuildTacticCards;
+            _tacticSource = null;
         }
 
         private void RefreshTacticSwitch()
         {
-            bool hasCards = _tacticInventory?.Cards.Count > 0 && !_showingDebugHand;
-            if (!hasCards && _showingTactics)
-            {
-                if (_tacticChallengeActive)
-                {
-                    // Keep the challenge's bindings while returning to the ordinary hand.
-                    _showingTactics = false;
-                    StartTacticFlip(false);
-                }
-                else RestoreMainHand();
-            }
+            bool hasCards = _tacticInventory?.Cards.Count > 0 && !ShowingDebugHand;
+            // An empty decision hand must remain available as a drop target for the slotted card.
+            if (!hasCards && _showingTactics && !_tacticChallengeActive) RestoreMainHand();
             if (cardsTypeSwitchButton == null) return;
-            cardsTypeSwitchButton.gameObject.SetActive(hasCards);
+            cardsTypeSwitchButton.gameObject.SetActive(hasCards || (_tacticChallengeActive && _showingTactics));
             cardsTypeSwitchButton.GetComponent<ArmyButtonUI>()?.SetSelected(_showingTactics);
         }
 
         private void OnCardsTypeSwitchClicked()
         {
-            if (UIFocusUtility.IsGameplayInputBlocked || !(_tacticInventory?.Cards.Count > 0)) return;
-            if (!_showingTactics)
-            {
-                EnsureTacticView(tacticHandTemplate);
-                if (_tacticView == null) return;
-                // A challenge owns the callbacks even while its hand is temporarily hidden.
-                if (!_tacticChallengeActive) _tacticView.Bind(_tacticInventory);
-            }
-            else _tacticView?.CancelDrags();
-            _showingTactics = !_showingTactics;
+            if (UIFocusUtility.IsGameplayInputBlocked
+                || (!(_tacticInventory?.Cards.Count > 0) && !_tacticChallengeActive)) return;
+            CancelTacticDrags();
             CancelAttachMode();
-            StartTacticFlip(_showingTactics);
+            StartTacticFlip(!_showingTactics);
             RefreshTacticSwitch();
         }
 
         public void SetTacticInputOverlay(bool raised)
         {
-            if (cardsTypeSwitchButton == null) return;
-            var canvas = cardsTypeSwitchButton.GetComponent<Canvas>();
-            if (canvas == null && raised) canvas = cardsTypeSwitchButton.gameObject.AddComponent<Canvas>();
+            SetTacticOverlay(handContainer, raised);
+            SetTacticOverlay(cardsTypeSwitchButton != null ? cardsTypeSwitchButton.transform : null, raised);
+            SetTacticOverlay(scrollLeftButton != null ? scrollLeftButton.transform : null, raised);
+            SetTacticOverlay(scrollRightButton != null ? scrollRightButton.transform : null, raised);
+            if (cardSeparators != null)
+                foreach (var separator in cardSeparators)
+                    if (separator != null) SetTacticOverlay(separator.parent, raised);
+        }
+
+        private static void SetTacticOverlay(Transform root, bool raised)
+        {
+            if (root == null) return;
+            var canvas = root.GetComponent<Canvas>();
+            if (canvas == null && raised) canvas = root.gameObject.AddComponent<Canvas>();
             if (canvas != null)
             {
                 canvas.overrideSorting = raised;
                 canvas.sortingOrder = 25000;
             }
-            if (raised && cardsTypeSwitchButton.GetComponent<GraphicRaycaster>() == null)
-                cardsTypeSwitchButton.gameObject.AddComponent<GraphicRaycaster>();
+            if (raised && root.GetComponent<GraphicRaycaster>() == null)
+                root.gameObject.AddComponent<GraphicRaycaster>();
         }
 
-        private void EnsureTacticView(BattleHandUI template)
+        public void BindTactics(TacticHand inventory, Func<CardData, bool> canSelect = null,
+            Action<CardData> onSelect = null, Func<CardData, string> unavailableReason = null,
+            Func<CardData, Vector2, Camera, bool> onDrop = null, Action<string> showError = null,
+            CardData excluded = null)
         {
-            if (_tacticView != null) return;
-            if (template == null)
-                foreach (var hand in FindObjectsByType<BattleHandUI>(FindObjectsInactive.Include))
-                    if (!hand.Horizontal) { template = hand; break; }
-            if (_tacticView == null && template != null && handContainer != null)
+            bool rebuild = !ReferenceEquals(_tacticSource, inventory) || !ReferenceEquals(_excludedTactic, excluded);
+            CardData returned = !ReferenceEquals(_excludedTactic, excluded) ? _excludedTactic : null;
+            if (!ReferenceEquals(_tacticSource, inventory))
             {
-                _tacticView = Instantiate(template, handContainer.parent);
-                _tacticView.name = "MapTacticHand";
-                _tacticView.MakeHorizontal();
-                var rt = (RectTransform)_tacticView.transform;
-                rt.anchorMin = handContainer.anchorMin;
-                rt.anchorMax = handContainer.anchorMax;
-                rt.pivot = handContainer.pivot;
-                rt.sizeDelta = handContainer.sizeDelta;
-                rt.anchoredPosition = handContainer.anchoredPosition;
-                rt.localScale = Vector3.one;
-                _tacticView.gameObject.SetActive(false);
+                if (_tacticSource != null) _tacticSource.Changed -= RebuildTacticCards;
+                _tacticSource = inventory;
+                if (_tacticSource != null) _tacticSource.Changed += RebuildTacticCards;
+                _tacticScrollOffset = 0;
             }
+            _canSelectTactic = canSelect;
+            _onSelectTactic = onSelect;
+            _tacticUnavailableReason = unavailableReason;
+            _onDropTactic = onDrop;
+            _showTacticError = showError;
+            _excludedTactic = excluded;
+            if (rebuild)
+            {
+                RebuildTacticCards();
+                int index = returned == null ? -1 : _tacticCards.FindIndex(c => ReferenceEquals(c.Data, returned));
+                _tacticScrollOffset = UIListUtility.OffsetToReveal(_tacticScrollOffset, index, MaxVisible);
+                Relayout(animated: false);
+            }
+            else foreach (var card in _tacticCards) BindTacticInteraction(card);
         }
 
-        public BattleHandUI ShowTactics(BattleHandUI template, TacticHand inventory)
+        private void BindTacticInteraction(CardUI card)
         {
-            if (!(inventory?.Cards.Count > 0)) return null;
-            EnsureTacticView(template);
-            if (_tacticView == null) return null;
+            CardData data = card.Data;
+            card.ConfigureTacticInteraction(data, () => _onSelectTactic?.Invoke(data),
+                () => _tacticFlipping ? "Wait for the cards to finish turning."
+                    : _tacticUnavailableReason?.Invoke(data) ?? (_canSelectTactic?.Invoke(data) == true
+                        ? null : "Wait for your challenge decision to use a tactical card."),
+                _onDropTactic == null ? (Func<Vector2, Camera, bool>)null
+                    : (point, camera) => _onDropTactic(data, point, camera),
+                _showTacticError ?? (reason => turnController?.ShowSpawnHint(reason)), useHandLayout: true);
+        }
+
+        private void RebuildTacticCards()
+        {
+            StopTacticFlip();
+            CancelTacticDrags();
+            foreach (var card in _tacticCards) card.gameObject.SetActive(false);
+            UIListUtility.DestroyAndClear(_tacticCards);
+            if (_tacticSource != null && cardPrefab != null && handContainer != null)
+                foreach (var data in _tacticSource.Cards)
+                {
+                    if (ReferenceEquals(data, _excludedTactic)) continue;
+                    var card = Instantiate(cardPrefab, handContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
+                    card.Setup(this, data, restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
+                    BindTacticInteraction(card);
+                    card.ResetHandPose(Vector2.zero);
+                    _tacticCards.Add(card);
+                }
+            _lastDisplayedHandCount = -1;
+            Relayout(animated: false);
+        }
+
+        public void ShowTactics(TacticHand inventory)
+        {
             _tacticChallengeActive = true;
-            _tacticView?.Bind(inventory);
-            if (!_showingTactics)
-            {
-                _showingTactics = true;
-                CancelAttachMode();
-                StartTacticFlip(true);
-            }
+            foreach (var card in _debugCards) card.gameObject.SetActive(false);
+            _lastDisplayedHandCount = -1;
+            RefreshDeckCountText();
+            BindTactics(inventory);
+            CancelAttachMode();
+            if (inventory?.Cards.Count > 0 && !_showingTactics) StartTacticFlip(true);
+            else Relayout(animated: false);
             RefreshTacticSwitch();
-            return _tacticView;
+            RefreshDrawButtonInteractable();
         }
+
+        public void CancelTacticDrags()
+        {
+            foreach (var card in _tacticCards) if (card != null) card.CancelDrag();
+        }
+
+        public bool ContainsTacticScreenPoint(Vector2 point, Camera camera) => handContainer != null
+            && RectTransformUtility.RectangleContainsScreenPoint(handContainer, point, camera);
 
         public void RestoreMainHand()
         {
             _tacticChallengeActive = false;
-            _tacticView?.Bind(null);
+            CancelTacticDrags();
+            BindTactics(_tacticInventory);
             SetTacticInputOverlay(false);
-            if (_showingTactics)
+            if (ShowingDebugHand)
             {
+                StopTacticFlip();
                 _showingTactics = false;
-                StartTacticFlip(false);
+                Relayout(animated: false);
+                RenderDebugHand(_debugHand);
             }
+            else if (_showingTactics) StartTacticFlip(false);
             RefreshTacticSwitch();
+            RefreshDrawButtonInteractable();
         }
 
         private void ResetTacticPresentation()
         {
+            StopTacticFlip();
+            _showingTactics = false;
+            _lastDisplayedHandCount = -1;
+            _tacticChallengeActive = false;
+            _excludedTactic = null;
+            CancelTacticDrags();
+            SetTacticInputOverlay(false);
+            Relayout(animated: false);
+        }
+
+        private void RelayoutTactics(bool animated)
+        {
+            _tacticScrollOffset = Mathf.Clamp(_tacticScrollOffset, 0, Mathf.Max(0, _tacticCards.Count - MaxVisible));
+            for (int i = 0; i < _tacticCards.Count; i++)
+            {
+                int slot = i - _tacticScrollOffset;
+                bool visible = _showingTactics && !ShowingDebugHand && slot >= 0 && slot < MaxVisible;
+                _tacticCards[i].gameObject.SetActive(visible);
+                if (visible) _tacticCards[i].SetHome(new Vector2(SlotX(slot), 0f), animated);
+            }
+        }
+
+        private void StopTacticFlip()
+        {
+            bool interrupted = _tacticFlipping;
             if (_tacticFlip != null) StopCoroutine(_tacticFlip);
             _tacticFlip = null;
-            _showingTactics = false;
-            _tacticChallengeActive = false;
-            _tacticView?.Bind(null);
-            SetTacticInputOverlay(false);
-            SetTacticFace(false);
-            if (handContainer != null) handContainer.localScale = Vector3.one;
-            if (_tacticView != null) _tacticView.transform.localScale = Vector3.one;
+            _tacticFlipping = false;
+            if (!interrupted) return;
+            ResetFlipCards(_cards, _scrollOffset);
+            ResetFlipCards(_tacticCards, _tacticScrollOffset);
+            RefreshDrawButtonInteractable();
+        }
+
+        private void ResetFlipCards(List<CardUI> cards, int offset)
+        {
+            for (int i = 0; i < cards.Count; i++)
+                cards[i].ResetHandPose(new Vector2(SlotX(i - offset), 0f));
         }
 
         private void StartTacticFlip(bool tactics)
         {
-            if (_tacticFlip != null) StopCoroutine(_tacticFlip);
-            _tacticFlip = null;
-            if (handContainer != null) handContainer.localScale = Vector3.one;
-            if (_tacticView != null) _tacticView.transform.localScale = Vector3.one;
-            if (!gameObject.activeInHierarchy) { SetTacticFace(tactics); return; }
+            StopTacticFlip();
+            ResetFlipCards(_cards, _scrollOffset);
+            ResetFlipCards(_tacticCards, _tacticScrollOffset);
+            _showingTactics = tactics;
+            _lastDisplayedHandCount = -1;
+            Relayout(animated: false);
+            int visibleSlots = Mathf.Min(MaxVisible,
+                Mathf.Max(_cards.Count - _scrollOffset, _tacticCards.Count - _tacticScrollOffset));
+            if (!gameObject.activeInHierarchy || visibleSlots <= 0) return;
+            _tacticFlipping = true;
+            UpdateScrollButtons();
+            RefreshDrawButtonInteractable();
             _tacticFlip = StartCoroutine(FlipTacticHand(tactics));
         }
 
         private IEnumerator FlipTacticHand(bool tactics)
         {
-            Transform outgoing = tactics ? handContainer : _tacticView?.transform;
-            for (float t = 0f; t < 0.12f; t += Time.unscaledDeltaTime)
+            var outgoing = tactics ? _cards : _tacticCards;
+            var incoming = tactics ? _tacticCards : _cards;
+            int outOffset = tactics ? _scrollOffset : _tacticScrollOffset;
+            int inOffset = tactics ? _tacticScrollOffset : _scrollOffset;
+            float duration = Mathf.Max(0.01f, tacticFlipDuration);
+            float interval = Mathf.Clamp(tacticFlipInterval, 0f, duration * 0.9f);
+            int visibleSlots = Mathf.Min(MaxVisible, Mathf.Max(outgoing.Count - outOffset, incoming.Count - inOffset));
+            float total = duration + (visibleSlots - 1) * interval;
+            for (float elapsed = 0f; elapsed < total; elapsed += Time.unscaledDeltaTime)
             {
-                if (outgoing != null) outgoing.localScale = new Vector3(1f - t / 0.12f, 1f, 1f);
+                for (int slot = 0; slot < visibleSlots; slot++)
+                {
+                    float progress = Mathf.Clamp01((elapsed - slot * interval) / duration);
+                    CardUI oldCard = slot + outOffset < outgoing.Count ? outgoing[slot + outOffset] : null;
+                    CardUI newCard = slot + inOffset < incoming.Count ? incoming[slot + inOffset] : null;
+                    if (oldCard != null)
+                    {
+                        oldCard.gameObject.SetActive(progress < 0.5f);
+                        oldCard.transform.localScale = new Vector3(restingScale * Mathf.Clamp01(1f - progress * 2f), restingScale, restingScale);
+                    }
+                    if (newCard != null)
+                    {
+                        newCard.gameObject.SetActive(progress >= 0.5f);
+                        newCard.transform.localScale = new Vector3(restingScale * Mathf.Clamp01(progress * 2f - 1f), restingScale, restingScale);
+                    }
+                }
                 yield return null;
             }
-            SetTacticFace(tactics);
-            Transform incoming = tactics ? _tacticView?.transform : handContainer;
-            for (float t = 0f; t < 0.12f; t += Time.unscaledDeltaTime)
-            {
-                if (incoming != null) incoming.localScale = new Vector3(t / 0.12f, 1f, 1f);
-                yield return null;
-            }
-            if (outgoing != null) outgoing.localScale = Vector3.one;
-            if (incoming != null) incoming.localScale = Vector3.one;
             _tacticFlip = null;
-        }
-
-        private void SetTacticFace(bool tactics)
-        {
-            cardsTypeSwitchButton?.GetComponent<ArmyButtonUI>()?.SetSelected(tactics);
-            if (handContainer != null) handContainer.gameObject.SetActive(!tactics);
-            if (_tacticView != null) _tacticView.gameObject.SetActive(tactics);
-            if (drawButton != null) drawButton.gameObject.SetActive(!tactics);
-            if (scrollLeftButton != null) scrollLeftButton.gameObject.SetActive(!tactics);
-            if (scrollRightButton != null) scrollRightButton.gameObject.SetActive(!tactics);
-            if (cardSeparators != null)
-                foreach (var separator in cardSeparators)
-                    if (separator != null) separator.gameObject.SetActive(!tactics);
+            _tacticFlipping = false;
+            ResetFlipCards(outgoing, outOffset);
+            ResetFlipCards(incoming, inOffset);
+            Relayout(animated: false);
+            RefreshDrawButtonInteractable();
         }
     }
 }

@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Shared inventory view: vertical in battle, horizontal while the map hand is flipped.
+    // Tactical inventory column used by the battle screen.
     public class BattleHandUI : MonoBehaviour
     {
         [SerializeField] private RectTransform cardContainer;
@@ -29,39 +29,21 @@ namespace Game.UI
         private Func<CardData, string> _unavailableReason;
         private Func<CardData, Vector2, Camera, bool> _onDrop;
         private Action<string> _showError;
-        public bool Horizontal { get; set; }
+        private CardData _excluded;
+        private CardData _revealOnRefresh;
         public bool IsBound => _inventory != null;
-        public void MakeHorizontal()
-        {
-            Horizontal = true;
-            if (cardContainer != null)
-            {
-                cardContainer.anchorMin = Vector2.zero;
-                cardContainer.anchorMax = Vector2.one;
-                cardContainer.pivot = new Vector2(0.5f, 0.5f);
-                cardContainer.anchoredPosition = Vector2.zero;
-                cardContainer.sizeDelta = new Vector2(-80f, 0f);
-            }
-            PositionArrow(scrollUpButton, 0f, 25f);
-            PositionArrow(scrollDownButton, 1f, -25f);
-        }
-        private static void PositionArrow(Button button, float anchor, float x)
-        {
-            if (button == null) return;
-            var rect = (RectTransform)button.transform;
-            rect.anchorMin = rect.anchorMax = new Vector2(anchor, 0.5f);
-            rect.anchoredPosition = new Vector2(x, 0f);
-            rect.sizeDelta = new Vector2(35f, 35f);
-        }
 
         public void Bind(TacticHand inventory, Func<CardData, bool> canSelect = null, Action<CardData> onSelect = null,
             Func<CardData, string> unavailableReason = null, Func<CardData, Vector2, Camera, bool> onDrop = null,
-            Action<string> showError = null)
+            Action<string> showError = null, CardData excluded = null)
         {
             _unavailableReason = unavailableReason;
             _onDrop = onDrop;
             _showError = showError;
-            if (inventory != null && ReferenceEquals(_inventory, inventory))
+            bool exclusionChanged = !ReferenceEquals(_excluded, excluded);
+            _revealOnRefresh = exclusionChanged ? _excluded : null;
+            _excluded = excluded;
+            if (inventory != null && ReferenceEquals(_inventory, inventory) && !exclusionChanged)
             {
                 _canSelect = canSelect;
                 _onSelect = onSelect;
@@ -87,11 +69,15 @@ namespace Game.UI
         private void RefreshInventory()
         {
             _cards.Clear();
-            if (_inventory != null) _cards.AddRange(_inventory.Cards);
+            if (_inventory != null)
+                foreach (var card in _inventory.Cards)
+                    if (!ReferenceEquals(card, _excluded)) _cards.Add(card);
+            _scrollOffset = UIListUtility.OffsetToReveal(_scrollOffset, _cards.IndexOf(_revealOnRefresh), MaxVisible);
+            _revealOnRefresh = null;
             _scrollOffset = Mathf.Clamp(_scrollOffset, 0, Mathf.Max(0, _cards.Count - MaxVisible));
             Relayout();
-            // The map hand owns its flip animation; the standalone battle hand hides itself.
-            if (!Horizontal) gameObject.SetActive(_cards.Count > 0);
+            // Keep an empty hand as the drop target while its last card occupies the slot.
+            gameObject.SetActive(_cards.Count > 0 || _excluded != null);
         }
 
         public void RefreshInteraction() => Relayout();
@@ -146,23 +132,20 @@ namespace Game.UI
             if (prefabRect == null || prefabRect.rect.width <= 0f || prefabRect.rect.height <= 0f)
                 return;
             float step = cardHeight * (1f - overlapFraction);
-            float requiredHeight = Horizontal ? prefabRect.rect.height : prefabRect.rect.height + (MaxVisible - 1) * step;
-            float requiredWidth = Horizontal ? MaxVisible * prefabRect.rect.width : prefabRect.rect.width;
+            float requiredHeight = prefabRect.rect.height + (MaxVisible - 1) * step;
+            float requiredWidth = prefabRect.rect.width;
             float scale = Mathf.Clamp01(Mathf.Min(_lastContainerSize.x / requiredWidth,
                 _lastContainerSize.y / Mathf.Max(1f, requiredHeight)));
             for (int i = 0; i < _visible.Count; i++)
             {
                 _visible[i].transform.localScale = Vector3.one * scale;
-                _visible[i].SetSlot(Horizontal
-                    ? new Vector2((i - (MaxVisible - 1) * 0.5f) * prefabRect.rect.width * scale, 0f)
-                    : new Vector2(0f, -i * step * scale));
+                _visible[i].SetSlot(new Vector2(0f, -i * step * scale));
             }
         }
 
         private void Awake()
         {
-            // A map view is cloned from the scene's battle view, which may already contain
-            // rendered cards from an earlier encounter. Those children are presentation only.
+            // Discard any serialized presentation cards before binding the match inventory.
             if (cardContainer != null)
                 foreach (var oldCard in cardContainer.GetComponentsInChildren<BattleTacticCardUI>(true))
                     Destroy(oldCard.gameObject);
@@ -191,6 +174,7 @@ namespace Game.UI
         private void Relayout()
         {
             CancelDrags();
+            foreach (var card in _visible) card.gameObject.SetActive(false);
             UIListUtility.DestroyAndClear(_visible);
             if (scrollUpButton != null)
                 scrollUpButton.interactable = _scrollOffset > 0;
@@ -209,12 +193,6 @@ namespace Game.UI
             {
                 BattleTacticCardUI card = Instantiate(cardPrefab, cardContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
-                if (Horizontal)
-                {
-                    var rect = (RectTransform)card.transform;
-                    rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-                    rect.pivot = new Vector2(0.5f, 0.5f);
-                }
                 CardData data = _cards[i];
                 card.Setup(data, config);
                 BindCardInteraction(card);
