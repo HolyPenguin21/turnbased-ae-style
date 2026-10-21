@@ -16,6 +16,8 @@ namespace Game.Campaign
         [Header("Terrain")]
         [Range(.5f, 2.5f)] public float TerrainContrast = 1.4f;
         [Range(.3f, 1.5f)] public float TerrainBrightness = .8f;
+        // 0 = grey relief under the tint, 1 = original sand color.
+        [Range(0, 1)] public float TerrainSaturation = .35f;
         [Range(0, 1)] public float TintAmount = .55f;
         [Range(0, 1)] public float TintCenter = .15f;
         [Range(1, CampaignRegionField.Range)] public float TintEdgeWidth = 48;
@@ -60,7 +62,7 @@ namespace Game.Campaign
             if (material == null) return;
             material.SetTexture("_RegionField", field != null ? field : Texture2D.whiteTexture);
             material.SetFloat("_FieldRange", CampaignRegionField.Range);
-            material.SetFloat("_TerrainContrast", TerrainContrast); material.SetFloat("_TerrainBrightness", TerrainBrightness);
+            material.SetFloat("_TerrainContrast", TerrainContrast); material.SetFloat("_TerrainBrightness", TerrainBrightness); material.SetFloat("_TerrainSaturation", TerrainSaturation);
             material.SetFloat("_TintAmount", TintAmount); material.SetFloat("_TintCenter", TintCenter); material.SetFloat("_TintEdgeWidth", TintEdgeWidth); material.SetFloat("_TintGain", TintGain);
             material.SetFloat("_LineWidth", LineWidth); material.SetFloat("_LineStrength", LineStrength);
             material.SetFloat("_SeamWidth", SeamWidth); material.SetFloat("_SeamStrength", SeamStrength);
