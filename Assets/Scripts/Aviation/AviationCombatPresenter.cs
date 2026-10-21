@@ -138,14 +138,33 @@ namespace Game.Aviation
                 yield return RunAaReaction(reaction);
         }
 
+        // Turn start of `owner` (GameTurnController, after the AA reset): every AA unit/Facility
+        // fires at an enemy air army already inside its radius (AntiAirRules.CollectTurnStartOpportunities).
+        // A stationary wing is not moving, so an emptied one is removed here.
+        public IEnumerator ResolveTurnStartAntiAir(PlayerSetupData owner)
+        {
+            foreach (AaReaction reaction in AntiAirRules.CollectTurnStartOpportunities(owner))
+            {
+                // A reaction earlier in this pass may have spent the AA or destroyed the wing.
+                if (reaction.AirArmy.Members.Count == 0
+                    || !AntiAirState.CanReact(reaction.AaUnit, reaction.AirArmy.Id))
+                    continue;
+                yield return RunAaReaction(reaction);
+                if (reaction.AirArmy.Members.Count == 0
+                    && (reaction.AirArmy.Controller == null || !reaction.AirArmy.Controller.IsMoving))
+                    hexSelection?.DeleteArmyIfEmptied(reaction.AirArmy);
+            }
+        }
+
         private IEnumerator RunAaReaction(AaReaction reaction)
         {
             ArmyData airArmy = reaction.AirArmy;
             if (airArmy.Members.Count == 0)
                 yield break;
 
+            PlayerSetupData aaOwner = reaction.AaOwner;
             bool attack = true;
-            if (reaction.AaArmy.Owner != null && reaction.AaArmy.Owner.IsHuman && aaChoicePopup != null)
+            if (aaOwner != null && aaOwner.IsHuman && aaChoicePopup != null)
             {
                 bool decided = false;
                 aaChoicePopup.Show(reaction.AaUnit, airArmy,
@@ -167,7 +186,9 @@ namespace Game.Aviation
             {
                 var explosion = new ExplosionAttack(reaction.AaUnit, airArmy.Hex, HeadlessRng, airArmy);
                 yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelection,
-                    tacticsCritical: TacticBattleContext.IsCritical(airArmy.Hex, reaction.AaArmy, airArmy));
+                    tacticsCritical: reaction.AaArmy != null
+                        ? TacticBattleContext.IsCritical(airArmy.Hex, reaction.AaArmy, airArmy)
+                        : TacticBattleContext.IsCritical(reaction.AaHex, aaOwner, airArmy));
                 yield break;
             }
 
@@ -175,7 +196,7 @@ namespace Game.Aviation
             if (target == null)
                 yield break;
 
-            UnitData aaHero = reaction.AaArmy.Members.Find(unit => unit.IsHero);
+            UnitData aaHero = reaction.AaArmy?.Members.Find(unit => unit.IsHero);
             bool resolved = false;
             attackPopup.Begin(reaction.AaUnit, aaHero, target, null, null, null,
                 onResolved: roll =>
@@ -192,11 +213,14 @@ namespace Game.Aviation
                     }
                 },
                 attackerPoolSize: reaction.AaUnit.Attack * 2,
-                tacticsCritical: TacticBattleContext.IsCritical(reaction.AaArmy.Hex, reaction.AaArmy, airArmy),
-                challengeTitle: "AIR ATTACK");
+                tacticsCritical: reaction.AaArmy != null
+                    ? TacticBattleContext.IsCritical(reaction.AaArmy.Hex, reaction.AaArmy, airArmy)
+                    : TacticBattleContext.IsCritical(reaction.AaHex, aaOwner, airArmy),
+                challengeTitle: "ANTI AIR ATTACK");
             yield return new WaitUntil(() => resolved);
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
-            hexSelection?.DeleteArmyIfEmptied(reaction.AaArmy);
+            if (reaction.AaArmy != null)
+                hexSelection?.DeleteArmyIfEmptied(reaction.AaArmy);
 
             // An AA hit on a stationary wing changes HP/roster without an Unregister.
             // During flight CurrentHex has advanced, but ArmyRegistry still indexes the

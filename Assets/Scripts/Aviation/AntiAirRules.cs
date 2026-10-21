@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using UnityEngine;
 
 namespace Game.Aviation
 {
@@ -11,10 +13,13 @@ namespace Game.Aviation
     // starting from the air army (CollectEntryReactions: "who can shoot AT me") or by starting
     // from a moving ground AA unit (CollectGroundOpportunities: "what can I shoot") — same
     // underlying (aaUnit, airArmy) pairing either way, just discovered from opposite ends.
+    // An AA Facility reacts through its stand-in gunner: AaArmy is null, AaBuilding/AaSlot name it.
     public readonly struct AaReaction
     {
         public readonly UnitData AaUnit;
         public readonly ArmyData AaArmy;
+        public readonly BuildingData AaBuilding;
+        public readonly int AaSlot;
         public readonly ArmyData AirArmy;
         public readonly int Distance;
 
@@ -22,9 +27,24 @@ namespace Game.Aviation
         {
             AaUnit = aaUnit;
             AaArmy = aaArmy;
+            AaBuilding = null;
+            AaSlot = -1;
             AirArmy = airArmy;
             Distance = distance;
         }
+
+        public AaReaction(UnitData gunner, BuildingData building, int slot, ArmyData airArmy, int distance)
+        {
+            AaUnit = gunner;
+            AaArmy = null;
+            AaBuilding = building;
+            AaSlot = slot;
+            AirArmy = airArmy;
+            Distance = distance;
+        }
+
+        public PlayerSetupData AaOwner => AaArmy != null ? AaArmy.Owner : AaBuilding?.Owner;
+        public HexCoord AaHex => AaArmy != null ? AaArmy.Hex : AaBuilding.Hex;
     }
 
     // The suffix parser is intentionally tolerant: content authors can use AA for radius one
@@ -100,6 +120,23 @@ namespace Game.Aviation
                     }
                 }
             }
+            // AA Facilities: same radius / owner-vision / per-turn rules; a building is never hidden.
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            {
+                if (building.Owner == null || building.Owner == airArmy.Owner)
+                    continue;
+                int distance = HexGridMath.Distance(building.Hex, enteredHex);
+                for (int slot = 0; slot < building.FacilitySlots.Length; slot++)
+                {
+                    if (!TryGetFacilityRadius(building, slot, out int radius) || distance > radius)
+                        continue;
+                    if (!VisionSystem.IsVisible(building.Owner, enteredHex))
+                        continue;
+                    UnitData gunner = FacilityGunner(building, building.FacilitySlots[slot]);
+                    if (AntiAirState.CanReact(gunner, airArmy.Id))
+                        reactions.Add(new AaReaction(gunner, building, slot, airArmy, distance));
+                }
+            }
             SortReactions(reactions);
             return reactions;
         }
@@ -123,41 +160,132 @@ namespace Game.Aviation
                 // (§5) — it must voluntarily leave stealth first.
                 if (member.IsHidden)
                     continue;
-                foreach (HexCoord airHex in ArmyRegistry.AllOccupiedHexes())
+                foreach ((ArmyData airArmy, int distance) in AirArmiesInRange(member, groundArmy.Owner, hex, radius))
+                    reactions.Add(new AaReaction(member, groundArmy, airArmy, distance));
+            }
+            SortReactions(reactions);
+            return reactions;
+        }
+
+        // Start of `owner`'s turn (after AntiAirState.ResetForOwner): every enemy air army already
+        // inside a radius. A wing that stays over or next to an AA unit/Facility and strikes
+        // without moving never triggers an entry reaction, so the AA gets its shot here. The same
+        // per-turn state applies: a shot fired now is that AA's one shot until its next turn.
+        public static List<AaReaction> CollectTurnStartOpportunities(PlayerSetupData owner)
+        {
+            var reactions = new List<AaReaction>();
+            if (owner == null)
+                return reactions;
+
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(owner).ToList())
+            {
+                // Stored aircraft and carrier decks take no action, as in CollectEntryReactions.
+                if (army.IsCarrierContainer || AviationRules.IsAirfield(army) || army.IsPrison)
+                    continue;
+                reactions.AddRange(CollectGroundOpportunities(army, army.Hex));
+            }
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            {
+                if (building.Owner != owner)
+                    continue;
+                for (int slot = 0; slot < building.FacilitySlots.Length; slot++)
                 {
-                    int distance = HexGridMath.Distance(hex, airHex);
-                    if (distance > radius)
+                    if (!TryGetFacilityRadius(building, slot, out int radius))
                         continue;
-                    // Same visibility rule as CollectEntryReactions above: radius alone doesn't
-                    // earn a shot, this AA member's own owner must actually see the air army's
-                    // hex too.
-                    if (!VisionSystem.IsVisible(groundArmy.Owner, airHex))
-                        continue;
-                    foreach (ArmyData airArmy in ArmyRegistry.AllAt(airHex))
-                    {
-                        if (airArmy.Owner == groundArmy.Owner || airArmy.IsCarrierContainer
-                            || !AviationRules.IsAirArmy(airArmy))
-                            continue;
-                        if (!AntiAirState.CanReact(member, airArmy.Id))
-                            continue;
-                        reactions.Add(new AaReaction(member, groundArmy, airArmy, distance));
-                    }
+                    UnitData gunner = FacilityGunner(building, building.FacilitySlots[slot]);
+                    foreach ((ArmyData airArmy, int distance) in AirArmiesInRange(gunner, owner, building.Hex, radius))
+                        reactions.Add(new AaReaction(gunner, building, slot, airArmy, distance));
                 }
             }
             SortReactions(reactions);
             return reactions;
         }
 
-        // Stable order per the design: hex distance, then army Id, then member slot index.
+        // Enemy air armies within `radius` of `hex` that `owner` can see and `aaUnit` may still
+        // react to. Same visibility rule as CollectEntryReactions: radius alone doesn't earn a
+        // shot, the AA owner must actually see the air army's hex too.
+        private static IEnumerable<(ArmyData airArmy, int distance)> AirArmiesInRange(UnitData aaUnit,
+            PlayerSetupData owner, HexCoord hex, int radius)
+        {
+            foreach (HexCoord airHex in ArmyRegistry.AllOccupiedHexes().ToList())
+            {
+                int distance = HexGridMath.Distance(hex, airHex);
+                if (distance > radius || !VisionSystem.IsVisible(owner, airHex))
+                    continue;
+                foreach (ArmyData airArmy in ArmyRegistry.AllAt(airHex).ToList())
+                {
+                    if (airArmy.Owner == owner || airArmy.IsCarrierContainer
+                        || !AviationRules.IsAirArmy(airArmy))
+                        continue;
+                    if (AntiAirState.CanReact(aaUnit, airArmy.Id))
+                        yield return (airArmy, distance);
+                }
+            }
+        }
+
+        // A live Facility slot carrying AA (plain AA = the card radius floored at 1, AAn = n). The
+        // Facility belongs to the building, so a captured Base hands its AA to the new owner.
+        private static bool TryGetFacilityRadius(BuildingData building, int slot, out int radius)
+        {
+            radius = 0;
+            FacilityData facility = building.FacilitySlots[slot];
+            return facility != null && facility.StructurePointsCurrent > 0
+                && TryGetRadius(facility.Abilities, facility.AntiAirRadius, out radius);
+        }
+
+        // The Facility's stable stand-in shooter, refreshed from the live Facility and building on
+        // every use (owner after a capture, abilities/stats after an upgrade).
+        public static UnitData FacilityGunner(BuildingData building, FacilityData facility)
+        {
+            UnitData gunner = facility.AntiAirGunner ??= new UnitData();
+            gunner.Name = facility.Name;
+            gunner.Owner = building.Owner;
+            gunner.Art = facility.Art;
+            gunner.DetailArt = facility.DetailArt;
+            gunner.Attack = facility.Attack;
+            gunner.Defense = facility.Defense;
+            gunner.HitPointsMax = Mathf.Max(1, facility.StructurePointsMax);
+            gunner.HitPointsCurrent = Mathf.Max(1, facility.StructurePointsCurrent);
+            gunner.AntiAirRadius = facility.AntiAirRadius;
+            gunner.Abilities.Clear();
+            gunner.Abilities.UnionWith(facility.Abilities);
+            return gunner;
+        }
+
+        // AntiAirState resets by UnitData.Owner; a captured Base's gunner must carry its new owner
+        // before that owner's turn-start reset.
+        public static void SyncFacilityGunnerOwners()
+        {
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+                foreach (FacilityData facility in building.FacilitySlots)
+                    if (facility?.AntiAirGunner != null)
+                        facility.AntiAirGunner.Owner = building.Owner;
+        }
+
+        // Stable order per the design: hex distance, then army Id, then member slot index;
+        // Facilities after armies at the same distance, by building hex then slot.
         private static void SortReactions(List<AaReaction> reactions)
         {
             reactions.Sort((a, b) =>
             {
                 if (a.Distance != b.Distance)
                     return a.Distance.CompareTo(b.Distance);
-                if (a.AaArmy.Id != b.AaArmy.Id)
-                    return a.AaArmy.Id.CompareTo(b.AaArmy.Id);
-                return a.AaArmy.Members.IndexOf(a.AaUnit).CompareTo(b.AaArmy.Members.IndexOf(b.AaUnit));
+                if ((a.AaArmy == null) != (b.AaArmy == null))
+                    return a.AaArmy == null ? 1 : -1;
+                int order;
+                if (a.AaArmy == null)
+                {
+                    order = a.AaBuilding.Hex.Q.CompareTo(b.AaBuilding.Hex.Q);
+                    if (order == 0) order = a.AaBuilding.Hex.R.CompareTo(b.AaBuilding.Hex.R);
+                    if (order == 0) order = a.AaSlot.CompareTo(b.AaSlot);
+                }
+                else
+                {
+                    order = a.AaArmy.Id.CompareTo(b.AaArmy.Id);
+                    if (order == 0)
+                        order = a.AaArmy.Members.IndexOf(a.AaUnit).CompareTo(b.AaArmy.Members.IndexOf(b.AaUnit));
+                }
+                return order != 0 ? order : a.AirArmy.Id.CompareTo(b.AirArmy.Id);
             });
         }
     }
