@@ -21,28 +21,76 @@ namespace Game.Ai.V2
                 && a.ArmyId == attack.PrimaryArmyId.Value);
             if (actor == null || !actor.IsStructuralRaidActor || actor.CurrentMovement <= 0)
                 return null;
+            return SelectOnRoute(snap, attack, actor, attack.Target.Hex, objectives,
+                GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate,
+                // The roster Missions and provisioning will field for this Assault.
+                preserveDepartureRoster: attack.AssaultStarted, accept: null);
+        }
 
+        // 2026-10-21 (playtest Vex T17) — a preparation host on its walk to the staging Base
+        // passes an enemy Base it takes decisively: Rustborn (21.4) walked (2,1)->(1,1)->(1,0)
+        // beside Mordak's new Base (2,0) defended by 9.7 and never touched it (the one live
+        // operation held every other objective). The same optional local fight as a marching
+        // Assault's, toward the staging Base instead of the main target, at the fresh decisive
+        // gate (the host is still below the fist bar) and only where the march start itself is
+        // allowed (AttackMarchPolicy.CanStart: home not in danger, no retreat-worthy contact).
+        // The leg the planner builds from it (AppendAttack) is an intermediate Assault of the
+        // preparation; Continuity keeps the operation a preparation (ApplyAttackStepFacts).
+        internal static AttackObjective SelectForPreparationWalk(WorldSnapshot snap, AttackIntent attack,
+            IReadOnlyList<AttackObjective> objectives)
+        {
+            // A support or commander walking to the host pins it (GroundCombatLegs.PinsActors):
+            // the detour waits until no other leg of the operation holds the host.
+            if (attack == null || !attack.Preparation || attack.Phase != AttackMissionPhase.Gather
+                || !attack.PrimaryArmyId.HasValue || attack.LastOpportunisticStrikeTurn == snap?.TurnNumber
+                || attack.GatherSupportArmyIds.Count > 0 || attack.CommanderArmyId.HasValue)
+                return null;
+            ArmySnapshot host = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == attack.PrimaryArmyId.Value);
+            if (host == null || !host.IsStructuralRaidActor || host.CurrentMovement <= 0
+                || ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, host))
+                return null;
+            HexCoord? staging = AttackPreparationPolicy.KeptStagingBase(snap, attack, host);
+            if (!staging.HasValue || host.Hex.Equals(staging.Value))
+                return null;
+            return SelectOnRoute(snap, attack, host, staging.Value, objectives,
+                PreparationWalkWinChanceGate, preserveDepartureRoster: true,
+                accept: plan => AttackMarchPolicy.CanStart(snap, attack.Target, plan, snap.Intents, out _));
+        }
+
+        // The preparation detour's gate: the fresh decisive confidence (raidMinViableWinChance),
+        // the bar attack-by-opportunity uses for a force below the fist floor.
+        internal static float PreparationWalkWinChanceGate => GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
+
+        private static AttackObjective SelectOnRoute(WorldSnapshot snap, AttackIntent attack,
+            ArmySnapshot actor, HexCoord destination, IReadOnlyList<AttackObjective> objectives,
+            float gate, bool preserveDepartureRoster, Func<GroundCombatAssemblyPlan, bool> accept)
+        {
             AttackObjective best = null;
             int bestExtra = int.MaxValue, bestContact = int.MaxValue;
-            HexPath direct = Route(snap, actor, actor.Hex, attack.Target.Hex);
+            HexPath direct = Route(snap, actor, actor.Hex, destination);
+            // 2026-10-21 — a Base another live Attack operation (the second one, AttackSecondaryPolicy)
+            // is taking is served: never two operations on one site.
+            var otherTargets = new HashSet<AttackTargetRef>((snap.Intents?.All ?? Array.Empty<MissionIntent>())
+                .Where(i => i != null && i.Status == IntentStatus.Active && i.Attack != null
+                    && !ReferenceEquals(i.Attack, attack) && i.Attack.Phase != AttackMissionPhase.RecoveryReturn)
+                .Select(i => i.Attack.Target));
             foreach (AttackObjective objective in objectives ?? Array.Empty<AttackObjective>())
             {
-                if (!EligibleKnowledge(snap, attack.Target, objective))
+                if (!EligibleKnowledge(snap, attack.Target, objective) || otherTargets.Contains(objective.Target))
                     continue;
                 HexPath contact = Route(snap, actor, actor.Hex, objective.Hex);
-                HexPath onward = Route(snap, actor, objective.Hex, attack.Target.Hex);
+                HexPath onward = Route(snap, actor, objective.Hex, destination);
                 if (!RouteAllows(direct?.TotalCost ?? int.MaxValue,
                         contact?.TotalCost ?? int.MaxValue, onward?.TotalCost ?? int.MaxValue,
                         actor.CurrentMovement, actor.MaxMovement))
                     continue;
                 float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, objective.Hex);
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                    snap, objective.Opposition, actor.ArmyId,
-                    GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate, bonus,
+                    snap, objective.Opposition, actor.ArmyId, gate, bonus,
                     GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage,
-                    // The roster Missions and provisioning will field for this Assault.
-                    preserveDepartureRoster: attack.AssaultStarted);
-                if (!plan.Feasible)
+                    preserveDepartureRoster: preserveDepartureRoster);
+                if (!plan.Feasible || accept != null && !accept(plan))
                     continue;
                 // Keep an actually started detour stable, but re-prove knowledge, routes and
                 // combat on every snapshot. It is freely abandoned if any check stops passing.

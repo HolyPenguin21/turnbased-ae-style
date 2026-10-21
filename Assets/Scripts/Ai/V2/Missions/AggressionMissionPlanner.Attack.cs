@@ -30,6 +30,10 @@ namespace Game.Ai.V2
             if (snap?.Self == null || snap.Self.AttackPeak <= 0f)
                 return;
 
+            // Enumerated once, before the durable legs: a preparation's walk and the Assault loop
+            // below ask the same question of it (AttackIntermediateBasePolicy.SelectForPreparationWalk).
+            List<AttackObjective> objectives = AttackObjectiveEvaluator.Enumerate(snap);
+
             // ---- durable legs that carry their own pinned actor and destination ---------------
             if (activeIntents != null)
                 foreach (MissionIntent intent in activeIntents.Where(i => i?.Attack != null
@@ -46,7 +50,7 @@ namespace Game.Ai.V2
                         AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx,
                             deferredThisPass);
                     else if (a.Phase == AttackMissionPhase.Gather)
-                        AppendAttackGather(snap, intent, a, committed, proposals, ctx, intentState);
+                        AppendAttackGather(snap, intent, a, committed, proposals, ctx, intentState, objectives);
                     // Strike force step 5 — donors that already handed over walk home beside
                     // whatever the operation itself does.
                     foreach (AttackGatherReturn r in a.GatherReturns)
@@ -57,12 +61,15 @@ namespace Game.Ai.V2
                 }
 
             // ---- Assault: fresh objectives and incumbents still marching on their target ------
-            List<AttackObjective> objectives = AttackObjectiveEvaluator.Enumerate(snap);
             bool attackProposed = false;
             // 2026-09-30 (user decision) — at most ONE live Attack operation per player: while one
             // is live no fresh objective is offered, and of several fresh candidates only the best
             // reaches the allocator (it could otherwise fund two operations in one pass).
             MissionIntent liveOperation = LiveAttackOperation(activeIntents);
+            // 2026-10-21 (user decision) — beside it, at most one surplus-only second operation
+            // (AttackSecondaryPolicy); only the best fresh one reaches the allocator.
+            MissionIntent liveSecondary = LiveSecondaryAttack(activeIntents);
+            var secondaryCandidates = new List<MissionProposal>();
             var freshCandidates = new List<MissionProposal>();
             // Why an incumbent Assault got no proposal this pass (the planner knows it right where
             // it declines); published below as the planner deferral Continuity reads.
@@ -72,19 +79,33 @@ namespace Game.Ai.V2
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
                     && i.Attack != null && i.Attack.Target.Equals(objective.Target));
+                // 2026-10-21 — a preparation host walking to its staging Base may take a Base on
+                // the way decisively (its MoveHost step is then not offered: AppendAttackGather).
+                AttackObjective prepDetour = incumbent?.Attack?.Phase == AttackMissionPhase.Gather
+                    ? AttackIntermediateBasePolicy.SelectForPreparationWalk(snap, incumbent.Attack, objectives)
+                    : null;
                 // An incumbent already past the Assault leg is being proposed above; do not also
                 // offer it a fresh assault against the same target this pass.
-                if (incumbent != null && incumbent.Attack.Phase != AttackMissionPhase.Assault)
+                if (incumbent != null && incumbent.Attack.Phase != AttackMissionPhase.Assault
+                    && prepDetour == null)
                     continue;
                 if (incumbent == null && !AttackForceReadiness.MobilizationOpen(snap.Self))
                     continue;
-                if (incumbent == null && liveOperation != null)
+                // A fresh objective while the main operation lives may only be the surplus-only
+                // second operation: one at a time, never on a site whose defenders are unknown.
+                bool secondary = incumbent == null && liveOperation != null;
+                // A Base the main march has taken as its optional local fight is already served.
+                bool detourOfMain = secondary && liveOperation.Attack.IntermediateTarget == objective.Target;
+                if (secondary && (liveSecondary != null || objective.LocationOnly || detourOfMain))
                 {
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                         $"[AI][V2][Attack][Assembly] decision=HOLD target={objective.Target.DiagnosticLabel} "
-                        + $"blocker=operation_live:{liveOperation.IntentKey}");
+                        + $"blocker=operation_live:{liveOperation.IntentKey}"
+                        + (liveSecondary != null ? $" secondary_live:{liveSecondary.IntentKey}"
+                            : detourOfMain ? " main_detour" : " location_only"));
                     continue;
                 }
+                secondary |= incumbent?.Attack?.Secondary == true;
                 // T01 — sanctioned coordinates are not an observed defender package: a march on a
                 // never-observed site is not proposed (Recon observes it; mobilization may prepare).
                 // 2026-10-01 (user decision) — a preparation whose host reached the peak bar is
@@ -101,11 +122,17 @@ namespace Game.Ai.V2
                 // A started Assault keeps its committed members and drops the fresh power bar; the
                 // one fact Missions, admission (ForceCommitted) and provisioning all read.
                 bool assaultStarted = incumbent?.Attack?.AssaultStarted == true;
+                // The preparation's detour fields the host exactly as it stands (no same-hex
+                // reshuffle, no fist bar): the leg is committed like a marching Assault's optional
+                // Base. A secondary leg's start bar is AttackSecondaryPolicy.ClearsStart instead.
+                bool keepsRoster = assaultStarted || prepDetour != null;
                 var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
                 if (pinnedActor.HasValue)
                     excluded.Remove(pinnedActor.Value);
 
-                AttackObjective intermediate = AttackIntermediateBasePolicy.Select(snap, incumbent?.Attack, objectives);
+                // A secondary operation takes its one decisive target, no optional Base on the way.
+                AttackObjective intermediate = secondary ? null
+                    : prepDetour ?? AttackIntermediateBasePolicy.Select(snap, incumbent?.Attack, objectives);
 
                 // 2026-10-08 — the ONE local decision of a marching army, taken here, before
                 // funding (AttackTacticalOpportunity.Decide). It is frozen into the leg below and
@@ -146,7 +173,9 @@ namespace Game.Ai.V2
                     new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
-                        WinChanceGate = intermediate != null
+                        WinChanceGate = prepDetour != null
+                            ? AttackIntermediateBasePolicy.PreparationWalkWinChanceGate
+                            : intermediate != null
                             ? GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate
                             : assaultStarted ? GroundCombatAdmissionPolicy.AttackLocalWinChanceGate
                             : GroundCombatAdmissionPolicy.AttackWinChanceGate,
@@ -154,8 +183,8 @@ namespace Game.Ai.V2
                             ? GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage
                             : (bool?)null,
                         AllowSameHexAssembly = intermediate == null,
-                        PreserveDepartureRoster = assaultStarted,
-                        MinimumArmyPower = assaultStarted
+                        PreserveDepartureRoster = keepsRoster,
+                        MinimumArmyPower = keepsRoster || secondary
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                         AllowDecisivePinnedDefender = true,
                         PreferredPrimaryArmyId = pinnedActor,
@@ -164,8 +193,9 @@ namespace Game.Ai.V2
                         DefenderHexDefenseBonus = hexBonus,
                         AcceptPlan = marching != null ? null : candidate =>
                         {
-                            bool allowed = AttackMarchPolicy.CanStart(snap, objective.Target,
-                                candidate, intentState, out string why);
+                            bool allowed = AttackSecondaryPolicy.CanStart(snap,
+                                new AttackMissionTarget { Target = objective.Target, Secondary = secondary },
+                                candidate, intentState, opposition, out string why);
                             if (!allowed)
                                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#" + candidate.BaseArmyId,
                                     $"[AI][V2][Attack][Assembly] decision=REJECT_CANDIDATE "
@@ -179,12 +209,17 @@ namespace Game.Ai.V2
                 {
                     // Audit F7 — a FRESH objective no single army nor same-hex package can take
                     // may still be formed by free armies spread over several hexes: gather them.
-                    if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
+                    if (incumbent == null && !secondary && TryAppendFreshAttackGather(snap, objective, opposition,
                             hexBonus, excluded, freshCandidates, intentState))
                     {
                         attackProposed = true;
                         continue;
                     }
+                    // 2026-10-21 — no field host can take it: a garrison on an own Base may still,
+                    // as the second operation (AttackSecondaryPolicy.PlanGarrisonSortie).
+                    if (incumbent == null && liveSecondary == null
+                        && TryAppendGarrisonSortie(snap, objective, hexBonus, excluded, secondaryCandidates))
+                        continue;
                     // §24 — a started operation whose primary can no longer clear the site is a
                     // REINFORCEMENT decision, not a dead objective. Continuity moves the phase;
                     // the planner only refrains from proposing an impossible assault.
@@ -263,7 +298,7 @@ namespace Game.Ai.V2
                     DefenderCount = assaultObjective.DefenderCount,
                     ProjectedWinChance = observedDefence ? plan.ProjectedWinChance : 0f,
                     CoversAllDefenders = plan.CoversAllDefenders,
-                    ForceCommitted = assaultStarted,
+                    ForceCommitted = keepsRoster,
                     EstimatedEta = eta,
                     // §17 — carry the operation's own once-per-turn side-strike marker into the leg
                     // the executor will run. A fresh objective has no incumbent and therefore no
@@ -271,6 +306,7 @@ namespace Game.Ai.V2
                     OpportunisticStrikeTurn =
                         incumbent?.Attack?.LastOpportunisticStrikeTurn ?? 0,
                     Local = intermediate != null ? default : local,
+                    Secondary = secondary,
                 };
                 float ap = actor.HasActivatedThisTurn ? 0f
                     : projectedAp ?? actor.ActivationApCost;
@@ -318,8 +354,13 @@ namespace Game.Ai.V2
                         + $"actor=#{actor.ArmyId} win={F(plan.ProjectedWinChance)} ap={F(ap)} "
                         + $"mainDefenders={(objective.LocationOnly ? "unknown" : "known")} "
                         + "reason=current_host_clears_observed_base_on_route");
-                (incumbent == null ? freshCandidates : proposals).Add(proposal);
-                attackProposed = true;
+                if (incumbent == null && secondary)
+                    secondaryCandidates.Add(proposal);
+                else
+                {
+                    (incumbent == null ? freshCandidates : proposals).Add(proposal);
+                    attackProposed = true;
+                }
                 // The army serves an ActiveDefence objective itself: AD proposes no competing
                 // ground answer to that contact (air support is a separate execution and stays).
                 // Only a Hard incumbent is protected from losing its funding, so only it may
@@ -342,11 +383,74 @@ namespace Game.Ai.V2
             MissionProposal bestFresh = freshCandidates.FirstOrDefault();
             if (bestFresh != null)
                 proposals.Add(bestFresh);
+            MissionProposal bestSecondary = secondaryCandidates.FirstOrDefault();
+            if (bestSecondary != null)
+            {
+                proposals.Add(bestSecondary);
+                AiDebugLog.WriteDeduped("secondary#" + snap.Observer?.ColorIndex,
+                    $"[AI][V2][Attack][Secondary] decision=PROPOSE "
+                    + $"target={((AttackMissionTarget)bestSecondary.Target).Target.DiagnosticLabel} "
+                    + $"actor=#{bestSecondary.PreferredMoverArmyId} beside={liveOperation?.IntentKey} "
+                    + $"score={F(bestSecondary.BaseValue)} (surplus roster, decisive start)");
+            }
 
             TryAppendAttackPreparation(snap, objectives, activeIntents, committed, proposals, ctx,
                 attackProposed, intentState);
 
             RecordAttackDeferrals(activeIntents, proposals, assaultWhy, deferredThisPass);
+        }
+
+        // The second operation materialized from a garrison: one proposal whose executor first moves
+        // the pinned surplus bodies into their shell / new container (its own terminal step), after
+        // which the intent marches as an ordinary committed secondary Assault.
+        private static bool TryAppendGarrisonSortie(WorldSnapshot snap, AttackObjective objective,
+            float hexBonus, ISet<int> excluded, List<MissionProposal> candidates)
+        {
+            GarrisonSortiePlan sortie = AttackSecondaryPolicy.PlanGarrisonSortie(snap, objective, hexBonus, excluded);
+            if (sortie == null)
+                return false;
+            TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, sortie.Detachment,
+                sortie.WinChance, 1, 0f, sortie.TotalAp);
+            var target = new AttackMissionTarget
+            {
+                Phase = AttackMissionPhase.Assault,
+                Target = objective.Target,
+                PrimaryArmyId = sortie.ShellArmyId,
+                DestinationHex = objective.Hex,
+                DefenderHexDefenseBonus = hexBonus,
+                DefenderCount = objective.DefenderCount,
+                ProjectedWinChance = sortie.WinChance,
+                CoversAllDefenders = sortie.CoversAllDefenders,
+                EstimatedEta = 1,
+                Secondary = true,
+                Sortie = sortie,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = target,
+                BaseValue = score.Value,
+                Score = score,
+                LocalAdmissionScore = score.Value,
+                PreferredMoverArmyId = sortie.Detachment.ArmyId,
+                Requirements = new MissionRequirements
+                {
+                    MoverKnown = true, RequiresArmy = true,
+                    ApMinimum = sortie.TotalAp, ApDesired = sortie.TotalAp, ApMaximum = sortie.TotalAp,
+                    EtaTurns = 1, EstimatedDistance = sortie.RouteCost,
+                    CombatPowerMinimum = objective.TargetPower, CombatPowerDesired = objective.TargetPower,
+                },
+                Explain = $"Attack {objective.Target.DiagnosticLabel} by garrison sortie #{sortie.DonorGarrisonId} "
+                    + $"({sortie.UnitRuntimeIds.Count} surplus bodies) win {F(sortie.WinChance)}",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            candidates.Add(proposal);
+            AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#sortie",
+                $"[AI][V2][Attack][Secondary] decision=SORTIE target={objective.Target.DiagnosticLabel} "
+                + $"garrison=#{sortie.DonorGarrisonId} shell={(sortie.ShellArmyId.HasValue ? "#" + sortie.ShellArmyId : "new")} "
+                + $"bodies={sortie.UnitRuntimeIds.Count} power={F(sortie.Detachment.EffectiveArmyPower)} "
+                + $"win={F(sortie.WinChance)} route={sortie.RouteCost} ap={sortie.TotalAp}");
+            return true;
         }
 
         // An independent (non-durable) ActiveDefence ground Intercept of `enemyArmyId` is removed
@@ -416,12 +520,19 @@ namespace Game.Ai.V2
         }
 
         // The player's one live Attack operation (a Gather — preparation included —, Assault or
-        // Reinforcement), or null. Return legs of a finished fight are not an operation.
+        // Reinforcement), or null. Return legs of a finished fight are not an operation. The
+        // surplus-only secondary operation (AttackIntent.Secondary) is never "the" operation.
         internal static MissionIntent LiveAttackOperation(IReadOnlyList<MissionIntent> activeIntents) =>
-            activeIntents?.FirstOrDefault(i => i != null
-                && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack && i.Attack != null
-                && (i.Attack.Phase == AttackMissionPhase.Gather || i.Attack.Phase == AttackMissionPhase.Assault
-                    || i.Attack.Phase == AttackMissionPhase.Reinforcement));
+            activeIntents?.FirstOrDefault(i => IsLiveOperation(i) && !i.Attack.Secondary);
+
+        // The live secondary operation, or null (AttackSecondaryPolicy).
+        internal static MissionIntent LiveSecondaryAttack(IReadOnlyList<MissionIntent> activeIntents) =>
+            activeIntents?.FirstOrDefault(i => IsLiveOperation(i) && i.Attack.Secondary);
+
+        private static bool IsLiveOperation(MissionIntent i) =>
+            i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack && i.Attack != null
+            && (i.Attack.Phase == AttackMissionPhase.Gather || i.Attack.Phase == AttackMissionPhase.Assault
+                || i.Attack.Phase == AttackMissionPhase.Reinforcement);
 
         // ---- T01: the mobilization trigger and the first preparation step -----------------------
         //

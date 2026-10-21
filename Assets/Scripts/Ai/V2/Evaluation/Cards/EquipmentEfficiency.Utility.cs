@@ -98,9 +98,16 @@ namespace Game.Ai.V2
                 int stepsBefore = Mathf.CeilToInt(ctx.RouteLength / (float)Mathf.Max(1, vBefore));
                 int stepsAfter = Mathf.CeilToInt(ctx.RouteLength / (float)Mathf.Max(1, vAfter));
                 float others = Mathf.Max(0f, ctx.OtherArmyActivationAp);
-                move = SignedCard((others + apBefore) * (stepsBefore - stepsAfter));
                 // The rest of the expected load (beyond the route's own activations) is the usual AP saving.
                 float remaining = Mathf.Max(0f, ctx.ExpectedActivations - stepsBefore);
+                // 2026-10-21 (playtest Mordak T21) — the speed change outlives the route like the AP
+                // change does: the walking the army still does after it (`remaining` activations at
+                // the old speed) takes remaining * vBefore / vAfter at the new one. Recoil Cannon
+                // (MoveMax 2->1) on an army one hex from its target read "move 0" and the whole army
+                // walked home at speed 1 that same turn.
+                float afterRoute = vAfter == vBefore ? 0f
+                    : remaining * (1f - vBefore / (float)Mathf.Max(1, vAfter));
+                move = SignedCard((others + apBefore) * (stepsBefore - stepsAfter + afterRoute));
                 ap = SignedCard(stepsAfter * (apBefore - apAfter) + remaining * (apBefore - apAfter));
             }
             else

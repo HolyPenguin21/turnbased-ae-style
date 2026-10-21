@@ -32,6 +32,7 @@ namespace Game.Ai.V2
             bool attackProposed, IMissionIntentView intentState)
         {
             SelfSnapshot self = snap.Self;
+            objectives = PreparationObjectives(objectives, activeIntents);
             bool open = AttackForceReadiness.MobilizationOpen(self);
             bool byShare = AttackForceReadiness.MobilizationOpen(self.DeployedPower, self.AvailablePower);
             bool byField = AttackForceReadiness.FieldStrikeForceReady(self.FieldStrikePotential,
@@ -214,13 +215,24 @@ namespace Game.Ai.V2
         // what taking it elsewhere costs (the best Attack objective's TaskScore): the mobilization
         // gate is open, no Attack operation is live, and an objective with a staging Base exists.
         // (-1, 0) otherwise. A live preparation's host is claimed and never offered at all.
+        // 2026-10-21 — the objectives a new preparation may open on: a site the live second
+        // operation (AttackSecondaryPolicy) is taking is already served.
+        private static List<AttackObjective> PreparationObjectives(List<AttackObjective> objectives,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            MissionIntent secondary = LiveSecondaryAttack(activeIntents);
+            return secondary == null ? objectives
+                : objectives.Where(o => o.Target != secondary.Attack.Target).ToList();
+        }
+
         internal static (int armyId, float value) PendingPreparationHost(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed)
         {
             if (snap?.Self == null || !AttackForceReadiness.MobilizationOpen(snap.Self)
                 || LiveAttackOperation(activeIntents) != null)
                 return (-1, 0f);
-            AttackObjective objective = AttackObjectiveEvaluator.Enumerate(snap).FirstOrDefault();
+            AttackObjective objective = PreparationObjectives(AttackObjectiveEvaluator.Enumerate(snap),
+                activeIntents).FirstOrDefault();
             HexCoord? staging = objective == null ? (HexCoord?)null
                 : AttackPreparationPolicy.PreparationStagingBase(snap, objective.Hex);
             if (!staging.HasValue)

@@ -87,6 +87,48 @@ namespace Game.Ai.V2
         // an Assemble transaction applying precisely the transfers Provisioning pinned, rolled back
         // as a whole on any rejection. The outcome says what really happened in the world.
         // Returns false when `pm` is not a preparation step.
+        // 2026-10-21 — the second operation from a garrison: the pinned surplus bodies move into
+        // their shell / one new container as this step's ONE mutation (the shared
+        // ActiveDefenceExecutor.MaterializeDetachment), re-proved right before by the same
+        // resolution provisioning used. The step starts the operation (Continuity creates the
+        // secondary intent with the new army as its primary); the march is the next pass's leg.
+        // Returns false when `pm` is not such a step.
+        internal static bool TryMaterializeSortie(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
+        {
+            if (pm?.Kind != MissionKind.Attack || !pm.AttackTarget.RequiresSortieMaterialization)
+                return false;
+            GarrisonSortiePlan plan = pm.AttackTarget.Sortie;
+            result.StartHex = result.FinalHex = plan.StrongholdHex;
+            if (!AttackProvisioner.TryResolveSortie(player, root, ctx, snapshot, pm.AttackTarget, pm.ClaimedAp,
+                    out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why))
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                AiDebugLog.Write($"[AI][V2][Attack][Sortie] rejected: {why}; world unchanged");
+                return true;
+            }
+            ArmyData actor = ActiveDefenceExecutor.MaterializeDetachment(player, ctx, donor, shell, units, out why);
+            if (actor == null)
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                AiDebugLog.Write($"[AI][V2][Attack][Sortie] materialization refused: {why}");
+                return true;
+            }
+            pm.MoverArmyId = actor.Id;
+            pm.AttackTarget.PrimaryArmyId = actor.Id;
+            result.ActualActorArmyId = actor.Id;
+            result.ActorMaterialized = true;
+            result.OperationStarted = true;
+            result.CombatChanged = true;
+            result.StopReason = ExecutionStopReason.StepCompleted;
+            AiDebugLog.Write($"[AI][V2][Attack][Sortie] actor=#{actor.Id} donor=#{donor.Id} bodies={units.Count} "
+                + $"power={AiPower.EffectiveArmyPower(actor.Members):0.#} -> {pm.AttackTarget.Target.DiagnosticLabel}");
+            MarkChanged(player, ctx, actor.Id);
+            return true;
+        }
+
         internal static bool TryRunPreparationStep(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
         {

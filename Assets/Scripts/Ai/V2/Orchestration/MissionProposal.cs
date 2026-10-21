@@ -52,6 +52,13 @@ namespace Game.Ai.V2
         // (a tie-break, not a reservation). null for a fresh proposal.
         public int? PreferredMoverArmyId;
 
+        // 2026-10-21 — a fresh Recon proposal priced to take PreferredMoverArmyId off another,
+        // less valuable Recon role (its DisplacementValue is in this proposal's
+        // MoverOpportunityCost slot). Only such a priced proposal may bind a durably claimed scout
+        // (ReconAssignmentPlanner.AssignFunded); the executed step then re-points that role
+        // (ReconContinuity.TryAbsorbIntoExistingActorRole). null otherwise.
+        public int? DisplacesMoverArmyId;
+
         // Step 7.1 — this proposal is an active MissionIntent re-materialised this turn, not a
         // fresh candidate. DurableFundingTier is that intent's funding policy (None for Explore /
         // fresh loop). Together they let MissionAdmissionPolicy.AdmissionRank apply the retarget

@@ -544,6 +544,13 @@ namespace Game.Ai.V2
                     // ground combat applies (ProvisioningSession.ExcludedForGroundCombat).
                     if (IsOwnDurableActor(player, snap.Intents, fe.Mission, fe.Mission.PreferredMoverArmyId.Value))
                         excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
+                    // 2026-10-21 — a fresh job that priced taking this scout off a less valuable
+                    // Recon role (ReconMissionPlanner.DisplaceableReconRole, MoverOpportunityCost)
+                    // may bind it while that role still holds it.
+                    if (fe.Mission.DisplacesMoverArmyId == fe.Mission.PreferredMoverArmyId
+                        && ReconMissionPlanner.DisplaceableReconRole(snap.Intents?.All?.ToList(),
+                            fe.Mission.PreferredMoverArmyId.Value) != null)
+                        excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
                 }
                 else
                 {

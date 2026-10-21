@@ -152,7 +152,7 @@ namespace Game.Ai.V2
                 if (ReconScoutKinds.IsCapture(c.Target.Kind) && captureProposed) continue;
                 var excluded = new HashSet<int>(claimed);
                 if (c.IsIncumbent && c.PreferredMover.HasValue) excluded.Remove(c.PreferredMover.Value);
-                MissionProposal proposal = BuildProposal(snap, c, ctx, excluded, out bool airWitness);
+                MissionProposal proposal = BuildProposal(snap, c, ctx, excluded, activeIntents, out bool airWitness);
                 if (proposal == null) continue;
                 proposals.Add(proposal);
                 captureProposed |= ReconScoutKinds.IsCapture(c.Target.Kind);
@@ -244,7 +244,8 @@ namespace Game.Ai.V2
             req == StealthRequirement.None ? "" : $" stealth={req} risk {F(risk)}";
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, ScoutCandidate c,
-            AiTurnContext ctx, ISet<int> excluded, out bool airWitness)
+            AiTurnContext ctx, ISet<int> excluded, IReadOnlyList<MissionIntent> activeIntents,
+            out bool airWitness)
         {
             // The estimate must price the SAME durable mover the proposal prefers. Otherwise a
             // cheaper, unrelated scout advertises an AP envelope the incumbent cannot execute.
@@ -275,6 +276,37 @@ namespace Game.Ai.V2
                     c.IsIncumbent, c.Tier, preferred, c.FreshNeighbors);
             }
             ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, preferred, air);
+            int? displaces = null;
+            // 2026-10-21 (playtest Mordak T17-T21) — the cheapest scout for a fresh ground job may
+            // be held by another Recon role. Refresh(1,-1) (value 16-21, the observation a parked
+            // Assault waited for) priced itself on Hooded #15, two hexes away, which a durable
+            // Refresh(-2,-2) worth 6.3 kept; Assignment then excluded #15 every pass. Same rule as
+            // Attack donors and Economy loans: take it only when the job is worth more than what
+            // the role loses (MoverOpportunityCost = DisplacementValue) and no free scout gets
+            // there as soon; otherwise price the free scout the job can really get.
+            if (!c.IsIncumbent && excluded != null && est.MoverKnown && est.PreferredMoverArmyId.HasValue
+                && excluded.Contains(est.PreferredMoverArmyId.Value)
+                && !ReconScoutKinds.IsCapture(c.Target.Kind) && !ReconScoutKinds.IsAirSweep(c.Target.Kind))
+            {
+                int heldId = est.PreferredMoverArmyId.Value;
+                ScoutCostEstimate free = ScoutCostModel.Estimate(snap, c.Target, null, null,
+                    excludeArmyIds: excluded);
+                MissionIntent role = DisplaceableReconRole(activeIntents, heldId);
+                float lost = TaskScoreEvaluator.MoverOpportunityCost(role?.DisplacementValue ?? 0f);
+                if (role != null && c.Score.Value - lost > 0f
+                    && (!free.MoverKnown || free.EtaTurns > est.EtaTurns))
+                {
+                    TaskScore baseScore = c.Score;
+                    TaskScore priced = TaskScore.FromSlots(slot => slot == TaskSlot.MoverOpportunityCost
+                        ? baseScore[slot] + lost : baseScore[slot]);
+                    c = new ScoutCandidate(c.Target, priced, ComputeLocalAdmissionScore(priced.Value),
+                        c.Explain + $" [takes #{heldId} from {role.IntentKey}, loses {F(lost)}]",
+                        c.IsIncumbent, c.Tier, c.PreferredMover, c.FreshNeighbors);
+                    displaces = heldId;
+                }
+                else if (free.MoverKnown)
+                    est = free;
+            }
 
             // Task 5 (R1) — c.PreferredMover is the durable incumbent's NOMINAL preference; when
             // that actor is structurally ineligible this turn (e.g. 0 CurrentMovement),
@@ -312,10 +344,24 @@ namespace Game.Ai.V2
                 DurableFundingTier = c.Tier,
                 Explain = c.Explain,
                 PreferredMoverArmyId = est.MoverKnown ? est.PreferredMoverArmyId : c.PreferredMover,
+                DisplacesMoverArmyId = displaces,
             };
             proposal.Axes.Value[DesireAxis.Recon] = 1.0f;
             return proposal;
         }
+
+        // The ground Recon role that may lend `armyId` to a fresh, more valuable Recon job: an
+        // active Explore/Refresh lane, not Hard-funded (Hard lanes are kept by policy). An actor
+        // held by any other kind of operation (an Economy loan suspends the role) is never taken.
+        internal static MissionIntent DisplaceableReconRole(IReadOnlyList<MissionIntent> activeIntents, int armyId) =>
+            activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
+                && i.Kind == MissionKind.Scout && i.Scout != null && i.PreferredMoverArmyId == armyId
+                && i.Funding < CommitmentTier.Hard
+                && !ReconScoutKinds.IsCapture(i.Scout.Kind) && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
+            is MissionIntent role
+            && !(activeIntents.Any(o => o != null && o.Status == IntentStatus.Active
+                && !ReferenceEquals(o, role) && o.PreferredMoverArmyId == armyId))
+                ? role : null;
 
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }

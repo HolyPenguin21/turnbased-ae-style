@@ -126,6 +126,15 @@ namespace Game.Ai.V2
         // FetchCommander only: the own garrison the hero leaves and the hero (UnitData.RuntimeId).
         public int? CommanderDonorArmyId;
         public int CommanderUnitId;
+        // 2026-10-21 (user decision) — the second, surplus-only operation beside the live one
+        // (AttackSecondaryPolicy). Continuity copies it into AttackIntent.Secondary.
+        public bool Secondary;
+        // 2026-10-21 — a second operation born from a garrison with no field host on its Base:
+        // the pinned detachment (spare surplus bodies + an empty shell or a new container) the
+        // executor materializes as its own terminal step (AttackExecutor.TryMaterializeSortie);
+        // the intent it creates then marches as an ordinary committed Assault. Null otherwise.
+        public GarrisonSortiePlan Sortie;
+        public bool RequiresSortieMaterialization => Sortie != null;
     }
 
     // ===========================================================================================

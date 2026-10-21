@@ -37,8 +37,24 @@ namespace Game.Ai.V2
             out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why)
         {
             donor = null; shell = null; units = null; why = "invalid pending sortie";
-            GarrisonSortiePlan p = target.Sortie;
-            if (!target.RequiresSortieMaterialization || target.PrimaryArmyId != p.ShellArmyId) return false;
+            if (!target.RequiresSortieMaterialization || target.PrimaryArmyId != target.Sortie.ShellArmyId) return false;
+            return TryResolveSortieCore(player, root, ctx, target.Sortie, commitments, apEnvelope,
+                (from, list) => (TryEvaluateSortie(player, ctx, target, from, list, out string w), w),
+                out donor, out shell, out units, out why);
+        }
+
+        // 2026-10-21 — the lane-neutral half of a pinned garrison sortie, shared by ActiveDefence's
+        // immediate intercept and Attack's second operation (AttackProvisioner.ProvisionSortie):
+        // the pinned shell (or a canonical creation), the donor's extraction under its floor, the
+        // transfer legality and the complete AP envelope. `evaluate` is the lane's own fight test
+        // of the exact bodies from the donor's hex. Pure: nothing is moved here.
+        internal static bool TryResolveSortieCore(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            GarrisonSortiePlan p, ActorCommitments commitments, float apEnvelope,
+            Func<HexCoord, List<UnitData>, (bool ok, string why)> evaluate,
+            out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why)
+        {
+            donor = null; shell = null; units = null; why = "invalid pending sortie";
+            if (p == null || evaluate == null) return false;
             if (p.ShellArmyId.HasValue)
             {
                 shell = AiV2Util.ResolveArmy(player, p.ShellArmyId.Value);
@@ -52,8 +68,9 @@ namespace Game.Ai.V2
                     p.UnitRuntimeIds, shell, commitments, !p.ShellArmyId.HasValue, out donor, out units, out why)) return false;
             ArmyData prospective = shell ?? ArmyData.CreateVisualSnapshot();
             if (shell == null) { prospective.Owner = player; prospective.Hex = donor.Hex; }
-            if (!ArmyActions.CanTransferMembers(units, donor, prospective, out why)
-                || !TryEvaluateSortie(player, ctx, target, donor.Hex, units, out why)) return false;
+            if (!ArmyActions.CanTransferMembers(units, donor, prospective, out why)) return false;
+            (bool fights, string fightWhy) = evaluate(donor.Hex, units);
+            if (!fights) { why = fightWhy; return false; }
             int totalAp = p.MaterializationAp + ArmyData.ComputeActivationApCost(units);
             if (totalAp != p.TotalAp || totalAp > apEnvelope + AiConfigV2.allocatorSliceEpsilon
                 || root == null || !root.CanSpendActionPoints(totalAp)
@@ -88,14 +105,8 @@ namespace Game.Ai.V2
                     || u.IsPrisoner || u.HitPointsCurrent <= 0 || u.Owner != player)
                 || !p.MatchesRoster(units.Select(u => u.RuntimeId))) return false;
             if (units.Count == 1 && AbilityParams.UnitHasAnyRecce(units[0])) return false;
-            BuildingData home = OwnWorld.Of(player).BuildingAt(p.StrongholdHex);
+            if (!SortieCoverHolds(player, p, units, out why)) return false;
             ArmyData donor = AiV2Util.ResolveArmy(player, p.DonorGarrisonId);
-            UnitData cover = donor?.Members.FirstOrDefault(u => u != null && u.RuntimeId == p.CoverRuntimeId);
-            if (home == null || !(home.IsBase || home.IsStartingCitadel) || donor == null
-                || !donor.IsGarrison || !donor.Hex.Equals(p.StrongholdHex)
-                || !AiArmyRoles.IsGroundBattleBody(cover) || cover.IsPrisoner || cover.HitPointsCurrent <= 0
-                || units.Contains(cover))
-            { why = "sortie mandatory stronghold cover lost"; return false; }
             // If another action raised the floor after extraction, re-check the identical batch
             // against a visual pre-extraction roster. No body is transferred and no id is consumed.
             if (target.IsMaterializedSortie)
@@ -122,6 +133,22 @@ namespace Game.Ai.V2
                 || !ActiveDefenceObjectiveEvaluator.CanReachNow(ctx.Map, player, from, p.EnemyHex,
                     ArmyData.ComputeCurrentMovement(units), ArmyData.ComputeMaxMovement(units), out _))
             { why = "sortie fresh combat or same-turn movement gate failed"; return false; }
+            why = null; return true;
+        }
+
+        // The stronghold a sortie leaves keeps its pinned cover: an own Base/Citadel, its garrison
+        // in place and the one body the plan never takes (shared by both sortie lanes).
+        internal static bool SortieCoverHolds(PlayerSetupData player, GarrisonSortiePlan p,
+            IReadOnlyList<UnitData> units, out string why)
+        {
+            BuildingData home = OwnWorld.Of(player).BuildingAt(p.StrongholdHex);
+            ArmyData donor = AiV2Util.ResolveArmy(player, p.DonorGarrisonId);
+            UnitData cover = donor?.Members.FirstOrDefault(u => u != null && u.RuntimeId == p.CoverRuntimeId);
+            if (home == null || !(home.IsBase || home.IsStartingCitadel) || donor == null
+                || !donor.IsGarrison || !donor.Hex.Equals(p.StrongholdHex)
+                || !AiArmyRoles.IsGroundBattleBody(cover) || cover.IsPrisoner || cover.HitPointsCurrent <= 0
+                || units.Contains(cover))
+            { why = "sortie mandatory stronghold cover lost"; return false; }
             why = null; return true;
         }
     }

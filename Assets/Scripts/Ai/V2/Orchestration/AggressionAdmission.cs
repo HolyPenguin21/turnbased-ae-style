@@ -83,7 +83,7 @@ namespace Game.Ai.V2
                     // A bound support wing changes which task targets still want aviation.
                     + $":air{GroundCombatLegs.HeldAirSupportArmyId(i)}"
                     + $":{i.Raid?.ReinforcementRequestedTurn}{i.Attack?.ReinforcementRequestedTurn}"
-                    + $":{(i.Attack?.Preparation == true ? "P" : "")}{(i.Attack?.AssaultStarted == true ? "A" : "")}{(i.Attack?.TacticalRetreat == true ? "R" : "")}"
+                    + $":{(i.Attack?.Preparation == true ? "P" : "")}{(i.Attack?.AssaultStarted == true ? "A" : "")}{(i.Attack?.TacticalRetreat == true ? "R" : "")}{(i.Attack?.Secondary == true ? "S" : "")}"
                     + $":sup{string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i))}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             string threats = string.Join(";", (snapshot.Threat?.Contacts

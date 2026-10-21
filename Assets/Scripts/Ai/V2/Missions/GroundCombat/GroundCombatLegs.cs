@@ -37,6 +37,10 @@ namespace Game.Ai.V2
             }
             if (mission?.Kind == MissionKind.Attack && mission.Target is AttackMissionTarget at)
             {
+                // A second operation still to be materialized from a garrison pins its shell and
+                // donor exactly like ActiveDefence's sortie.
+                if (at.RequiresSortieMaterialization)
+                { primary = at.Sortie.ShellArmyId; support = at.Sortie.DonorGarrisonId; return true; }
                 if (at.Phase == AttackMissionPhase.Assault)
                     return false;
                 primary = at.PrimaryArmyId;
@@ -64,7 +68,7 @@ namespace Game.Ai.V2
             if (mission?.Target is ActiveDefenceMissionTarget ad)
                 return ad.Phase == ActiveDefencePhase.Intercept && !ad.RequiresSortieMaterialization;
             if (mission?.Target is AttackMissionTarget at)
-                return at.Phase == AttackMissionPhase.Assault
+                return at.Phase == AttackMissionPhase.Assault && !at.RequiresSortieMaterialization
                     || (at.Phase == AttackMissionPhase.Reinforcement && !at.SupportArmyId.HasValue);
             return false;
         }
@@ -80,6 +84,8 @@ namespace Game.Ai.V2
                     || ((raid.Phase == RaidMissionPhase.Return
                             || raid.Phase == RaidMissionPhase.RecoveryReturn)
                         && raid.PrimaryArmyId == armyId);
+            if (mission?.Target is AttackMissionTarget sortieLeg && sortieLeg.RequiresSortieMaterialization)
+                return sortieLeg.Sortie.DonorGarrisonId == armyId || sortieLeg.Sortie.ShellArmyId == armyId;
             if (mission?.Target is AttackMissionTarget attack)
                 return ((attack.Phase == AttackMissionPhase.Reinforcement
                             || attack.Phase == AttackMissionPhase.Gather

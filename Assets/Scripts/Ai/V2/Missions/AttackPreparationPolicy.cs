@@ -13,6 +13,22 @@ namespace Game.Ai.V2
 {
     internal static class AttackPreparationPolicy
     {
+        // 2026-10-21 — the staging Base of a LIVE preparation: the one frozen in the intent
+        // (AttackIntent.StagingHex) while it is still an own Base the host can reach, else the
+        // fresh choice below. A host that arrived and finds nothing to take there STALLs and the
+        // stall lifecycle ends the preparation; it never walks off to the next garrison donor.
+        // Pure: Continuity stores the answer, the planner reads the same answer.
+        internal static HexCoord? KeptStagingBase(WorldSnapshot snap, AttackIntent attack,
+            ArmySnapshot host)
+        {
+            if (attack?.StagingHex is HexCoord kept && snap?.Self?.BaseHexes != null
+                && snap.Self.BaseHexes.Contains(kept)
+                && (host == null || !host.IsStructuralRaidActor || host.Hex.Equals(kept)
+                    || (host.ReachableOwnBaseHexes != null && host.ReachableOwnBaseHexes.Contains(kept))))
+                return kept;
+            return attack == null ? null : PreparationStagingBase(snap, attack.Target.Hex, host);
+        }
+
         // The own Base a mobilization preparation assembles on: of every held own Base
         // (SelfSnapshot.BaseHexes, starting Citadel included) the one nearest to the target; ties
         // go to the starting Citadel, then Q, R. Null when no own Base is held. Recomputed every
@@ -38,10 +54,16 @@ namespace Game.Ai.V2
             // stages, as before, on the Base nearest to the target.
             // Only a host with a free roster slot can take a body: a full one would wait on that
             // Base for a transfer that never fits.
+            // 2026-10-21 — a spare is measured against the threats that reach the garrison within
+            // activeDefenceWithdrawMaxEnemyEta turns (AiArmyRoles.GarrisonThreatFloor); a donor the
+            // host reaches only later is a promise past that horizon. Vex T16-T21 walked six
+            // hexes for a front-line spare that was gone on arrival, then six back.
             if (host != null && host.IsStructuralRaidActor && host.MemberCount < host.Capacity
                 && !AttackForceReadiness.ForceReady(host.EffectiveArmyPower, snap.Self.AttackPeak))
             {
                 var donor = bases
+                    .Where(h => AiV2Util.CeilDiv(HexGridMath.Distance(host.Hex, h), Mathf.Max(1, host.MaxMovement))
+                        <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
                     .Select(h => (Hex: h, Spare: SpareGarrisonPower(snap, h)))
                     .Where(x => x.Spare > 0f)
                     .OrderByDescending(x => x.Spare)
