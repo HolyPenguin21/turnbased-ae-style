@@ -112,6 +112,9 @@ namespace Game.Ai.V2
 
             self.HasDevFacility = BuildingRegistry.AllBuildings().Any(b => b != null && b.Owner == player
                 && (b.HasFacilityWithAbility(UnitAbilities.Research) || b.HasFacilityWithAbility(UnitAbilities.Production)));
+            self.HasFacilityAntiAir = buildings.Any(b => b.Owner == player
+                && b.FacilitySlots.Any(f => f != null && f.StructurePointsCurrent > 0
+                    && AntiAirRules.TryGetRadius(f.Abilities, f.AntiAirRadius, out _)));
             self.HasDevOperator = ownArmies
                 .SelectMany(a => a.Members)
                 .Any(m => m != null && m.IsHero

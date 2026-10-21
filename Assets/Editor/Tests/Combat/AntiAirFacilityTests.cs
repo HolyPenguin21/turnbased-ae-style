@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Linq;
+using Game.Ai.V2;
 using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
@@ -108,6 +109,40 @@ namespace Game.EditorTests
             Assert.That(reactions.Any(r => r.AaUnit == aaUnit && r.AaArmy == ground), Is.True);
             Assert.That(reactions.Any(r => r.AaArmy == null && r.AaBuilding != null), Is.True);
             Assert.That(AntiAirRules.CollectTurnStartOpportunities(_enemy), Is.Empty);
+        }
+
+        [Test]
+        public void WingFullyHiddenFromTheAaOwnerIsNotATarget()
+        {
+            AaBase(_player, out _);
+            var ground = new ArmyData { Owner = _player, Hex = TwoAway };
+            var aaUnit = new UnitData { Owner = _player, Attack = 3, HitPointsMax = 3, HitPointsCurrent = 3 };
+            aaUnit.Abilities.Add(UnitAbilities.AntiAir);
+            ground.Members.Add(aaUnit);
+            ArmyRegistry.Register(ground);
+            ArmyData wing = Wing(_enemy, Adjacent);
+            wing.Members[0].IsHidden = true;
+            VisionSystem.RecomputeFor(_player);
+
+            Assert.That(AntiAirRules.CollectEntryReactions(wing, Adjacent), Is.Empty);
+            Assert.That(AntiAirRules.CollectTurnStartOpportunities(_player), Is.Empty);
+
+            // One aircraft the AA owner can see makes the wing a target again.
+            wing.Members.Add(new UnitData { IsAviation = true, Owner = _enemy, HitPointsMax = 3, HitPointsCurrent = 3 });
+            Assert.That(AntiAirRules.CollectEntryReactions(wing, Adjacent).Count, Is.EqualTo(2));
+            Assert.That(AntiAirRules.CollectTurnStartOpportunities(_player).Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void AiBaselineCountsAnOwnAaFacilityAsAntiAirCoverage()
+        {
+            WorldSnapshot Snap(bool facilityAa) => new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Armies = new ArmySnapshot[0], HasFacilityAntiAir = facilityAa },
+                Threat = new ThreatModel { Threats = new AssetThreatSnapshot[0] },
+            };
+            Assert.That(BaselineForceReadiness.Evaluate(Snap(false), null).HasAntiAir, Is.False);
+            Assert.That(BaselineForceReadiness.Evaluate(Snap(true), null).HasAntiAir, Is.True);
         }
 
         [Test]

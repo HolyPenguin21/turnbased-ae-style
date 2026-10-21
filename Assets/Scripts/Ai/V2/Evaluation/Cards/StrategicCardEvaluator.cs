@@ -212,6 +212,9 @@ namespace Game.Ai.V2
                     if (!a.IsGarrison && !a.IsSoloRecce)
                         combatActors++;
                 }
+            // An AA Facility is standing anti-air at its Base, the same coverage an AA army gives.
+            if (snap.Self.HasFacilityAntiAir)
+                coverage = coverage.With(IntendedRole.AntiAir);
 
             // P1.7 — a strong combat body already sitting in hand is prepared force: it shrinks the
             // actor gap the same way a deployed one would. Uses EFFECTIVE abilities (card + any

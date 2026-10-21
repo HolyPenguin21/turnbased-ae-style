@@ -103,6 +103,7 @@ namespace Game.Ai.V2
                 + $"|recipients={RecipientFacts(player, hand)}"
                 + $"|live={string.Join(";", live)}"
                 + $"|strike={strike}"
+                + $"|facAA={(snapshot?.Self?.HasFacilityAntiAir == true ? 1 : 0)}"
                 + $"|{Facts(snapshot, activeIntents)}";
         }
 
