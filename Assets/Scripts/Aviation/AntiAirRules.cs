@@ -100,15 +100,16 @@ namespace Game.Aviation
                 int distance = HexGridMath.Distance(aaHex, enteredHex);
                 foreach (ArmyData army in ArmyRegistry.AllAt(aaHex))
                 {
+                    // Stored aircraft, carrier decks and the captor's Prison never react.
                     if (army.Owner == null || army.Owner == airArmy.Owner
-                        || army.IsCarrierContainer || AviationRules.IsAirfield(army))
+                        || army.IsCarrierContainer || AviationRules.IsAirfield(army) || army.IsPrison)
                         continue;
                     // A wing whose every aircraft is hidden from this AA owner is not a target.
                     if (!StealthSystem.HasAnyTargetableMember(airArmy, army.Owner))
                         continue;
                     foreach (UnitData member in army.Members)
                     {
-                        if (!TryGetRadius(member, out int radius) || distance > radius)
+                        if (member.IsPrisoner || !TryGetRadius(member, out int radius) || distance > radius)
                             continue;
                         if (!VisionSystem.IsVisible(army.Owner, enteredHex))
                             continue;
@@ -158,7 +159,7 @@ namespace Game.Aviation
 
             foreach (UnitData member in groundArmy.Members)
             {
-                if (!TryGetRadius(member, out int radius))
+                if (member.IsPrisoner || !TryGetRadius(member, out int radius))
                     continue;
                 // A hidden unit takes no offensive action, an opportunity AA shot included
                 // (§5) — it must voluntarily leave stealth first.
