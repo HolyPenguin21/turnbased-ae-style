@@ -78,6 +78,15 @@ namespace Game.UI
             string cardList = string.Join(" and ", entry.ResolvedCardRewards
                 .Where(r => r.card != null).Select(r => r.card.displayName));
 
+            if (entry.Definition.grantsRandomCollectionCard)
+            {
+                if (!string.IsNullOrEmpty(entry.CollectionRewardError))
+                    return entry.CollectionRewardError;
+                if (string.IsNullOrEmpty(cardList))
+                    return "You already own the maximum number of copies of every available card. The Library has no new card for your collection.";
+                return $"Among the surviving books and military records, {armyName} uncovers forgotten knowledge. {cardList} has been added to your hand and permanently to your COLLECTION.";
+            }
+
             bool hasResources = !string.IsNullOrEmpty(resourceList);
             bool hasCard = !string.IsNullOrEmpty(cardList);
 

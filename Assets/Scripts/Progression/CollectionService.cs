@@ -21,6 +21,32 @@ namespace Game.Progression
         public event Action Changed;
         public CollectionProfile Snapshot => profile.Copy();
         public int Owned(string key) => profile.Owned(key);
+        private readonly Random collectionRewardRandom = new Random();
+
+        // Library rewards share collection eligibility/copy limits with match rewards, but draw
+        // uniformly across ALL playable factions (including shared Neutral cards once per key).
+        // This transaction never creates/claims a match receipt or edits any saved deck.
+        public bool TryGrantRandomCollectionCard(out CardDefinition acquired, out string error)
+        {
+            acquired = null;
+            error = null;
+            var candidates = DeckRules.PlayableFactions.SelectMany(Rules.Cards)
+                .Where(c => !string.IsNullOrWhiteSpace(c.authoredKey) && Rules.Resolve(c.authoredKey) == c
+                    && Owned(c.authoredKey) < DeckRules.CopyLimit(c))
+                .GroupBy(c => c.authoredKey).Select(g => g.First()).ToList();
+            if (candidates.Count == 0) return true;
+            CardDefinition chosen = candidates[collectionRewardRandom.Next(candidates.Count)];
+            if (!Transact(p =>
+            {
+                if (p.Owned(chosen.authoredKey) >= DeckRules.CopyLimit(chosen))
+                    throw new InvalidOperationException("The collection copy limit has been reached.");
+                var row = p.ownedCards.Find(e => e.cardKey == chosen.authoredKey);
+                if (row == null) p.ownedCards.Add(new DeckCardEntry { cardKey = chosen.authoredKey, count = 1 });
+                else row.count++;
+            }, out error)) return false;
+            acquired = chosen;
+            return true;
+        }
         public CollectionService(DeckRules rules, CollectionProfileStore store, CollectionProfile initial)
         { Rules = rules; this.store = store; profile = initial.Copy(); ClampBlueprintCopies(profile); }
         // Profiles saved before the one-copy blueprint rule may hold several copies of equipment/mutators.

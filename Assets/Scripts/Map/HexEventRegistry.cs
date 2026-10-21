@@ -64,6 +64,10 @@ namespace Game.Map
             public PlayerSetupData ConsumedBy;
             public List<RewardEntry> SelectedRewards = new List<RewardEntry>();
             public List<(RewardEntry reward, CardDefinition card)> ResolvedCardRewards = new List<(RewardEntry, CardDefinition)>();
+            // A defeated Library remains claimable if its profile write fails; its guard must
+            // not respawn, and the result popup must never claim an unsaved collection reward.
+            public bool CollectionRewardPending;
+            public string CollectionRewardError;
             // Set once the player (or AI) leaves this event unresolved via Skip (see
             // HexSelectionController.Events.cs's own ShowEventChoice) — drives MapEventDisplay's
             // standalone marker: never shown before this (an undiscovered event has no map
@@ -167,6 +171,8 @@ namespace Game.Map
         {
             if (player == null || !ByHex.TryGetValue(hex, out Entry entry))
                 return;
+            if (entry.Definition?.CanVisit(player) == false)
+                return;
             if (entry.KnownBy.Add(player))
                 EventDiscovered?.Invoke(hex, player);
         }
@@ -196,6 +202,8 @@ namespace Game.Map
         public static void MarkSkipped(HexCoord hex, PlayerSetupData discoverer)
         {
             if (!ByHex.TryGetValue(hex, out Entry entry))
+                return;
+            if (entry.Definition?.CanVisit(discoverer) == false)
                 return;
             if (discoverer != null)
                 entry.DiscoveredBy.Add(discoverer);

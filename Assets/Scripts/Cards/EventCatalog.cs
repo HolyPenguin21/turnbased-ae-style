@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Economy;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Cards
@@ -52,6 +53,10 @@ namespace Game.Cards
         public Sprite image;
         [TextArea]
         public string description;
+        // Library reward: one permanent collection copy and the same card in the current hand.
+        // Unlike fixed card rewards, it is selected when the visitor claims the event, never at placement.
+        public bool grantsRandomCollectionCard;
+        public bool CanVisit(PlayerSetupData player) => !grantsRandomCollectionCard || player?.IsHuman == true;
         // Ordered light / medium / heavy. The map selects one uniformly at placement.
         public List<EventVariant> variants = new List<EventVariant>();
         // Legacy fields remain for assets/tests not yet converted to variants.

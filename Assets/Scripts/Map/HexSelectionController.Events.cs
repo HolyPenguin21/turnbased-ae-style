@@ -6,6 +6,7 @@ using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
+using Game.Progression;
 using Game.UI;
 using Game.Units;
 using UnityEngine;
@@ -41,7 +42,7 @@ namespace Game.Map
             bool allowUndefendedBuildingTakeover = true, bool allowAiEventExplore = true)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed)
+            if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) == false)
                 return; // shouldStopEarly's own check already guarantees this, but stay defensive
 
             // Same "clear just the origin/departed hex's own selection, not a full Deselect()"
@@ -90,7 +91,8 @@ namespace Game.Map
         public bool TriggerHexEventIfClear(HexCoord hex, ArmyData survivor)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed || survivor?.Owner == null)
+            if (entry == null || entry.Consumed || survivor?.Owner == null
+                || entry.Definition?.CanVisit(survivor.Owner) == false)
                 return false;
 
             if (entry.Triggered)
@@ -117,6 +119,11 @@ namespace Game.Map
         private bool ShowEventChoice(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry, Action onSkip,
             bool allowAiExplore = true)
         {
+            if (entry.Definition?.CanVisit(mover?.Owner) == false)
+            {
+                onSkip();
+                return false;
+            }
             // The mover's own ground army has reached the event and is being offered the choice: the
             // owner now personally knows it (guard included), whichever branch is taken below. This is
             // the only authoritative moment; fog vision, aviation and other players never get here.
@@ -160,6 +167,8 @@ namespace Game.Map
         // branches never touch battleScreen at all, so false is always correct for them).
         private bool ResolveEventExplore(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry)
         {
+            if (entry.Definition?.CanVisit(mover?.Owner) == false)
+                return false;
             // Exploring is an action: every hidden member of the mover leaves stealth, guarded or
             // not (a guarded fight would also reveal through PrepareCommittedEncounter, but a
             // guardless reward never reaches that boundary). Skip keeps stealth — see ShowEventChoice.
@@ -168,7 +177,7 @@ namespace Game.Map
                 member.MoveCurrent = 0;
             entry.Triggered = true;
 
-            if (entry.ResolvedGuardMembers == null || entry.ResolvedGuardMembers.Count == 0)
+            if (entry.CollectionRewardPending || entry.ResolvedGuardMembers == null || entry.ResolvedGuardMembers.Count == 0)
             {
                 GrantEventReward(hex, mover);
                 return false;
@@ -189,14 +198,9 @@ namespace Game.Map
             // included (it used to call BeginCaptureKillEncounter/Show directly).
             Game.Combat.BattleEncounterContext encounter =
                 Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(hex, participants, mover.Owner);
-            // Same hero-only branch every other contact point in this project already has (see
-            // HexSelectionController.Movement.cs's own onFight callback) — nothing for a normal
-            // Ground Combat round to do against a target with no non-hero units. Sourced from the
-            // context above, not re-derived, same reasoning as every other entry point.
-            if (encounter.TargetHeroOnly)
-                battleScreen?.BeginCaptureKillEncounter(mover, guard, null);
-            else
-                battleScreen?.Show(hex, participants, null);
+            // The prepared context owns both classification AND participant order. A lone
+            // visiting hero is the hunted target, even though it initiated the exploration.
+            battleScreen?.ShowEncounter(encounter, null);
             return true;
         }
 
@@ -209,7 +213,8 @@ namespace Game.Map
         public bool TriggerAiEventExplore(ArmyData mover, HexCoord hex)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (mover == null || entry == null || entry.Consumed || entry.Triggered)
+            if (mover == null || entry == null || entry.Consumed || entry.Triggered
+                || entry.Definition?.CanVisit(mover.Owner) == false)
                 return false;
             HexEventRegistry.MarkDiscovered(hex, mover.Owner);
             return ResolveEventExplore(mover, hex, entry);
@@ -297,6 +302,21 @@ namespace Game.Map
             HexEventRegistry.MarkSkipped(hex, retreater);
         }
 
+        // A victorious Library guard must never become a persistent neutral army that an AI
+        // could collide with. Failed human exploration resets it exactly like a retreat.
+        public bool DismissLibraryGuardAfterFailedExplore(HexCoord hex, ArmyData survivor, ArmyData explorer)
+        {
+            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
+            if (entry?.Definition?.grantsRandomCollectionCard != true || !entry.Triggered
+                || entry.CollectionRewardPending || explorer?.Owner?.IsHuman != true
+                // A surviving hero still faces the ordinary Capture/Kill continuation first.
+                || (explorer.Hex.Equals(hex) && explorer.Members.Count > 0)
+                || !HexEventRegistry.IsEventGuardArmy(hex, survivor))
+                return false;
+            HandleRetreatFromHexEvent(hex, explorer.Owner);
+            return true;
+        }
+
         // "Пропустить" — the event stays un-consumed and untouched, exactly as it was, so it
         // retriggers identically on any future visit (the user's own explicit rule). If the mover
         // was following a multi-hex pathfinder order toward a destination further along, a fresh
@@ -325,8 +345,15 @@ namespace Game.Map
         public void GrantEventReward(HexCoord hex, ArmyData recipient)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed || recipient?.Owner == null)
+            if (entry == null || entry.Consumed || recipient?.Owner == null
+                || entry.Definition?.CanVisit(recipient.Owner) == false)
                 return;
+
+            if (entry.Definition?.grantsRandomCollectionCard == true)
+            {
+                GrantLibraryReward(hex, recipient, entry);
+                return;
+            }
 
             PlayerRoot root = PlayerRootRegistry.FindFor(recipient.Owner);
             var grantedText = new List<string>();
@@ -366,6 +393,43 @@ namespace Game.Map
                 string rewardSummary = grantedText.Count > 0 ? string.Join(", ", grantedText) : "nothing";
                 AiDebugLog.Write($"[AI] {recipient.Owner?.Nickname ?? "Neutral"}: {recipient.Name} received reward for event '{entry.Definition.name}' at {hex} - {rewardSummary}.");
             }
+        }
+
+        private void GrantLibraryReward(HexCoord hex, ArmyData recipient, HexEventRegistry.Entry entry)
+        {
+            entry.CollectionRewardPending = true;
+            entry.CollectionRewardError = null;
+            // The guard has already been defeated. On a failed profile write, revisiting retries
+            // only the reward and does not make the player fight the same guard a second time.
+            if (cardHandUI == null || !cardHandUI.CanReceiveCollectionReward
+                || !ProgressionContext.Initialize(gameConfig))
+            {
+                ShowLibraryRewardFailure(hex, recipient, entry);
+                return;
+            }
+            if (!ProgressionContext.Collection.TryGrantRandomCollectionCard(out CardDefinition card, out string error))
+            {
+                Debug.LogError("Library collection reward could not be saved: " + error);
+                ShowLibraryRewardFailure(hex, recipient, entry);
+                return;
+            }
+            if (card != null)
+            {
+                // A Library explicitly awards BOTH a permanent copy and a current-match card.
+                // Keep the hand copy even at capacity, as an explicit exception to ordinary rewards.
+                cardHandUI.AddCard(new CardData(card));
+                entry.ResolvedCardRewards.Add((new RewardEntry { type = RewardType.Card, cardKey = card.authoredKey }, card));
+            }
+            entry.CollectionRewardPending = false;
+            HexEventRegistry.MarkConsumed(hex, recipient.Owner);
+            eventRewardPopup?.Show(entry, recipient);
+        }
+
+        private void ShowLibraryRewardFailure(HexCoord hex, ArmyData recipient, HexEventRegistry.Entry entry)
+        {
+            entry.CollectionRewardError = "The reward could not be saved. Revisit the Library to try again.";
+            HexEventRegistry.MarkSkipped(hex, recipient.Owner);
+            eventRewardPopup?.Show(entry, recipient);
         }
 
         // Public so Game.Aviation.AviationActions can hand a stored/flying aircraft's card back

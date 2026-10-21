@@ -921,6 +921,13 @@ namespace Game.Combat
                 ? (attackerHere ? state.Attacker : state.Defender)
                 : null;
 
+            ArmyData defeatedArmy = survivor == state.Attacker ? state.Defender : state.Attacker;
+            if (hexSelectionController?.DismissLibraryGuardAfterFailedExplore(hex, survivor, defeatedArmy) == true)
+            {
+                survivor = null;
+                attackerHere = defenderHere = false;
+            }
+
             var changedHexes = new HashSet<HexCoord> { hex };
             if (state.Attacker != null)
                 changedHexes.Add(state.Attacker.Hex);
@@ -948,6 +955,7 @@ namespace Game.Combat
             ReplenishFate(hunterArmy);
             ReplenishFate(targetArmy);
             HandleBuildingOnArmyDefeat(hunterArmy, targetArmy, hexSelectionController);
+            hexSelectionController?.DismissLibraryGuardAfterFailedExplore(hunterHex, hunterArmy, targetArmy);
 
             var changedHexes = new HashSet<HexCoord> { hunterHex };
             if (targetArmy != null)
