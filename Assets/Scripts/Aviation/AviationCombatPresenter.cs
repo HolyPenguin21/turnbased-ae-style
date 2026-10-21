@@ -163,6 +163,8 @@ namespace Game.Aviation
                 yield break;
 
             PlayerSetupData aaOwner = reaction.AaOwner;
+            // A wing in flight is still indexed at its origin (ArmyData.Hex); aim at where it is.
+            HexCoord airHex = airArmy.Controller != null ? airArmy.Controller.CurrentHex : airArmy.Hex;
             // Re-checked live: no prompt (and no spent shot) at a wing now fully hidden from the AA owner.
             if (!StealthSystem.HasAnyTargetableMember(airArmy, aaOwner))
                 yield break;
@@ -179,7 +181,7 @@ namespace Game.Aviation
             if (reaction.AaUnit.Owner != null && !reaction.AaUnit.Owner.IsHuman
                 && ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0
                 && ExplosionAttack.ExpectedNetValue(reaction.AaUnit,
-                    ExplosionAttack.KnownTargets(airArmy.Hex, reaction.AaUnit.Owner, airArmy)) <= 0)
+                    ExplosionAttack.KnownTargets(airHex, reaction.AaUnit.Owner, airArmy)) <= 0)
                 attack = false;
             AntiAirState.RecordPrompted(reaction.AaUnit, airArmy.Id, attack);
             if (!attack || attackPopup == null)
@@ -187,10 +189,10 @@ namespace Game.Aviation
 
             if (ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0)
             {
-                var explosion = new ExplosionAttack(reaction.AaUnit, airArmy.Hex, HeadlessRng, airArmy);
+                var explosion = new ExplosionAttack(reaction.AaUnit, airHex, HeadlessRng, airArmy);
                 yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelection,
                     tacticsCritical: reaction.AaArmy != null
-                        ? TacticBattleContext.IsCritical(airArmy.Hex, reaction.AaArmy, airArmy)
+                        ? TacticBattleContext.IsCritical(airHex, reaction.AaArmy, airArmy)
                         : TacticBattleContext.IsCritical(reaction.AaHex, aaOwner, airArmy));
                 yield break;
             }

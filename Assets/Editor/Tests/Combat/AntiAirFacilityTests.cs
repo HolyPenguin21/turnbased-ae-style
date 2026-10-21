@@ -134,6 +134,26 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void PrisonersNeverReactForTheirCaptor()
+        {
+            var prison = new ArmyData { Owner = _player, Hex = Adjacent, IsPrison = true };
+            var captive = new UnitData { Owner = _player, IsHero = true, IsPrisoner = true, HitPointsMax = 3, HitPointsCurrent = 3 };
+            captive.Abilities.Add(UnitAbilities.AntiAir);
+            prison.Members.Add(captive);
+            ArmyRegistry.Register(prison);
+            var ground = new ArmyData { Owner = _player, Hex = TwoAway };
+            var held = new UnitData { Owner = _player, IsPrisoner = true, HitPointsMax = 3, HitPointsCurrent = 3 };
+            held.Abilities.Add(UnitAbilities.AntiAir);
+            ground.Members.Add(held);
+            ArmyRegistry.Register(ground);
+            ArmyData wing = Wing(_enemy, Adjacent);
+            VisionSystem.RecomputeFor(_player);
+
+            Assert.That(AntiAirRules.CollectEntryReactions(wing, Adjacent), Is.Empty);
+            Assert.That(AntiAirRules.CollectTurnStartOpportunities(_player), Is.Empty);
+        }
+
+        [Test]
         public void AiBaselineCountsAnOwnAaFacilityAsAntiAirCoverage()
         {
             WorldSnapshot Snap(bool facilityAa) => new WorldSnapshot
