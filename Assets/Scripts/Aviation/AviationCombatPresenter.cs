@@ -163,6 +163,9 @@ namespace Game.Aviation
                 yield break;
 
             PlayerSetupData aaOwner = reaction.AaOwner;
+            // Re-checked live: no prompt (and no spent shot) at a wing now fully hidden from the AA owner.
+            if (!StealthSystem.HasAnyTargetableMember(airArmy, aaOwner))
+                yield break;
             bool attack = true;
             if (aaOwner != null && aaOwner.IsHuman && aaChoicePopup != null)
             {
@@ -192,9 +195,11 @@ namespace Game.Aviation
                 yield break;
             }
 
-            UnitData target = PickRandomSurvivor(airArmy);
+            UnitData target = PickRandomSurvivor(airArmy, aaOwner);
             if (target == null)
                 yield break;
+            // Committing the shot reveals the aircraft, as an air strike reveals its target.
+            Game.Map.StealthSystem.ExitStealth(target);
 
             UnitData aaHero = reaction.AaArmy?.Members.Find(unit => unit.IsHero);
             bool resolved = false;
@@ -301,7 +306,8 @@ namespace Game.Aviation
                 {
                     attackPopup.Begin(aircraft, null, target, defenderHero, null, null,
                         onResolved: Apply, defenderPoolSize: defenderPoolOverride,
-                        tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy));
+                        tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy),
+                        challengeTitle: "AIR ATTACK");
                     yield return new WaitUntil(() => resolved);
                 }
                 else
@@ -375,9 +381,11 @@ namespace Game.Aviation
             return result;
         }
 
-        private static UnitData PickRandomSurvivor(ArmyData airArmy)
+        // Only an aircraft the AA owner can see (stealth) can be picked.
+        private static UnitData PickRandomSurvivor(ArmyData airArmy, PlayerSetupData aaOwner)
         {
-            return airArmy.Members.Count > 0 ? airArmy.Members[Random.Range(0, airArmy.Members.Count)] : null;
+            List<UnitData> visible = StealthSystem.TargetableMembersFor(airArmy, aaOwner).ToList();
+            return visible.Count > 0 ? visible[Random.Range(0, visible.Count)] : null;
         }
     }
 }

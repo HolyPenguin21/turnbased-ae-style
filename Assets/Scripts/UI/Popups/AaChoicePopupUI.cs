@@ -42,7 +42,13 @@ namespace Game.UI
             }
             if (airArmyArtImage != null)
             {
-                UnitData portraitSource = airArmy.Members.Count > 0 ? airArmy.Members[0] : null;
+                // Never the portrait of an aircraft the AA owner cannot see (stealth).
+                UnitData portraitSource = null;
+                foreach (UnitData member in StealthSystem.TargetableMembersFor(airArmy, aaUnit.Owner))
+                {
+                    portraitSource = member;
+                    break;
+                }
                 Sprite art = portraitSource != null
                     ? (portraitSource.DetailArt != null ? portraitSource.DetailArt : portraitSource.Art)
                     : null;

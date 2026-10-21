@@ -637,6 +637,8 @@ namespace Game.Ai.V2
 
         public bool HasDevFacility;
         public bool HasDevOperator;
+        // A live own Facility carrying AA (AntiAirRules): standing AA coverage at that Base.
+        public bool HasFacilityAntiAir;
 
         // AI-MGR — Dynamic Strategic Effect Utility. Snapshot-pure AP action-economy facts + the
         // count of non-hero bodies the AI could realistically field under a hero's Command (own

@@ -103,6 +103,9 @@ namespace Game.Aviation
                     if (army.Owner == null || army.Owner == airArmy.Owner
                         || army.IsCarrierContainer || AviationRules.IsAirfield(army))
                         continue;
+                    // A wing whose every aircraft is hidden from this AA owner is not a target.
+                    if (!StealthSystem.HasAnyTargetableMember(airArmy, army.Owner))
+                        continue;
                     foreach (UnitData member in army.Members)
                     {
                         if (!TryGetRadius(member, out int radius) || distance > radius)
@@ -123,7 +126,8 @@ namespace Game.Aviation
             // AA Facilities: same radius / owner-vision / per-turn rules; a building is never hidden.
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
             {
-                if (building.Owner == null || building.Owner == airArmy.Owner)
+                if (building.Owner == null || building.Owner == airArmy.Owner
+                    || !StealthSystem.HasAnyTargetableMember(airArmy, building.Owner))
                     continue;
                 int distance = HexGridMath.Distance(building.Hex, enteredHex);
                 for (int slot = 0; slot < building.FacilitySlots.Length; slot++)
@@ -203,7 +207,8 @@ namespace Game.Aviation
 
         // Enemy air armies within `radius` of `hex` that `owner` can see and `aaUnit` may still
         // react to. Same visibility rule as CollectEntryReactions: radius alone doesn't earn a
-        // shot, the AA owner must actually see the air army's hex too.
+        // shot, the AA owner must actually see the air army's hex and at least one of its
+        // aircraft (stealth).
         private static IEnumerable<(ArmyData airArmy, int distance)> AirArmiesInRange(UnitData aaUnit,
             PlayerSetupData owner, HexCoord hex, int radius)
         {
@@ -215,7 +220,8 @@ namespace Game.Aviation
                 foreach (ArmyData airArmy in ArmyRegistry.AllAt(airHex).ToList())
                 {
                     if (airArmy.Owner == owner || airArmy.IsCarrierContainer
-                        || !AviationRules.IsAirArmy(airArmy))
+                        || !AviationRules.IsAirArmy(airArmy)
+                        || !StealthSystem.HasAnyTargetableMember(airArmy, owner))
                         continue;
                     if (AntiAirState.CanReact(aaUnit, airArmy.Id))
                         yield return (airArmy, distance);
