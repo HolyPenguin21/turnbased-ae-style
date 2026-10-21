@@ -21,10 +21,6 @@ MonoBehaviour:
   - deckName: The Vessels Starter
     faction: 5
     cards:
-    - cardKey: vessels.00.vessel-citadel
-      count: 0
-    - cardKey: vessels.01.relay-base
-      count: 1
     - cardKey: vessels.02.mara-the-archivist
       count: 1
     - cardKey: vessels.03.orr-the-keeper
@@ -42,50 +38,40 @@ MonoBehaviour:
     - cardKey: vessels.09.edda-the-conductor
       count: 1
     - cardKey: vessels.10.whisper-scout
-      count: 1
+      count: 2
     - cardKey: vessels.11.glass-runner
       count: 1
-    - cardKey: vessels.12.salvage-drone
-      count: 1
-    - cardKey: vessels.13.arc-sentry
-      count: 1
-    - cardKey: vessels.14.shard-wanderer
-      count: 3
     - cardKey: vessels.15.vessel-rifleman
       count: 2
     - cardKey: vessels.16.bulwark-vessel
-      count: 0
-    - cardKey: vessels.17.relay-carrier
       count: 1
-    - cardKey: vessels.18.bastion-frame
-      count: 0
-    - cardKey: vessels.19.heavy-sentinel
-      count: 0
-    - cardKey: vessels.20.siege-walker
-      count: 0
+    - cardKey: vessels.unit.bell-breacher
+      count: 1
+    - cardKey: vessels.27.arc-cantor
+      count: 1
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 1
+    - cardKey: vessels.13.arc-sentry
+      count: 1
     - cardKey: vessels.21.resonance-tank
+      count: 2
+    - cardKey: vessels.unit.bell-tortoise
       count: 1
-    - cardKey: vessels.22.monolith
-      count: 0
+    - cardKey: vessels.unit.lensbreaker
+      count: 1
     - cardKey: vessels.23.echo-mortar
-      count: 0
-    - cardKey: vessels.24.prism-engine
-      count: 0
-    - cardKey: vessels.25.harmonic-howitzer
-      count: 0
-    - cardKey: vessels.26.skimmer
+      count: 1
+    - cardKey: vessels.unit.counterweight-lobber
+      count: 1
+    - cardKey: vessels.unit.halo-kite
       count: 1
     - cardKey: vessels.27.gyrocopter
       count: 1
-    - cardKey: vessels.28.dreadnought
-      count: 0
     - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
-      count: 1
-    - cardKey: neutral.facility.tactical
       count: 1
     - cardKey: neutral.equipment.bio.claws
       count: 1
@@ -96,8 +82,6 @@ MonoBehaviour:
   - deckName: The Ashen Starter
     faction: 4
     cards:
-    - cardKey: ashen.card.ashen-base
-      count: 1
     - cardKey: ashen.card.miller-hayes
       count: 1
     - cardKey: ashen.card.hank-mercer
@@ -118,31 +102,37 @@ MonoBehaviour:
       count: 2
     - cardKey: ashen.card.dust-runner
       count: 1
-    - cardKey: ashen.card.rad-hunter
-      count: 1
-    - cardKey: ashen.unit.ashdrifter
-      count: 4
     - cardKey: ashen.card.ash-runner
-      count: 3
-    - cardKey: ashen.card.iron-husk
       count: 2
-    - cardKey: ashen.card.ash-walker
+    - cardKey: ashen.card.iron-husk
       count: 1
-    - cardKey: ashen.card.grave-engine
+    - cardKey: ashen.card.scab-shield
+      count: 1
+    - cardKey: ashen.card.scrap-shaman
+      count: 1
+    - cardKey: ashen.card.roadbreaker
+      count: 1
+    - cardKey: ashen.card.rad-hunter
       count: 1
     - cardKey: ashen.card.rust-tank
       count: 2
+    - cardKey: ashen.card.iron-maw
+      count: 1
     - cardKey: ashen.card.boomstick
       count: 1
     - cardKey: ashen.card.scrap-mortar
+      count: 1
+    - cardKey: ashen.card.gravebell-mortar
+      count: 1
+    - cardKey: ashen.card.carrion
+      count: 1
+    - cardKey: ashen.card.scrapwing
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
-      count: 1
-    - cardKey: neutral.facility.tactical
       count: 1
     - cardKey: neutral.equipment.bio.claws
       count: 1
@@ -153,8 +143,6 @@ MonoBehaviour:
   - deckName: Iron Concord Starter
     faction: 0
     cards:
-    - cardKey: concord.card.concord-base
-      count: 1
     - cardKey: concord.card.dorian-kesh
       count: 1
     - cardKey: concord.card.aldric-voss
@@ -172,36 +160,40 @@ MonoBehaviour:
     - cardKey: concord.card.tessa-rourke
       count: 1
     - cardKey: concord.card.scout
-      count: 1
+      count: 2
     - cardKey: concord.card.rc-vehicle
-      count: 1
-    - cardKey: concord.card.crawler
       count: 1
     - cardKey: concord.card.light-infantry
       count: 2
     - cardKey: concord.card.medium-infantry
-      count: 2
+      count: 1
+    - cardKey: concord.card.trench-guardian
+      count: 1
     - cardKey: concord.card.at-infantry
       count: 1
+    - cardKey: concord.card.sand-jackal
+      count: 1
+    - cardKey: concord.card.crawler
+      count: 1
     - cardKey: concord.card.light-tank
-      count: 3
-    - cardKey: concord.card.medium-tank
       count: 2
+    - cardKey: concord.card.medium-tank
+      count: 1
     - cardKey: concord.card.heavy-tank
       count: 1
     - cardKey: concord.card.artillery-cannon
       count: 1
-    - cardKey: concord.card.at-cannon
+    - cardKey: concord.card.sand-organ
       count: 1
-    - cardKey: concord.card.watcher-drone
-      count: 2
+    - cardKey: concord.card.mosquito
+      count: 1
+    - cardKey: concord.card.rusty-vulture
+      count: 1
     - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
-      count: 1
-    - cardKey: neutral.facility.tactical
       count: 1
     - cardKey: neutral.equipment.bio.heavy-mg
       count: 1
@@ -213,8 +205,6 @@ MonoBehaviour:
   - deckName: Iron Concord AI Deck
     faction: 0
     cards:
-    - cardKey: concord.card.concord-base
-      count: 2
     - cardKey: concord.card.dorian-kesh
       count: 1
     - cardKey: concord.card.aldric-voss
@@ -232,16 +222,20 @@ MonoBehaviour:
     - cardKey: concord.card.tessa-rourke
       count: 1
     - cardKey: concord.card.scout
-      count: 3
+      count: 2
     - cardKey: concord.card.rc-vehicle
       count: 1
     - cardKey: concord.card.light-infantry
-      count: 3
-    - cardKey: concord.card.medium-infantry
       count: 2
+    - cardKey: concord.card.medium-infantry
+      count: 1
+    - cardKey: concord.card.trench-guardian
+      count: 1
     - cardKey: concord.card.at-infantry
       count: 1
-    - cardKey: concord.card.dust-medic
+    - cardKey: concord.card.sand-jackal
+      count: 1
+    - cardKey: concord.card.crawler
       count: 1
     - cardKey: concord.card.light-tank
       count: 2
@@ -250,10 +244,12 @@ MonoBehaviour:
     - cardKey: concord.card.heavy-tank
       count: 1
     - cardKey: concord.card.artillery-cannon
-      count: 2
+      count: 1
     - cardKey: concord.card.sand-organ
       count: 1
-    - cardKey: concord.card.crawler
+    - cardKey: concord.card.mosquito
+      count: 1
+    - cardKey: concord.card.rusty-vulture
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
@@ -402,8 +398,6 @@ MonoBehaviour:
   - deckName: The Ashen AI Deck
     faction: 4
     cards:
-    - cardKey: ashen.card.ashen-base
-      count: 2
     - cardKey: ashen.card.miller-hayes
       count: 1
     - cardKey: ashen.card.hank-mercer
@@ -421,36 +415,34 @@ MonoBehaviour:
     - cardKey: ashen.card.iri-vane
       count: 1
     - cardKey: ashen.card.hooded
-      count: 3
+      count: 2
     - cardKey: ashen.card.dust-runner
       count: 1
-    - cardKey: ashen.unit.ashdrifter
-      count: 4
     - cardKey: ashen.card.ash-runner
-      count: 4
+      count: 2
     - cardKey: ashen.card.iron-husk
-      count: 2
-    - cardKey: ashen.card.ash-crossbowman
       count: 1
-    - cardKey: ashen.card.rad-brute
+    - cardKey: ashen.card.scab-shield
       count: 1
-    - cardKey: ashen.card.deadeye
+    - cardKey: ashen.card.scrap-shaman
       count: 1
-    - cardKey: ashen.card.rust-tank
-      count: 2
-    - cardKey: ashen.card.boomstick
-      count: 1
-    - cardKey: ashen.card.iron-maw
-      count: 1
-    - cardKey: ashen.card.scrap-mortar
-      count: 2
-    - cardKey: ashen.card.gravebell-mortar
-      count: 1
-    - cardKey: ashen.card.ash-howitzer
+    - cardKey: ashen.card.roadbreaker
       count: 1
     - cardKey: ashen.card.rad-hunter
       count: 1
-    - cardKey: ashen.card.scav-carrier
+    - cardKey: ashen.card.rust-tank
+      count: 2
+    - cardKey: ashen.card.iron-maw
+      count: 1
+    - cardKey: ashen.card.boomstick
+      count: 1
+    - cardKey: ashen.card.scrap-mortar
+      count: 1
+    - cardKey: ashen.card.gravebell-mortar
+      count: 1
+    - cardKey: ashen.card.carrion
+      count: 1
+    - cardKey: ashen.card.scrapwing
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
@@ -599,8 +591,6 @@ MonoBehaviour:
   - deckName: The Vessels AI Deck
     faction: 5
     cards:
-    - cardKey: vessels.01.relay-base
-      count: 1
     - cardKey: vessels.02.mara-the-archivist
       count: 1
     - cardKey: vessels.09.edda-the-conductor
@@ -618,112 +608,34 @@ MonoBehaviour:
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
     - cardKey: vessels.10.whisper-scout
-      count: 3
+      count: 2
     - cardKey: vessels.11.glass-runner
       count: 1
-    - cardKey: vessels.12.salvage-drone
-      count: 1
-    - cardKey: vessels.13.arc-sentry
-      count: 1
-    - cardKey: vessels.14.shard-wanderer
-      count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 1
+      count: 2
     - cardKey: vessels.16.bulwark-vessel
-      count: 1
-    - cardKey: vessels.17.relay-carrier
-      count: 1
-    - cardKey: vessels.18.bastion-frame
-      count: 1
-    - cardKey: vessels.19.heavy-sentinel
-      count: 1
-    - cardKey: vessels.20.siege-walker
-      count: 1
-    - cardKey: vessels.21.resonance-tank
-      count: 1
-    - cardKey: vessels.22.monolith
-      count: 1
-    - cardKey: vessels.23.echo-mortar
-      count: 1
-    - cardKey: vessels.24.prism-engine
-      count: 1
-    - cardKey: vessels.25.harmonic-howitzer
-      count: 1
-    - cardKey: vessels.26.skimmer
-      count: 1
-    - cardKey: vessels.28.dreadnought
-      count: 1
-    - cardKey: vessels.27.gyrocopter
-      count: 1
-    - cardKey: vessels.27.null-vessel
-      count: 1
-    - cardKey: vessels.27.arc-cantor
-      count: 1
-    - cardKey: vessels.27.lens-watcher
-      count: 1
-    - cardKey: vessels.unit.anchor-warden
       count: 1
     - cardKey: vessels.unit.bell-breacher
       count: 1
-    - cardKey: vessels.unit.bell-tortoise
-      count: 1
-    - cardKey: vessels.unit.casket-ram
-      count: 1
-    - cardKey: vessels.unit.censer-battery
-      count: 1
-    - cardKey: vessels.unit.censer-keeper
-      count: 1
-    - cardKey: vessels.unit.chime-grenadier
-      count: 1
-    - cardKey: vessels.unit.chime-suppressor
-      count: 1
-    - cardKey: vessels.unit.choir-roller
-      count: 1
-    - cardKey: vessels.unit.chord-tug
-      count: 1
-    - cardKey: vessels.unit.chordbreaker
-      count: 1
-    - cardKey: vessels.unit.core-tender
-      count: 1
-    - cardKey: vessels.unit.counterweight-lobber
-      count: 1
-    - cardKey: vessels.unit.duplex-crawler
-      count: 1
-    - cardKey: vessels.unit.halo-interceptor
-      count: 1
-    - cardKey: vessels.unit.halo-kite
-      count: 1
-    - cardKey: vessels.unit.lensbreaker
-      count: 1
-    - cardKey: vessels.unit.mantle-skirmisher
-      count: 1
-    - cardKey: vessels.unit.mirror-duelist
+    - cardKey: vessels.27.arc-cantor
       count: 1
     - cardKey: vessels.unit.mnemonic-carrier
       count: 1
-    - cardKey: vessels.unit.mnemonic-loom
+    - cardKey: vessels.13.arc-sentry
       count: 1
-    - cardKey: vessels.unit.moth-bomber
+    - cardKey: vessels.21.resonance-tank
+      count: 2
+    - cardKey: vessels.unit.bell-tortoise
       count: 1
-    - cardKey: vessels.unit.palisade-frame
+    - cardKey: vessels.unit.lensbreaker
       count: 1
-    - cardKey: vessels.unit.pendulum-frame
+    - cardKey: vessels.23.echo-mortar
       count: 1
-    - cardKey: vessels.unit.pilgrim-strider
+    - cardKey: vessels.unit.counterweight-lobber
       count: 1
-    - cardKey: vessels.unit.prism-lancer
+    - cardKey: vessels.unit.halo-kite
       count: 1
-    - cardKey: vessels.unit.reliquary-crab
-      count: 1
-    - cardKey: vessels.unit.shear-vessel
-      count: 1
-    - cardKey: vessels.unit.silt-pilgrim
-      count: 1
-    - cardKey: vessels.unit.spindle-gunner
-      count: 1
-    - cardKey: vessels.unit.tuning-blade
-      count: 1
-    - cardKey: vessels.unit.tuning-fork
+    - cardKey: vessels.27.gyrocopter
       count: 1
     - cardKey: neutral.facility.lab
       count: 1

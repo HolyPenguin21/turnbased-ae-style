@@ -14,6 +14,7 @@ namespace Game.Progression
 
     public sealed class CollectionService
     {
+        private const int CurrentStarterDeckRevision = 1;
         public DeckRules Rules { get; }
         private readonly CollectionProfileStore store;
         private CollectionProfile profile;
@@ -104,12 +105,13 @@ namespace Game.Progression
             foreach (var faction in DeckRules.PlayableFactions)
             {
                 var starter = Starter(faction);
-                GrantInitialCards(target, starter.mainCards.Concat(starter.equipment).Concat(starter.mutators));
+                GrantInitialCards(target, InitialCards(starter));
                 var validation = Rules.Validate(starter, target.Owned);
                 if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
                 target.savedDecks.Add(starter);
                 target.selectedDeckByFaction.Add(new DeckSelection { faction = faction, deckId = starter.deckId });
             }
+            target.starterDeckRevision = CurrentStarterDeckRevision;
         }
         public SavedDeck StarterDeck(Faction faction)
         {
@@ -117,28 +119,30 @@ namespace Game.Progression
             return deck == null ? null : CollectionProfile.CopyDeck(deck);
         }
         public bool IsStarter(string id) => profile.savedDecks.Any(d => d.deckId == id && d.isStarter);
-        // Upgrade legacy starters once: ownership alone did not populate their saved blueprint lists.
-        // Match old defaults by name AND main composition, so customized decks remain untouched.
+        // Refresh protected starters once per balance revision, retaining their identities and names.
+        // Unmarked legacy defaults still match by name AND composition; custom decks stay separate.
         public bool EnsureStarterDecks(out string error)
         {
             var starters = DeckRules.PlayableFactions.Select(Starter).ToList();
+            bool refreshComposition = profile.starterDeckRevision < CurrentStarterDeckRevision;
             error = null;
-            if (starters.All(s => profile.savedDecks.Any(d => d.faction == s.faction && d.isStarter)
-                && s.mainCards.Concat(s.equipment).Concat(s.mutators).All(e => Owned(e.cardKey) >= e.count))) return true;
+            if (!refreshComposition && starters.All(s => profile.savedDecks.Any(d => d.faction == s.faction && d.isStarter)
+                && InitialCards(s).All(e => Owned(e.cardKey) >= e.count))) return true;
             return Transact(p =>
             {
                 foreach (var starter in starters)
                 {
-                    GrantInitialCards(p, starter.mainCards.Concat(starter.equipment).Concat(starter.mutators));
+                    GrantInitialCards(p, InitialCards(starter));
                     var saved = p.savedDecks.Find(d => d.faction == starter.faction && d.isStarter)
                         ?? p.savedDecks.Where(d => d.faction == starter.faction && d.name == starter.name
                             && d.mainCards.Count == starter.mainCards.Count
                             && d.mainCards.All(e => starter.mainCards.Any(s => s.cardKey == e.cardKey && s.count == e.count)))
                             .OrderByDescending(d => p.selectedDeckByFaction.Any(s => s.faction == starter.faction && s.deckId == d.deckId)).FirstOrDefault();
                     if (saved == null) { saved = starter; p.savedDecks.Add(saved); }
-                    else if (!saved.isStarter)
+                    else if (refreshComposition || !saved.isStarter)
                     {
                         saved.isStarter = true;
+                        saved.mainCards = starter.mainCards;
                         saved.equipment = starter.equipment;
                         saved.mutators = starter.mutators;
                     }
@@ -146,8 +150,17 @@ namespace Game.Progression
                     if (selection == null) p.selectedDeckByFaction.Add(new DeckSelection { faction = starter.faction, deckId = saved.deckId });
                     else if (!p.savedDecks.Any(d => d.faction == starter.faction && d.deckId == selection.deckId)) selection.deckId = saved.deckId;
                 }
+                p.starterDeckRevision = Math.Max(p.starterDeckRevision, CurrentStarterDeckRevision);
             }, out error);
         }
+        // All playable buildings are owned initially, even when absent from the starter loadout.
+        // Both new profiles and upgrades use the same grant; rewards and existing copies survive.
+        private System.Collections.Generic.IEnumerable<DeckCardEntry> InitialCards(SavedDeck starter)
+            => starter.mainCards.Concat(starter.equipment).Concat(starter.mutators)
+                .Concat(Rules.Cards(starter.faction)
+                    .Where(c => (c.cardType == CardType.Base || c.cardType == CardType.Facility)
+                        && DeckRules.CopyLimit(c) > 0 && !string.IsNullOrEmpty(c.authoredKey))
+                    .Select(c => new DeckCardEntry { cardKey = c.authoredKey, count = 1 }));
         private static void GrantInitialCards(CollectionProfile target, System.Collections.Generic.IEnumerable<DeckCardEntry> rows)
         {
             foreach (var e in rows)

@@ -146,27 +146,44 @@ namespace Game.EditorTools
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
             Assert.That(DeckCalibrationReport.CreateStrategyDecks(rules).Count, Is.EqualTo(18));
         }
-        [Test] public void EveryStarterIncludesThreeCheapEquipmentAndMutators()
+        [TestCase(Faction.IronConcord, "concord.card.light-tank", "concord.card.scrapper", 83)]
+        [TestCase(Faction.Ashen, "ashen.card.rust-tank", "ashen.card.tech-scrapper", 67)]
+        [TestCase(Faction.Vessels, "vessels.21.resonance-tank", "vessels.12.salvage-drone", 69)]
+        public void BalancedStarterOwnsAllBuildingsButFieldsOnlyThree(Faction faction, string tank, string collector, int points)
         {
             var rules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
             var p = new CollectionProfile(); new CollectionService(rules, null, p).InitializeStarters(p);
-            foreach (var deck in p.savedDecks)
-            {
-                Assert.That(deck.equipment.Sum(e => e.count), Is.EqualTo(3));
-                Assert.That(deck.mutators.Sum(e => e.count), Is.EqualTo(3));
-                Assert.That(deck.equipment.Concat(deck.mutators).Select(e => e.cardKey).Distinct().Count(), Is.EqualTo(6));
-                Assert.That(deck.equipment.Concat(deck.mutators).All(e => rules.Resolve(e.cardKey).deckPointCost == 1), Is.True);
-                Assert.That(rules.Validate(deck, p.Owned).IsValid, Is.True);
-            }
-            var vessels = p.savedDecks.Single(d => d.faction == Faction.Vessels);
-            Assert.That(vessels.mutators.All(e => !vessels.mainCards.Any(h => EquipmentSystem.FitsHost(rules.Resolve(e.cardKey), rules.Resolve(h.cardKey), out _))), Is.True);
+            var deck = p.savedDecks.Single(d => d.faction == faction);
+            Assert.That(deck.mainCards.Sum(e => e.count), Is.EqualTo(29));
+            Assert.That(deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Unit).Sum(e => e.count), Is.EqualTo(18));
+            Assert.That(deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Hero).Sum(e => e.count), Is.EqualTo(8));
+            CollectionAssert.AreEquivalent(rules.Starting.GetCatalog(faction).cards.Where(c => c.cardType == CardType.Hero).Select(c => c.authoredKey),
+                deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Hero).Select(e => e.cardKey));
+            Assert.That(deck.mainCards.Single(e => e.cardKey == tank).count, Is.EqualTo(2));
+            Assert.That(deck.mainCards.Any(e => e.cardKey == collector), Is.False);
+            CollectionAssert.AreEquivalent(new[] { "neutral.facility.lab", "neutral.facility.factory", "neutral.facility.intel" },
+                deck.mainCards.Where(e => rules.Resolve(e.cardKey).cardType == CardType.Base || rules.Resolve(e.cardKey).cardType == CardType.Facility).Select(e => e.cardKey));
+            var buildings = rules.Cards(faction).Where(c => c.cardType == CardType.Base || c.cardType == CardType.Facility).ToList();
+            Assert.That(buildings.Count, Is.EqualTo(6));
+            Assert.That(buildings.All(c => p.Owned(c.authoredKey) == 1), Is.True);
+            Assert.That(deck.equipment.Sum(e => e.count), Is.EqualTo(faction == Faction.IronConcord ? 2 : 1));
+            Assert.That(deck.mutators.Sum(e => e.count), Is.EqualTo(faction == Faction.IronConcord ? 0 : 1));
+            Assert.That(deck.equipment.Concat(deck.mutators).All(e => rules.Resolve(e.cardKey).deckPointCost == 1), Is.True);
+            Assert.That(rules.Validate(deck, p.Owned).IsValid, Is.True);
+            Assert.That(rules.Validate(deck, p.Owned).Points, Is.EqualTo(points));
         }
         private CollectionService AuthoredCollection(CollectionProfile profile)
         {
             var authoredRules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
             return new CollectionService(authoredRules, new CollectionProfileStore(directory), profile);
+        }
+        private static void AssertStarterBlueprints(SavedDeck deck, DeckRules rules)
+        {
+            var expected = new CollectionService(rules, null, new CollectionProfile()).Starter(deck.faction);
+            CollectionAssert.AreEquivalent(expected.equipment.Select(e => e.cardKey + ":" + e.count), deck.equipment.Select(e => e.cardKey + ":" + e.count));
+            CollectionAssert.AreEquivalent(expected.mutators.Select(e => e.cardKey + ":" + e.count), deck.mutators.Select(e => e.cardKey + ":" + e.count));
         }
         [Test] public void LegacyStartersGainSavedBlueprintsWithoutChangingIdentityOrCustomDecks()
         {
@@ -182,8 +199,7 @@ namespace Game.EditorTools
             Assert.That(upgraded.savedDecks.Where(d => d.isStarter).Select(d => d.deckId), Is.EqualTo(ids));
             foreach (var deck in upgraded.savedDecks.Where(d => d.isStarter))
             {
-                Assert.That(deck.equipment.Sum(e => e.count), Is.EqualTo(3));
-                Assert.That(deck.mutators.Sum(e => e.count), Is.EqualTo(3));
+                AssertStarterBlueprints(deck, service.Rules);
                 Assert.That(service.Rules.Validate(deck, service.Owned).IsValid, Is.True);
                 Assert.That(upgraded.selectedDeckByFaction.Single(s => s.faction == deck.faction).deckId, Is.EqualTo(deck.deckId));
             }
@@ -192,7 +208,7 @@ namespace Game.EditorTools
             Assert.That(service.EnsureStarterDecks(out _), Is.True); Assert.That(changes, Is.Zero);
             var loaded = new CollectionProfileStore(directory).Load(out _);
             Assert.That(loaded.savedDecks.Count(d => d.isStarter), Is.EqualTo(3));
-            Assert.That(loaded.savedDecks.Where(d => d.isStarter).All(d => d.equipment.Count == 3 && d.mutators.Count == 3), Is.True);
+            foreach (var deck in loaded.savedDecks.Where(d => d.isStarter)) AssertStarterBlueprints(deck, service.Rules);
         }
         [Test] public void SelectedLegacyStarterDuplicateIsUpgradedInPlace()
         {
@@ -204,8 +220,7 @@ namespace Game.EditorTools
             var service = AuthoredCollection(legacy);
             Assert.That(service.EnsureStarterDecks(out _), Is.True);
             Assert.That(service.StarterDeck(duplicate.faction).deckId, Is.EqualTo(duplicate.deckId));
-            Assert.That(service.DefaultDeck(duplicate.faction).equipment.Count, Is.EqualTo(3));
-            Assert.That(service.DefaultDeck(duplicate.faction).mutators.Count, Is.EqualTo(3));
+            AssertStarterBlueprints(service.DefaultDeck(duplicate.faction), service.Rules);
         }
         [Test] public void MissingStarterIsRestoredWithoutPromotingCustomizedDeck()
         {
@@ -216,7 +231,68 @@ namespace Game.EditorTools
             var starter = service.StarterDeck(modified.faction);
             Assert.That(starter.deckId, Is.Not.EqualTo(modified.deckId));
             Assert.That(service.Snapshot.savedDecks.Single(d => d.deckId == modified.deckId).isStarter, Is.False);
-            Assert.That(starter.equipment.Count, Is.EqualTo(3)); Assert.That(starter.mutators.Count, Is.EqualTo(3));
+            AssertStarterBlueprints(starter, service.Rules);
+        }
+        [Test] public void BalanceRevisionReplacesSavedStartersOnceAndPreservesCustomDecksAndOwnership()
+        {
+            var profile = new CollectionProfile(); AuthoredCollection(profile).InitializeStarters(profile);
+            profile.starterDeckRevision = 0;
+            var expected = profile.savedDecks.ToDictionary(d => d.deckId, CollectionProfile.CopyDeck);
+            foreach (var deck in profile.savedDecks)
+            {
+                deck.mainCards.Clear(); // All required cards are already owned: ownership must not skip the refresh.
+                deck.name = "Renamed " + deck.faction;
+            }
+            var custom = CollectionProfile.CopyDeck(expected.Values.First()); custom.deckId = "custom"; custom.isStarter = false;
+            profile.savedDecks.Add(custom);
+            profile.selectedDeckByFaction.Single(s => s.faction == custom.faction).deckId = custom.deckId;
+            profile.ownedCards.Add(new DeckCardEntry { cardKey = "removed.reward", count = 4 });
+            profile.ownedCards.Single(e => e.cardKey == "neutral.facility.aa_defence").count = 3;
+            profile.ownedCards.RemoveAll(e => e.cardKey == "neutral.facility.tactical");
+            // The balance field is absent from profiles written before this update.
+            profile = JsonUtility.FromJson<CollectionProfile>(JsonUtility.ToJson(profile).Replace("\"starterDeckRevision\":0,", ""));
+            Assert.That(profile.starterDeckRevision, Is.Zero);
+            var service = AuthoredCollection(profile);
+            string customJson = JsonUtility.ToJson(custom);
+            Assert.That(service.EnsureStarterDecks(out var error), Is.True, error);
+            var upgraded = service.Snapshot;
+            Assert.That(upgraded.starterDeckRevision, Is.GreaterThan(0));
+            foreach (var deck in upgraded.savedDecks.Where(d => d.isStarter))
+            {
+                Assert.That(deck.name, Is.EqualTo("Renamed " + deck.faction));
+                CollectionAssert.AreEquivalent(expected[deck.deckId].mainCards.Select(e => e.cardKey + ":" + e.count), deck.mainCards.Select(e => e.cardKey + ":" + e.count));
+                AssertStarterBlueprints(deck, service.Rules);
+                Assert.That(service.Rules.Validate(deck, service.Owned).IsValid, Is.True);
+            }
+            Assert.That(JsonUtility.ToJson(upgraded.savedDecks.Single(d => d.deckId == custom.deckId)), Is.EqualTo(customJson));
+            CollectionAssert.AreEquivalent(profile.selectedDeckByFaction.Select(s => s.faction + ":" + s.deckId), upgraded.selectedDeckByFaction.Select(s => s.faction + ":" + s.deckId));
+            Assert.That(service.Owned("removed.reward"), Is.EqualTo(4));
+            Assert.That(service.Owned("neutral.facility.aa_defence"), Is.EqualTo(3));
+            Assert.That(service.Owned("neutral.facility.tactical"), Is.EqualTo(1));
+            var loaded = new CollectionProfileStore(directory).Load(out _);
+            Assert.That(loaded.starterDeckRevision, Is.EqualTo(upgraded.starterDeckRevision));
+            // A later user edit survives both another ensure call and a profile reload.
+            var edited = service.StarterDeck(Faction.IronConcord); edited.mainCards.RemoveAt(0);
+            Assert.That(service.SaveDeck(edited, out error), Is.True, error);
+            service = AuthoredCollection(new CollectionProfileStore(directory).Load(out _));
+            int changes = 0; service.Changed += () => changes++;
+            Assert.That(service.EnsureStarterDecks(out error), Is.True, error);
+            Assert.That(changes, Is.Zero);
+            CollectionAssert.AreEquivalent(edited.mainCards.Select(e => e.cardKey + ":" + e.count), service.StarterDeck(edited.faction).mainCards.Select(e => e.cardKey + ":" + e.count));
+        }
+        [Test] public void FailedBalanceSaveDoesNotPublishRevisionOrComposition()
+        {
+            var profile = new CollectionProfile(); AuthoredCollection(profile).InitializeStarters(profile);
+            profile.starterDeckRevision = 0; profile.savedDecks[0].mainCards.Clear();
+            string before = JsonUtility.ToJson(profile);
+            Directory.CreateDirectory(directory);
+            string blocked = Path.Combine(directory, "blocked"); File.WriteAllText(blocked, "not a directory");
+            var service = new CollectionService(AuthoredCollection(profile).Rules, new CollectionProfileStore(blocked), profile);
+            int changes = 0; service.Changed += () => changes++;
+            Assert.That(service.EnsureStarterDecks(out var error), Is.False);
+            Assert.That(error, Is.Not.Empty);
+            Assert.That(changes, Is.Zero);
+            Assert.That(JsonUtility.ToJson(service.Snapshot), Is.EqualTo(before));
         }
         [Test] public void StarterCannotBeDeletedAfterRenameOrClearingDraftFlagButCopyCan()
         {
