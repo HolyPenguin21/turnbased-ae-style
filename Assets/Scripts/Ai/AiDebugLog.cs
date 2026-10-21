@@ -83,13 +83,13 @@ namespace Game.Ai
                 string path = Path.Combine(root, RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root);
                 _writer = new StreamWriter(path, append: false) { AutoFlush = true };
-                _writer.WriteLine($"=== AI debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                _writer.WriteLine($"=== AI debug log - session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
                 Application.quitting -= CloseSession;
                 Application.quitting += CloseSession;
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"AiDebugLog: couldn't open log file — {e.Message}");
+                Debug.LogWarning($"AiDebugLog: couldn't open log file - {e.Message}");
                 _writer = null;
             }
         }
@@ -235,7 +235,7 @@ namespace Game.Ai
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"AiDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
+                Debug.LogWarning($"AiDebugLog: write failed, logging to file disabled for the rest of this session - {e.Message}");
                 _writer = null;
             }
         }

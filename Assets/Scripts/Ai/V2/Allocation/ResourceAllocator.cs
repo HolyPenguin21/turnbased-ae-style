@@ -541,8 +541,8 @@ namespace Game.Ai.V2
                 {
                     AiV2Trace.CheckError(lc.Value.Mission?.AttemptId, "ProvisionClaimExceedsEnvelope",
                         $"claimed={LogNum(lc.Value.ClaimedAp)} granted={LogNum(lc.Value.GrantedAp)} key={lc.Key}");
-                    AiDebugLog.Write($"[AI][V2] allocator — WARN locked claim {LogNum(lc.Value.ClaimedAp)} "
-                        + $"exceeds granted {LogNum(lc.Value.GrantedAp)} for {lc.Key} — clamped");
+                    AiDebugLog.Write($"[AI][V2] allocator - WARN locked claim {LogNum(lc.Value.ClaimedAp)} "
+                        + $"exceeds granted {LogNum(lc.Value.GrantedAp)} for {lc.Key} - clamped");
                 }
                 lockedTotal += Mathf.Min(lc.Value.ClaimedAp, lc.Value.GrantedAp);
                 lockedRemainderConsumed += remainderConsumed;
@@ -831,7 +831,7 @@ namespace Game.Ai.V2
                 physicalRemaining = (physicalRemaining - physMin).ClampLow0();
                 alloc.PhysicalFunded += physMin;
                 ConsumeSlot(lane);
-                AiDebugLog.Write($"[AI][V2] allocator spillover — FUND {StableMissionKey.For(m)} "
+                AiDebugLog.Write($"[AI][V2] allocator spillover - FUND {StableMissionKey.For(m)} "
                     + $"ap={LogNum(min)} from common remainder; left={LogNum(remainder)}");
             }
 
@@ -1055,7 +1055,7 @@ namespace Game.Ai.V2
         private static void LogDump(TentativeAllocation a, int turn)
         {
             AiDebugLog.WriteDeduped($"p{a.PassNumber}",
-                $"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)}, "
+                $"[AI][V2] allocator p{a.PassNumber} - pool {LogNum(a.InitialPool.Ap)}, "
                 + $"locked {LogNum(a.LockedClaim.Ap)}, funded {a.Funded.Count} ({a.Funded.Count(f => f.IsCommitment)} commit), "
                 + $"deferred {a.Deferred.Count}, unused {LogNum(a.Unused.Ap)}, "
                 + $"overdraft axis/global {LogNum(a.AxisOverdraft.Ap)}/{LogNum(a.GlobalOverdraft.Ap)}"

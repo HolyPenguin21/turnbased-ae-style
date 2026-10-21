@@ -236,7 +236,7 @@ namespace Game.Map
                 // resolution or CaptureOrDestroyIfUndefended's own IsEngageable check. Logged, not
                 // silently overwritten, so a real invariant break surfaces instead of quietly
                 // stealing the previous owner's still-fielded troops.
-                AiDebugLog.Write($"[BUILDING] invariant violation — captured base at ({building.Hex.Q},{building.Hex.R}) "
+                AiDebugLog.Write($"[BUILDING] invariant violation - captured base at ({building.Hex.Q},{building.Hex.R}) "
                     + $"still has a non-empty garrison \"{garrison.Name}\" ({garrison.Members.Count} member(s)) owned by "
                     + $"{(garrison.Owner != null ? garrison.Owner.Nickname : "nobody")}.");
                 return;

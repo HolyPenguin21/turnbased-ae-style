@@ -610,7 +610,7 @@ namespace Game.Ai.V2
             EconomyStanding eco = s.Economy;
             ThreatModel th = s.Threat;
 
-            AiDebugLog.Write($"[AI][V2] {nick} worldscan turn {s.TurnNumber} — "
+            AiDebugLog.Write($"[AI][V2] {nick} worldscan turn {s.TurnNumber} - "
                 + $"map {P(s.MapKnowledge.UnknownFrac)} dark (visited {s.MapKnowledge.VisitedHexes}/{s.MapKnowledge.TotalHexes}, "
                 + $"visible {s.MapKnowledge.VisibleHexes}) | frontier {s.MapKnowledge.Frontier.Count} hexes, "
                 + $"explorable {P(s.MapKnowledge.ExplorableUnknownFrac)}");

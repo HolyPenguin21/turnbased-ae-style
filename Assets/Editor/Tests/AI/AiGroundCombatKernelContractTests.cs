@@ -167,7 +167,7 @@ namespace Game.EditorTests
             Assert.That(flatRoster.Count, Is.EqualTo(2), "a free slot is filled, nothing is swapped");
             Assert.That(fortified, Is.False,
                 "behind an overwhelming hex defence neither roster can win, so the convoy improves "
-                + "nothing — the verdict must depend on the bonus, not ignore it");
+                + "nothing - the verdict must depend on the bonus, not ignore it");
         }
 
         // ---- §20/§48 own-Base identity is Self.BaseHexes, never a remembered owner -------------

@@ -463,7 +463,7 @@ namespace Game.Ai.V2
                     && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
                 {
                     if (verbose)
-                        AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey}: hero card matches "
+                        AiDebugLog.Write($"[AI][V2]   strat.B - hold {plan.StableKey}: hero card matches "
                             + $"unresolved {matchedResidual} but no placement delivers it");
                     continue;
                 }
@@ -472,7 +472,7 @@ namespace Game.Ai.V2
                     && plan.Score < AiConfigV2.garrisonSaturatedMinUtility)
                 {
                     if (verbose)
-                        AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
+                        AiDebugLog.Write($"[AI][V2]   strat.B - defer {plan.StableKey} {AiCardLog.Plan(plan)} "
                             + $"score {F(plan.Score)} < garrison-saturated bar "
                             + $"{F(AiConfigV2.garrisonSaturatedMinUtility)}");
                     continue;
@@ -481,7 +481,7 @@ namespace Game.Ai.V2
                     && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
                 {
                     if (verbose)
-                        AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
+                        AiDebugLog.Write($"[AI][V2]   strat.B - hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
                             + "generic surplus would add a scout beyond the physical portfolio");
                     continue;
                 }

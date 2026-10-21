@@ -102,7 +102,7 @@ namespace Game.Ai.V2
             result.StartHex = hex;
             result.FinalHex = hex;
             GroundCombatAssemblyPlan assembly = pm.AttackPreparationAssembly;
-            string corr = $"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack preparation";
+            string corr = $"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - attack preparation";
 
             // 2026-10-01 (variant B) — the fetched commander leaves its garrison as a lone-hero
             // container (one canonical CreateArmyWithMember); Continuity records it and its Gather
@@ -408,9 +408,9 @@ namespace Game.Ai.V2
                 ? GroundMoveAuthorityPolicy.ForTacticalStrikeStep(next.Value, intercept ? waypoint : strike.Hex)
                 : GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, targetHex);
             var decision = AiDecision.Move(army, next.Value, fightsContact
-                ? $"V2 attack — {(intercept ? "intercept" : "fight on the path")} enemy #{strike.EnemyArmyId} en route to "
+                ? $"V2 attack - {(intercept ? "intercept" : "fight on the path")} enemy #{strike.EnemyArmyId} en route to "
                     + target.Target.DiagnosticLabel
-                : $"V2 attack — assault {target.AssaultTarget.DiagnosticLabel}"
+                : $"V2 attack - assault {target.AssaultTarget.DiagnosticLabel}"
                     + (target.IsIntermediateAssault ? $" en route to {target.Target.DiagnosticLabel}" : ""), 0f, authority);
             AiDebugLog.WriteDeduped($"attack-route#{army.Id}@{before.Q},{before.R}",
                 $"[AI][V2][Attack][Route] {player.Nickname} #{army.Id} ({before.Q},{before.R}) -> "
@@ -521,7 +521,7 @@ namespace Game.Ai.V2
             }
             var leg = new GroundLegStepResult();
             yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", leg, result);
+                $"V2 attack - {target.Phase} to ({home.Q},{home.R})", leg, result);
             if (leg.Blocked.HasValue)
             {
                 result.StopReason = leg.Blocked.Value;
@@ -606,7 +606,7 @@ namespace Game.Ai.V2
                 }
                 var leg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
-                    $"V2 attack — {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",
+                    $"V2 attack - {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",
                     leg, result);
                 if (leg.Blocked.HasValue)
                 {
@@ -654,7 +654,7 @@ namespace Game.Ai.V2
                 AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
                 AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex),
                 capacityIsProgress: target.CommanderLeg);
-            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack "
+            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - attack "
                 + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
                 + $"{(wasSwap ? $"displaced={displacedUnitName} " : "")}{detail}");

@@ -271,7 +271,7 @@ namespace Game.Ai.V2
                     economyOwner);
             if (!r.Built)
             {
-                AiDebugLog.Write($"[AI][V2]   infra — {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
+                AiDebugLog.Write($"[AI][V2]   infra - {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
                 return new InfraFulfillResult { Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
                     ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
                     StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
@@ -491,7 +491,7 @@ namespace Game.Ai.V2
             if (!outcome.Ok)
             {
                 // Nothing was paid or changed: the plan is stale. The next pass re-judges the world.
-                AiDebugLog.Write($"[AI][V2]   infra — CapacityUnlock refused: {outcome.FailReason} ({cand.Explain})");
+                AiDebugLog.Write($"[AI][V2]   infra - CapacityUnlock refused: {outcome.FailReason} ({cand.Explain})");
                 return InfraFulfillResult.No(outcome.FailReason);
             }
             return new InfraFulfillResult
@@ -608,7 +608,7 @@ namespace Game.Ai.V2
                 }
             }
             if (legal.Count == 0 && rejected.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   infra — DevelopmentInfrastructure rejected: "
+                AiDebugLog.Write($"[AI][V2]   infra - DevelopmentInfrastructure rejected: "
                     + string.Join(" | ", rejected));
             return BestDevelopmentCandidate(legal);
         }
@@ -734,7 +734,7 @@ namespace Game.Ai.V2
                     CardPlayPlan preflight = placement.Bind(card);
                     if (!CardPlayExecutor.Preflight(player, root, hand, ctx, preflight, out string why))
                     {
-                        AiDebugLog.Write($"[AI][V2]   infra — DevelopmentOperator preflight fail "
+                        AiDebugLog.Write($"[AI][V2]   infra - DevelopmentOperator preflight fail "
                             + $"@({fac.Hex.Q},{fac.Hex.R}) {card.Definition.displayName}: {why}");
                         continue;
                     }

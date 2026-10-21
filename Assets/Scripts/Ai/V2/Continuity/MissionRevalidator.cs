@@ -229,7 +229,7 @@ namespace Game.Ai.V2
             // explicit semantics and every lifecycle stage must reject values it does not understand.
             if (!ReconScoutKinds.IsExplore(pm.ScoutKind))
             {
-                AiDebugLog.Write($"[AI][V2][Recon] revalidate reject — unknown Scout kind {(int)pm.ScoutKind}");
+                AiDebugLog.Write($"[AI][V2][Recon] revalidate reject - unknown Scout kind {(int)pm.ScoutKind}");
                 return MissionValidity.StaleTargetInvalidated;
             }
 

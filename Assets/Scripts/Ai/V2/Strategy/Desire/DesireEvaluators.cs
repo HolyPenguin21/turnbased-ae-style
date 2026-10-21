@@ -479,22 +479,22 @@ namespace Game.Ai.V2
             float rawRecon, float rawAggression, float rawEconomy, float rawDev,
             CombatOpportunityReport opp)
         {
-            AiDebugLog.Write($"[AI][V2]   desires — RCN raw {F(rawRecon)} smoothed {F(d.Raw[DesireAxis.Recon])} "
+            AiDebugLog.Write($"[AI][V2]   desires - RCN raw {F(rawRecon)} smoothed {F(d.Raw[DesireAxis.Recon])} "
                 + $"(explRaw {F(b.ReconExploration)} exploreP {F(b.ReconExplorePressure)} "
                 + $"refreshP {F(b.ReconRefreshPressure)} "
                 + $"blind {F(b.ReconEnemyBlindness)})");
-            AiDebugLog.Write($"[AI][V2]   desires — AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
+            AiDebugLog.Write($"[AI][V2]   desires - AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
                 + $"radar {F(radar.Weight[DesireAxis.Aggression])} scale {F(RadarValueScale.For(radar, DesireAxis.Aggression))} "
                 + $"[surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)}]");
             AiDebugLog.Write($"[AI][V2]   world threat fact {F(d.MilitaryThreat)}");
-            AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)}");
+            AiDebugLog.Write($"[AI][V2]   desires - reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)}");
             AiDebugLog.Write($"[AI][V2][Economy][Desire] resource={b.EconomyPrimaryResource} "
                 + $"max={F(b.EconomyMaxDeficit)} mean={F(b.EconomyMeanDeficit)} "
                 + $"incomeGap={F(b.EconomyIncomeGap)} relativeGap={F(b.EconomyRelativeGap)} "
                 + $"runwayGap={F(b.EconomyRunwayGap)} operational={F(b.EconomyOperationalPressure)} "
                 + $"actionableGate={F(b.EconomyActionableGate)} raw={F(rawEconomy)} "
                 + $"smoothed={F(d.Raw[DesireAxis.Economy])}");
-            AiDebugLog.Write($"[AI][V2]   desires — DEV raw {F(rawDev)} smoothed {F(d.Raw[DesireAxis.Development])} "
+            AiDebugLog.Write($"[AI][V2]   desires - DEV raw {F(rawDev)} smoothed {F(d.Raw[DesireAxis.Development])} "
                 + $"= surplus {F(b.DevSurplusFraction)} x need {F(b.DevJustifiedNeed)} x feasibility {F(b.DevOfferingQuality)} "
                 + $"(facReady {F(b.DevFacilityReady)} pathViable {(b.DevPathViable ? 1 : 0)} bestP {F(b.DevBestSuccessChance)} targets {b.DevUpgradeTargets})");
             string bestOpp = b.BestOpportunity.HasTarget
@@ -503,7 +503,7 @@ namespace Game.Ai.V2
                   + $"val {F(b.BestOpportunity.TargetValue)} eta {b.BestOpportunity.Eta} "
                   + $"gate {(b.BestOpportunity.GatePassed ? 1 : 0)}"
                 : "none";
-            AiDebugLog.Write($"[AI][V2]   desires — bestOpp {bestOpp} "
+            AiDebugLog.Write($"[AI][V2]   desires - bestOpp {bestOpp} "
                 + $"(targets {opp.All.Count}, heroAvail {(opp.HeroAvailable ? 1 : 0)}, cap {opp.AssemblableCap}) "
                 + $"| threat {F(d.MilitaryThreat)} runway {F(d.EconomicRunway)}");
         }

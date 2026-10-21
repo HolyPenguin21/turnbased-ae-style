@@ -53,7 +53,7 @@ namespace Game.Ai.V2.Initiative
                 planned.Add((p, root, plan));
                 string bottleneck = InitiativeBottleneckDiagnostics.Describe(p, analysis);
 
-                AiDebugLog.Write($"[AI][V2][Initiative] {p.Nickname} (turn {turnNumber}) — "
+                AiDebugLog.Write($"[AI][V2][Initiative] {p.Nickname} (turn {turnNumber}) - "
                     + $"apPressure={analysis.ApPressure:0.00} (cur={analysis.CurrentApPressure:0.00} hist={analysis.HistoricalApPressure:0.00}), "
                     + $"turnOrderPressure={analysis.TurnOrderPressure:0.00}, bottleneck={bottleneck}, "
                     + $"armies={analysis.ActionableFieldArmyCount} power={analysis.ActionableMilitaryPower:0.0} apCards={analysis.ApCostingActionsAvailable}, "
@@ -73,7 +73,7 @@ namespace Game.Ai.V2.Initiative
                 // this guard automatically.
                 if (InitiativeBottleneckDiagnostics.ShouldSuppressBonusTokens(entry.Player, out string suppressReason))
                 {
-                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — suppress "
+                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} - suppress "
                         + $"{entry.Plan.TokensToBuy} planned bonus tokens: {suppressReason}.");
                     AiMatchStats.RecordInitiativeSuppressed(entry.Player);
                     continue;
@@ -127,10 +127,10 @@ namespace Game.Ai.V2.Initiative
                 AiMatchStats.RecordInitiativeBought(entry.Player, applied, spent);
 
                 if (applied != entry.Plan.TokensToBuy)
-                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — applied {applied}/{entry.Plan.TokensToBuy} planned tokens "
+                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} - applied {applied}/{entry.Plan.TokensToBuy} planned tokens "
                         + "(remaining tokens failed live revalidation).");
                 else if (applied > 0)
-                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — bought {applied} bonus tokens "
+                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} - bought {applied} bonus tokens "
                         + $"for H/E/M/T={spent[0]}/{spent[1]}/{spent[2]}/{spent[3]}.");
             }
         }

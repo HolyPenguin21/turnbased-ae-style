@@ -47,7 +47,7 @@ namespace Game.Ai.V2
                     basis, plan.BaseArmyId, obj.TargetArmyId));
             }
             if (witnesses.Count == 0)
-                AiDebugLog.Write("[AI][V2] reaction probe(targetDriven) — no discovered target is "
+                AiDebugLog.Write("[AI][V2] reaction probe(targetDriven) - no discovered target is "
                     + "ReadyExecutable per the canonical RaidOperationalReadiness");
             return witnesses;
         }
@@ -68,13 +68,13 @@ namespace Game.Ai.V2
             if (eval.Outcome != AggressionDemandOutcome.Demand || eval.ChosenObjective == null
                 || eval.Readiness == null)
             {
-                AiDebugLog.Write($"[AI][V2] reaction probe(materializeForDiscovery) — canonical aggression demand "
+                AiDebugLog.Write($"[AI][V2] reaction probe(materializeForDiscovery) - canonical aggression demand "
                     + $"outcome={eval.Outcome} ({eval.Reason}); no materialization reaction");
                 return witnesses;
             }
             if (!targetIds.Contains(eval.ChosenObjective.TargetArmyId))
             {
-                AiDebugLog.Write($"[AI][V2] reaction probe(materializeForDiscovery) — canonical demand targets raid "
+                AiDebugLog.Write($"[AI][V2] reaction probe(materializeForDiscovery) - canonical demand targets raid "
                     + $"#{eval.ChosenObjective.TargetArmyId}, not among this discovery "
                     + $"[{string.Join(",", targetIds.OrderBy(x => x))}]");
                 return witnesses;
@@ -84,7 +84,7 @@ namespace Game.Ai.V2
                 player, root, ctx, snap, hand, commitments, eval.ChosenObjective, eval.Readiness);
             if (closure == null)
             {
-                AiDebugLog.Write("[AI][V2] reaction probe(materializeForDiscovery) — no bounded legal "
+                AiDebugLog.Write("[AI][V2] reaction probe(materializeForDiscovery) - no bounded legal "
                     + "materialization combination closes the canonical shortage within the reaction budget");
                 return witnesses;
             }
@@ -135,7 +135,7 @@ namespace Game.Ai.V2
                 .ToList();
             if (feasible.Count == 0)
             {
-                AiDebugLog.Write("[AI][V2] reaction probe(handFollowup) — no legal hand play fits the reaction "
+                AiDebugLog.Write("[AI][V2] reaction probe(handFollowup) - no legal hand play fits the reaction "
                     + $"AP ceiling ({ceiling:0.#}) + spendable-resource check");
                 return witnesses;
             }

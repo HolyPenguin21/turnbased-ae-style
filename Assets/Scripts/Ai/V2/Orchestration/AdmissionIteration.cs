@@ -177,7 +177,7 @@ namespace Game.Ai.V2
             if (work == OperationalWorkKind.None)
             {
                 outcome.NoFundedMission();
-                AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");
+                AiDebugLog.Write("[AI][V2][Loop] stop - no funded typed mission");
                 yield break;
             }
 
@@ -217,7 +217,7 @@ namespace Game.Ai.V2
                 // an exhausted portfolio; zero-only rejections leave a residual window.
                 outcome.NoProvisionedTask(
                     ResidualWindowPolicy.AfterNoProvisionedTask(allocation.Funded));
-                AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "
+                AiDebugLog.Write($"[AI][V2][Loop] admission stopped - no provisioned task; "
                     + $"noProgress={outcome.NoProgressAfter(view.NoProgressCycles)}");
                 // No task command ran and no observation can differ. Repeating the same
                 // admission under a fresh session only reproduces the same rejection; stop
@@ -286,7 +286,7 @@ namespace Game.Ai.V2
                 // allocations should prevent residual admission.
                 outcome.StopAfterSettledStep(ResidualWindowPolicy.AfterSettledTask(
                     allocation.Funded, selectedKey));
-                AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
+                AiDebugLog.Write("[AI][V2][Loop] stop - settled task produced no typed invalidation");
             }
         }
 

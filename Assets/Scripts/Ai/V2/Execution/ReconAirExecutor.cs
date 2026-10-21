@@ -76,11 +76,11 @@ namespace Game.Ai.V2
             result ??= new AirReconExecutionResult();
             if (plan == null || player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
             {
-                AiDebugLog.Write($"[AI][V2][Recon][Air] exec — not reached ({plan?.Summary ?? "no plan"})");
+                AiDebugLog.Write($"[AI][V2][Recon][Air] exec - not reached ({plan?.Summary ?? "no plan"})");
                 result.StateVersionAfter = WorldDeltaLifecycle.Current;
                 yield break;
             }
-            if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation)) AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation)) AiDebugLog.Write($"[AI][V2][Recon][Air] exec - {plan.Summary}");
             if (PrepareStoredMissions(plan, player, root, ctx, snapshot, result))
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, AiHandRegistry.Peek(player), ctx);
             int apBefore = root.ActionPoints;
@@ -127,7 +127,7 @@ namespace Game.Ai.V2
                 HexCoord? focus = ReconPatrolStateRegistry.TryGet(player, air.Id, out ReconPatrolState st)
                     ? st.StrategicAnchor : (HexCoord?)null;
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Recovery] actor=#{air.Id} has no strategic "
-                    + "progress entitlement but must-recover — flying unconditionally (lifecycle safety)");
+                    + "progress entitlement but must-recover - flying unconditionally (lifecycle safety)");
                 yield return RunActor(player, root, ctx, snapshot, air, result, missionFocusHex: focus);
             }
 
@@ -273,7 +273,7 @@ namespace Game.Ai.V2
                     continue;
                 ReconAirSortieLifecycle.RecallForTurnEnd(sortie, "turn_end_recall: cannot safely end the turn aloft");
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Recall] actor=#{wing.Id} at ({wing.Hex.Q},{wing.Hex.R}) "
-                    + $"mp={wing.CurrentMovement} — not driven this turn and cannot end it aloft; turning home");
+                    + $"mp={wing.CurrentMovement} - not driven this turn and cannot end it aloft; turning home");
             }
             return FindMandatoryRecoveryActors(player, ctx);
         }
@@ -604,7 +604,7 @@ namespace Game.Ai.V2
                     player, air, d.LandingHex, outbound: false);
                 if (reservation == null)
                 {
-                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} return blocked — another task owns aircraft");
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} return blocked - another task owns aircraft");
                     control.StopReason = ExecutionStopReason.NoSafeStep;
                     yield break;
                 }
@@ -614,7 +614,7 @@ namespace Game.Ai.V2
                 bool moved = false;
                 control.CommandAttempted = true;
                 yield return MoveOne(player, ctx, air, d.Step,
-                    "V2 Air Recon — safe return", () => moved = true, perMissionResult);
+                    "V2 Air Recon - safe return", () => moved = true, perMissionResult);
                 if (!moved)
                 {
                     control.StopReason = ExecutionStopReason.MoveRejected;
@@ -639,7 +639,7 @@ namespace Game.Ai.V2
                 player, air, d.LandingHex, outbound: true, target: d.Step);
             if (reservationTask == null)
             {
-                AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} step blocked — another task owns aircraft");
+                AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} step blocked - another task owns aircraft");
                 control.StopReason = ExecutionStopReason.NoSafeStep;
                 yield break;
             }
@@ -648,7 +648,7 @@ namespace Game.Ai.V2
             int movementBeforeStep = air.CurrentMovement;
             control.CommandAttempted = true;
             yield return MoveOne(player, ctx, air, d.Step,
-                $"V2 Air Recon — {assignment.Mode} {sortie.Phase} one-step live replan",
+                $"V2 Air Recon - {assignment.Mode} {sortie.Phase} one-step live replan",
                 () => stepMoved = true, perMissionResult);
             if (!stepMoved)
             {

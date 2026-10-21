@@ -314,7 +314,7 @@ namespace Game.Ai.V2
                 return;
             if (e.Reservations.Count > 0)
             {
-                AiDebugLog.Write($"[AI][V2][ERROR] reservation leak at turn end — [{DebugLine(player, turn)}] "
+                AiDebugLog.Write($"[AI][V2][ERROR] reservation leak at turn end - [{DebugLine(player, turn)}] "
                     + "not released by its owner; force-clearing");
                 ReservationInvariants.RecordLeakAtTurnEnd(player, turn, DebugLine(player, turn));
                 e.Reservations.Clear();

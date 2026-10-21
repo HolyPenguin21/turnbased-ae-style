@@ -39,13 +39,13 @@ namespace Game.Combat
                 string path = Path.Combine(root, RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root);
                 _writer = new StreamWriter(path, append: false) { AutoFlush = true };
-                _writer.WriteLine($"=== Battle debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                _writer.WriteLine($"=== Battle debug log - session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
                 Application.quitting -= CloseSession;
                 Application.quitting += CloseSession;
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"BattleDebugLog: couldn't open log file — {e.Message}");
+                Debug.LogWarning($"BattleDebugLog: couldn't open log file - {e.Message}");
                 _writer = null;
             }
         }
@@ -90,7 +90,7 @@ namespace Game.Combat
             try { _writer.Write(line); }
             catch (Exception e)
             {
-                Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
+                Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session - {e.Message}");
                 CloseSession();
             }
         }
@@ -114,7 +114,7 @@ namespace Game.Combat
             try { _writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {tagged}"); }
             catch (Exception e)
             {
-                Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
+                Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session - {e.Message}");
                 CloseSession();
             }
         }

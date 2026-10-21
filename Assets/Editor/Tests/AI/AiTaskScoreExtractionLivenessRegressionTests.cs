@@ -68,7 +68,7 @@ namespace Game.EditorTests
             Assert.That(siteASuppressed, Is.True);
             Assert.That(siteBSuppressedByUnrelatedFailures, Is.False,
                 "unlike Base's single staged slot, Extraction can hold several durable intents at " +
-                "once — one stuck site must never suppress an unrelated one");
+                "once - one stuck site must never suppress an unrelated one");
         }
     }
 }

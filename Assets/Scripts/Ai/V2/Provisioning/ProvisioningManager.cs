@@ -150,7 +150,7 @@ namespace Game.Ai.V2
             session.SetGroundCombatAssignment(map);
 
             if (open.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   provision prepare ground-combat — {open.Count} open, assigned ["
+                AiDebugLog.Write($"[AI][V2]   provision prepare ground-combat - {open.Count} open, assigned ["
                     + string.Join(" ", map.Select(kv => $"{kv.Key}->#{kv.Value}")) + "]");
         }
 
@@ -362,7 +362,7 @@ namespace Game.Ai.V2
             {
                 if (VisionSystem.IsVisited(player, focus))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                        $"focus ({focus.Q},{focus.R}) already visited — nothing left to discover there"));
+                        $"focus ({focus.Q},{focus.R}) already visited - nothing left to discover there"));
                 if (AiMapMemory.KnownEnemySightingAt(player, focus).HasValue)
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         $"focus ({focus.Q},{focus.R}) now holds a known army"));

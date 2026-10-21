@@ -193,7 +193,7 @@ namespace Game.Ai.V2
             // known undefended foreign structure, and the game rule destroys/captures whatever
             // undefended structure a mover lands on, so a raid that crosses one is not forbidden.
             var decision = AiDecision.Move(army, next.Value,
-                $"V2 raid — strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})", 0f,
+                $"V2 raid - strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})", 0f,
                 AiGroundMoveAuthority.CombatAndCapture);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
@@ -301,7 +301,7 @@ namespace Game.Ai.V2
             // A temporarily blocked first step is a retry-next-turn, not a reason to drop the leg.
             var leg = new GroundLegStepResult();
             yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})",
+                $"V2 raid - {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})",
                 leg, result);
             if (leg.Blocked.HasValue)
             {
@@ -373,7 +373,7 @@ namespace Game.Ai.V2
             {
                 var leg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
-                    $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})",
+                    $"V2 raid - reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})",
                     leg, result);
                 if (leg.Blocked.HasValue)
                 {
@@ -417,7 +417,7 @@ namespace Game.Ai.V2
             result.ReinforcementHandoffAttempted = true;
             bool handoffOk = GroundCombatReinforcementTransaction.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
-            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — raid "
+            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - raid "
                 + $"reinforcement handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
                 + $"{(wasSwap ? $"displaced={displacedUnitName} " : "")}{detail}");
@@ -480,7 +480,7 @@ namespace Game.Ai.V2
             result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.StopReason = stop;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm?.Mission)}] {pm?.Key} — raid "
+            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm?.Mission)}] {pm?.Key} - raid "
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "
                 + $"steps {result.StepsMoved} ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} "
                 + $"stop {stop}" + (!result.ReachedGoal ? ""

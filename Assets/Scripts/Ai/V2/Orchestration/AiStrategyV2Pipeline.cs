@@ -82,12 +82,12 @@ namespace Game.Ai.V2
 
         public static IEnumerator RunTurn(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            AiDebugLog.Write($"[AI][V2] === {player?.Nickname} — Strategy V2 pipeline owns this turn "
+            AiDebugLog.Write($"[AI][V2] === {player?.Nickname} - Strategy V2 pipeline owns this turn "
                 + $"(turn {ctx?.TurnNumber}) ===");
 
             if (player == null || root == null || ctx == null || ctx.Map == null)
             {
-                AiDebugLog.Write("[AI][V2] missing player/root/ctx/map — nothing to do.");
+                AiDebugLog.Write("[AI][V2] missing player/root/ctx/map - nothing to do.");
                 yield break;
             }
 
@@ -130,7 +130,7 @@ namespace Game.Ai.V2
             RadarAssessment assessment = StrategyLayer.Evaluate(scanned, radarState);
             DesireVector desires = assessment.Desires;
             Radar radar = assessment.Radar;
-            AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar — {radar.DebugLine()} "
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar - {radar.DebugLine()} "
                 + $"| threat {desires.MilitaryThreat.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
             AiFrameLog.Strategy(assessment);
@@ -150,7 +150,7 @@ namespace Game.Ai.V2
             //     DevelopmentOpportunityEvaluator.Enumerate against the settled state of each pass.
 
             foreach (RaidObjective ao in frame.Aggression)
-                AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
+                AiDebugLog.Write($"[AI][V2]   aggObjective - {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
                     + $"base {ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"readyWin {ao.ReadyWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"asmWin {ao.AssemblableWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
@@ -182,7 +182,7 @@ namespace Game.Ai.V2
             //     follow-up AP promised to capabilities it delivers. Radar scales objective value
             //     only. Every other owner's hold is TurnResourceBook's, applied at each chain guard.
             PhaseAApBudget apBudget = PhaseAApBudget.Create(root);
-            AiDebugLog.Write($"[AI][V2] {player.Nickname}: Phase A budget — {apBudget.DebugLine()}");
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: Phase A budget - {apBudget.DebugLine()}");
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
             //     The demand set can materialize only capability requested by a real axis.
@@ -196,7 +196,7 @@ namespace Game.Ai.V2
             {
                 phaseA = new StrategicPhaseResult();
                 readmission.Deferred.Defer(demandAxes);
-                AiDebugLog.Write("[AI][V2] Phase A deferred — aviation obligations settle first");
+                AiDebugLog.Write("[AI][V2] Phase A deferred - aviation obligations settle first");
             }
             else
             {
@@ -410,7 +410,7 @@ namespace Game.Ai.V2
 
             // Emit the canonical turn summary only after every turn-scoped cleanup/invariant check
             // has completed, so [TURN-END] really is the final strategic lifecycle marker.
-            if (AiDebugLog.Verbose) AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
+            if (AiDebugLog.Verbose) AiDebugLog.Write($"[AI][V2] === {player.Nickname} - V2 turn ends "
                 + $"(demands {frame.Demands.Count}, stratA {phaseA.CardsPlayed}, missions {telemetry.Missions.Count}, "
                 + $"lastPackFunded {telemetry.Allocation.Funded.Count}, turnFundedUnique {telemetry.FundedKeys.Count}, "
                 + $"provisioned {telemetry.Provisioned.Count}, executed {telemetry.AllExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");

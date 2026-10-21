@@ -633,7 +633,7 @@ namespace Game.Ai
                 {
                     foreach (int armyId in stale)
                     {
-                        AiDebugLog.Write($"[AI] {actor.Nickname}: memory — army sighting \"{sightings[armyId].Name}\" "
+                        AiDebugLog.Write($"[AI] {actor.Nickname}: memory - army sighting \"{sightings[armyId].Name}\" "
                             + $"at ({sightings[armyId].Hex.Q},{sightings[armyId].Hex.R}) expired after "
                             + $"{AiConfig.enemySightingMemoryTurns} turns.");
                         sightings.Remove(armyId);
@@ -874,10 +874,10 @@ namespace Game.Ai
                     // place instead of leaving it behind as an orphan under its old Hex.
                     bool wasKnown = sightings.TryGetValue(enemy.Id, out EnemySighting previous);
                     if (wasKnown && !previous.Hex.Equals(hex))
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory — army \"{enemy.Name}\" id={enemy.Id} relocated "
+                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - army \"{enemy.Name}\" id={enemy.Id} relocated "
                             + $"({previous.Hex.Q},{previous.Hex.R}) → ({hex.Q},{hex.R}).");
                     else if (IsNeutralSightingOwner(enemy.Owner) && !wasKnown)
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{enemy.Name}\" remembered at ({hex.Q},{hex.R}).");
+                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - neutral \"{enemy.Name}\" remembered at ({hex.Q},{hex.R}).");
                     // Route blockers depend on the known army's hex, not its observed HP,
                     // roster or observation turn. Keep updating the whole sighting below,
                     // but invalidate routes only when its presence/position changes.
@@ -946,7 +946,7 @@ namespace Game.Ai
                 {
                     EnemySighting stale = sightings[staleId];
                     if (IsNeutralSightingOwner(stale.Owner))
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{stale.Name}\" at "
+                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - neutral \"{stale.Name}\" at "
                             + $"({hex.Q},{hex.R}) corrected (gone on re-observation).");
                     sightings.Remove(staleId);
                     sightingsChanged = true;
@@ -973,10 +973,10 @@ namespace Game.Ai
                     if (!wasKnown || previousBuilding.Owner != building.Owner)
                         buildingsChanged = true;
                     if (!wasKnown)
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory — building \"{building.Name}\" "
+                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - building \"{building.Name}\" "
                             + $"(owner={(building.Owner != null ? building.Owner.Nickname : "none")}) remembered at ({hex.Q},{hex.R}).");
                     else if (previousBuilding.Owner != building.Owner)
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory — building at ({hex.Q},{hex.R}) corrected, owner "
+                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - building at ({hex.Q},{hex.R}) corrected, owner "
                             + $"{(previousBuilding.Owner != null ? previousBuilding.Owner.Nickname : "none")} → "
                             + $"{(building.Owner != null ? building.Owner.Nickname : "none")}.");
                     // T08 — slot contents are recorded only for this player's own building.
@@ -1022,7 +1022,7 @@ namespace Game.Ai
                 {
                     if (buildings.ContainsKey(hex))
                     {
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory — building at ({hex.Q},{hex.R}) corrected (gone on re-observation).");
+                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - building at ({hex.Q},{hex.R}) corrected (gone on re-observation).");
                         buildingsChanged = true;
                         knowledgeChanged = true;
                     }

@@ -47,7 +47,7 @@ namespace Game.Ai.V2
             {
                 MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
-                AiDebugLog.Write("[AI][V2] reaction — the feasibility probe no longer finds a feasible "
+                AiDebugLog.Write("[AI][V2] reaction - the feasibility probe no longer finds a feasible "
                     + "reaction; released the reaction-budget + envelope reservation before executing");
             }
 
@@ -66,7 +66,7 @@ namespace Game.Ai.V2
 
             if (hand == null)
             {
-                AiDebugLog.Write("[AI][V2] reaction — pending invalidation consumed, but no AI hand is available; defer to next turn");
+                AiDebugLog.Write("[AI][V2] reaction - pending invalidation consumed, but no AI hand is available; defer to next turn");
                 // The round opened a scope; close it with a [STATE] line on this early exit too.
                 AiV2Trace.LogState(rtrace.Id, rStart, AiV2Trace.Stamp(root));
                 yield break;
@@ -80,7 +80,7 @@ namespace Game.Ai.V2
                 StrategicReservationReason.StrategicReactionPass);
 
             int apAtStart = root.ActionPoints;
-            AiDebugLog.Write($"[AI][V2] reaction — BEGIN round {round + 1}/2 bounded strategic replan "
+            AiDebugLog.Write($"[AI][V2] reaction - BEGIN round {round + 1}/2 bounded strategic replan "
                 + $"targets=[{string.Join(",", targetIds.OrderBy(x => x))}] ap={apAtStart}");
 
             AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
@@ -90,10 +90,10 @@ namespace Game.Ai.V2
             List<RaidObjective> aggressionObjectives =
                 RaidObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport);
 
-            AiDebugLog.Write($"[AI][V2] reaction — radar {radar.DebugLine()} "
+            AiDebugLog.Write($"[AI][V2] reaction - radar {radar.DebugLine()} "
                 + $"aggObjectives={aggressionObjectives.Count} reconObjectives={reconObjectives.Count}");
             foreach (RaidObjective ao in aggressionObjectives)
-                AiDebugLog.Write($"[AI][V2]   reaction aggObjective — {ao.ObjectiveId} "
+                AiDebugLog.Write($"[AI][V2]   reaction aggObjective - {ao.ObjectiveId} "
                     + $"@{ao.LastKnownHex.Q},{ao.LastKnownHex.R} base "
                     + $"{ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"readyWin {ao.ReadyWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
@@ -162,7 +162,7 @@ namespace Game.Ai.V2
                     m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
             foreach (MissionProposal m in missions)
-                AiDebugLog.Write($"[AI][V2]   reaction mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} "
+                AiDebugLog.Write($"[AI][V2]   reaction mission - [{m.AttemptId}] causeDemand={m.CauseDemandTrace} "
                     + $"{m.Kind} base {m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} | {m.Explain}");
             result.Missions += missions.Count;
@@ -205,7 +205,7 @@ namespace Game.Ai.V2
                         provisioned.Add(provision.Provisioned);
                         AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
                             provision.Provisioned.ClaimedAp, fe.Tentative.Ap);
-                        AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} — OK mover "
+                        AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} - OK mover "
                             + $"#{provision.Provisioned.MoverArmyId} ap "
                             + $"{provision.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)}");
                     }
@@ -217,7 +217,7 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, provision.Failure);
                         outcomeLedger.RecordProvisionFailure(fe.Mission, provision.Failure);
-                        AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} — FAIL "
+                        AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} - FAIL "
                             + $"{provision.Failure.Kind} [{provision.Failure.Disposition}] "
                             + provision.Failure.Detail);
                     }
@@ -227,7 +227,7 @@ namespace Game.Ai.V2
                 // failures already reject/reprice their missions. Allow the existing bounded Pack()
                 // to fund executable proposals from OTHER pools before ending this reaction.
                 if (anyFailure && allFailuresArePoolWide)
-                    AiDebugLog.Write("[AI][V2] reaction — failed capability pools exhausted; re-pack to admit other runnable lanes");
+                    AiDebugLog.Write("[AI][V2] reaction - failed capability pools exhausted; re-pack to admit other runnable lanes");
                 if (!session.HasNewFailures || session.Converged)
                     break;
                 if (++reallocPass >= AiConfigV2.maxReallocIterations)
@@ -261,7 +261,7 @@ namespace Game.Ai.V2
             var reactionAirPerMissionResults = new List<ExecutionResult>();
             yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot, reactionAirResult, reactionAirPerMissionResults);
             if (reactionAirResult.Mutated)
-                AiDebugLog.Write($"[AI][V2][Recon][Air] exec — reaction outcome moved={reactionAirResult.AnyMoved} "
+                AiDebugLog.Write($"[AI][V2][Recon][Air] exec - reaction outcome moved={reactionAirResult.AnyMoved} "
                     + $"launched={reactionAirResult.AnyLaunched} struck={reactionAirResult.AnyStruck} "
                     + $"stateVer={reactionAirResult.StateVersionAfter} perMission={reactionAirPerMissionResults.Count}");
             var allExecuted = executed.Concat(reactionAirPerMissionResults).ToList();
@@ -276,7 +276,7 @@ namespace Game.Ai.V2
             if (StrategicInterruptRegistry.HasPendingContactDiscovery(player, ctx.TurnNumber))
             {
                 HashSet<int> deferred = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
-                AiDebugLog.Write($"[AI][V2] reaction — contact recursion suppressed; additional discovery "
+                AiDebugLog.Write($"[AI][V2] reaction - contact recursion suppressed; additional discovery "
                     + $"[{string.Join(",", deferred.OrderBy(x => x))}] deferred to next strategic scan");
                 StrategicInterruptRegistry.ClearDiscovery(player, ctx.TurnNumber);
             }
@@ -315,7 +315,7 @@ namespace Game.Ai.V2
             ract.EquipmentAssignmentAttempts += phaseA.EquipmentAssignmentAttempts + phaseB.EquipmentAssignmentAttempts;
             ract.EquipmentAssignmentsSucceeded += phaseA.EquipmentAssignmentsSucceeded + phaseB.EquipmentAssignmentsSucceeded;
 
-            AiDebugLog.Write($"[AI][V2] reaction — END round {round + 1}/2 ap {apAtStart}->{root.ActionPoints}, "
+            AiDebugLog.Write($"[AI][V2] reaction - END round {round + 1}/2 ap {apAtStart}->{root.ActionPoints}, "
                 + $"demands {demands.Count}, missions {missions.Count}, provisioned {provisioned.Count}, "
                 + $"executed {allExecuted.Count}, cardsPlayed {phaseA.CardsPlayed + phaseB.CardsPlayed}, "
                 + $"draws {phaseB.CardsDrawn}");
@@ -326,12 +326,12 @@ namespace Game.Ai.V2
             {
                 if (round == 0)
                 {
-                    AiDebugLog.Write("[AI][V2] reaction — operational hand/capability changed inside round 1; run one bounded follow-up round");
+                    AiDebugLog.Write("[AI][V2] reaction - operational hand/capability changed inside round 1; run one bounded follow-up round");
                     yield return ExecuteRound(snapshot, player, root, ctx, result, 1, phaseB.Reservation);
                 }
                 else
                 {
-                    AiDebugLog.Write("[AI][V2] reaction — follow-up bound reached; remaining hand/capability invalidation deferred to next strategic scan");
+                    AiDebugLog.Write("[AI][V2] reaction - follow-up bound reached; remaining hand/capability invalidation deferred to next strategic scan");
                     AiTurnSession.ClearPendingInvalidations(player, ctx.TurnNumber);
                 }
             }

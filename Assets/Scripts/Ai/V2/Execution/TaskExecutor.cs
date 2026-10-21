@@ -180,7 +180,7 @@ namespace Game.Ai.V2
             results.Add(result);
             ReleaseEconomyReservation(player, ctx, pm);
             if (logStalePlan)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — stale plan "
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - stale plan "
                     + $"planned@v{pm.PlannedAtStateVersion}, current=v{WorldDeltaLifecycle.Current}; no command issued");
             return true;
         }
@@ -212,7 +212,7 @@ namespace Game.Ai.V2
             ReleaseEconomyReservation(player, ctx, pm);
             ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, retireReason);
             if (logMoverGone)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - mover #{pm.MoverArmyId} gone before first step");
             return true;
         }
 
@@ -249,7 +249,7 @@ namespace Game.Ai.V2
             if (validity == MissionValidity.StaleMoverLost)
                 ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, retireReason);
             if (logRevalidation)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — revalidation: {validity}; "
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - revalidation: {validity}; "
                     + "no movement, 0 AP");
             return true;
         }
@@ -427,7 +427,7 @@ namespace Game.Ai.V2
             results.Add(result);
             ReleaseEconomyReservation(player, ctx, pm);
             if (!singleStepOnly)
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — unsupported mission kind {pm.Kind}");
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - unsupported mission kind {pm.Kind}");
         }
 
         // `snapshot` is passed through to the per-mission executors. ARCH-02 §35 — the terminal
@@ -662,7 +662,7 @@ namespace Game.Ai.V2
                         commitments, site))
                 {
                     AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: "
-                        + "builder carries a served operator that cannot stay home — nothing mutated");
+                        + "builder carries a served operator that cannot stay home - nothing mutated");
                     result.ActualActorArmyId = materialized.Id;
                     result.StopReason = ExecutionStopReason.TargetInvalidated;
                     return false;
@@ -679,7 +679,7 @@ namespace Game.Ai.V2
                 || !root.CanSpendActionPoints(Mathf.CeilToInt(prep.RealAp)))
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: AP no "
-                    + "longer available — hero stays a real field mover, found again next admission pass");
+                    + "longer available - hero stays a real field mover, found again next admission pass");
                 result.ActualActorArmyId = materialized.Id;
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
@@ -687,7 +687,7 @@ namespace Game.Ai.V2
             if (!StrategicSpendability.FitsSpendableForEconomyCompletion(player, root, ctx, prep.StageCost, prep.OwnerKey))
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: resources "
-                    + "no longer spendable — hero stays a real field mover, found again next admission pass");
+                    + "no longer spendable - hero stays a real field mover, found again next admission pass");
                 result.ActualActorArmyId = materialized.Id;
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
@@ -721,7 +721,7 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep failed for {pm.Key}: "
                     + "composition transaction did not commit"
-                    + " — hero stays a real field mover, found again next admission pass");
+                    + " - hero stays a real field mover, found again next admission pass");
                 result.ActualActorArmyId = materialized.Id;
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
@@ -738,7 +738,7 @@ namespace Game.Ai.V2
             if (realAp > envelopeAfterComposition + eps)
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: could "
-                    + "not lighten within the funded AP envelope — hero stays a real field mover, "
+                    + "not lighten within the funded AP envelope - hero stays a real field mover, "
                     + "found again next admission pass");
                 result.ActualActorArmyId = materialized.Id;
                 result.EconomyPrepared = true;
@@ -865,7 +865,7 @@ namespace Game.Ai.V2
                 }
             }
             yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
-                target.TargetHex, $"economy — {target.Kind}");
+                target.TargetHex, $"economy - {target.Kind}");
             HexCoord after = result.FinalHex;
             bool recoveryArrived = result.StopReason != ExecutionStopReason.MoverLost
                 && (target.Kind == EconomyTaskKind.ReturnBuilder
@@ -892,7 +892,7 @@ namespace Game.Ai.V2
             result.ActualActorArmyId = army.Id;
             if (!army.Hex.Equals(target.FacilityHex))
                 yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
-                    target.FacilityHex, $"development — {target.Mode} hero={target.HeroKey}");
+                    target.FacilityHex, $"development - {target.Mode} hero={target.HeroKey}");
 
             // A battle or event can interrupt an otherwise valid transport step; it must be
             // settled by its domain owner before this delivery can be marked ready.

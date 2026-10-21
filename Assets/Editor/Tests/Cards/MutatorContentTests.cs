@@ -195,7 +195,7 @@ namespace Game.EditorTests
             Assert.That(EquipmentCardText.Description(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);
             Assert.That(description, Does.Contain("Defense: +2").And.Contain("HP: +1").And.Contain("Initiative: -1"));
-            Assert.That(description, Does.Not.Contain("=").And.Not.Contain("—"));
+            Assert.That(description, Does.Not.Contain("=").And.Not.Contain("-"));
         }
 
         [Test]

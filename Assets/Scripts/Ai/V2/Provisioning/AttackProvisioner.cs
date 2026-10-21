@@ -282,7 +282,7 @@ namespace Game.Ai.V2
                 foreach (GroundCombatAssemblyTransfer t in assembly.Transfers)
                     session.ClaimedArmyIds.Add(t.DonorArmyId);
 
-            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} - OK "
                 + $"PREPARATION {target.PreparationStep} host "
                 + $"{(host != null ? $"#{host.Id} ({host.Members.Count}/{host.Capacity})" : "new")} at "
                 + $"({hex.Q},{hex.R}) ap {N(ap)} transfers="
@@ -341,7 +341,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: commander fetch needs {N(ap)}"));
             session.ClaimedArmyIds.Add(garrison.Id);
-            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} - OK "
                 + $"PREPARATION FetchCommander {hero.Name} (command {hero.CommandRating}) from garrison "
                 + $"#{garrison.Id} at ({garrison.Hex.Q},{garrison.Hex.R}) for host #{host.Id} ap {N(ap)}");
             return ProvisioningResult.Ok(new ProvisionedMission
@@ -393,7 +393,7 @@ namespace Game.Ai.V2
             session.ClaimedArmyIds.Add(host.Id);
             foreach (int id in target.GatherSupportArmyIds)
                 session.ClaimedArmyIds.Add(id);
-            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} - OK "
                 + $"PREPARATION RecruitDonors host #{host.Id} supports "
                 + $"[{string.Join(",", target.GatherSupportArmyIds)}] bought "
                 + $"[{string.Join(",", target.GatherSupportArmyIds.Where(forSale.ContainsKey).Select(id => $"#{id}:{forSale[id]:0.##}"))}] ap 0");
@@ -423,7 +423,7 @@ namespace Game.Ai.V2
             if (!check.Ok)
                 return check.Failure;
 
-            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} - OK "
                 + $"{target.Phase} {roleLabel} #{check.Mover.Id} -> ({home.Q},{home.R}) "
                 + $"ap {N(check.ActivationAp)}");
             return ProvisioningResult.Ok(new ProvisionedMission
@@ -495,7 +495,7 @@ namespace Game.Ai.V2
             target.DefenderHexDefenseBonus = hexBonus;
             target.DefenderCount = WorthIt.UnitsOf(opposition).Count;
 
-            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} - OK "
                 + $"{(target.Phase == AttackMissionPhase.Gather ? "GATHER" : "REINFORCE")} "
                 + $"support #{check.Mover.Id} -> primary #{primary.Id} at ({meetAt.Q},{meetAt.R}) "
                 + $"{(atRendezvous ? "HANDOFF" : "TRANSIT")} ap {N(check.ActivationAp)}");

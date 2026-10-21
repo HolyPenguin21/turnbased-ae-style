@@ -236,7 +236,7 @@ namespace Game.Campaign
                 if (!used) continue;
                 var f = s.Factions[i];
                 SetLogo(row.logo, f.Faction);
-                row.factionName.text = FactionName(f.Faction) + (f.Eliminated ? " — eliminated" : "");
+                row.factionName.text = FactionName(f.Faction) + (f.Eliminated ? " - eliminated" : "");
                 int owned = s.Regions.Count(r => r.OwnerFaction == f.Faction);
                 row.count.text = owned.ToString();
                 if (row.bar != null)
@@ -340,8 +340,8 @@ namespace Game.Campaign
         {
             bool finished = s.Phase == CampaignPhase.CampaignFinished;
             // Title/body pairs; without a separate title slot they join into the original one-line status.
-            var (title, separator, body) = finished ? (s.Factions.Find(f => f.Faction == s.HumanFaction).Eliminated ? ("CAMPAIGN DEFEAT", " — ", "your faction has been eliminated.") : ("PLANET CONQUERED", " — ", "campaign completed."))
-                : s.PendingOperation != null ? ("Pending battle", " — ", s.Phase.ToString()) : s.CurrentFaction == s.HumanFaction ? ("Your turn:", " ", "attack an adjacent enemy region or end turn.") : ("", "", "AI faction is choosing an attack.");
+            var (title, separator, body) = finished ? (s.Factions.Find(f => f.Faction == s.HumanFaction).Eliminated ? ("CAMPAIGN DEFEAT", " - ", "your faction has been eliminated.") : ("PLANET CONQUERED", " - ", "campaign completed."))
+                : s.PendingOperation != null ? ("Pending battle", " - ", s.Phase.ToString()) : s.CurrentFaction == s.HumanFaction ? ("Your turn:", " ", "attack an adjacent enemy region or end turn.") : ("", "", "AI faction is choosing an attack.");
             if (statusTitle != null) { statusTitle.text = title.ToUpperInvariant(); statusLabel.text = body.ToUpperInvariant(); }
             else statusLabel.text = title + separator + body;
             var rows = historyRows ?? Array.Empty<HistoryRowRefs>();

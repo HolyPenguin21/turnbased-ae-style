@@ -314,18 +314,18 @@ namespace Game.Ai.V2
             s.ResidualWindow = false;
             s.PassOpen = true;
             s.PassCause = cause;
-            AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
-            AiDebugLog.Write($"[AI][V2][Loop] admission pass opened — cause={cause}");
+            AiDebugLog.Write("[AI][V2][Loop] begin - typed operational admission");
+            AiDebugLog.Write($"[AI][V2][Loop] admission pass opened - cause={cause}");
             admission.OpenPass();
         }
 
         private static IEnumerator ClosePass(TurnLoopState s, IAdmissionWork admission)
         {
             if (s.SettledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
-                AiDebugLog.Write($"[AI][V2][Loop] bounded stop — max steps "
+                AiDebugLog.Write($"[AI][V2][Loop] bounded stop - max steps "
                     + $"{AiConfigV2.maxMidTurnStepsPerTurn}");
             if (s.NoProgressCycles >= AiConfigV2.maxMidTurnNoProgressCycles)
-                AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
+                AiDebugLog.Write($"[AI][V2][Loop] bounded stop - no progress cycles "
                     + $"{s.NoProgressCycles}");
             // Axes still waiting for aviation must not be lost when the pass ends first.
             yield return admission.TerminalForce();

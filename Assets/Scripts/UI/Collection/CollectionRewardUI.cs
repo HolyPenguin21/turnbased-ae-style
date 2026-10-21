@@ -83,7 +83,7 @@ namespace Game.UI
                 ? $"{reward.offeredKeys.Count - keys.Count} offers unavailable after a content/limit update. Original identities retained; no replacements." : "";
             string title = reward.outcome == MatchOutcome.Victory ? "VICTORY" : "DEFEAT";
             view.Title.text = title;
-            view.Subtitle.text = keys.Count == 0 ? "No eligible rewards remain." : reward.claimed ? "REWARD ACQUIRED" : $"Choose {required} rewards — selected {selection.Count}/{required}";
+            view.Subtitle.text = keys.Count == 0 ? "No eligible rewards remain." : reward.claimed ? "REWARD ACQUIRED" : $"Choose {required} rewards - selected {selection.Count}/{required}";
             Button firstChoice = null, focusedChoice = null;
             for (int i = 0; i < keys.Count; i++)
             {

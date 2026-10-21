@@ -642,7 +642,7 @@ namespace Game.UI
                 return HumanPlayer?.Tactics.Add(data) == true;
             if (_cards.Count >= maxHandSize)
             {
-                turnController?.ShowSpawnHint($"Hand is full ({maxHandSize}) — {data.Definition.displayName} was lost.");
+                turnController?.ShowSpawnHint($"Hand is full ({maxHandSize}) - {data.Definition.displayName} was lost.");
                 return false;
             }
             AddCard(data);
@@ -892,7 +892,7 @@ namespace Game.UI
 
             if (!IsValidDropTarget(definition, human, hex.Value))
             {
-                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here — needs a building with {definition.requiredBuildingAbility}.");
+                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here - needs a building with {definition.requiredBuildingAbility}.");
                 return false;
             }
 
@@ -905,7 +905,7 @@ namespace Game.UI
             ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex.Value, human);
             if (garrison == null || !garrison.CanFitAdditionalCard(definition))
             {
-                turnController.ShowSpawnHint($"Garrison here is full — can't deploy {definition.displayName}.");
+                turnController.ShowSpawnHint($"Garrison here is full - can't deploy {definition.displayName}.");
                 return false;
             }
 
@@ -947,7 +947,7 @@ namespace Game.UI
                 card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
             if (!outcome.Ok)
             {
-                turnController.ShowSpawnHint($"Can't build {definition.displayName} here — {outcome.FailReason}.");
+                turnController.ShowSpawnHint($"Can't build {definition.displayName} here - {outcome.FailReason}.");
                 return false;
             }
 
@@ -998,13 +998,13 @@ namespace Game.UI
 
             if (!IsValidDropTarget(definition, human, targetArmy.Hex))
             {
-                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here — {targetArmy.Name} needs to be on a building with {definition.requiredBuildingAbility}.");
+                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here - {targetArmy.Name} needs to be on a building with {definition.requiredBuildingAbility}.");
                 return false;
             }
 
             if (!targetArmy.CanFitAdditionalCard(definition))
             {
-                turnController.ShowSpawnHint($"{targetArmy.Name} is full — can't deploy {definition.displayName}.");
+                turnController.ShowSpawnHint($"{targetArmy.Name} is full - can't deploy {definition.displayName}.");
                 return false;
             }
 
@@ -1043,7 +1043,7 @@ namespace Game.UI
                 card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
             if (!outcome.Ok)
             {
-                turnController?.ShowSpawnHint($"Can't deploy {definition.displayName} here — {outcome.FailReason}.");
+                turnController?.ShowSpawnHint($"Can't deploy {definition.displayName} here - {outcome.FailReason}.");
                 return false;
             }
 
@@ -1081,7 +1081,7 @@ namespace Game.UI
                 card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
             if (!outcome.Ok)
             {
-                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} — {outcome.FailReason}.");
+                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} - {outcome.FailReason}.");
                 return false;
             }
 
@@ -1149,7 +1149,7 @@ namespace Game.UI
             }
             _pendingAttachment = equipmentCard;
             actionHint?.Show(
-                $"Attaching {equipmentCard.Definition.displayName} — left-click a unit or hero. Right-click or Esc to cancel.");
+                $"Attaching {equipmentCard.Definition.displayName} - left-click a unit or hero. Right-click or Esc to cancel.");
             turnController?.SetAttachModeActive(true);
         }
 
@@ -1339,7 +1339,7 @@ namespace Game.UI
                 return;
             if (_cards.Count >= maxHandSize)
             {
-                turnController.ShowSpawnHint($"Hand is full ({maxHandSize} cards) — play or discard before drawing.");
+                turnController.ShowSpawnHint($"Hand is full ({maxHandSize} cards) - play or discard before drawing.");
                 return;
             }
             PlayerRoot root = FindHumanRoot();

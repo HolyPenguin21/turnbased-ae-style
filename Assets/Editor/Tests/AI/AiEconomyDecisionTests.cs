@@ -999,7 +999,7 @@ namespace Game.EditorTests
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.EnvelopeTooSmall),
                     "unclaimed, the builder must clear mover-selection and fail only on the " +
-                    "(deliberately unfunded) AP envelope — not be rejected as contended/missing");
+                    "(deliberately unfunded) AP envelope - not be rejected as contended/missing");
             }
             finally
             {
@@ -1528,7 +1528,7 @@ namespace Game.EditorTests
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
                 Assert.That(state.TryGet(intent.IntentKey, out _), Is.True,
-                    "a temporarily blocked way home must not terminate the recovery commitment — " +
+                    "a temporarily blocked way home must not terminate the recovery commitment - " +
                     "unlike the outbound fix, ReturnBuilder is deliberately left unconditional");
                 Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
                     .IsArmyClaimed(army.Id), Is.True);
@@ -3410,7 +3410,7 @@ namespace Game.EditorTests
             Assert.That(EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(
                 snap, demand), Is.False,
                 "a route beyond the builder's own movement budget must not freeze resources " +
-                "on the very first turn the site is scored — that is what the durable-intent " +
+                "on the very first turn the site is scored - that is what the durable-intent " +
                 "handoff is for once the delivery actually starts");
 
             demand.EconomyBuilderRoutes = new[]

@@ -88,7 +88,7 @@ namespace Game.Ai.V2
                         if (deferredThisPass != null)
                             deferredThisPass[intent.IntentKey] = "recon_intent_not_materialisable_this_pass";
                         AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
-                            $"[AI][V2]   mission — intent {intent.IntentKey} not materialisable this turn");
+                            $"[AI][V2]   mission - intent {intent.IntentKey} not materialisable this turn");
                     }
                 }
 

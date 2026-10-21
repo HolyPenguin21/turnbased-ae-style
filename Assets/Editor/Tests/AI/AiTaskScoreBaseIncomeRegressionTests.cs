@@ -121,7 +121,7 @@ namespace Game.EditorTests
                 "sanity: the full placement score is intentionally attractive");
             Assert.That(DemandLayer.HasMeaningfulBaseBenefit(smallEconomyReasonStrongPlacement), Is.True,
                 "a genuine (even small) economy reason is present, so placement may legitimately help "
-                    + "the whole project clear its price — only a ZERO economy reason must be rejected");
+                    + "the whole project clear its price - only a ZERO economy reason must be rejected");
         }
 
         [Test]

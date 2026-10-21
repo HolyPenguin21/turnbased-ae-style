@@ -138,7 +138,7 @@ namespace Game.Map
                 // human-only gating a few lines above this call site (see the user's own
                 // explicit instruction: no popup ever renders/waits for an AI-only army).
                 bool shouldExplore = allowAiExplore && HexEventGuardEstimate.ShouldExplore(mover, entry);
-                AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} visited event '{entry.Definition.name}' at {hex} — {(shouldExplore ? "accepted" : "declined")}.");
+                AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} visited event '{entry.Definition.name}' at {hex} - {(shouldExplore ? "accepted" : "declined")}.");
                 if (shouldExplore)
                     return ResolveEventExplore(mover, hex, entry);
                 HexEventRegistry.MarkSkipped(hex, mover.Owner);
@@ -364,7 +364,7 @@ namespace Game.Map
                 // same "no popup ever renders for an AI-only army" rule as BeginCleanHexEvent's own
                 // human-only gating, so this is the only record an AI's reward ever gets.
                 string rewardSummary = grantedText.Count > 0 ? string.Join(", ", grantedText) : "nothing";
-                AiDebugLog.Write($"[AI] {recipient.Owner?.Nickname ?? "Neutral"}: {recipient.Name} received reward for event '{entry.Definition.name}' at {hex} — {rewardSummary}.");
+                AiDebugLog.Write($"[AI] {recipient.Owner?.Nickname ?? "Neutral"}: {recipient.Name} received reward for event '{entry.Definition.name}' at {hex} - {rewardSummary}.");
             }
         }
 

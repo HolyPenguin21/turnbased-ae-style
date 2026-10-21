@@ -114,7 +114,7 @@ namespace Game.UI
                 PlayerSetupData player = opponent.Player;
                 string faction = cardHand.StartingDeckCatalog?.GetCatalog(player.Faction)?.displayName
                     ?? player.Faction.ToString();
-                output.Append("\n\n").Append(player.Nickname).Append(" — ").Append(faction);
+                output.Append("\n\n").Append(player.Nickname).Append(" - ").Append(faction);
                 if (player.IsEliminated)
                 {
                     output.Append(" (eliminated)");

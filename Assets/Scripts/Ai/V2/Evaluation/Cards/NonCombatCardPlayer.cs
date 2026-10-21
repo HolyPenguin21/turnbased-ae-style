@@ -77,7 +77,7 @@ namespace Game.Ai.V2
             // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
             // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
             if (logDynamicEffect && !string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
-                AiDebugLog.Write($"[AI][V2]   strat.nonCombat — {card?.Definition?.displayName} "
+                AiDebugLog.Write($"[AI][V2]   strat.nonCombat - {card?.Definition?.displayName} "
                     + $"role={cand.IntendedRole} net {cand.NetScore.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"[{cand.Breakdown.ToCompact()}]");
             return cand;

@@ -49,7 +49,7 @@ namespace Game.Cards
             public string description;
         }
 
-        [Header("Every ability tag in the game — tag is synced automatically (see UnitAbilities.All), only description is ever hand-edited")]
+        [Header("Every ability tag in the game - tag is synced automatically (see UnitAbilities.All), only description is ever hand-edited")]
         public List<AbilityEntry> knownAbilities = new List<AbilityEntry>();
 
         // Keeps knownAbilities in exact 1:1 sync with UnitAbilities.All on every inspector
@@ -84,29 +84,29 @@ namespace Game.Cards
             return null;
         }
 
-        [Header("Critical Damage (x2) — UnitAbilities.CriticalDamage")]
+        [Header("Critical Damage (x2) - UnitAbilities.CriticalDamage")]
         public float criticalDamageMultiplier = 2f;
 
-        [Header("Ceramic Armor -1 — UnitAbilities.CeramicArmor")]
+        [Header("Ceramic Armor -1 - UnitAbilities.CeramicArmor")]
         public int ceramicArmorReduction = 1;
 
-        [Header("Berserk — UnitAbilities.Berserk")]
+        [Header("Berserk - UnitAbilities.Berserk")]
         public int berserkAttackGain = 1;
         public int berserkDefenseLoss = 1;
 
-        [Header("Hyperkinetic +2 vs Armored — UnitAbilities.Hyperkinetic")]
+        [Header("Hyperkinetic +2 vs Armored - UnitAbilities.Hyperkinetic")]
         public int hyperkineticBonusDamage = 2;
 
-        [Header("Pyrokinetic +2 vs Bio — UnitAbilities.Pyrokinetic")]
+        [Header("Pyrokinetic +2 vs Bio - UnitAbilities.Pyrokinetic")]
         public int pyrokineticBonusDamage = 2;
 
-        [Header("Ionic +2 vs Mechanical — UnitAbilities.Ionic")]
+        [Header("Ionic +2 vs Mechanical - UnitAbilities.Ionic")]
         public int ionicBonusDamage = 2;
 
-        [Header("Drill — UnitAbilities.Drill (Attack for one round)")]
+        [Header("Drill - UnitAbilities.Drill (Attack for one round)")]
         public int drillAttackBonus = 1;
 
-        [Header("Raise The Rots — UnitAbilities.RaiseTheRots")]
+        [Header("Raise The Rots - UnitAbilities.RaiseTheRots")]
         // ANY faction's card catalog — the Neutral one, a faction's own, another faction's,
         // whatever — and the card within it, matched by CardDefinition.authoredKey (falling back
         // to displayName). See FactionCardCatalog.ResolveCard.

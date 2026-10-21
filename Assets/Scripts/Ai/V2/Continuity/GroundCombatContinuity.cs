@@ -22,7 +22,7 @@ namespace Game.Ai.V2
                 intent.Status = IntentStatus.Active;
                 intent.Suspended = SuspendReason.None;
                 intent.LastReconciledTurn = turn;
-                AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} support assembly "
+                AiDebugLog.Write($"[AI][V2] continuity - [{aid}] {o.IntentKey} support assembly "
                     + "invalid; support released, operation kept");
                 return true;
             }
@@ -74,7 +74,7 @@ namespace Game.Ai.V2
                     && i.Raid.PrimaryArmyId == actorId).ToList())
             {
                 state.Remove(fallback.IntentKey);
-                AiDebugLog.Write($"[AI][V2][{fallback.Kind}] {fallback.IntentKey} return fallback retired — "
+                AiDebugLog.Write($"[AI][V2][{fallback.Kind}] {fallback.IntentKey} return fallback retired - "
                     + $"actor #{actorId.Value} reassigned by global allocation ({reason})");
             }
         }

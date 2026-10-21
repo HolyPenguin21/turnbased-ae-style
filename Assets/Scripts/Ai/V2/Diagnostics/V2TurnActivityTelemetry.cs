@@ -145,8 +145,8 @@ namespace Game.Ai.V2
             V2PhaseActivity total = a.Total();
             if (AiDebugLog.Verbose)
             {
-                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity main    — {a.Main.Line()}");
-                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity reaction — {a.Reaction.Line()}");
+                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity main    - {a.Main.Line()}");
+                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity reaction - {a.Reaction.Line()}");
             }
             AiDebugLog.Write($"[AI][V2][TURN-END] {player.Nickname}: {total.Line()}");
             ByPlayer.Remove(player);

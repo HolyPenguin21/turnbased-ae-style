@@ -71,7 +71,7 @@ namespace Game.Ai.V2
                     radar: _radar);
                 _phases.PhaseA.Accumulate(coldPass);
                 _phases.PhaseA.Reservation.UnresolvedDemands.AddRange(warmResidual);
-                AiDebugLog.Write($"[AI][V2][Loop] cold Radar residual — demands={coldDemands.Count} "
+                AiDebugLog.Write($"[AI][V2][Loop] cold Radar residual - demands={coldDemands.Count} "
                     + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                 if (coldPass.StateChanged)
                 {

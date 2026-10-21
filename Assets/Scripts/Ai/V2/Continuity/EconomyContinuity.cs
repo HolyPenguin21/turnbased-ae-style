@@ -269,7 +269,7 @@ namespace Game.Ai.V2
             }
             if (turn - intent.LastProgressTurn >= AiConfigV2.commitmentMaxTurns)
             {
-                AiDebugLog.Write($"[AI][V2][Economy][Recovery] release {intent.IntentKey} — no progress "
+                AiDebugLog.Write($"[AI][V2][Economy][Recovery] release {intent.IntentKey} - no progress "
                     + $"home since t{intent.LastProgressTurn}");
                 RetireEconomyIntent(state, intent, o, turn);
                 return;
@@ -375,7 +375,7 @@ namespace Game.Ai.V2
                 RetireEconomyIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
                     "BaseExpansionDeliverySuppressed");
-                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
+                AiDebugLog.Write($"[AI][V2] continuity - [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
                     + $"{intent.IntentKey} Base delivery repeatedly failed "
                     + $"({o.ProvisionFailureKindValue}); suppressed for cooldown, retired");
                 return true;
@@ -399,7 +399,7 @@ namespace Game.Ai.V2
                 RetireEconomyIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
                     "ExtractionDeliverySuppressed");
-                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
+                AiDebugLog.Write($"[AI][V2] continuity - [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
                     + $"{intent.IntentKey} Extraction delivery repeatedly failed "
                     + $"({o.ProvisionFailureKindValue}); suppressed for cooldown, retired");
                 return true;
@@ -913,7 +913,7 @@ namespace Game.Ai.V2
             if (extraction)
                 state.Economy.SuppressExtractionDelivery(turn, incumbent.Economy.ResourceType,
                     incumbent.Economy.TargetHex);
-            AiDebugLog.Write($"[AI][V2][Economy] release {incumbent.IntentKey} — refreshed "
+            AiDebugLog.Write($"[AI][V2][Economy] release {incumbent.IntentKey} - refreshed "
                 + $"{incumbent.Economy.Kind} value={refreshed.Value:0.##} "
                 + $"payback={refreshed.EconomyPaybackTurns:0.##} no longer clears admission; bank freed");
             return true;

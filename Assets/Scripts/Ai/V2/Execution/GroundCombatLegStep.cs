@@ -224,7 +224,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.OutOfMovement;
                 AiDebugLog.Write($"[AI][V2][AirSupport] {label} wing #{wing.Id} holds over "
                     + $"({wing.Hex.Q},{wing.Hex.R}) attacked={(attacked ? 1 : 0)} "
-                    + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(wing)} — strikes again next turn");
+                    + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(wing)} - strikes again next turn");
                 yield break;
             }
             GroundCombatAirSupport.SendHome(player, sortie, targetsRemain

@@ -49,7 +49,7 @@ namespace Game.Aviation
                     else landed = AviationActions.LandInSlotOrder(airArmy, hexSelection);
                     int unlanded = airArmy.Members.Count - refuelledInPlace.Count;
                     if (unlanded == 0) continue;
-                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: the airfield is full — {unlanded} aircraft could not land"
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: the airfield is full - {unlanded} aircraft could not land"
                         + (landed > 0 ? $" ({landed} landed)." : "."));
                 }
                 int destroyed = 0;

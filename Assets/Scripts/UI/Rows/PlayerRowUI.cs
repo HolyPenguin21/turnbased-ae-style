@@ -101,7 +101,7 @@ namespace Game.UI
                 {
                     if (startingDeckCatalog != null && !startingDeckCatalog.GetAiDecks(Data.Faction).Any(d => d.deckName == Data.AiDeckName))
                         Data.AiDeckName = startingDeckCatalog.PickAiDeckName(Data.Faction);
-                    deckDropdown.AddOptions(new List<string> { Data.AiDeckName ?? "No AI deck — faction starter deck" });
+                    deckDropdown.AddOptions(new List<string> { Data.AiDeckName ?? "No AI deck - faction starter deck" });
                 }
                 deckDropdown.SetValueWithoutNotify(0);
                 deckDropdown.RefreshShownValue();
@@ -115,8 +115,8 @@ namespace Game.UI
             var collection = Game.Progression.ProgressionContext.Collection;
             var decks = collection.Decks(Data.Faction);
             if (!decks.Any(d => d.deckId == Data.SelectedDeckId)) Data.SelectedDeckId = collection.DefaultDeck(Data.Faction)?.deckId;
-            deckDropdown.AddOptions(decks.Count == 0 ? new List<string> { "No saved decks — open editor" } : decks.Select(d =>
-            { var validation = collection.Rules.Validate(d, collection.Owned); return d.name + " — " + validation.Points + "/100" + (validation.IsValid ? "" : " — " + string.Join("; ", validation.Errors)); }).ToList());
+            deckDropdown.AddOptions(decks.Count == 0 ? new List<string> { "No saved decks - open editor" } : decks.Select(d =>
+            { var validation = collection.Rules.Validate(d, collection.Owned); return d.name + " - " + validation.Points + "/100" + (validation.IsValid ? "" : " - " + string.Join("; ", validation.Errors)); }).ToList());
             deckDropdown.SetValueWithoutNotify(Mathf.Max(0, decks.FindIndex(d => d.deckId == Data.SelectedDeckId)));
             deckDropdown.interactable = decks.Count > 0;
             refreshingDecks = false;

@@ -40,7 +40,7 @@ namespace Game.Ai.V2
             if (card == null)
                 return false;
             root.SpendActionPoints(ctx.DrawApCost);
-            AiDebugLog.Write($"[AI][V2]   {scope} — drew \"{card.Definition?.displayName}\" ({ctx.DrawApCost} AP)");
+            AiDebugLog.Write($"[AI][V2]   {scope} - drew \"{card.Definition?.displayName}\" ({ctx.DrawApCost} AP)");
 
             // The end-of-turn tempo arbiter re-evaluates the whole candidate set after every action,
             // so a drawn card is scored on the NEXT iteration. A successful draw can itself make
@@ -60,7 +60,7 @@ namespace Game.Ai.V2
                 && owner != null)
             {
                 StrategicInterruptRegistry.MarkHandOpportunity(owner, ctx.TurnNumber, hand);
-                AiDebugLog.Write("[AI][V2] strategic interrupt — terminal boundary draw changed the hand; "
+                AiDebugLog.Write("[AI][V2] strategic interrupt - terminal boundary draw changed the hand; "
                     + "hand opportunity registered");
             }
             return true;

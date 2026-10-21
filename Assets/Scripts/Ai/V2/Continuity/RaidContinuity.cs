@@ -33,7 +33,7 @@ namespace Game.Ai.V2
             RaidIntent ri = intent.Raid;
             if (ri == null)
             {
-                AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (no raid objective)");
+                AiDebugLog.Write($"[AI][V2] continuity - {intent.IntentKey} retired at turn start (no raid objective)");
                 return false;
             }
 
@@ -65,7 +65,7 @@ namespace Game.Ai.V2
                     && PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
                 {
                     AiDebugLog.Write($"[AI][V2][Raid][AirSupport] wing #{ri.AirSupportArmyId} "
-                        + "released — the primary now clears the target alone; Assault");
+                        + "released - the primary now clears the target alone; Assault");
                     ri.AirSupportAttemptedTurn = snap.TurnNumber;
                     ri.AirSupportArmyId = null;
                     ri.AirSupportLandingHex = null;
@@ -140,7 +140,7 @@ namespace Game.Ai.V2
                 && MissionActorPolicy.GroundContainerStillValid(ri.PrimaryArmyId.Value, snap);
             if (ri.OperationStarted && !primaryContainerAlive)
             {
-                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — primary "
+                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired - primary "
                     + $"#{(ri.PrimaryArmyId.HasValue ? ri.PrimaryArmyId.Value.ToString() : "none")} "
                     + $"missing or dead in phase {ri.Phase} "
                     + $"(support #{(ri.SupportArmyId.HasValue ? ri.SupportArmyId.Value.ToString() : "none")} released)");
@@ -209,7 +209,7 @@ namespace Game.Ai.V2
                 && (!ri.PrimaryArmyId.HasValue
                     || !GroundCombatContinuity.GroundCombatPrimaryAlive(snap, ri.PrimaryArmyId.Value)))
             {
-                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — "
+                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired - "
                     + $"primary #{ri.PrimaryArmyId} no longer structural in phase {ri.Phase}");
                 return false;
             }
@@ -217,7 +217,7 @@ namespace Game.Ai.V2
             if (!isReturnLeg
                 && !RaidObjectiveEvaluator.IsIntentStillValid(snap, ri))
             {
-                AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (raid target no longer valid)");
+                AiDebugLog.Write($"[AI][V2] continuity - {intent.IntentKey} retired at turn start (raid target no longer valid)");
                 return false;
             }
             if (ri.Phase == RaidMissionPhase.Return)
@@ -227,7 +227,7 @@ namespace Game.Ai.V2
                     ri.ReturnHex, out bool retargeted);
                 if (home == null)
                 {
-                    AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — return base lost "
+                    AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired - return base lost "
                         + "and no replacement base exists");
                     return false;
                 }
@@ -291,7 +291,7 @@ namespace Game.Ai.V2
                     // §SupportReturn — no own base to send it to must never wedge the Raid:
                     // release the support and let the primary carry on being re-evaluated.
                     AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{ri.SupportArmyId.Value} "
-                        + "has no reachable home base — released, primary continues "
+                        + "has no reachable home base - released, primary continues "
                         + "reason=no_replacement_base_for_support_return");
                     ri.SupportReturnHex = null;
                     ReleaseRaidSupport(snap, player, ri);
@@ -494,7 +494,7 @@ namespace Game.Ai.V2
             ri.SupportArmyId = null;
             ri.ReinforcementRequestedTurn = -1;
             ri.Phase = rosterVerified ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
-            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} reinforcement complete — "
+            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} reinforcement complete - "
                 + $"phase={ri.Phase} verified={(rosterVerified ? 1 : 0)} {detail}");
         }
 
@@ -519,14 +519,14 @@ namespace Game.Ai.V2
                 ri.ReinforcementRequestedTurn = -1;
                 ReleaseRaidSupport(snap, player, ri);
                 AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{supportArmyId} swapped "
-                    + "out but no reachable home base exists — released immediately "
+                    + "out but no reachable home base exists - released immediately "
                     + $"phase={ri.Phase} {detail}");
                 return;
             }
             ri.SupportArmyId = supportArmyId;
             ri.SupportReturnHex = home;
             ri.Phase = RaidMissionPhase.SupportReturn;
-            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} full/full swap complete — support "
+            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} full/full swap complete - support "
                 + $"#{supportArmyId} -> SupportReturn home ({home.Value.Q},{home.Value.R}); "
                 + $"primary #{primaryArmyId} holds target {ri.Target.DiagnosticLabel} {detail}");
         }
@@ -565,11 +565,11 @@ namespace Game.Ai.V2
                 // in Assault here is a safe default since AdvanceRaidPhase re-derives everything.
                 ri.Phase = RaidMissionPhase.Assault;
                 AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return ended; target already "
-                    + $"resolved while away — will re-orient next pass {detail}");
+                    + $"resolved while away - will re-orient next pass {detail}");
                 return;
             }
             bool nowClears = ReleaseRaidSupport(snap, player, ri);
-            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return ended; released — "
+            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return ended; released - "
                 + $"phase={ri.Phase} primaryClears={(nowClears ? 1 : 0)} {detail}");
         }
 
@@ -639,7 +639,7 @@ namespace Game.Ai.V2
             GroundCombatContinuity.RetireReturnFallbacksForActor(state, intent.PreferredMoverArmyId,
                 "fresh Raid admitted");
             state.Put(intent);
-            AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
+            AiDebugLog.Write($"[AI][V2] continuity - [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
         }
         internal static void ClassifyRaidStep(ExecutionResult e, MissionStepResult o)
         {
@@ -705,14 +705,14 @@ namespace Game.Ai.V2
                 if (intent != null)
                 {
                     AdvanceIntent(intent, o, turn, state, allocState);
-                    AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} current "
+                    AiDebugLog.Write($"[AI][V2][Raid] continuity - [{aid}] {o.IntentKey} current "
                         + "target completed; durable campaign kept for re-orient/return");
                     return true;
                 }
                 if (o.RaidFacts().HasRaidPayload && o.GroundFacts().OperationStarted)
                 {
                     CreateRaidIntent(state, o, turn);
-                    AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} first "
+                    AiDebugLog.Write($"[AI][V2][Raid] continuity - [{aid}] {o.IntentKey} first "
                         + "target completed during opening step; campaign created for return/refocus");
                     return true;
                 }
@@ -782,7 +782,7 @@ namespace Game.Ai.V2
                     if (intent.Funding != CommitmentTier.Hard)
                     {
                         intent.Funding = CommitmentTier.Hard;
-                        AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} promoted to Hard commitment (operation started)");
+                        AiDebugLog.Write($"[AI][V2] continuity - {intent.IntentKey} promoted to Hard commitment (operation started)");
                     }
                 }
             }

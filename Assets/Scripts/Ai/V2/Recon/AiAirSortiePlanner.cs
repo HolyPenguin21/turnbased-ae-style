@@ -653,7 +653,7 @@ namespace Game.Ai.V2
                         MultiTurnSortie? multiFallback = fallback == null ? TryReplanMultiTurnReturn(task.Army, ctx.Map, player) : null;
                         if (fallback == null && multiFallback == null)
                         {
-                            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} — no safe "
+                            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" - {logLabel} - no safe "
                                 + "airfield reachable before fuel deadline; holds position.");
                             return null;
                         }
@@ -662,7 +662,7 @@ namespace Game.Ai.V2
                         task.LandingHex = home;
                         task.TargetHex = home;
                         destination = home;
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} aborted — target "
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" - {logLabel} aborted - target "
                             + "plus safe return no longer fits remaining fuel; returning to nearest safe airfield "
                             + $"({home.Q},{home.R})" + (multiFallback.HasValue ? $" over {multiFallback.Value.RequiredTurns} turn(s)." : "."));
                     }
@@ -687,7 +687,7 @@ namespace Game.Ai.V2
                         // The selected Base ceased to be a safe/capacious destination after
                         // launch. Recovery remains mandatory: fall through to the ordinary live
                         // emergency landing search instead of pressing a stale rebase order.
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — AviationRebase "
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" - AviationRebase "
                             + "destination invalidated; replanning nearest safe owned airfield.");
                     }
                 }
@@ -705,7 +705,7 @@ namespace Game.Ai.V2
                         MultiTurnSortie? multiReturn = TryReplanMultiTurnReturn(task.Army, ctx.Map, player);
                         if (!multiReturn.HasValue)
                         {
-                            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} has no reachable owned "
+                            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" - {logLabel} has no reachable owned "
                                 + "airfield this turn, holding position.");
                             return null;
                         }
@@ -744,8 +744,8 @@ namespace Game.Ai.V2
             string progress = arrivingHome
                 ? $"returns over {multi.RequiredTurns} more turn(s)"
                 : (multi.ReachesActionThisTurn ? "action reached this turn" : $"{multi.RequiredTurns}-turn route continues");
-            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} {progress}, "
-                + $"{multi.RequiredUnlandedEnds} safe unlanded end(s) required — {deadline}; landing "
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" - {logLabel} {progress}, "
+                + $"{multi.RequiredUnlandedEnds} safe unlanded end(s) required - {deadline}; landing "
                 + $"({multi.LandingHex.Q},{multi.LandingHex.R}).");
         }
 
@@ -789,7 +789,7 @@ namespace Game.Ai.V2
                 sourceAirfield = airfield;
                 if (airfield == null || decision.AircraftToLaunch == null || decision.AircraftToLaunch.Count == 0)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed — no airfield/aircraft at "
+                    AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed - no airfield/aircraft at "
                         + $"({decision.TargetHex.Q},{decision.TargetHex.R}).");
                     yield break;
                 }
@@ -798,12 +798,12 @@ namespace Game.Ai.V2
                     decision.AircraftToLaunch.ToList(), null, out airArmy, out string failReason);
                 if (!launched || airArmy == null)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed — {failReason}");
+                    AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed - {failReason}");
                     yield break;
                 }
                 formed = true;
                 AiDebugLog.Write($"[AI] {player.Nickname}: launches \"{airArmy.Name}\" ({decision.AircraftToLaunch.Count} aircraft) "
-                    + $"from ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
+                    + $"from ({decision.TargetHex.Q},{decision.TargetHex.R}) - {decision.Reason}.");
             }
 
             var task = new AirSortie
@@ -816,7 +816,7 @@ namespace Game.Ai.V2
             AirSortieRegistry.Add(player, task);
 
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
-            AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" assigned {taskKind} — target "
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" assigned {taskKind} - target "
                 + $"({decision.AirActionHex.Q},{decision.AirActionHex.R}), landing ({decision.AirLandingHex.Q},{decision.AirLandingHex.R}).");
 
             // Launch and the sortie's first real step are one indivisible sequence: otherwise the
@@ -840,7 +840,7 @@ namespace Game.Ai.V2
                 // Can't even take the first step this turn — never leave the group formed and
                 // airborne with nothing able to move it: undo the launch and return every aircraft
                 // to the airfield's own stored container, right where they started this step.
-                AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" — {taskKind} has no viable first step "
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" - {taskKind} has no viable first step "
                     + "this turn, cancels the launch and returns aircraft to storage.");
                 AirSortieRegistry.Remove(player, task);
                 ArmyData homeAirfield = sourceAirfield

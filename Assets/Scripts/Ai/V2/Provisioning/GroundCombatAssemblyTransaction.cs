@@ -69,7 +69,7 @@ namespace Game.Ai.V2
                     || !ArmyActions.TransferMember(t.Unit, host, donor, ctx.HexSelection, out why))
                 {
                     ok = false;
-                    AiDebugLog.Write($"[AI][V2]   {lane} assembly rollback — FAILED {t?.Unit?.Name} "
+                    AiDebugLog.Write($"[AI][V2]   {lane} assembly rollback - FAILED {t?.Unit?.Name} "
                         + $"host #{host.Id}->donor #{t?.DonorArmyId}: {why}");
                     continue;
                 }
@@ -87,7 +87,7 @@ namespace Game.Ai.V2
                     host, ctx.HexSelection, out why, promoteToCommander: promote))
                 {
                     ok = false;
-                    AiDebugLog.Write($"[AI][V2]   {lane} assembly rollback — FAILED hero return: {why}");
+                    AiDebugLog.Write($"[AI][V2]   {lane} assembly rollback - FAILED hero return: {why}");
                 }
             }
             // The host and every field donor are led by their own commander again (a zero-AP

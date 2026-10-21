@@ -130,7 +130,7 @@ namespace Game.UI
                 return;
             }
             titleText.text = _currentBuilding.HasTieredUnlock
-                ? $"{_currentBuilding.Name} — Level {_currentBuilding.Level}"
+                ? $"{_currentBuilding.Name} - Level {_currentBuilding.Level}"
                 : _currentBuilding.Name;
         }
 

@@ -258,7 +258,7 @@ namespace Game.Ai.V2
                 Envelope = bestEnv,
                 Key = bestKey,
                 Detail = $"materializeForDiscovery witness: raid #{objective.TargetArmyId} shortage {shortage} "
-                    + $"closed by [{bestKey}] — prep {bestPrepAp:0.#} AP + downstream {downstreamAp:0.#} AP "
+                    + $"closed by [{bestKey}] - prep {bestPrepAp:0.#} AP + downstream {downstreamAp:0.#} AP "
                     + $"+ envelope [{envStr}] (projected RaidAvailableFieldPower Δ ≥ deficit)",
             };
         }

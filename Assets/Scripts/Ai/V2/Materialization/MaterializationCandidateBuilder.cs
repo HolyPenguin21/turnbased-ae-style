@@ -383,7 +383,7 @@ namespace Game.Ai.V2
             LogQualityChoice(demand, dedup);
             MaterializationPlan best = dedup[0].plan;
             if (best.UseBreakdown != null)
-                AiDebugLog.Write($"[AI][V2]   strat.eval A — {demand.Capability} via {best.StableKey} "
+                AiDebugLog.Write($"[AI][V2]   strat.eval A - {demand.Capability} via {best.StableKey} "
                     + $"role={best.UseRole} play {best.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"hold {(best.UseBreakdown?.HoldValue ?? 0f).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"urgency {urgency.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
@@ -434,7 +434,7 @@ namespace Game.Ai.V2
             string bdW = win.QualityBreakdown != null ? win.QualityBreakdown.ToCompact() : "-";
             string bdR = runner.Value.plan.QualityBreakdown != null
                 ? runner.Value.plan.QualityBreakdown.ToCompact() : "-";
-            AiDebugLog.Write($"[AI][V2]   strat.A quality {demand.Capability} — "
+            AiDebugLog.Write($"[AI][V2]   strat.A quality {demand.Capability} - "
                 + $"{Name(win)} score {win.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                 + $"[{bdW}] > {Name(runner.Value.plan)} "
                 + $"{runner.Value.plan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} [{bdR}]");
@@ -528,7 +528,7 @@ namespace Game.Ai.V2
                 .ToList();
             MaterializationPlan bestPlan = ranked[0].plan;
             if (bestPlan.UseBreakdown != null)
-                AiDebugLog.Write($"[AI][V2]   strat.eval B — {bestPlan.StableKey} role={bestPlan.UseRole} "
+                AiDebugLog.Write($"[AI][V2]   strat.eval B - {bestPlan.StableKey} role={bestPlan.UseRole} "
                     + $"net {bestPlan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"decision {ranked[0].utility.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"[{bestPlan.UseBreakdown.ToCompact()}]");

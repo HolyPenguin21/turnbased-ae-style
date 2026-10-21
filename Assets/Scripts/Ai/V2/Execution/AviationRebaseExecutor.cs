@@ -55,7 +55,7 @@ namespace Game.Ai.V2
             if (liveAp > spendableAp + AiConfigV2.allocatorSliceEpsilon
                 || liveEnergy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
             {
-                AiDebugLog.Write("[AI][V2][Aviation][Rebase] cancelled — AP/Energy held by the resource bank");
+                AiDebugLog.Write("[AI][V2][Aviation][Rebase] cancelled - AP/Energy held by the resource bank");
                 yield break;
             }
 
@@ -68,7 +68,7 @@ namespace Game.Ai.V2
                 AirActionHex = plan.DestinationHex,
                 AirLandingHex = plan.DestinationHex,
                 Score = plan.Utility,
-                Reason = $"V2 Aviation Rebase — current objective service improves "
+                Reason = $"V2 Aviation Rebase - current objective service improves "
                     + $"{plan.SourceWitness ?? "none"} -> {plan.DestinationWitness ?? "none"}",
             };
             var trace = new AiMoveExecutionTrace();
@@ -124,13 +124,13 @@ namespace Game.Ai.V2
                 || energy > StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
                     + AiConfigV2.allocatorSliceEpsilon)
             {
-                AiDebugLog.Write("[AI][V2][Aviation][FormWing] cancelled — AP/Energy held by the resource bank");
+                AiDebugLog.Write("[AI][V2][Aviation][FormWing] cancelled - AP/Energy held by the resource bank");
                 yield break;
             }
             if (!AviationWingPreparation.TryForm(player, ctx, source, plan.Aircraft, plan.Commitments,
                     out ArmyData wing, out string how) || wing == null)
             {
-                AiDebugLog.Write($"[AI][V2][Aviation][FormWing] failed — {how}");
+                AiDebugLog.Write($"[AI][V2][Aviation][FormWing] failed - {how}");
                 yield break;
             }
             AiDebugLog.Write($"[AI][V2][Aviation][FormWing] {player.Nickname}: \"{wing.Name}\" #{wing.Id} formed from "

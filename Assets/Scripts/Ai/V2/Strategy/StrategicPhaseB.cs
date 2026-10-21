@@ -87,7 +87,7 @@ namespace Game.Ai.V2
             if (reactionOpp.IsActionable)
             {
                 RefreshReactionReservation(player, ctx.TurnNumber, reactionOpp);
-                AiDebugLog.Write($"[AI][V2]   strat.B — reaction feasible ({reactionOpp.Kind}); reserve BOUNDED "
+                AiDebugLog.Write($"[AI][V2]   strat.B - reaction feasible ({reactionOpp.Kind}); reserve BOUNDED "
                     + $"{F(reactionOpp.ReservedApBudget)} AP"
                     + (reactionOpp.Envelope != null ? $" + envelope [{ResCostStr(reactionOpp.Envelope)}]" : "")
                     + $" (owner={reactionOpp.OwnerKey} exp=EndOfReaction; {reactionOpp.Rationale}), spendable AP now "
@@ -100,13 +100,13 @@ namespace Game.Ai.V2
                 MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
                 if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
-                    AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but no FEASIBLE reaction "
-                        + $"({reactionOpp.FailReason}); NOT reserving — tempo uses the full pool (spec §7)");
+                    AiDebugLog.Write($"[AI][V2]   strat.B - pending invalidation but no FEASIBLE reaction "
+                        + $"({reactionOpp.FailReason}); NOT reserving - tempo uses the full pool (spec §7)");
             }
 
-            AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
+            AiDebugLog.Write($"[AI][V2]   strat.B - {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
-            AiDebugLog.Write($"[AI][V2]   strat.B/tempo — budget on entry: total {budget.TotalTempoActionsUsed}/"
+            AiDebugLog.Write($"[AI][V2]   strat.B/tempo - budget on entry: total {budget.TotalTempoActionsUsed}/"
                 + $"{AiConfigV2.maxEndOfTurnTempoActionsPerTurn}, draws {budget.DrawActionsUsed}/"
                 + $"{AiConfigV2.maxTerminalDrawsPerTurn}, gen {budget.GenerationAttemptsUsed}/{AiConfigV2.maxGenerationActionsPerTurn}");
 
@@ -158,7 +158,7 @@ namespace Game.Ai.V2
                     // Diagnostics only: a card play that lost to eligibility, not to score.
                     if (block != null && (c.Kind == TempoKind.PlayMat || c.Kind == TempoKind.PlayNonCombat))
                         AiDebugLog.WriteDeduped($"tempo-block|{c.ActionKey}|{block}",
-                            $"[AI][V2]     cand {c.Kind} BLOCKED: {block}; util {F(c.Utility)} — {c.Label}");
+                            $"[AI][V2]     cand {c.Kind} BLOCKED: {block}; util {F(c.Utility)} - {c.Label}");
                     if (block == null && eff > bestEff)
                     {
                         best = c;
@@ -246,7 +246,7 @@ namespace Game.Ai.V2
                         draw: exec.Progressed && best.CountsAsTerminalDraw,
                         generationAttempt: false);
 
-                AiDebugLog.Write($"[AI][V2]   tempo[{iter - 1}] — WINNER {best.Kind} util {F(best.Utility)} eff {F(bestEff)} — {best.Label}"
+                AiDebugLog.Write($"[AI][V2]   tempo[{iter - 1}] - WINNER {best.Kind} util {F(best.Utility)} eff {F(bestEff)} - {best.Label}"
                     + $"  => ok {(exec.Succeeded ? 1 : 0)} progressed {(exec.Progressed ? 1 : 0)} stateChanged {(exec.StateChanged ? 1 : 0)}"
                     + $" spent ap {exec.ApSpent} H/E/M/T {exec.HumanSpent}/{exec.EnergySpent}/{exec.MaterialsSpent}/{exec.TechSpent}"
                     + $" card {(exec.CardPlayed ? 1 : 0)} drawn {(exec.Drawn ? 1 : 0)} gen {(exec.Generated ? 1 : 0)} attach {(exec.Attached ? 1 : 0)}"
@@ -269,11 +269,11 @@ namespace Game.Ai.V2
                 if (!exec.Progressed)
                 {
                     parkedAt[best.ActionKey] = WorldDeltaLifecycle.Current;
-                    AiDebugLog.Write($"[AI][V2]   tempo — {best.Kind} did not complete; parked {best.ActionKey}@v{WorldDeltaLifecycle.Current}");
+                    AiDebugLog.Write($"[AI][V2]   tempo - {best.Kind} did not complete; parked {best.ActionKey}@v{WorldDeltaLifecycle.Current}");
                 }
                 if (exec.Interrupt)
                 {
-                    stopReason = "Phase B delivered an operational residual — re-admit missions before more spending";
+                    stopReason = "Phase B delivered an operational residual - re-admit missions before more spending";
                     break;
                 }
             }
@@ -284,7 +284,7 @@ namespace Game.Ai.V2
 
             // §13 — the mandatory final line: it must be impossible to read "AP left, reservation
             // none, reason unknown" off the log.
-            AiDebugLog.Write($"[AI][V2] strat.B/tempo — END: iters {iter}, turn budget total {budget.TotalTempoActionsUsed}/"
+            AiDebugLog.Write($"[AI][V2] strat.B/tempo - END: iters {iter}, turn budget total {budget.TotalTempoActionsUsed}/"
                 + $"{AiConfigV2.maxEndOfTurnTempoActionsPerTurn} draws {budget.DrawActionsUsed}/{AiConfigV2.maxTerminalDrawsPerTurn}"
                 + $" gen {budget.GenerationAttemptsUsed}/{AiConfigV2.maxGenerationActionsPerTurn}; "
                 + $"cardsPlayed {result.CardsPlayed}, drawn {result.CardsDrawn}; ap {root.ActionPoints} "

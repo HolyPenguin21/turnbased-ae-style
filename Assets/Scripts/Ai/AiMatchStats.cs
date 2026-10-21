@@ -97,7 +97,7 @@ namespace Game.Ai
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"AiMatchStats: couldn't open output files — {e.Message}");
+                Debug.LogWarning($"AiMatchStats: couldn't open output files - {e.Message}");
                 _turnsWriter = null;
                 _summaryPath = null;
             }
@@ -214,7 +214,7 @@ namespace Game.Ai
 
         public static void RecordGameOver(PlayerSetupData winner)
         {
-            Finish(winner != null ? $"game over — {winner.Nickname} wins" : "game over — draw");
+            Finish(winner != null ? $"game over - {winner.Nickname} wins" : "game over - draw");
         }
 
         private static void Finish(string outcome)
@@ -226,7 +226,7 @@ namespace Game.Ai
             foreach (PlayerSetupData p in Order)
                 ByPlayer[p].Last = Capture(p);
             WriteSummary();
-            AiDebugLog.Write($"[STATS] Match summary written ({_outcome}) — {SummaryRelativePath}");
+            AiDebugLog.Write($"[STATS] Match summary written ({_outcome}) - {SummaryRelativePath}");
             _active = false;
             CloseWriter();
         }
@@ -276,7 +276,7 @@ namespace Game.Ai
             if (_summaryPath == null)
                 return;
             var sb = new StringBuilder();
-            sb.AppendLine($"=== AI match summary — started {_startedAt:yyyy-MM-dd HH:mm:ss}, rounds played: {_turn} ===");
+            sb.AppendLine($"=== AI match summary - started {_startedAt:yyyy-MM-dd HH:mm:ss}, rounds played: {_turn} ===");
             sb.AppendLine($"status: {_outcome ?? "in progress"}");
             sb.AppendLine();
             foreach (PlayerSetupData p in Order)
@@ -303,7 +303,7 @@ namespace Game.Ai
             try { File.WriteAllText(_summaryPath, sb.ToString()); }
             catch (Exception e)
             {
-                Debug.LogWarning($"AiMatchStats: summary write failed, disabled for this match — {e.Message}");
+                Debug.LogWarning($"AiMatchStats: summary write failed, disabled for this match - {e.Message}");
                 _summaryPath = null;
             }
         }

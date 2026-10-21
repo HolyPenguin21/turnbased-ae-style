@@ -375,7 +375,7 @@ namespace Game.Ai.V2
             ReconAcceptanceAudit.RecordDecision(player, ctx.TurnNumber, army.Id,
                 beforeHex, next.Value, actionWhy);
             var move = AiDecision.Move(army, next.Value,
-                $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
+                $"V2 recon continuous - {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
                 + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f,
                 forceDecloakForAttack ? AiGroundMoveAuthority.Combat
                     : sabotage ? GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, reaction.TargetHex.Value)
@@ -466,13 +466,13 @@ namespace Game.Ai.V2
             {
                 StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);
                 AiDebugLog.Write($"[AI][V2][Recon][Discovery] actor=#{army.Id} enemy=[{string.Join(",", newEnemyIds)}] "
-                    + "— next action will be live reaction/replan");
+                    + "- next action will be live reaction/replan");
             }
             if (newNeutralIds.Length > 0)
             {
                 StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newNeutralIds);
                 AiDebugLog.Write($"[AI][V2][Recon][Discovery] actor=#{army.Id} neutral=[{string.Join(",", newNeutralIds)}] "
-                    + "— next action will be live reaction/replan");
+                    + "- next action will be live reaction/replan");
             }
 
             RefreshObjectiveSatisfied(player, pm, result);

@@ -73,7 +73,7 @@ namespace Game.EditorTests
             foreach (var kvp in result.Assigned)
                 assignedCount++;
             Assert.That(assignedCount, Is.EqualTo(1),
-                "garrison #0 has exactly one sparable Recce — both destination shells must not both be granted a mission");
+                "garrison #0 has exactly one sparable Recce - both destination shells must not both be granted a mission");
         }
 
         [Test]

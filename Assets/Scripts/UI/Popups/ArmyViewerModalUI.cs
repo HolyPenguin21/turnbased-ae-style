@@ -700,9 +700,9 @@ namespace Game.UI
                 {
                     string factionName = catalog != null ? catalog.displayName : string.Empty;
                     string playerName = _currentArmy?.Owner != null ? _currentArmy.Owner.Nickname : string.Empty;
-                    prefix = string.Join(" — ", new[] { factionName, playerName }.Where(s => !string.IsNullOrEmpty(s)));
+                    prefix = string.Join(" - ", new[] { factionName, playerName }.Where(s => !string.IsNullOrEmpty(s)));
                 }
-                titleText.text = string.IsNullOrEmpty(armyName) ? prefix : $"{prefix} — <b>{armyName}</b>";
+                titleText.text = string.IsNullOrEmpty(armyName) ? prefix : $"{prefix} - <b>{armyName}</b>";
             }
             if (contextButtonLabel != null)
                 contextButtonLabel.text = _currentArmy?.IsCarrierContainer == true

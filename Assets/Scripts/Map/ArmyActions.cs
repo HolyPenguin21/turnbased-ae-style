@@ -407,7 +407,7 @@ namespace Game.Map
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unit.Name} to {target.Name} "
-                        + $"({unit.ActivationApCost} AP needed — it already moved this turn).";
+                        + $"({unit.ActivationApCost} AP needed - it already moved this turn).";
                     return false;
                 }
             }
@@ -558,7 +558,7 @@ namespace Game.Map
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost))
                 {
                     failReason = $"Not enough action points to add the batch to {target.Name} "
-                        + $"({totalApCost} AP needed — it already moved this turn).";
+                        + $"({totalApCost} AP needed - it already moved this turn).";
                     return false;
                 }
             }
@@ -725,13 +725,13 @@ namespace Game.Map
             if (chargeAIncoming && rootA == null)
             {
                 failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
-                    + $"({unitB.ActivationApCost} AP needed — it already moved this turn).";
+                    + $"({unitB.ActivationApCost} AP needed - it already moved this turn).";
                 return false;
             }
             if (chargeBIncoming && rootB == null)
             {
                 failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
-                    + $"({unitA.ActivationApCost} AP needed — it already moved this turn).";
+                    + $"({unitA.ActivationApCost} AP needed - it already moved this turn).";
                 return false;
             }
             if (rootA != null && rootA == rootB)
@@ -750,13 +750,13 @@ namespace Game.Map
                 if (chargeAIncoming && !rootA.CanSpendActionPoints(unitB.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
-                        + $"({unitB.ActivationApCost} AP needed — it already moved this turn).";
+                        + $"({unitB.ActivationApCost} AP needed - it already moved this turn).";
                     return false;
                 }
                 if (chargeBIncoming && !rootB.CanSpendActionPoints(unitA.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
-                        + $"({unitA.ActivationApCost} AP needed — it already moved this turn).";
+                        + $"({unitA.ActivationApCost} AP needed - it already moved this turn).";
                     return false;
                 }
             }

@@ -248,7 +248,7 @@ namespace Game.Ai.V2
                 WorldTaskScore = score,
                 Value = score.Value,
                 Explain = $"attack {ai.Target.DiagnosticLabel}: preparation host #{hostId} "
-                    + $"({have:0.#} of >{required:0.#}) — no existing troop can join it; strengthen "
+                    + $"({have:0.#} of >{required:0.#}) - no existing troop can join it; strengthen "
                     + $"this exact host; task={score.Value:0.##}",
             };
         }

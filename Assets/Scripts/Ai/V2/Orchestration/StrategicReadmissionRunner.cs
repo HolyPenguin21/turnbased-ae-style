@@ -109,13 +109,13 @@ namespace Game.Ai.V2
                 yield break;
             if (gate == DeferredAdmissionGate.Defer)
             {
-                AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
+                AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred - aviation "
                     + $"obligations pending; axes={string.Join(",", _readmission.Deferred.Axes)}");
                 yield break;
             }
             if (gate == DeferredAdmissionGate.AdmitDespitePending)
                 AiDebugLog.Write("[AI][V2][Loop] aviation obligations still pending after the "
-                    + "loop — admitting the deferred axes anyway");
+                    + "loop - admitting the deferred axes anyway");
             dirtyAxes = admittedAxes;
             if (dirtyAxes.Count == 0)
                 yield break;

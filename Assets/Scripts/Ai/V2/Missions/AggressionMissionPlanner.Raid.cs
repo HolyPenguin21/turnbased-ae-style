@@ -153,10 +153,10 @@ namespace Game.Ai.V2
                                 deferredThisPass[intent.IntentKey] = reinforcementDeferral;
                             AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                                 reinforcementDeferral != null
-                                    ? $"[AI][V2]   raid mission — HOLD {intent.IntentKey}: primary "
+                                    ? $"[AI][V2]   raid mission - HOLD {intent.IntentKey}: primary "
                                         + $"#{intent.Raid.PrimaryArmyId} waits in place; no support army assigned yet "
                                         + "(Aggression demand owns the request)"
-                                    : $"[AI][V2]   raid mission — WARN {intent.IntentKey}: Reinforcement "
+                                    : $"[AI][V2]   raid mission - WARN {intent.IntentKey}: Reinforcement "
                                         + "could not produce a candidate for its pinned primary");
                         }
                         continue;
@@ -170,7 +170,7 @@ namespace Game.Ai.V2
                         {
                             if (deferredThisPass != null)
                                 deferredThisPass[intent.IntentKey] = "raid_target_no_fresh_opportunity_before_start";
-                            AiDebugLog.Write($"[AI][V2]   raid mission — DEFER {intent.IntentKey}: target has no fresh opportunity read and operation never started");
+                            AiDebugLog.Write($"[AI][V2]   raid mission - DEFER {intent.IntentKey}: target has no fresh opportunity read and operation never started");
                             continue;
                         }
                         var stale = new RaidMissionTarget
@@ -198,7 +198,7 @@ namespace Game.Ai.V2
                         incumbents.Add(new RaidCandidate(stale, staleTask, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",
                             true, intent.Funding, intent.PreferredMoverArmyId, intent.PreferredMoverArmyId));
-                        AiDebugLog.Write($"[AI][V2]   raid mission — CONTINUE {intent.IntentKey}: target in fog, using last-known hex "
+                        AiDebugLog.Write($"[AI][V2]   raid mission - CONTINUE {intent.IntentKey}: target in fog, using last-known hex "
                             + $"({intent.Raid.LastKnownHex.Q},{intent.Raid.LastKnownHex.R}); intrinsic {F(staleValue)}, tier {intent.Funding}");
                         continue;
                     }
@@ -248,20 +248,20 @@ namespace Game.Ai.V2
                 {
                     string suppressKey = StableMissionKey.For(p).ToString();
                     AiDebugLog.WriteDeduped(suppressKey,
-                        $"[AI][V2]   mission suppress — {suppressKey} reason=no_ready_raid_actor_after_phaseA");
+                        $"[AI][V2]   mission suppress - {suppressKey} reason=no_ready_raid_actor_after_phaseA");
                     continue;
                 }
 
                 proposals.Add(p);
                 string missionKey = StableMissionKey.For(p).ToString();
                 AiDebugLog.WriteDeduped(missionKey,
-                    $"[AI][V2]   raid mission — PROPOSE {missionKey}: {p.Explain}; "
+                    $"[AI][V2]   raid mission - PROPOSE {missionKey}: {p.Explain}; "
                     + $"tier {p.DurableFundingTier}, ap {F(p.Requirements?.ApMinimum ?? 0f)}..{F(p.Requirements?.ApMaximum ?? 0f)}, "
                     + $"readyActors=[{GroundCombatAdmissionRegistry.EligibleIds(p)}]");
             }
             if (proposals.Count == 0)
                 AiDebugLog.WriteDeduped("none",
-                    $"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
+                    $"[AI][V2]   raid mission - NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
 
         }
 
@@ -292,7 +292,7 @@ namespace Game.Ai.V2
             string label = phase == RaidMissionPhase.SupportReturn ? "SUPPORT-RETURN"
                 : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY-RETURN" : "RETURN";
             string role = phase == RaidMissionPhase.SupportReturn ? "support" : "primary";
-            AiDebugLog.Write($"[AI][V2]   raid mission — {label} {intent.IntentKey}: {role} "
+            AiDebugLog.Write($"[AI][V2]   raid mission - {label} {intent.IntentKey}: {role} "
                 + $"#{moverArmyId.Value} -> ({homeHex.Value.Q},{homeHex.Value.R})");
             string protection = ri.CompletedTargetAwaitingFreshDecision
                 ? "fresh-decision fallback; no commitment protection"
@@ -353,7 +353,7 @@ namespace Game.Ai.V2
                     RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri, intentState?.All);
                 float unpinnedValue = unpinnedProjection.Viable
                     ? unpinnedProjection.Score.Value : default(TaskScore).Value;
-                AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
+                AiDebugLog.Write($"[AI][V2]   raid mission - REINFORCE-SELECT {intent.IntentKey}: "
                     + $"{candidates.Count} existing free candidate(s) for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
                 return new RaidCandidate(unpinned, unpinnedProjection.Viable
                         ? unpinnedProjection.Score : default, unpinnedValue,
@@ -379,7 +379,7 @@ namespace Game.Ai.V2
             TaskScore projectionScore = projection.Viable ? projection.Score : default;
             float value = projection.Viable
                 ? projection.Score.Value : default(TaskScore).Value;
-            AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE {intent.IntentKey}: support "
+            AiDebugLog.Write($"[AI][V2]   raid mission - REINFORCE {intent.IntentKey}: support "
                 + $"#{ri.SupportArmyId.Value} -> primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
             return new RaidCandidate(target, projectionScore, value,
                 $"Raid {ri.Target.DiagnosticLabel} Reinforcement: support #{ri.SupportArmyId.Value} joins primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",

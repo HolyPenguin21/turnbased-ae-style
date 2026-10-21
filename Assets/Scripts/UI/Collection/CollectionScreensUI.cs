@@ -310,7 +310,7 @@ namespace Game.UI
             deleteButton.interactable = !draft.isStarter && !collection.IsStarter(draft.deckId);
 
             var validation = collection.Rules.Validate(draft, collection.Owned);
-            pointsLabel.text = $"{validation.Points} / {DeckRules.MaximumPoints} points" + (dirty ? " — unsaved" : "");
+            pointsLabel.text = $"{validation.Points} / {DeckRules.MaximumPoints} points" + (dirty ? " - unsaved" : "");
             budgetFill.anchorMax = new Vector2(Mathf.Clamp01(validation.Points / (float)DeckRules.MaximumPoints), 1);
             // Keep the fill inside the new frame, including a zero-width empty budget.
             budgetFill.offsetMin = new Vector2(4f, 4f);

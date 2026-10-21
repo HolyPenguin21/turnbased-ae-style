@@ -216,7 +216,7 @@ namespace Game.Ai.V2
 
             string returnLabel = phase == RaidMissionPhase.SupportReturn ? "SUPPORT_RETURN"
                 : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY_RETURN" : "RETURN";
-            AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} — OK "
+            AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} - OK "
                 + $"{returnLabel} "
                 + $"{roleLabel} #{mover.Id} -> ({home.Q},{home.R}) ap {N(activationAp)}");
             return ProvisioningResult.Ok(new ProvisionedMission
@@ -290,7 +290,7 @@ namespace Game.Ai.V2
             // The primary must not be handed to another mission while the convoy is in transit.
             session.ClaimedArmyIds.Add(primary.Id);
 
-            AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} — OK REINFORCE "
+            AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} - OK REINFORCE "
                 + $"support #{support.Id} -> primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R}) "
                 + $"{(atRendezvous ? "HANDOFF" : "TRANSIT")} ap {N(activationAp)}");
             return ProvisioningResult.Ok(new ProvisionedMission

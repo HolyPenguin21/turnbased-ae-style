@@ -198,7 +198,7 @@ namespace Game.Ai.V2
                 // for legitimately waiting on its own reserved resources. See MarkProtectedThisTurn.
                 MissionContinuityLayer.MarkProtectedThisTurn(player, active.IntentKey, ctx.TurnNumber);
                 AiDebugLog.WriteDeduped(active.IntentKey.ToString(),
-                    $"[AI][V2]   strat.A economy hold — protected active "
+                    $"[AI][V2]   strat.A economy hold - protected active "
                     + $"{active.Economy.Kind} "
                     + $"@({active.Economy.TargetHex.Q},{active.Economy.TargetHex.R}) before card arbitration");
             }
@@ -233,7 +233,7 @@ namespace Game.Ai.V2
                 {
                     // Continuity has atomically rekeyed the same intent/actor and released
                     // the old reservation owner; protect the NEW exact build before any cards.
-                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold — switched Base "
+                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold - switched Base "
                         + $"to ({supersedingBaseSite.TargetHex.Value.Q},"
                         + $"{supersedingBaseSite.TargetHex.Value.R}) net={supersedingBaseSite.Value:0.##}");
                     ProtectActiveEconomyBuild(protectedActiveBase);
@@ -283,7 +283,7 @@ namespace Game.Ai.V2
             if (ctx != null)
                 result.Reservation.GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber);
 
-            AiDebugLog.WriteDeduped("hand", $"[AI][V2]   strat.A — {player.Nickname} hand {AiCardLog.Hand(hand)}");
+            AiDebugLog.WriteDeduped("hand", $"[AI][V2]   strat.A - {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
             var allStates = demands.Select((d, i) => new DemandState
                 {
@@ -310,7 +310,7 @@ namespace Game.Ai.V2
             var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred
                 && !coldStates.Contains(s)).ToList();
             if (coldStates.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A radar — defer {coldStates.Count} fresh zero-priority demand(s) until operational/tempo admission finishes");
+                AiDebugLog.Write($"[AI][V2]   strat.A radar - defer {coldStates.Count} fresh zero-priority demand(s) until operational/tempo admission finishes");
             if (states.Count == 0 && deferredStates.Count == 0)
             {
                 if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
@@ -365,7 +365,7 @@ namespace Game.Ai.V2
                 else
                     EconomyReservationLifecycle.ReserveDeferredEconomyResources(
                         snap, player, ctx.TurnNumber, protectedEconomyBuild);
-                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected "
+                AiDebugLog.Write($"[AI][V2]   strat.A economy hold - protected "
                     + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
                     + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
             }
@@ -391,7 +391,7 @@ namespace Game.Ai.V2
             foreach (DemandState deferred in residualInfrastructure)
                 deferred.Blocked = true;
             if (zeroRadarInfrastructure.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {zeroRadarInfrastructure.Count} zero-Radar requests until after card arbitration");
+                AiDebugLog.Write($"[AI][V2]   strat.A infra - deferred {zeroRadarInfrastructure.Count} zero-Radar requests until after card arbitration");
             // A Development facility / operator step is an ordinary card action with a positive
             // Radar weight: it is NOT a late sink. Each pass of the loop below ranks its intrinsic
             // card score x its own Radar scale against the best materialization chain, so the
@@ -404,7 +404,7 @@ namespace Game.Ai.V2
                     && !zeroRadarInfrastructure.Contains(state))
                 .ToHashSet();
             if (arbitratedInfrastructure.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A infra — {arbitratedInfrastructure.Count} Development/global-source request(s) compete in card arbitration");
+                AiDebugLog.Write($"[AI][V2]   strat.A infra - {arbitratedInfrastructure.Count} Development/global-source request(s) compete in card arbitration");
 
             // A global-source demand (AxisDemand.EconomySourceCard) is about the card being in
             // play, not about who played it: a carrier Hero that another demand already fielded
@@ -417,7 +417,7 @@ namespace Game.Ai.V2
                     if (source == null || s.Remaining <= 0f || hand.Hand.Contains(source))
                         continue;
                     s.Remaining = 0f;
-                    AiDebugLog.Write($"[AI][V2]   strat.A — {s.Demand}: source card already left the "
+                    AiDebugLog.Write($"[AI][V2]   strat.A - {s.Demand}: source card already left the "
                         + "hand through another play; global-source demand closed");
                 }
             }
@@ -509,7 +509,7 @@ namespace Game.Ai.V2
                             istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
                             result.CapacityUnlocks++;
                         }
-                        AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: "
+                        AiDebugLog.Write($"[AI][V2]   strat.A infra - {istate.Demand}: "
                             + $"{(infra.Built ? "built" : infra.CapacityUnlocked ? "capacity unlocked" : infra.GenerationAttempted ? "operator Challenge" : "partial (not built)")} {infra.Detail} "
                             + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
                         if (infra.StateChanged)
@@ -530,7 +530,7 @@ namespace Game.Ai.V2
                     else
                     {
                         AiDebugLog.WriteDedupedWithId(istate.Demand.TraceId,
-                            $"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
+                            $"[AI][V2]   strat.A infra - {istate.Demand}: not built ({infra.Detail})");
                     }
                 }
             }
@@ -559,7 +559,7 @@ namespace Game.Ai.V2
                     {
                         candidate.Blocked = true;
                         AiDebugLog.WriteDedupedWithId(candidate.Demand.TraceId,
-                            $"[AI][V2]   strat.A infra — {candidate.Demand}: not built ({proposal.Reason})");
+                            $"[AI][V2]   strat.A infra - {candidate.Demand}: not built ({proposal.Reason})");
                         continue;
                     }
                     float weighted = MaterializationPortfolioSolver.InfrastructureArbitrationScore(
@@ -687,7 +687,7 @@ namespace Game.Ai.V2
                             bool suppressed = intentState != null && intentState
                                 .Economy.RecordBaseExpansionDeliveryFailure(ctx.TurnNumber,
                                     state.Demand.EconomyBuildCard, state.Demand.TargetHex);
-                            AiDebugLog.Write($"[AI][V2]   strat.A economy delivery-block — "
+                            AiDebugLog.Write($"[AI][V2]   strat.A economy delivery-block - "
                                 + $"target=({state.Demand.TargetHex.Value.Q},"
                                 + $"{state.Demand.TargetHex.Value.R}) "
                                 + $"raw={availability.RawCandidates} "
@@ -724,7 +724,7 @@ namespace Game.Ai.V2
                 int portfolioSize = feasible.Count;
                 feasible = feasible.Where(c => ProjectedPhysicalState.FitsLiveNow(c.Plan)).ToList();
                 if (portfolioSize > 0 && feasible.Count < portfolioSize)
-                    AiDebugLog.Write($"[AI][V2]   strat.A order — {portfolioSize - feasible.Count} of "
+                    AiDebugLog.Write($"[AI][V2]   strat.A order - {portfolioSize - feasible.Count} of "
                         + $"{portfolioSize} portfolio chains wait for a capacity-raising chain to land first");
 
                 // ONE comparison of weighted scores: the best jointly feasible materialization
@@ -740,7 +740,7 @@ namespace Game.Ai.V2
                         : feasible.Max(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar));
                     if (infraWeighted > bestCard)
                     {
-                        AiDebugLog.Write($"[AI][V2]   strat.A arbitration — {infraBid.Value.state.Demand} "
+                        AiDebugLog.Write($"[AI][V2]   strat.A arbitration - {infraBid.Value.state.Demand} "
                             + $"wins {F(infraWeighted)} over best chain {(feasible.Count == 0 ? "none" : F(bestCard))}");
                         chainAttempts++;
                         FulfillInfrastructure(new[] { infraBid.Value.state });
@@ -757,7 +757,7 @@ namespace Game.Ai.V2
                         if (options.TryGetValue(state, out var topOpts) && topOpts.Count > 0)
                         {
                             DemandCandidate b = topOpts[0];
-                            AiDebugLog.Write($"[AI][V2]   strat.A hold — {d}: best chain {b.Plan.StableKey} "
+                            AiDebugLog.Write($"[AI][V2]   strat.A hold - {d}: best chain {b.Plan.StableKey} "
                                 + $"play {F(b.PlayScore)} hold {F(b.HoldValue)} decision {F(b.DecisionScore)} "
                                 + $"idle={F(b.Plan.UseBreakdown?.IdleBonus ?? 0f)} age={b.Plan.UseBreakdown?.IdleAgeTurns ?? 0} "
                                 + "not worth playing over holding the card / lost to contention; keep in hand");
@@ -784,7 +784,7 @@ namespace Game.Ai.V2
                                 PreparationDeliveryMemory.MarkNoChain(player, d.AttackFistArmyId.Value,
                                     ctx.TurnNumber, hand.Hand.Select(c => StrikeRoster.CardKey(c?.Definition)));
                         }
-                        AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   strat.A — {d}: no feasible useful chain "
+                        AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   strat.A - {d}: no feasible useful chain "
                             + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(apBudget.Balance())}, "
                             + $"discrete {F(apBudget.DiscreteAdmissionBudget())}, "
                             + $"followup reserved {F(reserved)}); {diag}");
@@ -866,7 +866,7 @@ namespace Game.Ai.V2
                     }
                     DevelopmentOutcomeTelemetry.RecordUpgrade(player, ctx.TurnNumber,
                         up.Executed, up.ChallengeWon);
-                    AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} — "
+                    AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} - "
                         + $"{plan.DevelopmentUpgrade?.Mode} '{plan.DevelopmentUpgrade?.Card?.displayName}' "
                         + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
                         + $"p={F(plan.DevelopmentUpgrade?.SuccessChance ?? 0f)} "
@@ -915,7 +915,7 @@ namespace Game.Ai.V2
                 if (!play.Deployed)
                 {
                     if (play.CardDeployed) result.CardsPlayed++;
-                    AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
+                    AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                         + $"chain did not deploy ({play.FailReason}); gen={(play.Generated ? 1 : 0)} "
                         + $"att={(play.Attached ? 1 : 0)}");
                     // ARCH-02 §35 — a stale-placement failure means "replan me", not "block me":
@@ -959,12 +959,12 @@ namespace Game.Ai.V2
                 else
                 {
                     selected.State.Blocked = true;
-                    AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: deployment changed state but delivered "
+                    AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: deployment changed state but delivered "
                         + $"0 operational {chosenDemand.Capability}; reserve/potential only, residual unchanged");
                 }
                 result.CardsPlayed++;
 
-                AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
+                AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
                     + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
                     + $"delivered {F(delivered)}, followup {(operationallyDelivered ? F(selected.FollowupAp) : "0")}ap reserved"
@@ -1000,9 +1000,9 @@ namespace Game.Ai.V2
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
 
             if (result.CardsPlayed > 0)
-                AiDebugLog.Write($"[AI][V2] strat.A — {result.CardsPlayed} chain(s), budget now " + apBudget.DebugLine());
+                AiDebugLog.Write($"[AI][V2] strat.A - {result.CardsPlayed} chain(s), budget now " + apBudget.DebugLine());
             if (result.Reservation.UnresolvedDemands.Count > 0)
-                AiDebugLog.Write($"[AI][V2] strat.A — residual demands "
+                AiDebugLog.Write($"[AI][V2] strat.A - residual demands "
                     + string.Join(" | ", result.Reservation.UnresolvedDemands.Select(d => d.ToString())));
             return result;
         }
@@ -1048,7 +1048,7 @@ namespace Game.Ai.V2
                     snap, player, root, hand, ctx, demand, commitments, reservation, activeIntents);
             bool live = PendingPrerequisiteHoldIsLive(demand, availability);
             if (!live)
-                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — skip pending "
+                AiDebugLog.Write($"[AI][V2]   strat.A economy hold - skip pending "
                     + $"{demand.Capability} @({demand.TargetHex?.Q},{demand.TargetHex?.R}): "
                     + $"prerequisite structurally undeliverable raw={availability.RawCandidates} "
                     + $"preflight={availability.PreflightCandidates} "
@@ -1211,11 +1211,11 @@ namespace Game.Ai.V2
                     // deferredStates (not removed) so it still reaches Reservation.UnresolvedDemands
                     // below. Removing it here would silently turn "no candidate right now" into
                     // "no demand ever existed", losing the residual for Phase B and next turn's log.
-                    AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
+                    AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile - {ds.Demand}: "
                         + "decision=DEFER reason=no_deliverable_candidate; stays deferred, Phase B proceeds");
                     continue;
                 }
-                AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
+                AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile - {ds.Demand}: "
                     + $"decision=PROMOTE previousGate=persistence reason=no_alternative_actionable_work "
                     + $"deliverableCandidates={top.Count} best={top[0].Plan.StableKey}");
                 // A promoted demand IS now an ordinary actionable demand — clear the flag on the

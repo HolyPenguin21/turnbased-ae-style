@@ -113,7 +113,7 @@ namespace Game.Ai.V2
                 }
                 var returnLeg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                    "V2 active defence — return", returnLeg, result);
+                    "V2 active defence - return", returnLeg, result);
                 if (returnLeg.Blocked.HasValue)
                 {
                     result.StopReason = returnLeg.Blocked.Value;
@@ -204,7 +204,7 @@ namespace Game.Ai.V2
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player,
                 AiDecision.Move(army, next.Value,
-                    $"V2 active defence — intercept enemy #{enemyId}", 0f, AiGroundMoveAuthority.CombatAndCapture), ctx, trace);
+                    $"V2 active defence - intercept enemy #{enemyId}", 0f, AiGroundMoveAuthority.CombatAndCapture), ctx, trace);
             army = Resolve(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             bool moved = !after.Equals(before);

@@ -331,7 +331,7 @@ namespace Game.EditorTests
             Assert.That(keep, Is.False, "one intent is one Base; there is no re-orient after capture");
             Assert.That(captured, Is.True);
             Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault),
-                "no Return phase on success — the army stays on the base it took");
+                "no Return phase on success - the army stays on the base it took");
         }
 
         // ---- §83 J / §25 main-target owner changes ---------------------------------------

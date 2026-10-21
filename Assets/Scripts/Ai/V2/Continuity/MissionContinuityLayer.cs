@@ -107,12 +107,12 @@ namespace Game.Ai.V2
                     if (!string.IsNullOrWhiteSpace(deferred))
                     {
                         AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
-                            $"[AI][V2] continuity — DEFER {intent.IntentKey} ({intent.Funding}) "
+                            $"[AI][V2] continuity - DEFER {intent.IntentKey} ({intent.Funding}) "
                             + $"no step this pass; reason={deferred}");
                         continue;
                     }
                     AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
-                        $"[AI][V2] continuity — WARN {intent.IntentKey} ({intent.Funding}) "
+                        $"[AI][V2] continuity - WARN {intent.IntentKey} ({intent.Funding}) "
                         + "not materialised this turn; no planner deferral or funding bound");
                     continue;
                 }
@@ -207,7 +207,7 @@ namespace Game.Ai.V2
                 {
                     RetireOutcomeIntent(state, intent, null, turn);
                     StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedIdle");
-                    AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} reaped (idle: "
+                    AiDebugLog.Write($"[AI][V2] continuity - {intent.IntentKey} reaped (idle: "
                         + $"{ReapProgress(intent)})");
                 }
             }
@@ -229,7 +229,7 @@ namespace Game.Ai.V2
             {
                 if (TryDomainTransition(CompletionTransitions, state, allocState, intent, o, turn)) return;
                 if (intent != null)
-                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} COMPLETED, retired");
+                    AiDebugLog.Write($"[AI][V2] continuity - [{aid}] {o.IntentKey} COMPLETED, retired");
                 RetireOutcomeIntent(state, intent, o, turn);
                 return;
             }
@@ -239,14 +239,14 @@ namespace Game.Ai.V2
                 RetireOutcomeIntent(state, intent, o, turn);
                 string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
                 StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
-                AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} structural failure ({reason}), retired + cooldown");
+                AiDebugLog.Write($"[AI][V2] continuity - [{aid}] {o.IntentKey} structural failure ({reason}), retired + cooldown");
                 return;
             }
             if (o.Disposition == MissionStepDisposition.Invalidated)
             {
                 if (TryDomainTransition(RecoveryTransitions, state, allocState, intent, o, turn)) return;
                 if (intent != null)
-                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
+                    AiDebugLog.Write($"[AI][V2] continuity - [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
                 RetireOutcomeIntent(state, intent, o, turn);
                 return;
             }
@@ -315,12 +315,12 @@ namespace Game.Ai.V2
             {
                 RetireOutcomeIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedStall");
-                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} reaped ("
+                AiDebugLog.Write($"[AI][V2] continuity - [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} reaped ("
                     + $"{ReapProgress(intent)})");
             }
             else
             {
-                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} advanced "
+                AiDebugLog.Write($"[AI][V2] continuity - [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} advanced "
                     + $"({o.Disposition}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns}"
                     + (capabilityUnavailable ? $", suspended CapabilityUnavailable:{o.ProvisionFailureKindValue}" : "") + ")");
             }
@@ -422,7 +422,7 @@ namespace Game.Ai.V2
                 : AiConfigV2.allocatorRejectCooldownTurns;
             int until = turn + duration;
             state.StartCooldown(key, turn, until, reason);
-            AiDebugLog.Write($"[AI][V2] cooldown — {key} reason={reason} start=t{turn} until=t{until} duration={duration}");
+            AiDebugLog.Write($"[AI][V2] cooldown - {key} reason={reason} start=t{turn} until=t{until} duration={duration}");
         }
 
         internal static string Describe(MissionStepResult o) =>

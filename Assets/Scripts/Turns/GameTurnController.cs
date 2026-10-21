@@ -384,7 +384,7 @@ namespace Game.Turns
             if (player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
                 ReleasePrisoners(player, new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
 
-            ShowSpawnHint($"{player.Nickname}'s citadel has fallen — {player.Nickname} is defeated.");
+            ShowSpawnHint($"{player.Nickname}'s citadel has fallen - {player.Nickname} is defeated.");
 
             if (GameSession.Players == null)
                 return;
@@ -407,7 +407,7 @@ namespace Game.Turns
             }
             if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
             Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);
-            ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw — no citadels remain.");
+            ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw - no citadels remain.");
         }
 
         // True once `player` no longer owns the building at their own fixed starting-citadel hex

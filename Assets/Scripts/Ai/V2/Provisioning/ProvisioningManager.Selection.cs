@@ -105,7 +105,7 @@ namespace Game.Ai.V2
                         if (failure.Disposition == ProvisionDisposition.RetryNextTurn)
                             parking.Park(player, failedFunding.Mission);
                         AiDebugLog.Write($"[AI][V2][Loop] assignment-batch "
-                            + $"[{AiV2Trace.FormatCorrelation(failedFunding.Mission)}] {failedKey} — FAIL "
+                            + $"[{AiV2Trace.FormatCorrelation(failedFunding.Mission)}] {failedKey} - FAIL "
                             + $"{failure.Kind} [{failure.Disposition}] {failure.Detail}");
                     }
 
@@ -164,7 +164,7 @@ namespace Game.Ai.V2
                 if (result.Failure.Disposition == ProvisionDisposition.RetryNextTurn)
                     parking.Park(player, selectedFunding.Mission);
                 AiDebugLog.Write($"[AI][V2][Loop] provision [{AiV2Trace.FormatCorrelation(selectedFunding.Mission)}] "
-                    + $"{selectedKey} — FAIL {result.Failure.Kind} "
+                    + $"{selectedKey} - FAIL {result.Failure.Kind} "
                     + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
 
                 // A non-repricing failure rejects this key; a re-pack can consider other missions.

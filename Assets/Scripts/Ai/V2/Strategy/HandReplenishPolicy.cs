@@ -70,7 +70,7 @@ namespace Game.Ai.V2
                 WorldDeltaLifecycle.CommitMutation();
                 drawn++;
             }
-            AiDebugLog.Write($"[AI][V2] {player.Nickname}: hand replenish — hand {handBefore}->{hand.Hand.Count}"
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: hand replenish - hand {handBefore}->{hand.Hand.Count}"
                 + $"/{ctx.HandCapacity}, drew {drawn}, spendable AP {apBefore}->{SpendableAp(player, root, ctx)} "
                 + $"(target {AiConfigV2.handReplenishTargetCards}, keep {apToKeep} AP = "
                 + $"{AiConfigV2.handReplenishMinApLeft} + aviation {aviationAp})");

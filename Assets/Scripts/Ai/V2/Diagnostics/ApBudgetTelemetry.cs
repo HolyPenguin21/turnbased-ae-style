@@ -56,7 +56,7 @@ namespace Game.Ai.V2
                 + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand + ape.EstimatedDrawApDemand;
             float useful = EffectEvaluationContext.ResolveUsefulApDemand(snap, null);
             float marginal = EffectEvaluationContext.ResolveMarginalApUtility(snap, null);
-            AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{turn} start — AP {startAp} | model demand: "
+            AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{turn} start - AP {startAp} | model demand: "
                 + $"armies {F(ape.EstimatedArmyApDemand)} cards {F(ape.EstimatedCardApDemand)} "
                 + $"dev {F(ape.EstimatedDevelopmentApDemand)} air {F(ape.EstimatedAirApDemand)} "
                 + $"draws {F(ape.EstimatedDrawApDemand)} = structural {F(structural)} | witnessed (last turns) "
@@ -96,7 +96,7 @@ namespace Game.Ai.V2
             float multiplier = Mathf.Clamp(m.Pressure, AiConfigV2.apScarcityMultiplierMin,
                 AiConfigV2.apScarcityMultiplierMax);
 
-            AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{ctx.TurnNumber} end — AP {m.StartAp}->{m.EndAp} "
+            AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{ctx.TurnNumber} end - AP {m.StartAp}->{m.EndAp} "
                 + $"| spent {m.Spent}: task steps {F(steps)}, draws {draws} ({cardsDrawn}), cards, reaction & other {F(other)} "
                 + $"| unmet {F(m.Unmet)}: draws to {AiConfigV2.handReplenishTargetCards} cards {F(m.DrawsUnmet)} ({m.DrawsShort}), "
                 + $"affordable hand cards {F(m.CardsUnmet)} ({m.CardsAffordable}), budget-deferred missions "

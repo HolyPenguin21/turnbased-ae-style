@@ -84,7 +84,7 @@ namespace Game.UI
                 return;
 
             if (priceText != null)
-                priceText.text = _root.CanBuyMoreInitiativeTokens ? $"{CurrentTokenProgress}/{CurrentTokenCost}" : "—";
+                priceText.text = _root.CanBuyMoreInitiativeTokens ? $"{CurrentTokenProgress}/{CurrentTokenCost}" : "-";
             foreach (BuyTokenRowUI row in resourceRows)
                 if (row != null)
                     row.Refresh(_root, _locked);

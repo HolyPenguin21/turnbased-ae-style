@@ -334,7 +334,7 @@ namespace Game.Ai.V2
                         ProvisionFailure.MoverContended($"{lane} host #{host.Id} hero return rejected: {shedWhy}")));
                 }
                 shedDone.AddRange(shed);
-                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — secondary hero(es) "
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} - secondary hero(es) "
                     + $"[{string.Join(",", shed.Select(u => u.Name))}] returned to garrison #{shedGarrison.Id}");
             }
 
@@ -350,7 +350,7 @@ namespace Game.Ai.V2
                     int transfersStillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied,
                         baseline, shedDone);
                     bool rollbackChangedWorld = transfersStillApplied > 0;
-                    AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — assembly transaction failed on "
+                    AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} - assembly transaction failed on "
                         + $"{t.Unit.Name} from #{t.DonorArmyId}: {why}; rollback={(rollbackOk ? "OK" : "FAILED")}; "
                         + $"remainingTransfers={transfersStillApplied}");
                     return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
@@ -382,7 +382,7 @@ namespace Game.Ai.V2
                         baseline, shedGarrison, shedDone);
                 int stillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied,
                     baseline, shedDone);
-                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — assembled host #{host.Id} "
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} - assembled host #{host.Id} "
                     + $"costs {N(actualAp)} AP but {N(activationAp)} was projected/funded "
                     + $"(envelope {N(envelope)}); rollback={(reconcileRollbackOk ? "OK" : "FAILED")}; "
                     + $"remainingTransfers={stillApplied}");
@@ -400,13 +400,13 @@ namespace Game.Ai.V2
             // (HeroRoleEvaluator, the same choice the gather projection made). Zero AP, no roster
             // change, so the funded activation above is untouched.
             if (reordered)
-                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — host #{host.Id} "
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} - host #{host.Id} "
                     + $"commander -> {lead.Name} for this fight");
 
             string winLabel = m.Target is AttackMissionTarget attack
                 && !AttackObjectiveEvaluator.HasAssaultObservation(session.Snapshot, attack.AssaultTarget, out _)
                 ? "unknown" : plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture);
-            AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — OK host #{host.Id} "
+            AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} - OK host #{host.Id} "
                 + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}"
                 + $"win~{winLabel} "
                 + $"ap {N(actualAp)} (projected {N(activationAp)}) -> ({targetHex.Q},{targetHex.R})");

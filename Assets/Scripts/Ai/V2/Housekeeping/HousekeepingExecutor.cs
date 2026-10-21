@@ -108,7 +108,7 @@ namespace Game.Ai.V2
                     // §7 — zero-AP commander promotion. No transfer, no AP, membership unchanged.
                     if (from.Owner != player || !ArmyRegistry.AllForOwner(player).Contains(from))
                     {
-                        Fail(res, plan, $"reorder rejected #{from.Id} ({unit.Name}) — container no longer owned/registered");
+                        Fail(res, plan, $"reorder rejected #{from.Id} ({unit.Name}) - container no longer owned/registered");
                         break;
                     }
                     // T05 — the same contract the planner read: a claimed container reorders only
@@ -117,7 +117,7 @@ namespace Game.Ai.V2
                         ArmyReorgAnalyzer.MutationContractFor(player, turn, from, commitments);
                     if (reorderContract != null && !reorderContract.MayReorderCommander)
                     {
-                        Fail(res, plan, $"reorder rejected #{from.Id} — mission contract "
+                        Fail(res, plan, $"reorder rejected #{from.Id} - mission contract "
                             + $"{reorderContract.Label} keeps its commander");
                         break;
                     }
@@ -195,7 +195,7 @@ namespace Game.Ai.V2
         {
             res.Failed++;
             res.AbortedRemainder = true;
-            AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — ABORT: {detail}");
+            AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} - ABORT: {detail}");
         }
 
         // T05 — `a` gives, `b` receives. The giver must be free (a claimed container never donates);

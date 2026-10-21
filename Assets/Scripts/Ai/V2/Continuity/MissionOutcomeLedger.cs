@@ -80,7 +80,7 @@ namespace Game.Ai.V2
             if (!_rows.TryGetValue(result.Key, out MissionStepFacts r))
             {
                 AiV2Trace.CheckError(result.Source?.Mission?.AttemptId, "ExecutionWithoutRegisteredProposal",
-                    $"stableKey={result.Key} (execution result ignored — no ledger row)");
+                    $"stableKey={result.Key} (execution result ignored - no ledger row)");
                 return;
             }
             r.Execution = result;

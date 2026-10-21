@@ -48,7 +48,7 @@ namespace Game.Ai.V2
         // every mission's admission with it.
         internal static string StallMessage(MandatoryAviationKind kind, int actorId) =>
             kind == MandatoryAviationKind.Rebase
-                ? $"aviation rebase #{actorId} could not take a safe step — deferred to next turn, missions continue"
-                : $"recovery #{actorId} made no progress — deferred to next turn, missions continue";
+                ? $"aviation rebase #{actorId} could not take a safe step - deferred to next turn, missions continue"
+                : $"recovery #{actorId} made no progress - deferred to next turn, missions continue";
     }
 }

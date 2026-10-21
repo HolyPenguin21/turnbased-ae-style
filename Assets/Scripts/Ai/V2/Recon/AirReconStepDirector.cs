@@ -233,7 +233,7 @@ namespace Game.Ai.V2
             {
                 if (!newTurn)
                 {
-                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold — ending turn aloft; "
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold - ending turn aloft; "
                         + $"safeEnds={safeUnlandedEnds} reason={sortie.LastDecisionReason}");
                     return StepDecision.HoldEndTurn("hold set earlier this turn");
                 }
@@ -333,7 +333,7 @@ namespace Game.Ai.V2
                 if (!returnStep.HasValue)
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Return] actor=#{armyId} at "
-                        + $"({air.Hex.Q},{air.Hex.R}) — no reachable owned-airfield step; hold position");
+                        + $"({air.Hex.Q},{air.Hex.R}) - no reachable owned-airfield step; hold position");
                     return StepDecision.Stop("no reachable owned-airfield step");
                 }
                 bool alsoInformative = choice.HasValue && choice.Value.Hex.Equals(returnStep.Value)
@@ -405,7 +405,7 @@ namespace Game.Ai.V2
                 sortie.Phase = ReconAirPhase.Return;
                 sortie.LastDecisionReason = "return_after_strike: no recoverable route remains";
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air?.Id} attacked={attacked}; "
-                    + "WARN no recoverable route after strike — turning home");
+                    + "WARN no recoverable route after strike - turning home");
                 return;
             }
 

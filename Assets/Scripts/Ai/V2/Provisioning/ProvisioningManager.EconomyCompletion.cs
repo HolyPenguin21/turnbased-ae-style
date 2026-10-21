@@ -266,7 +266,7 @@ namespace Game.Ai.V2
                 if (unloadApplied && !ArmyActions.TransferMembersAtomic(
                         unload, garrison, builder, ctx.HexSelection, out string whyRollback))
                     AiDebugLog.Write($"[AI][V2][Economy][WARN] lighten rollback failed for builder "
-                        + $"#{builder.Id} after a reinforce failure: {whyRollback} — roster left "
+                        + $"#{builder.Id} after a reinforce failure: {whyRollback} - roster left "
                         + "partially unloaded");
                 return 0;
             }

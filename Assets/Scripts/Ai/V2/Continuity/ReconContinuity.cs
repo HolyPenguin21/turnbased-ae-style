@@ -50,7 +50,7 @@ namespace Game.Ai.V2
                     // productive turn — AdvanceIntent owns that accounting.
                     o.MadeProgress = true;
                     AdvanceIntent(intent, o, turn, state, allocState);
-                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
+                    AiDebugLog.Write($"[AI][V2] continuity - [{aid}] {o.IntentKey} waypoint satisfied "
                         + "externally; durable scout role kept for next-turn re-focus");
                     return true;
                 }
@@ -59,7 +59,7 @@ namespace Game.Ai.V2
                     if (TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
                         return true;
                     CreateIntent(state, o, turn);
-                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} fresh scout began "
+                    AiDebugLog.Write($"[AI][V2] continuity - [{aid}] {o.IntentKey} fresh scout began "
                         + "this turn; waypoint satisfied externally, durable intent created for re-focus");
                     return true;
                 }
@@ -113,7 +113,7 @@ namespace Game.Ai.V2
 
             o.MadeProgress = true;
             AdvanceIntent(owner, o, turn, state, allocState);
-            AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] actor #{o.MoverArmyId} already "
+            AiDebugLog.Write($"[AI][V2] continuity - [{AiV2Trace.FormatCorrelation(o.Proposal)}] actor #{o.MoverArmyId} already "
                 + $"owns {oldKey}; absorbed fresh {o.IntentKey} into that durable role (no duplicate intent)");
             return true;
         }
@@ -135,7 +135,7 @@ namespace Game.Ai.V2
             CommitmentTier funding = CommitmentTier.None;
             MissionIntent intent = NewIntent(o, turn, MissionKind.Scout, funding, si);
             state.Put(intent);
-            AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created ({intent.Funding}, "
+            AiDebugLog.Write($"[AI][V2] continuity - [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created ({intent.Funding}, "
                 + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
         }
 
@@ -152,7 +152,7 @@ namespace Game.Ai.V2
                     || other.PreferredMoverArmyId != moverArmyId)
                     continue;
                 other.PreferredMoverArmyId = null;
-                AiDebugLog.Write($"[AI][V2] continuity — actor #{moverArmyId} moved to "
+                AiDebugLog.Write($"[AI][V2] continuity - actor #{moverArmyId} moved to "
                     + $"{owner.IntentKey}; unbound prior role {other.IntentKey}");
             }
         }
@@ -228,7 +228,7 @@ namespace Game.Ai.V2
                 && snap?.Self?.Armies != null
                 && !MissionActorPolicy.HasCapableActor(intent, snap, StealthRequirement.None))
             {
-                AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} actor "
+                AiDebugLog.Write($"[AI][V2] continuity - {intent.IntentKey} actor "
                     + $"#{intent.PreferredMoverArmyId.Value} no longer exists or can no longer "
                     + "scout; role unbound");
                 intent.PreferredMoverArmyId = null;
@@ -249,14 +249,14 @@ namespace Game.Ai.V2
                     intent.StallTurns = 0;
                     if (!intent.IntentKey.Equals(oldKey))
                         rekeys.Add((oldKey, intent));
-                    AiDebugLog.Write($"[AI][V2] continuity — {oldKey} waypoint done; re-focused to "
-                        + $"{intent.IntentKey} — durable identity kept");
+                    AiDebugLog.Write($"[AI][V2] continuity - {oldKey} waypoint done; re-focused to "
+                        + $"{intent.IntentKey} - durable identity kept");
                     if (intent.Status == IntentStatus.Active)
                         active.Add(intent);
                     return;
                 }
                 dead.Add(oldKey);
-                AiDebugLog.Write($"[AI][V2] continuity — {oldKey} retired at turn start (no runnable re-focus)");
+                AiDebugLog.Write($"[AI][V2] continuity - {oldKey} retired at turn start (no runnable re-focus)");
                 return;
             }
 
@@ -312,7 +312,7 @@ namespace Game.Ai.V2
                 foreach (MissionIntent duplicate in claims.Skip(1))
                 {
                     duplicate.PreferredMoverArmyId = null;
-                    AiDebugLog.Write($"[AI][V2] continuity — repaired duplicate Recon actor #{g.Key}: "
+                    AiDebugLog.Write($"[AI][V2] continuity - repaired duplicate Recon actor #{g.Key}: "
                         + $"kept {owner.IntentKey}, unbound {duplicate.IntentKey}");
                 }
             }
@@ -408,7 +408,7 @@ namespace Game.Ai.V2
                         v.PreferredMoverArmyId.Value, "recon lane surplus trim");
                 }
                 dropped++;
-                AiDebugLog.Write($"[AI][V2] continuity — {v.IntentKey} retired: recon lane surplus "
+                AiDebugLog.Write($"[AI][V2] continuity - {v.IntentKey} retired: recon lane surplus "
                     + $"(active {scoutLanes.Count}, hard {hardKept}, desired {desired}, "
                     + $"shed {dropped}/{surplus} this pass; per-turn quota enforced)");
             }

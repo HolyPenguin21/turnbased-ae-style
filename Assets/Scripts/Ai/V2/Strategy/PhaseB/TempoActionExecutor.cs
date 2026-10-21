@@ -67,7 +67,7 @@ namespace Game.Ai.V2
             if (!play.Deployed)
             {
                 exec.FailReason = play.FailReason;
-                AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+                AiDebugLog.Write($"[AI][V2]   strat.B - {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"chain did not deploy ({play.FailReason})");
                 return play.StateChanged
                     ? WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx) : snap;
@@ -96,13 +96,13 @@ namespace Game.Ai.V2
                 CapabilityDeliveryEvaluator.LeaseSurplusScoutDelivery(
                     player, ctx, snap, plan, inv, afterInv, armyIdsBefore, out delivered);
             }
-            AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+            AiDebugLog.Write($"[AI][V2]   strat.B - {plan.Kind} {AiCardLog.Plan(plan)} "
                 + $"util {F(mat.Utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, delivered {F(delivered)}, {plan.StableKey})");
 
             if (operationalResidual)
             {
                 StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
-                AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B delivered operational "
+                AiDebugLog.Write($"[AI][V2] strategic interrupt - Phase B delivered operational "
                     + $"{residual.Capability}; re-admit missions before further surplus spending");
                 exec.Interrupt = true;
             }
@@ -135,7 +135,7 @@ namespace Game.Ai.V2
             if (!ncRes.Played)
             {
                 exec.FailReason = ncRes.FailReason;
-                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — {nc.Kind} {nc.Explain} "
+                AiDebugLog.Write($"[AI][V2]   strat.B non-combat - {nc.Kind} {nc.Explain} "
                     + $"did not play ({ncRes.FailReason}{(ncRes.Generated ? "; generated card kept in hand" : "")})");
                 return ncRes.StateChanged
                     ? WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx) : snap;
@@ -150,7 +150,7 @@ namespace Game.Ai.V2
                 result.EquipmentAssignmentsSucceeded++;
                 exec.Attached = true;
             }
-            AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {nc.Kind} {nc.Explain} (ap {F(ncRes.ApSpent)})");
+            AiDebugLog.Write($"[AI][V2]   strat.B non-combat - played {nc.Kind} {nc.Explain} (ap {F(ncRes.ApSpent)})");
             return WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
         }
 

@@ -23,7 +23,7 @@ namespace Game.Ai.V2
                 if (satisfied)
                 {
                     r.LiveSatisfiedOverride = true;
-                    AiDebugLog.Write($"[AI][V2] ledger — [{r.Proposal.AttemptId}] {MissionIntentKey.For(r.Proposal)} objective met by "
+                    AiDebugLog.Write($"[AI][V2] ledger - [{r.Proposal.AttemptId}] {MissionIntentKey.For(r.Proposal)} objective met by "
                         + "another action this turn (post-execution live pass)");
                 }
             }

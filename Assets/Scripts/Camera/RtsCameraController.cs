@@ -34,7 +34,7 @@ namespace Game.Cameras
         // that much further along, not just holds the hovered point still.
         [SerializeField] private float zoomToCursorStrength = 1.22f;
 
-        [Header("Camera Distance (fixed — clip planes/positioning only, not zoom)")]
+        [Header("Camera Distance (fixed - clip planes/positioning only, not zoom)")]
         [SerializeField] private float distance = 7f;
 
         [Header("Bounds (optional)")]

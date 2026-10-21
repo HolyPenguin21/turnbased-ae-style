@@ -113,7 +113,7 @@ namespace Game.Ai.V2
             if (snap != null && PoolHasEligibleActor(snap, player, pool))
             {
                 s.Exhausted.Remove(pool);
-                AiDebugLog.Write($"[AI][V2] capability pool recovered — {pool} revalidated as usable this "
+                AiDebugLog.Write($"[AI][V2] capability pool recovered - {pool} revalidated as usable this "
                     + $"{(s.Round == 0 ? "turn" : "reaction round " + s.Round)}");
                 V2Phase phase = s.Round == 0 ? V2Phase.Main : V2Phase.Reaction;
                 V2TurnActivityTelemetry.Phase(player, s.Turn, phase).PoolRecoveries++;
@@ -146,7 +146,7 @@ namespace Game.Ai.V2
             if (s.DeferredMissions.ContainsKey(key))
                 return;
             s.DeferredMissions[key] = failure.Detail ?? "no executable step";
-            AiDebugLog.Write($"[AI][V2] mission deferred until next turn — {key}: "
+            AiDebugLog.Write($"[AI][V2] mission deferred until next turn - {key}: "
                 + s.DeferredMissions[key]);
         }
 
@@ -213,7 +213,7 @@ namespace Game.Ai.V2
             if (!s.Exhausted.ContainsKey(pool))
             {
                 s.Exhausted[pool] = reason ?? "pool-wide failure";
-                AiDebugLog.Write($"[AI][V2] capability pool exhausted — {pool} this "
+                AiDebugLog.Write($"[AI][V2] capability pool exhausted - {pool} this "
                     + $"{(s.Round == 0 ? "turn" : "reaction round " + s.Round)}: {s.Exhausted[pool]}");
                 V2Phase phase = s.Round == 0 ? V2Phase.Main : V2Phase.Reaction;
                 V2TurnActivityTelemetry.Phase(player, s.Turn, phase).ExhaustionEvents++;

@@ -155,7 +155,7 @@ namespace Game.Ai.V2
                 return false;
 
             activity.InfrastructureBuilt++;
-            AiDebugLog.Write($"[AI][V2] maintenance capacity — upgraded {b.Name} "
+            AiDebugLog.Write($"[AI][V2] maintenance capacity - upgraded {b.Name} "
                 + $"@({b.Hex.Q},{b.Hex.R}) to level {b.Level}; facility slots {b.UnlockedFacilitySlots}/{b.TotalFacilitySlots}; "
                 + $"ap {apBefore}->{root.ActionPoints}");
             return true;

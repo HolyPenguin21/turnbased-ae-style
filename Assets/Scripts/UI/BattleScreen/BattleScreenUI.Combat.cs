@@ -216,7 +216,7 @@ namespace Game.UI
             if (template == null)
             {
                 if (army.Members.Exists(m => !m.IsSummoned && m.HasAbility(UnitAbilities.RaiseTheRots)))
-                    BattleDebugLog.Write("[RaiseTheRots] a carrier is present but UnitAbilityCatalog resolved no summon card — skipped");
+                    BattleDebugLog.Write("[RaiseTheRots] a carrier is present but UnitAbilityCatalog resolved no summon card - skipped");
                 return;
             }
 

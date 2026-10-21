@@ -241,7 +241,7 @@ namespace Game.EditorTests
             TentativeAllocation allocation = session.Pack();
 
             Assert.That(allocation.Funded.Count, Is.EqualTo(2),
-                "a zero-weight axis is a zero PRIORITY, not a ban — it must still use leftover AP");
+                "a zero-weight axis is a zero PRIORITY, not a ban - it must still use leftover AP");
         }
 
         // ---- Task C — global comparison across the whole admitted pool, not just lane heads -----

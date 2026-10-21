@@ -98,7 +98,7 @@ namespace Game.Ai.V2
                             snapshot,
                             ReconObjectiveEvaluator.Enumerate(snapshot));
                     }
-                    AiDebugLog.Write($"[AI][V2] tempo — end-of-turn tempo re-run after reaction reservation "
+                    AiDebugLog.Write($"[AI][V2] tempo - end-of-turn tempo re-run after reaction reservation "
                         + $"released (reaction ran={(reaction.Ran ? 1 : 0)}); cardsPlayed {tempo.CardsPlayed}, "
                         + $"drawn {tempo.CardsDrawn}, ap {apBeforeTempo}->{root.ActionPoints}");
                     if (!tempo.StateChanged || tempo.CardsPlayed + tempo.CardsDrawn == 0)
@@ -122,7 +122,7 @@ namespace Game.Ai.V2
         {
             if (player == null || ctx == null)
             {
-                AiDebugLog.Write("[AI][V2] housekeeping — no player/ctx, nothing to do.");
+                AiDebugLog.Write("[AI][V2] housekeeping - no player/ctx, nothing to do.");
                 return;
             }
 
@@ -130,7 +130,7 @@ namespace Game.Ai.V2
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments, snapshot, ctx);
             if (analysis.Groups.Count == 0)
             {
-                AiDebugLog.Write("[AI][V2] housekeeping — no local force group worth reorganising.");
+                AiDebugLog.Write("[AI][V2] housekeeping - no local force group worth reorganising.");
                 return;
             }
 
@@ -161,11 +161,11 @@ namespace Game.Ai.V2
             if (root != null && root.ActionPoints != apBefore)
             {
                 result.ApInvariantViolated = true;
-                AiDebugLog.Write($"[AI][V2][ERROR] housekeeping AP invariant violated — AP {apBefore}->{root.ActionPoints}. "
+                AiDebugLog.Write($"[AI][V2][ERROR] housekeeping AP invariant violated - AP {apBefore}->{root.ActionPoints}. "
                     + "Structural reorganisation owns no AP; strategic pressure/maintenance is measured before this boundary.");
             }
 
-            AiDebugLog.Write($"[AI][V2] housekeeping — strategicActions {result.MaintenanceActions}, "
+            AiDebugLog.Write($"[AI][V2] housekeeping - strategicActions {result.MaintenanceActions}, "
                 + $"groups {result.GroupsPlanned}, operations applied {result.TransfersApplied}, "
                 + $"failed {result.TransfersFailed}, stateChanged {(result.StateChanged ? 1 : 0)}, "
                 + $"apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
@@ -262,7 +262,7 @@ namespace Game.Ai.V2
 
                 if (c.Role == ReorgPhysicalRole.ProtectedMissionArmy && c.MemberCount <= 1)
                 {
-                    AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — singleton #{c.ArmyId} "
+                    AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} - singleton #{c.ArmyId} "
                         + $"protected reason=StrategicCapabilityLease/mission contract={c.MissionLabel} "
                         + $"inbound={(c.IsMissionReceiver ? "allowed_no_legal_free_member" : "locked")}");
                     continue;
@@ -281,7 +281,7 @@ namespace Game.Ai.V2
                         && (g.IsGarrison ? g.Units.Count > 1 : g.Units.Count == 1)))
                         benchedCombatHero = true;
 
-                AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — heroless formation #{c.ArmyId} "
+                AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} - heroless formation #{c.ArmyId} "
                     + $"unresolved reason={(benchedCombatHero ? "activation_ap_or_capacity_blocked" : "no_benched_combat_leader")}");
             }
         }

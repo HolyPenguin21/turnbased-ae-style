@@ -200,7 +200,7 @@ namespace Game.Ai.V2
                     plan.Container?.Id ?? -1, ecoApEnvelopeRemaining, rawApRemaining, plan.ApCost);
                 return (g, plan, prep, null, prep.Feasible
                     ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
-                    : $"{prep.Failure.Kind} — {prep.Failure.Detail}");
+                    : $"{prep.Failure.Kind} - {prep.Failure.Detail}");
             }
 
             // DIAGNOSTIC (FoundBase only) — which gate rejects a durable intent's committed mover,
@@ -214,11 +214,11 @@ namespace Game.Ai.V2
                 eligibleBuilders = eligibleList;
                 bool inRankedAtAll = rankedBuilders.Any(x => x.Route.ArmyId == preferredId);
                 AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} durable mover #{preferredId} "
-                    + $"target=({target.TargetHex.Q},{target.TargetHex.R}) turn={session.Snapshot?.TurnNumber} — "
+                    + $"target=({target.TargetHex.Q},{target.TargetHex.R}) turn={session.Snapshot?.TurnNumber} - "
                     + $"inRankedBuilders={inRankedAtAll} rankedBuildersTotal={rankedBuilders.Count} "
                     + $"eligibleAfterMoverFilter={eligibleList.Count}");
                 if (!inRankedAtAll)
-                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream — "
+                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream - "
                         + EconomyBuilderSelection.EconomyBuilderCandidateRejection(session.Snapshot,
                             target.TargetHex, target.BuilderRoutes, preferredId,
                             standingIntents, actorCommitments));
@@ -355,7 +355,7 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
                         + $"kind={target.Kind} target=({target.TargetHex.Q},{target.TargetHex.R}) "
-                        + $"turn={session.Snapshot?.TurnNumber} — rankedBuildersTotal={rankedBuilders.Count}");
+                        + $"turn={session.Snapshot?.TurnNumber} - rankedBuildersTotal={rankedBuilders.Count}");
                     foreach (EconomyBuilderSelection.EconomyBuilderChoice x in rankedBuilders)
                     {
                         string rejection = CandidateRejection(x);
@@ -372,7 +372,7 @@ namespace Game.Ai.V2
                                     ecoApEnvelopeRemaining, rawApRemaining);
                                 plan = prep.Feasible
                                     ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
-                                    : $"{prep.Failure.Kind} — {prep.Failure.Detail}";
+                                    : $"{prep.Failure.Kind} - {prep.Failure.Detail}";
                             }
                         }
                         AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId}"

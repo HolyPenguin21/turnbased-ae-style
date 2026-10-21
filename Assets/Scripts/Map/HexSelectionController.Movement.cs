@@ -391,7 +391,7 @@ namespace Game.Map
             if (army?.Owner != null && army.Owner.IsHuman)
                 turnController?.ShowSpawnHint(message);
             else
-                AiDebugLog.Write($"[AI] {army?.Owner?.Nickname ?? "Neutral"}: move order for {army?.Name} rejected — {message}");
+                AiDebugLog.Write($"[AI] {army?.Owner?.Nickname ?? "Neutral"}: move order for {army?.Name} rejected - {message}");
         }
 
         // Player-agnostic move-order pipeline — pathfinding, AP spend, animated move, vision
@@ -420,7 +420,7 @@ namespace Game.Map
             ArmyData army = controller.Data;
             if (army == null || army.IsGarrison || army.IsAirfield)
             {
-                NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} can't move — assign its units to a real army first.");
+                NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} can't move - assign its units to a real army first.");
                 return MoveOrderResult.CannotMove;
             }
 

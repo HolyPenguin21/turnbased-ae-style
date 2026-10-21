@@ -52,7 +52,7 @@ namespace Game.Combat
             {
                 "That one gives us an opening. Taking it.",
                 "Focusing on this target.",
-                "Everyone else can wait — this one comes first.",
+                "Everyone else can wait - this one comes first.",
                 "This looks like our best shot.",
                 "Picking the target we can do most with.",
                 "Focus fire. Make this attack count.",
@@ -78,7 +78,7 @@ namespace Game.Combat
             [AiThoughtCategory.CautiousWait] = new[]
             {
                 "Not moving this turn.",
-                "Holding position — no reason to walk into that.",
+                "Holding position - no reason to walk into that.",
                 "No useful move right now.",
                 "Staying put for now.",
                 "Holding here for now.",
@@ -95,10 +95,10 @@ namespace Game.Combat
             },
             [AiThoughtCategory.FateSpendWorthIt] = new[]
             {
-                "Worth the risk — rerolling that one.",
+                "Worth the risk - rerolling that one.",
                 "Spending Fate here. This matters.",
                 "One more roll. We need this.",
-                "Burning some luck on this — it counts.",
+                "Burning some luck on this - it counts.",
                 "This is exactly what Fate is for.",
                 "Rerolling. Can't let this one stand.",
             },
@@ -106,7 +106,7 @@ namespace Game.Combat
             {
                 "Keeping Fate for another roll.",
                 "Accepting these tokens. Saving Fate.",
-                "Letting this one go — Fate's better spent elsewhere.",
+                "Letting this one go - Fate's better spent elsewhere.",
                 "Not every fight needs a reroll.",
                 "Holding onto our luck for now.",
                 "This isn't the moment to burn Fate.",
@@ -214,7 +214,7 @@ namespace Game.Combat
             [AiThoughtCategory.RetreatDecision] = new[]
             {
                 "The army falls back.",
-                "Withdrawing — the numbers don't favor a fight.",
+                "Withdrawing - the numbers don't favor a fight.",
                 "Pulling out while it still can.",
                 "Retreat ordered. Preserving what's left.",
             },
@@ -265,7 +265,7 @@ namespace Game.Combat
                 "Advancing regardless of risk.",
                 "No more delay. Moving in.",
                 "The unit commits to the advance.",
-                "Caution abandoned — advancing now.",
+                "Caution abandoned - advancing now.",
             },
             [AiThoughtCategory.DamageTakenMinor] = new[]
             {
@@ -340,7 +340,7 @@ namespace Game.Combat
             {
                 "Focusing on {0}.",
                 "{0} offers the best opening. Taking it.",
-                "Everyone else can wait — {0} goes first.",
+                "Everyone else can wait - {0} goes first.",
                 "{0} is the preferred target.",
             },
             [AiThoughtCategory.LowDamageAttack] = new[]
@@ -362,7 +362,7 @@ namespace Game.Combat
                 "{0} has fallen. Make it count.",
                 "{0} is down. Keep fighting.",
                 "{0} won't be forgotten.",
-                "A costly loss — goodbye, {0}.",
+                "A costly loss - goodbye, {0}.",
             },
             [AiThoughtCategory.DamageTakenMinor] = new[]
             {
@@ -394,10 +394,10 @@ namespace Game.Combat
             },
             [AiThoughtCategory.FateSpendWorthIt] = new[]
             {
-                "Worth the risk against {0} — rerolling.",
+                "Worth the risk against {0} - rerolling.",
                 "Spending Fate against {0}.",
                 "{0} isn't getting away that easy. Rerolling.",
-                "This matters — spending Fate on {0}.",
+                "This matters - spending Fate on {0}.",
             },
             [AiThoughtCategory.FateSpendSkip] = new[]
             {

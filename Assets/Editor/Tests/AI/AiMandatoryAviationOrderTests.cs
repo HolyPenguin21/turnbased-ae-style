@@ -81,9 +81,9 @@ namespace Game.EditorTests
             Assert.AreEqual(2, MandatoryAviationOrder.TriggerPairs(MandatoryAviationKind.Recovery));
             Assert.AreEqual("aviation-rebase", MandatoryAviationOrder.Label(MandatoryAviationKind.Rebase));
             Assert.AreEqual("recovery", MandatoryAviationOrder.Label(MandatoryAviationKind.Recovery));
-            Assert.AreEqual("aviation rebase #4 could not take a safe step — deferred to next turn, missions continue",
+            Assert.AreEqual("aviation rebase #4 could not take a safe step - deferred to next turn, missions continue",
                 MandatoryAviationOrder.StallMessage(MandatoryAviationKind.Rebase, 4));
-            Assert.AreEqual("recovery #4 made no progress — deferred to next turn, missions continue",
+            Assert.AreEqual("recovery #4 made no progress - deferred to next turn, missions continue",
                 MandatoryAviationOrder.StallMessage(MandatoryAviationKind.Recovery, 4));
         }
     }

@@ -50,7 +50,7 @@ namespace Game.Ai.V2
             success = false;
             if (a == null || !a.Target.HasValue)
             {
-                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — no attack objective");
+                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - no attack objective");
                 return false;
             }
 
@@ -63,7 +63,7 @@ namespace Game.Ai.V2
             if (status == AttackObjectiveEvaluator.AttackTargetStatus.Captured)
             {
                 success = true;
-                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} COMPLETE — "
+                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} COMPLETE - "
                     + $"{a.Target.DiagnosticLabel} captured; army #{a.PrimaryArmyId} stays in place, "
                     + "claim released for Housekeeping");
                 return false;
@@ -72,7 +72,7 @@ namespace Game.Ai.V2
             {
                 // §7/§25 — a new owner on the same hex is a NEW objective, never a silent retarget
                 // of this operation. Retire and let the next pass enumerate it fresh.
-                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — "
+                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - "
                     + $"{a.Target.DiagnosticLabel} is no longer a hostile Attack structure under its "
                     + "expected owner");
                 return false;
@@ -96,7 +96,7 @@ namespace Game.Ai.V2
                 if (!a.PrimaryArmyId.HasValue
                     || !MissionActorPolicy.GroundContainerStillValid(a.PrimaryArmyId.Value, snap))
                 {
-                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — recovering "
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - recovering "
                         + $"primary #{a.PrimaryArmyId} is no longer a ground container");
                     return false;
                 }
@@ -110,7 +110,7 @@ namespace Game.Ai.V2
                 if (!a.PrimaryArmyId.HasValue
                     || !MissionActorPolicy.PreparationHostStillValid(a.PrimaryArmyId.Value, snap))
                 {
-                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} retired — "
+                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} retired - "
                         + $"preparation host #{a.PrimaryArmyId} is no longer an own ground field "
                         + "container; claims released");
                     return false;
@@ -129,7 +129,7 @@ namespace Game.Ai.V2
                             ? AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId) : null;
                     if (!withdrawTo.HasValue)
                     {
-                        AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — primary "
+                        AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - primary "
                             + $"#{a.PrimaryArmyId} is no longer a structural ground actor in phase {a.Phase}");
                         return false;
                     }
@@ -169,7 +169,7 @@ namespace Game.Ai.V2
                 {
                     if (!a.OperationStarted)
                     {
-                        AiDebugLog.Write($"[AI][V2][Attack][March] {intent.IntentKey} retired — {march.Reason}; "
+                        AiDebugLog.Write($"[AI][V2][Attack][March] {intent.IntentKey} retired - {march.Reason}; "
                             + $"primary #{a.PrimaryArmyId} is free for the defence");
                         return false;
                     }
@@ -266,7 +266,7 @@ namespace Game.Ai.V2
                     a.RecoveryBaseHex, out bool recoveryRetargeted);
                 if (recoveryHome == null)
                 {
-                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — "
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - "
                         + "recovery base lost and no replacement own base exists");
                     return false;
                 }
@@ -282,7 +282,7 @@ namespace Game.Ai.V2
                 if (recovering != null && a.RecoveryBaseHex.HasValue
                     && recovering.Hex.Equals(a.RecoveryBaseHex.Value))
                 {
-                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — primary "
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - primary "
                         + $"#{a.PrimaryArmyId} reached its recovery base; the operation is over and "
                         + "the army is free for a fresh decision");
                     return false;
@@ -336,7 +336,7 @@ namespace Game.Ai.V2
             if (!a.OperationStarted)
             {
                 // Nothing has been spent physically yet — this was simply not a viable objective.
-                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — not viable and the "
+                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - not viable and the "
                     + "operation never started");
                 return false;
             }
@@ -344,7 +344,7 @@ namespace Game.Ai.V2
             HexCoord? recovery = AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId);
             if (recovery == null)
             {
-                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — no reinforcement "
+                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired - no reinforcement "
                     + "prospect and no own base to withdraw to");
                 return false;
             }
@@ -380,7 +380,7 @@ namespace Game.Ai.V2
             HexCoord? home = AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId);
             if (!home.HasValue)
             {
-                AiDebugLog.Write($"[AI][V2][Attack][Retreat] {intent.IntentKey} retired — hostile army "
+                AiDebugLog.Write($"[AI][V2][Attack][Retreat] {intent.IntentKey} retired - hostile army "
                     + $"#{local.EnemyArmyId} cannot be beaten (win {local.WinChance:0.00}) and the army "
                     + "has no own base to withdraw to; claims released");
                 return RetreatOutcome.Retire;
@@ -500,7 +500,7 @@ namespace Game.Ai.V2
             AiDebugLog.WriteDeduped(intent.IntentKey + "#committed",
                 $"[AI][V2][Attack][Continuity] {intent.IntentKey} primary #{a.PrimaryArmyId} no longer "
                 + $"clears {a.Target.DiagnosticLabel} ({DescribeClearance(snap, a)}); existing "
-                + $"reinforcement candidate none ({none}); {march.Reason} (win {march.WinChance:0.00}) — "
+                + $"reinforcement candidate none ({none}); {march.Reason} (win {march.WinChance:0.00}) - "
                 + "committed assault continues");
             return true;
         }
@@ -593,7 +593,7 @@ namespace Game.Ai.V2
                 if (done)
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} donor #{r.ArmyId} "
                         + (r.BaseHex.HasValue ? "is home" : "has no reachable home base")
-                        + " — released");
+                        + " - released");
                 return done;
             });
         }
@@ -817,7 +817,7 @@ namespace Game.Ai.V2
             if (host.MemberCount == 0 && GroundCombatActorEligibility.EligibleArmies(snap, unavailable,
                     requireMovementNow: false).Any(x => x.ArmyId != hostId))
             {
-                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} retired — empty preparation "
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} retired - empty preparation "
                     + "shell superseded by a free field army; the next pass re-selects the host");
                 return false;
             }
@@ -847,7 +847,7 @@ namespace Game.Ai.V2
                     || !commanderArmy.Members.Any(u => u != null && u.IsHero))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} commander container "
-                        + $"#{a.CommanderArmyId.Value} gone or without its hero — released");
+                        + $"#{a.CommanderArmyId.Value} gone or without its hero - released");
                     a.CommanderArmyId = null;
                 }
             }
@@ -940,7 +940,7 @@ namespace Game.Ai.V2
                         >= AiConfigV2.attackPreparationCardWaitTurns
                         && AttackPreparationPolicy.ClearedAlternativeTarget(snap, a.Target, hostId, out string alt))
                     {
-                        AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} retired — waited "
+                        AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} retired - waited "
                             + $"{snap.TurnNumber - a.PreparationCardWaitSinceTurn} turn(s) for "
                             + $"{cardSource}; the host's fist already clears {alt}, the next pass "
                             + "re-selects the target");
@@ -1121,7 +1121,7 @@ namespace Game.Ai.V2
             foreach (int supportId in payload.GatherSupportArmyIds)
                 GroundCombatContinuity.RetireReturnFallbacksForActor(state, supportId, "fresh Attack gather admitted");
             state.Put(intent);
-            AiDebugLog.Write($"[AI][V2][Attack] continuity — "
+            AiDebugLog.Write($"[AI][V2][Attack] continuity - "
                 + $"[{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created "
                 + $"(Hard attack on {t.Target.DiagnosticLabel}, primary #{payload.PrimaryArmyId}, "
                 + $"phase {payload.Phase}"
@@ -1182,7 +1182,7 @@ namespace Game.Ai.V2
                     && leg.SupportArmyId.HasValue)
                 {
                     intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == leg.SupportArmyId.Value);
-                    AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — [{aid}] {o.IntentKey} donor "
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity - [{aid}] {o.IntentKey} donor "
                         + $"#{leg.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
                 }
                 if (failed && intent?.Attack != null
@@ -1190,7 +1190,7 @@ namespace Game.Ai.V2
                     && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId)
                 {
                     ReleaseAttackAirSupport(intent.Attack, turn);
-                    AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity — [{aid}] {o.IntentKey} wing "
+                    AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity - [{aid}] {o.IntentKey} wing "
                         + $"#{leg.AirSupportArmyId} sortie failed ({Describe(o)}); released");
                 }
                 return true;
@@ -1213,7 +1213,7 @@ namespace Game.Ai.V2
                 if (intent != null)
                 {
                     AdvanceIntent(intent, o, turn, state, allocState);
-                    AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                    AiDebugLog.Write($"[AI][V2][Attack] continuity - [{aid}] {o.IntentKey} "
                         + (o.AttackFacts().AttackTarget.Phase == AttackMissionPhase.Assault
                             ? "objective reached; operation ends at the captured site"
                             : $"{o.AttackFacts().AttackTarget.Phase} leg reached its goal"));
@@ -1222,7 +1222,7 @@ namespace Game.Ai.V2
                 if (o.AttackFacts().HasAttackPayload && o.GroundFacts().OperationStarted)
                 {
                     CreateAttackIntent(state, o, turn);
-                    AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                    AiDebugLog.Write($"[AI][V2][Attack] continuity - [{aid}] {o.IntentKey} "
                         + "captured on its opening step; intent recorded for a clean release");
                     return true;
                 }
@@ -1360,7 +1360,7 @@ namespace Game.Ai.V2
             {
                 donatedOperations.Add(lender.IntentKey);
                 dead.Add(lender.IntentKey);
-                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {lender.IntentKey} retired: "
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity - {lender.IntentKey} retired: "
                     + $"its army #{lender.PreferredMoverArmyId} was given to an Attack gather "
                     + $"(abandoned value {lender.LastIntrinsicValue:0.00})");
             }
@@ -1420,7 +1420,7 @@ namespace Game.Ai.V2
             {
                 dead.Add(fallback.IntentKey);
                 active.Remove(fallback);
-                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {fallback.IntentKey} return "
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity - {fallback.IntentKey} return "
                     + $"fallback retired: its army #{fallback.Raid.PrimaryArmyId} joins a live Attack "
                     + "gather after completing its Raid target");
             }

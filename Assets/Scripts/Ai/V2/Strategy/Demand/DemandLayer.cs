@@ -61,7 +61,7 @@ namespace Game.Ai.V2
                 if (d != null && string.IsNullOrEmpty(d.TraceId))
                     d.TraceId = scope?.NextDemandId() ?? "?";
             foreach (AxisDemand d in demands)
-                AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   demand — {d} | {d.Explain}");
+                AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   demand - {d} | {d.Explain}");
             return demands;
         }
     }

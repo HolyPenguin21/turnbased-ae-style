@@ -216,7 +216,7 @@ namespace Game.Map
             if (owner != null && owner.IsHuman)
                 turnController?.ShowSpawnHint(message);
             else
-                AiDebugLog.Write($"[AI] {owner?.Nickname ?? "Neutral"}: extraction build rejected — {message}");
+                AiDebugLog.Write($"[AI] {owner?.Nickname ?? "Neutral"}: extraction build rejected - {message}");
         }
 
         public bool TryBuildExtractionFacility(CardDefinition definition, HexCoord hex, PlayerSetupData owner)

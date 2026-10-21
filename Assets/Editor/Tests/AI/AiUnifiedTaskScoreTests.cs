@@ -392,7 +392,7 @@ namespace Game.EditorTests
             float assignmentAp = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost, includeReturn: false);
             float extraAp = Mathf.Max(0f, assignmentAp - buildApCost);
             Assert.That(extraAp, Is.EqualTo(8f),
-                "two un-activated outbound turns at real ActivationApCost 4 each — Economy's own real rule");
+                "two un-activated outbound turns at real ActivationApCost 4 each - Economy's own real rule");
 
             // Same production one-line fold DemandLayer.Economy applies to this real extraAp.
             float economyDelivery = TaskScoreEvaluator.Price(extraAp);

@@ -278,7 +278,7 @@ namespace Game.Ai
             try
             {
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" (movement={army.CurrentMovement}/{army.MaxMovement}) "
-                + $"from ({army.Hex.Q},{army.Hex.R}) heads to ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
+                + $"from ({army.Hex.Q},{army.Hex.R}) heads to ({decision.TargetHex.Q},{decision.TargetHex.R}) - {decision.Reason}.");
 
             yield return PanTo(ctx, army.Hex);
             yield return WaitStep(ctx);
@@ -344,7 +344,7 @@ namespace Game.Ai
                 }
                 else
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" skips stealth — "
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" skips stealth - "
                         + "entry invalid or insufficient AP for activation + stealth.");
                 }
             }
@@ -384,7 +384,7 @@ namespace Game.Ai
                     trace.EndHex = army.Hex;
                 }
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" move to "
-                    + $"({destination.Q},{destination.R}) rejected before issue — {authorizationReason}; "
+                    + $"({destination.Q},{destination.R}) rejected before issue - {authorizationReason}; "
                     + $"authority={decision.GroundMoveAuthority}.");
                 yield break;
             }
@@ -455,7 +455,7 @@ namespace Game.Ai
                 {
                     battleObserved = true;
                     AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" had unresolved contact at "
-                        + $"({army.Hex.Q}, {army.Hex.R}) after moving — battle started by the post-move safety check.");
+                        + $"({army.Hex.Q}, {army.Hex.R}) after moving - battle started by the post-move safety check.");
                 }
             }
             if (trace != null)
@@ -482,7 +482,7 @@ namespace Game.Ai
             // as before; only "made zero progress at all" gets the reason tag.
             string moveDelta = root != null ? ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
             AiDebugLog.Write(army.Hex.Equals(before)
-                ? $"[AI] {player.Nickname}: \"{army.Name}\" made no progress toward its target — reason={moveResult} — stayed at ({army.Hex.Q}, {army.Hex.R})."
+                ? $"[AI] {player.Nickname}: \"{army.Name}\" made no progress toward its target - reason={moveResult} - stayed at ({army.Hex.Q}, {army.Hex.R})."
                 : $"[AI] {player.Nickname}: \"{army.Name}\" arrived at ({army.Hex.Q}, {army.Hex.R}).{moveDelta}");
 
             // §5 — record the actual step for a solo scout so V2 route ranking can prefer fresh
@@ -688,7 +688,7 @@ namespace Game.Ai
             Add("energy", energy0, root.GetResource(ResourceType.Energy));
             Add("materials", materials0, root.GetResource(ResourceType.Materials));
             Add("tech", tech0, root.GetResource(ResourceType.Tech));
-            return parts.Count > 0 ? $" — resources: {string.Join(", ", parts)}" : null;
+            return parts.Count > 0 ? $" - resources: {string.Join(", ", parts)}" : null;
         }
 
         // Per the project owner's own call: an AI turn no longer pans the camera to what it's

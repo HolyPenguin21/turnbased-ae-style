@@ -687,7 +687,7 @@ namespace Game.Ai.V2
 
             if (open.Count > 0)
                 AiDebugLog.WriteDeduped("batch",
-                    $"[AI][V2][Recon][Assignment] assignFunded — {open.Count} open, assigned ["
+                    $"[AI][V2][Recon][Assignment] assignFunded - {open.Count} open, assigned ["
                     + string.Join(" ", result.Assigned.Select(kv =>
                         $"{kv.Key}->{kv.Value.ExecutorKind}#{kv.Value.ActorKey}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]"
                     + (result.Rejected.Count > 0 ? $" rejected [{string.Join(" ", result.Rejected.Select(kv => $"{kv.Key}:{kv.Value}"))}]" : ""));
@@ -1151,7 +1151,7 @@ namespace Game.Ai.V2
         {
             if (player == null || root == null)
             {
-                AiDebugLog.Write("[AI][V2][ReconAirCap] no player/root — nothing structurally available");
+                AiDebugLog.Write("[AI][V2][ReconAirCap] no player/root - nothing structurally available");
                 return (0, 0);
             }
 
@@ -1265,7 +1265,7 @@ namespace Game.Ai.V2
                 + $"(airborne {airborneWitnessed}/{airborneProbed} stuck {airborneStuck} + "
                 + $"launch {spareLaunchWitnessed}/{launchProbed} rejected {launchRejected}) "
                 + $"obsNeed={observationNeed} "
-                + $"mode={mode} (structural-only capability witness — no AP/Energy/reservation read; "
+                + $"mode={mode} (structural-only capability witness - no AP/Energy/reservation read; "
                 + "activation economics happen only at Provisioning time)");
 
             return (airborneWitnessed, spareLaunchWitnessed);

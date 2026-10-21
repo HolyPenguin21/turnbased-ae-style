@@ -91,7 +91,7 @@ namespace Game.Styles
         // the highest currently in use) — the arrow and its badges must never draw behind an
         // army icon they happen to pass under or sit beside, or that info reads as missing
         // instead of just covered.
-        [Header("Sorting (order in layer — see Game.Map.MapSortingOrder for map/army values)")]
+        [Header("Sorting (order in layer - see Game.Map.MapSortingOrder for map/army values)")]
         public int outlineSortingOrder = 11;
         public int fillSortingOrder = 12;
         public int badgeBorderSortingOrder = 13;
