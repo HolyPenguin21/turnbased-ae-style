@@ -33,6 +33,8 @@ namespace Game.Progression
     [Serializable] public sealed class CollectionProfile
     {
         public int schemaVersion = 1;
+        // Separate from the storage schema: authored starter balance updates apply once.
+        public int starterDeckRevision;
         public string profileId = Guid.NewGuid().ToString("N");
         public List<DeckCardEntry> ownedCards = new List<DeckCardEntry>();
         public List<SavedDeck> savedDecks = new List<SavedDeck>();

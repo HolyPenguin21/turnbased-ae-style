@@ -144,8 +144,9 @@ namespace Game.EditorTests
             Assert.That(pool, Is.Empty);
         }
 
-        [TestCase(Faction.IronConcord, "concord.card.scout", 32)]
-        [TestCase(Faction.Ashen, "ashen.card.hooded", 40)]
+        [TestCase(Faction.IronConcord, "concord.card.scout", 29)]
+        [TestCase(Faction.Ashen, "ashen.card.hooded", 29)]
+        [TestCase(Faction.Vessels, "vessels.10.whisper-scout", 29)]
         public void AuthoredDefaultAndHeadlessOpeningRespectPoolCapacityAndBlueprints(Faction faction, string scoutKey, int poolSize)
         {
             var catalog = AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset");
@@ -153,13 +154,16 @@ namespace Game.EditorTests
             var deck = catalog.GetAiDecks(faction).Single();
             var original = catalog.BuildAiDeckPool(faction, deck.deckName);
             Assert.That(original.Count, Is.EqualTo(poolSize));
-            Assert.That(original.Any(c => c.isAviation || c.airfieldCapacity > 0 && c.cardType == CardType.Unit), Is.False);
+            Assert.That(original.Count(c => c.isAviation), Is.EqualTo(2));
+            Assert.That(original.Count(c => c.cardType == CardType.Unit), Is.EqualTo(18));
+            CollectionAssert.AreEquivalent(catalog.GetDeck(faction).cards.Where(e => catalog.ResolveCard(e.cardKey).cardType != CardType.Equipment)
+                .Select(e => e.cardKey + ":" + e.count), deck.cards.Select(e => e.cardKey + ":" + e.count));
 
             var entries = deck.cards.Concat(deck.equipment).Concat(deck.mutators).ToList();
             Assert.That(entries.All(e => catalog.ResolveCard(e.cardKey) != null), Is.True);
             Assert.That(entries.All(e => e.count > 0 && e.count <= DeckRules.CopyLimit(catalog.ResolveCard(e.cardKey))), Is.True);
             Assert.That(deck.cards.Select(e => e.cardKey).Distinct().Count(), Is.EqualTo(deck.cards.Count));
-            Assert.That(deck.cards.Single(e => e.cardKey == scoutKey).count, Is.EqualTo(3));
+            Assert.That(deck.cards.Single(e => e.cardKey == scoutKey).count, Is.EqualTo(2));
             var heroes = catalog.GetCatalog(faction).cards.Where(c => c.cardType == CardType.Hero).ToList();
             CollectionAssert.AreEquivalent(heroes.Select(c => c.authoredKey),
                 deck.cards.Where(e => catalog.ResolveCard(e.cardKey).cardType == CardType.Hero).Select(e => e.cardKey));
