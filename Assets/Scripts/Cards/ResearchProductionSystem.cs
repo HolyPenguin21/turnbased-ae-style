@@ -44,9 +44,14 @@ namespace Game.Cards
 
         // ---- Challenge rules (shared with BattleAttackPopupUI's interactive loop) ----------
 
-        // The producing Hero always rolls this many tokens — BattleAttackPopupUI.
-        // BeginResearchProduction used a bare literal 5 in two places before this.
-        public const int TokenPoolSize = 5;
+        // Snapshot the hero's full, attachment-adjusted Fate stat before the attempt spends Fate.
+        public static int TokenPoolSizeFor(UnitData hero)
+            => Mathf.Max(0, hero?.FateMax ?? 0);
+
+        // Misses already occupy places that Fate must cover; only the remaining budget can
+        // extend the row. These slots are presentation only, never rolled/countable successes.
+        public static int FatePreviewCount(bool[] tokens, int fate)
+            => tokens == null ? 0 : Mathf.Max(0, fate - (tokens.Length - CountHits(tokens)));
 
         // The card's own CardDefinition.fate, reused as the fixed number of guaranteed defender
         // successes the roll must meet or beat (see CardDefinition.fate's own comment). Never
@@ -309,7 +314,7 @@ namespace Game.Cards
             int fateBudget = Mathf.Clamp(maxFateSpend, 0, fateAvail);
             int fateSpent = 0;
 
-            bool[] tokens = ChallengeResolver.RollTokens(TokenPoolSize);
+            bool[] tokens = ChallengeResolver.RollTokens(TokenPoolSizeFor(hero));
             while (fateSpent < fateBudget && CountHits(tokens) < required)
             {
                 // Same move order as the interactive loop: a miss is always rerolled before any
@@ -346,24 +351,23 @@ namespace Game.Cards
 
         // A deterministic estimate of RollChallenge's success probability, for AI card-value
         // scoring (spec §8) — NOT a Monte-Carlo run (the AI arbiter must score the same state the
-        // same way every step; UnityEngine.Random would make it jitter). Closed-form
-        // approximation: model the Hero's spendable Fate as that many extra 50/50 tokens on top of
-        // the base pool (each Fate point buys roughly one more attempt at a hit, whether spent as
-        // a miss-reroll or an overflow die), then take the binomial tail P(hits >= required).
-        // Slightly optimistic near the margin, but monotonic in every input that matters (higher
-        // required ⇒ lower, more Fate ⇒ higher), which is all a ranking signal needs.
+        // same way every step; UnityEngine.Random would make it jitter).
+        // Each spent Fate supplies one more independent 50/50 attempt at a hit, either rerolling
+        // a miss or extending the pool. Stopping at the target does not change P(hits >= target).
         public static float EstimateSuccessChance(UnitData hero, CardDefinition card, int maxFateSpend = int.MaxValue)
-            => EstimateSuccessChanceForFate(hero != null ? hero.Fate : 0, card, maxFateSpend);
+            => EstimateSuccessChanceForFate(hero != null ? hero.Fate : 0, card, maxFateSpend,
+                TokenPoolSizeFor(hero));
 
-        // Pure projection used by attachment valuation; never temporarily change a live hero's Fate.
+        // Pure projection used by attachment valuation; never change a live hero's Fate.
+        // Omitted baseTokenCount describes a fully replenished hero at the projected Fate stat.
         public static float EstimateSuccessChanceForFate(int fate, CardDefinition card,
-            int maxFateSpend = int.MaxValue)
+            int maxFateSpend = int.MaxValue, int? baseTokenCount = null)
         {
             int required = RequiredSuccesses(card);
             if (required <= 0)
                 return 1f;
             int fateAvail = Mathf.Max(0, fate);
-            int tokens = TokenPoolSize + Mathf.Clamp(maxFateSpend, 0, fateAvail);
+            int tokens = Mathf.Max(0, baseTokenCount ?? fateAvail) + Mathf.Clamp(maxFateSpend, 0, fateAvail);
             return BinomialTailAtLeast(tokens, 0.5, required);
         }
 

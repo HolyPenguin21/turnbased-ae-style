@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Cards;
 using Game.Styles;
 using Game.Units;
 using TMPro;
@@ -35,6 +36,7 @@ namespace Game.UI
         [SerializeField] private TMP_Text tokenCountText;
 
         private readonly List<TokenSlotUI> _tokenSlots = new List<TokenSlotUI>();
+        private readonly List<TokenSlotUI> _fatePreviewSlots = new List<TokenSlotUI>();
         // Last tokens array SetTokens was actually given — a Fate-spend reroll calls SetTokens again
         // with the SAME length array, only one entry actually changed (see BattleAttackPopupUI.
         // RerollOneMiss). Diffed against this so only that one slot replays its roll animation
@@ -65,6 +67,7 @@ namespace Game.UI
 
         public void Setup(UnitData unit, UnitData sideHero, Sprite factionLogo)
         {
+            ClearFatePreview();
             _sideHero = sideHero;
 
             if (logoImage != null)
@@ -187,6 +190,7 @@ namespace Game.UI
         // no Fate row, no Spend button. Follow with SetFixedSuccesses.
         public void SetupCardDefender(string displayName, Sprite factionLogo)
         {
+            ClearFatePreview();
             _sideHero = null;
             if (logoImage != null)
             {
@@ -218,6 +222,7 @@ namespace Game.UI
         // TokenSlotUI.SetImmediate.
         public void SetFixedSuccesses(int count)
         {
+            ClearFatePreview();
             count = Mathf.Max(0, count);
             UIListUtility.DestroyAndClear(_tokenSlots);
             if (tokenContainer != null && tokenSlotPrefab != null)
@@ -260,8 +265,17 @@ namespace Game.UI
                 return;
             }
 
-            TokenSlotUI slot = Instantiate(tokenSlotPrefab, tokenContainer);
-            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
+            TokenSlotUI slot;
+            if (_fatePreviewSlots.Count > 0)
+            {
+                slot = _fatePreviewSlots[0];
+                _fatePreviewSlots.RemoveAt(0);
+            }
+            else
+            {
+                slot = Instantiate(tokenSlotPrefab, tokenContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
+            }
             slot.gameObject.SetActive(true);
             DisableDecorativeRaycasts(slot.transform);
             _tokenSlots.Add(slot);
@@ -288,6 +302,36 @@ namespace Game.UI
                 onComplete?.Invoke();
             }
             slot.PlayRoll(hit, 0, 1, TokenSlotUI.FateRerollDuration, Done);
+        }
+
+        public void SetFatePreview(int fate)
+        {
+            int count = ResearchProductionSystem.FatePreviewCount(_lastTokens, fate);
+            while (_fatePreviewSlots.Count > count)
+            {
+                int last = _fatePreviewSlots.Count - 1;
+                TokenSlotUI slot = _fatePreviewSlots[last];
+                _fatePreviewSlots.RemoveAt(last);
+                slot.gameObject.SetActive(false);
+                Destroy(slot.gameObject);
+            }
+            if (tokenContainer == null || tokenSlotPrefab == null) return;
+            while (_fatePreviewSlots.Count < count)
+            {
+                TokenSlotUI slot = Instantiate(tokenSlotPrefab, tokenContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
+                slot.gameObject.SetActive(true);
+                DisableDecorativeRaycasts(slot.transform);
+                slot.SetFatePreview();
+                _fatePreviewSlots.Add(slot);
+            }
+        }
+
+        private void ClearFatePreview()
+        {
+            foreach (TokenSlotUI slot in _fatePreviewSlots)
+                if (slot != null) slot.gameObject.SetActive(false);
+            UIListUtility.DestroyAndClear(_fatePreviewSlots);
         }
 
         public void SetSuccessModifier(int modifier)

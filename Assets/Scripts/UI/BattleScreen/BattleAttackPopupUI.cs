@@ -447,7 +447,7 @@ namespace Game.UI
         // ============================ Research / Production Challenge ============================
         // A new, separate entry point (per the spec): it does NOT go through Begin(), never runs
         // RunRollAndDuel/RunDuel/Resolve, and never touches Ground Combat / Capture Kill / Aviation
-        // rules. Attacker = the producing Hero, rolling a fixed pool of 5 (see ChallengeResolver.
+        // rules. Attacker = the producing Hero, rolling its full Fate stat (see ChallengeResolver.
         // RollTokens) with unchanged per-die success probability. Defender = the chosen card: a
         // fixed CardDefinition.fate guaranteed successes, no tokens, no Fate. Win = attacker
         // successes >= card.fate. The Fate the Hero spends here is temporary — restored to its
@@ -472,6 +472,7 @@ namespace Game.UI
             _rpCard = card;
             _rpRequiredSuccesses = ResearchProductionSystem.RequiredSuccesses(card);
             _rpFateSnapshot = hero != null ? hero.Fate : 0;
+            _attackerTokenPoolSize = ResearchProductionSystem.TokenPoolSizeFor(hero);
             _rpActive = true;
             _rpResultSuccess = false;
             _rpTokens = null;
@@ -508,7 +509,7 @@ namespace Game.UI
                     ? "RESEARCH CHALLENGE" : "PRODUCTION CHALLENGE";
 
             attackerRow?.Setup(hero, hero, heroLogo);
-            attackerRow?.SetTokenPoolSize(ResearchProductionSystem.TokenPoolSize);
+            attackerRow?.SetTokenPoolSize(_attackerTokenPoolSize);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, null);
 
@@ -520,7 +521,7 @@ namespace Game.UI
             StartCoroutine(RunResearchProductionChallenge());
         }
 
-        // Defender shows its fixed successes up front; attacker rolls 5; then the attacker (only)
+        // Defender shows its fixed successes up front; attacker rolls its Fate pool; then it
         // gets a Spend-or-Accept loop. Spend, per spec §2: if a miss exists → reroll it (existing
         // RerollOneMiss, unchanged); otherwise, if still short of target → append and roll ONE new
         // die (overflow). Loop ends on Accept, on Fate == 0, or when there's no miss AND the
@@ -530,11 +531,15 @@ namespace Game.UI
             defenderRow?.SetFixedSuccesses(_rpRequiredSuccesses);
             bool spentAtLeastOnce = false;
 
-            _rpTokens = ChallengeResolver.RollTokens(ResearchProductionSystem.TokenPoolSize);
+            _rpTokens = ChallengeResolver.RollTokens(_attackerTokenPoolSize);
             _rpTactics.Tokens = _rpTokens;
             PrepareTacticPresentation(_rpHero?.Owner);
             bool animDone = attackerRow == null;
-            attackerRow?.SetTokens(_rpTokens, onComplete: () => animDone = true);
+            attackerRow?.SetTokens(_rpTokens, onComplete: () =>
+            {
+                attackerRow.SetFatePreview(_rpHero?.Fate ?? 0);
+                animDone = true;
+            });
             yield return new WaitUntil(() => animDone);
             RefreshTacticTotals();
 
@@ -597,11 +602,10 @@ namespace Game.UI
         // No miss but still short of target → overflow: append + roll one new die.
         private void OnResearchProductionSpend()
         {
-            if (!_awaitingHumanDecision || _rpHero == null || _rpHero.Fate <= 0)
+            if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || _rpHero == null || _rpHero.Fate <= 0)
                 return;
 
             bool hasMiss = HasMiss(_rpTokens);
-            int successes = CountHits(_rpTokens);
             if (!hasMiss && _rpTactics.Success)
                 return; // nothing Fate can do
 
@@ -614,7 +618,7 @@ namespace Game.UI
             if (hasMiss)
             {
                 RerollOneMiss(ref _rpTokens, out int rerolledIndex);
-                attackerRow?.SetTokens(_rpTokens, rerolledIndex, () => _rerollAnimDone = true);
+                attackerRow?.SetTokens(_rpTokens, rerolledIndex, OnResearchProductionRollLanded);
                 attackerRow?.OnFateSpent();
                 BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
                     $"rerolled slot {rerolledIndex} -> {_rpTokens[rerolledIndex]}");
@@ -627,13 +631,19 @@ namespace Game.UI
                 grown[grown.Length - 1] = hit;
                 _rpTokens = grown;
                 attackerRow?.SetTokenPoolSize(_rpTokens.Length);
-                attackerRow?.AppendToken(hit, () => _rerollAnimDone = true);
+                attackerRow?.AppendToken(hit, OnResearchProductionRollLanded);
                 attackerRow?.OnFateSpent();
                 BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
                     $"added overflow die #{_rpTokens.Length} -> {hit}");
             }
             _rpTactics.Tokens = _rpTokens;
             _humanSpent = true;
+        }
+
+        private void OnResearchProductionRollLanded()
+        {
+            attackerRow?.SetFatePreview(_rpHero?.Fate ?? 0);
+            _rerollAnimDone = true;
         }
 
         private void ResolveResearchProduction()

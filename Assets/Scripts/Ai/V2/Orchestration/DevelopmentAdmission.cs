@@ -113,7 +113,7 @@ namespace Game.Ai.V2
                 + ActionPrice.PendingCardResourceDemand(snap, t).ToString("R", CultureInfo.InvariantCulture)));
             string sources = string.Join(",", (snap?.Development?.ForecastSources
                     ?? System.Array.Empty<GenerationStep>())
-                .Select(g => $"{g.CardKey}:{g.CardDef?.authoredKey}:{g.ChallengeCard?.fate}:{g.Hero?.Fate}:{g.Mode}:{g.FacilityHex}")
+                .Select(g => $"{g.CardKey}:{g.CardDef?.authoredKey}:{g.ChallengeCard?.fate}:{g.Hero?.Fate}:{g.Hero?.FateMax}:{g.Mode}:{g.FacilityHex}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             string airfields = player == null ? "" : string.Join(";",
                 Game.Aviation.AviationRules.OwnedAirfieldHexes(player).OrderBy(h => h.Q).ThenBy(h => h.R)

@@ -133,7 +133,7 @@ namespace Game.EditorTests
             AttachmentSlot slot, ResearchProductionMode mode)
         {
             var player = new PlayerSetupData();
-            var hero = new UnitData { IsHero = true, Fate = 3 };
+            var hero = new UnitData { IsHero = true, Fate = 3, FateMax = 3 };
             var host = new CardData(new CardDefinition { cardType = CardType.Unit,
                 attack = 3, defenseRating = 1, hitPoints = 4, range = 2, initiative = 1,
                 moveMax = 3, activationApCost = 1,
@@ -152,12 +152,21 @@ namespace Game.EditorTests
             var forecast = EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5);
             Assert.That(forecast.Count, Is.EqualTo(1), "only one stake fits the shared budget");
             Assert.That(forecast[0].PAfter, Is.GreaterThan(forecast[0].PBefore));
+            Assert.That(forecast[0].PBefore, Is.EqualTo(22f / 64).Within(0.000001f));
+            Assert.That(forecast[0].PAfter, Is.EqualTo(848f / 1024).Within(0.000001f),
+                "A Fate upgrade improves both the initial pool and the reroll budget.");
             Assert.That(EquipmentUpgradeValuation.IsOperatorForecast, Is.False,
                 "nested forecast scope must end before the next ordinary recipient evaluation");
             Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5).Count,
                 Is.EqualTo(forecast.Count), "a second ordinary evaluation cannot inherit nested suppression");
             Assert.That(hero.Fate, Is.EqualTo(3), "projection never mutates the operator");
+            Assert.That(hero.FateMax, Is.EqualTo(3));
             Assert.That(snap.Economy.SpendableStockpile.Human, Is.EqualTo(1f), "forecast never spends the bank");
+            string fullFateKey = DevelopmentAdmission.OperatorForecastFacts(snap, player);
+            hero.FateMax++;
+            Assert.That(DevelopmentAdmission.OperatorForecastFacts(snap, player), Is.Not.EqualTo(fullFateKey),
+                "Changing the initial pool invalidates the cache even if remaining Fate is unchanged.");
+            hero.FateMax--;
             string before = DevelopmentAdmission.OperatorForecastFacts(snap, player);
             snap.Economy.SpendableStockpile = default;
             Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5), Is.Empty,
@@ -172,7 +181,7 @@ namespace Game.EditorTests
             snap.Self.ActionPoints = 0;
             Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5), Is.Empty);
             snap.Self.ActionPoints = 12;
-            var other = new UnitData { IsHero = true, Fate = 8 };
+            var other = new UnitData { IsHero = true, Fate = 8, FateMax = 8 };
             snap.Development.ForecastSources = new[] {
                 new GenerationStep { Hero = hero, CardDef = output, Mode = mode },
                 new GenerationStep { Hero = other, CardDef = output, Mode = mode } };

@@ -160,7 +160,8 @@ namespace Game.Ai.V2
                 projected, true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
                 OwnWorld.Of(snap?.Observer).ArmyContaining(host), null,
                 Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host,
-                EquipmentSystem.Consumption(host), EquipmentSystem.Consumption(host, equipDef)));
+                EquipmentSystem.Consumption(host), EquipmentSystem.Consumption(host, equipDef),
+                projectedFateMax: next.Stats[EquipmentStat.Fate]));
         }
 
         // The one slot weight (AiConfigV2.equipMutatorValueMult): only a positive gain of a
@@ -184,7 +185,7 @@ namespace Game.Ai.V2
             IReadOnlyList<UnitTypeTag> hostTags = null, MissionIntent purpose = null, ArmyData army = null,
             MaterializationPlan deployment = null, int hpSpent = 0, UnitData hostUnit = null,
             EquipmentConsumption beforeConsumption = null, EquipmentConsumption afterConsumption = null,
-            bool singleUseHost = false)
+            bool singleUseHost = false, int? projectedFateMax = null)
         {
             using var __scope = new Game.Core.ProfileScope("AI/Equip.ScoreDelta");
             PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
@@ -208,7 +209,7 @@ namespace Game.Ai.V2
             // own unit at its own boundary (WorldAnalysis.Self.EquipmentReserve).
             return ScoreEquipmentByEfficiency(before, predicted, hostAbilities, isHero, snap, inv,
                 includeStealthTrait, purpose, army, hostUnit, hostTags, deployment, hpSpent,
-                beforeConsumption, afterConsumption, singleUseHost);
+                beforeConsumption, afterConsumption, singleUseHost, projectedFateMax);
         }
 
         // Operational equipment value: the change in the host's efficiency (EquipmentEfficiency),
@@ -219,7 +220,8 @@ namespace Game.Ai.V2
             PredictedEquipmentState predicted, IReadOnlyList<string> hostAbilities, bool isHero,
             WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait, MissionIntent purpose, ArmyData army,
             UnitData hostUnit, IReadOnlyList<UnitTypeTag> hostTags, MaterializationPlan deployment, int hpSpent,
-            EquipmentConsumption beforeConsumption, EquipmentConsumption afterConsumption, bool singleUseHost)
+            EquipmentConsumption beforeConsumption, EquipmentConsumption afterConsumption, bool singleUseHost,
+            int? projectedFateMax)
         {
             using var __eff = new Game.Core.ProfileScope("AI/Equip.Efficiency");
             int After(EquipmentStat stat) =>
@@ -316,8 +318,9 @@ namespace Game.Ai.V2
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
             ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
-            if (isHero && a.Fate != b.Fate && snap?.Development != null)
-                ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate);
+            if (isHero && snap?.Development != null
+                && (a.Fate != b.Fate || projectedFateMax.HasValue && projectedFateMax != hostUnit?.FateMax))
+                ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate, projectedFateMax);
 
             // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
             // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
@@ -403,11 +406,12 @@ namespace Game.Ai.V2
         // to prevent recursively valuing a genome through another genome's future production.
         internal static IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>
             OperatorOutputForecast(WorldSnapshot snap, CapabilityInventory inv, UnitData hero,
-                int fateBefore, int fateAfter)
+                int fateBefore, int fateAfter, int? projectedFateMax = null)
         {
             var result = new List<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>();
             if (hero == null || snap?.Self == null || snap.Observer == null
-                || fateBefore == fateAfter || snap.Development == null || s_operatorForecast)
+                || fateBefore == fateAfter && (!projectedFateMax.HasValue || projectedFateMax == hero.FateMax)
+                || snap.Development == null || s_operatorForecast)
                 return result;
             s_operatorForecast = true;
             try
@@ -430,9 +434,11 @@ namespace Game.Ai.V2
                         .Select(g => ResearchProductionSystem.EstimateSuccessChance(g.Hero, g.ChallengeCard))
                         .DefaultIfEmpty(0f).Max();
                     float beforeChance = Mathf.Max(alternative,
-                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateBefore, source.ChallengeCard));
+                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateBefore, source.ChallengeCard,
+                            baseTokenCount: ResearchProductionSystem.TokenPoolSizeFor(hero)));
                     float afterChance = Mathf.Max(alternative,
-                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateAfter, source.ChallengeCard));
+                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateAfter, source.ChallengeCard,
+                            baseTokenCount: projectedFateMax ?? hero.FateMax + fateAfter - fateBefore));
                     if (Mathf.Approximately(beforeChance, afterChance)) continue;
                     if (card.isAviation)
                     {
