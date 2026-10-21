@@ -15,6 +15,27 @@ MonoBehaviour:
   faction: 0
   displayName: Iron Concord
   logo: {fileID: 21300000, guid: 2073e2d5ba390b0409dbcb0ba48612b7, type: 3}
+  matchGreetings:
+  - "Iron Concord command here. Your citadel is standing. Let us see how long that lasts."
+  - "Welcome to the frontier. Keep your hands where our gunners can see them."
+  - "Our engines are warm, our guns are loaded, and our quartermaster has already priced your scrap."
+  - "A new commander? Good. The old wrecks were getting boring."
+  - "We salute a worthy opponent. You have a few turns to become one."
+  - "That deck has character. Our artillery removes character at three hexes."
+  - "You brought those cards to a land war? Admirable commitment to improvisation."
+  - "Your deck looks expensive. We offer a generous trade-in rate for twisted metal."
+  - "No hard feelings, commander. Your citadel simply occupies a future Concord supply depot."
+  - "Radio check. If you can hear this, you are comfortably within our ambitions."
+  - "The wastes belong to whoever can hold them. We brought tracks."
+  - "Build well. We prefer our captured infrastructure intact."
+  - "You may keep the sand. We will discuss the steel after the shooting stops."
+  - "Our mechanics say every machine has a weakness. They are very excited about yours."
+  - "A fair warning: our peace talks require exceptionally thick armor."
+  - "Nice citadel. Does the warranty cover sustained bombardment?"
+  - "Shuffle carefully. Some hands are best kept away from industrial machinery."
+  - "We have fuel for the march and patience for the siege. Choose your opening move."
+  - "May your bolts hold and your aim stay true. A dull victory wastes everyone's fuel."
+  - "The Concord has acknowledged your claim. Our armored delegation will deliver the response."
   cards:
   - id: 0
     authoredKey: concord.card.concord-citadel

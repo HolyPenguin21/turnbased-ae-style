@@ -15,6 +15,27 @@ MonoBehaviour:
   faction: 5
   displayName: The Vessels
   logo: {fileID: 21300000, guid: 461ffe05ef1546b89f48571470da4004, type: 3}
+  matchGreetings:
+  - "Signal acquired. A new command presence has entered the field. We are listening."
+  - "We are the Vessels. You may address this shell. The answer will come from all of us."
+  - "Your citadel broadcasts confidence. Its walls transmit a less convincing signal."
+  - "Welcome, commander. We have reserved a place for your errors in the archive."
+  - "An unfamiliar deck. How refreshing. Familiar outcomes can be so repetitive."
+  - "Your cards suggest independent thought. We look forward to testing that hypothesis."
+  - "Do not mistake the silence for absence. Some of us are simply between transmissions."
+  - "This channel is open. The terms of your surrender may be transmitted at any time."
+  - "You built walls around a single point of failure. An interesting expression of hope."
+  - "Our shells are prepared. Our purpose is shared. Your first move is awaited."
+  - "We have studied many commanders. Please attempt something worth remembering."
+  - "That deck contains possibilities. We suspect most of them end in static."
+  - "You call them reinforcements. We call them additional samples."
+  - "No hostility is required for this exchange. It does, however, improve the quality of the data."
+  - "Your arrival has been recorded. Your departure remains an open question."
+  - "Please keep broadcasting your intentions. Decoding the obvious is a welcome rest."
+  - "A greeting from one shell to another. Yours appears unusually attached to survival."
+  - "Shuffle again if it comforts you. The signal beneath the cards remains the same."
+  - "We acknowledge your claim to this territory. Acknowledgment should not be confused with agreement."
+  - "May your command be coherent and your resistance instructive. Begin when ready."
   cards:
   - id: 0
     authoredKey: vessels.00.vessel-citadel
