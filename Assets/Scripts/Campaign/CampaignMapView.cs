@@ -207,8 +207,8 @@ namespace Game.Campaign
         }
         public void CancelAttackAnimation() { if (arrow != null) arrow.Hide(); }
         private void OnDisable() { CancelAttackAnimation(); CancelCapture(); }
-        public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.48f, .55f, .61f)
-            : faction == Game.Players.Faction.Ashen ? new Color(.68f, .49f, .38f) : new Color(.46f, .49f, .37f);
+        public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.74f, .46f, .24f)
+            : faction == Game.Players.Faction.Ashen ? new Color(.34f, .48f, .70f) : new Color(.72f, .64f, .30f);
         private void RebuildField()
         {
             field?.Dispose(); field = null;
