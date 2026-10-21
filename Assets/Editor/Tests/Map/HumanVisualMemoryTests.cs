@@ -87,6 +87,17 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ObserveArmy_FullyHiddenArmyLeavesNoSighting()
+        {
+            var live = new ArmyData { Owner = _enemy };
+            live.Members.Add(new UnitData { Name = "Hooded", Owner = _enemy, IsHidden = true });
+
+            HumanVisualMemory.ObserveArmy(_viewer, live, new HexCoord(2, 0));
+
+            Assert.That(HumanVisualMemory.TryGetArmySighting(_viewer, live.Id, out _), Is.False);
+        }
+
+        [Test]
         public void EndTurn_ForgetsOnlyThatHumansArmySightings()
         {
             var otherViewer = new PlayerSetupData { IsHuman = true, Nickname = "Other viewer" };

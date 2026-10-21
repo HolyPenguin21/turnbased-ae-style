@@ -308,12 +308,16 @@ namespace Game.Map
 
             if (completed)
                 RefreshAllVisibility();
+            // Same stealth rule as ReconcileHexVisualState: an enemy army fully hidden from the
+            // current viewer shows no marker, even while walking through their vision.
+            bool hiddenFromCurrentViewer = army.Owner != VisionSystem.CurrentViewer
+                && StealthSystem.ArmyFullyHiddenFrom(army, VisionSystem.CurrentViewer);
             if (army.Controller != null && army.Controller.Visual != null)
             {
-                if (!completed && startsInCurrentView)
+                if (!completed && startsInCurrentView && !hiddenFromCurrentViewer)
                     army.Controller.Visual.SetVisible(true);
                 else if (completed)
-                    army.Controller.Visual.SetVisible(VisionSystem.IsVisibleToCurrentViewer(to));
+                    army.Controller.Visual.SetVisible(VisionSystem.IsVisibleToCurrentViewer(to) && !hiddenFromCurrentViewer);
             }
         }
 
