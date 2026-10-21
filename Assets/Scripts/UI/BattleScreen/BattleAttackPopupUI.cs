@@ -548,10 +548,8 @@ namespace Game.UI
 
             while (true)
             {
-                bool canSpend = _rpHero != null
-                    && ResearchProductionSystem.CanSpendFate(_rpTokens, _rpHero.Fate,
-                        _rpTactics.Required - _rpTactics.SuccessModifier);
-                if (!canSpend && !_rpTactics.HasTactic)
+                bool canSpend = CanSpendResearchProductionFate();
+                if (!canSpend && !_rpTactics.HasTactic && _pendingTactic == null)
                     break;
 
                 _awaitingHumanDecision = true;
@@ -606,7 +604,7 @@ namespace Game.UI
                 return;
 
             bool hasMiss = HasMiss(_rpTokens);
-            if (!hasMiss && _rpTactics.Success)
+            if (!hasMiss && !CanSpendResearchProductionFate())
                 return; // nothing Fate can do
 
             attackerRow?.SetSpendInteractable(false);
@@ -934,6 +932,7 @@ namespace Game.UI
         // ANYWHERE in this turn, not just the last loop iteration.
         private IEnumerator RunHumanTurn(bool isDefenderTurn)
         {
+            _tacticCommittedThisTurn = false;
             bool spentThisTurn = false;
             while (true)
             {
@@ -946,7 +945,7 @@ namespace Game.UI
                 // Nothing this side could possibly do this turn (no hero, no Fate, or no miss
                 // left to reroll) — auto-decline after a short beat instead of forcing a click on
                 // a decision that isn't actually one (mirrors RunAiTurn's own aiAcceptDelay pause).
-                if (!canSpend && !(_challengeSession?.HasTactic(isDefenderTurn) == true))
+                if (!canSpend && !(_challengeSession?.HasTactic(isDefenderTurn) == true) && _pendingTactic == null)
                 {
                     if (aiAcceptDelay > 0f)
                         yield return new WaitForSeconds(aiAcceptDelay);
@@ -999,7 +998,7 @@ namespace Game.UI
                 // hit or miss; the turn passes to the other side only on Accept, or automatically
                 // once nothing is left to spend (no Fate or no missed die — the canSpend gate above).
             }
-            _turnSpent = spentThisTurn;
+            _turnSpent = spentThisTurn || _tacticCommittedThisTurn;
         }
 
         // AI path for a whole duel turn — mirrors the human Spend/Accept loop exactly (may spend
@@ -1095,8 +1094,9 @@ namespace Game.UI
 
         private void OnAcceptClicked()
         {
-            if (!_awaitingHumanDecision || TacticInputBlocked)
+            if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || TacticInputBlocked)
                 return;
+            if (!CommitPendingTactic()) return;
             // See RunHumanTurn's own OPEN log — the matching close, for the same diagnostics.
             BattleDebugLog.Write($"[FateDuelDiag] Accept clicked for {(_defenderTurnActive ? "defender" : "attacker")} " +
                 $"{(_defenderTurnActive ? _defenderHero?.Name : _attackerHero?.Name)}");
@@ -1119,7 +1119,7 @@ namespace Game.UI
 
         private void OnDefenderSpend()
         {
-            if (!_awaitingHumanDecision || !_defenderTurnActive || _defenderHero == null
+            if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || !_defenderTurnActive || _defenderHero == null
                 || _challengeSession == null || TacticInputBlocked)
                 return;
             if (!_challengeSession.TrySpend(true, out int rerolledIndex, out _))
@@ -1138,7 +1138,7 @@ namespace Game.UI
 
         private void OnAttackerSpend()
         {
-            if (!_awaitingHumanDecision) return;
+            if (!_awaitingHumanDecision || _humanSpent || _humanDeclined) return;
             if (TacticInputBlocked) return;
             if (_kind == ChallengeKind.ResearchProduction)
             {

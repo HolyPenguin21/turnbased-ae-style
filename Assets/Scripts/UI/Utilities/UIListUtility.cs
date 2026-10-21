@@ -8,6 +8,10 @@ namespace Game.UI
     // unit grid) — same "foreach Destroy, then Clear" shape, just for different component types.
     public static class UIListUtility
     {
+        // A temporarily slotted item may return just beyond a window shortened by its removal.
+        public static int OffsetToReveal(int offset, int index, int visibleCount) => index < 0 ? offset
+            : Mathf.Clamp(offset, Mathf.Max(0, index - visibleCount + 1), index);
+
         public static void DestroyAndClear<T>(List<T> items) where T : Component
         {
             foreach (T item in items)
