@@ -10,9 +10,9 @@ namespace Game.Campaign
     public sealed class CampaignHighlightSettings
     {
         [Header("Map palette")]
-        public Color IronConcordColor = new Color(.62f, .68f, .76f);
-        public Color AshenColor = new Color(.95f, .42f, .26f);
-        public Color VesselsColor = new Color(.66f, .68f, .36f);
+        public Color IronConcordColor = new Color(.95f, .52f, .18f);
+        public Color AshenColor = new Color(.3f, .52f, .92f);
+        public Color VesselsColor = new Color(.93f, .8f, .24f);
         [Header("Terrain")]
         [Range(.5f, 2.5f)] public float TerrainContrast = 1.4f;
         [Range(.3f, 1.5f)] public float TerrainBrightness = .8f;
