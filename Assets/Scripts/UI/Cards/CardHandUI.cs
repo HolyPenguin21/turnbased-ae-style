@@ -130,6 +130,8 @@ namespace Game.UI
         // human's own real hand/deck state underneath.
         private readonly List<CardUI> _debugCards = new List<CardUI>();
         private bool _showingDebugHand;
+        // A human responding during an AI turn temporarily owns the shared hand presentation.
+        private bool ShowingDebugHand => _showingDebugHand && !_tacticChallengeActive;
         // Reused every PreviewDrag call instead of allocating a fresh List each time —
         // OnDrag can fire many times a frame while a card is held, so this was previously
         // the single biggest source of GC garbage (and the FPS drops that go with it) during
@@ -336,7 +338,7 @@ namespace Game.UI
                 && turnController.CurrentPlayer != null
                 && turnController.CurrentPlayer.IsHuman
                 && turnController.TurnConfirmed
-                && !_showingTactics && !turnController.CardDraggingBlocked;
+                && !_showingTactics && !_tacticFlipping && !_tacticChallengeActive && !turnController.CardDraggingBlocked;
         }
 
         // Turn-based game, event-driven UI: the draw button's interactable state depends on
@@ -413,7 +415,10 @@ namespace Game.UI
         // once that card's tween has settled.
         private void TickCardAnimations()
         {
+            if (_tacticFlipping) return;
             float dt = Time.deltaTime;
+            foreach (var card in _tacticCards)
+                if (card != null && card.gameObject.activeSelf) card.TickAnimation(dt);
             for (int i = 0; i < _cards.Count; i++)
                 if (_cards[i] != null && _cards[i].gameObject.activeSelf)
                     _cards[i].TickAnimation(dt);
@@ -471,9 +476,15 @@ namespace Game.UI
         {
             // Don't let the real/phantom hand's count clobber the AI debug hand's counter —
             // RenderDebugHand/OnDebugHandChanged own the counter while a debug hand is showing.
-            if (handCountText == null || _showingDebugHand || _cards.Count == _lastDisplayedHandCount)
+            int count = _showingTactics ? _tacticCards.Count : _cards.Count;
+            if (handCountText == null || ShowingDebugHand || count == _lastDisplayedHandCount)
                 return;
-            SetHandCountText(_cards.Count, maxHandSize);
+            if (_showingTactics)
+            {
+                _lastDisplayedHandCount = count;
+                handCountText.text = $"Cards\n{count}";
+            }
+            else SetHandCountText(count, maxHandSize);
         }
 
         // Unconditional write, for switching to a DIFFERENT player's numbers (AI hand debug
@@ -567,8 +578,11 @@ namespace Game.UI
             // otherwise it stays frozen on whichever player's turn last actually wrote it (the
             // user's own report: the deck count doesn't update, including when the turn passes
             // to a different AI player while this debug view is following it).
-            SetDeckCountText(hand?.RemainingDeckCount ?? 0);
-            SetHandCountText(hand?.Hand.Count ?? 0, hand?.Capacity ?? maxHandSize);
+            if (ShowingDebugHand)
+            {
+                SetDeckCountText(hand?.RemainingDeckCount ?? 0);
+                SetHandCountText(hand?.Hand.Count ?? 0, hand?.Capacity ?? maxHandSize);
+            }
 
             if (hand == null)
                 return;
@@ -580,6 +594,7 @@ namespace Game.UI
                 card.Setup(this, hand.Hand[i], restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
                 card.SetHome(new Vector2(SlotX(i), 0f), animated: false);
                 card.transform.SetAsLastSibling();
+                card.gameObject.SetActive(ShowingDebugHand);
                 _debugCards.Add(card);
             }
         }
@@ -604,7 +619,7 @@ namespace Game.UI
             // Force the counters back to the human's own real numbers — ShowAiHandDebug may
             // have just overwritten them with an AI player's.
             SetDeckCountText(_remainingDeck.Count);
-            SetHandCountText(_cards.Count, maxHandSize);
+            _lastDisplayedHandCount = -1;
             Relayout(animated: false);
         }
 
@@ -654,6 +669,8 @@ namespace Game.UI
             if (cardPrefab == null || handContainer == null)
                 return;
 
+            // A wave captures slot indices; settle it before the backing list changes.
+            StopTacticFlip();
             CardUI card = Instantiate(cardPrefab, handContainer);
             Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
             card.Setup(this, data, restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
@@ -1116,7 +1133,9 @@ namespace Game.UI
         // comes back.
         private void RemoveCard(CardUI card)
         {
+            StopTacticFlip();
             _cards.Remove(card);
+            card.gameObject.SetActive(false);
             Destroy(card.gameObject);
             Relayout(animated: true);
             RestoreSiblingOrder();
@@ -1228,7 +1247,7 @@ namespace Game.UI
         // its neighbour.
         public void RestoreSiblingOrder()
         {
-            foreach (CardUI card in _cards)
+            foreach (CardUI card in _showingTactics ? _tacticCards : _cards)
                 card.transform.SetAsLastSibling();
         }
 
@@ -1277,7 +1296,9 @@ namespace Game.UI
 
         private void Relayout(bool animated)
         {
+            if (_tacticFlipping) return;
             ClampScroll();
+            RelayoutTactics(animated);
 
             for (int i = 0; i < _cards.Count; i++)
             {
@@ -1287,7 +1308,7 @@ namespace Game.UI
                 // SetActive(false) sweep is a one-shot action, not an invariant, and AddCard/
                 // drag/scroll all funnel back through here and would otherwise resurrect these
                 // cards mixed in next to the AI's own (the project owner's reported symptom).
-                bool isVisible = !_showingDebugHand && visibleIndex >= 0 && visibleIndex < MaxVisible;
+                bool isVisible = !_showingTactics && !ShowingDebugHand && visibleIndex >= 0 && visibleIndex < MaxVisible;
                 if (_cards[i].gameObject.activeSelf != isVisible)
                     _cards[i].gameObject.SetActive(isVisible);
                 if (isVisible)
@@ -1306,18 +1327,20 @@ namespace Game.UI
         private void UpdateScrollButtons()
         {
             // Everything fits in the hand: nothing to scroll, hide both buttons entirely.
-            bool overflow = _cards.Count > MaxVisible;
+            int count = _showingTactics ? _tacticCards.Count : _cards.Count;
+            int offset = _showingTactics ? _tacticScrollOffset : _scrollOffset;
+            bool overflow = count > MaxVisible;
             if (scrollLeftButton != null)
             {
                 if (scrollLeftButton.gameObject.activeSelf != overflow)
                     scrollLeftButton.gameObject.SetActive(overflow);
-                scrollLeftButton.interactable = _scrollOffset > 0;
+                scrollLeftButton.interactable = !_tacticFlipping && offset > 0;
             }
             if (scrollRightButton != null)
             {
                 if (scrollRightButton.gameObject.activeSelf != overflow)
                     scrollRightButton.gameObject.SetActive(overflow);
-                scrollRightButton.interactable = _scrollOffset + MaxVisible < _cards.Count;
+                scrollRightButton.interactable = !_tacticFlipping && offset + MaxVisible < count;
             }
         }
 
@@ -1357,13 +1380,15 @@ namespace Game.UI
 
         private void OnScrollLeftClicked()
         {
-            _scrollOffset--;
+            if (_tacticFlipping) return;
+            if (_showingTactics) _tacticScrollOffset--; else _scrollOffset--;
             Relayout(animated: true);
         }
 
         private void OnScrollRightClicked()
         {
-            _scrollOffset++;
+            if (_tacticFlipping) return;
+            if (_showingTactics) _tacticScrollOffset++; else _scrollOffset++;
             Relayout(animated: true);
         }
     }

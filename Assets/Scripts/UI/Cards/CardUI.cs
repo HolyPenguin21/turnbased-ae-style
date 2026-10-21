@@ -122,6 +122,7 @@ namespace Game.UI
 
         public void Setup(CardHandUI hand, CardData data, float restingScale, float hoverScale, float hoverLift, float animDuration, float dragHoverShrink)
         {
+            if (rectTransform == null) rectTransform = (RectTransform)transform;
             equipmentArtToggle?.Revert();
             mutatorArtToggle?.Revert();
             _hand = hand;
@@ -136,7 +137,7 @@ namespace Game.UI
             if (artImage != null && definition != null)
                 artImage.sprite = definition.art;
             if (nameText != null)
-                nameText.text = definition != null ? definition.displayName : string.Empty;
+                nameText.text = definition != null && definition.cardType != CardType.Tactic ? definition.displayName : string.Empty;
             RefreshAbilityText();
 
             RefreshStatsRow(definition);
@@ -146,8 +147,8 @@ namespace Game.UI
             // face shows activationApCost and no resource badges. Every ordinary card's
             // EffectivePlayApCost/EffectivePlayResourceCost are its definition's apCost/
             // resourceCost 1:1, so this is unchanged for them.
-            ResourceCost cost = data.EffectivePlayResourceCost;
-            SetBadge(apBadgeRoot, apBadgeText, data.EffectivePlayApCost);
+            ResourceCost cost = definition?.cardType == CardType.Tactic ? null : data.EffectivePlayResourceCost;
+            SetBadge(apBadgeRoot, apBadgeText, definition?.cardType == CardType.Tactic ? 0 : data.EffectivePlayApCost);
             SetBadge(humanBadgeRoot, humanBadgeText, cost != null ? cost.human : 0);
             SetBadge(energyBadgeRoot, energyBadgeText, cost != null ? cost.energy : 0);
             SetBadge(materialsBadgeRoot, materialsBadgeText, cost != null ? cost.materials : 0);
@@ -160,7 +161,7 @@ namespace Game.UI
 
         public void ConfigureTacticInteraction(CardData data, System.Action onClick,
             System.Func<string> unavailableReason, System.Func<Vector2, Camera, bool> onDrop,
-            System.Action<string> showError)
+            System.Action<string> showError, bool useHandLayout = false)
         {
             // A tactical hand is populated while hidden, before AddComponent can run Awake.
             if (rectTransform == null) rectTransform = (RectTransform)transform;
@@ -176,9 +177,12 @@ namespace Game.UI
             _canvas = GetComponent<Canvas>();
             if (_canvas == null) _canvas = gameObject.AddComponent<Canvas>();
             if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
-            _animDuration = 0f;
-            _hoverLift = 0f;
-            SetTacticHome(rectTransform.anchoredPosition, rectTransform.localScale.x);
+            if (!useHandLayout)
+            {
+                _animDuration = 0f;
+                _hoverLift = 0f;
+                SetTacticHome(rectTransform.anchoredPosition, rectTransform.localScale.x);
+            }
         }
 
         public void SetTacticHome(Vector2 position, float scale)
@@ -214,7 +218,7 @@ namespace Game.UI
             if (typeText == null)
                 return;
             CardDefinition definition = Data?.Definition;
-            if (definition == null)
+            if (definition == null || definition.cardType == CardType.Tactic)
             {
                 typeText.text = string.Empty;
                 return;
@@ -343,7 +347,8 @@ namespace Game.UI
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (IsDragging || _tacticInteraction)
+            if (_hand != null && _hand.IsHandTransitioning) return;
+            if (IsDragging || (_tacticInteraction && _hand == null))
                 return;
             _isHovered = true;
             rectTransform.SetAsLastSibling();
@@ -352,7 +357,7 @@ namespace Game.UI
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            if (IsDragging || _tacticInteraction)
+            if (IsDragging || (_tacticInteraction && _hand == null))
                 return;
             _isHovered = false;
             equipmentArtToggle?.Revert();
@@ -373,6 +378,7 @@ namespace Game.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
+            if (_hand != null && _hand.IsHandTransitioning) return;
             if (IsDragging || (_tacticInteraction && _didDrag)) return;
             if (_tacticInteraction)
             {
@@ -410,9 +416,11 @@ namespace Game.UI
         // sibling order, and SetAsLastSibling() only reorders within the hand's own parent, not
         // relative to Canvas_UI's other top-level children.
         private const int DragSortingOrder = 1000;
+        private const int TacticDragSortingOrder = 25001;
 
         public void OnBeginDrag(PointerEventData eventData)
         {
+            if (_hand != null && _hand.IsHandTransitioning) return;
             if (eventData.button != PointerEventData.InputButton.Left) return;
             _didDrag = true;
             string reason = _tacticInteraction ? _tacticUnavailableReason?.Invoke() : null;
@@ -436,7 +444,7 @@ namespace Game.UI
                 _savedSortingOrder = _canvas.sortingOrder;
                 _canvas.overrideSorting = true;
                 var parentCanvas = _canvas.transform.parent?.GetComponentInParent<Canvas>();
-                _canvas.sortingOrder = Mathf.Max(DragSortingOrder,
+                _canvas.sortingOrder = Mathf.Max(_tacticInteraction ? TacticDragSortingOrder : DragSortingOrder,
                     parentCanvas != null ? parentCanvas.sortingOrder + 1 : DragSortingOrder);
             }
             // Eases from whatever scale it was at (hover or resting) to full carried size,
@@ -460,7 +468,7 @@ namespace Game.UI
             // hand row (on its way to being played), the rest of the hand should stop reacting.
             // eventData.position (screen space) is also what lets CardHandUI figure out which
             // hex (if any) is under the card right now, for the drop-preview shrink below.
-            _hand?.PreviewDrag(this, rectTransform.anchoredPosition, eventData.position);
+            if (!_tacticInteraction) _hand?.PreviewDrag(this, rectTransform.anchoredPosition, eventData.position);
         }
 
         // Called by CardHandUI while dragging, once per hex actually changed under the cursor
@@ -530,6 +538,15 @@ namespace Game.UI
         // position CardHandUI's Relayout hands back is usually already equal to what's
         // cached here, and SetHome's "did it actually change" guard skips Retarget entirely.
         // This forces the snap unconditionally instead of relying on that guard.
+        // The hand owns the flip wave and resets hover/tween state before changing X scale.
+        public void ResetHandPose(Vector2 position)
+        {
+            CancelDrag();
+            _isHovered = false;
+            _homePosition = position;
+            Retarget(animated: false);
+        }
+
         public void SnapToHome()
         {
             Retarget(animated: false);

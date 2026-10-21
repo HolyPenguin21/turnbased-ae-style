@@ -1,6 +1,5 @@
 using Game.Cards;
 using Game.Core;
-using Game.Economy;
 using Game.Turns;
 using TMPro;
 using UnityEngine;
@@ -70,18 +69,16 @@ namespace Game.UI
             if (artImage != null)
                 artImage.sprite = definition != null ? definition.art : null;
             if (nameText != null)
-                nameText.text = definition != null ? definition.displayName : string.Empty;
-            // Ability abbreviations only, same as every other card face (see CardUI) — never
-            // the card type.
+                nameText.text = string.Empty;
+            // Tactical effects are communicated by the artwork.
             if (typeText != null)
-                typeText.text = TacticRules.Description(definition);
+                typeText.text = string.Empty;
 
-            ResourceCost cost = definition?.resourceCost;
-            SetBadge(apBadgeRoot, apBadgeText, definition != null ? definition.apCost : 0);
-            SetBadge(humanBadgeRoot, humanBadgeText, cost != null ? cost.human : 0);
-            SetBadge(energyBadgeRoot, energyBadgeText, cost != null ? cost.energy : 0);
-            SetBadge(materialsBadgeRoot, materialsBadgeText, cost != null ? cost.materials : 0);
-            SetBadge(techBadgeRoot, techBadgeText, cost != null ? cost.tech : 0);
+            SetBadge(apBadgeRoot, apBadgeText, 0);
+            SetBadge(humanBadgeRoot, humanBadgeText, 0);
+            SetBadge(energyBadgeRoot, energyBadgeText, 0);
+            SetBadge(materialsBadgeRoot, materialsBadgeText, 0);
+            SetBadge(techBadgeRoot, techBadgeText, 0);
         }
 
         // Same "hide entirely at 0 rather than show 0" convention as CardUI's own SetBadge.

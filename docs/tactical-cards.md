@@ -29,28 +29,47 @@ Implemented against upstream `9acade34c0ddaad50c796b4261fd38235c8acf21`.
 
 ## Presentation
 
-The battle hand reads the player's inventory. On the map, the ordinary hand flips to a horizontal
-view of that inventory and flips back when the challenge closes. Its ordering/scroll position is
-preserved. The normal deploy/draw input remains blocked.
+The battle screen uses its existing vertical tactical column. On the map, `CardHandUI` uses the
+ordinary `CardUI` prefab, seven fixed slots, separators, hover and scroll controls for both ordinary
+and tactical cards. There is no cloned battle hand. The ordinary and tactical scroll offsets are
+independent. Tactical faces show artwork without names, descriptions, costs or combat stats.
 
-Drag an available card from the prepared battle column or the flipped map hand into the challenge
-slot to apply it. Both sources use the ordinary hand's existing `CardUI` pickup, `UIDragUtility`
-movement, sorting and return gesture. `BattleTacticCardUI` supplies the face and interaction callbacks;
-it has no separate drag handlers or ghost. The challenge owns drop validation and application.
-Returning to the hand cancels without spending. An invalid drop returns the card and displays the
-standard `GameTurnController.ShowSpawnHint` / `PopupPanelUI` information window. Closing a decision,
-rebuilding the hand, disabling the view or showing a blocking hint cancels an active drag. The info
-window covers the hand and blocks Accept, Fate and OK; dismissing it cannot also accept a challenge
-in the same frame.
+Switching replaces each visible slot individually: close the outgoing card to its edge, then open
+the incoming card, or leave the slot empty. Cards start from left to right with an overlapping wave
+(default duration 0.24 seconds, start interval 0.05 seconds). Only card transforms animate; the hand
+container and surrounding controls stay fixed. A new switch normalizes any unfinished wave before
+starting the next one. Draw/deploy input and card interaction are blocked during the transition.
 
-Click selection and Apply tactic remain available. Clicking the selected hand card again clears the
-selection; choosing another replaces it. Only the current participant can apply a card, including a
-defender during the other player's strategic turn. Stale decisions, already-used or foreign cards,
-unfinished rolls and effects with no applicable target return shared session validation reasons.
+Dragging a legal card into the challenge slot **stages** it and immediately previews its effect.
+The exact card instance stays in `PlayerSetupData.Tactics` until Accept, but both hand views omit
+that staged instance. Dragging another card into the occupied slot replaces it and restores the
+previous card to its original inventory order. Dragging the staged card back into the hand clears
+the slot and its preview. The slot background stays fixed; its card uses the same `CardUI` drag
+handler and `UIDragUtility` as hand cards. Invalid drops and stale callbacks preserve the selection.
 
-UI is wired from the existing scene hand/card/button prefabs at runtime, so no scene GUID changes
-or manual scene assignments are required. Cards currently use text and the existing card frame;
-their new illustration fields are unassigned.
+Preview modifiers are rebuilt from the current tokens and committed session modifiers through
+`TacticRules.Apply`; replacement never reverses an already-clamped suppression by arithmetic.
+Fate rerolls remain real and are not refunded when the staged card is returned. A pending card keeps
+the decision open even after the last useful Fate spend. Accept validates and commits only the final
+card through the existing battle/production session, consumes it exactly once and completes the
+participant's decision. A committed battle tactic counts as an action for the opponent's response.
+Closing the presentation before Accept drops the reservation without changing the inventory.
+The last committed card image is retained separately from the staged card: it cannot show through
+the staged artwork, and returning the preview restores that committed image without undoing its effect.
+A returned card is revealed in the hand window even if staging the last visible card had shortened
+that window. Normal-card additions/removals settle an in-progress flip before mutating its lists.
+The human response temporarily takes precedence over an AI hand being watched on the map; closing
+the challenge restores the watched AI hand and its counters. Repeated Fate callbacks cannot spend
+again after a spend or Accept until the next decision window opens.
+
+Click selection followed by a click on the slot also stages a card. An invalid interaction displays
+the standard `GameTurnController.ShowSpawnHint` / `PopupPanelUI` information window. The info window
+covers the hand and blocks Accept, Fate and OK; dismissing it cannot also accept the challenge in
+the same frame. Closing a decision, rebuilding the hand, disabling a view or opening an info window
+cancels an active drag. The staged card survives the temporary closure around a Fate animation.
+
+UI uses existing scene prefabs and creates the draggable slot image at runtime. No new scene
+assignments or GUID changes are required.
 
 ## Initial content
 
@@ -95,9 +114,10 @@ foreign-card rejection, exactly-once consumption, success-pool overflow, suppres
 real engine damage, Capture/Kill, all five authored effects in production, combined effects for both
 sides including zero opposing successes, authored content and stronger cards securing critical AI kills.
 Additional Unity-only tests cover the human coroutine wait and match-setup clearing. The drag fixture
-uses EventSystem dispatch through the actual `CardUI` in both hand orientations and checks valid
-application exactly once, invalid-drop information, return to the slot, modal blocking and decision
-closure during a drag. Its C# signatures compile against verification references; execution requires
+uses EventSystem dispatch through the actual `CardUI` in the ordinary map hand and battle column,
+checking staging, replacement, return, consumption on Accept, invalid-drop information, modal
+blocking and decision closure during a drag. Presentation tests also cover the overlapping flip
+wave, empty slots, interrupted transitions, Fate persistence and production previews. Its C# signatures compile against verification references; execution requires
 Unity.
 
 Verification outside Unity uses the repository's reference-assembly/stub approach. It does not
