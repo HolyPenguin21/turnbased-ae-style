@@ -37,25 +37,50 @@ namespace Game.UI
         private const int MinFlips = 3;
 
         private Coroutine _rollRoutine;
+        private float _faceAlpha = 1f;
+        private bool _appearanceInitialized;
 
-        private void Awake()
+        private void Awake() => InitializeAppearance();
+
+        // Rows may be prepared while their parent is hidden, before Unity calls Awake.
+        // Initialize once before changing the face/alpha so a later Awake cannot reset them.
+        private void InitializeAppearance()
         {
-            if (image != null)
-                image.sprite = baseSprite;
+            if (_appearanceInitialized || image == null) return;
+            _faceAlpha = image.color.a;
+            image.sprite = baseSprite;
+            _appearanceInitialized = true;
         }
 
         // No animation — used to reset a slot to its default/placeholder face before a roll
         // exists yet (e.g. freshly spawned), same idea as the old "X" placeholder text.
         public void SetImmediate(bool hit)
         {
+            InitializeAppearance();
             if (_rollRoutine != null)
             {
                 StopCoroutine(_rollRoutine);
                 _rollRoutine = null;
             }
             ApplySprite(hit);
+            SetFaceAlpha(_faceAlpha);
             if (image != null)
                 image.rectTransform.localScale = Vector3.one;
+        }
+
+        // A potential success in the same row. Turning it into a real token restores opacity.
+        public void SetFatePreview()
+        {
+            SetImmediate(true);
+            SetFaceAlpha(_faceAlpha * 0.35f);
+        }
+
+        private void SetFaceAlpha(float alpha)
+        {
+            if (image == null) return;
+            Color color = image.color;
+            color.a = alpha;
+            image.color = color;
         }
 
         // onComplete (optional): fired once the flip settles on its final face.
@@ -72,6 +97,8 @@ namespace Game.UI
 
         public void PlayRoll(bool hit, int index, int count, float groupDuration, System.Action onComplete = null)
         {
+            InitializeAppearance();
+            SetFaceAlpha(_faceAlpha);
             if (!gameObject.activeInHierarchy)
             {
                 SetImmediate(hit);
