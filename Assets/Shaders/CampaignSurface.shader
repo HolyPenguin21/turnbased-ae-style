@@ -23,6 +23,7 @@ Shader "Game/UI/CampaignSurface"
         _FieldRange ("Field range (canvas units)", Float) = 64
         _TerrainContrast ("Terrain contrast", Float) = 1.4
         _TerrainBrightness ("Terrain brightness", Float) = .8
+        _TerrainSaturation ("Terrain saturation under tint", Float) = 1
         _TintAmount ("Faction tint at borders", Float) = .55
         _TintCenter ("Faction tint at centers", Float) = .15
         _TintEdgeWidth ("Faction tint fade width", Float) = 48
@@ -124,7 +125,7 @@ Shader "Game/UI/CampaignSurface"
             fixed4 _CapturePreviousColor;
             sampler2D _RegionField;
             float _FieldRange, _RimWidth, _RimFalloff, _RimStrength, _RimBrightness, _RimLift, _HoverBrighten, _HoverRimBoost;
-            float _TerrainContrast, _TerrainBrightness, _TintAmount, _TintCenter, _TintEdgeWidth, _TintGain, _LineWidth, _LineStrength, _SeamWidth, _SeamStrength;
+            float _TerrainContrast, _TerrainBrightness, _TerrainSaturation, _TintAmount, _TintCenter, _TintEdgeWidth, _TintGain, _LineWidth, _LineStrength, _SeamWidth, _SeamStrength;
             float _SelectionRimStrength, _SelectionInnerWidth, _SelectionInnerStrength, _SelectionOuterWidth, _SelectionOuterStrength, _SelectionFill;
             float _AttackStrength, _AttackPulseSpeed, _AttackFill;
             fixed4 _SelectionColor, _AttackColor;
@@ -163,7 +164,9 @@ Shader "Game/UI/CampaignSurface"
                 // Contrast-boosted terrain multiplied by the faction color keeps relief crisp under the tint.
                 fixed luminance = dot(sample.rgb, fixed3(.299,.587,.114));
                 float contrastLuminance = saturate((luminance - .45) * _TerrainContrast + .45);
-                fixed3 terrain = lerp(saturate((sample.rgb - .45) * _TerrainContrast + .45), contrastLuminance * ownerTint * _TintGain, lerp(_TintCenter, _TintAmount, borderWeight));
+                // Desaturated terrain leaves hue to the faction tint, so colors close to the sand stay apart.
+                fixed3 relief = lerp(contrastLuminance.xxx, saturate((sample.rgb - .45) * _TerrainContrast + .45), _TerrainSaturation);
+                fixed3 terrain = lerp(relief, contrastLuminance * ownerTint * _TintGain, lerp(_TintCenter, _TintAmount, borderWeight));
                 float radiusSquared = dot(i.surface.zw, i.surface.zw);
                 float limb = smoothstep(.38, 1.0, radiusSquared);
                 terrain *= (1.04 + .07 * i.surface.w - .34 * limb) * i.surface.y * _TerrainBrightness;
