@@ -192,7 +192,8 @@ namespace Game.Aviation
                     }
                 },
                 attackerPoolSize: reaction.AaUnit.Attack * 2,
-                tacticsCritical: TacticBattleContext.IsCritical(reaction.AaArmy.Hex, reaction.AaArmy, airArmy));
+                tacticsCritical: TacticBattleContext.IsCritical(reaction.AaArmy.Hex, reaction.AaArmy, airArmy),
+                challengeTitle: "AIR ATTACK");
             yield return new WaitUntil(() => resolved);
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
             hexSelection?.DeleteArmyIfEmptied(reaction.AaArmy);
