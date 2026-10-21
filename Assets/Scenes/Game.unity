@@ -15480,6 +15480,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.EventRewardPopupUI
   panelRoot: {fileID: 1667965893}
+  titleText: {fileID: 100649107}
   unitImage: {fileID: 251069747}
   summaryText: {fileID: 325034347}
   rewardCardImage: {fileID: 697354902}

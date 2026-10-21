@@ -260,8 +260,8 @@ namespace Game.Turns
         // selection animation is allowed to play (only the current player's own units).
         public PlayerSetupData CurrentPlayer { get; private set; }
 
-        // False from the moment a turn starts until the human clicks Confirm on the shared
-        // popupPanel — HexSelectionController won't allow map input until this is true,
+        // False until the human confirms the shared popupPanel and the opening greeting /
+        // turn-start AA have finished — HexSelectionController won't allow map input until this is true,
         // even once CurrentPlayer is already the human. Meaningless (left false) for AI/Neutral
         // turns, which never check it.
         public bool TurnConfirmed { get; private set; }
@@ -292,6 +292,10 @@ namespace Game.Turns
 
         private readonly Dictionary<PlayerSetupData, List<string>> _pendingAviationMessages = new Dictionary<PlayerSetupData, List<string>>();
         private readonly Queue<string> _aviationMessageQueue = new Queue<string>();
+        private readonly HashSet<PlayerSetupData> _matchGreetingsShown = new HashSet<PlayerSetupData>();
+        // Presentation must not consume Unity's gameplay random sequence.
+        private readonly System.Random _greetingRandom = new System.Random();
+        private bool _turnConfirmationInProgress;
 
         // Set once at most one player still holds their own starting citadel — two paths lead
         // here now: OnBuildingDestroyed (a building's StructurePoints actually reaching 0 — still
@@ -583,6 +587,8 @@ namespace Game.Turns
             }
             TurnNumber = 0;
             _completedTurns.Clear();
+            _matchGreetingsShown.Clear();
+            _turnConfirmationInProgress = false;
             Game.Ai.AiMatchStats.BeginMatch(GameSession.Players);
             // StealthSystem is otherwise turn-controller-agnostic (the stealth sim drives it
             // by hand) — hand it the live completed-turn count now that a real game is starting.
@@ -1093,57 +1099,94 @@ namespace Game.Turns
             StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
         }
 
-        // A human's turn-start AA prompts open once the turn popup is confirmed; map input and
-        // End Turn unlock only after they resolve (CompleteTurnConfirmation).
+        // First acknowledge the greeting, then resolve the existing turn-start AA prompts.
+        // Map input and End Turn unlock only after both finish.
         private void OnTurnConfirmed()
         {
             PlayerSetupData player = CurrentPlayer;
+            if (_gameOver || player == null || !player.IsHuman || TurnConfirmed || _turnConfirmationInProgress)
+                return;
+            _turnConfirmationInProgress = true;
             AviationCombatPresenter presenter = hexSelectionController != null
                 ? hexSelectionController.AviationCombatPresenter : null;
-            if (player == null || presenter == null
-                || AntiAirRules.CollectTurnStartOpportunities(player).Count == 0)
-            {
-                CompleteTurnConfirmation();
-                return;
-            }
             if (popupPanel != null)
                 popupPanel.Hide();
-            StartCoroutine(ResolveTurnStartAntiAirThenConfirm(presenter, player));
+            StartCoroutine(ResolveTurnStartThenConfirm(presenter, player));
         }
 
-        private IEnumerator ResolveTurnStartAntiAirThenConfirm(AviationCombatPresenter presenter, PlayerSetupData player)
+        private IEnumerator ResolveTurnStartThenConfirm(AviationCombatPresenter presenter, PlayerSetupData player)
         {
-            yield return presenter.ResolveTurnStartAntiAir(player);
-            if (!_gameOver && CurrentPlayer == player)
-                CompleteTurnConfirmation();
+            try
+            {
+                if (TryShowMatchGreeting(player))
+                {
+                    while (!_gameOver && CurrentPlayer == player && eventRewardPopup != null && eventRewardPopup.IsShowing)
+                        yield return null;
+                    if (_gameOver || CurrentPlayer != player)
+                        eventRewardPopup?.Hide();
+                }
+                if (_gameOver || CurrentPlayer != player)
+                    yield break;
+                if (presenter != null && AntiAirRules.CollectTurnStartOpportunities(player).Count > 0)
+                    yield return presenter.ResolveTurnStartAntiAir(player);
+                if (!_gameOver && CurrentPlayer == player)
+                    CompleteTurnConfirmation();
+            }
+            finally { _turnConfirmationInProgress = false; }
+        }
+
+        private bool TryShowMatchGreeting(PlayerSetupData player)
+        {
+            if (player == null || !player.IsHuman || CompletedTurnsFor(player) != 0
+                || _matchGreetingsShown.Contains(player) || eventRewardPopup == null
+                || startingDeckCatalog == null || GameSession.Players == null)
+                return false;
+
+            var opponents = GameSession.Players.Where(p => p != null && p != player
+                && !p.IsNeutral && !p.IsEliminated).ToList();
+            while (opponents.Count > 0)
+            {
+                int index = _greetingRandom.Next(opponents.Count);
+                FactionCardCatalog catalog = startingDeckCatalog.GetCatalog(opponents[index].Faction);
+                opponents.RemoveAt(index);
+                if (catalog == null || catalog.logo == null || catalog.matchGreetings == null || catalog.cards == null)
+                    continue;
+                var messages = catalog.matchGreetings.Where(m => !string.IsNullOrWhiteSpace(m)).ToList();
+                var heroes = catalog.ForType(CardType.Hero).Where(c => c.detailArt != null || c.art != null).ToList();
+                if (messages.Count == 0 || heroes.Count == 0)
+                    continue;
+                CardDefinition hero = heroes[_greetingRandom.Next(heroes.Count)];
+                eventRewardPopup.ShowMessage(hero.detailArt != null ? hero.detailArt : hero.art,
+                    catalog.logo, messages[_greetingRandom.Next(messages.Count)]);
+                if (!eventRewardPopup.IsShowing)
+                    return false;
+                _matchGreetingsShown.Add(player);
+                return true;
+            }
+            return false;
         }
 
         private void CompleteTurnConfirmation()
         {
             TurnConfirmed = true;
             _turnConfirmedFrame = Time.frameCount;
-            if (endTurnButton != null)
-                endTurnButton.interactable = true;
-            if (popupPanel != null)
-                popupPanel.Hide();
+            // OnTurnConfirmed already hid the handoff. Do not hide a report that may have
+            // opened since then, and respect any still-open modal when enabling End Turn.
             if (CurrentPlayer != null)
             {
-                bool anyQueued = false;
                 if (_pendingAviationMessages.TryGetValue(CurrentPlayer, out List<string> messages))
                 {
                     _pendingAviationMessages.Remove(CurrentPlayer);
                     foreach (string message in messages)
                         _aviationMessageQueue.Enqueue(message);
-                    anyQueued |= messages.Count > 0;
                 }
                 foreach (string notice in StealthSystem.TakeDetectionNotices(CurrentPlayer))
                 {
                     _aviationMessageQueue.Enqueue(notice);
-                    anyQueued = true;
                 }
-                if (anyQueued)
-                    ShowNextAviationMessage();
             }
+            ShowNextAviationMessage();
+            RefreshEndTurnInteractable();
             TurnStateChanged?.Invoke();
         }
 
@@ -1263,9 +1306,11 @@ namespace Game.Turns
 
         private void ShowNextAviationMessage()
         {
-            // Never over an AA/air-strike/battle popup (turn-start AA runs before this queue
-            // fills); RecomputeBlockedState resumes the queue once that popup closes.
-            if (popupPanel == null || popupPanel.IsShowing || _otherTurnPopupSuspended
+            // Never over combat or the opening greeting. RecomputeBlockedState resumes the
+            // queue once the blocking popup closes.
+            if (_gameOver || popupPanel == null || popupPanel.IsShowing || _otherTurnPopupSuspended
+                || (CurrentPlayer != null && CurrentPlayer.IsHuman && !TurnConfirmed)
+                || (eventRewardPopup != null && eventRewardPopup.IsShowing)
                 || IsAiObserverPaused || IsCombatPresentationActive || _aviationMessageQueue.Count == 0)
                 return;
             popupPanel.ShowHint(_aviationMessageQueue.Dequeue());

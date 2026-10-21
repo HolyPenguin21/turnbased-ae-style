@@ -11,6 +11,8 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
+    // Also presents the opening opponent greeting through ShowMessage; both modes share the
+    // same acknowledgement and input-blocking surface, without granting any reward.
     // Shown once a Hex Event's reward has actually been granted (see HexSelectionController.
     // Events.cs's GrantEventReward). Per the user's own layout: the same hero/unit portrait as
     // EventChoicePopupUI (see EventChoicePopupUI.ResolvePortrait), one summary sentence
@@ -21,10 +23,16 @@ namespace Game.UI
     public class EventRewardPopupUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
+        [SerializeField] private TMP_Text titleText;
         [SerializeField] private Image unitImage;
         [SerializeField] private TMP_Text summaryText;
         [SerializeField] private Image rewardCardImage;
         [SerializeField] private Button okButton;
+
+        private int _shownFrame = -1;
+        private string _rewardTitle;
+        private bool _rewardArtPreserveAspect;
+        private bool _defaultsCaptured;
 
         private static readonly (ResourceType type, string label)[] ResourceLabels =
         {
@@ -40,28 +48,48 @@ namespace Game.UI
             if (entry?.Definition == null || panelRoot == null)
                 return;
 
+            CardDefinition rewardedCard = entry.ResolvedCardRewards.Select(r => r.card).FirstOrDefault(c => c != null);
+            Sprite art = rewardedCard != null ? (rewardedCard.detailArt != null ? rewardedCard.detailArt : rewardedCard.art) : null;
+            ShowContent(false, EventChoicePopupUI.ResolvePortrait(recipient), art, BuildSummary(entry, recipient));
+        }
+
+        public void ShowMessage(Sprite heroPortrait, Sprite factionLogo, string message)
+        {
+            if (panelRoot == null)
+                return;
+            ShowContent(true, heroPortrait, factionLogo, message);
+        }
+
+        private void ShowContent(bool messageMode, Sprite portrait, Sprite art, string summary)
+        {
+            if (!_defaultsCaptured)
+            {
+                _rewardTitle = titleText != null ? titleText.text : "Reward";
+                _rewardArtPreserveAspect = rewardCardImage != null && rewardCardImage.preserveAspect;
+                _defaultsCaptured = true;
+            }
+            _shownFrame = Time.frameCount;
+            if (titleText != null)
+                titleText.text = messageMode ? "Message" : _rewardTitle;
             if (unitImage != null)
             {
-                Sprite portrait = EventChoicePopupUI.ResolvePortrait(recipient);
                 unitImage.sprite = portrait;
                 unitImage.gameObject.SetActive(portrait != null);
             }
-
-            CardDefinition rewardedCard = entry.ResolvedCardRewards.Select(r => r.card).FirstOrDefault(c => c != null);
             if (rewardCardImage != null)
             {
-                Sprite art = rewardedCard != null ? (rewardedCard.detailArt != null ? rewardedCard.detailArt : rewardedCard.art) : null;
                 rewardCardImage.sprite = art;
+                rewardCardImage.preserveAspect = messageMode || _rewardArtPreserveAspect;
                 rewardCardImage.gameObject.SetActive(art != null);
             }
 
             if (summaryText != null)
-                summaryText.text = BuildSummary(entry, recipient);
+                summaryText.text = summary;
 
             if (okButton != null)
             {
                 Game.UI.UIButtonEventUtility.ResetRuntimeListeners(okButton);
-                okButton.onClick.AddListener(Hide);
+                okButton.onClick.AddListener(Acknowledge);
             }
             if (panelRoot != null)
             {
@@ -136,14 +164,24 @@ namespace Game.UI
             VisibilityChanged?.Invoke();
         }
 
+        private void Acknowledge()
+        {
+            // A Submit used to confirm the turn must not also acknowledge its new popup.
+            // Keep this input guard out of Hide so programmatic cleanup always works.
+            if (_shownFrame != Time.frameCount)
+                Hide();
+        }
+
         private void Update()
         {
+            if (!IsShowing || _shownFrame == Time.frameCount)
+                return;
             if (okButton == null || !okButton.gameObject.activeInHierarchy || !okButton.interactable)
                 return;
             if (UIFocusUtility.WasSpacePressed())
             {
                 Game.Audio.GameAudioManager.Instance?.PlayClick();
-                Hide();
+                Acknowledge();
             }
         }
     }

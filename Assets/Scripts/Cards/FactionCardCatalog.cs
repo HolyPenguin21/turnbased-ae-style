@@ -27,6 +27,9 @@ namespace Game.Cards
         public string displayName = "Iron Concord";
         public Sprite logo;
 
+        [Header("Match greeting")]
+        [TextArea(2, 4)] public List<string> matchGreetings = new List<string>();
+
         public List<CardDefinition> cards = new List<CardDefinition>();
 
         // Per-faction map marker icons for this faction's own citadel/facility buildings (see
