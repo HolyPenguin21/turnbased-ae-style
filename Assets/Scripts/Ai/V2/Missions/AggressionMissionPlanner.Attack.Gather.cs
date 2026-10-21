@@ -80,10 +80,14 @@ namespace Game.Ai.V2
         // so, like the Reinforcement convoy, the intrinsic score stays neutral.
         private static void AppendAttackGather(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
-            IMissionIntentView intentState)
+            IMissionIntentView intentState, IReadOnlyList<AttackObjective> objectives)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return;
+            // 2026-10-21 — the walking host takes a Base on its way this pass: the Assault loop
+            // proposes that detour (same question, AttackIntermediateBasePolicy), so no MoveHost
+            // competes with it for the same host.
+            bool walkDetour = AttackIntermediateBasePolicy.SelectForPreparationWalk(snap, a, objectives) != null;
             ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
             if (host == null)
@@ -91,7 +95,7 @@ namespace Game.Ai.V2
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             int defenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count;
             HexCoord? staging = a.Preparation
-                ? AttackPreparationPolicy.PreparationStagingBase(snap, a.Target.Hex, host) : null;
+                ? AttackPreparationPolicy.KeptStagingBase(snap, a, host) : null;
             if (a.Preparation && staging.HasValue && !host.Hex.Equals(staging.Value)
                 && host.MemberCount > 0)
             {
@@ -105,7 +109,7 @@ namespace Game.Ai.V2
                     ? SafeStepPathing.FindNextSafeStep(ctx.Map, liveHost, staging.Value,
                         profile: SafeRouteProfile.Combat).HasValue
                     : host.CurrentMovement > 0;
-                if (canStepNow)
+                if (canStepNow && !walkDetour)
                 {
                     AttackObjective tracked = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
                         ?? new AttackObjective { Target = a.Target };

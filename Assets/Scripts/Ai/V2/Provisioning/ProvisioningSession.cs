@@ -79,6 +79,9 @@ namespace Game.Ai.V2
                     ? m.ActiveDefenceTarget.Sortie.DonorGarrisonId : m.ActiveDefenceTarget.ReliefDonorGarrisonId;
                 if (donor.HasValue) ClaimedArmyIds.Add(donor.Value);
             }
+            // Attack's second operation from a garrison commits its donor the same way.
+            if (m.Kind == MissionKind.Attack && m.AttackTarget.RequiresSortieMaterialization)
+                ClaimedArmyIds.Add(m.AttackTarget.Sortie.DonorGarrisonId);
             // A deferred garrison-extraction mission's MoverArmyId is a synthetic negative id; the
             // garrison and the chosen container (if one already exists — Shell/Host tiers) are the
             // REAL armies this mission has committed to and must not be handed to a second mission

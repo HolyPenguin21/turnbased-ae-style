@@ -32,6 +32,9 @@ namespace Game.Ai.V2
             StableMissionKey key = StableMissionKey.For(m);
             float eps = AiConfigV2.allocatorSliceEpsilon;
 
+            if (target.RequiresSortieMaterialization)
+                return ProvisionSortie(player, root, ctx, session, funded, target, key);
+
             switch (target.Phase)
             {
                 case AttackMissionPhase.RecoveryReturn:
@@ -410,6 +413,56 @@ namespace Game.Ai.V2
                 ClaimedAp = 0f,
                 StealthApReserved = false,
             });
+        }
+
+        // 2026-10-21 — the second operation materialized from a garrison: the same pinned-pair and
+        // AP-envelope proof ActiveDefence's sortie uses (ActiveDefenceProvisioner.TryResolveSortieCore)
+        // with Attack's own fight test (AttackSecondaryPolicy.SortieStillTakesSite). Nothing moves
+        // here; the executor's terminal step does (AttackExecutor.TryMaterializeSortie).
+        private static ProvisioningResult ProvisionSortie(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded, AttackMissionTarget target,
+            StableMissionKey key)
+        {
+            GarrisonSortiePlan p = target.Sortie;
+            HashSet<int> excluded = session.ExcludedForGroundCombat(funded.Mission);
+            if (excluded.Contains(p.DonorGarrisonId) || p.ShellArmyId.HasValue && excluded.Contains(p.ShellArmyId.Value))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended("attack sortie donor or shell claimed"));
+            if (p.TotalAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon
+                || root == null || p.TotalAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(p.TotalAp,
+                    "attack sortie complete AP envelope unavailable"));
+            if (!TryResolveSortie(player, root, ctx, session.Snapshot, target, funded.Tentative.Ap,
+                    out _, out _, out _, out string why))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(why));
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Attack,
+                MoverArmyId = p.Detachment.ArmyId,
+                FocusHex = target.Target.Hex,
+                ExecutionHex = target.Target.Hex,
+                AttackTarget = target,
+                ClaimedAp = p.TotalAp,
+                ClaimedPhysical = funded.PhysicalDraw,
+            });
+        }
+
+        // The one resolution of an Attack sortie, read by provisioning and again by the executor
+        // right before the bodies move.
+        internal static bool TryResolveSortie(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            WorldSnapshot snap, AttackMissionTarget target, float apEnvelope,
+            out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why)
+        {
+            donor = null; shell = null; units = null; why = "invalid pending attack sortie";
+            if (!target.RequiresSortieMaterialization || target.PrimaryArmyId != target.Sortie.ShellArmyId)
+                return false;
+            ActorCommitments commitments = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snap), snap, null);
+            return ActiveDefenceProvisioner.TryResolveSortieCore(player, root, ctx, target.Sortie, commitments,
+                apEnvelope,
+                (from, list) => (AttackSecondaryPolicy.SortieStillTakesSite(snap, player, ctx, target, from, list,
+                    out string w), w),
+                out donor, out shell, out units, out why);
         }
 
         private static ProvisioningResult ProvisionWalkHome(PlayerSetupData player, PlayerRoot root,

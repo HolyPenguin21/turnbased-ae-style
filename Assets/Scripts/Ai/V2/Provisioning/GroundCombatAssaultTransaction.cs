@@ -134,13 +134,13 @@ namespace Game.Ai.V2
                     AllowSameHexAssembly = GroundCombatAdmissionPolicy.AllowsSameHexAssembly(proposal),
                     PreserveDepartureRoster = GroundCombatAdmissionPolicy.PreservesDepartureRoster(proposal),
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
-                        && !attackTarget.ForceCommitted
+                        && !attackTarget.ForceCommitted && !attackTarget.Secondary
                         ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                     AllowDecisivePinnedDefender = attackLane,
                     AcceptPlan = proposal.Target is AttackMissionTarget fresh && !fresh.ForceCommitted
-                        ? candidate => AttackMarchPolicy.CanStart(session.Snapshot, fresh.Target,
-                            candidate, session.Snapshot.Intents, out _)
+                        ? candidate => AttackSecondaryPolicy.CanStart(session.Snapshot, fresh,
+                            candidate, session.Snapshot.Intents, opposition, out _)
                         : proposal.Target is ActiveDefenceMissionTarget defence
                             && defence.InterceptPurpose == ActiveDefenceInterceptPurpose.StrategicDefence
                             ? candidate => ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(
@@ -275,7 +275,9 @@ namespace Game.Ai.V2
                     ProvisionFailure.AssemblyInfeasible($"{lane} departure roster no longer clears the combat gate")));
             plan.ProjectedWinChance = departureWin;
             plan.CoversAllDefenders = departureCover;
+            // A secondary leg's start bar is AttackSecondaryPolicy.ClearsStart (its AcceptPlan).
             if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
+                && !attackTarget.Secondary
                 && !AttackForceReadiness.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
                     session.Snapshot.Self.AttackPeak, departureWin, opposition))
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(

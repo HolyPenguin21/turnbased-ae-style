@@ -29,10 +29,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true;
                 AiDebugLog.Write($"[AI][V2][ActiveDefence][Sortie] rejected: {why}"); return true;
             }
-            ArmyData actor = shell;
-            if (shell == null) actor = ArmyActions.CreateArmyWithMembers(player, donor.Hex,
-                ctx.StartingDeckCatalog.GetCatalog(player.Faction), donor, units, ctx.HexSelection, out why);
-            else if (!ArmyActions.TransferMembersAtomic(units, donor, shell, ctx.HexSelection, out why)) actor = null;
+            ArmyData actor = MaterializeDetachment(player, ctx, donor, shell, units, out why);
             if (actor == null)
             { result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true; return true; }
             pm.MoverArmyId = actor.Id; pm.ActiveDefenceTarget.PrimaryArmyId = actor.Id;
@@ -41,6 +38,18 @@ namespace Game.Ai.V2
             result.StopReason = ExecutionStopReason.StepCompleted;
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Sortie] actor=#{actor.Id} donor=#{donor.Id} bodies={units.Count}");
             return true;
+        }
+
+        // The ONE mutation of a resolved garrison sortie (ActiveDefence intercept and Attack's second
+        // operation alike): the pinned bodies leave the garrison into the pinned empty shell, or
+        // into one canonical new container on that hex. Null (world unchanged) when refused.
+        internal static ArmyData MaterializeDetachment(PlayerSetupData player, AiTurnContext ctx,
+            ArmyData donor, ArmyData shell, List<UnitData> units, out string why)
+        {
+            if (shell == null)
+                return ArmyActions.CreateArmyWithMembers(player, donor.Hex,
+                    ctx.StartingDeckCatalog.GetCatalog(player.Faction), donor, units, ctx.HexSelection, out why);
+            return ArmyActions.TransferMembersAtomic(units, donor, shell, ctx.HexSelection, out why) ? shell : null;
         }
 
         internal static IEnumerator RunActiveDefence(PlayerSetupData player, PlayerRoot root,

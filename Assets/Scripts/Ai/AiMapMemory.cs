@@ -269,6 +269,13 @@ namespace Game.Ai
         // there's only ever one live record per physical army.
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, EnemySighting>> EnemySightings =
             new Dictionary<PlayerSetupData, Dictionary<int, EnemySighting>>();
+        // 2026-10-21 (playtest Vex/Mordak) — field armies this player SAW destroyed (a battle it
+        // fought or watched, a retreat with no way out). Vex wiped Mud Crawl #33 at T20, yet the
+        // Recon history kept it as a threat drifting toward its Citadel until T22 and called a
+        // marching Attack army home. Army ids are never reused (ArmyData._nextId), so the mark is
+        // permanent; a garrison container survives its battle and is never marked here.
+        private static readonly Dictionary<PlayerSetupData, HashSet<int>> WitnessedDestroyedArmies =
+            new Dictionary<PlayerSetupData, HashSet<int>>();
         // HexCoord -> guard's own card-stat strength, for every Hex Event this player has ever
         // SEEN while it still had an unconsumed guard — Агрессия's own "known event with guard"
         // half of RaidWeakerArmyTask's target pool (see that class's own FindTarget). Same
@@ -506,7 +513,61 @@ namespace Game.Ai
             HexEventRegistry.EventConsumed += OnEventConsumed;
             // The only way an event enters memory: this player's own ground army met it.
             HexEventRegistry.EventDiscovered += OnEventDiscovered;
+            // A field army wiped in a battle (or destroyed on a retreat with no way out) is gone
+            // for every player who fought or saw it; nobody else learns it.
+            BattleEngine.EncounterFinalized += OnEncounterFinalized;
+            BattleEngine.ArmyRetreated += OnArmyRetreated;
             _subscribed = true;
+        }
+
+        // Whether `player` saw this enemy army destroyed. Read by the V2 Recon history so a dead
+        // army stops being a remembered contact (AiReconMemory.Observe / Historical).
+        public static bool IsWitnessedDestroyed(PlayerSetupData player, int armyId) =>
+            player != null && WitnessedDestroyedArmies.TryGetValue(player, out HashSet<int> ids)
+            && ids.Contains(armyId);
+
+        private static void OnEncounterFinalized(BattleState state, BattleEncounterFinalization result)
+        {
+            if (state == null)
+                return;
+            foreach (ArmyData army in new[] { state.Attacker, state.Defender })
+                if (army != null && army.Members.Count == 0)
+                    RecordDestroyed(army, state.BattleHex, state.Attacker, state.Defender);
+        }
+
+        private static void OnArmyRetreated(BattleState state, ArmyData army, BattleRetreatApplication result)
+        {
+            if (army != null && result.Destroyed)
+                RecordDestroyed(army, state?.BattleHex ?? army.Hex, state?.Attacker, state?.Defender);
+        }
+
+        // The players who learn the death: both battle sides' owners and anyone seeing the hex.
+        internal static void RecordDestroyed(ArmyData army, HexCoord hex, ArmyData attacker, ArmyData defender)
+        {
+            if (army.IsGarrison || army.Owner == null)
+                return;
+            foreach (PlayerSetupData player in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
+            {
+                if (player == null || player == army.Owner)
+                    continue;
+                bool witness = attacker?.Owner == player || defender?.Owner == player
+                    || VisionSystem.IsVisible(player, hex);
+                if (!witness)
+                    continue;
+                if (!WitnessedDestroyedArmies.TryGetValue(player, out HashSet<int> ids))
+                    WitnessedDestroyedArmies[player] = ids = new HashSet<int>();
+                if (!ids.Add(army.Id))
+                    continue;
+                bool removed = EnemySightings.TryGetValue(player, out Dictionary<int, EnemySighting> sightings)
+                    && sightings.Remove(army.Id);
+                removed |= AirSightings.TryGetValue(player, out Dictionary<int, KnownAirSighting> air)
+                    && air.Remove(army.Id);
+                AiDebugLog.Write($"[AI] {player.Nickname}: memory - army \"{army.Name}\" id={army.Id} "
+                    + $"seen destroyed at ({hex.Q},{hex.R}); forgotten as a contact.");
+                if (removed)
+                    BumpRouteMemoryVersion(player);
+                BumpKnowledgeVersion(player);
+            }
         }
 
         // Content changed under an already-visible hex (arrival, departure, capture). This is
@@ -570,6 +631,7 @@ namespace Game.Ai
             _knowledgeVersionSeed++;
             KnownResourceHexes.Clear();
             EnemySightings.Clear();
+            WitnessedDestroyedArmies.Clear();
             AirSightings.Clear();
             KnownEventGuards.Clear();
             KnownEventCompleted.Clear();

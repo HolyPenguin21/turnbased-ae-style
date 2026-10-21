@@ -471,8 +471,13 @@ namespace Game.Ai.V2
                 ReleaseCommittedReinforcement(a);
             }
 
-            int? supportId = FindOperationalReinforcement(snap, intent, a, primary, opposition,
-                hexBonus, unavailableArmyIds, out RendezvousPlan plan, out string none);
+            // A secondary operation is surplus-only: it never pulls another army in.
+            int? supportId = null;
+            RendezvousPlan plan = default;
+            string none = "secondary operation takes no reinforcement";
+            if (!a.Secondary)
+                supportId = FindOperationalReinforcement(snap, intent, a, primary, opposition,
+                    hexBonus, unavailableArmyIds, out plan, out none);
             if (supportId.HasValue)
             {
                 AiDebugLog.Write($"[AI][V2][Attack][Reinforcement] {intent.IntentKey} support "
@@ -882,7 +887,14 @@ namespace Game.Ai.V2
             // The fist assembles on its staging Base (the own Base nearest to the target): a host
             // standing elsewhere walks there first (the planner's MoveHost leg); supports are
             // planned only once it has arrived. No own Base left -> the ordinary stall lifecycle.
-            HexCoord? staging = AttackPreparationPolicy.PreparationStagingBase(snap, a.Target.Hex, host);
+            HexCoord? staging = AttackPreparationPolicy.KeptStagingBase(snap, a, host);
+            if (staging.HasValue && !staging.Equals(a.StagingHex))
+            {
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} staging "
+                    + (a.StagingHex.HasValue ? $"({a.StagingHex.Value.Q},{a.StagingHex.Value.R}) lost -> " : "")
+                    + $"({staging.Value.Q},{staging.Value.R})");
+                a.StagingHex = staging;
+            }
             if (host.MemberCount > 0 && (!staging.HasValue || !host.Hex.Equals(staging.Value)))
             {
                 if (staging.HasValue)
@@ -1096,6 +1108,11 @@ namespace Game.Ai.V2
                 OperationStarted = true,
                 AssaultStarted = t.Phase == AttackMissionPhase.Assault,
                 Preparation = t.Preparation && t.Phase == AttackMissionPhase.Gather,
+                // Every preparation step names its staging Base as the step's DestinationHex
+                // (AppendPreparationStep: MoveHost's walk target, CreateHost/Assemble's own hex).
+                StagingHex = t.Preparation && t.Phase == AttackMissionPhase.Gather
+                    ? t.DestinationHex : (HexCoord?)null,
+                Secondary = t.Secondary,
                 PrimaryArmyId = t.PrimaryArmyId ?? o.MoverArmyId,
                 // A Gather leg's mover is one of several supports, never the Reinforcement support.
                 SupportArmyId = t.Phase == AttackMissionPhase.Gather ? null : t.SupportArmyId,
@@ -1251,13 +1268,22 @@ namespace Game.Ai.V2
             {
                 AttackIntent ai = intent.Attack;
                 ai.OperationStarted |= o.GroundFacts().OperationStarted;
-                if (o.AttackFacts().AttackIntermediateCaptured && o.AttackFacts().AttackTarget.IsIntermediateAssault)
+                // 2026-10-21 — a preparation host's detour on its walk (an intermediate Assault leg,
+                // AttackIntermediateBasePolicy.SelectForPreparationWalk) leaves the operation a
+                // preparation: it never commits the fist to its main target, opens no refit
+                // window, and spends the operation's one side strike of the turn.
+                bool preparationDetour = ai.Preparation && ai.Phase == AttackMissionPhase.Gather
+                    && o.AttackFacts().AttackTarget.IsIntermediateAssault;
+                if (o.AttackFacts().AttackIntermediateCaptured && o.AttackFacts().AttackTarget.IsIntermediateAssault
+                    && !preparationDetour)
                 {
                     ai.RefitBaseHex = o.AttackFacts().AttackTarget.IntermediateTarget.Hex;
                     ai.RefitCaptureTurn = turn;
                     ai.RefitBattleStopTurn = o.AttackFacts().AttackCaptureHadBattle ? turn : -1;
                 }
-                if (o.GroundFacts().OperationStarted && o.AttackFacts().AttackTarget.Phase == AttackMissionPhase.Assault)
+                if (preparationDetour)
+                    ai.LastOpportunisticStrikeTurn = turn;
+                else if (o.GroundFacts().OperationStarted && o.AttackFacts().AttackTarget.Phase == AttackMissionPhase.Assault)
                 {
                     ai.AssaultStarted = true;
                     ai.IntermediateTarget = o.AttackFacts().AttackOpportunisticStrike

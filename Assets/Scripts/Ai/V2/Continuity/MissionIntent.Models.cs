@@ -385,6 +385,18 @@ namespace Game.Ai.V2
         // starting Citadel. ActorCommitments keeps the host claimed while it is such a container;
         // it becomes an ordinary Assault only once the host strictly clears the current peak.
         public bool Preparation;
+        // 2026-10-21 (playtest Vex T16-T21) — the preparation's staging Base, frozen when the
+        // operation is born and kept while it stays an own Base the host can reach
+        // (AttackPreparationPolicy.KeptStagingBase). Re-reading the garrison-donor choice every
+        // pass walked Vex's host (4,2)->(1,-1)->(4,2) for six turns as the threat floors moved.
+        // Continuity writes it; Missions only read it.
+        public HexCoord? StagingHex;
+        // 2026-10-21 (user decision) — a SECOND operation beside the player's one live Attack
+        // operation, built only from surplus (AttackSecondaryPolicy: bodies outside the peak
+        // strike roster, a decisive win against observed defenders). It is not "the" live
+        // operation (AggressionMissionLayer.LiveAttackOperation skips it), asks no Demand /
+        // Production / gather / preparation and takes no reinforcement; at most one is live.
+        public bool Secondary;
         // First turn of the current unbroken WAIT for a pinned card delivery (-1: not waiting).
         public int PreparationCardWaitSinceTurn = -1;
         // 2026-10-01 (user decision) — the frozen strike-force target roster (StrikeRoster) the

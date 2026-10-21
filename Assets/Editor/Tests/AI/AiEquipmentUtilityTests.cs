@@ -250,6 +250,21 @@ namespace Game.EditorTests
             Assert.That(U(S(3, 2, 4, 2, move: 3), S(3, 2, 4, 2, move: 4), amongThrees).Move, Is.Zero);
         }
 
+        // Playtest 2026-10-21 (Mordak T21): Recoil Cannon took an Ash Drifter 2 -> 1 one hex from
+        // the Attack target; the route alone priced the slower army at zero, though it walked home
+        // at speed 1 the same turn. The walking left after the route (1.5 - 1 activations) now
+        // takes vBefore/vAfter as many activations: 0.5 x (2/1 - 1) = 0.5 more, x army AP 6.
+        [Test]
+        public void KnownRoute_SpeedLossOutlivesAShortRoute()
+        {
+            var route = new EfficiencyContext { OtherSpeedMin = 2, RouteLength = 1, OtherArmyActivationAp = 5f };
+            var slower = U(S(3, 2, 4, 2, move: 2), S(7, 2, 4, 2, move: 1), route);
+            Assert.That(slower.Move, Is.EqualTo(-ActionPrice.ToCardScore(3f)).Within(1e-5f));
+            var faster = U(S(3, 2, 4, 2, move: 1), S(3, 2, 4, 2, move: 2),
+                new EfficiencyContext { OtherSpeedMin = 2, RouteLength = 1, OtherArmyActivationAp = 5f });
+            Assert.That(faster.Move, Is.GreaterThan(0f), "a speed gain is worth the same walking, saved");
+        }
+
         [Test]
         public void KnownRoute_ReplacesTheProxy_AndIsNotCountedTwice()
         {

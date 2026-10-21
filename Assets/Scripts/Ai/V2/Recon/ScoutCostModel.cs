@@ -128,9 +128,11 @@ namespace Game.Ai.V2
         // can reject impossible same-actor portfolios before financing. ReconAssignmentPlanner
         // remains the final assignment authority and can invalidate/replace the plan if live route,
         // vantage or contention facts changed.
+        // `excludeArmyIds` — ground actors the estimate may not use (a fresh mission pricing the
+        // actors it can really get: ReconMissionPlanner's displacement choice).
         public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target,
             int? preferredMoverArmyId = null, ScoutExecutionCandidate? plannedAir = null,
-            bool requirePreferredMover = false)
+            bool requirePreferredMover = false, ISet<int> excludeArmyIds = null)
         {
             if (ReconScoutKinds.IsAirSweep(target.Kind) && plannedAir.HasValue)
             {
@@ -195,7 +197,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            PlannedGroundCost? planned = PlanGroundCost(snap, target, preferredMoverArmyId, requirePreferredMover);
+            PlannedGroundCost? planned = PlanGroundCost(snap, target, preferredMoverArmyId, requirePreferredMover,
+                excludeArmyIds);
             if (planned.HasValue)
             {
                 PlannedGroundCost p = planned.Value;
@@ -224,11 +227,11 @@ namespace Game.Ai.V2
         }
 
         private static PlannedGroundCost? PlanGroundCost(WorldSnapshot snap, ScoutMissionTarget target,
-            int? preferredMoverArmyId, bool requirePreferredMover = false)
+            int? preferredMoverArmyId, bool requirePreferredMover = false, ISet<int> excludeArmyIds = null)
         {
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
             var candidates = new List<PlannedGroundCost>();
-            foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, null))
+            foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, excludeArmyIds))
             {
                 // A recipient's upgrade must never borrow another scout's route or price.
                 // Ordinary proposal planning keeps its existing cheapest-actor fallback.

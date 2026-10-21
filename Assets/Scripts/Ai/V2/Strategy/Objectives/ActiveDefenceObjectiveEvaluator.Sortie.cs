@@ -30,6 +30,16 @@ namespace Game.Ai.V2
             UnitRuntimeIds = Array.AsReadOnly(ids.ToArray()); Detachment = detachment;
             RouteCost = routeCost; WinChance = win; CoversAllDefenders = covers;
         }
+        // 2026-10-21 — the same pinned detachment struck at a hostile Base (Attack's second
+        // operation, AttackSecondaryPolicy.PlanGarrisonSortie): no enemy army, EnemyHex is the site.
+        internal GarrisonSortiePlan(ArmySnapshot donor, int cover, ArmySnapshot shell, HexCoord siteHex,
+            IReadOnlyList<int> ids, ArmySnapshot detachment, int routeCost, float win, bool covers)
+        {
+            DonorGarrisonId = donor.ArmyId; CoverRuntimeId = cover; ShellArmyId = shell?.ArmyId;
+            StrongholdHex = donor.Hex; EnemyArmyId = -1; EnemyHex = siteHex;
+            UnitRuntimeIds = Array.AsReadOnly(ids.ToArray()); Detachment = detachment;
+            RouteCost = routeCost; WinChance = win; CoversAllDefenders = covers;
+        }
         internal bool MatchesRoster(IEnumerable<int> ids) => ids != null
             && new HashSet<int>(ids).SetEquals(UnitRuntimeIds) && ids.Count() == UnitRuntimeIds.Count;
     }
@@ -66,17 +76,25 @@ namespace Game.Ai.V2
                 if (projected.EffectiveArmyPower <= contact.Army.EffectiveArmyPower
                     || !SortieClears(projected.Members, opposition, out float win, out bool covers)
                     || !CanReachNow(snap, projected, target.LastKnownHex, out int cost)) continue;
-                var remainingProfiles = donor.Members.Where((_, n) => !chosen.Contains(n)).ToList();
-                var remaining = new ArmySnapshot { ArmyId = donor.ArmyId, Owner = donor.Owner, Hex = donor.Hex,
-                    IsGarrison = true, MemberCount = donor.MemberCount - chosen.Count, Members = remainingProfiles,
-                    Commander = donor.Commander, EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(remainingProfiles) };
-                if (IsPinnedStrongholdDefender(snap, projected, excluded,
-                    new Dictionary<int, ArmySnapshot> { [donor.ArmyId] = remaining })) continue;
+                if (DetachmentPinned(snap, donor, chosen, projected, excluded)) continue;
                 return new GarrisonSortiePlan(donor, cover.Value, shell, target,
                     chosen.Select(c => donor.NonHeroRuntimeIds[c]).ToArray(), projected, cost, win, covers);
             }
             return null;
         }
+        // Would the projected detachment be the last defender a threatened stronghold keeps, once
+        // `chosen` left the donor garrison? (Shared by both sortie lanes.)
+        internal static bool DetachmentPinned(WorldSnapshot snap, ArmySnapshot donor, IReadOnlyList<int> chosen,
+            ArmySnapshot projected, ISet<int> excluded)
+        {
+            var remainingProfiles = donor.Members.Where((_, n) => !chosen.Contains(n)).ToList();
+            var remaining = new ArmySnapshot { ArmyId = donor.ArmyId, Owner = donor.Owner, Hex = donor.Hex,
+                IsGarrison = true, MemberCount = donor.MemberCount - chosen.Count, Members = remainingProfiles,
+                Commander = donor.Commander, EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(remainingProfiles) };
+            return IsPinnedStrongholdDefender(snap, projected, excluded,
+                new Dictionary<int, ArmySnapshot> { [donor.ArmyId] = remaining });
+        }
+
         internal static bool SortieClears(IReadOnlyList<WorthIt.DefenderProfile> members,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, out float win, out bool covers)
         {

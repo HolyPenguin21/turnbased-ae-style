@@ -109,6 +109,7 @@ namespace Game.Ai.V2
             int cutoff = turn - AiConfigV2.reconObservationMemoryTurns;
             var drop = store
                 .Where(kv => kv.Value.LastObservedTurn < cutoff
+                    || AiMapMemory.IsWitnessedDestroyed(player, kv.Key)
                     || (!liveIds.Contains(kv.Key) && GoneOnReobservation(player, turn, kv.Value, canHide)))
                 .Select(kv => kv.Key)
                 .ToList();
@@ -147,9 +148,11 @@ namespace Game.Ai.V2
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Dictionary<int, ReconObservation> store))
                 return System.Array.Empty<ReconObservation>();
+            // A death seen after the last Observe (a battle earlier this turn) is honoured at once.
             return store.Values
                 .Where(o => (currentArmyIds == null || !currentArmyIds.Contains(o.ArmyId))
-                    && (o.Owner == null || !o.Owner.IsEliminated))
+                    && (o.Owner == null || !o.Owner.IsEliminated)
+                    && !AiMapMemory.IsWitnessedDestroyed(player, o.ArmyId))
                 .ToList();
         }
 

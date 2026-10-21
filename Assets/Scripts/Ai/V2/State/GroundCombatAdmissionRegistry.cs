@@ -68,14 +68,14 @@ namespace Game.Ai.V2
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
                 GroundCombatAdmissionPolicy.AssaultGate(proposal, target.PrimaryArmyId ?? -1), defenderHexDefenseBonus,
                 pinnedArmyId: target.ForceCommitted || target.IsIntermediateAssault ? target.PrimaryArmyId : null,
-                minimumArmyPower: target.ForceCommitted ? 0f
+                minimumArmyPower: target.ForceCommitted || target.Secondary ? 0f
                     : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                 allowSameHexAssembly: !target.IsIntermediateAssault,
                 requireCoverage: GroundCombatAdmissionPolicy.AssaultCoverage(proposal),
                 preserveDepartureRoster: target.ForceCommitted,
                 allowDecisivePinnedDefender: true,
                 acceptPlan: target.ForceCommitted ? null : candidate =>
-                    AttackMarchPolicy.CanStart(snap, target.Target, candidate, snap.Intents, out _));
+                    AttackSecondaryPolicy.CanStart(snap, target, candidate, snap.Intents, opposition, out _));
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));

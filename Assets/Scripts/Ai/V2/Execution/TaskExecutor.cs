@@ -294,6 +294,7 @@ namespace Game.Ai.V2
             // T01 — an Attack preparation host step (possibly creating its own container) runs
             // before the mover is resolved, exactly like the deferred Economy extraction above.
             if (ActiveDefenceExecutor.TryMaterializeSortie(player, root, ctx, pm, result, snapshot)
+                || AttackExecutor.TryMaterializeSortie(player, root, ctx, pm, result, snapshot)
                 || AttackExecutor.TryRunPreparationStep(player, ctx, pm, result, snapshot))
             {
                 result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
