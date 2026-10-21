@@ -51,6 +51,10 @@ namespace Game.Map
         {
             if (!Tracks(viewer) || army == null)
                 return;
+            // An army entirely hidden from this viewer (stealth) was never observed: remembering
+            // it would plant an empty-roster "last seen" marker once it walks into fog.
+            if (StealthSystem.ArmyFullyHiddenFrom(army, viewer))
+                return;
             if (!ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings))
             {
                 sightings = new Dictionary<int, ArmySighting>();
