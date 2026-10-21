@@ -26,6 +26,14 @@ namespace Game.Map
         public int StructurePointsMax;
         public int Defense;
         public int Fate;
+        // Anti-air stats, read only when Abilities carries UnitAbilities.AntiAir (AntiAirRules):
+        // the card's Attack and radius, floored at 1 exactly like a spawned unit's.
+        public int Attack;
+        public int AntiAirRadius = 1;
+        // The facility's stand-in shooter for AA reactions (AntiAirRules.FacilityGunner): one
+        // stable UnitData per placed facility, so AntiAirState's per-turn limit and the shared
+        // challenge popup treat it exactly like an AA unit.
+        internal Game.Units.UnitData AntiAirGunner;
 
         public readonly HashSet<string> Abilities = new HashSet<string>();
 
@@ -46,6 +54,8 @@ namespace Game.Map
                 StructurePointsMax = definition.hitPoints,
                 Defense = definition.defenseRating,
                 Fate = definition.fate,
+                Attack = definition.attack,
+                AntiAirRadius = Mathf.Max(1, definition.antiAirRadius),
             };
             foreach (string ability in definition.grantedAbilities)
                 facility.Abilities.Add(ability);

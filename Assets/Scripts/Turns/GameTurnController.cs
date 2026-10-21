@@ -243,6 +243,8 @@ namespace Game.Turns
             }
             RefreshEndTurnInteractable();
             RefreshAiObserverPauseButton();
+            if (!combatShowing)
+                ShowNextAviationMessage();
         }
 
         public void ShowSpawnHint(string message)
@@ -1074,11 +1076,49 @@ namespace Game.Turns
                     cardHand, aiStepDelay, gameConfig, TurnNumber,
                     researchProductionModal != null ? researchProductionModal.Catalog : null,
                     _aiObserverMatch ? PauseAtAiActionBoundary : null);
-                StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
+                StartCoroutine(RunAiTurnAfterTurnStartAntiAir(player, ctx));
             }
         }
 
+        // Turn-start AA (AviationCombatPresenter.ResolveTurnStartAntiAir) resolves before the AI
+        // plans, so the turn starts from the post-AA world.
+        private IEnumerator RunAiTurnAfterTurnStartAntiAir(PlayerSetupData player, AiTurnContext ctx)
+        {
+            AviationCombatPresenter presenter = hexSelectionController != null
+                ? hexSelectionController.AviationCombatPresenter : null;
+            if (presenter != null)
+                yield return presenter.ResolveTurnStartAntiAir(player);
+            if (_gameOver)
+                yield break;
+            StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
+        }
+
+        // A human's turn-start AA prompts open once the turn popup is confirmed; map input and
+        // End Turn unlock only after they resolve (CompleteTurnConfirmation).
         private void OnTurnConfirmed()
+        {
+            PlayerSetupData player = CurrentPlayer;
+            AviationCombatPresenter presenter = hexSelectionController != null
+                ? hexSelectionController.AviationCombatPresenter : null;
+            if (player == null || presenter == null
+                || AntiAirRules.CollectTurnStartOpportunities(player).Count == 0)
+            {
+                CompleteTurnConfirmation();
+                return;
+            }
+            if (popupPanel != null)
+                popupPanel.Hide();
+            StartCoroutine(ResolveTurnStartAntiAirThenConfirm(presenter, player));
+        }
+
+        private IEnumerator ResolveTurnStartAntiAirThenConfirm(AviationCombatPresenter presenter, PlayerSetupData player)
+        {
+            yield return presenter.ResolveTurnStartAntiAir(player);
+            if (!_gameOver && CurrentPlayer == player)
+                CompleteTurnConfirmation();
+        }
+
+        private void CompleteTurnConfirmation()
         {
             TurnConfirmed = true;
             _turnConfirmedFrame = Time.frameCount;
@@ -1109,6 +1149,7 @@ namespace Game.Turns
 
         private static void ReplenishMoveForOwner(PlayerSetupData player)
         {
+            AntiAirRules.SyncFacilityGunnerOwners();
             AntiAirState.ResetForOwner(player);
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
@@ -1222,8 +1263,10 @@ namespace Game.Turns
 
         private void ShowNextAviationMessage()
         {
+            // Never over an AA/air-strike/battle popup (turn-start AA runs before this queue
+            // fills); RecomputeBlockedState resumes the queue once that popup closes.
             if (popupPanel == null || popupPanel.IsShowing || _otherTurnPopupSuspended
-                || IsAiObserverPaused || _aviationMessageQueue.Count == 0)
+                || IsAiObserverPaused || IsCombatPresentationActive || _aviationMessageQueue.Count == 0)
                 return;
             popupPanel.ShowHint(_aviationMessageQueue.Dequeue());
         }
