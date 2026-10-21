@@ -181,6 +181,24 @@ namespace Game.EditorTests
             Call("Refresh");
             Assert.That(_text.text, Is.Not.EqualTo(before));
         }
+
+        [Test]
+        public void AiObserverMatchAlwaysShowsButtonAndFullReportForEveryPlayer()
+        {
+            _human.IsHuman = false;
+            _human.Nickname = "First AI";
+            var far = new PlayerSetupData { Nickname = "Second AI", CitadelHexQ = 20, CitadelHexR = 0 };
+            GameSession.Players.Add(far);
+            Set(_turn, "_aiObserverMatch", true);
+            Call("Update");
+            Assert.That(_button.gameObject.activeSelf, Is.True, "No Tactical Intelligence source is placed");
+            _panel.Toggle();
+            Assert.That(_content.activeSelf, Is.True);
+            Assert.That(_text.text, Does.Contain("First AI").And.Contain("Opponent").And.Contain("Second AI")
+                .And.Not.Contain("???").And.Not.Contain("Intel coverage"));
+            Assert.That(_text.text.IndexOf("First AI"), Is.LessThan(_text.text.IndexOf("Opponent")));
+            Assert.That(_text.text.IndexOf("Opponent"), Is.LessThan(_text.text.IndexOf("Second AI")));
+        }
     }
 }
 #endif

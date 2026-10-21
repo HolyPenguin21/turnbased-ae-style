@@ -76,9 +76,12 @@ namespace Game.UI
                 Refresh();
         }
 
+        // An AI-only match has no human observer: the spectator always gets the full report.
+        private bool ObserverMatch => turnController != null && turnController.IsAiObserverMatch;
+
         private bool UpdateAccess()
         {
-            bool access = TacticalIntelligence.HasAccess(GameSession.FindHumanPlayer());
+            bool access = ObserverMatch || TacticalIntelligence.HasAccess(GameSession.FindHumanPlayer());
             if (dataButton != null && dataButton.gameObject.activeSelf != access)
                 dataButton.gameObject.SetActive(access);
             if (!access)
@@ -93,6 +96,11 @@ namespace Game.UI
         {
             _nextRefresh = Time.unscaledTime + 1f;
             if (!UpdateAccess()) return;
+            if (ObserverMatch)
+            {
+                RefreshObserverReport();
+                return;
+            }
             PlayerSetupData observer = GameSession.FindHumanPlayer();
             // CompletedTurns advances at END of our turn. Keep that report during other
             // players' turns; reveal the next one only when our next turn actually starts.
@@ -112,14 +120,7 @@ namespace Game.UI
             foreach (var opponent in opponents)
             {
                 PlayerSetupData player = opponent.Player;
-                string faction = cardHand.StartingDeckCatalog?.GetCatalog(player.Faction)?.displayName
-                    ?? player.Faction.ToString();
-                output.Append("\n\n").Append(player.Nickname).Append(" - ").Append(faction);
-                if (player.IsEliminated)
-                {
-                    output.Append(" (eliminated)");
-                    continue;
-                }
+                if (!AppendPlayerHeader(output, player)) continue;
                 int count = opponent.VisibleFields;
                 int mask = TacticalIntelligence.RevealMask(GameSession.MatchId,
                     GameSession.Players.IndexOf(observer), GameSession.Players.IndexOf(player), personalTurn, count);
@@ -127,6 +128,34 @@ namespace Game.UI
                     .Append("% (").Append(count).Append('/').Append(TacticalIntelligence.FieldCount).Append(')');
                 AppendOpponent(output, player, mask);
             }
+            SetReport(output);
+        }
+
+        // Spectator report: every non-neutral player in seat order, every field revealed.
+        private void RefreshObserverReport()
+        {
+            var output = new StringBuilder("Tactical Intelligence");
+            foreach (PlayerSetupData player in GameSession.Players)
+            {
+                if (player == null || player.IsNeutral || !AppendPlayerHeader(output, player)) continue;
+                AppendOpponent(output, player, (1 << TacticalIntelligence.FieldCount) - 1);
+            }
+            SetReport(output);
+        }
+
+        // Returns false for an eliminated player, whose report ends at the header.
+        private bool AppendPlayerHeader(StringBuilder output, PlayerSetupData player)
+        {
+            string faction = cardHand.StartingDeckCatalog?.GetCatalog(player.Faction)?.displayName
+                ?? player.Faction.ToString();
+            output.Append("\n\n").Append(player.Nickname).Append(" - ").Append(faction);
+            if (!player.IsEliminated) return true;
+            output.Append(" (eliminated)");
+            return false;
+        }
+
+        private void SetReport(StringBuilder output)
+        {
             string value = output.ToString();
             if (dataTmpText.text != value) dataTmpText.text = value;
             FitTextContent();

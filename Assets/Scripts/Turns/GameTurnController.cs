@@ -47,6 +47,7 @@ namespace Game.Turns
         private bool _aiObserverMatch;
         private bool _aiObserverPauseRequested;
         private bool _aiObserverPauseEngaged;
+        public bool IsAiObserverMatch => _aiObserverMatch;
         public bool IsAiObserverPaused => _aiObserverPauseEngaged;
         public bool IsAiObserverInspectionMode => _aiObserverMatch && _aiObserverPauseEngaged
             && !IsCombatPresentationActive;
