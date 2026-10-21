@@ -291,7 +291,7 @@ namespace Game.Map
         private static bool HasUnclaimedCleanEventHex(ArmyData mover, HexCoord hex)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed)
+            if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) == false)
                 return false;
             foreach (ArmyData other in ArmyRegistry.AllAt(hex))
                 if (other.Owner != mover.Owner && BattleInitiator.IsEngageable(other, mover.Owner))

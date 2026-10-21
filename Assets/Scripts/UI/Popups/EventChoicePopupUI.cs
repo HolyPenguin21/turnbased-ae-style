@@ -84,6 +84,8 @@ namespace Game.UI
 
         private static string BuildDescription(HexEventRegistry.Entry entry)
         {
+            if (entry?.CollectionRewardPending == true)
+                return "The Library's guards have been defeated. Explore to claim your card for your hand and permanent COLLECTION.";
             string description = entry?.Definition?.description ?? string.Empty;
             int targetCount = 0;
             if (entry?.ResolvedGuardMembers != null)

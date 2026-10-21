@@ -20,6 +20,8 @@ namespace Game.Ai
     {
         public static bool ShouldExplore(ArmyData mover, HexEventRegistry.Entry entry)
         {
+            if (entry?.Definition?.CanVisit(mover?.Owner) == false)
+                return false;
             if (entry?.ResolvedGuardMembers == null || entry.ResolvedGuardMembers.Count == 0)
                 return true; // no guard — nothing to risk, always worth it
 

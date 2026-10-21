@@ -488,3 +488,17 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.mutator.adrenal-surge
+  - name: Library
+    image: {fileID: 21300000, guid: a66e8ac9d5e34a0fb6c6ddc7dd16dc9b, type: 3}
+    description: Behind the ruined reading hall, armed custodians protect shelves of old-world books and military records. Defeat the guards to uncover a random card from any faction. The card will be added to your hand and permanently to your COLLECTION.
+    grantsRandomCollectionCard: 1
+    variants:
+    - guardArmyName: Event Light 10
+      resourceCount: 0
+      rewards: []
+    - guardArmyName: Event Medium 03
+      resourceCount: 0
+      rewards: []
+    - guardArmyName: Event Heavy 07
+      resourceCount: 0
+      rewards: []
