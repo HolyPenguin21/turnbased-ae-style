@@ -1481,6 +1481,31 @@ namespace Game.Combat
                 && FateMax == other.FateMax && IsSummoned == other.IsSummoned && Range == other.Range
                 && Consumption?.Key == other.Consumption?.Key && SingleUseUnit == other.SingleUseUnit;
 
+            // The same observed body, lists compared by content: the rule of every AI change
+            // detector (remembered sightings, snapshot actors). A profile rebuilt from an unchanged
+            // unit compares equal; any field a battle or a valuation reads tells it apart. Keep it in
+            // step with the field list above.
+            public bool SameContent(DefenderProfile o) =>
+                Defense.Equals(o.Defense) && HasCeramicArmor == o.HasCeramicArmor
+                && Attack.Equals(o.Attack) && HitPoints.Equals(o.HitPoints)
+                && MaxHitPoints.Equals(o.MaxHitPoints) && Initiative == o.Initiative
+                && IsGroundCombatant == o.IsGroundCombatant && IsHero == o.IsHero
+                && FateMax == o.FateMax && IsSummoned == o.IsSummoned && Range == o.Range
+                && Consumption?.Key == o.Consumption?.Key && SingleUseUnit == o.SingleUseUnit
+                && (TypeTags ?? System.Array.Empty<UnitTypeTag>())
+                    .SequenceEqual(o.TypeTags ?? System.Array.Empty<UnitTypeTag>())
+                && (Abilities ?? System.Array.Empty<string>())
+                    .SequenceEqual(o.Abilities ?? System.Array.Empty<string>());
+
+            public static bool SameContent(IReadOnlyList<DefenderProfile> a, IReadOnlyList<DefenderProfile> b)
+            {
+                int count = a?.Count ?? 0;
+                if (count != (b?.Count ?? 0)) return false;
+                for (int i = 0; i < count; i++)
+                    if (!a[i].SameContent(b[i])) return false;
+                return true;
+            }
+
             public override bool Equals(object obj) => obj is DefenderProfile other && Equals(other);
 
             public override int GetHashCode() =>

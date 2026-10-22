@@ -193,7 +193,7 @@ namespace Game.Ai.V2
             foreach (KeyValuePair<int, AiMapMemory.KnownEnemySighting> kv in current)
             {
                 if (!old.TryGetValue(kv.Key, out AiMapMemory.KnownEnemySighting prior)
-                    || !SameSighting(prior, kv.Value))
+                    || !prior.SameContent(kv.Value))
                     changed.Add(kv.Key);
             }
             foreach (int id in old.Keys)
@@ -229,18 +229,6 @@ namespace Game.Ai.V2
                 if (sighting.ArmyId >= 0)
                     result[sighting.ArmyId] = sighting;
         }
-
-        private static bool SameSighting(AiMapMemory.KnownEnemySighting a,
-            AiMapMemory.KnownEnemySighting b) =>
-            a.Hex.Equals(b.Hex) && a.Owner == b.Owner
-            && a.MemberCount == b.MemberCount
-            && a.AttackSum == b.AttackSum && a.DefenseSum == b.DefenseSum
-            && a.HasAntiAir == b.HasAntiAir
-            && a.IsAir == b.IsAir && a.MaxMovement == b.MaxMovement
-            && a.RecceRadius == b.RecceRadius
-            && a.RecceSpotStrength == b.RecceSpotStrength
-            && a.SeenTurn == b.SeenTurn
-            && SameCombatProfiles(a.Defenders, b.Defenders);
 
         private static HashSet<int> ChangedActorIds(WorldSnapshot before, WorldSnapshot after)
         {
@@ -325,33 +313,7 @@ namespace Game.Ai.V2
             && a.StrategicCoverage == b.StrategicCoverage
             && (a.NonHeroMutatorOccupied ?? System.Array.Empty<bool>())
                 .SequenceEqual(b.NonHeroMutatorOccupied ?? System.Array.Empty<bool>())
-            && SameCombatProfiles(a.Members, b.Members);
-
-        private static bool SameCombatProfiles(
-            IReadOnlyList<WorthIt.DefenderProfile> a,
-            IReadOnlyList<WorthIt.DefenderProfile> b)
-        {
-            int aCount = a?.Count ?? 0;
-            int bCount = b?.Count ?? 0;
-            if (aCount != bCount)
-                return false;
-            for (int i = 0; i < aCount; i++)
-            {
-                WorthIt.DefenderProfile x = a[i];
-                WorthIt.DefenderProfile y = b[i];
-                if (x.Attack != y.Attack || x.Defense != y.Defense
-                    || x.HitPoints != y.HitPoints
-                    || x.MaxHitPoints != y.MaxHitPoints
-                    || x.Initiative != y.Initiative
-                    || x.HasCeramicArmor != y.HasCeramicArmor
-                    || !(x.TypeTags ?? System.Array.Empty<UnitTypeTag>())
-                        .SequenceEqual(y.TypeTags ?? System.Array.Empty<UnitTypeTag>())
-                    || !(x.Abilities ?? System.Array.Empty<string>())
-                        .SequenceEqual(y.Abilities ?? System.Array.Empty<string>()))
-                    return false;
-            }
-            return true;
-        }
+            && WorthIt.DefenderProfile.SameContent(a.Members, b.Members);
 
         private static bool ThreatChanged(WorldSnapshot before, WorldSnapshot after)
         {

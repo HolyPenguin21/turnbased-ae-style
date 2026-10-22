@@ -75,6 +75,14 @@ namespace Game.Ai.V2
             result.FinalHex = leg.EndHex;
             result.OperationStarted |= moved;
             result.CombatChanged |= leg.BattleOccurred;
+            // A battle or event that leaves the mover standing on its destination is an arrival:
+            // the next pass finds it home and retires the leg (provisioning: TargetSatisfied), so a
+            // completion owed on arrival (an ActiveDefence relief delivery) must happen now.
+            if ((leg.BattleOccurred || leg.HexEventOccurred) && army != null && army.Hex.Equals(destination))
+            {
+                arrived();
+                yield break;
+            }
             if (StopAfterMove(result, army, moved, leg.BattleOccurred, leg.HexEventOccurred))
                 yield break;
             if (army.Hex.Equals(destination))

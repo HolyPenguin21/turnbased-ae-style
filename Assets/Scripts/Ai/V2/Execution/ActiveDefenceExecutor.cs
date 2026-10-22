@@ -93,37 +93,16 @@ namespace Game.Ai.V2
                     ExtractGarrisonRelief(player, ctx, pm, army, result);
                     yield break;
                 }
-                if (army.Hex.Equals(home))
-                {
-                    result.ReachedGoal = true;
-                    result.StopReason = ExecutionStopReason.ReachedGoal;
-                    yield break;
-                }
-                var returnLeg = new GroundLegStepResult();
-                yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                    "V2 active defence - return", returnLeg, result);
-                if (returnLeg.Blocked.HasValue)
-                {
-                    result.StopReason = returnLeg.Blocked.Value;
-                    result.NeedsReplan = returnLeg.NeedsReplan;
-                    yield break;
-                }
-                army = returnLeg.Army;
-                if (returnLeg.Moved) result.StepsMoved++;
-                result.FinalHex = returnLeg.EndHex;
-                result.ActualActorArmyId = pm.MoverArmyId;
-                if (army != null && army.Hex.Equals(home))
-                {
-                    result.ReachedGoal = true;
-                    result.StopReason = ExecutionStopReason.ReachedGoal;
-                    if (pm.ActiveDefenceTarget.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
-                        DeliverGarrisonRelief(player, ctx, army, home);
-                }
-                else if (army == null) result.StopReason = ExecutionStopReason.MoverLost;
-                else if (returnLeg.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
-                else if (!returnLeg.Moved) result.StopReason = ExecutionStopReason.MoveRejected;
-                else result.StopReason = army.CurrentMovement > 0
-                    ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
+                yield return GroundCombatLegStep.WalkTo(player, ctx, pm, result, army, home,
+                    "V2 active defence - return", () =>
+                    {
+                        result.ReachedGoal = true;
+                        result.StopReason = ExecutionStopReason.ReachedGoal;
+                        // The relief detachment's bodies join the garrison: a roster change.
+                        if (pm.ActiveDefenceTarget.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
+                            result.CombatChanged |= DeliverGarrisonRelief(player, ctx,
+                                AiV2Util.ResolveArmy(player, pm.MoverArmyId), home) > 0;
+                    });
                 yield break;
             }
 
@@ -278,19 +257,21 @@ namespace Game.Ai.V2
         // GarrisonRelief — the plan's last action on arrival: the detachment's bodies join the
         // recipient's garrison in one atomic transfer (the garrison's capacity rules apply; a body
         // that does not fit stays in the shell on the base, which still defends the hex).
-        private static void DeliverGarrisonRelief(PlayerSetupData player, AiTurnContext ctx,
+        // The bodies delivered (0 when there is no garrison or nothing to deliver).
+        private static int DeliverGarrisonRelief(PlayerSetupData player, AiTurnContext ctx,
             ArmyData shell, HexCoord home)
         {
             ArmyData garrison = OwnWorld.Of(player).Armies.FirstOrDefault(a => a != null && a.IsGarrison
                 && a.Hex.Equals(home));
-            if (garrison == null || shell.Members.Count == 0)
-                return;
+            if (garrison == null || shell == null || shell.Members.Count == 0)
+                return 0;
             var bodies = shell.Members.Where(u => u != null).ToList();
             while (bodies.Count > 0
                 && !ArmyActions.TransferMembersAtomic(bodies, shell, garrison, ctx?.HexSelection, out _))
                 bodies.RemoveAt(bodies.Count - 1);
             AiDebugLog.Write($"[AI][V2][GarrisonRelief][Execution] delivered {bodies.Count}/"
                 + $"{bodies.Count + shell.Members.Count} bodies of #{shell.Id} into garrison #{garrison.Id}@({home.Q},{home.R})");
+            return bodies.Count;
         }
 
         private static void FinishActiveDefence(PlayerSetupData player, PlayerRoot root,
