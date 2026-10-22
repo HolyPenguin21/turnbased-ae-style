@@ -607,9 +607,9 @@ namespace Game.Ai.V2
             if (snap == null || !primaryArmyId.HasValue || !target.HasValue)
                 return false;
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                snap, AiV2Util.KnownOpposition(snap, target), primaryArmyId.Value,
+                snap, KnownOpposition.ForRaid(snap, target), primaryArmyId.Value,
                 winChanceGate ?? GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
-                AiV2Util.KnownRaidDefenceBonus(snap, target));
+                KnownOpposition.RaidDefenceBonus(snap, target));
             return plan.Feasible;
         }
 

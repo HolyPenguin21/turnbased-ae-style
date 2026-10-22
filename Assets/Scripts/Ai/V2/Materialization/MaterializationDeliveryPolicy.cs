@@ -385,10 +385,10 @@ namespace Game.Ai.V2
             CardDefinition extra, HexCoord hex)
         {
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, hex);
+                KnownOpposition.OnHex(snapshot, hex);
             if (opposition == null || opposition.Count == 0)
                 return 0;
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, null, hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snapshot?.Observer, null, hex);
             var attackers = (members ?? Enumerable.Empty<UnitData>())
                 .Where(u => u != null).Select(WorthIt.FromLiveUnit).ToList();
             if (extra != null && !extra.isAviation)

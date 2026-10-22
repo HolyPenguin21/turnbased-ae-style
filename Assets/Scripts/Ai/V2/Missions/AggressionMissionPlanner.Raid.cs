@@ -326,10 +326,10 @@ namespace Game.Ai.V2
 
             if (!ri.SupportArmyId.HasValue)
             {
-                IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.ForRaid(snap, ri.Target);
                 List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                     snap, primaryId, opposition, committed,
-                    AiV2Util.KnownRaidDefenceBonus(snap, ri.Target));
+                    KnownOpposition.RaidDefenceBonus(snap, ri.Target));
                 if (candidates.Count == 0)
                 {
                     deferredReason = "raid_waiting_for_support";
@@ -441,7 +441,7 @@ namespace Game.Ai.V2
                 Target = ri.Target,
                 LastKnownHex = ri.LastKnownHex,
                 TargetIsNeutral = true,
-                DefenderCount = AiV2Util.KnownDefenders(snap, ri.Target).Count,
+                DefenderCount = KnownOpposition.RaidDefenders(snap, ri.Target).Count,
                 EstimatedEta = eta,
                 AirSupportAttemptedTurn = ri.AirSupportAttemptedTurn,
                 AirSupportStrikeSucceeded = ri.AirSupportStrikeSucceeded,
@@ -468,8 +468,8 @@ namespace Game.Ai.V2
                 excluded = ownExcluded;
             }
             RaidMissionTarget target = o.ToTarget();
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, o.Target);
-            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, o.Target);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.ForRaid(snap, o.Target);
+            float hexBonus = KnownOpposition.RaidDefenceBonus(snap, o.Target);
 
             GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
                 ? GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest

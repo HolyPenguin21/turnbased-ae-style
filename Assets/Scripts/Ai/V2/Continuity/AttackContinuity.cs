@@ -443,8 +443,8 @@ namespace Game.Ai.V2
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
 
             if (a.Phase == AttackMissionPhase.Reinforcement && a.SupportArmyId.HasValue)
             {
@@ -656,12 +656,12 @@ namespace Game.Ai.V2
 
             // Known defenders only RANK the wings; an unknown site is supported all the same.
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
             Func<IReadOnlyList<WorthIt.DefendingArmy>, float> win = null;
             float current = 0f;
             if (primary != null)
             {
-                float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+                float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
                 IReadOnlyList<WorthIt.DefenderProfile> roster = primary.Members
                     ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
                 win = opp => WorthIt.EstimateSequential(roster, primary.Commander, opp, hexBonus).WinChance;
@@ -725,8 +725,8 @@ namespace Game.Ai.V2
             if (a.Preparation)
                 return ResolveAttackPreparation(snap, intent, a, unavailableArmyIds);
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
 
             // A support that stopped existing, or whose bodies no longer improve the host (arrival
             // order filled the host differently than planned, defenders changed), leaves the plan:
@@ -804,8 +804,8 @@ namespace Game.Ai.V2
             AttackIntent a, ISet<int> unavailableArmyIds)
         {
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
             int hostId = a.PrimaryArmyId.Value;
             ArmySnapshot host = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == hostId);
             var unavailable = unavailableArmyIds == null
@@ -1047,8 +1047,8 @@ namespace Game.Ai.V2
                 ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value)
                 : null;
             return AttackPreparationReadiness.Assess(primary, snap.Self.AttackPeak,
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex),
-                AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex)).Reason;
+                KnownOpposition.OnHex(snap, a.Target.Hex),
+                AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex)).Reason;
         }
 
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
@@ -1056,11 +1056,11 @@ namespace Game.Ai.V2
             if (!a.PrimaryArmyId.HasValue)
                 return false;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
             // Continuity is snapshot-pure and has no map, so terrain is not in this read; the
             // remembered structural defence still is. The mission/provisioning layers, which do have
             // the map, apply the full bonus before anything is actually funded or executed.
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
             AttackPreparationAssessment readiness = AttackPreparationReadiness.Assess(
@@ -1089,8 +1089,8 @@ namespace Game.Ai.V2
             if (!a.PrimaryArmyId.HasValue)
                 return false;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
                 a.PrimaryArmyId.Value, opposition, unavailableArmyIds, hexBonus,
                 allowCommandHandover: true).Count > 0;

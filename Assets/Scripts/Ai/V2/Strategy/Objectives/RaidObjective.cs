@@ -93,8 +93,12 @@ namespace Game.Ai.V2
         };
     }
 
-    public struct RaidMissionTarget
+    public struct RaidMissionTarget : IMissionTarget
     {
+        MissionKind IMissionTarget.Kind => MissionKind.Raid;
+        public MissionIntentKey IntentKey() => MissionIntentKey.ForRaid(Target);
+        public StableMissionKey StableKey() => StableMissionKey.ForRaid(this);
+
         public RaidMissionPhase Phase;
         public int? PrimaryArmyId;
         public int? SupportArmyId;

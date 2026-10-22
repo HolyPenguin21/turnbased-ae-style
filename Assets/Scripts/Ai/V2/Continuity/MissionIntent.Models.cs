@@ -83,61 +83,28 @@ namespace Game.Ai.V2
         public static MissionIntentKey ForEconomy(EconomyTaskKind kind, int objectiveId, HexCoord hex) =>
             new MissionIntentKey(MissionKind.Economy, (int)kind, objectiveId, hex.Q, hex.R);
 
-        public static MissionIntentKey For(MissionProposal m)
-        {
-            if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
-                return ForScoutTarget(t);
-            if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
-                return ForRaid(rt.Target);
-            if (m != null && m.Kind == MissionKind.ActiveDefence
-                && m.Target is ActiveDefenceMissionTarget ad)
-                return ForActiveDefence(ad.Phase, ad.EnemyArmyId, ad.PrimaryArmyId, ad.ReturnHex);
-            if (m != null && m.Kind == MissionKind.Attack && m.Target is AttackMissionTarget at)
-                return ForAttack(at.Target);
-            if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
-                return ForEconomy(et.Kind, EconomyObjectiveId(et.Kind, et.BuilderArmyId,
-                    et.CollectorArmyId, et.ResourceType), et.TargetHex);
-            if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
-                return new MissionIntentKey(MissionKind.Development, (int)dt.Mode,
-                    0, dt.FacilityHex.Q, dt.FacilityHex.R);
-            return new MissionIntentKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
-        }
+        public static MissionIntentKey ForDevelopment(ResearchProductionMode mode, HexCoord facilityHex) =>
+            new MissionIntentKey(MissionKind.Development, (int)mode, 0, facilityHex.Q, facilityHex.R);
 
-        public static MissionIntentKey ForScoutTarget(ScoutMissionTarget t)
-        {
-            // AirSweep is one durable operation whose anchor follows the enemy — hex-less identity.
-            if (t.Kind == ScoutTargetKind.AirSweep)
-                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
-            return new MissionIntentKey(MissionKind.Scout, (int)t.Kind, 0, t.FocusHex.Q, t.FocusHex.R);
-        }
+        // AirSweep is one durable operation whose anchor follows the enemy — hex-less identity.
+        public static MissionIntentKey ForScout(ScoutTargetKind kind, HexCoord focusHex) =>
+            kind == ScoutTargetKind.AirSweep
+                ? new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0)
+                : new MissionIntentKey(MissionKind.Scout, (int)kind, 0, focusHex.Q, focusHex.R);
 
-        public static MissionIntentKey For(MissionIntent intent)
-        {
-            RaidIntent ri = intent?.Raid;
-            if (ri != null)
-                return ForRaid(ri.Target);
-            AttackIntent ai = intent?.Attack;
-            if (ai != null)
-                return ForAttack(ai.Target);
-            ActiveDefenceIntent ad = intent?.ActiveDefence;
-            if (ad != null)
-                return ForActiveDefence(ad.Phase, ad.EnemyArmyId, ad.PrimaryArmyId, ad.ReturnHex);
-            EconomyIntent ei = intent?.Economy;
-            if (ei != null)
-                return ForEconomy(ei.Kind, EconomyObjectiveId(ei.Kind,
-                    ei.BuilderArmyId ?? intent.PreferredMoverArmyId,
-                    ei.CollectorArmyId ?? intent.PreferredMoverArmyId, ei.ResourceType), ei.TargetHex);
-            DevelopmentIntent di = intent?.Development;
-            if (di != null)
-                return new MissionIntentKey(MissionKind.Development, (int)di.Mode,
-                    0, di.FacilityHex.Q, di.FacilityHex.R);
-            ScoutIntent s = intent?.Scout;
-            if (s == null)
-                return new MissionIntentKey(intent?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
-            if (s.Kind == ScoutTargetKind.AirSweep)
-                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
-            return new MissionIntentKey(MissionKind.Scout, (int)s.Kind, 0, s.FocusHex.Q, s.FocusHex.R);
-        }
+        // Each target encodes its own objective (IMissionTarget.IntentKey). A target whose own kind
+        // disagrees with the proposal's keeps the historical bare key.
+        public static MissionIntentKey For(MissionProposal m) =>
+            m?.Target != null && m.Target.Kind == m.Kind
+                ? m.Target.IntentKey()
+                : new MissionIntentKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
+
+        public static MissionIntentKey ForScoutTarget(ScoutMissionTarget t) => t.IntentKey();
+
+        public static MissionIntentKey For(MissionIntent intent) =>
+            intent?.Objective != null
+                ? intent.Objective.IntentKey(intent.PreferredMoverArmyId)
+                : new MissionIntentKey(intent?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
 
         public bool Equals(MissionIntentKey o) =>
             Kind == o.Kind && SubKind == o.SubKind && ObjectiveId == o.ObjectiveId && Q == o.Q && R == o.R
@@ -188,8 +155,11 @@ namespace Game.Ai.V2
         }
     }
 
-    public sealed class ScoutIntent
+    public sealed class ScoutIntent : IMissionObjective
     {
+        MissionKind IMissionObjective.Kind => MissionKind.Scout;
+        public MissionIntentKey IntentKey(int? preferredMover) => MissionIntentKey.ForScout(Kind, FocusHex);
+
         public ScoutTargetKind Kind;
         // AI-RECON-02 — this durable lane's requirement is a stealthy one. Lets ReconCapacitySnapshot
         // exclude an active stealth lane from GENERIC capacity: aviation and an ordinary scout can't
@@ -208,8 +178,11 @@ namespace Game.Ai.V2
         int? SupportArmyId { get; }
     }
 
-    public sealed class RaidIntent : IGroundCombatOperation
+    public sealed class RaidIntent : IGroundCombatOperation, IMissionObjective
     {
+        MissionKind IMissionObjective.Kind => MissionKind.Raid;
+        public MissionIntentKey IntentKey(int? preferredMover) => MissionIntentKey.ForRaid(Target);
+
         // THE target identity. Single source of truth for both physical neutral armies (ArmyId,
         // which may legitimately be 0) and event guards (stable hex, no ArmyId until spawned).
         // TargetArmyId/TargetHex below are read-only projections for existing non-Raid/logging
@@ -281,8 +254,13 @@ namespace Game.Ai.V2
         public int ReinforcementRequestedTurn = -1;
     }
 
-    public sealed class EconomyIntent
+    public sealed class EconomyIntent : IMissionObjective
     {
+        MissionKind IMissionObjective.Kind => MissionKind.Economy;
+        public MissionIntentKey IntentKey(int? preferredMover) => MissionIntentKey.ForEconomy(Kind,
+            MissionIntentKey.EconomyObjectiveId(Kind, BuilderArmyId ?? preferredMover,
+                CollectorArmyId ?? preferredMover, ResourceType), TargetHex);
+
         public EconomyTaskKind Kind;
         public HexCoord TargetHex;
         public ResourceType? ResourceType;
@@ -307,8 +285,11 @@ namespace Game.Ai.V2
         public MissionIntentKey LoanSource;
     }
 
-    public sealed class DevelopmentIntent
+    public sealed class DevelopmentIntent : IMissionObjective
     {
+        MissionKind IMissionObjective.Kind => MissionKind.Development;
+        public MissionIntentKey IntentKey(int? preferredMover) => MissionIntentKey.ForDevelopment(Mode, FacilityHex);
+
         public HexCoord FacilityHex;
         public ResearchProductionMode Mode;
         public Game.Units.UnitData Hero;
@@ -318,8 +299,11 @@ namespace Game.Ai.V2
 
     // One ActiveDefence operation, one actor: an Intercept of one enemy army, or one army's
     // Return (withdrawal) to a regroup point / own base. It never holds a support army.
-    public sealed class ActiveDefenceIntent : IGroundCombatOperation
+    public sealed class ActiveDefenceIntent : IGroundCombatOperation, IMissionObjective
     {
+        MissionKind IMissionObjective.Kind => MissionKind.ActiveDefence;
+        public MissionIntentKey IntentKey(int? preferredMover) => MissionIntentKey.ForActiveDefence(Phase, EnemyArmyId, PrimaryArmyId, ReturnHex);
+
         public ActiveDefencePhase Phase;
         public ActiveDefenceReturnPurpose ReturnPurpose;
         public ActiveDefenceInterceptPurpose InterceptPurpose;
@@ -359,8 +343,11 @@ namespace Game.Ai.V2
         public HexCoord? BaseHex;
     }
 
-    public sealed class AttackIntent : IGroundCombatOperation
+    public sealed class AttackIntent : IGroundCombatOperation, IMissionObjective
     {
+        MissionKind IMissionObjective.Kind => MissionKind.Attack;
+        public MissionIntentKey IntentKey(int? preferredMover) => MissionIntentKey.ForAttack(Target);
+
         // THE target identity. Hex + expected owner + kind live in one object (§21), never in
         // separate fields that can drift apart.
         public AttackTargetRef Target;
@@ -461,7 +448,7 @@ namespace Game.Ai.V2
         public CommitmentTier Funding;
         public IntentStatus Status;
         public SuspendReason Suspended;
-        public object Objective;
+        public IMissionObjective Objective;
         public int CreatedTurn;
         public int TurnsActive;
         // Reconciliation can run in the main pass and in up to two reaction rounds during one

@@ -41,7 +41,7 @@ namespace Game.Ai.V2
             CapabilityInventory inventory)
         {
             inventory = inventory ?? new CapabilityInventory();
-            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, objective.Target);
+            float hexBonus = KnownOpposition.RaidDefenceBonus(snap, objective.Target);
             GroundCombatAssemblyPlan ready;
             using (new Game.Core.ProfileScope("AI/Raid.ReadyPlan"))
                 ready = GroundCombatAssemblyPlanner.Plan(

@@ -31,10 +31,9 @@ namespace Game.Ai.V2
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
         {
             ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            if (army == null || army.Owner != player || army.Members.Count == 0)
+            if (!AiV2Util.IsLiveOwnArmy(army, player))
             {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.MoverLost);
                 yield break;
             }
 
@@ -64,8 +63,7 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.AirSupport:
                     if (!AviationRules.IsValidAirArmy(army) || !target.AirSupportLandingHex.HasValue)
                     {
-                        result.StopReason = ExecutionStopReason.TargetInvalidated;
-                        result.NeedsReplan = true;
+                        result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                         yield break;
                     }
                     // The one flight step of ground-fight air support; a plain strike on every
@@ -89,7 +87,7 @@ namespace Game.Ai.V2
         // Returns false when `pm` is not a preparation step.
         // 2026-10-21 — the second operation from a garrison: the pinned surplus bodies move into
         // their shell / one new container as this step's ONE mutation (the shared
-        // ActiveDefenceExecutor.MaterializeDetachment), re-proved right before by the same
+        // GarrisonSortieStep), re-proved right before by the same
         // resolution provisioning used. The step starts the operation (Continuity creates the
         // secondary intent with the new army as its primary); the march is the next pass's leg.
         // Returns false when `pm` is not such a step.
@@ -98,32 +96,17 @@ namespace Game.Ai.V2
         {
             if (pm?.Kind != MissionKind.Attack || !pm.AttackTarget.RequiresSortieMaterialization)
                 return false;
-            GarrisonSortiePlan plan = pm.AttackTarget.Sortie;
-            result.StartHex = result.FinalHex = plan.StrongholdHex;
-            if (!AttackProvisioner.TryResolveSortie(player, root, ctx, snapshot, pm.AttackTarget, pm.ClaimedAp,
-                    out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why))
-            {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
-                AiDebugLog.Write($"[AI][V2][Attack][Sortie] rejected: {why}; world unchanged");
-                return true;
-            }
-            ArmyData actor = ActiveDefenceExecutor.MaterializeDetachment(player, ctx, donor, shell, units, out why);
+            ArmyData actor = GarrisonSortieStep.Materialize(player, ctx, pm.AttackTarget.Sortie, pm, result,
+                "Attack", (out ArmyData d, out ArmyData s, out List<UnitData> u, out string w) =>
+                    AttackProvisioner.TryResolveSortie(player, root, ctx, snapshot, pm.AttackTarget, pm.ClaimedAp,
+                        out d, out s, out u, out w),
+                out ArmyData donor, out int bodies);
             if (actor == null)
-            {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
-                AiDebugLog.Write($"[AI][V2][Attack][Sortie] materialization refused: {why}");
                 return true;
-            }
-            pm.MoverArmyId = actor.Id;
             pm.AttackTarget.PrimaryArmyId = actor.Id;
-            result.ActualActorArmyId = actor.Id;
-            result.ActorMaterialized = true;
             result.OperationStarted = true;
             result.CombatChanged = true;
-            result.StopReason = ExecutionStopReason.StepCompleted;
-            AiDebugLog.Write($"[AI][V2][Attack][Sortie] actor=#{actor.Id} donor=#{donor.Id} bodies={units.Count} "
+            AiDebugLog.Write($"[AI][V2][Attack][Sortie] actor=#{actor.Id} donor=#{donor.Id} bodies={bodies} "
                 + $"power={AiPower.EffectiveArmyPower(actor.Members):0.#} -> {pm.AttackTarget.Target.DiagnosticLabel}");
             MarkChanged(player, ctx, actor.Id);
             return true;
@@ -164,8 +147,7 @@ namespace Game.Ai.V2
                     : null;
                 if (container == null)
                 {
-                    result.StopReason = ExecutionStopReason.MoveRejected;
-                    result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.MoveRejected);
                     AiDebugLog.Write($"{corr} REJECTED FetchCommander #{target.CommanderUnitId} from "
                         + $"#{target.CommanderDonorArmyId}: {fetchWhy ?? "hero or garrison no longer available"}; "
                         + "world unchanged");
@@ -191,8 +173,7 @@ namespace Game.Ai.V2
                 || host.IsGarrison || host.IsPrison || host.IsAirfield || AviationRules.IsAirArmy(host)
                 || !host.Hex.Equals(hex)))
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 AiDebugLog.Write($"{corr} REJECTED host #{target.PrimaryArmyId} gone/moved; world unchanged");
                 return true;
             }
@@ -222,8 +203,7 @@ namespace Game.Ai.V2
                 }
                 if (host == null)
                 {
-                    result.StopReason = ExecutionStopReason.MoveRejected;
-                    result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.MoveRejected);
                     AiDebugLog.Write($"{corr} REJECTED CreateHost at ({hex.Q},{hex.R}): {why}; "
                         + "world unchanged, no AP spent");
                     return true;
@@ -278,8 +258,7 @@ namespace Game.Ai.V2
                 if (garrison == null || !garrison.IsGarrison
                     || AiArmyRoles.CanSpareGarrisonMembers(player, garrison, units))
                     continue;
-                result.StopReason = ExecutionStopReason.MoveRejected;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.MoveRejected);
                 AiDebugLog.Write($"{corr} REJECTED Assemble into #{host.Id}: garrison #{batch.Key} can no "
                     + $"longer spare [{string.Join(",", units.Select(u => u?.Name))}]; nothing transferred");
                 return true;
@@ -301,8 +280,7 @@ namespace Game.Ai.V2
                     bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx,
                         "attack preparation", baseline);
                     int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline);
-                    result.StopReason = ExecutionStopReason.MoveRejected;
-                    result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.MoveRejected);
                     // An incomplete rollback left bodies in the host: that IS a world change.
                     result.CombatChanged = remaining > 0;
                     result.OperationStarted = remaining > 0;
@@ -319,7 +297,7 @@ namespace Game.Ai.V2
             // The formation is led by its best legal commander (HeroRoleEvaluator, the shared rule),
             // a zero-AP reorder.
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
+                KnownOpposition.OnHex(snapshot, target.Target.Hex),
                 target.DefenderHexDefenseBonus);
             if (lead != null && lead != host.Commander)
                 host.TryReorderCommander(lead, out _);
@@ -358,8 +336,7 @@ namespace Game.Ai.V2
             }
             if (status == AttackObjectiveEvaluator.AttackTargetStatus.Invalidated)
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 yield break;
             }
 
@@ -367,8 +344,7 @@ namespace Game.Ai.V2
                 && AttackObjectiveEvaluator.EvaluateTarget(snapshot, target.IntermediateTarget)
                     != AttackObjectiveEvaluator.AttackTargetStatus.Continue)
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 yield break;
             }
             HexCoord targetHex = target.AssaultTarget.Hex;
@@ -394,8 +370,7 @@ namespace Game.Ai.V2
                 {
                     // Waiting + replan, NOT a failure: a stale local choice must not put the
                     // shared Assault key (the main march) on a rejection cooldown.
-                    result.StopReason = ExecutionStopReason.MoveRejected;
-                    result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.MoveRejected);
                     AiDebugLog.Write($"[AI][V2][Attack][Local] {player.Nickname} #{army.Id} step skipped: "
                         + $"{rejection} frozen={target.Local.Kind}#{target.Local.EnemyArmyId} "
                         + $"now={strike.Kind}#{strike.EnemyArmyId}; no movement, world unchanged");
@@ -419,8 +394,7 @@ namespace Game.Ai.V2
                 // The route to the funded site is not executable now. Terrain is fine (the funded
                 // step proved it); what stops the army is a contact it will not fight and cannot
                 // go around - a tactical block, deliberately NOT reported as impassable terrain.
-                result.StopReason = ExecutionStopReason.NoSafeStep;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.NoSafeStep);
                 result.TacticalBlockReason = army.CurrentMovement <= 0 ? null : "contact_cannot_be_bypassed";
                 AiDebugLog.Write($"[AI][V2][Attack][Route] {player.Nickname} #{army.Id} ({army.Hex.Q},{army.Hex.R}) -> "
                     + $"({waypoint.Q},{waypoint.R}) no executable step reason=tactical_block "
@@ -433,8 +407,7 @@ namespace Game.Ai.V2
                 && !AttackObjectiveEvaluator.HasAssaultObservation(snapshot, target.AssaultTarget,
                     out string intelWhy))
             {
-                result.StopReason = ExecutionStopReason.NoSafeStep;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.NoSafeStep);
                 result.TacticalBlockReason = intelWhy;
                 AiDebugLog.Write($"[AI][V2][Attack][Observation] #{army.Id} HOLD {intelWhy}; no payment or movement");
                 yield break;
@@ -461,21 +434,10 @@ namespace Game.Ai.V2
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
-            army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            HexCoord endHex = army != null ? army.Hex : trace.EndHex;
-            bool moved = !endHex.Equals(before);
-            WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
-                || trace.EnteredStealthThisStep);
-            if (moved)
-                result.StepsMoved++;
-            result.FinalHex = endHex;
-
             // Same facts as Raid's assault step: an ordinary hex event on the way is a physical
             // start of the operation and ends this step for a fresh observation.
-            bool operationStarted = moved || trace.BattleOccurred || trace.HexEventOccurred;
-            result.OperationStarted |= operationStarted;
-            if (operationStarted)
-                result.ActualActorArmyId = pm.MoverArmyId;
+            army = GroundCombatLegStep.RecordMove(player, pm, result, before, trace, out bool moved);
+            HexCoord endHex = result.FinalHex;
 
             bool intermediateCaptured = target.IsIntermediateAssault
                 && ObjectiveLiveStatus.AttackTarget(player, target.IntermediateTarget)
@@ -503,33 +465,14 @@ namespace Game.Ai.V2
                 // this intent, which may legitimately turn into Reinforcement or Recovery.
                 if (intercept && next.Value.Equals(waypoint))
                     result.AttackOpportunisticStrike = true;
-                result.NeedsReplan |= army == null;
-                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
-                yield break;
             }
-            if (trace.HexEventOccurred)
-            {
-                result.NeedsReplan |= army == null;
-                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
+            if (GroundCombatLegStep.StopAfterMove(result, army, moved, trace.BattleOccurred, trace.HexEventOccurred))
                 yield break;
-            }
-            if (army == null)
-            {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
-                yield break;
-            }
-            if (!moved)
-            {
-                result.StopReason = ExecutionStopReason.MoveRejected;
-                yield break;
-            }
 
             if (target.IsIntermediateAssault && endHex.Equals(targetHex))
             {
                 // A local objective is progress, not ReachedGoal for the durable operation.
-                result.StopReason = ExecutionStopReason.StepCompleted;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.StepCompleted);
                 yield break;
             }
             if (endHex.Equals(targetHex))
@@ -553,67 +496,12 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ExecutionResult result, ArmyData army, AttackMissionTarget target)
         {
             HexCoord home = target.DestinationHex;
-            pm.ExecutionHex = home;
-
-            if (army.Hex.Equals(home))
-            {
-                result.ReachedGoal = true;
-                result.StopReason = ExecutionStopReason.ReachedGoal;
-                yield break;
-            }
-            var leg = new GroundLegStepResult();
-            yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                $"V2 attack - {target.Phase} to ({home.Q},{home.R})", leg, result);
-            if (leg.Blocked.HasValue)
-            {
-                result.StopReason = leg.Blocked.Value;
-                result.NeedsReplan = leg.NeedsReplan;
-                yield break;
-            }
-
-            army = leg.Army;
-            bool moved = leg.Moved;
-            if (moved)
-            {
-                result.StepsMoved++;
-                result.ActualActorArmyId = pm.MoverArmyId;
-            }
-            result.FinalHex = leg.EndHex;
-            result.OperationStarted |= moved;
-
-            if (leg.BattleOccurred)
-            {
-                result.CombatChanged = true;
-                result.NeedsReplan |= army == null;
-                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
-                yield break;
-            }
-            if (leg.HexEventOccurred)
-            {
-                result.NeedsReplan |= army == null;
-                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
-                yield break;
-            }
-            if (army == null)
-            {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
-                yield break;
-            }
-            if (!moved)
-            {
-                result.StopReason = ExecutionStopReason.MoveRejected;
-                yield break;
-            }
-            if (army.Hex.Equals(home))
-            {
-                result.ReachedGoal = true;
-                result.StopReason = ExecutionStopReason.ReachedGoal;
-                yield break;
-            }
-            result.StopReason = army.CurrentMovement > 0
-                ? ExecutionStopReason.StepCompleted
-                : ExecutionStopReason.OutOfMovement;
+            yield return GroundCombatLegStep.WalkTo(player, ctx, pm, result, army, home,
+                $"V2 attack - {target.Phase} to ({home.Q},{home.R})", () =>
+                {
+                    result.ReachedGoal = true;
+                    result.StopReason = ExecutionStopReason.ReachedGoal;
+                });
         }
 
         // §46 — either exactly ONE transit step of the support army, or (once it stands on the
@@ -625,10 +513,9 @@ namespace Game.Ai.V2
             AttackMissionTarget target = pm.AttackTarget;
             ArmyData primary = target.PrimaryArmyId.HasValue
                 ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
-            if (primary == null || primary.Owner != player || primary.Members.Count == 0)
+            if (!AiV2Util.IsLiveOwnArmy(primary, player))
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 yield break;
             }
 
@@ -646,45 +533,8 @@ namespace Game.Ai.V2
                     result.StopReason = ExecutionStopReason.MoveRejected;
                     yield break;
                 }
-                var leg = new GroundLegStepResult();
-                yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
-                    $"V2 attack - {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",
-                    leg, result);
-                if (leg.Blocked.HasValue)
-                {
-                    result.StopReason = leg.Blocked.Value;
-                    result.NeedsReplan = leg.NeedsReplan;
-                    yield break;
-                }
-
-                support = leg.Army;
-                bool moved = leg.Moved;
-                if (moved) result.StepsMoved++;
-                result.FinalHex = leg.EndHex;
-                result.OperationStarted |= moved;
-
-                if (leg.BattleOccurred)
-                {
-                    result.CombatChanged = true;
-                    result.NeedsReplan |= support == null;
-                    result.StopReason = support == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
-                    yield break;
-                }
-                if (leg.HexEventOccurred)
-                {
-                    result.NeedsReplan |= support == null;
-                    result.StopReason = support == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
-                    yield break;
-                }
-                if (support == null)
-                {
-                    result.StopReason = ExecutionStopReason.MoverLost;
-                    result.NeedsReplan = true;
-                    yield break;
-                }
-                if (!moved) { result.StopReason = ExecutionStopReason.MoveRejected; yield break; }
-                // A transfer is a SEPARATE step: never move and hand off in the same one.
-                result.StopReason = ExecutionStopReason.StepCompleted;
+                yield return GroundCombatLegStep.ConvoyStep(player, ctx, result, support, rendezvous,
+                    $"V2 attack - {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}");
                 yield break;
             }
 
@@ -693,8 +543,8 @@ namespace Game.Ai.V2
             // (GroundCombatReinforcement.CommandHandover — the gather projection's same rule).
             bool handoffOk = GroundCombatReinforcementTransaction.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
-                AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
-                AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex),
+                KnownOpposition.OnHex(snapshot, target.Target.Hex),
+                AiMapMemory.KnownHexDefenseBonus(snapshot?.Observer, ctx.Map, target.Target.Hex),
                 capacityIsProgress: target.CommanderLeg);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - attack "
                 + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "

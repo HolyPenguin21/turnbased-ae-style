@@ -121,7 +121,7 @@ namespace Game.Ai.V2
                     && r.AirSupportAttemptedTurn != turn
                     && GroundCombatAirSupport.KnownTargetCount(snap, r.LastKnownHex,
                         AirStrikePolicy.RaidSupport(r.Target.ArmyId),
-                        AiV2Util.KnownOpposition(snap, r.Target)) > 1)
+                        KnownOpposition.ForRaid(snap, r.Target)) > 1)
                     targets.Add(new CombatAirSupportRequest(i.IntentKey, r.LastKnownHex,
                         AirStrikePolicy.RaidSupport(r.Target.ArmyId),
                         RaidObjectiveEvaluator.BuildRaidScore(snap, r.Target, r.LastKnownHex)));
@@ -132,7 +132,7 @@ namespace Game.Ai.V2
                 .Select(i => i.ActiveDefence.EnemyArmyId));
             foreach (ActiveDefenceObjective o in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
                 if (!supported.Contains(o.Target.EnemyArmyId)
-                    && ActiveDefenceObjectiveEvaluator.Opposition(snap, o.Target.EnemyArmyId) != null)
+                    && KnownOpposition.OfEnemyArmy(snap, o.Target.EnemyArmyId) != null)
                     targets.Add(new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(
                         ActiveDefencePhase.AirSupport, o.Target.EnemyArmyId, null, null), o.Target.LastKnownHex,
                         AirStrikePolicy.DefenceSupport(o.Target.EnemyArmyId), o.TaskScore));

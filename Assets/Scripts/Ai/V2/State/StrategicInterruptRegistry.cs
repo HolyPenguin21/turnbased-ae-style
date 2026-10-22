@@ -79,7 +79,6 @@ namespace Game.Ai.V2
 
         private sealed class Entry
         {
-            public int Turn;
             public AiHandData Hand;
             public StrategicInvalidationReason Reasons;
             public readonly Dictionary<StrategicInvalidationReason, PayloadBucket> PayloadByReason =
@@ -117,8 +116,8 @@ namespace Game.Ai.V2
             | StrategicInvalidationReason.ResourceSite
             | StrategicInvalidationReason.External;
 
-        private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
-            new Dictionary<PlayerSetupData, Entry>();
+        private static readonly TurnScopedByPlayer<Entry> ByPlayer =
+            new TurnScopedByPlayer<Entry>(() => new Entry());
 
         // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
@@ -126,7 +125,7 @@ namespace Game.Ai.V2
         public static void CaptureTurnContext(PlayerSetupData player, int turn, AiHandData hand)
         {
             if (player == null) return;
-            Entry e = GetOrReset(player, turn);
+            Entry e = ByPlayer.GetOrReset(player, turn);
             if (hand != null) e.Hand = hand;
         }
 
@@ -140,7 +139,7 @@ namespace Game.Ai.V2
             if (player == null || reasons == StrategicInvalidationReason.None)
                 return;
 
-            Entry e = GetOrReset(player, turn);
+            Entry e = ByPlayer.GetOrReset(player, turn);
             if (hand != null) e.Hand = hand;
 
             var incoming = new PayloadBucket();
@@ -165,8 +164,7 @@ namespace Game.Ai.V2
 
         internal static StrategicInvalidation Peek(PlayerSetupData player, int turn)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e)
-                || e.Turn != turn || e.Reasons == StrategicInvalidationReason.None)
+            if (!(ByPlayer.Peek(player, turn) is Entry e) || e.Reasons == StrategicInvalidationReason.None)
                 return StrategicInvalidation.Empty;
             return Snapshot(e, e.Reasons);
         }
@@ -176,7 +174,7 @@ namespace Game.Ai.V2
         internal static StrategicInvalidation Consume(PlayerSetupData player, int turn,
             StrategicInvalidationReason mask)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return StrategicInvalidation.Empty;
 
             StrategicInvalidationReason consumed = e.Reasons & mask & AllReasons;
@@ -198,7 +196,7 @@ namespace Game.Ai.V2
         public static void MarkDiscovery(PlayerSetupData player, int turn, IEnumerable<int> armyIds)
         {
             if (player == null || armyIds == null) return;
-            Entry e = GetOrReset(player, turn);
+            Entry e = ByPlayer.GetOrReset(player, turn);
             var newIds = new List<int>();
             PayloadBucket existing = null;
             e.PayloadByReason.TryGetValue(StrategicInvalidationReason.Contact, out existing);
@@ -220,15 +218,14 @@ namespace Game.Ai.V2
 
         // Current pending-invalidation generation for this turn (0 = no entry / different turn).
         public static int Version(PlayerSetupData player, int turn) =>
-            player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+            ByPlayer.Peek(player, turn) is Entry e
                 ? e.Version : 0;
 
         // Historical name retained for existing call sites. It means any pending invalidation.
         public static bool HasPendingDiscovery(PlayerSetupData player, int turn) => HasPending(player, turn);
 
         public static bool HasPending(PlayerSetupData player, int turn) =>
-            player != null && ByPlayer.TryGetValue(player, out Entry e)
-            && e.Turn == turn && e.Reasons != StrategicInvalidationReason.None;
+            ByPlayer.Peek(player, turn) is Entry e && e.Reasons != StrategicInvalidationReason.None;
 
         public static bool HasPendingContactDiscovery(PlayerSetupData player, int turn) =>
             HasAny(player, turn, StrategicInvalidationReason.Contact);
@@ -240,7 +237,7 @@ namespace Game.Ai.V2
         public static HashSet<int> TargetIds(PlayerSetupData player, int turn)
         {
             var result = new HashSet<int>();
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return result;
             MergePayload(e, StrategicInvalidationReason.Contact, null, result, null);
             return result;
@@ -249,7 +246,7 @@ namespace Game.Ai.V2
         public static bool TryGetHand(PlayerSetupData player, int turn, out AiHandData hand)
         {
             hand = null;
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return false;
             hand = e.Hand;
             return hand != null;
@@ -263,13 +260,11 @@ namespace Game.Ai.V2
 
         public static void Clear(PlayerSetupData player, int turn)
         {
-            if (player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn)
-                ByPlayer.Remove(player);
+            ByPlayer.Remove(player, turn);
         }
 
         private static bool HasAny(PlayerSetupData player, int turn, StrategicInvalidationReason mask) =>
-            player != null && ByPlayer.TryGetValue(player, out Entry e)
-            && e.Turn == turn && (e.Reasons & mask) != 0;
+            ByPlayer.Peek(player, turn) is Entry e && (e.Reasons & mask) != 0;
 
         private static StrategicInvalidation Snapshot(Entry e, StrategicInvalidationReason reasons)
         {
@@ -321,16 +316,6 @@ namespace Game.Ai.V2
         {
             if (source == null) return;
             foreach (HexCoord hex in source) target.Add(hex);
-        }
-
-        private static Entry GetOrReset(PlayerSetupData player, int turn)
-        {
-            if (!ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
-            {
-                e = new Entry { Turn = turn };
-                ByPlayer[player] = e;
-            }
-            return e;
         }
     }
 }

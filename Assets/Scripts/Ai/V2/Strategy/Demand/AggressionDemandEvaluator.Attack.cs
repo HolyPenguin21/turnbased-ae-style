@@ -117,8 +117,8 @@ namespace Game.Ai.V2
                 AxisDemand attackShortage = GroundCombatDemandPolicy.BoundPrimaryShortage(snap, inv, commitments, i,
                     MissionKind.Attack, ai.Target.DiagnosticLabel, primaryId, ai.SupportArmyId,
                     ai.ReinforcementRequestedTurn,
-                    AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex),
-                    AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex),
+                    KnownOpposition.OnHex(snap, ai.Target.Hex),
+                    AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, ai.Target.Hex),
                     // Coverage is independent of the dynamic force requirement.
                     GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
@@ -159,8 +159,8 @@ namespace Game.Ai.V2
             }
             int hostId = host.ArmyId;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex);
+                KnownOpposition.OnHex(snap, ai.Target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, ai.Target.Hex);
             // The march gate is power AND coverage: GroundCombatFeasibility.Clears stays the one
             // owner of coverage, so a host above the power bar is only satisfied when it also
             // damages every known defender (an unobserved site has none and is vacuously covered).
@@ -377,7 +377,7 @@ namespace Game.Ai.V2
             if (objective == null)
                 return;
             ISet<int> claimed = commitments?.ClaimedArmyIdSet;
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, objective.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, objective.Hex);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest
                 {

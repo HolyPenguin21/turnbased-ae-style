@@ -60,7 +60,7 @@ namespace Game.EditorTests
 
         private static MissionProposal Proposal(MissionKind kind)
         {
-            object target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(2, 3) };
+            IMissionTarget target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(2, 3) };
             if (kind == MissionKind.Raid) target = new RaidMissionTarget { Phase = RaidMissionPhase.Assault };
             else if (kind == MissionKind.Attack) target = new AttackMissionTarget { Phase = AttackMissionPhase.Assault };
             else if (kind == MissionKind.Economy) target = new EconomyMissionTarget { Kind = EconomyTaskKind.FoundBase };

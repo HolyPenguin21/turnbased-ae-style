@@ -44,7 +44,7 @@ namespace Game.Ai.V2
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.TargetInvalidated($"{lane} {roleLabel} return has no mover assigned")));
             ArmyData mover = AiV2Util.ResolveArmy(player, moverArmyId.Value);
-            if (mover == null || mover.Owner != player || mover.Members.Count == 0
+            if (!AiV2Util.IsLiveOwnArmy(mover, player)
                 || mover.IsPrison || mover.IsAirfield || AviationRules.IsAirArmy(mover))
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.TargetInvalidated(
@@ -86,7 +86,7 @@ namespace Game.Ai.V2
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.EnvelopeTooSmall(activationAp,
                         $"{lane} return needs {N(activationAp)} AP, envelope is {N(funded.Tentative.Ap)}")));
-            if (activationAp > root.ActionPoints - session.ApClaimed + eps)
+            if (!session.FitsTurnAp(root, activationAp, eps))
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.MoverContended(
                         $"turn AP exhausted: {lane} return needs {N(activationAp)}")));
@@ -180,7 +180,7 @@ namespace Game.Ai.V2
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.EnvelopeTooSmall(activationAp,
                         $"{lane} reinforcement needs {N(activationAp)} AP, envelope is {N(funded.Tentative.Ap)}")));
-            if (activationAp > root.ActionPoints - session.ApClaimed + eps)
+            if (!session.FitsTurnAp(root, activationAp, eps))
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.MoverContended(
                         $"turn AP exhausted: {lane} reinforcement needs {N(activationAp)}")));

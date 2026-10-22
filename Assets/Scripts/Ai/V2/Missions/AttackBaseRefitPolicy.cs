@@ -151,8 +151,8 @@ namespace Game.Ai.V2
             }
             support.Members.Add(Project(plan, player));
             handoff = GroundCombatReinforcement.PlanAttackHandoff(primary, support,
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex),
-                AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, attack.Target.Hex),
+                KnownOpposition.OnHex(snap, attack.Target.Hex),
+                AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap.Map, attack.Target.Hex),
                 false, out _, capacityIsProgress: true);
             return handoff != null && KeepsForce(primary, handoff) && KeepsMovement(primary, handoff)
                 && KeepsCoverage(primary, handoff, snap, attack);
@@ -171,8 +171,8 @@ namespace Game.Ai.V2
         internal static bool KeepsCoverage(ArmyData primary, HandoffPlan plan,
             WorldSnapshot snap, AttackIntent attack)
         {
-            var opposition = AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex);
-            float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, attack.Target.Hex);
+            var opposition = KnownOpposition.OnHex(snap, attack.Target.Hex);
+            float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap.Map, attack.Target.Hex);
             return !WorthIt.CanDamageAll(primary.Members.Select(WorthIt.FromLiveUnit).ToList(), opposition, bonus)
                 || WorthIt.CanDamageAll(FinalRoster(primary, plan).Select(WorthIt.FromLiveUnit).ToList(), opposition, bonus);
         }

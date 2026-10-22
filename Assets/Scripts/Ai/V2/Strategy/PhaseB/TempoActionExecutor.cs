@@ -42,27 +42,11 @@ namespace Game.Ai.V2
                 .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
             WorldSnapshot beforeSnap = snap;
             MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
-            result.MaterializationAttempts++;
-            if (play.Deployed) result.MaterializationsSucceeded++;
-            if (play.GenerationAttempted)
-            {
-                result.GeneratedCardAttempts++;
-                if (play.Generated) result.GeneratedCardsSucceeded++;
-            }
-            if (plan.UsesEquipment)
-            {
-                result.EquipmentAssignmentAttempts++;
-                if (play.Attached) result.EquipmentAssignmentsSucceeded++;
-            }
-            if (play.GenerationAttempted)
-            {
-                result.Reservation.RecordGenerationAttempt(plan.Generation, play);
-                StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
-                exec.GenerationAttempted = true;
-            }
+            result.RecordMaterialization(player, ctx.TurnNumber, plan, play);
+            exec.GenerationAttempted |= play.GenerationAttempted;
             exec.Generated |= play.Generated;
             exec.Attached |= play.Attached;
-            if (play.StateChanged) { exec.StateChanged = true; result.StateChanged = true; }
+            exec.StateChanged |= play.StateChanged;
 
             if (!play.Deployed)
             {

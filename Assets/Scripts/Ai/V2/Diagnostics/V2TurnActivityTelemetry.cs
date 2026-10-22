@@ -103,7 +103,6 @@ namespace Game.Ai.V2
 
     internal sealed class V2TurnActivity
     {
-        public int Turn;
         public readonly V2PhaseActivity Main = new V2PhaseActivity();
         public readonly V2PhaseActivity Reaction = new V2PhaseActivity();
 
@@ -118,29 +117,28 @@ namespace Game.Ai.V2
 
     internal static class V2TurnActivityTelemetry
     {
-        private static readonly Dictionary<PlayerSetupData, V2TurnActivity> ByPlayer =
-            new Dictionary<PlayerSetupData, V2TurnActivity>();
+        private static readonly TurnScopedByPlayer<V2TurnActivity> ByPlayer =
+            new TurnScopedByPlayer<V2TurnActivity>(() => new V2TurnActivity());
 
         // Called once at the very top of Pipeline.RunTurn. A fresh record every turn so a stale
         // Reaction bucket from last turn can never bleed into this turn's Total.
         public static void Begin(PlayerSetupData player, int turn)
         {
             if (player == null) return;
-            ByPlayer[player] = new V2TurnActivity { Turn = turn };
+            ByPlayer.Reset(player, turn);
         }
 
         public static V2PhaseActivity Phase(PlayerSetupData player, int turn, V2Phase phase)
         {
             if (player == null) return new V2PhaseActivity();
-            if (!ByPlayer.TryGetValue(player, out V2TurnActivity a) || a.Turn != turn)
-                ByPlayer[player] = a = new V2TurnActivity { Turn = turn };
+            V2TurnActivity a = ByPlayer.GetOrReset(player, turn);
             return phase == V2Phase.Reaction ? a.Reaction : a.Main;
         }
 
         public static void LogSummary(PlayerSetupData player, int turn)
         {
             if (player == null) return;
-            if (!ByPlayer.TryGetValue(player, out V2TurnActivity a) || a.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is V2TurnActivity a))
                 return;
             V2PhaseActivity total = a.Total();
             if (AiDebugLog.Verbose)
@@ -149,7 +147,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity reaction - {a.Reaction.Line()}");
             }
             AiDebugLog.Write($"[AI][V2][TURN-END] {player.Nickname}: {total.Line()}");
-            ByPlayer.Remove(player);
+            ByPlayer.Remove(player, turn);
         }
 
         public static void Clear() => ByPlayer.Clear();

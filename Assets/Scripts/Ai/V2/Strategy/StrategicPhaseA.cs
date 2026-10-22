@@ -33,6 +33,30 @@ namespace Game.Ai.V2
 
         public MaterializationReservation Reservation;
 
+        // One executed materialization chain, Phase A or Phase B alike: the per-stage
+        // attempt/success telemetry, the generation attempt charged to the reservation and to the
+        // turn's tempo budget, and the world change it made.
+        internal void RecordMaterialization(PlayerSetupData player, int turn, MaterializationPlan plan,
+            MaterializationResult play)
+        {
+            MaterializationAttempts++;
+            if (play.Deployed) MaterializationsSucceeded++;
+            if (play.GenerationAttempted)
+            {
+                GeneratedCardAttempts++;
+                if (play.Generated) GeneratedCardsSucceeded++;
+                Reservation.RecordGenerationAttempt(plan.Generation, play);
+                StrategicTempoBudget.RecordGenerationAttempt(player, turn);
+            }
+            if (plan.UsesEquipment)
+            {
+                EquipmentAssignmentAttempts++;
+                if (play.Attached) EquipmentAssignmentsSucceeded++;
+            }
+            if (play.StateChanged)
+                StateChanged = true;
+        }
+
         // Multiple bounded local admissions in one turn report through one phase aggregate.
         // The shared ledgers/budgets remain the authorities; this only combines telemetry and
         // carries the newest reservation forward.
@@ -887,26 +911,7 @@ namespace Game.Ai.V2
 
                 // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
                 // from the plan shape + MaterializationResult; no scoring change.
-                result.MaterializationAttempts++;
-                if (play.Deployed) result.MaterializationsSucceeded++;
-                if (play.GenerationAttempted)
-                {
-                    result.GeneratedCardAttempts++;
-                    if (play.Generated) result.GeneratedCardsSucceeded++;
-                }
-                if (plan.UsesEquipment)
-                {
-                    result.EquipmentAssignmentAttempts++;
-                    if (play.Attached) result.EquipmentAssignmentsSucceeded++;
-                }
-
-                if (play.GenerationAttempted)
-                {
-                    result.Reservation.RecordGenerationAttempt(plan.Generation, play);
-                    StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
-                }
-                if (play.StateChanged)
-                    result.StateChanged = true;
+                result.RecordMaterialization(player, ctx.TurnNumber, plan, play);
 
                 // §2.3 — the physical AP drop must match the chain's reported ApSpent.
                 AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,

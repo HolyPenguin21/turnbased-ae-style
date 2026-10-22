@@ -113,6 +113,12 @@ namespace Game.Ai.V2
         // A direct Economy actor's roster and/or donor intent was prepared.
         public bool EconomyPrepared;
         public bool NeedsReplan;
+        // Stops this step for a reason that asks the next pass to plan again.
+        internal void StopForReplan(ExecutionStopReason reason)
+        {
+            StopReason = reason;
+            NeedsReplan = true;
+        }
         public int PlannedAtStateVersion = -1;
         public int StateVersionBefore = -1;
         public int StateVersionAfter = -1;
@@ -171,8 +177,7 @@ namespace Game.Ai.V2
 
             result.StartHex = pm.ExecutionHex;
             result.FinalHex = pm.ExecutionHex;
-            result.StopReason = ExecutionStopReason.TargetInvalidated;
-            result.NeedsReplan = true;
+            result.StopForReplan(ExecutionStopReason.TargetInvalidated);
             result.ApSpent = 0f;
             WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                 StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
@@ -192,7 +197,7 @@ namespace Game.Ai.V2
             List<ExecutionResult> results, int apBefore, bool setNeedsReplan, bool logMoverGone,
             string retireReason, out ArmyData army)
         {
-            army = Resolve(player, pm.MoverArmyId);
+            army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army != null)
             {
                 result.StartHex = army.Hex;
@@ -283,10 +288,7 @@ namespace Game.Ai.V2
             // through to movement in the same call.
             if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore, snapshot))
             {
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 if (result.StopReason != ExecutionStopReason.StepCompleted)
                     ReleaseEconomyReservation(player, ctx, pm);
                 yield break;
@@ -298,10 +300,7 @@ namespace Game.Ai.V2
                 || AttackExecutor.TryRunPreparationStep(player, ctx, pm, result, snapshot))
             {
                 result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
             if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
@@ -333,10 +332,7 @@ namespace Game.Ai.V2
                     yield return ReconGroundExecutor.Run(player, root, ctx, pm, result, apBefore,
                         queue, missionIndex, snapshot);
                 }
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
 
@@ -359,10 +355,7 @@ namespace Game.Ai.V2
                     yield return RaidExecutor.RunRaidStep(player, root, ctx, pm, result, apBefore, snapshot);
                 else
                     yield return RaidExecutor.RunRaid(player, root, ctx, pm, result, apBefore, snapshot);
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
 
@@ -372,10 +365,7 @@ namespace Game.Ai.V2
                     yield return ActiveDefenceExecutor.RunActiveDefenceStep(player, root, ctx, pm, result, apBefore);
                 else
                     yield return ActiveDefenceExecutor.RunActiveDefence(player, root, ctx, pm, result, apBefore);
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
 
@@ -389,20 +379,14 @@ namespace Game.Ai.V2
                 // §2.1 — same physical turn-pool delta every other executor reports (activation
                 // AP is spent inside the move routine; RunStep never reported it).
                 result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
 
             if (pm.Kind == MissionKind.Economy)
             {
                 yield return RunEconomyStep(player, root, ctx, pm, result, apBefore, snapshot);
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 if (result.StopReason != ExecutionStopReason.StepCompleted)
                     ReleaseEconomyReservation(player, ctx, pm);
                 yield break;
@@ -411,10 +395,7 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Development)
             {
                 yield return RunDevelopmentStep(player, root, ctx, pm, result, apBefore);
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
+                FinishStep(pm, apBefore, root, result, results);
                 yield break;
             }
 
@@ -529,7 +510,7 @@ namespace Game.Ai.V2
             {
                 if (pm.EconomyExtractionGarrisonArmyId < 0)
                     return false;
-                ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
+                ArmyData garrison = AiV2Util.ResolveArmy(player, pm.EconomyExtractionGarrisonArmyId);
                 ProvisioningManager.GarrisonExtractionCandidate pinned = pm.EconomyExtractionPlan;
                 if (garrison == null || pinned.Tier == ProvisioningManager.GarrisonExtractionTier.None
                     || !ReferenceEquals(pinned.Hero, pm.DevelopmentTarget.Hero)
@@ -540,8 +521,7 @@ namespace Game.Ai.V2
                     || pinned.ApCost > pm.ClaimedAp + AiConfigV2.allocatorSliceEpsilon
                     || root == null || !root.CanSpendActionPoints(Mathf.CeilToInt(pinned.ApCost)))
                 {
-                    result.StopReason = ExecutionStopReason.TargetInvalidated;
-                    result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                     result.FinalHex = pm.ExecutionHex;
                     return true;
                 }
@@ -573,12 +553,11 @@ namespace Game.Ai.V2
             {
                 result.FinalHex = pm.ExecutionHex;
                 if (!result.ActualActorArmyId.HasValue)
-                    result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.MoverLost);
                 return true;
             }
 
-            result.FinalHex = Resolve(player, pm.MoverArmyId)?.Hex ?? pm.ExecutionHex;
+            result.FinalHex = AiV2Util.ResolveArmy(player, pm.MoverArmyId)?.Hex ?? pm.ExecutionHex;
             result.StopReason = ExecutionStopReason.StepCompleted;
             result.NeedsReplan = false;
             return true;
@@ -611,7 +590,7 @@ namespace Game.Ai.V2
             bool extractionNeeded = pm.EconomyExtractionGarrisonArmyId >= 0;
             if (extractionNeeded)
             {
-                ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
+                ArmyData garrison = AiV2Util.ResolveArmy(player, pm.EconomyExtractionGarrisonArmyId);
                 if (garrison == null)
                     return false;
                 // Materialize the EXACT plan Provisioning already chose
@@ -653,7 +632,7 @@ namespace Game.Ai.V2
             else
             {
                 // Direct-army case — the hero is already a real, live field army; nothing to extract.
-                materialized = Resolve(player, pm.MoverArmyId);
+                materialized = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
                 if (materialized == null)
                     return false;
                 // Before ANY composition mutation: the pinned plan is stale when the walk would now
@@ -777,11 +756,10 @@ namespace Game.Ai.V2
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
             WorldSnapshot snapshot = null)
         {
-            ArmyData army = Resolve(player, pm.MoverArmyId);
+            ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army == null || army.Owner != player)
             {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.MoverLost);
                 yield break;
             }
             // WorldAnalysis.Observation.PublishStepObservationDelta's EconomyDeliveryReady branch
@@ -791,8 +769,7 @@ namespace Game.Ai.V2
             if (target.Kind == EconomyTaskKind.MobileCollection
                 && !WorldAnalysis.CollectorRouteSafeLive(player, ctx, army, target.TargetHex, target.ResourceType))
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 result.FinalHex = army.Hex;
                 yield break;
             }
@@ -849,8 +826,7 @@ namespace Game.Ai.V2
                         AiDebugLog.WriteDeduped($"economy-operator-duty:{army.Id}",
                             $"[AI][V2][Economy] builder #{army.Id} stays at ({army.Hex.Q},{army.Hex.R}): "
                             + $"departure would take a served operator ({why})");
-                        result.StopReason = ExecutionStopReason.TargetInvalidated;
-                        result.NeedsReplan = true;
+                        result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                         result.FinalHex = army.Hex;
                         yield break;
                     }
@@ -858,8 +834,7 @@ namespace Game.Ai.V2
                         result.StateVersionAfter = WorldDeltaLifecycle.Current;
                     if (AiArmyRoles.DepartureStripsOperator(player, army, site))
                     {
-                        result.StopReason = ExecutionStopReason.TargetInvalidated;
-                        result.NeedsReplan = true;
+                        result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                         result.FinalHex = army.Hex;
                         yield break;
                     }
@@ -882,12 +857,11 @@ namespace Game.Ai.V2
         private static IEnumerator RunDevelopmentStep(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
-            ArmyData army = Resolve(player, pm.MoverArmyId);
+            ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             DevelopmentMissionTarget target = pm.DevelopmentTarget;
             if (army == null || !army.Members.Contains(target.Hero))
             {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.MoverLost);
                 yield break;
             }
             result.ActualActorArmyId = army.Id;
@@ -920,11 +894,10 @@ namespace Game.Ai.V2
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
             HexCoord target, string label)
         {
-            ArmyData army = Resolve(player, pm.MoverArmyId);
+            ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army == null)
             {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.MoverLost);
                 yield break;
             }
             result.ActualActorArmyId = army.Id;
@@ -937,8 +910,7 @@ namespace Game.Ai.V2
             HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, target);
             if (!next.HasValue)
             {
-                result.StopReason = ExecutionStopReason.NoSafeStep;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.NoSafeStep);
                 yield break;
             }
             HexCoord before = army.Hex;
@@ -946,7 +918,7 @@ namespace Game.Ai.V2
             yield return AiTurnController.MoveArmyRoutine(player,
                 AiDecision.Move(army, next.Value,
                     $"V2 {label} at ({target.Q},{target.R})", 0f, AiGroundMoveAuthority.Transit), ctx, trace);
-            army = Resolve(player, pm.MoverArmyId);
+            army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             result.FinalHex = after;
             if (!after.Equals(before)) result.StepsMoved = 1;
@@ -974,12 +946,20 @@ namespace Game.Ai.V2
                     pm.ReservationOwner);
         }
 
-        private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            AiV2Util.ResolveArmy(player, armyId);
-
         // §2.1 — the real AP the turn's pool lost while this mission executed must equal the AP the
         // ExecutionResult reports it spent. Both executors derive ApSpent from the same physical
         // turn-pool delta; this catches any action path that reports less/more than it really used.
+        // The settled-step tail of every executor branch: AP audit, state version, completion,
+        // and the result handed to the caller.
+        private static void FinishStep(ProvisionedMission pm, int apBefore, PlayerRoot root,
+            ExecutionResult result, List<ExecutionResult> results)
+        {
+            ApCheck(pm, apBefore, root, result);
+            StampVersion(result);
+            CompleteResult(result, root);
+            results.Add(result);
+        }
+
         private static void ApCheck(ProvisionedMission pm, int apBefore, PlayerRoot root,
             ExecutionResult result) =>
             AiV2Trace.CheckExecutionAp(pm?.Mission?.AttemptId, apBefore,

@@ -97,7 +97,7 @@ namespace Game.EditorTests
             var defenders = new List<WorthIt.DefenderProfile> { Weak() };
             WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 0, hex: new HexCoord(3, 0), defenders: defenders);
 
-            IReadOnlyList<WorthIt.DefenderProfile> found = AiV2Util.KnownDefenders(snap, RaidTargetRef.ForNeutralArmy(0));
+            IReadOnlyList<WorthIt.DefenderProfile> found = KnownOpposition.RaidDefenders(snap, RaidTargetRef.ForNeutralArmy(0));
 
             Assert.That(found.Count, Is.EqualTo(1));
         }
@@ -108,7 +108,7 @@ namespace Game.EditorTests
             var hex = new HexCoord(5, 5);
             WorldSnapshot snap = SnapshotWithEventGuard(hex, Weak());
 
-            IReadOnlyList<WorthIt.DefenderProfile> found = AiV2Util.KnownDefenders(snap, RaidTargetRef.ForEventGuard(hex));
+            IReadOnlyList<WorthIt.DefenderProfile> found = KnownOpposition.RaidDefenders(snap, RaidTargetRef.ForEventGuard(hex));
 
             Assert.That(found.Count, Is.EqualTo(1));
         }
@@ -129,9 +129,9 @@ namespace Game.EditorTests
                     roamers.Sum(d => d.Defense), roamers.Sum(d => d.Attack), roamers, armyId: 6),
             };
 
-            Assert.That(AiV2Util.KnownDefenders(snap, RaidTargetRef.ForEventGuard(hex)).Count, Is.EqualTo(4),
+            Assert.That(KnownOpposition.RaidDefenders(snap, RaidTargetRef.ForEventGuard(hex)).Count, Is.EqualTo(4),
                 "the guard raid also fights the roaming army standing on its hex");
-            Assert.That(AiV2Util.KnownDefenders(snap, RaidTargetRef.ForNeutralArmy(6)).Count, Is.EqualTo(4),
+            Assert.That(KnownOpposition.RaidDefenders(snap, RaidTargetRef.ForNeutralArmy(6)).Count, Is.EqualTo(4),
                 "the army raid also fights the event guard on its hex");
         }
 

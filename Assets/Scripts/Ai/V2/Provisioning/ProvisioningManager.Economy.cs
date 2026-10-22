@@ -86,7 +86,7 @@ namespace Game.Ai.V2
             eligibleBuilders = eligibleBuilders.Where(x => IsEligibleEconomyBuildActor(m, x.Route.ArmyId));
 
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
-            float rawApRemaining = root.ActionPoints - session.ApClaimed;
+            float rawApRemaining = session.TurnApLeft(root);
             float eps = AiConfigV2.allocatorSliceEpsilon;
 
             // Why one ranked candidate cannot be this mission's builder right now, or null when it
@@ -405,7 +405,7 @@ namespace Game.Ai.V2
             // is already real.
             EconomyCompletionPlan directPrep = PlanEconomyCompletion(player, root, ctx,
                 session.Snapshot, standingIntents, key, target, builderChoice, hero, hero.Id,
-                funded.Tentative.Ap, root.ActionPoints - session.ApClaimed);
+                funded.Tentative.Ap, session.TurnApLeft(root));
             if (!directPrep.Feasible)
                 return ProvisioningResult.Fail(directPrep.Failure);
 
@@ -554,8 +554,7 @@ namespace Game.Ai.V2
             if (activation > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activation,
                     $"economy actor #{actor.Id} needs {activation:0.##} AP"));
-            if (root == null || activation > root.ActionPoints - session.ApClaimed
-                + AiConfigV2.allocatorSliceEpsilon)
+            if (!session.FitsTurnAp(root, activation))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "economy activation AP no longer available"));
             return ProvisioningResult.Ok(new ProvisionedMission

@@ -786,7 +786,7 @@ namespace Game.Ai.V2
             if (i == open.Count)
             {
                 long[] key = ScoreScoutAssignment(open, cands, chosen);
-                if (bestKey == null || Lex(key, bestKey) < 0)
+                if (bestKey == null || AiV2Util.Lex(key, bestKey) < 0)
                 {
                     bestKey = key;
                     System.Array.Copy(chosen, best, chosen.Length);
@@ -1009,10 +1009,6 @@ namespace Game.Ai.V2
             }
             return key;
         }
-
-        // Bodies moved to AiV2Util (were byte-identical to ProvisioningManager's copies) — kept as
-        // thin local forwarders so every call site above stays unchanged.
-        private static int Lex(long[] a, long[] b) => AiV2Util.Lex(a, b);
 
         // =======================================================================================
         //  C. MeasureCapacity — Demand's ONE read-only aggregate query, moved here from DemandLayer

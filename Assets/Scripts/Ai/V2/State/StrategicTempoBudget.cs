@@ -20,19 +20,17 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal sealed class StrategicTempoBudget
     {
-        public int Turn = -1;
         public int TotalTempoActionsUsed;
         public int DrawActionsUsed;
         public int GenerationAttemptsUsed;
 
         internal static void EndTurn(PlayerSetupData player, int turn)
         {
-            if (player != null && ByPlayer.TryGetValue(player, out StrategicTempoBudget entry) && entry.Turn == turn)
-                ByPlayer.Remove(player);
+            ByPlayer.Remove(player, turn);
         }
 
-        private static readonly Dictionary<PlayerSetupData, StrategicTempoBudget> ByPlayer =
-            new Dictionary<PlayerSetupData, StrategicTempoBudget>();
+        private static readonly TurnScopedByPlayer<StrategicTempoBudget> ByPlayer =
+            new TurnScopedByPlayer<StrategicTempoBudget>(() => new StrategicTempoBudget());
 
         // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
@@ -41,10 +39,8 @@ namespace Game.Ai.V2
         public static StrategicTempoBudget For(PlayerSetupData player, int turn)
         {
             if (player == null)
-                return new StrategicTempoBudget { Turn = turn };
-            if (!ByPlayer.TryGetValue(player, out StrategicTempoBudget b) || b.Turn != turn)
-                ByPlayer[player] = b = new StrategicTempoBudget { Turn = turn };
-            return b;
+                return new StrategicTempoBudget();
+            return ByPlayer.GetOrReset(player, turn);
         }
 
         public bool TotalCapHit => TotalTempoActionsUsed >= AiConfigV2.maxEndOfTurnTempoActionsPerTurn;

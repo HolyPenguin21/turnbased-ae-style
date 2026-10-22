@@ -207,14 +207,14 @@ namespace Game.EditorTests
                     : capabilityFailures && leg == 3 ? EconomyTaskKind.MobileCollection : EconomyTaskKind.FoundBase;
                 if ((flags & 1) != 0)
                 {
-                    object objective = kind == MissionKind.Scout ? (object)new ScoutIntent()
+                    IMissionObjective objective = kind == MissionKind.Scout ? (IMissionObjective)new ScoutIntent()
                         : kind == MissionKind.Raid ? new RaidIntent { Phase = raidPhase,
                             PrimaryArmyId = 0, SupportArmyId = 1 }
                         : kind == MissionKind.Attack ? new AttackIntent { Phase = attackPhase,
                             PrimaryArmyId = 0, SupportArmyId = 1 }
                         : kind == MissionKind.ActiveDefence ? new ActiveDefenceIntent { PrimaryArmyId = 0 }
                         : kind == MissionKind.Economy ? new EconomyIntent { Kind = economyKind }
-                        : (object)new DevelopmentIntent();
+                        : new DevelopmentIntent();
                     var intent = new MissionIntent { Kind = kind, IntentKey = key, Objective = objective,
                         CreatedTurn = 3, LastReconciledTurn = 3, LastProgressTurn = 3,
                         TurnsActive = capabilityFailures ? (kind == MissionKind.Raid

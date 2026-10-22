@@ -29,8 +29,14 @@ namespace Game.Ai.V2
         ReturnBuilder,
     }
 
-    public struct EconomyMissionTarget
+    public struct EconomyMissionTarget : IMissionTarget
     {
+        MissionKind IMissionTarget.Kind => MissionKind.Economy;
+        public MissionIntentKey IntentKey() => MissionIntentKey.ForEconomy(Kind, ObjectiveNumber, TargetHex);
+        public StableMissionKey StableKey() => StableMissionKey.ForEconomy(Kind, ObjectiveNumber, TargetHex);
+        private int ObjectiveNumber =>
+            MissionIntentKey.EconomyObjectiveId(Kind, BuilderArmyId, CollectorArmyId, ResourceType);
+
         public EconomyTaskKind Kind;
         public HexCoord TargetHex;
         public ResourceType? ResourceType;
@@ -50,8 +56,12 @@ namespace Game.Ai.V2
 
     // The *existing* hero, not a card-in-hand or an anonymous "operator" demand. This target
     // is persisted as a DevelopmentIntent and revalidated at every execution boundary.
-    public struct DevelopmentMissionTarget
+    public struct DevelopmentMissionTarget : IMissionTarget
     {
+        MissionKind IMissionTarget.Kind => MissionKind.Development;
+        public MissionIntentKey IntentKey() => MissionIntentKey.ForDevelopment(Mode, FacilityHex);
+        public StableMissionKey StableKey() => new StableMissionKey(MissionKind.Development, (int)Mode, 0, FacilityHex.Q, FacilityHex.R);
+
         public HexCoord FacilityHex;
         public ResearchProductionMode Mode;
         public Game.Units.UnitData Hero;
@@ -73,8 +83,14 @@ namespace Game.Ai.V2
     // softer tier; step 4 never emits it.
     public enum StealthRequirement { None, Preferred, Required }
 
-    public struct ScoutMissionTarget
+    public struct ScoutMissionTarget : IMissionTarget
     {
+        MissionKind IMissionTarget.Kind => MissionKind.Scout;
+        public MissionIntentKey IntentKey() => MissionIntentKey.ForScout(Kind, FocusHex);
+        public StableMissionKey StableKey() => Kind == ScoutTargetKind.AirSweep
+            ? new StableMissionKey(MissionKind.Scout, (int)Kind, 0, 0, 0)
+            : new StableMissionKey(MissionKind.Scout, (int)Kind, 0, FocusHex.Q, FocusHex.R);
+
         public HexCoord FocusHex;
         public ScoutTargetKind Kind;
 

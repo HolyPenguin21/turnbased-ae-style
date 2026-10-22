@@ -57,8 +57,7 @@ namespace Game.Ai.V2
             foreach (MissionIntent intent in state.All.ToList())
             {
                 if (pass.DonatedOperations.Contains(intent.IntentKey)) continue;
-                if (ActiveResolvers.TryGetValue(intent.Kind, out var resolve)) resolve(player, snap, intent, pass);
-                else ReconContinuity.ResolveScoutOperation(player, snap, intent, pass);
+                ResolveDomainOperation(player, snap, intent, pass);
             }
             AttackContinuity.RetireRecruitedReturnFallbacks(player, snap, pass);
             foreach (MissionIntentKey key in pass.Dead) state.Remove(key);
@@ -332,7 +331,7 @@ namespace Game.Ai.V2
         // field added to MissionIntent only has to be wired up once, instead of risking a silently
         // half-initialized intent from a copy nobody remembered to update.
         internal static MissionIntent NewIntent(MissionStepResult o, int turn, MissionKind kind,
-            CommitmentTier funding, object objective)
+            CommitmentTier funding, IMissionObjective objective)
         {
             return new MissionIntent
             {

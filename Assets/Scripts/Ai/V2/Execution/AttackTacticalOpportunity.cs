@@ -153,8 +153,8 @@ namespace Game.Ai.V2
                 List<AiMapMemory.KnownEnemySighting> bodies = KnownBodiesOn(snap, player, h);
                 if (bodies.Count == 0)
                     continue;
-                List<WorthIt.DefendingArmy> opposition = OppositionOn(snap, h);
-                float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, map, h);
+                List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, h);
+                float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, h);
                 bool fightable = ClearsContact(attackers, army.Commander, opposition,
                     bonus, out float win, out bool cover);
                 AiMapMemory.KnownEnemySighting? army0 = HostileFieldArmyOn(player, bodies);
@@ -284,7 +284,7 @@ namespace Game.Ai.V2
                 if (UnderActiveDefenceResponse(intents, s.ArmyId))
                     continue;
                 int adIndex = IndexOfObjective(adObjectives, s.ArmyId);
-                List<WorthIt.DefendingArmy> opposition = OppositionOn(snap, s.Hex);
+                List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, s.Hex);
                 float power = AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition), 0f);
                 if (adIndex < 0 && !ActiveDefenceObjectiveEvaluator.IsSignificantHostilePower(
                         AiPower.EffectiveArmyPowerFromProfiles(s.Defenders, 0f)))
@@ -295,7 +295,7 @@ namespace Game.Ai.V2
                     SafeRouteProfile.Combat)?.TotalCost ?? int.MaxValue;
                 if (contactCost == int.MaxValue || contactCost > currentMovement)
                     continue;
-                float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, s.Hex);
+                float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap.Map, s.Hex);
                 if (!ClearsContact(attackers, army.Commander, opposition,
                         bonus, out float win, out bool cover))
                 {
@@ -369,16 +369,6 @@ namespace Game.Ai.V2
                         break;
                     }
             return bodies;
-        }
-
-        // The whole fight on that hex, as the game resolves it: every known army there, its own
-        // battle with its own commander and its own hex bonus (WorthIt.EstimateSequential), plus
-        // the event guard standing on it. NOT a single enemy picked out of the stack.
-        internal static List<WorthIt.DefendingArmy> OppositionOn(WorldSnapshot snap, HexCoord hex)
-        {
-            var result = new List<WorthIt.DefendingArmy>();
-            AiV2Util.AddKnownCoOccupants(snap, hex, -1, result);
-            return result;
         }
 
         // The enemy PLAYER's mobile army among the bodies on a hex (a building-bound garrison and a

@@ -98,9 +98,9 @@ namespace Game.Ai.V2
             if (primary == null)
                 return RaidRecoveryProjection.None(0f, "primary no longer exists");
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AiV2Util.KnownOpposition(snap, raid.Target);
+                KnownOpposition.ForRaid(snap, raid.Target);
             // The companion of the opposition: the hex the target defends on (terrain included).
-            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, raid.Target);
+            float hexBonus = KnownOpposition.RaidDefenceBonus(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, hexBonus, out _);
 
             RaidRecoveryProjection field = fixedBase.HasValue
@@ -136,9 +136,9 @@ namespace Game.Ai.V2
             if (primary == null)
                 return RaidRecoveryProjection.None(0f, "primary no longer exists");
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AiV2Util.KnownOpposition(snap, raid.Target);
+                KnownOpposition.ForRaid(snap, raid.Target);
             // The companion of the opposition: the hex the target defends on (terrain included).
-            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, raid.Target);
+            float hexBonus = KnownOpposition.RaidDefenceBonus(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, hexBonus, out _);
             return ProjectAirSupport(snap, raid, primary, intents, opposition, hexBonus,
                 null, currentWin, wingArmyId);
@@ -320,9 +320,9 @@ namespace Game.Ai.V2
             if (primary == null)
                 return RaidRecoveryProjection.None(0f, "primary no longer exists");
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AiV2Util.KnownOpposition(snap, raid.Target);
+                KnownOpposition.ForRaid(snap, raid.Target);
             // The companion of the opposition: the hex the target defends on (terrain included).
-            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, raid.Target);
+            float hexBonus = KnownOpposition.RaidDefenceBonus(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, hexBonus, out _);
             return ProjectField(snap, primary, intents, opposition, hexBonus, null, currentWin,
                 null, supportArmyId);

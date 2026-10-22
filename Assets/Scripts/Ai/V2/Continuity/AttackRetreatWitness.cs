@@ -56,7 +56,7 @@ namespace Game.Ai.V2
                     $"enemy #{w.EnemyArmyId} is no longer known");
                 return false;
             }
-            List<WorthIt.DefendingArmy> opposition = AttackTacticalOpportunity.OppositionOn(snap, enemy.Value.Hex);
+            List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, enemy.Value.Hex);
             int enemyFp = AttackTacticalOpportunity.ContactFingerprint(opposition);
             int ownFp = OwnFingerprintOf(army);
             if (enemyFp == w.EnemyFingerprint && ownFp == w.OwnFingerprint)
@@ -65,7 +65,7 @@ namespace Game.Ai.V2
                 return true;
             }
             // Something changed: the answer comes from the estimator, not from the change itself.
-            float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, enemy.Value.Hex);
+            float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap.Map, enemy.Value.Hex);
             AttackTacticalOpportunity.ClearsContact(army.Members.ToList(), army.Commander, opposition,
                 bonus, out float win, out _);
             bool clears = win >= GroundCombatAdmissionPolicy.AttackLocalWinChanceGate;

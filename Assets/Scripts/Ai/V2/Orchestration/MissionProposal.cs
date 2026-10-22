@@ -33,7 +33,7 @@ namespace Game.Ai.V2
         public string CauseDemandTrace =>
             CauseDemandTraceIds.Count == 0 ? "none" : "[" + string.Join(",", CauseDemandTraceIds) + "]";
         public MissionKind Kind;
-        public object Target;               // boxed ScoutMissionTarget for Scout; typed per-kind
+        public IMissionTarget Target;       // the kind's own target struct (ScoutMissionTarget, ...)
         public float BaseValue;             // shared 0..100 scale across ALL mission kinds — INTRINSIC merit
         // The world-task score BaseValue was folded from, slot by slot (the one task log prints it
         // through TaskScoreEvaluator.Describe). null only when BaseValue is a value restored from

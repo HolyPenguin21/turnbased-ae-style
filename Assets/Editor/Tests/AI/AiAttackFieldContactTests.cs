@@ -529,7 +529,7 @@ namespace Game.EditorTests
             {
                 Target = Main, OwnArmyId = 7, EnemyArmyId = 5, EnemyHex = enemy.Hex,
                 EnemyFingerprint = AttackTacticalOpportunity.ContactFingerprint(
-                    AttackTacticalOpportunity.OppositionOn(snap, enemy.Hex)),
+                    KnownOpposition.OnHex(snap, enemy.Hex)),
                 OwnFingerprint = AttackRetreatWitness.OwnFingerprintOf(weak),
                 Turn = 6,
             });
@@ -568,7 +568,7 @@ namespace Game.EditorTests
             snap.Known.EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(hex, Red, "hero", 1,
                 0, 0, new[] { hero }, seenTurn: 7, commander: new WorthIt.SideCommander(0, 0), armyId: 5) };
             bool clears = AttackTacticalOpportunity.ClearsContact(changed.Members.ToList(), changed.Commander,
-                AttackTacticalOpportunity.OppositionOn(snap, hex), 0, out _, out _);
+                KnownOpposition.OnHex(snap, hex), 0, out _, out _);
             Assert.That(CheckAndApply(state, snap, changed, out string why),
                 Is.EqualTo(!clears));
             Assert.That(why, Is.Not.EqualTo("unchanged_obstacle"), "observed current Fate participates in the fingerprint");

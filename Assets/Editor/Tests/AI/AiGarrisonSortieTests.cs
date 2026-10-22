@@ -154,14 +154,14 @@ namespace Game.EditorTests
         [Test] public void GarrisonDoesNotBecomeARaidOrAttackHost()
         { var s = World(); Assert.That(GroundCombatActorEligibility.EligibleReadyArmies(s, null), Is.Empty);
             Assert.That(GroundCombatAssemblyPlanner.Plan(s, new GroundCombatAssemblyRequest {
-                Opposition = ActiveDefenceObjectiveEvaluator.Opposition(s, 77),
+                Opposition = KnownOpposition.OfEnemyArmy(s, 77),
                 WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate }).Feasible, Is.False); }
         [Test] public void OnlyTheProtectedStrongholdCanDonate()
         { var s = World(); s.Self.Armies[0].Hex = new HexCoord(4, 0); Assert.That(Assess(s).Sortie, Is.Null); }
         [Test] public void StrategicDefenceNeverUsesSortie()
         { var s = World(); var o = Objective(s); o.Target.InterceptPurpose = ActiveDefenceInterceptPurpose.StrategicDefence;
             Assert.That(ActiveDefenceObjectiveEvaluator.PlanGarrisonSortie(s, o,
-                ActiveDefenceObjectiveEvaluator.Opposition(s, 77), null), Is.Null); }
+                KnownOpposition.OfEnemyArmy(s, 77), null), Is.Null); }
         [Test] public void DedicatedScout_IsNotMaterializedAlone()
         { var s = World(); s.Self.Armies[0].Members = new[] {
             new WorthIt.DefenderProfile(6, false, null, 12, 18, 3, new[] { "r1s1" }, 18), Body(9, 4, 14), Body(1, 0, 2) };
@@ -207,7 +207,7 @@ namespace Game.EditorTests
             session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int> {
                 [StableMissionKey.For(proposal)] = intent.PreferredMoverArmyId.Value });
             var plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(session, proposal,
-                ActiveDefenceObjectiveEvaluator.Opposition(s, 77), out _);
+                KnownOpposition.OfEnemyArmy(s, 77), out _);
             Assert.That(plan.Feasible, Is.True); Assert.That(plan.NeedsAssembly, Is.False);
             Assert.That(plan.Transfers, Is.Empty); Assert.That(plan.ReturnHeroes, Is.Empty);
             Assert.That(plan.WinChanceGate, Is.EqualTo(GroundCombatAdmissionPolicy.FreshStartWinChanceGate));

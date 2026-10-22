@@ -64,7 +64,7 @@ namespace Game.Ai.V2
             AttackObjective objective = objectives[0];
             HexCoord citadel = AttackPreparationPolicy.PreparationStagingBase(snap, objective.Hex).Value;
             float required = AttackForceReadiness.RequiredPower(self.AttackPeak);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, objective.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, objective.Hex);
             IReadOnlyList<WorthIt.DefendingArmy> opposition = objective.Opposition;
             var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             string head = $"[AI][V2][Attack][Mobilization] target={objective.Target.DiagnosticLabel} "
@@ -348,9 +348,9 @@ namespace Game.Ai.V2
             var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             unavailable.Remove(host.ArmyId);
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
             AttackPreparationAssessment readiness = AttackPreparationReadiness.Assess(host,
-                snap.Self.AttackPeak, AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex),
+                snap.Self.AttackPeak, KnownOpposition.OnHex(snap, a.Target.Hex),
                 hexBonus);
             GroundCombatAssemblyPlan step = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
                 snap, live, unavailable, opposition, hexBonus);
@@ -418,7 +418,7 @@ namespace Game.Ai.V2
             unavailable.Remove(host.ArmyId);
             float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap,
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex), hexBonus,
+                KnownOpposition.OnHex(snap, a.Target.Hex), hexBonus,
                 a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 host.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
             List<int> bought = plan.Feasible

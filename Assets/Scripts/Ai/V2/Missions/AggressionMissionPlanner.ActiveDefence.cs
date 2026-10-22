@@ -308,7 +308,7 @@ namespace Game.Ai.V2
                     continue;
                 }
                 IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                    ActiveDefenceObjectiveEvaluator.Opposition(snap, enemyId);
+                    KnownOpposition.OfEnemyArmy(snap, enemyId);
                 if (opposition == null)
                     continue; // no honest contact position — nothing to fly to
                 HexCoord targetHex = objective.Target.LastKnownHex;

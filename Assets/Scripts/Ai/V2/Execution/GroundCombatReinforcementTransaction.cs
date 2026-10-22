@@ -39,8 +39,8 @@ namespace Game.Ai.V2
             }
             var snap = WorldAnalysis.Scan(player, root, hand, ctx, intents);
             var h = GroundCombatReinforcement.PlanAttackHandoff(primary, support,
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex),
-                AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx.Map, attack.Target.Hex),
+                KnownOpposition.OnHex(snap, attack.Target.Hex),
+                AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx.Map, attack.Target.Hex),
                 true, out _, capacityIsProgress: true);
             if (h == null || !AttackBaseRefitPolicy.KeepsForce(primary, h)
                 || !AttackBaseRefitPolicy.KeepsMovement(primary, h)

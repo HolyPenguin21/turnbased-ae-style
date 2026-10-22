@@ -29,7 +29,7 @@ namespace Game.Ai.V2
 
             // A building-bound garrison cannot leave its structure, so it never threatens OUR
             // assets; it is that site's defender package, read directly from the sightings by
-            // AttackObjectiveEvaluator.KnownSiteDefenders. Keeps a permanently remembered garrison (AiMapMemory, audit
+            // KnownOpposition.DefendersOnHex. Keeps a permanently remembered garrison (AiMapMemory, audit
             // F1) from inflating the defensive reserve / ActiveDefence / Recon contact tracking.
             foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings.Where(x => !x.IsGarrison))
             {
@@ -131,13 +131,13 @@ namespace Game.Ai.V2
 
                     int? enemyEta = null;
                     if (approachCost.HasValue)
-                        enemyEta = CeilDiv(approachCost.Value, Mathf.Max(1, c.Army.MaxMovement));
+                        enemyEta = AiV2Util.CeilDiv(approachCost.Value, Mathf.Max(1, c.Army.MaxMovement));
 
                     int? responseEta = null;
                     foreach (ArmySnapshot r in ownFieldForResponse)
                     {
                         if (!responseCosts[r.ArmyId].TryGetValue(asset.Hex, out int cost)) continue;
-                        int e = CeilDiv(cost, Mathf.Max(1, r.MaxMovement));
+                        int e = AiV2Util.CeilDiv(cost, Mathf.Max(1, r.MaxMovement));
                         if (!responseEta.HasValue || e < responseEta.Value)
                             responseEta = e;
                     }
@@ -323,6 +323,5 @@ namespace Game.Ai.V2
             return confidence * Mathf.Clamp01(raw / Mathf.Max(0.0001f, posWeight));
         }
 
-        private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }

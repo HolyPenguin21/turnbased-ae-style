@@ -126,7 +126,7 @@ namespace Game.Ai.V2
                 || IsPinnedStrongholdDefender(snap, actor, excluded)) return response;
             var unavailable = new HashSet<int>(excluded ?? new HashSet<int>());
             unavailable.Remove(actorId);
-            var opposition = Opposition(snap, witness.EnemyArmyId);
+            var opposition = KnownOpposition.OfEnemyArmy(snap, witness.EnemyArmyId);
             if (!SortieClears(actor.Members, opposition, out _, out _)) return response;
             var plan = GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
                 Opposition = opposition, PreferredPrimaryArmyId = actorId, PinToPreferred = true,

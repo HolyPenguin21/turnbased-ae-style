@@ -190,7 +190,7 @@ namespace Game.Ai.V2
         // The same identity MissionIntentKey.ForActiveDefence encodes: an Intercept is its enemy
         // army; a Return is its own mover and destination, so several armies withdrawing from one
         // threat are several legs, never one duplicated key.
-        private static StableMissionKey ForActiveDefence(ActiveDefenceMissionTarget ad) =>
+        public static StableMissionKey ForActiveDefence(ActiveDefenceMissionTarget ad) =>
             ad.Phase == ActiveDefencePhase.Return
                 ? new StableMissionKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Return,
                     ad.PrimaryArmyId ?? 0, ad.ReturnHex?.Q ?? 0, ad.ReturnHex?.R ?? 0)
@@ -200,31 +200,12 @@ namespace Game.Ai.V2
                 : new StableMissionKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Intercept,
                     ad.EnemyArmyId, 0, 0);
 
-        public static StableMissionKey For(MissionProposal m)
-        {
-            if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
-            {
-                // AirSweep: one operation per player — the moving anchor is not identity (same rule
-                // as MissionIntentKey.ForScoutTarget), so cooldown/funding follow the operation.
-                if (t.Kind == ScoutTargetKind.AirSweep)
-                    return new StableMissionKey(MissionKind.Scout, (int)t.Kind, 0, 0, 0);
-                return new StableMissionKey(MissionKind.Scout, (int)t.Kind, 0, t.FocusHex.Q, t.FocusHex.R);
-            }
-            if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
-                return ForRaid(rt);
-            if (m != null && m.Kind == MissionKind.Attack && m.Target is AttackMissionTarget at)
-                return ForAttack(at);
-            if (m != null && m.Kind == MissionKind.ActiveDefence
-                && m.Target is ActiveDefenceMissionTarget ad)
-                return ForActiveDefence(ad);
-            if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
-                return ForEconomy(et.Kind, MissionIntentKey.EconomyObjectiveId(et.Kind,
-                    et.BuilderArmyId, et.CollectorArmyId, et.ResourceType), et.TargetHex);
-            if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
-                return new StableMissionKey(MissionKind.Development, (int)dt.Mode,
-                    0, dt.FacilityHex.Q, dt.FacilityHex.R);
-            return new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
-        }
+        // Each target encodes its own leg (IMissionTarget.StableKey). A target whose own kind
+        // disagrees with the proposal's keeps the historical bare key.
+        public static StableMissionKey For(MissionProposal m) =>
+            m?.Target != null && m.Target.Kind == m.Kind
+                ? m.Target.StableKey()
+                : new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
 
         public bool Equals(StableMissionKey o) =>
             Kind == o.Kind && SubKind == o.SubKind && TargetId == o.TargetId && Q == o.Q && R == o.R
