@@ -556,15 +556,15 @@ MonoBehaviour:
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 2
     defenseRating: 1
     range: 2
     hitPoints: 4
-    initiative: 2
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -611,7 +611,7 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 2
-    defenseRating: 1
+    defenseRating: 2
     range: 1
     hitPoints: 3
     initiative: 1
@@ -638,7 +638,7 @@ MonoBehaviour:
       statChanges: []
   - id: 12
     authoredKey: vessels.14.shard-wanderer
-    deckPointCost: 1
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Shard Wanderer
@@ -648,18 +648,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 1
+    apCost: 2
     resourceCost:
       human: 0
       energy: 0
-      materials: 0
+      materials: 1
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 2
+    attack: 3
     defenseRating: 2
     range: 1
     hitPoints: 4
@@ -687,7 +687,7 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     authoredKey: vessels.unit.silt-pilgrim
-    deckPointCost: 1
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Silt Pilgrim
@@ -697,14 +697,14 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 1
+    apCost: 2
     resourceCost:
       human: 0
-      energy: 0
+      energy: 1
       materials: 0
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -761,7 +761,7 @@ MonoBehaviour:
     defenseRating: 1
     range: 2
     hitPoints: 4
-    initiative: 1
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -784,7 +784,7 @@ MonoBehaviour:
       statChanges: []
   - id: 15
     authoredKey: vessels.27.arc-cantor
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Arc Cantor
@@ -794,19 +794,19 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 0
       energy: 1
       materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
-    defenseRating: 1
+    attack: 4
+    defenseRating: 2
     range: 2
     hitPoints: 4
     initiative: 1
@@ -834,7 +834,7 @@ MonoBehaviour:
       statChanges: []
   - id: 16
     authoredKey: vessels.16.bulwark-vessel
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Bulwark Vessel
@@ -844,21 +844,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
-      materials: 1
-      tech: 0
+      materials: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 2
-    hitPoints: 5
+    attack: 4
+    defenseRating: 4
+    range: 1
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -883,7 +883,7 @@ MonoBehaviour:
       statChanges: []
   - id: 17
     authoredKey: vessels.11.glass-runner
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Glass Runner
@@ -893,21 +893,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 0
       energy: 0
       materials: 2
-      tech: 0
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -957,7 +957,7 @@ MonoBehaviour:
     defenseRating: 2
     range: 1
     hitPoints: 4
-    initiative: 1
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -991,22 +991,22 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 0
       energy: 0
-      materials: 1
+      materials: 2
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
-    activationApCost: 2
+    activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 1
     hitPoints: 4
-    initiative: 1
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -1039,21 +1039,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 0
       energy: 1
       materials: 1
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 5
     defenseRating: 1
     range: 3
-    hitPoints: 3
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1077,7 +1077,7 @@ MonoBehaviour:
       statChanges: []
   - id: 21
     authoredKey: vessels.17.relay-carrier
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Relay Carrier
@@ -1087,21 +1087,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
-      materials: 1
-      tech: 1
+      materials: 2
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 3
-    defenseRating: 1
+    defenseRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1137,19 +1137,19 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
       materials: 2
-      tech: 0
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 1
+    attack: 5
+    defenseRating: 2
     range: 2
     hitPoints: 5
     initiative: 1
@@ -1185,18 +1185,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 0
-      energy: 2
-      materials: 1
+      energy: 1
+      materials: 2
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 1
     hitPoints: 5
@@ -1234,21 +1234,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
       materials: 2
-      tech: 0
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 4
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 1
+    attack: 5
+    defenseRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1273,7 +1273,7 @@ MonoBehaviour:
       statChanges: []
   - id: 25
     authoredKey: vessels.unit.spindle-gunner
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Spindle Gunner
@@ -1283,21 +1283,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 2
     resourceCost:
       human: 0
-      energy: 1
-      materials: 2
-      tech: 0
+      energy: 0
+      materials: 1
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
     range: 2
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1331,20 +1331,20 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 2
     resourceCost:
       human: 0
       energy: 0
       materials: 1
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 3
     defenseRating: 2
-    range: 2
+    range: 1
     hitPoints: 5
     initiative: 1
     isAviation: 0
@@ -1369,7 +1369,7 @@ MonoBehaviour:
       statChanges: []
   - id: 27
     authoredKey: vessels.13.arc-sentry
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Arc Sentry
@@ -1379,21 +1379,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 3
     resourceCost:
       human: 0
-      energy: 0
-      materials: 2
-      tech: 2
+      energy: 1
+      materials: 1
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 2
+    defenseRating: 3
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1418,7 +1418,7 @@ MonoBehaviour:
       statChanges: []
   - id: 28
     authoredKey: vessels.18.bastion-frame
-    deckPointCost: 2
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Bastion Frame
@@ -1428,21 +1428,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
-      materials: 1
-      tech: 1
+      materials: 3
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
-    defenseRating: 2
+    attack: 4
+    defenseRating: 4
     range: 1
-    hitPoints: 6
+    hitPoints: 7
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1468,7 +1468,7 @@ MonoBehaviour:
       statChanges: []
   - id: 29
     authoredKey: vessels.unit.halo-kite
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Halo Kite
@@ -1478,19 +1478,19 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 2
     resourceCost:
       human: 0
-      energy: 0
-      materials: 2
-      tech: 2
+      energy: 1
+      materials: 0
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 6
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 1
+    attack: 3
+    defenseRating: 2
     range: 2
     hitPoints: 3
     initiative: 2
@@ -1516,7 +1516,7 @@ MonoBehaviour:
       statChanges: []
   - id: 30
     authoredKey: vessels.25.harmonic-howitzer
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Harmonic Howitzer
@@ -1526,12 +1526,12 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
-      energy: 3
+      energy: 2
       materials: 1
-      tech: 4
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
@@ -1539,7 +1539,7 @@ MonoBehaviour:
     fate: 0
     attack: 5
     defenseRating: 1
-    range: 4
+    range: 3
     hitPoints: 3
     initiative: 2
     isAviation: 0
@@ -1566,7 +1566,7 @@ MonoBehaviour:
       statChanges: []
   - id: 31
     authoredKey: vessels.21.resonance-tank
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Resonance Tank
@@ -1576,18 +1576,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
-      energy: 1
+      energy: 2
       materials: 2
-      tech: 1
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 6
     defenseRating: 3
     range: 2
     hitPoints: 6
@@ -1625,10 +1625,10 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 3
     resourceCost:
       human: 0
-      energy: 2
+      energy: 1
       materials: 2
       tech: 0
     requiredBuildingAbility: Barracks
@@ -1636,10 +1636,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 3
     range: 1
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1687,7 +1687,7 @@ MonoBehaviour:
     attack: 4
     defenseRating: 3
     range: 1
-    hitPoints: 5
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1713,7 +1713,7 @@ MonoBehaviour:
       statChanges: []
   - id: 34
     authoredKey: vessels.23.echo-mortar
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Echo Mortar
@@ -1728,16 +1728,16 @@ MonoBehaviour:
       human: 0
       energy: 2
       materials: 1
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 1
     range: 3
-    hitPoints: 2
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1775,7 +1775,7 @@ MonoBehaviour:
     apCost: 4
     resourceCost:
       human: 0
-      energy: 2
+      energy: 1
       materials: 2
       tech: 1
     requiredBuildingAbility: Barracks
@@ -1783,10 +1783,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 3
     range: 1
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1828,7 +1828,7 @@ MonoBehaviour:
       materials: 2
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -1872,7 +1872,7 @@ MonoBehaviour:
     apCost: 4
     resourceCost:
       human: 0
-      energy: 2
+      energy: 1
       materials: 2
       tech: 2
     requiredBuildingAbility: Barracks
@@ -1880,10 +1880,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 3
     range: 2
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1908,7 +1908,7 @@ MonoBehaviour:
       statChanges: []
   - id: 38
     authoredKey: vessels.unit.choir-roller
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Choir Roller
@@ -1921,17 +1921,17 @@ MonoBehaviour:
     apCost: 4
     resourceCost:
       human: 0
-      energy: 1
-      materials: 2
-      tech: 0
+      energy: 2
+      materials: 1
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 1
+    attack: 6
+    defenseRating: 1
+    range: 3
     hitPoints: 4
     initiative: 2
     isAviation: 0
@@ -1956,7 +1956,7 @@ MonoBehaviour:
       statChanges: []
   - id: 39
     authoredKey: vessels.24.prism-engine
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Prism Engine
@@ -1966,21 +1966,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
-      energy: 1
-      materials: 3
+      energy: 2
+      materials: 1
       tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 6
     defenseRating: 2
     range: 3
-    hitPoints: 3
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -2015,21 +2015,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
-      energy: 2
+      energy: 1
       materials: 1
-      tech: 1
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 3
-    hitPoints: 3
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -2064,21 +2064,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 3
     resourceCost:
       human: 0
       energy: 1
-      materials: 1
-      tech: 1
+      materials: 2
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 2
+    defenseRating: 3
     range: 2
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2112,22 +2112,22 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
       materials: 2
-      tech: 0
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 6
     defenseRating: 2
     range: 1
     hitPoints: 5
-    initiative: 2
+    initiative: 3
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -2163,18 +2163,18 @@ MonoBehaviour:
     apCost: 5
     resourceCost:
       human: 0
-      energy: 1
-      materials: 2
+      energy: 2
+      materials: 3
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
-    defenseRating: 3
+    attack: 6
+    defenseRating: 4
     range: 2
-    hitPoints: 6
+    hitPoints: 7
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2208,21 +2208,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
-      materials: 2
+      materials: 4
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
-    defenseRating: 3
+    attack: 6
+    defenseRating: 4
     range: 1
-    hitPoints: 6
+    hitPoints: 8
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2246,7 +2246,7 @@ MonoBehaviour:
       statChanges: []
   - id: 45
     authoredKey: vessels.22.monolith
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Monolith
@@ -2256,21 +2256,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
-      energy: 3
+      energy: 2
       materials: 3
       tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 1
-    activationApCost: 2
+    activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 6
-    defenseRating: 1
-    range: 2
-    hitPoints: 8
+    defenseRating: 2
+    range: 4
+    hitPoints: 7
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2294,7 +2294,7 @@ MonoBehaviour:
       statChanges: []
   - id: 46
     authoredKey: vessels.19.heavy-sentinel
-    deckPointCost: 2
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Heavy Sentinel
@@ -2304,21 +2304,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
-      materials: 2
-      tech: 1
+      materials: 4
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 6
     defenseRating: 3
     range: 2
-    hitPoints: 4
+    hitPoints: 7
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2343,7 +2343,7 @@ MonoBehaviour:
       statChanges: []
   - id: 47
     authoredKey: vessels.unit.mnemonic-carrier
-    deckPointCost: 3
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Mnemonic Carrier
@@ -2353,10 +2353,10 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
-      energy: 2
+      energy: 1
       materials: 2
       tech: 2
     requiredBuildingAbility: Barracks
@@ -2365,9 +2365,9 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 3
-    defenseRating: 2
+    defenseRating: 3
     range: 2
-    hitPoints: 5
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2393,7 +2393,7 @@ MonoBehaviour:
       statChanges: []
   - id: 48
     authoredKey: vessels.27.gyrocopter
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Gyrocopter
@@ -2406,22 +2406,22 @@ MonoBehaviour:
     apCost: 5
     resourceCost:
       human: 0
-      energy: 1
+      energy: 2
       materials: 1
-      tech: 2
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 6
     activationApCost: 1
     commandRating: 0
-    fate: 2
+    fate: 0
     attack: 5
-    defenseRating: 3
+    defenseRating: 2
     range: 2
-    hitPoints: 6
+    hitPoints: 5
     initiative: 2
     isAviation: 1
-    launchEnergyCost: 1
-    turnsWithoutRefuel: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 2
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -2442,7 +2442,7 @@ MonoBehaviour:
       statChanges: []
   - id: 49
     authoredKey: vessels.unit.censer-battery
-    deckPointCost: 6
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Censer Battery
@@ -2463,11 +2463,11 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 1
-    defenseRating: 2
+    attack: 3
+    defenseRating: 3
     range: 1
-    hitPoints: 6
-    initiative: 2
+    hitPoints: 7
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -2501,19 +2501,19 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
       energy: 2
       materials: 1
-      tech: 2
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 5
+    moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 2
+    defenseRating: 3
     range: 2
     hitPoints: 5
     initiative: 1
@@ -2554,17 +2554,17 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 2
-      tech: 3
+      materials: 4
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 6
-    defenseRating: 2
+    attack: 7
+    defenseRating: 3
     range: 3
-    hitPoints: 5
+    hitPoints: 6
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -2610,9 +2610,9 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 6
-    defenseRating: 1
+    defenseRating: 2
     range: 3
-    hitPoints: 4
+    hitPoints: 5
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -2636,7 +2636,7 @@ MonoBehaviour:
       statChanges: []
   - id: 53
     authoredKey: vessels.unit.halo-interceptor
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Halo Interceptor
@@ -2646,12 +2646,12 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
       energy: 2
       materials: 2
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -2684,7 +2684,7 @@ MonoBehaviour:
       statChanges: []
   - id: 54
     authoredKey: vessels.unit.lensbreaker
-    deckPointCost: 6
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Lensbreaker
@@ -2694,7 +2694,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 6
+    apCost: 7
     resourceCost:
       human: 0
       energy: 2
@@ -2705,9 +2705,9 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 6
+    attack: 7
     defenseRating: 4
-    range: 2
+    range: 3
     hitPoints: 7
     initiative: 1
     isAviation: 0
@@ -2742,18 +2742,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 7
+    apCost: 8
     resourceCost:
       human: 0
       energy: 3
-      materials: 4
+      materials: 5
       tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 7
+    attack: 8
     defenseRating: 3
     range: 3
     hitPoints: 8
@@ -2780,7 +2780,7 @@ MonoBehaviour:
       statChanges: []
   - id: 56
     authoredKey: vessels.20.siege-walker
-    deckPointCost: 2
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Siege Walker
@@ -2794,17 +2794,17 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 3
-      materials: 2
-      tech: 2
+      materials: 4
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 8
     defenseRating: 4
-    range: 1
-    hitPoints: 7
+    range: 2
+    hitPoints: 8
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2838,18 +2838,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 7
+    apCost: 8
     resourceCost:
       human: 0
       energy: 3
       materials: 4
       tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 5
     range: 2
     hitPoints: 10
@@ -2876,7 +2876,7 @@ MonoBehaviour:
       statChanges: []
   - id: 58
     authoredKey: vessels.unit.moth-bomber
-    deckPointCost: 6
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Moth Bomber
@@ -2897,14 +2897,14 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 7
     defenseRating: 3
     range: 2
     hitPoints: 6
     initiative: 2
     isAviation: 1
     launchEnergyCost: 2
-    turnsWithoutRefuel: 2
+    turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -2934,21 +2934,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 6
+    apCost: 7
     resourceCost:
       human: 0
-      energy: 1
-      materials: 3
+      energy: 2
+      materials: 4
       tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 8
     defenseRating: 4
     range: 1
-    hitPoints: 7
+    hitPoints: 8
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2972,7 +2972,7 @@ MonoBehaviour:
       statChanges: []
   - id: 60
     authoredKey: vessels.unit.tuning-fork
-    deckPointCost: 5
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Tuning Fork
@@ -2985,18 +2985,18 @@ MonoBehaviour:
     apCost: 6
     resourceCost:
       human: 0
-      energy: 3
-      materials: 1
-      tech: 4
+      energy: 2
+      materials: 2
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 6
+    attack: 7
     defenseRating: 2
     range: 3
-    hitPoints: 4
+    hitPoints: 5
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -3020,7 +3020,7 @@ MonoBehaviour:
       statChanges: []
   - id: 61
     authoredKey: vessels.26.skimmer
-    deckPointCost: 3
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Skimmer
@@ -3030,21 +3030,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 7
+    apCost: 6
     resourceCost:
       human: 0
-      energy: 2
-      materials: 0
-      tech: 2
+      energy: 3
+      materials: 1
+      tech: 4
     requiredBuildingAbility: Barracks
     moveMax: 12
     activationApCost: 1
     commandRating: 0
-    fate: 2
-    attack: 9
+    fate: 0
+    attack: 6
     defenseRating: 4
     range: 2
-    hitPoints: 6
+    hitPoints: 5
     initiative: 2
     isAviation: 1
     launchEnergyCost: 2
@@ -3069,7 +3069,7 @@ MonoBehaviour:
       statChanges: []
   - id: 62
     authoredKey: vessels.28.dreadnought
-    deckPointCost: 8
+    deckPointCost: 7
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Dreadnought
@@ -3081,23 +3081,23 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 8
     resourceCost:
-      human: 0
+      human: 1
       energy: 3
-      materials: 3
-      tech: 4
+      materials: 4
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
+    moveMax: 4
+    activationApCost: 2
     commandRating: 0
     fate: 0
-    attack: 8
+    attack: 7
     defenseRating: 4
-    range: 1
-    hitPoints: 8
+    range: 2
+    hitPoints: 10
     initiative: 1
     isAviation: 1
     launchEnergyCost: 3
-    turnsWithoutRefuel: 5
+    turnsWithoutRefuel: 2
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -3118,7 +3118,7 @@ MonoBehaviour:
       statChanges: []
   - id: 63
     authoredKey: vessels.unit.pendulum-frame
-    deckPointCost: 4
+    deckPointCost: 6
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Pendulum Frame
@@ -3128,21 +3128,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 9
+    apCost: 8
     resourceCost:
       human: 0
-      energy: 5
-      materials: 3
-      tech: 5
+      energy: 3
+      materials: 5
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 9
-    defenseRating: 5
-    range: 1
-    hitPoints: 12
+    attack: 8
+    defenseRating: 4
+    range: 2
+    hitPoints: 10
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0

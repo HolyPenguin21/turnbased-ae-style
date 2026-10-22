@@ -147,8 +147,8 @@ namespace Game.EditorTools
             Assert.That(DeckCalibrationReport.CreateStrategyDecks(rules).Count, Is.EqualTo(18));
         }
         [TestCase(Faction.IronConcord, "concord.card.light-tank", "concord.card.scrapper", 75)]
-        [TestCase(Faction.Ashen, "ashen.card.rust-tank", "ashen.card.tech-scrapper", 67)]
-        [TestCase(Faction.Vessels, "vessels.21.resonance-tank", "vessels.12.salvage-drone", 69)]
+        [TestCase(Faction.Ashen, "ashen.card.rust-tank", "ashen.card.tech-scrapper", 81)]
+        [TestCase(Faction.Vessels, "vessels.21.resonance-tank", "vessels.12.salvage-drone", 79)]
         public void BalancedStarterOwnsAllBuildingsButFieldsOnlyThree(Faction faction, string tank, string collector, int points)
         {
             var rules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
