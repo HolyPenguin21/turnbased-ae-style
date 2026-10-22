@@ -223,16 +223,16 @@ namespace Game.EditorTests
             Assert.IsTrue(Get<bool>(hand, "_showingDebugHand"), "The watch subscription survives the human response.");
             Assert.IsTrue(Get<List<CardUI>>(hand, "_debugCards").TrueForAll(c => !c.gameObject.activeSelf));
             Assert.IsTrue(Get<List<CardUI>>(hand, "_tacticCards").TrueForAll(c => c.gameObject.activeSelf));
-            Assert.AreEqual("Cards\n1", text.text);
+            Assert.AreEqual("1", text.text);
             ai.AddCard(new CardData(new CardDefinition { cardType = CardType.Unit }));
             Call(hand, "RenderDebugHand", ai);
             Assert.IsTrue(Get<List<CardUI>>(hand, "_debugCards").TrueForAll(c => !c.gameObject.activeSelf));
-            Assert.AreEqual("Cards\n1", text.text, "AI inventory updates cannot overwrite the human counter.");
+            Assert.AreEqual("1", text.text, "AI inventory updates cannot overwrite the human counter.");
             hand.RestoreMainHand();
             Assert.IsTrue(Get<List<CardUI>>(hand, "_debugCards").TrueForAll(c => c.gameObject.activeSelf));
             Assert.IsTrue(Get<List<CardUI>>(hand, "_tacticCards").TrueForAll(c => !c.gameObject.activeSelf));
             Assert.IsTrue(Get<List<CardUI>>(hand, "_cards").TrueForAll(c => !c.gameObject.activeSelf));
-            Assert.AreEqual("Cards\n2/10", text.text);
+            Assert.AreEqual("2/10", text.text);
             Assert.AreEqual(1, inventory.Cards.Count);
         }
 

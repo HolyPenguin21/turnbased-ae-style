@@ -34,10 +34,10 @@ namespace Game.UI
         [SerializeField] private RectTransform handContainer;
         [SerializeField] private CardUI cardPrefab;
         [SerializeField] private Button drawButton;
-        // "Deck" on the first line, the remaining draw-pile count on the second — see
+        // The remaining draw-pile count as a bare number — see
         // RefreshDeckCountText/SetDeckCountText.
         [SerializeField] private TMP_Text deckCountText;
-        // "Cards" on the first line, "<cards in hand>/<max hand size>" on the second — see
+        // "<cards in hand>/<max hand size>" (just the count for tactics) — see
         // RefreshHandCountText/SetHandCountText.
         [SerializeField] private TMP_Text handCountText;
         [SerializeField] private Button scrollLeftButton;
@@ -467,10 +467,10 @@ namespace Game.UI
             if (deckCountText == null)
                 return;
             _lastDisplayedDeckCount = count;
-            deckCountText.text = $"Deck\n{count}";
+            deckCountText.text = count.ToString();
         }
 
-        // "Cards" + "<in hand>/<max>" on the next line. Guarded like RefreshDeckCountText —
+        // "<in hand>/<max>". Guarded like RefreshDeckCountText —
         // the count only moves when a card enters or leaves the hand.
         private void RefreshHandCountText()
         {
@@ -482,7 +482,7 @@ namespace Game.UI
             if (_showingTactics)
             {
                 _lastDisplayedHandCount = count;
-                handCountText.text = $"Cards\n{count}";
+                handCountText.text = count.ToString();
             }
             else SetHandCountText(count, maxHandSize);
         }
@@ -494,7 +494,7 @@ namespace Game.UI
             if (handCountText == null)
                 return;
             _lastDisplayedHandCount = count;
-            handCountText.text = $"Cards\n{count}/{max}";
+            handCountText.text = $"{count}/{max}";
         }
 
         private void RefreshDrawButtonInteractable()
