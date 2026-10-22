@@ -95,6 +95,10 @@
         // it is out of sight. Purely a cost cap; the reach itself is MaxMovement x elapsed turns.
         public const int reconObservationMaxHideRadius = 8;
 
+        // A funded Hunt of a visible enemy scouting force (ReconObjectiveEvaluator.HuntAt): between
+        // destroying a Facility (0.5) and taking a Base (0.85) — it is the enemy's eyes and saboteur.
+        public const float reconHuntStrategicRelevance = 0.7f;
+
         public const float scoutInfoGainNorm = 4f;               // FreshNeighbors that maps to a full info term
         public const int scoutProximityRampLo = 2;               // base-distance: at/under this -> proximity 1
         public const int scoutProximityRampHi = 12;              // base-distance: at/over this -> proximity 0

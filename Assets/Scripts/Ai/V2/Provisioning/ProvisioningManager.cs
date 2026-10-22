@@ -326,10 +326,12 @@ namespace Game.Ai.V2
             bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
             bool arrivesHidden = ScoutMoverSelector.ArrivesHiddenLive(alreadyHidden, reserveStealth);
 
-            if (ReconScoutKinds.IsCapture(target.Kind))
+            if (ReconScoutKinds.IsLocalStrike(target.Kind))
             {
-                if (!ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, focus))
-                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("local capture no longer safe/empty"));
+                if (!ReconReactionPolicy.CanStrikeLocalTarget(player, ctx.Map, army, target.Kind, focus))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        ReconScoutKinds.IsHunt(target.Kind) ? "hunt target no longer beatable/reachable"
+                            : "local capture no longer safe/empty"));
             }
             else if (refresh)
             {

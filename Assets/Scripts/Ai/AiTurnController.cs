@@ -254,6 +254,20 @@ namespace Game.Ai
             return true;
         }
 
+        // Canonical ExitStealth for the move mirror, only immediately before the action. Tagged so
+        // a debug run can prove why a hidden unit became visible; ordinary movement emits none.
+        private static void ExitStealthBeforeAction(PlayerSetupData player, ArmyData army,
+            string exitReason, string when)
+        {
+            foreach (UnitData member in army.Members.ToList())
+                if (member.IsHidden)
+                {
+                    Game.Map.StealthSystem.ExitStealth(member);
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" ScoutStealthExit "
+                        + $"reason={exitReason} ({when})");
+                }
+        }
+
         internal static IEnumerator MoveArmyRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx,
             AiMoveExecutionTrace trace = null)
         {
@@ -327,6 +341,8 @@ namespace Game.Ai
             // keeps the AP for another discovery move. Entry is 1 AP per unit; voluntary exit is
             // free. The rule is the shared, layer-neutral primitive both V1 (here) and V2
             // (ProvisioningManager / TaskExecutor) call — see AiScoutStealthPolicy's own comment.
+            string exitReason = null;
+            bool revealOnArrival = false;
             if (decision.AllowAutomaticStealth && !army.HasActivatedThisTurn
                 && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover && !wantsGroundCombat
                 && root != null
@@ -352,26 +368,26 @@ namespace Game.Ai
             // that deliberately ends in a takeover or a fight drops stealth on every hidden member
             // now, immediately before the action, never earlier (§8). Free. Without this a fully
             // hidden army would walk onto its own target and nothing would happen.
+            // Exception: revealing here is a resident reveal on the ORIGIN hex. When a known army
+            // shares that hex, it would start a fight there instead of the intended action, so the
+            // army keeps stealth for the move and reveals on arrival — the same resident reveal,
+            // now on the hex where the takeover / fight is meant to happen.
             else if (wantsBuildingTakeover || wantsGroundCombat)
             {
-                string exitReason = wantsBuildingTakeover ? "capture_or_destroy_building" : "ground_combat";
-                foreach (UnitData member in army.Members.ToList())
-                    if (member.IsHidden)
-                    {
-                        // Canonical ExitStealth, only immediately before the action. Tagged so a
-                        // debug run can prove why a hidden unit became visible; ordinary movement
-                        // emits none.
-                        Game.Map.StealthSystem.ExitStealth(member);
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" ScoutStealthExit "
-                            + $"reason={exitReason} (immediately before the action)");
-                    }
+                exitReason = wantsBuildingTakeover ? "capture_or_destroy_building" : "ground_combat";
+                revealOnArrival = AiMapMemory.KnownResidentRevealContact(player, army);
+                if (!revealOnArrival)
+                    ExitStealthBeforeAction(player, army, exitReason, "immediately before the action");
             }
 
             // Authorization against the mover's stealth state AS IT WILL MOVE: a fully hidden
             // army sets nothing off on arrival and may pass any known army/structure; a visible
             // one may only arrive where its authority allows the fight/takeover it would cause.
+            // A reveal deferred to arrival is judged by the visible outcome it will cause there.
             AiMapMemory.GroundArrival arrival = isGroundMove
-                ? AiMapMemory.KnownGroundArrival(player, army, destination)
+                ? revealOnArrival
+                    ? known
+                    : AiMapMemory.KnownGroundArrival(player, army, destination)
                 : default;
             if (isGroundMove && !IsKnownGroundOutcomeAuthorized(decision,
                     arrival.Contact, arrival.Takeover, out string authorizationReason))
@@ -429,6 +445,13 @@ namespace Game.Ai
                 trace.EndHex = army.Hex;
                 trace.ReachedDestination = army.Hex.Equals(destination);
             }
+
+            // The deferred mirror reveal: only on the intended hex. A move stopped short keeps
+            // stealth; the next step replans from where it stands. The post-move safety check
+            // below then starts any fight this resident reveal sets off.
+            if (revealOnArrival && army.Hex.Equals(destination) && ArmyRegistry.IsRegistered(army))
+                ExitStealthBeforeAction(player, army, exitReason,
+                    "on arrival; the origin hex holds a known army");
 
             // Post-move safety net (2026-08-24 P0 fix, project owner's own report — a real
             // sighting on (6,3): a contact left unresolved by onComplete's own TryBeginBattleAt

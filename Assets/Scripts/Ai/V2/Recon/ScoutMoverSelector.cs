@@ -163,6 +163,12 @@ namespace Game.Ai.V2
                     if (snap.Self?.ReconCaptureOpportunities?.Any(x => x.ArmyId == a.ArmyId
                         && x.Hex.Equals(target.FocusHex)) != true) continue;
                 }
+                else if (ReconScoutKinds.IsHunt(target.Kind))
+                {
+                    // Only a hunter Analysis proved reaches and beats this force this turn.
+                    if (snap.Self?.ReconHuntOpportunities?.Any(x => x.ArmyId == a.ArmyId
+                        && x.Hex.Equals(target.FocusHex)) != true) continue;
+                }
                 else if (a.CurrentMovement <= 0 || trimmedThisTurn.Contains(a.ArmyId))
                     continue;
                 if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))

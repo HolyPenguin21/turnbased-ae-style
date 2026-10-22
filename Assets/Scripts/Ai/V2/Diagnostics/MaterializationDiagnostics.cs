@@ -31,6 +31,20 @@ namespace Game.Ai.V2
             var failures = new Dictionary<string, int>();
             var verifiedResourceBlocks = new Dictionary<ResourceType, int>();
             bool solo = demand.Capability == CapabilityKind.ScoutCapability;
+            // The exact per-resource deficit of one capability-matching card this probe examined.
+            void RecordVerifiedBlock(CardData card)
+            {
+                ResourceCost cost = CardCostRules.PlayResources(card);
+                if (cost == null)
+                    return;
+                foreach (ResourceType type in ResourceBundle.All)
+                {
+                    int need = cost.Get(type);
+                    if (need > 0 && Stock(root, type) < need
+                        && (!verifiedResourceBlocks.TryGetValue(type, out int priorNeed) || need < priorNeed))
+                        verifiedResourceBlocks[type] = need;
+                }
+            }
             foreach (CardData card in hand.Hand.Where(c => c?.Definition != null))
             {
                 CardDefinition def = card.Definition;
@@ -92,21 +106,10 @@ namespace Game.Ai.V2
                             continue;
                         }
                         opDeliver++;
-                        ResourceCost chainCost = CardCostRules.PlayResources(card);
-                        if (chainCost != null && !CardCostRules.CanAffordPlay(root, card))
+                        if (CardCostRules.PlayResources(card) != null && !CardCostRules.CanAffordPlay(root, card))
                         {
                             resReject++;
-                            foreach (ResourceType type in ResourceBundle.All)
-                            {
-                                int need = chainCost.Get(type);
-                                if (need <= 0)
-                                    continue;
-                                int available = Stock(root, type);
-                                if (available < need
-                                    && (!verifiedResourceBlocks.TryGetValue(type, out int priorNeed)
-                                        || need < priorNeed))
-                                    verifiedResourceBlocks[type] = need;
-                            }
+                            RecordVerifiedBlock(card);
                             continue;
                         }
                         float followupAp = CapabilityQualityEvaluator.ProjectedActivationApCost(diagnosticPlan)
@@ -122,24 +125,35 @@ namespace Game.Ai.V2
                     // CardPlayExecutor can reject resources before the branch above reaches its
                     // explicit chain-resource gate. Capture the exact deficit here too, but only
                     // for a capability/trait-matching card examined by this demand diagnostic.
-                    ResourceCost preflightCost = CardCostRules.PlayResources(card);
-                    if (root != null && player != null && preflightCost != null
+                    if (root != null && player != null && CardCostRules.PlayResources(card) != null
                         && !CardCostRules.CanAffordPlay(root, card))
-                    {
-                        foreach (ResourceType type in ResourceBundle.All)
-                        {
-                            int need = preflightCost.Get(type);
-                            if (need <= 0)
-                                continue;
-                            int available = Stock(root, type);
-                            if (available < need
-                                && (!verifiedResourceBlocks.TryGetValue(type, out int priorNeed)
-                                    || need < priorNeed))
-                                verifiedResourceBlocks[type] = need;
-                        }
-                    }
+                        RecordVerifiedBlock(card);
                 }
             }
+
+            // The local refit (AttackBaseRefitPolicy) is its own delivery shape: the card lands
+            // beside a full pinned recipient and is exchanged in. Count it through the same gates,
+            // or the report says "operational-delivery-gate" while an exchange exists (2026-10-22).
+            int refits = 0;
+            if (AttackBaseRefitPolicy.WindowFor(demand).HasValue && !demand.AttackLocalRefit)
+                foreach (MaterializationPlan p in AttackBaseRefitPolicy.Enumerate(snap, player, hand, ctx,
+                             demand, commitments, null, null, WorldSnapshot.IntentsOf(snap), root))
+                {
+                    placements++;
+                    preflight++;
+                    if (!AttackBaseRefitPolicy.ServesDemand(p, demand, snap, player, WorldSnapshot.IntentsOf(snap)))
+                        continue;
+                    opDeliver++;
+                    refits++;
+                    if (root != null && p.BaseCardInHand != null && !CardCostRules.CanAffordPlay(root, p.BaseCardInHand))
+                    {
+                        resReject++;
+                        RecordVerifiedBlock(p.BaseCardInHand);
+                        continue;
+                    }
+                    minDirectNeed = System.Math.Min(minDirectNeed,
+                        p.ApCost + reservedFollowup + p.AttackRefitFollowupAp);
+                }
 
             // §17 — starvation pressure is now evidence-based. The old StrategicManager call
             // still loops over zero-stock resources after this method, but ResourceStarvationRegistry
@@ -199,7 +213,8 @@ namespace Game.Ai.V2
                         .Select(kv => $"{kv.Key}:{Stock(root, kv.Key)}/{kv.Value}"));
                 return $"diag gate={gate} match/trait/place/preflight/delivery="
                     + $"{matching}/{traitMatching}/{placements}/{preflight}/{opDeliver} "
-                    + $"resourceDeficits=[{deficits}] directNeedMin={directNeed} ap={ap}";
+                    + $"resourceDeficits=[{deficits}] directNeedMin={directNeed} ap={ap}"
+                    + (refits > 0 ? $" refit={refits}" : "");
             }
 
             return $"diag hand={hand.Hand.Count} {AiCardLog.Hand(hand)} freeSlot={(hand.HasFreeSlot ? 1 : 0)} "

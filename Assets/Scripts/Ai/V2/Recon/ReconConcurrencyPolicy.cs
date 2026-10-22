@@ -36,7 +36,7 @@ namespace Game.Ai.V2
             // capacity, Continuity trim, Phase-B scout saturation) gets the same answer.
             if (runnable != null)
                 runnable = runnable.Where(o => o != null && o.Kind != ReconObjectiveKind.AirSweep
-                    && o.Kind != ReconObjectiveKind.CaptureStructure).ToList();
+                    && !o.IsLocalStrike).ToList();
             int hardCap = HardCap;
             if (hardCap == 0 || runnable == null || runnable.Count == 0
                 || !HasMaterialValue(runnable[0]))

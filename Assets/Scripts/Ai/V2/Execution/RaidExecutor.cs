@@ -23,7 +23,7 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ExecutionResult result, int apBefore, WorldSnapshot snapshot)
         {
             ArmyData initialArmy = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            int maxIterations = (initialArmy?.CurrentMovement ?? 0) + 1;
+            int maxIterations = GroundCombatLegStep.StepBudget(initialArmy, pm) + 1;
             int iterations = 0;
             ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
 
@@ -204,6 +204,7 @@ namespace Game.Ai.V2
         private static IEnumerator RunRaidAirSupportStep(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData wing)
         {
+            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing);
             if (!AviationRules.IsValidAirArmy(wing)
                 || pm.RaidTarget.Kind != RaidTargetKind.NeutralArmy
                 || !pm.RaidAirSupportLandingHex.HasValue)

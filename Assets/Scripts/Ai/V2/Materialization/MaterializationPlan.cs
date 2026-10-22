@@ -113,8 +113,11 @@ namespace Game.Ai.V2
         //  placement failure (result.PlacementStale) — it does NOT substitute a different
         //  placement. The caller refreshes the world and replans (ARCH-02 §35).
         public PlacementOption Deploy;
-        // Optional terminal same-hex handoff, owned by the existing Attack operation.
+        // Optional terminal same-hex handoff into a pinned recipient (AttackBaseRefitPolicy):
+        // the window that owns it and the fight it was judged against.
         public int? AttackRefitPrimaryId;
+        internal AttackBaseRefitPolicy.RefitWindow AttackRefitWindow;
+        public HexCoord? AttackRefitTargetHex;
         public int AttackRefitCaptureTurn;
         public bool AttackRefitPromotesCommander;
         public string AttackRefitRoster;

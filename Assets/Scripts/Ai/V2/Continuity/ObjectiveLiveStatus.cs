@@ -42,6 +42,12 @@ namespace Game.Ai.V2
                     if (!OwnWorld.Of(player).IsVisible(focus)) return false;
                     BuildingData building = OwnWorld.Of(player).VisibleBuildingAt(focus);
                     return building == null || building.Owner == player;
+                // Met when the hunted hex is in sight with no enemy left on it (killed or gone).
+                case ScoutTargetKind.Hunt:
+                    return OwnWorld.Of(player).IsVisible(focus)
+                        && !Game.Map.ArmyRegistry.AllAt(focus).Any(a => a != null && a.Owner != null
+                            && a.Owner != player && !a.Owner.IsNeutral && !a.IsPrison
+                            && Game.Map.StealthSystem.TargetableMembersFor(a, player).Any());
                 case ScoutTargetKind.Explore: return ExploreSatisfied(player, focus);
                 case ScoutTargetKind.Refresh: return RefreshSatisfied(player, focus);
                 default: return false;

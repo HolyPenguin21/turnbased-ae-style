@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -558,12 +559,13 @@ namespace Game.Ai.V2
         {
             if (!a.AirSupportArmyId.HasValue || !a.AirSupportLandingHex.HasValue)
                 return;
-            ArmySnapshot wing = snap.Self.Armies?.FirstOrDefault(x => x != null
-                && x.ArmyId == a.AirSupportArmyId.Value && x.IsAir && !x.IsAirfield);
+            // A formed wing or a stored launch from an own airfield (GroundCombatAirSupport).
+            ArmySnapshot wing = GroundCombatAirSupport.SupportSource(snap, a.AirSupportArmyId.Value);
             if (wing == null
-                || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, wing.ArmyId, snap.TurnNumber))
+                || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, wing.ArmyId, snap.TurnNumber)
+                || !GroundCombatAirSupport.SourceLeg(snap, wing, a.Target.Hex, AirStrikePolicy.Standard,
+                    out int eta, out MissionRequirements requirements))
                 return;
-            int eta = GroundCombatAirSupport.SortieEta(wing, a.Target.Hex);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.AirSupport,
@@ -585,7 +587,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = wing.ArmyId,
                 FromDurableIntent = true,
                 DurableFundingTier = intent.Funding,
-                Requirements = GroundCombatAirSupport.LegRequirements(wing, a.Target.Hex, eta),
+                Requirements = requirements,
                 Explain = $"Attack {a.Target.DiagnosticLabel} AirSupport wing #{wing.ArmyId} "
                     + $"-> strike, land ({a.AirSupportLandingHex.Value.Q},{a.AirSupportLandingHex.Value.R})",
             };

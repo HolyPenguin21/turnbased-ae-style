@@ -426,11 +426,11 @@ namespace Game.Ai.V2
                 landing = scored.AirSupportLandingHex.Value;
             }
 
-            ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
-                && a.ArmyId == airId && a.IsAir && !a.IsAirfield && !a.IsPrison);
-            if (wing == null)
+            // A formed wing or a stored launch from an own airfield (GroundCombatAirSupport).
+            ArmySnapshot wing = GroundCombatAirSupport.SupportSource(snap, airId);
+            if (!GroundCombatAirSupport.SourceLeg(snap, wing, ri.LastKnownHex,
+                    AirStrikePolicy.RaidSupport(ri.Target.ArmyId), out int eta, out _))
                 return null;
-            int eta = GroundCombatAirSupport.SortieEta(wing, ri.LastKnownHex);
             var target = new RaidMissionTarget
             {
                 Phase = RaidMissionPhase.AirSupport,
@@ -551,11 +551,12 @@ namespace Game.Ai.V2
             MissionRequirements req = estimate.Requirements;
             if (c.Target.Phase == RaidMissionPhase.AirSupport)
             {
-                ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
-                    && c.Target.AirSupportArmyId.HasValue
-                    && a.ArmyId == c.Target.AirSupportArmyId.Value);
-                req = GroundCombatAirSupport.LegRequirements(wing, c.Target.DestinationHex,
-                    c.Target.EstimatedEta);
+                ArmySnapshot wing = c.Target.AirSupportArmyId.HasValue
+                    ? GroundCombatAirSupport.SupportSource(snap, c.Target.AirSupportArmyId.Value) : null;
+                if (!GroundCombatAirSupport.SourceLeg(snap, wing, c.Target.DestinationHex,
+                        AirStrikePolicy.RaidSupport(c.Target.Target.ArmyId), out _, out req))
+                    req = GroundCombatAirSupport.LegRequirements(wing, c.Target.DestinationHex,
+                        c.Target.EstimatedEta);
             }
             int? plannedMover = c.PreferredMover ?? estimate.PlannedMoverArmyId ?? c.CostedMover;
 

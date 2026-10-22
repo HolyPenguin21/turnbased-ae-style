@@ -21,31 +21,24 @@ namespace Game.Ai.V2
             AiTurnContext ctx, AiHandData hand, ArmyData support, SpendAuthority authority,
             IMissionIntentView intents)
         {
-            var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
-            var attack = AttackBaseRefitPolicy.Resolve(intents?.All, player,
-                primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
-            if (primary == null || support == null || attack == null
-                || attack.RefitCaptureTurn != plan.AttackRefitCaptureTurn
-                || (support != primary && AttackBaseRefitPolicy.RosterKey(primary) != plan.AttackRefitRoster)) return false;
+            if (support == null || plan?.AttackRefitPrimaryId == null)
+                return false;
+            var snap = WorldAnalysis.Scan(player, root, hand, ctx, intents);
+            if (!AttackBaseRefitPolicy.TryPlanExecution(plan, player, ctx, snap, intents?.All, support,
+                    out AttackBaseRefitPolicy.RefitContext refit, out HandoffPlan h))
+                return false;
+            var primary = refit.Primary;
             // A direct free-slot deployment already used the canonical card-play transaction.
             if (support == primary)
             {
-                if (attack.RefitBattleStopTurn == ctx.TurnNumber && primary.Members.Any(u => u.MoveCurrent != 0))
+                if (refit.Attack?.RefitBattleStopTurn == ctx.TurnNumber && primary.Members.Any(u => u.MoveCurrent != 0))
                 {
                     foreach (var u in primary.Members) u.MoveCurrent = 0;
                     WorldDeltaLifecycle.CommitMutation();
                 }
                 return true;
             }
-            var snap = WorldAnalysis.Scan(player, root, hand, ctx, intents);
-            var h = GroundCombatReinforcement.PlanAttackHandoff(primary, support,
-                KnownOpposition.OnHex(snap, attack.Target.Hex),
-                AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx.Map, attack.Target.Hex),
-                true, out _, capacityIsProgress: true);
-            if (h == null || !AttackBaseRefitPolicy.KeepsForce(primary, h)
-                || !AttackBaseRefitPolicy.KeepsMovement(primary, h)
-                || !AttackBaseRefitPolicy.KeepsCoverage(primary, h, snap, attack)) return false;
-            int followup = AttackBaseRefitPolicy.FollowupAp(player, primary, attack,
+            int followup = AttackBaseRefitPolicy.FollowupAp(player, refit,
                 AttackBaseRefitPolicy.FinalRoster(primary, h), ctx, root);
             int cost = GroundCombatReinforcement.HandoffApCost(h, primary, support);
             int movement = primary.CurrentMovement;
@@ -57,7 +50,8 @@ namespace Game.Ai.V2
             // An exchange cannot restore movement spent before the handoff.
             foreach (var u in h.Incoming) u.MoveCurrent = System.Math.Min(u.MoveCurrent, movement);
             WorldDeltaLifecycle.CommitMutation();
-            AiDebugLog.Write($"[AI][V2][Attack][Refit] primary=#{primary.Id} base={primary.Hex} {h.Detail} ap={cost}");
+            AiDebugLog.Write($"[AI][V2][Refit] window={refit.Window} primary=#{primary.Id} base={primary.Hex} "
+                + $"{h.Detail} ap={cost}");
             return true;
         }
 

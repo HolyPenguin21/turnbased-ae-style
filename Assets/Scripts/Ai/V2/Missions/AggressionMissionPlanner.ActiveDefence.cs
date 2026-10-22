@@ -349,7 +349,8 @@ namespace Game.Ai.V2
                     PreferredMoverArmyId = wing.ArmyId,
                     FromDurableIntent = incumbent != null,
                     DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
-                    Requirements = GroundCombatAirSupport.LegRequirements(wing, targetHex, best.EtaTurns),
+                    Requirements = GroundCombatAirSupport.LegRequirements(wing, targetHex, best.EtaTurns,
+                        best.Ap, best.Resources.Energy),
                     Explain = $"ActiveDefence enemy #{enemyId} AirSupport wing #{wing.ArmyId} "
                         + $"-> {best.StrikeTurns} strike turn(s), land "
                         + $"({target.AirSupportLandingHex.Value.Q},{target.AirSupportLandingHex.Value.R}) "

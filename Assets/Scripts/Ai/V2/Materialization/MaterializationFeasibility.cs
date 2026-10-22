@@ -174,7 +174,8 @@ namespace Game.Ai.V2
             if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx))
                 return;
 
-            if (demand.AttackLocalRefit
+            // A local refit (any window) is judged as the handoff it is, against the live recipient.
+            if (p.AttackRefitPrimaryId.HasValue
                 && (!AttackBaseRefitPolicy.Validate(p, snapshot, player, MissionIntentRegistry.GetOrCreate(player).All,
                     out var refitHandoff, out _)
                     || !AttackBaseRefitPolicy.FollowupStillCurrent(p, player, MissionIntentRegistry.GetOrCreate(player).All,
@@ -185,7 +186,7 @@ namespace Game.Ai.V2
             float activationAp = p != null && !upgrade
                 ? CapabilityQualityEvaluator.ProjectedActivationApCost(p)
                 : (baseDef != null ? baseDef.activationApCost : AiConfigV2.scoutNotionalActivationAp);
-            float followupAp = demand.AttackLocalRefit ? p.AttackRefitFollowupAp
+            float followupAp = p.AttackRefitPrimaryId.HasValue ? p.AttackRefitFollowupAp
                 : noFollowup ? 0f
                 : activationAp + stealthSurcharge + demand.MinimumFollowupAp;
             float need = p.ApCost + reservedFollowupAp + followupAp;

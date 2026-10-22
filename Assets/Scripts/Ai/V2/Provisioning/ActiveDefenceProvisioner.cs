@@ -160,7 +160,7 @@ namespace Game.Ai.V2
             float eps = AiConfigV2.allocatorSliceEpsilon;
             if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w, targetHex,
                     "active-defence", eps, out HexCoord landing, out float ap, out float energy,
-                    out ProvisionFailure finishFailure))
+                    out ProvisionFailure finishFailure, out IReadOnlyList<int> storedAircraft))
                 return ProvisioningResult.Fail(finishFailure);
             target.LastKnownHex = targetHex;
             target.LastObservedTurn = sighting.Value.SeenTurn;
@@ -171,6 +171,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.ActiveDefence, MoverArmyId = w.Wing.Id,
                 FocusHex = targetHex, ExecutionHex = targetHex,
                 ActiveDefenceTarget = target,
+                AircraftRuntimeIds = storedAircraft,
                 ClaimedAp = ap, ClaimedEnergy = energy,
                 ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
             });

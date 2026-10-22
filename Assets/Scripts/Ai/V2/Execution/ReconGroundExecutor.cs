@@ -177,7 +177,7 @@ namespace Game.Ai.V2
                     : pm.FocusHex,
             };
 
-            if (!ReconScoutKinds.IsCapture(pm.ScoutKind))
+            if (!ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
                 ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
                     prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
@@ -228,7 +228,7 @@ namespace Game.Ai.V2
             }
 
             RefreshObjectiveSatisfied(player, pm, result);
-            if (ReconScoutKinds.IsCapture(pm.ScoutKind) && result.ReachedGoal)
+            if (ReconScoutKinds.IsLocalStrike(pm.ScoutKind) && result.ReachedGoal)
             { control.StopReason = ExecutionStopReason.ReachedGoal; yield break; }
             // Hidden arrival does nothing until the resident voluntarily reveals. Zero MP/AP
             // is sufficient for this contact; gameplay owns capture, not a second AI rule.
@@ -245,7 +245,7 @@ namespace Game.Ai.V2
                 yield break;
             }
             ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(
-                ReconScoutKinds.IsCapture(pm.ScoutKind) ? null : player, army.Id,
+                ReconScoutKinds.IsLocalStrike(pm.ScoutKind) ? null : player, army.Id,
                 army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
@@ -256,6 +256,17 @@ namespace Game.Ai.V2
                 { control.StopReason = ExecutionStopReason.TargetInvalidated; yield break; }
                 reaction = new ReconReactionDecision(ReconReactionAction.SabotageStructure,
                     pm.FocusHex, null, 1f, "funded local structure capture");
+            }
+            else if (ReconScoutKinds.IsHunt(pm.ScoutKind))
+            {
+                // The funded hunt walks to the scouting force and strikes it on the last step —
+                // the same fight rule as the adjacent reaction, re-proved on every step.
+                if (!ReconReactionPolicy.CanHuntAt(player, ctx.Map, army, pm.FocusHex)
+                    || !ReconReactionPolicy.TryScoutingForceFight(player, ctx.Map, army, pm.FocusHex,
+                        out int huntedId, out float huntWin))
+                { control.StopReason = ExecutionStopReason.TargetInvalidated; yield break; }
+                reaction = new ReconReactionDecision(ReconReactionAction.AttackOpportunity,
+                    pm.FocusHex, huntedId, huntWin, "funded hunt of a reachable enemy scouting force");
             }
             if (reaction.Action == ReconReactionAction.StopAndReplan)
             {
@@ -330,7 +341,13 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (forceDecloakForAttack)
+            // Only the step onto the target is the strike (a Hunt walks there over several steps;
+            // the adjacent reaction's one step always is): it alone reveals and seeks combat.
+            bool strikeStep = forceDecloakForAttack && reaction.TargetHex.HasValue
+                && next.Value.Equals(reaction.TargetHex.Value);
+            // Revealing on a hex shared with a known army would fight it here instead; the shared
+            // mover (AiTurnController.MoveArmyRoutine) then reveals on arrival at the target.
+            if (strikeStep && !AiMapMemory.KnownResidentRevealContact(player, army))
             {
                 bool revealed = ExitArmyStealth(army);
                 result.StealthChanged |= revealed;
@@ -377,7 +394,7 @@ namespace Game.Ai.V2
             var move = AiDecision.Move(army, next.Value,
                 $"V2 recon continuous - {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
                 + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f,
-                forceDecloakForAttack ? AiGroundMoveAuthority.Combat
+                strikeStep ? AiGroundMoveAuthority.Combat
                     : sabotage ? GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, reaction.TargetHex.Value)
                     : AiGroundMoveAuthority.Transit);
             // Required/optional stealth and visible opportunistic attacks were resolved above.
@@ -397,10 +414,10 @@ namespace Game.Ai.V2
             if (moved)
             {
                 result.StepsMoved++;
-                if (!ReconScoutKinds.IsCapture(pm.ScoutKind))
+                if (!ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
                     ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
                 // The turn-wide distinct-scout budget counts scouts that really walked.
-                if (!ReconScoutKinds.IsCapture(pm.ScoutKind))
+                if (!ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
                     ReconTurnStateStore.For(player, ctx.TurnNumber)
                         .MarkReconGroundActorUsed(ctx.TurnNumber, pm.MoverArmyId);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
@@ -431,7 +448,7 @@ namespace Game.Ai.V2
                 WorldDeltaLifecycle.RecordExecutionMutation(result, true);
             }
 
-            if (forceDecloakForAttack && reaction.TargetArmyId.HasValue)
+            if (strikeStep && reaction.TargetArmyId.HasValue)
                 ReconAcceptanceAudit.RecordWeakRecceAttack(player, ctx.TurnNumber, pm.MoverArmyId,
                     reaction.TargetArmyId.Value, trace.BattleOccurred, reaction.WinChance);
 
@@ -477,7 +494,7 @@ namespace Game.Ai.V2
 
             RefreshObjectiveSatisfied(player, pm, result);
             control.CanContinue = !ReconScoutKinds.IsCapture(pm.ScoutKind) && army.CurrentMovement > 0;
-            control.StopReason = ReconScoutKinds.IsCapture(pm.ScoutKind) && result.ReachedGoal
+            control.StopReason = ReconScoutKinds.IsLocalStrike(pm.ScoutKind) && result.ReachedGoal
                 ? ExecutionStopReason.ReachedGoal : control.CanContinue
                 ? ExecutionStopReason.StepCompleted
                 : ExecutionStopReason.OutOfMovement;

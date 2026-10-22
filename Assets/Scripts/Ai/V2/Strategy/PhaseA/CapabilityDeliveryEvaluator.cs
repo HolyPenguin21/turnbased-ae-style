@@ -256,17 +256,29 @@ namespace Game.Ai.V2
                 CardData source = demand.EconomySourceCard;
                 delivered = source != null && plan?.BaseCardInHand == source ? 1f : 0f;
             }
+            else if (demand?.AttackLocalRefit == true || plan?.AttackRefitPrimaryId.HasValue == true)
+            {
+                // A local refit (any window) is measured on its exact recipient. The assault's
+                // handoff and a command handover count as progress whatever the power delta.
+                int primaryId = plan?.AttackRefitPrimaryId ?? -1;
+                var host = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == primaryId);
+                float gain = host == null ? 0f : host.EffectiveArmyPower - (beforeSnap?.Self?.Armies?
+                    .FirstOrDefault(a => a.ArmyId == primaryId)?.EffectiveArmyPower ?? 0f);
+                delivered = host == null ? 0f
+                    : plan.AttackRefitWindow == AttackBaseRefitPolicy.RefitWindow.AttackAssault
+                        || plan.AttackRefitPromotesCommander
+                        ? Mathf.Max(1f, gain) : Mathf.Max(0f, gain);
+                bool refitted = delivered > AiConfigV2.allocatorSliceEpsilon;
+                // The assault's primary is owned by its Attack intent. Any other recipient keeps the
+                // ordinary delivery's turn lease, so this turn's Housekeeping cannot repack the body
+                // it just received (a free fist, a garrison) — the same protection a direct deploy gets.
+                if (refitted && plan.AttackRefitWindow != AttackBaseRefitPolicy.RefitWindow.AttackAssault)
+                    StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, demand.RequestingAxis,
+                        demand.Capability, new[] { primaryId });
+                return refitted;
+            }
             else if (demand?.AttackFistArmyId.HasValue == true)
             {
-                if (demand.AttackLocalRefit)
-                {
-                    int primaryId = demand.AttackFistArmyId.Value;
-                    var host = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == primaryId);
-                    delivered = host != null && plan?.AttackRefitPrimaryId == primaryId
-                        ? Mathf.Max(1f, host.EffectiveArmyPower - (beforeSnap?.Self?.Armies?
-                            .FirstOrDefault(a => a.ArmyId == primaryId)?.EffectiveArmyPower ?? 0f)) : 0f;
-                    return delivered > 0f; // The durable Attack already owns its primary.
-                }
                 // This demand names one free strike army. A rise in global field inventory from
                 // an unrelated new container cannot close it; measure the exact recipient instead.
                 int id = demand.AttackFistArmyId.Value;

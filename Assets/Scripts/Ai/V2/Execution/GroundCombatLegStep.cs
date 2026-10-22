@@ -1,9 +1,11 @@
 using System.Linq;
 using System.Collections;
+using System.Collections.Generic;
 using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -213,6 +215,50 @@ namespace Game.Ai.V2
         // come back later", never a route that spends this turn's remaining MP) -> HOLD for the
         // next turn's strike; otherwise the series is over and the same sortie flies home now
         // (generic aviation recovery). The lane validates its own task first; this never re-plans.
+        // THE one place a ground-combat task's air support forms its wing from stored aircraft
+        // (Attack / Raid / ActiveDefence). Provisioning bound an own airfield and the exact
+        // aircraft GroundCombatAirSupport.StoredSupportGroup named (pm.AircraftRuntimeIds); the
+        // shared AviationWingPreparation forms them into a wing (free — the launch is paid by the
+        // first flight step) and the formed wing becomes the leg's actor (ActualActorArmyId), so
+        // Continuity binds the real wing. A formed wing that never takes off lands back in storage
+        // at turn end (AviationTurnLifecycle). Any other mover is returned unchanged.
+        // How many adjacent steps a lane's executor may run for this mover this call: its current
+        // movement, or — a stored launch not yet formed — the movement of the aircraft it launches.
+        internal static int StepBudget(ArmyData mover, ProvisionedMission pm)
+        {
+            if (mover != null && AviationRules.IsAirfield(mover) && pm?.AircraftRuntimeIds != null)
+                return mover.Members.Where(u => u != null && pm.AircraftRuntimeIds.Contains(u.RuntimeId))
+                    .Select(AviationRules.EffectiveMoveCurrent).DefaultIfEmpty(0).Min();
+            return mover?.CurrentMovement ?? 0;
+        }
+
+        internal static ArmyData MaterializeSupportWing(PlayerSetupData player, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, ArmyData mover)
+        {
+            if (mover == null || pm == null || !AviationRules.IsAirfield(mover))
+                return mover;
+            if (!GroundCombatAirSupport.IsStoredSource(player, mover, pm.AircraftRuntimeIds))
+                return null;
+            List<UnitData> aircraft = pm.AircraftRuntimeIds
+                .Select(id => mover.Members.First(u => u != null && u.RuntimeId == id)).ToList();
+            // No ownership view here: the formation never repurposes an existing army (new wing).
+            if (!AviationWingPreparation.TryForm(player, ctx, mover, aircraft, null,
+                    out ArmyData wing, out string how))
+            {
+                AiDebugLog.Write($"[AI][V2][AirSupport] stored launch from airfield #{mover.Id} failed - {how}");
+                return null;
+            }
+            if (pm.RaidAirSupportArmyId == mover.Id)
+                pm.RaidAirSupportArmyId = wing.Id;
+            pm.MoverArmyId = wing.Id;
+            pm.AircraftRuntimeIds = null;
+            result.ActualActorArmyId = wing.Id;
+            WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+            AiDebugLog.Write($"[AI][V2][AirSupport] formed wing #{wing.Id} from airfield #{mover.Id} "
+                + $"({how}): [{string.Join(",", aircraft.Select(u => u.Name))}]");
+            return wing;
+        }
+
         internal static IEnumerator AirStrikeSortie(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData wing,
             HexCoord targetHex, HexCoord landingHex, AirStrikePolicy policy, string label,

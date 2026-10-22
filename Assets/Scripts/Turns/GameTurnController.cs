@@ -1199,6 +1199,7 @@ namespace Game.Turns
                 foreach (UnitData unit in army.Members)
                 {
                     unit.ReplenishMoveForNewTurn();
+                    unit.HasEnteredStealthThisTurn = false;
                     if (unit.IsAviation)
                         unit.HasAirAttackedThisTurn = false;
                 }

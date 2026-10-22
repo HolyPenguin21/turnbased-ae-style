@@ -36,6 +36,8 @@ namespace Game.Ai.V2
 
             if (ReconScoutKinds.IsCapture(intent.Kind))
                 return snap.Self?.ReconCaptureOpportunities?.Any(x => x.Hex.Equals(intent.FocusHex)) == true;
+            if (ReconScoutKinds.IsHunt(intent.Kind))
+                return snap.Self?.ReconHuntOpportunities?.Any(x => x.Hex.Equals(intent.FocusHex)) == true;
 
             // AirSweep stays a live operation while an anchor exists (the enemy is somewhere);
             // it is never "met" by observation — each sortie ends by its own refuel endurance.
