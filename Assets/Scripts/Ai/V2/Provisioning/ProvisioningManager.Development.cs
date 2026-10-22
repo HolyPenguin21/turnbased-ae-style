@@ -121,7 +121,7 @@ namespace Game.Ai.V2
             if (requiredAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(requiredAp,
                     "Development transport AP envelope below extraction/activation"));
-            if (requiredAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
+            if (!session.FitsTurnAp(root, requiredAp))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "Development transport cannot spend shared AP pool"));
 

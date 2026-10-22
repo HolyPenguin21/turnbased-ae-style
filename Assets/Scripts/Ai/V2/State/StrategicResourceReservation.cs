@@ -65,13 +65,12 @@ namespace Game.Ai.V2
     {
         private sealed class Entry
         {
-            public int Turn;
             public readonly List<StrategicResourceReservation> Reservations =
                 new List<StrategicResourceReservation>();
         }
 
-        private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
-            new Dictionary<PlayerSetupData, Entry>();
+        private static readonly TurnScopedByPlayer<Entry> ByPlayer =
+            new TurnScopedByPlayer<Entry>(() => new Entry());
 
         // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
@@ -79,7 +78,7 @@ namespace Game.Ai.V2
         public static void BeginTurn(PlayerSetupData player, int turn)
         {
             if (player == null) return;
-            ByPlayer[player] = new Entry { Turn = turn };
+            ByPlayer.Reset(player, turn);
         }
 
         // Idempotent by (Owner, Reason, Resource): a repeat upserts the amount/expiry, never a
@@ -88,7 +87,7 @@ namespace Game.Ai.V2
         public static void Upsert(PlayerSetupData player, int turn, StrategicResourceReservation r)
         {
             if (player == null || r == null) return;
-            Entry e = GetOrReset(player, turn);
+            Entry e = ByPlayer.GetOrReset(player, turn);
             StrategicResourceReservation existing = e.Reservations.FirstOrDefault(
                 x => x.Owner == r.Owner && x.Reason == r.Reason && x.Resource == r.Resource);
 
@@ -135,7 +134,7 @@ namespace Game.Ai.V2
         // How much a spender may use is TurnResourceBook.Free, never this.
         public static float Active(PlayerSetupData player, int turn, StrategicReservedResource res)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return 0f;
             float sum = 0f;
             foreach (StrategicResourceReservation r in e.Reservations)
@@ -155,7 +154,7 @@ namespace Game.Ai.V2
         // Immediate release for a Suppressed / NoAction / Invalidated / Skipped owning pass.
         public static bool ReleaseByReason(PlayerSetupData player, int turn, StrategicReservationReason reason)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return false;
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason);
             if (removed > 0)
@@ -176,7 +175,7 @@ namespace Game.Ai.V2
             StrategicReservationReason reason, string owner, bool replaceOwnerRows = false)
         {
             if (player == null) return;
-            Entry e = GetOrReset(player, turn);
+            Entry e = ByPlayer.GetOrReset(player, turn);
             bool ownerScoped = !string.IsNullOrEmpty(owner);
             int downgraded = 0;
             if (reason == StrategicReservationReason.EconomyDeferredBuild
@@ -199,7 +198,7 @@ namespace Game.Ai.V2
         public static void ReleaseReasonExceptOwner(PlayerSetupData player, int turn,
             StrategicReservationReason reason, string keepOwner)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return;
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason && r.Owner != keepOwner);
             if (removed > 0)
@@ -211,7 +210,7 @@ namespace Game.Ai.V2
         internal static IReadOnlyList<string> OwnersWithReason(PlayerSetupData player, int turn,
             StrategicReservationReason reason)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return System.Array.Empty<string>();
             return e.Reservations.Where(r => r.Reason == reason)
                 .Select(r => r.Owner).Where(owner => !string.IsNullOrEmpty(owner))
@@ -224,14 +223,14 @@ namespace Game.Ai.V2
         public static bool HasOwnerReason(PlayerSetupData player, int turn, string owner,
             StrategicReservationReason reason) =>
             player != null && !string.IsNullOrEmpty(owner)
-            && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+            && ByPlayer.Peek(player, turn) is Entry e
             && e.Reservations.Any(r => r.Owner == owner && r.Reason == reason);
 
         public static bool OwnerReasonMatches(PlayerSetupData player, int turn, string owner,
             StrategicReservationReason reason, Game.Cards.ResourceCost cost, float ap)
         {
             if (player == null || string.IsNullOrEmpty(owner)
-                || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                || !(ByPlayer.Peek(player, turn) is Entry e))
                 return false;
             List<StrategicResourceReservation> rows = e.Reservations
                 .Where(r => r.Owner == owner && r.Reason == reason).ToList();
@@ -262,7 +261,7 @@ namespace Game.Ai.V2
         public static bool ReleaseByOwner(PlayerSetupData player, int turn, string owner)
         {
             if (player == null || string.IsNullOrEmpty(owner)
-                || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                || !(ByPlayer.Peek(player, turn) is Entry e))
                 return false;
             int removed = e.Reservations.RemoveAll(r => r.Owner == owner);
             if (removed > 0)
@@ -273,7 +272,7 @@ namespace Game.Ai.V2
         // Normal end-of-stage expiry.
         public static bool ExpireStage(PlayerSetupData player, int turn, StrategicReservationExpiry stage)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return false;
             int removed = e.Reservations.RemoveAll(r => r.ExpirationStage == stage);
             if (removed > 0)
@@ -282,14 +281,14 @@ namespace Game.Ai.V2
         }
 
         public static bool HasAny(PlayerSetupData player, int turn) =>
-            player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+            ByPlayer.Peek(player, turn) is Entry e
             && e.Reservations.Count > 0;
 
         // This turn's live rows, for TurnResourceBook, which copies each value into a claim at
         // once. Hot path (every spendability query): no copy here, and never hold on to the list.
         internal static IReadOnlyList<StrategicResourceReservation> LiveRows(PlayerSetupData player,
             int turn) =>
-            player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+            ByPlayer.Peek(player, turn) is Entry e
                 ? e.Reservations
                 : (IReadOnlyList<StrategicResourceReservation>)System.Array.Empty<StrategicResourceReservation>();
 
@@ -297,7 +296,7 @@ namespace Game.Ai.V2
         // never a spend query.
         internal static IReadOnlyList<StrategicResourceReservation> Rows(PlayerSetupData player, int turn)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return System.Array.Empty<StrategicResourceReservation>();
             return e.Reservations.Select(r => new StrategicResourceReservation
             {
@@ -310,7 +309,7 @@ namespace Game.Ai.V2
         // force-clears anything still standing (a leak — an owner that never released).
         public static void AssertClearAtTurnEnd(PlayerSetupData player, int turn)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return;
             if (e.Reservations.Count > 0)
             {
@@ -326,7 +325,7 @@ namespace Game.Ai.V2
         internal static string ReasonDigest(PlayerSetupData player, int turn,
             StrategicReservationReason reason)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return string.Empty;
             return string.Join(";", e.Reservations.Where(r => r.Reason == reason)
                 .Select(r => r.ToString()).OrderBy(x => x, System.StringComparer.Ordinal));
@@ -345,21 +344,11 @@ namespace Game.Ai.V2
 
         public static string DebugLine(PlayerSetupData player, int turn)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn
+            if (!(ByPlayer.Peek(player, turn) is Entry e)
                 || e.Reservations.Count == 0)
                 return "ownerAwarePhysical=none";
             return "ownerAwarePhysical=[" + string.Join(", ",
                 e.Reservations.Select(r => r.ToString())) + "]";
-        }
-
-        private static Entry GetOrReset(PlayerSetupData player, int turn)
-        {
-            if (!ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
-            {
-                e = new Entry { Turn = turn };
-                ByPlayer[player] = e;
-            }
-            return e;
         }
     }
 }

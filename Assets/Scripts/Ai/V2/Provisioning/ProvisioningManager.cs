@@ -169,7 +169,7 @@ namespace Game.Ai.V2
             if (i == open.Count)
             {
                 long[] key = ScoreGroundCombatAssignment(open, cands, chosen, snap);
-                if (bestKey == null || Lex(key, bestKey) < 0)
+                if (bestKey == null || AiV2Util.Lex(key, bestKey) < 0)
                 {
                     bestKey = key;
                     Array.Copy(chosen, best, chosen.Length);
@@ -228,9 +228,6 @@ namespace Game.Ai.V2
                 key[6 + i] = chosen[i] < 0 ? long.MaxValue : cands[i][chosen[i]];
             return key;
         }
-
-        // Was byte-identical to ReconAssignmentPlanner's copy — body moved to AiV2Util.
-        private static int Lex(long[] a, long[] b) => AiV2Util.Lex(a, b);
 
         public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded)
@@ -310,7 +307,7 @@ namespace Game.Ai.V2
             else
             {
                 army = AiV2Util.ResolveArmy(player, moverArmyId);
-                if (army == null || army.Owner != player || army.Members.Count == 0
+                if (!AiV2Util.IsLiveOwnArmy(army, player)
                     || !AiArmyRoles.IsSoloRecce(army) || (army.CurrentMovement <= 0
                         && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(target.FocusHex))))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
@@ -396,7 +393,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realNeed,
                     $"mover #{moverArmyId} needs {N(realNeed)} AP, envelope is {N(envelope)}"));
 
-            float turnApLeft = root.ActionPoints - session.ApClaimed;
+            float turnApLeft = session.TurnApLeft(root);
             if (realNeed > turnApLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: need {N(realNeed)}, {N(turnApLeft)} left after earlier claims"));
@@ -443,7 +440,7 @@ namespace Game.Ai.V2
             // above (harmless — nothing mutated it in between); a freshly extracted garrison Recce
             // rolls back through FailAfterRecce instead of leaving a phantom army downstream stages
             // were never told to expect.
-            if (army == null || army.Owner != player || army.Members.Count == 0
+            if (!AiV2Util.IsLiveOwnArmy(army, player)
                 || !AiArmyRoles.IsSoloRecce(army) || (army.CurrentMovement <= 0
                         && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(target.FocusHex))))
                 return FailAfterRecce(ProvisionFailure.MoverContended(

@@ -199,7 +199,7 @@ namespace Game.Ai.V2
                     || u.IsPrisoner || u.HitPointsCurrent <= 0 || u.Owner != player)
                 || !p.MatchesRoster(units.Select(u => u.RuntimeId)))
                 return false;
-            if (!ActiveDefenceProvisioner.SortieCoverHolds(player, p, units, out why))
+            if (!GarrisonSortieProvisioning.CoverHolds(player, p, units, out why))
                 return false;
             if (AttackObjectiveEvaluator.EvaluateTarget(snap, leg.Target)
                     != AttackObjectiveEvaluator.AttackTargetStatus.Continue
@@ -211,8 +211,8 @@ namespace Game.Ai.V2
                 { why = $"attack sortie body {g.Key} now belongs to the main fist"; return false; }
             HexCoord site = leg.Target.Hex;
             if (!SortieTakesSite(units.Select(WorthIt.FromLiveUnit).ToList(),
-                    AttackObjectiveEvaluator.KnownSiteOpposition(snap, site),
-                    AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx.Map, site), out _, out _)
+                    KnownOpposition.OnHex(snap, site),
+                    AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx.Map, site), out _, out _)
                 || !ActiveDefenceObjectiveEvaluator.CanReachNow(ctx.Map, player, from, site,
                     ArmyData.ComputeCurrentMovement(units), ArmyData.ComputeMaxMovement(units), out _))
             { why = "attack sortie fight or same-turn movement gate failed"; return false; }

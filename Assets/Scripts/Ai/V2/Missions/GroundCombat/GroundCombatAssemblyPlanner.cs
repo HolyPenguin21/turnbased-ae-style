@@ -194,7 +194,7 @@ namespace Game.Ai.V2
     public sealed class GroundCombatAssemblyRequest
     {
         // The opposition the assembled force must beat: every defending army with its own
-        // commander (AiV2Util.KnownOpposition / AttackObjectiveEvaluator.KnownSiteOpposition).
+        // commander (KnownOpposition.ForRaid / KnownOpposition.OnHex).
         // Empty == "no fight to win" (a pure escort / rendezvous request), which trivially clears.
         public IReadOnlyList<WorthIt.DefendingArmy> Opposition =
             System.Array.Empty<WorthIt.DefendingArmy>();

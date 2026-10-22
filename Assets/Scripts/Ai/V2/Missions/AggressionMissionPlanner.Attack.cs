@@ -166,8 +166,8 @@ namespace Game.Ai.V2
                 IReadOnlyList<WorthIt.DefendingArmy> opposition = assaultObjective.Opposition;
                 // §30 — the honest, knowledge-scoped answer to "what defence does a defender on
                 // that hex actually get". Never a live BuildingRegistry read.
-                float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
-                    snap, ctx?.Map, assaultObjective.Hex);
+                float hexBonus = AiMapMemory.KnownHexDefenseBonus(
+                    snap?.Observer, ctx?.Map, assaultObjective.Hex);
 
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest
@@ -571,7 +571,7 @@ namespace Game.Ai.V2
                 AirSupportArmyId = wing.ArmyId,
                 AirSupportLandingHex = a.AirSupportLandingHex,
                 DestinationHex = a.Target.Hex,
-                DefenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count,
+                DefenderCount = KnownOpposition.DefendersOnHex(snap, a.Target.Hex).Count,
                 EstimatedEta = eta,
                 OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
             };
@@ -774,8 +774,8 @@ namespace Game.Ai.V2
             IDictionary<MissionIntentKey, string> deferredThisPass)
         {
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
+                KnownOpposition.OnHex(snap, a.Target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, a.Target.Hex);
             List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                 snap, a.PrimaryArmyId.Value, opposition, committed, hexBonus,
                 allowCommandHandover: true);

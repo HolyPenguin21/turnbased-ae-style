@@ -6,46 +6,95 @@ namespace Game.Ai.V2
     // Domain composition only. Generic result/lease storage never implements these rules.
     internal static partial class MissionContinuityLayer
     {
-        private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
-            ExecutionClassifiers = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
+        // ONE registration per mission kind: every per-kind continuity hook in one place, so a new
+        // kind is wired here once and a missing kind fails loudly instead of being read as Scout.
+        // Required hooks: LiveObjective, Resolve, ProvisionFacts. A null optional hook means the
+        // kind has no rule of its own there (default classification / no facts / a hard failure).
+        private delegate void ActiveResolver(Game.Players.PlayerSetupData player,
+            WorldSnapshot snapshot, MissionIntent intent, ActiveResolution pass);
+        private sealed class KindHooks
+        {
+            internal Func<Game.Players.PlayerSetupData, ProvisionedMission, bool> LiveObjective;
+            internal ActiveResolver Resolve;
+            internal Action<ProvisionedMission, MissionStepResult> ProvisionFacts;
+            internal Action<ExecutionResult, MissionStepResult> ClassifyExecution;
+            internal Action<ExecutionResult, MissionStepResult> ExecutionFacts;
+            internal Func<MissionStepResult, bool> InvalidatedTargetContinues;
+        }
+        private static readonly IReadOnlyDictionary<MissionKind, KindHooks> Kinds =
+            new Dictionary<MissionKind, KindHooks>
             {
-                [MissionKind.Scout] = ReconContinuity.ClassifyScoutStep,
-                [MissionKind.Raid] = RaidContinuity.ClassifyRaidStep,
-                [MissionKind.Attack] = AttackContinuity.ClassifyAttackStep,
-                [MissionKind.Economy] = EconomyContinuity.ClassifyEconomyStep,
-                [MissionKind.Development] = DevelopmentContinuity.ClassifyDevelopmentStep,
+                [MissionKind.Scout] = new KindHooks
+                {
+                    LiveObjective = ReconContinuity.IsScoutStepObjectiveSatisfiedLive,
+                    Resolve = ReconContinuity.ResolveScoutOperation,
+                    ProvisionFacts = ReconContinuity.CaptureScoutProvisionFacts,
+                    ClassifyExecution = ReconContinuity.ClassifyScoutStep,
+                    ExecutionFacts = ReconContinuity.CaptureScoutExecutionFacts,
+                    InvalidatedTargetContinues = _ => true,
+                },
+                [MissionKind.Raid] = new KindHooks
+                {
+                    LiveObjective = RaidContinuity.IsRaidStepObjectiveSatisfiedLive,
+                    Resolve = RaidContinuity.ResolveRaidOperation,
+                    ProvisionFacts = RaidContinuity.CaptureRaidProvisionFacts,
+                    ClassifyExecution = RaidContinuity.ClassifyRaidStep,
+                    ExecutionFacts = RaidContinuity.CaptureRaidExecutionFacts,
+                    InvalidatedTargetContinues = GroundCombatLegs.IsSupportLeg,
+                },
+                [MissionKind.Attack] = new KindHooks
+                {
+                    LiveObjective = AttackContinuity.IsAttackStepObjectiveSatisfiedLive,
+                    Resolve = AttackContinuity.ResolveAttackOperation,
+                    ProvisionFacts = AttackContinuity.CaptureAttackProvisionFacts,
+                    ClassifyExecution = AttackContinuity.ClassifyAttackStep,
+                    ExecutionFacts = AttackContinuity.CaptureAttackExecutionFacts,
+                    InvalidatedTargetContinues = GroundCombatLegs.IsSupportLeg,
+                },
+                [MissionKind.ActiveDefence] = new KindHooks
+                {
+                    LiveObjective = ActiveDefenceContinuity.IsActiveDefenceStepObjectiveSatisfiedLive,
+                    Resolve = ActiveDefenceContinuity.ResolveDefenceOperation,
+                    ProvisionFacts = ActiveDefenceContinuity.CaptureActiveDefenceProvisionFacts,
+                },
+                [MissionKind.Economy] = new KindHooks
+                {
+                    LiveObjective = EconomyContinuity.IsEconomyStepObjectiveSatisfiedLive,
+                    Resolve = EconomyContinuity.ResolveEconomyOperation,
+                    ProvisionFacts = EconomyContinuity.CaptureEconomyProvisionFacts,
+                    ClassifyExecution = EconomyContinuity.ClassifyEconomyStep,
+                    ExecutionFacts = EconomyContinuity.CaptureEconomyExecutionFacts,
+                },
+                [MissionKind.Development] = new KindHooks
+                {
+                    LiveObjective = DevelopmentContinuity.IsDevelopmentStepObjectiveSatisfiedLive,
+                    Resolve = DevelopmentContinuity.ResolveDevelopmentOperation,
+                    ProvisionFacts = DevelopmentContinuity.CaptureDevelopmentProvisionFacts,
+                    ClassifyExecution = DevelopmentContinuity.ClassifyDevelopmentStep,
+                    ExecutionFacts = DevelopmentContinuity.CaptureDevelopmentExecutionFacts,
+                },
             };
-        private static readonly IReadOnlyDictionary<MissionKind, Func<Game.Players.PlayerSetupData, ProvisionedMission, bool>>
-            LiveObjectiveReaders = new Dictionary<MissionKind, Func<Game.Players.PlayerSetupData, ProvisionedMission, bool>>
-            {
-                [MissionKind.Scout] = ReconContinuity.IsScoutStepObjectiveSatisfiedLive,
-                [MissionKind.Raid] = RaidContinuity.IsRaidStepObjectiveSatisfiedLive,
-                [MissionKind.Attack] = AttackContinuity.IsAttackStepObjectiveSatisfiedLive,
-                [MissionKind.ActiveDefence] = ActiveDefenceContinuity.IsActiveDefenceStepObjectiveSatisfiedLive,
-                [MissionKind.Economy] = EconomyContinuity.IsEconomyStepObjectiveSatisfiedLive,
-                [MissionKind.Development] = DevelopmentContinuity.IsDevelopmentStepObjectiveSatisfiedLive,
-            };
+        internal static bool HasContinuity(MissionKind kind) =>
+            Kinds.TryGetValue(kind, out KindHooks h)
+            && h.LiveObjective != null && h.Resolve != null && h.ProvisionFacts != null;
+        private static KindHooks HooksFor(MissionKind kind) =>
+            Kinds.TryGetValue(kind, out KindHooks h) ? h
+                : throw new InvalidOperationException($"MissionKind {kind} has no continuity registration");
+
         internal static bool IsStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player, ProvisionedMission mission) =>
-            LiveObjectiveReaders.TryGetValue(mission.Kind, out var read)
-                ? read(player, mission) : ReconContinuity.IsScoutStepObjectiveSatisfiedLive(player, mission);
-        private static readonly IReadOnlyDictionary<MissionKind, Func<MissionStepResult, bool>>
-            InvalidatedTargetContinues = new Dictionary<MissionKind, Func<MissionStepResult, bool>>
-            {
-                [MissionKind.Scout] = _ => true,
-                [MissionKind.Raid] = GroundCombatLegs.IsSupportLeg,
-                [MissionKind.Attack] = GroundCombatLegs.IsSupportLeg,
-            };
+            HooksFor(mission.Kind).LiveObjective(player, mission);
         internal static void ClassifyDomainExecution(ExecutionResult execution, MissionStepResult outcome)
         {
-            if (ExecutionClassifiers.TryGetValue(outcome.MissionKind, out var classify)) classify(execution, outcome);
+            var classify = HooksFor(outcome.MissionKind).ClassifyExecution;
+            if (classify != null) classify(execution, outcome);
             else MissionStepResultPolicy.ClassifyDefaultExecution(execution, outcome);
         }
         internal static bool TryClassifySatisfiedDomainLeg(MissionStepResult outcome) =>
             outcome.MissionKind == MissionKind.Raid && RaidContinuity.TryClassifySatisfiedRaidLeg(outcome);
         internal static void ClassifyInvalidatedDomainTarget(MissionStepResult outcome)
         {
-            if (InvalidatedTargetContinues.TryGetValue(outcome.MissionKind, out var continues)
-                && continues(outcome))
+            var continues = HooksFor(outcome.MissionKind).InvalidatedTargetContinues;
+            if (continues != null && continues(outcome))
                 outcome.Disposition = MissionStepDisposition.Waiting;
             else
                 outcome.Fail();
@@ -135,50 +184,21 @@ namespace Game.Ai.V2
         }
         private delegate void ResolutionPreparation(Game.Players.PlayerSetupData player,
             WorldSnapshot snapshot, ActiveResolution pass);
-        private delegate void ActiveResolver(Game.Players.PlayerSetupData player,
-            WorldSnapshot snapshot, MissionIntent intent, ActiveResolution pass);
         private static readonly ResolutionPreparation[] ResolutionPreparers =
             { EconomyContinuity.RepairEconomyLoans, EconomyContinuity.RecoverEndedOutboundBuilders,
                 AttackContinuity.RetireGatherDonors, ReconContinuity.CollectScoutFoci };
         private static readonly ResolutionPreparation[] ResolutionFinalizers =
             { ReconContinuity.FinalizeReconResolution, GroundCombatContinuity.FinalizeAirSupportResolution };
-        private static readonly IReadOnlyDictionary<MissionKind, ActiveResolver> ActiveResolvers =
-            new Dictionary<MissionKind, ActiveResolver>
-            {
-                [MissionKind.Development] = DevelopmentContinuity.ResolveDevelopmentOperation,
-                [MissionKind.Economy] = EconomyContinuity.ResolveEconomyOperation,
-                [MissionKind.ActiveDefence] = ActiveDefenceContinuity.ResolveDefenceOperation,
-                [MissionKind.Attack] = AttackContinuity.ResolveAttackOperation,
-                [MissionKind.Raid] = RaidContinuity.ResolveRaidOperation,
-            };
+        private static void ResolveDomainOperation(Game.Players.PlayerSetupData player, WorldSnapshot snapshot,
+            MissionIntent intent, ActiveResolution pass) =>
+            HooksFor(intent.Kind).Resolve(player, snapshot, intent, pass);
 
-        private static readonly IReadOnlyDictionary<MissionKind, Action<ProvisionedMission, MissionStepResult>>
-            ProvisionFactReaders = new Dictionary<MissionKind, Action<ProvisionedMission, MissionStepResult>>
-            {
-                [MissionKind.Raid] = RaidContinuity.CaptureRaidProvisionFacts,
-                [MissionKind.Attack] = AttackContinuity.CaptureAttackProvisionFacts,
-                [MissionKind.ActiveDefence] = ActiveDefenceContinuity.CaptureActiveDefenceProvisionFacts,
-                [MissionKind.Economy] = EconomyContinuity.CaptureEconomyProvisionFacts,
-                [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentProvisionFacts,
-            };
-        private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
-            ExecutionFactReaders = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
-            {
-                [MissionKind.Scout] = ReconContinuity.CaptureScoutExecutionFacts,
-                [MissionKind.Raid] = RaidContinuity.CaptureRaidExecutionFacts,
-                [MissionKind.Attack] = AttackContinuity.CaptureAttackExecutionFacts,
-                [MissionKind.Economy] = EconomyContinuity.CaptureEconomyExecutionFacts,
-                [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentExecutionFacts,
-            };
-        internal static void CaptureProvisionFacts(ProvisionedMission provisioned, MissionStepResult result)
-        {
-            if (ProvisionFactReaders.TryGetValue(provisioned.Kind, out var capture)) capture(provisioned, result);
-            else ReconContinuity.CaptureScoutProvisionFacts(provisioned, result);
-        }
+        internal static void CaptureProvisionFacts(ProvisionedMission provisioned, MissionStepResult result) =>
+            HooksFor(provisioned.Kind).ProvisionFacts(provisioned, result);
         internal static void CaptureExecutionFacts(ExecutionResult execution, MissionStepResult result)
         {
             GroundCombatContinuity.CaptureGroundHandoffFacts(execution, result);
-            if (ExecutionFactReaders.TryGetValue(result.MissionKind, out var capture)) capture(execution, result);
+            HooksFor(result.MissionKind).ExecutionFacts?.Invoke(execution, result);
         }
     }
 }

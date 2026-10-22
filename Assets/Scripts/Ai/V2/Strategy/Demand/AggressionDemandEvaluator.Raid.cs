@@ -77,8 +77,8 @@ namespace Game.Ai.V2
                     using var __shortage = new Game.Core.ProfileScope("AI/Aggr.BoundShortage");
                     AxisDemand raidShortage = GroundCombatDemandPolicy.BoundPrimaryShortage(snap, inv, commitments, i,
                         MissionKind.Raid, ri.Target.DiagnosticLabel, primaryId, ri.SupportArmyId,
-                        ri.ReinforcementRequestedTurn, AiV2Util.KnownOpposition(snap, ri.Target),
-                        AiV2Util.KnownRaidDefenceBonus(snap, ri.Target),
+                        ri.ReinforcementRequestedTurn, KnownOpposition.ForRaid(snap, ri.Target),
+                        KnownOpposition.RaidDefenceBonus(snap, ri.Target),
                         GroundCombatAdmissionPolicy.RaidPrimaryGate(ri),
                         // The same world objective, so its canonical intrinsic TaskScore.
                         () => objectives
@@ -121,7 +121,7 @@ namespace Game.Ai.V2
                 RaidOperationalReadiness readiness;
                 using (new Game.Core.ProfileScope("AI/Aggr.RaidReadiness"))
                     readiness = RaidOperationalReadiness.Evaluate(
-                        snap, o, AiV2Util.KnownOpposition(snap, o.Target), commitments, inv);
+                        snap, o, KnownOpposition.ForRaid(snap, o.Target), commitments, inv);
                 if (readiness.ReadyExecutable)
                 {
                     readyList.Add((o, readiness.ReadyPlan));

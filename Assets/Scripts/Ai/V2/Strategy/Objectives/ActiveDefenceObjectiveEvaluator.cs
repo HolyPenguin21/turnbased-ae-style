@@ -31,8 +31,12 @@ namespace Game.Ai.V2
     // regroups, withdraws, raises demand or calls air support.
     public enum ActiveDefenceInterceptPurpose { StrategicDefence = 0, ImmediateOpportunity = 1 }
 
-    public struct ActiveDefenceMissionTarget
+    public struct ActiveDefenceMissionTarget : IMissionTarget
     {
+        MissionKind IMissionTarget.Kind => MissionKind.ActiveDefence;
+        public MissionIntentKey IntentKey() => MissionIntentKey.ForActiveDefence(Phase, EnemyArmyId, PrimaryArmyId, ReturnHex);
+        public StableMissionKey StableKey() => StableMissionKey.ForActiveDefence(this);
+
         public ActiveDefencePhase Phase;
         public ActiveDefenceReturnPurpose ReturnPurpose;
         public ActiveDefenceInterceptPurpose InterceptPurpose;
@@ -354,7 +358,7 @@ namespace Game.Ai.V2
                     objective.Target.ProtectedAssetHex))
                 return null;
             int enemyId = objective.Target.EnemyArmyId;
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = Opposition(snap, enemyId);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.OfEnemyArmy(snap, enemyId);
             if (opposition == null || OnKnownForeignStructure(snap, objective.Target.LastKnownHex))
                 return null;
             var response = new ActiveDefenceResponse { Opposition = opposition };
@@ -461,28 +465,6 @@ namespace Game.Ai.V2
         public static ActiveDefenceObjective ForTrackedEnemy(WorldSnapshot snap, int enemyArmyId) =>
             Enumerate(snap).FirstOrDefault(o => o.Target.EnemyArmyId == enemyArmyId);
 
-        // The fight an intercept of this enemy is: its honestly-known roster and commander FIRST
-        // (the fist HoldChanceAtAsset reads as opposition[0]), then every other known body on its
-        // hex — the mover fights them all, strongest first (AiV2Util.AddKnownCoOccupants).
-        // Each defends with its own known hex bonus (terrain; a Base's Defense only for its owner),
-        // as KnownOpposition prices a Raid target. Null when the contact carries no position.
-        internal static IReadOnlyList<WorthIt.DefendingArmy> Opposition(WorldSnapshot snap,
-            int enemyArmyId)
-        {
-            EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
-                c?.Army != null && c.Army.ArmyId == enemyArmyId && c.Position.HasValue);
-            if (contact == null)
-                return null;
-            var result = new List<WorthIt.DefendingArmy>
-            {
-                new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander,
-                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, contact.Position.Value,
-                        contact.Army.Owner), enemyArmyId),
-            };
-            AiV2Util.AddKnownCoOccupants(snap, contact.Position.Value, enemyArmyId, result);
-            return result;
-        }
-
         // Armies already walking an ActiveDefence Return leg (a regroup or a withdrawal).
         internal static HashSet<int> WithdrawingArmyIds(IEnumerable<MissionIntent> intents) =>
             new HashSet<int>((intents ?? Enumerable.Empty<MissionIntent>())
@@ -513,7 +495,7 @@ namespace Game.Ai.V2
             if (objective == null || !IsDefendableAsset(snap, objective.Target.ProtectedAssetKind,
                     objective.Target.ProtectedAssetHex) || snap?.Self?.Armies == null)
                 return null;
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = Opposition(snap, objective.Target.EnemyArmyId);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.OfEnemyArmy(snap, objective.Target.EnemyArmyId);
             if (opposition == null || OnKnownForeignStructure(snap, objective.Target.LastKnownHex))
                 return null;
             HexCoord asset = objective.Target.ProtectedAssetHex;
@@ -703,7 +685,7 @@ namespace Game.Ai.V2
                         { ProtectedAssetHex = h, ProtectedAssetKind = t.Asset.Kind } }, h,
                         actor.Hex.Equals(h) || CanArriveBeforeThreat(snap, actor, h, t.EnemyEta, out _)
                             ? new[] { actor } : System.Array.Empty<ArmySnapshot>(),
-                        Opposition(snap, t.Contact.Army.ArmyId), committed)
+                        KnownOpposition.OfEnemyArmy(snap, t.Contact.Army.ArmyId), committed)
                         < AiConfigV2.activeDefenceHoldWinChance);
                 if (!unsafeBase) return h;
             }
@@ -802,7 +784,7 @@ namespace Game.Ai.V2
                     continue;
                 var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
                     { ProtectedAssetHex = army.Hex, ProtectedAssetKind = threat.Asset.Kind } };
-                var opposition = Opposition(snap, threat.Contact.Army.ArmyId);
+                var opposition = KnownOpposition.OfEnemyArmy(snap, threat.Contact.Army.ArmyId);
                 if (opposition == null || HoldChanceAtAsset(snap, objective, null, null,
                         opposition, without, projectedArmies) < AiConfigV2.activeDefenceHoldWinChance)
                     return true;

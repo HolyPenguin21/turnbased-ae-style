@@ -40,8 +40,8 @@ namespace Game.Ai.V2
             if (target.Phase != RaidMissionPhase.Assault)
                 return;
 
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, target.Target);
-            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, target.Target);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.ForRaid(snap, target.Target);
+            float hexBonus = KnownOpposition.RaidDefenceBonus(snap, target.Target);
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
                 GroundCombatAdmissionPolicy.FreshStartWinChanceGate, hexBonus);
             ApplyDurableIncumbentPin(proposal, snap, opposition, hexBonus, ids,
@@ -168,8 +168,8 @@ namespace Game.Ai.V2
                     || !raid.PrimaryArmyId.HasValue)
                     return;
                 primaryArmyId = raid.PrimaryArmyId.Value;
-                opposition = AiV2Util.KnownOpposition(snap, raid.Target);
-                hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, raid.Target);
+                opposition = KnownOpposition.ForRaid(snap, raid.Target);
+                hexBonus = KnownOpposition.RaidDefenceBonus(snap, raid.Target);
             }
             else if (proposal.Target is AttackMissionTarget attack)
             {
@@ -177,7 +177,7 @@ namespace Game.Ai.V2
                     || !attack.PrimaryArmyId.HasValue)
                     return;
                 primaryArmyId = attack.PrimaryArmyId.Value;
-                opposition = AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex);
+                opposition = KnownOpposition.OnHex(snap, attack.Target.Hex);
                 hexBonus = attack.DefenderHexDefenseBonus;
                 allowCommandHandover = true;
             }

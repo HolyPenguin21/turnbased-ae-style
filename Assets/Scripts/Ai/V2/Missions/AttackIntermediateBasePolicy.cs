@@ -85,7 +85,7 @@ namespace Game.Ai.V2
                         contact?.TotalCost ?? int.MaxValue, onward?.TotalCost ?? int.MaxValue,
                         actor.CurrentMovement, actor.MaxMovement))
                     continue;
-                float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, objective.Hex);
+                float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap.Map, objective.Hex);
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                     snap, objective.Opposition, actor.ArmyId, gate, bonus,
                     GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage,

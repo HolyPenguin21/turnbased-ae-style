@@ -899,7 +899,7 @@ namespace Game.EditorTests
             });
             ActiveDefenceObjective facility = DefenceObjective(28, new HexCoord(-2, 3));
             facility.Target.ProtectedAssetKind = AssetKind.Facility;
-            IReadOnlyList<WorthIt.DefendingArmy> fist = ActiveDefenceObjectiveEvaluator.Opposition(snap, 28);
+            IReadOnlyList<WorthIt.DefendingArmy> fist = KnownOpposition.OfEnemyArmy(snap, 28);
 
             Assert.That(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, facility,
                 new HexCoord(0, 0), snap.Self.Armies, fist), Is.EqualTo(-1f));

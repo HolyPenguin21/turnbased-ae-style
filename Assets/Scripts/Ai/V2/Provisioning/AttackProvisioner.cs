@@ -157,8 +157,8 @@ namespace Game.Ai.V2
             // copy: a fresh observation between planning and provisioning is exactly the kind of
             // honest news that must reach the estimator.
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, targetHex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, targetHex);
+                KnownOpposition.OnHex(snap, targetHex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, targetHex);
 
             GroundCombatAssaultOutcome assault = GroundCombatAssaultTransactionRunner.Run(
                 new GroundCombatAssaultRequest
@@ -257,7 +257,7 @@ namespace Game.Ai.V2
                 planned.IsGarrison = false;
             }
             GroundCombatAssemblyPlan assembly = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
-                snap, planned, excluded, AttackObjectiveEvaluator.KnownSiteOpposition(snap, target.Target.Hex),
+                snap, planned, excluded, KnownOpposition.OnHex(snap, target.Target.Hex),
                 target.DefenderHexDefenseBonus);
             if (!assembly.Feasible)
                 assembly = null;
@@ -274,7 +274,7 @@ namespace Game.Ai.V2
             if (ap > envelope + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
                     $"attack preparation needs {N(ap)} AP to create its host, envelope is {N(envelope)}"));
-            float turnApLeft = TurnApLeft(root, session);
+            float turnApLeft = session.TurnApLeft(root);
             if (ap > turnApLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: attack preparation needs {N(ap)}, {N(turnApLeft)} left"));
@@ -307,11 +307,6 @@ namespace Game.Ai.V2
             });
         }
 
-        // The turn AP this provisioning cycle has not claimed yet — the one physical AP read of
-        // the preparation steps (the allocator's envelope stays the spending authority).
-        private static float TurnApLeft(PlayerRoot root, ProvisioningSession session) =>
-            root.ActionPoints - session.ApClaimed;
-
         // 2026-10-01 (variant B) — the fetched commander leaves its garrison: the host still exists,
         // the hero still stands in that own garrison, is no garrison hero / operator, the garrison
         // may spare it, and the turn has the creation AP. Every refusal is Blocked-class.
@@ -340,7 +335,7 @@ namespace Game.Ai.V2
             if (ap > funded.Tentative.Ap + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
                     $"attack preparation commander fetch needs {N(ap)} AP, envelope is {N(funded.Tentative.Ap)}"));
-            if (ap > TurnApLeft(root, session) + eps)
+            if (!session.FitsTurnAp(root, ap, eps))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: commander fetch needs {N(ap)}"));
             session.ClaimedArmyIds.Add(garrison.Id);
@@ -382,7 +377,7 @@ namespace Game.Ai.V2
             foreach (int id in target.GatherSupportArmyIds)
             {
                 ArmyData s = AiV2Util.ResolveArmy(player, id);
-                if (s == null || s.Owner != player || s.Members.Count == 0 || s.IsGarrison || s.IsPrison
+                if (!AiV2Util.IsLiveOwnArmy(s, player) || s.IsGarrison || s.IsPrison
                     || s.IsAirfield || AviationRules.IsAirArmy(s))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"attack donor purchase: support #{id} is no longer an own mobile ground army"));
@@ -424,13 +419,9 @@ namespace Game.Ai.V2
             StableMissionKey key)
         {
             GarrisonSortiePlan p = target.Sortie;
-            HashSet<int> excluded = session.ExcludedForGroundCombat(funded.Mission);
-            if (excluded.Contains(p.DonorGarrisonId) || p.ShellArmyId.HasValue && excluded.Contains(p.ShellArmyId.Value))
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended("attack sortie donor or shell claimed"));
-            if (p.TotalAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon
-                || root == null || p.TotalAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(p.TotalAp,
-                    "attack sortie complete AP envelope unavailable"));
+            ProvisionFailure? refused = GarrisonSortieProvisioning.Admit(session, funded, root, p, "attack");
+            if (refused.HasValue)
+                return ProvisioningResult.Fail(refused.Value);
             if (!TryResolveSortie(player, root, ctx, session.Snapshot, target, funded.Tentative.Ap,
                     out _, out _, out _, out string why))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(why));
@@ -458,7 +449,7 @@ namespace Game.Ai.V2
             if (!target.RequiresSortieMaterialization || target.PrimaryArmyId != target.Sortie.ShellArmyId)
                 return false;
             ActorCommitments commitments = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snap), snap, null);
-            return ActiveDefenceProvisioner.TryResolveSortieCore(player, root, ctx, target.Sortie, commitments,
+            return GarrisonSortieProvisioning.TryResolve(player, root, ctx, target.Sortie, commitments,
                 apEnvelope,
                 (from, list) => (AttackSecondaryPolicy.SortieStillTakesSite(snap, player, ctx, target, from, list,
                     out string w), w),
@@ -502,7 +493,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "attack reinforcement has no primary assigned"));
             ArmyData primary = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
-            if (primary == null || primary.Owner != player || primary.Members.Count == 0
+            if (!AiV2Util.IsLiveOwnArmy(primary, player)
                 || primary.IsPrison || primary.IsAirfield || AviationRules.IsAirArmy(primary))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"attack reinforcement primary #{target.PrimaryArmyId.Value} is gone or no longer a field army"));
@@ -525,8 +516,8 @@ namespace Game.Ai.V2
             WorldSnapshot snap = session.Snapshot;
             HexCoord targetHex = target.Target.Hex;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, targetHex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, targetHex);
+                KnownOpposition.OnHex(snap, targetHex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, targetHex);
 
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,

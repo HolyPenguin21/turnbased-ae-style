@@ -20,42 +20,23 @@ namespace Game.Ai.V2
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
         {
             if (pm?.Kind != MissionKind.ActiveDefence || !pm.ActiveDefenceTarget.RequiresSortieMaterialization) return false;
-            GarrisonSortiePlan plan = pm.ActiveDefenceTarget.Sortie;
-            result.StartHex = result.FinalHex = plan.StrongholdHex;
             var commitments = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(snapshot), snapshot, null);
-            if (!ActiveDefenceProvisioner.TryResolveSortie(player, root, ctx, pm.ActiveDefenceTarget,
-                commitments, pm.ClaimedAp, out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why))
-            {
-                result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true;
-                AiDebugLog.Write($"[AI][V2][ActiveDefence][Sortie] rejected: {why}"); return true;
-            }
-            ArmyData actor = MaterializeDetachment(player, ctx, donor, shell, units, out why);
-            if (actor == null)
-            { result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true; return true; }
-            pm.MoverArmyId = actor.Id; pm.ActiveDefenceTarget.PrimaryArmyId = actor.Id;
+            ArmyData actor = GarrisonSortieStep.Materialize(player, ctx, pm.ActiveDefenceTarget.Sortie, pm, result,
+                "ActiveDefence", (out ArmyData d, out ArmyData s, out List<UnitData> u, out string w) =>
+                    ActiveDefenceProvisioner.TryResolveSortie(player, root, ctx, pm.ActiveDefenceTarget,
+                        commitments, pm.ClaimedAp, out d, out s, out u, out w),
+                out ArmyData donor, out int bodies);
+            if (actor == null) return true;
+            pm.ActiveDefenceTarget.PrimaryArmyId = actor.Id;
             pm.ActiveDefenceTarget.SortieMaterialized = true;
-            result.ActorMaterialized = true; result.ActualActorArmyId = actor.Id;
-            result.StopReason = ExecutionStopReason.StepCompleted;
-            AiDebugLog.Write($"[AI][V2][ActiveDefence][Sortie] actor=#{actor.Id} donor=#{donor.Id} bodies={units.Count}");
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Sortie] actor=#{actor.Id} donor=#{donor.Id} bodies={bodies}");
             return true;
-        }
-
-        // The ONE mutation of a resolved garrison sortie (ActiveDefence intercept and Attack's second
-        // operation alike): the pinned bodies leave the garrison into the pinned empty shell, or
-        // into one canonical new container on that hex. Null (world unchanged) when refused.
-        internal static ArmyData MaterializeDetachment(PlayerSetupData player, AiTurnContext ctx,
-            ArmyData donor, ArmyData shell, List<UnitData> units, out string why)
-        {
-            if (shell == null)
-                return ArmyActions.CreateArmyWithMembers(player, donor.Hex,
-                    ctx.StartingDeckCatalog.GetCatalog(player.Faction), donor, units, ctx.HexSelection, out why);
-            return ArmyActions.TransferMembersAtomic(units, donor, shell, ctx.HexSelection, out why) ? shell : null;
         }
 
         internal static IEnumerator RunActiveDefence(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
-            ArmyData initial = Resolve(player, pm.MoverArmyId);
+            ArmyData initial = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             int limit = (initial?.CurrentMovement ?? 0) + 1;
             for (int i = 0; i < limit; ++i)
             {
@@ -79,11 +60,10 @@ namespace Game.Ai.V2
         private static IEnumerator RunActiveDefenceStepCore(PlayerSetupData player,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result)
         {
-            ArmyData army = Resolve(player, pm.MoverArmyId);
+            ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army == null || army.Owner != player)
             {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.MoverLost);
                 yield break;
             }
             if (ctx?.Map == null || ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
@@ -103,8 +83,7 @@ namespace Game.Ai.V2
             {
                 if (!pm.ActiveDefenceTarget.ReturnHex.HasValue)
                 {
-                    result.StopReason = ExecutionStopReason.TargetInvalidated;
-                    result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                     yield break;
                 }
                 HexCoord home = pm.ActiveDefenceTarget.ReturnHex.Value;
@@ -154,20 +133,16 @@ namespace Game.Ai.V2
             // enemy destroyed somewhere the player never observed "complete" the interception.
             // Absence of honest knowledge is TargetInvalidated (a lifecycle question
             // Continuity answers), never a confirmed objective.
-            AiMapMemory.KnownEnemySighting? witness = AiMapMemory.AllKnownEnemySightings(player)
-                .Where(s => s.ArmyId == enemyId && s.Owner != null && s.Owner != player
-                    && !s.Owner.IsNeutral)
-                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            AiMapMemory.KnownEnemySighting? witness = AiMapMemory.KnownHostileSightingOf(player, enemyId);
             if (!witness.HasValue)
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 yield break;
             }
             if (pm.ActiveDefenceTarget.IsMaterializedSortie
                 && !ActiveDefenceProvisioner.TryEvaluateSortie(player, ctx, pm.ActiveDefenceTarget,
                     army.Hex, army.Members, out _))
-            { result.StopReason = ExecutionStopReason.TargetInvalidated; result.NeedsReplan = true; yield break; }
+            { result.StopForReplan(ExecutionStopReason.TargetInvalidated); yield break; }
             HexCoord targetHex = witness.Value.Hex;
             pm.ExecutionHex = targetHex;
             pm.ActiveDefenceTarget.LastKnownHex = targetHex;
@@ -195,8 +170,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][ActiveDefence][Immediate][Execution] enemy={enemyId} "
                         + $"actor={army.Id} mp={army.CurrentMovement} visible={seen} reachable={reach} "
                         + "decision=END reason=immediate_opportunity_lost");
-                    result.StopReason = ExecutionStopReason.TargetInvalidated;
-                    result.NeedsReplan = true;
+                    result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                     yield break;
                 }
             }
@@ -204,8 +178,7 @@ namespace Game.Ai.V2
                 profile: SafeRouteProfile.Combat);
             if (!next.HasValue)
             {
-                result.StopReason = ExecutionStopReason.NoSafeStep;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.NoSafeStep);
                 yield break;
             }
 
@@ -214,7 +187,7 @@ namespace Game.Ai.V2
             yield return AiTurnController.MoveArmyRoutine(player,
                 AiDecision.Move(army, next.Value,
                     $"V2 active defence - intercept enemy #{enemyId}", 0f, AiGroundMoveAuthority.CombatAndCapture), ctx, trace);
-            army = Resolve(player, pm.MoverArmyId);
+            army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             bool moved = !after.Equals(before);
             WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
@@ -234,8 +207,7 @@ namespace Game.Ai.V2
                 && trace.WasDestroyedInOwnBattle(enemyId);
             if (army == null)
             {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.MoverLost);
             }
             else if (destroyedInOurBattle)
             {
@@ -257,15 +229,11 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ExecutionResult result, ArmyData wing)
         {
             int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
-            AiMapMemory.KnownEnemySighting? witness = AiMapMemory.AllKnownEnemySightings(player)
-                .Where(s => s.ArmyId == enemyId && s.Owner != null && s.Owner != player
-                    && !s.Owner.IsNeutral)
-                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            AiMapMemory.KnownEnemySighting? witness = AiMapMemory.KnownHostileSightingOf(player, enemyId);
             if (!AviationRules.IsValidAirArmy(wing) || !witness.HasValue
                 || !pm.ActiveDefenceTarget.AirSupportLandingHex.HasValue)
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 yield break;
             }
             HexCoord targetHex = witness.Value.Hex;
@@ -296,8 +264,7 @@ namespace Game.Ai.V2
                 || !ArmyActions.TransferMembersAtomic(units, donor, shell, ctx?.HexSelection, out why))
             {
                 AiDebugLog.Write($"[AI][V2][GarrisonRelief][Execution] extraction refused into #{shell.Id}: {why}");
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 return;
             }
             result.ActorMaterialized = true;
@@ -329,7 +296,7 @@ namespace Game.Ai.V2
         private static void FinishActiveDefence(PlayerSetupData player, PlayerRoot root,
             ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
-            result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
+            result.FinalHex = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Execution] enemy={pm?.ActiveDefenceTarget.EnemyArmyId} "
                 + $"actor={pm?.MoverArmyId} intercept={pm?.ActiveDefenceTarget.InterceptPurpose} "
@@ -338,8 +305,6 @@ namespace Game.Ai.V2
                 + $"apBefore={apBefore} apSpent={result.ApSpent} apAfter={root?.ActionPoints} stop={result.StopReason}");
         }
 
-        private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            AiV2Util.ResolveArmy(player, armyId);
     }
 }
 

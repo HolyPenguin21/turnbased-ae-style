@@ -314,7 +314,7 @@ namespace Game.Ai.V2
                     ProvisionFailure.EnvelopeTooSmall(activationAp,
                         $"{lane} host #{host.Id} needs {N(activationAp)} AP for its projected "
                         + $"{projectedUnits.Count}-body roster, envelope is {N(envelope)}")));
-            float turnApLeft = r.Root.ActionPoints - session.ApClaimed;
+            float turnApLeft = session.TurnApLeft(r.Root);
             if (activationAp > turnApLeft + eps)
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.MoverContended(

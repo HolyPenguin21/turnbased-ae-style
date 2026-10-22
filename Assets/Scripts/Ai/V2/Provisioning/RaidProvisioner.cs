@@ -67,12 +67,12 @@ namespace Game.Ai.V2
                             $"raid target {raidTarget.DiagnosticLabel} is not a known active event"));
                 }
                 targetHex = raidTarget.Hex;
-                opposition = AiV2Util.KnownOpposition(snap, raidTarget);
+                opposition = KnownOpposition.ForRaid(snap, raidTarget);
                 targetIsNeutral = true;
             }
             else
             {
-                AiMapMemory.KnownEnemySighting? sighting = FindLiveSighting(player, raidTarget.ArmyId);
+                AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.KnownSightingOf(player, raidTarget.ArmyId);
                 if (sighting == null)
                 {
                     if (ObjectiveLiveStatus.RaidSatisfied(player, raidTarget))
@@ -97,11 +97,11 @@ namespace Game.Ai.V2
                 }
 
                 targetHex = sighting.Value.Hex;
-                // The same fight admission priced (AiV2Util.KnownOpposition): the live target plus
+                // The same fight admission priced (KnownOpposition.ForRaid): the live target plus
                 // every other known body on its hex.
                 var fight = new List<WorthIt.DefendingArmy>
                     { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
-                AiV2Util.AddKnownCoOccupants(snap, targetHex, raidTarget.ArmyId, fight);
+                KnownOpposition.AddCoOccupants(snap, targetHex, raidTarget.ArmyId, fight);
                 opposition = fight;
                 targetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral;
             }
@@ -252,8 +252,8 @@ namespace Game.Ai.V2
             if (!target.PrimaryArmyId.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "raid reinforcement has no primary assigned"));
-            ArmyData primary = ResolveArmy(player, target.PrimaryArmyId.Value);
-            if (primary == null || primary.Owner != player || primary.Members.Count == 0
+            ArmyData primary = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
+            if (!AiV2Util.IsLiveOwnArmy(primary, player)
                 || primary.IsPrison || primary.IsAirfield || AviationRules.IsAirArmy(primary))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"raid reinforcement primary #{target.PrimaryArmyId.Value} is gone or no longer a field army"));
@@ -276,11 +276,11 @@ namespace Game.Ai.V2
 
             HexCoord rendezvous = primary.Hex;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AiV2Util.KnownOpposition(session.Snapshot, target.Target);
+                KnownOpposition.ForRaid(session.Snapshot, target.Target);
             // ATK §28/§46 — the convoy checks are the shared ground-combat leg primitive.
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition,
-                AiV2Util.KnownRaidDefenceBonus(session.Snapshot, target.Target), "raid",
+                KnownOpposition.RaidDefenceBonus(session.Snapshot, target.Target), "raid",
                 out bool atRendezvous);
             if (!check.Ok)
                 return check.Failure;
@@ -319,19 +319,6 @@ namespace Game.Ai.V2
         // threshold and no `cover` output — now calls that shared, parameterized implementation
         // directly at the one call site above (see Docs/ai-duplicate-methods-analysis.md, D4).
 
-        // Was byte-identical in ReconAssignmentPlanner and (twice) in this file — moved to AiV2Util.
-        private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            AiV2Util.ResolveArmy(player, armyId);
-
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
-
-        private static AiMapMemory.KnownEnemySighting? FindLiveSighting(PlayerSetupData player, int armyId)
-        {
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                if (s.ArmyId == armyId) return s;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownNeutralSightings(player))
-                if (s.ArmyId == armyId) return s;
-            return null;
-        }
     }
 }

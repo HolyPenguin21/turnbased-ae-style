@@ -62,6 +62,14 @@ namespace Game.Ai.V2
         public IReadOnlyDictionary<StableMissionKey, ProvisionedMission> Successful => _successful;
         public bool AlreadyProvisioned(StableMissionKey k) => _successful.ContainsKey(k);
 
+        // The live turn AP this pass has not yet claimed for earlier successes — the shared pool
+        // every lane checks after its own allocator envelope.
+        internal float TurnApLeft(PlayerRoot root) => root.ActionPoints - ApClaimed;
+
+        // Whether `ap` still fits that shared pool. A missing root fits nothing.
+        internal bool FitsTurnAp(PlayerRoot root, float ap, float eps = AiConfigV2.allocatorSliceEpsilon) =>
+            root != null && ap <= TurnApLeft(root) + eps;
+
         public void RegisterSuccess(StableMissionKey k, ProvisionedMission m)
         {
             EnsureActive();

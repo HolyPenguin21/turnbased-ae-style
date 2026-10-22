@@ -103,7 +103,7 @@ namespace Game.Ai.V2
                     $"air actor #{moverArmyId} needs {N(realAp)} AP / {N(realEnergy)} Energy, "
                     + $"envelope is {N(apEnvelope)} AP / {N(energyEnvelope)} Energy"));
 
-            float turnApLeft = root.ActionPoints - session.ApClaimed;
+            float turnApLeft = session.TurnApLeft(root);
             if (realAp > turnApLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: air actor #{moverArmyId} needs {N(realAp)}, {N(turnApLeft)} left after earlier claims"));

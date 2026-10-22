@@ -1251,6 +1251,12 @@ namespace Game.Ai
                 return System.Array.Empty<HexCoord>();
             return guards.Keys;
         }
+        // The read-only view of one remembered sighting.
+        private static KnownEnemySighting Known(EnemySighting s) =>
+            new KnownEnemySighting(s.Hex, s.Owner, s.Name, s.MemberCount, s.DefenseSum, s.AttackSum,
+                s.Defenders, s.HasAntiAir, s.RecceRadius, s.RecceSpotStrength, s.SeenTurn, s.ArmyId,
+                s.IsGarrison, s.Commander, s.IsAir, s.MaxMovement);
+
 
         // Every known neutral-army hex on the whole map, no radius — RaidWeakerArmyTask's own
         // target pool isn't wavefront/radius-bounded like Разведка's (see that class's own class
@@ -1261,9 +1267,7 @@ namespace Game.Ai
                 yield break;
             foreach (EnemySighting sighting in sightings.Values)
                 if (IsNeutralSightingOwner(sighting.Owner))
-                    yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
+                    yield return Known(sighting);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -1277,9 +1281,27 @@ namespace Game.Ai
                 yield break;
             foreach (EnemySighting sighting in sightings.Values)
                 if (!IsNeutralSightingOwner(sighting.Owner))
-                    yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
+                    yield return Known(sighting);
+        }
+
+        // The remembered sighting of one physical army (an enemy player's or a neutral) by its
+        // stable id, or null. Army id 0 is valid.
+        public static KnownEnemySighting? KnownSightingOf(PlayerSetupData actor, int armyId)
+        {
+            foreach (KnownEnemySighting s in AllKnownEnemySightings(actor))
+                if (s.ArmyId == armyId) return s;
+            foreach (KnownEnemySighting s in AllKnownNeutralSightings(actor))
+                if (s.ArmyId == armyId) return s;
+            return null;
+        }
+
+        // The same, only while it is an enemy PLAYER's army — never a neutral, never the actor's own.
+        public static KnownEnemySighting? KnownHostileSightingOf(PlayerSetupData actor, int armyId)
+        {
+            foreach (KnownEnemySighting s in AllKnownEnemySightings(actor))
+                if (s.ArmyId == armyId && s.Owner != null && !s.Owner.IsNeutral && s.Owner != actor)
+                    return s;
+            return null;
         }
 
         // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
@@ -1294,9 +1316,7 @@ namespace Game.Ai
 
             foreach (EnemySighting sighting in sightings.Values)
                 if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
-                    yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
+                    yield return Known(sighting);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
@@ -1311,9 +1331,7 @@ namespace Game.Ai
                 return null;
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Hex.Equals(hex))
-                    return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
+                    return Known(sighting);
             return null;
         }
 
@@ -1380,7 +1398,15 @@ namespace Game.Ai
             KnownHexDefenseBonusFor(actor, _map, hex, defendingOwner);
 
         public static float KnownHexDefenseBonusFor(PlayerSetupData actor, HexMap map, HexCoord hex,
-            PlayerSetupData defendingOwner)
+            PlayerSetupData defendingOwner) =>
+            HexDefenseBonus(actor, map, hex, defendingOwner, anyOwner: false);
+
+        // The site's own defence whoever holds it: a Base's structural Defense counts for any owner.
+        public static float KnownHexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex) =>
+            HexDefenseBonus(actor, map, hex, null, anyOwner: true);
+
+        private static float HexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex,
+            PlayerSetupData defendingOwner, bool anyOwner)
         {
             float bonus = 0f;
             if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
@@ -1389,41 +1415,17 @@ namespace Game.Ai
             if (actor == null)
                 return bonus;
 
+            bool Defends(PlayerSetupData owner) => anyOwner || defendingOwner != null && owner == defendingOwner;
             if (VisionSystem.IsVisible(actor, hex))
             {
                 BuildingData live = BuildingRegistry.FindAt(hex);
-                if (defendingOwner != null && live != null && live.IsBase
-                    && live.Owner == defendingOwner)
+                if (live != null && live.IsBase && Defends(live.Owner))
                     bonus += live.Defense;
                 return bonus;
             }
 
             KnownBuilding? remembered = KnownBuildingAt(actor, hex);
-            if (defendingOwner != null && remembered.HasValue && remembered.Value.IsBase
-                && remembered.Value.Owner == defendingOwner)
-                bonus += remembered.Value.Defense;
-            return bonus;
-        }
-
-        public static float KnownHexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex)
-        {
-            float bonus = 0f;
-            if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
-                bonus += terrain.defenseModifier;
-
-            if (actor == null)
-                return bonus;
-
-            if (VisionSystem.IsVisible(actor, hex))
-            {
-                BuildingData live = BuildingRegistry.FindAt(hex);
-                if (live != null && live.IsBase)
-                    bonus += live.Defense;
-                return bonus;
-            }
-
-            KnownBuilding? remembered = KnownBuildingAt(actor, hex);
-            if (remembered.HasValue && remembered.Value.IsBase)
+            if (remembered.HasValue && remembered.Value.IsBase && Defends(remembered.Value.Owner))
                 bonus += remembered.Value.Defense;
             return bonus;
         }

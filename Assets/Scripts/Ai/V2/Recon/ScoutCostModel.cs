@@ -288,7 +288,7 @@ namespace Game.Ai.V2
             if (fleetBudget <= 0) fleetBudget = 1;
 
             est.EstimatedDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, target.FocusHex, 0);
-            est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
+            est.EtaTurns = Mathf.Max(1, AiV2Util.CeilDiv((int)est.EstimatedDistance, fleetBudget));
             est.RecurringActivationAp = notionalActivationAp;
             est.ActivationApNow = notionalActivationAp;
 
@@ -314,6 +314,5 @@ namespace Game.Ai.V2
             return est;
         }
 
-        private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }

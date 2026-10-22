@@ -1012,7 +1012,7 @@ namespace Game.EditorTests
             try
             {
                 ActiveDefenceObjective objective = AssetObjective(snap);
-                var opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId);
+                var opposition = KnownOpposition.OfEnemyArmy(snap, objective.Target.EnemyArmyId);
                 GroundCombatAssemblyPlan raw = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest { Opposition = opposition });
                 Assert.That(raw.Feasible, Is.True, "the fixture must clear combat before deadline admission");
@@ -1050,7 +1050,7 @@ namespace Game.EditorTests
             ArmySnapshot timely = DefenceActor(owner, 700002, new HexCoord(-3, 0), 60f, 60f, 60f);
             WorldSnapshot snap = AssetWorld(late, timely);
             ActiveDefenceObjective objective = AssetObjective(snap);
-            var opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId);
+            var opposition = KnownOpposition.OfEnemyArmy(snap, objective.Target.EnemyArmyId);
             GroundCombatAssemblyPlan first = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest { Opposition = opposition });
             Assert.That(first.BaseArmyId, Is.EqualTo(late.ArmyId),
@@ -1083,7 +1083,7 @@ namespace Game.EditorTests
                 map.SetData(4, 1f, terrain);
                 snap.Map = map;
                 ActiveDefenceObjective objective = AssetObjective(snap);
-                var opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId);
+                var opposition = KnownOpposition.OfEnemyArmy(snap, objective.Target.EnemyArmyId);
                 var proposal = new MissionProposal { Kind = MissionKind.ActiveDefence, Target = objective.Target };
                 using var session = new ProvisioningSession(snap);
                 StableMissionKey key = StableMissionKey.For(proposal);
@@ -1155,7 +1155,7 @@ namespace Game.EditorTests
                 ActiveDefenceObjective objective = AssetObjective(snap);
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest {
-                        Opposition = ActiveDefenceObjectiveEvaluator.Opposition(snap, objective.Target.EnemyArmyId) });
+                        Opposition = KnownOpposition.OfEnemyArmy(snap, objective.Target.EnemyArmyId) });
                 Assert.That(ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(snap, objective.Target, plan),
                     Is.True, "the original complete plan really meets the deadline");
                 Assert.That(ActiveDefenceProvisioner.StrategicReachVeto(snap, host,
@@ -1978,7 +1978,7 @@ namespace Game.EditorTests
                 new AiMapMemory.KnownEnemySighting(hex, snap.Threat.Contacts[0].Army.Owner, "column",
                     heavy.Count, 40f, 48f, heavy, false, 0, 0, 8, 78) }).ToArray();
 
-            IReadOnlyList<WorthIt.DefendingArmy> fight = ActiveDefenceObjectiveEvaluator.Opposition(snap, 77);
+            IReadOnlyList<WorthIt.DefendingArmy> fight = KnownOpposition.OfEnemyArmy(snap, 77);
             Assert.That(fight.Select(a => a.ArmyId), Is.EqualTo(new int?[] { 77, 78 }),
                 "the target first (the fist), then every other known body on its hex");
             ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,

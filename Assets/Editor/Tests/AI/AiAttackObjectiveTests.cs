@@ -52,7 +52,7 @@ namespace Game.EditorTests
             Assert.That(AttackObjectiveEvaluator.HasAssaultObservation(snap,
                 AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base), out _), Is.True);
             Assert.That(GroundCombatFeasibility.Clears(new[] { Body(3, 1, 5, 2) }, default,
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, RedBase),
+                KnownOpposition.OnHex(snap, RedBase),
                 0.8f, 0f, out float win, out _), Is.True);
             Assert.That(win, Is.EqualTo(1f));
         }
@@ -357,6 +357,21 @@ namespace Game.EditorTests
                 "defenders of a Base never become objectives of their own");
             Assert.That(objectives[0].DefenderCount, Is.EqualTo(3),
                 "every known body ON the site is one fight; a body elsewhere is not");
+        }
+
+        [Test]
+        public void SiteOpposition_NeutralOnTheSite_IsPartOfTheSameFight()
+        {
+            WorldSnapshot snap = Snap(new[] { B(RedBase, Red) }, new[] { OurBase }, new[]
+            {
+                Sighting(14, RedBase, Red, Body(4, 2, 9, 2)),
+            });
+            snap.Known.NeutralSightings = new[] { Sighting(70, RedBase, Neutral, Body(1f, 1f, 4f, 1)) };
+
+            List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, RedBase);
+
+            Assert.That(opposition.Select(a => a.ArmyId), Is.EquivalentTo(new int?[] { 14, 70 }),
+                "a lander fights every body on the hex — the same rule every other lane prices");
         }
 
         // ---- §34 the site's own defence is never a reward ---------------------------------

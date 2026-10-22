@@ -19,22 +19,20 @@ namespace Game.Ai.V2
     {
         private sealed class LeaseState
         {
-            public int Turn;
             // The axis whose demand materialized each leased army (2026-10-15: another axis may not
             // take it over as a card recipient in the same turn, MaterializationDeliveryPolicy).
             public readonly Dictionary<int, DesireAxis> ArmyIds = new Dictionary<int, DesireAxis>();
         }
 
-        private static readonly Dictionary<PlayerSetupData, LeaseState> ByPlayer =
-            new Dictionary<PlayerSetupData, LeaseState>();
+        private static readonly TurnScopedByPlayer<LeaseState> ByPlayer =
+            new TurnScopedByPlayer<LeaseState>(() => new LeaseState());
 
         public static void Mark(PlayerSetupData player, int turn, DesireAxis axis, CapabilityKind capability,
             IEnumerable<int> armyIds)
         {
             if (player == null || armyIds == null)
                 return;
-            if (!ByPlayer.TryGetValue(player, out LeaseState state) || state.Turn != turn)
-                ByPlayer[player] = state = new LeaseState { Turn = turn };
+            LeaseState state = ByPlayer.GetOrReset(player, turn);
 
             var added = new List<int>();
             foreach (int id in armyIds.Where(id => id >= 0).Distinct())
@@ -58,19 +56,14 @@ namespace Game.Ai.V2
         // end of every turn; this makes the invariant structural instead of a consequence of that
         // call order.
         public static bool IsLeased(PlayerSetupData player, int turn, int armyId) =>
-            player != null && ByPlayer.TryGetValue(player, out LeaseState state)
-            && state.Turn == turn && state.ArmyIds.ContainsKey(armyId);
+            ByPlayer.Peek(player, turn) is LeaseState state && state.ArmyIds.ContainsKey(armyId);
 
         // The axis this army is leased to this turn, or null. Same turn gate as IsLeased.
         public static DesireAxis? LeasedAxis(PlayerSetupData player, int turn, int armyId) =>
-            player != null && ByPlayer.TryGetValue(player, out LeaseState state) && state.Turn == turn
+            ByPlayer.Peek(player, turn) is LeaseState state
             && state.ArmyIds.TryGetValue(armyId, out DesireAxis axis) ? axis : (DesireAxis?)null;
 
-        public static void Clear(PlayerSetupData player, int turn)
-        {
-            if (player != null && ByPlayer.TryGetValue(player, out LeaseState state) && state.Turn == turn)
-                ByPlayer.Remove(player);
-        }
+        public static void Clear(PlayerSetupData player, int turn) => ByPlayer.Remove(player, turn);
 
         public static void ClearAll() => ByPlayer.Clear();
     }
@@ -332,10 +325,10 @@ namespace Game.Ai.V2
                     continue;
 
                 int move = Mathf.Max(1, enemy.MaxMovement);
-                int groupEta = CeilDiv(HexGridMath.Distance(enemy.Hex, groupHex), move);
+                int groupEta = AiV2Util.CeilDiv(HexGridMath.Distance(enemy.Hex, groupHex), move);
                 int baseEta = groupEta;
                 if (bases.Count > 0)
-                    baseEta = bases.Min(b => CeilDiv(HexGridMath.Distance(enemy.Hex, b), move));
+                    baseEta = bases.Min(b => AiV2Util.CeilDiv(HexGridMath.Distance(enemy.Hex, b), move));
 
                 var targetable = new HashSet<int>();
                 foreach (ReorgUnit u in nonHeroFriendlies)
@@ -356,8 +349,6 @@ namespace Game.Ai.V2
             }
             return result;
         }
-
-        private static int CeilDiv(int value, int divisor) => AiV2Util.CeilDiv(value, divisor);
 
         // T05 — the claim's contract, intersected with a strategic capability lease (a leased,
         // unclaimed army may be reinforced but never taken apart). Null for a free army.

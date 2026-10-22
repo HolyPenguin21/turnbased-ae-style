@@ -16,12 +16,9 @@ namespace Game.Ai.V2
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded, ActiveDefenceMissionTarget target)
         {
             GarrisonSortiePlan p = target.Sortie;
-            HashSet<int> excluded = session.ExcludedForGroundCombat(funded.Mission);
-            if (excluded.Contains(p.DonorGarrisonId) || p.ShellArmyId.HasValue && excluded.Contains(p.ShellArmyId.Value))
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended("sortie donor or shell claimed"));
-            if (p.TotalAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon
-                || root == null || p.TotalAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(p.TotalAp, "sortie complete AP envelope unavailable"));
+            ProvisionFailure? refused = GarrisonSortieProvisioning.Admit(session, funded, root, p, null);
+            if (refused.HasValue)
+                return ProvisioningResult.Fail(refused.Value);
             ActorCommitments commitments = ActorCommitments.FromIntents(WorldSnapshot.IntentsOf(session.Snapshot), session.Snapshot, null);
             if (!TryResolveSortie(player, root, ctx, target, commitments, funded.Tentative.Ap,
                 out _, out _, out _, out string why))
@@ -38,45 +35,9 @@ namespace Game.Ai.V2
         {
             donor = null; shell = null; units = null; why = "invalid pending sortie";
             if (!target.RequiresSortieMaterialization || target.PrimaryArmyId != target.Sortie.ShellArmyId) return false;
-            return TryResolveSortieCore(player, root, ctx, target.Sortie, commitments, apEnvelope,
+            return GarrisonSortieProvisioning.TryResolve(player, root, ctx, target.Sortie, commitments, apEnvelope,
                 (from, list) => (TryEvaluateSortie(player, ctx, target, from, list, out string w), w),
                 out donor, out shell, out units, out why);
-        }
-
-        // 2026-10-21 — the lane-neutral half of a pinned garrison sortie, shared by ActiveDefence's
-        // immediate intercept and Attack's second operation (AttackProvisioner.ProvisionSortie):
-        // the pinned shell (or a canonical creation), the donor's extraction under its floor, the
-        // transfer legality and the complete AP envelope. `evaluate` is the lane's own fight test
-        // of the exact bodies from the donor's hex. Pure: nothing is moved here.
-        internal static bool TryResolveSortieCore(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            GarrisonSortiePlan p, ActorCommitments commitments, float apEnvelope,
-            Func<HexCoord, List<UnitData>, (bool ok, string why)> evaluate,
-            out ArmyData donor, out ArmyData shell, out List<UnitData> units, out string why)
-        {
-            donor = null; shell = null; units = null; why = "invalid pending sortie";
-            if (p == null || evaluate == null) return false;
-            if (p.ShellArmyId.HasValue)
-            {
-                shell = AiV2Util.ResolveArmy(player, p.ShellArmyId.Value);
-                if (shell == null) { why = "pinned shell lost"; return false; }
-            }
-            else if (ctx?.StartingDeckCatalog?.GetCatalog(player.Faction) == null
-                || ctx.HexSelection?.Map == null || !ctx.Map.CanEnter(p.StrongholdHex))
-            { why = "canonical creation unavailable"; return false; }
-            if (commitments?.IsArmyClaimed(p.DonorGarrisonId) == true
-                || !TryResolveGarrisonExtraction(player, p.DonorGarrisonId, p.StrongholdHex,
-                    p.UnitRuntimeIds, shell, commitments, !p.ShellArmyId.HasValue, out donor, out units, out why)) return false;
-            ArmyData prospective = shell ?? ArmyData.CreateVisualSnapshot();
-            if (shell == null) { prospective.Owner = player; prospective.Hex = donor.Hex; }
-            if (!ArmyActions.CanTransferMembers(units, donor, prospective, out why)) return false;
-            (bool fights, string fightWhy) = evaluate(donor.Hex, units);
-            if (!fights) { why = fightWhy; return false; }
-            int totalAp = p.MaterializationAp + ArmyData.ComputeActivationApCost(units);
-            if (totalAp != p.TotalAp || totalAp > apEnvelope + AiConfigV2.allocatorSliceEpsilon
-                || root == null || !root.CanSpendActionPoints(totalAp)
-                || totalAp > StrategicSpendability.SpendableAp(player, root, ctx) + AiConfigV2.allocatorSliceEpsilon)
-            { why = "sortie AP no longer covers creation and onward activation"; return false; }
-            return true;
         }
 
         private static WorldSnapshot CurrentSortieKnowledge(PlayerSetupData player, AiTurnContext ctx) =>
@@ -87,7 +48,7 @@ namespace Game.Ai.V2
         {
             var into = new List<WorthIt.DefendingArmy>();
             // Includes the target itself: every known defender on this pinned hex is one canonical fight.
-            AiV2Util.AddKnownCoOccupants(CurrentSortieKnowledge(player, ctx), p.EnemyHex, -1, into);
+            KnownOpposition.AddCoOccupants(CurrentSortieKnowledge(player, ctx), p.EnemyHex, -1, into);
             return into;
         }
 
@@ -105,7 +66,7 @@ namespace Game.Ai.V2
                     || u.IsPrisoner || u.HitPointsCurrent <= 0 || u.Owner != player)
                 || !p.MatchesRoster(units.Select(u => u.RuntimeId))) return false;
             if (units.Count == 1 && AbilityParams.UnitHasAnyRecce(units[0])) return false;
-            if (!SortieCoverHolds(player, p, units, out why)) return false;
+            if (!GarrisonSortieProvisioning.CoverHolds(player, p, units, out why)) return false;
             ArmyData donor = AiV2Util.ResolveArmy(player, p.DonorGarrisonId);
             // If another action raised the floor after extraction, re-check the identical batch
             // against a visual pre-extraction roster. No body is transferred and no id is consumed.
@@ -126,29 +87,13 @@ namespace Game.Ai.V2
                 || ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(knowledge, p.EnemyHex))
             { why = "sortie target moved, became hidden or moved onto a foreign structure"; return false; }
             var opposition = new List<WorthIt.DefendingArmy>();
-            AiV2Util.AddKnownCoOccupants(knowledge, p.EnemyHex, -1, opposition);
+            KnownOpposition.AddCoOccupants(knowledge, p.EnemyHex, -1, opposition);
             var profiles = units.Select(WorthIt.FromLiveUnit).ToList();
             if (ActiveDefenceObjectiveEvaluator.IsSignificantHostilePower(AiPower.SightingPower(sighting.Value))
                 || !ActiveDefenceObjectiveEvaluator.SortieClears(profiles, opposition, out _, out _)
                 || !ActiveDefenceObjectiveEvaluator.CanReachNow(ctx.Map, player, from, p.EnemyHex,
                     ArmyData.ComputeCurrentMovement(units), ArmyData.ComputeMaxMovement(units), out _))
             { why = "sortie fresh combat or same-turn movement gate failed"; return false; }
-            why = null; return true;
-        }
-
-        // The stronghold a sortie leaves keeps its pinned cover: an own Base/Citadel, its garrison
-        // in place and the one body the plan never takes (shared by both sortie lanes).
-        internal static bool SortieCoverHolds(PlayerSetupData player, GarrisonSortiePlan p,
-            IReadOnlyList<UnitData> units, out string why)
-        {
-            BuildingData home = OwnWorld.Of(player).BuildingAt(p.StrongholdHex);
-            ArmyData donor = AiV2Util.ResolveArmy(player, p.DonorGarrisonId);
-            UnitData cover = donor?.Members.FirstOrDefault(u => u != null && u.RuntimeId == p.CoverRuntimeId);
-            if (home == null || !(home.IsBase || home.IsStartingCitadel) || donor == null
-                || !donor.IsGarrison || !donor.Hex.Equals(p.StrongholdHex)
-                || !AiArmyRoles.IsGroundBattleBody(cover) || cover.IsPrisoner || cover.HitPointsCurrent <= 0
-                || units.Contains(cover))
-            { why = "sortie mandatory stronghold cover lost"; return false; }
             why = null; return true;
         }
     }

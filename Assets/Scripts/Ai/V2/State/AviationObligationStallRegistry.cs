@@ -18,18 +18,16 @@ namespace Game.Ai.V2
     {
         private sealed class Entry
         {
-            public int Turn = int.MinValue;
             public readonly HashSet<int> ActorIds = new HashSet<int>();
         }
 
         internal static void EndTurn(PlayerSetupData player, int turn)
         {
-            if (player != null && ByPlayer.TryGetValue(player, out Entry entry) && entry.Turn == turn)
-                ByPlayer.Remove(player);
+            ByPlayer.Remove(player, turn);
         }
 
-        private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
-            new Dictionary<PlayerSetupData, Entry>();
+        private static readonly TurnScopedByPlayer<Entry> ByPlayer =
+            new TurnScopedByPlayer<Entry>(() => new Entry());
 
         public static void Clear() => ByPlayer.Clear();
 
@@ -37,24 +35,10 @@ namespace Game.Ai.V2
         {
             if (player == null)
                 return;
-            Entry e = For(player, turn);
-            e.ActorIds.Add(armyId);
+            ByPlayer.GetOrReset(player, turn).ActorIds.Add(armyId);
         }
 
         public static bool IsStalled(PlayerSetupData player, int turn, int armyId) =>
-            player != null && ByPlayer.TryGetValue(player, out Entry e)
-            && e.Turn == turn && e.ActorIds.Contains(armyId);
-
-        private static Entry For(PlayerSetupData player, int turn)
-        {
-            if (!ByPlayer.TryGetValue(player, out Entry e))
-                ByPlayer[player] = e = new Entry();
-            if (e.Turn != turn)
-            {
-                e.Turn = turn;
-                e.ActorIds.Clear();
-            }
-            return e;
-        }
+            ByPlayer.Peek(player, turn) is Entry e && e.ActorIds.Contains(armyId);
     }
 }

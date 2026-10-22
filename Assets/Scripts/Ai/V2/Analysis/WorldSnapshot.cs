@@ -688,6 +688,18 @@ namespace Game.Ai.V2
         public float EnemyKnownStrength;
         public int NearestEnemyToBase;
         public float EnemyStrengthNearBases;
+
+        // The snapshot's sighting of one physical army (enemy or neutral) by its stable id, or null.
+        public AiMapMemory.KnownEnemySighting? SightingOf(int armyId)
+        {
+            if (EnemySightings != null)
+                foreach (AiMapMemory.KnownEnemySighting s in EnemySightings)
+                    if (s.ArmyId == armyId) return s;
+            if (NeutralSightings != null)
+                foreach (AiMapMemory.KnownEnemySighting s in NeutralSightings)
+                    if (s.ArmyId == armyId) return s;
+            return null;
+        }
     }
 
     // A known-but-not-yet-triggered event guard, honest fog-of-war memory (AiMapMemory), not a live

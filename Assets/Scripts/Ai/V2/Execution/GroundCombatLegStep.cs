@@ -42,6 +42,123 @@ namespace Game.Ai.V2
             return attacked;
         }
 
+        // One step of a lifecycle leg walking to its already-fixed destination (a return home, a
+        // recovery base) — never re-picks it. `arrived` reports the arrival, also when the mover
+        // already stands there. A battle on the way is a combat change whatever the lane.
+        internal static IEnumerator WalkTo(PlayerSetupData player, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, ArmyData army, HexCoord destination,
+            string reason, System.Action arrived)
+        {
+            pm.ExecutionHex = destination;
+            if (army.Hex.Equals(destination))
+            {
+                arrived();
+                yield break;
+            }
+            // A temporarily blocked first step is a retry-next-turn, not a reason to drop the leg.
+            var leg = new GroundLegStepResult();
+            yield return Transit(player, ctx, army, destination, reason, leg, result);
+            if (leg.Blocked.HasValue)
+            {
+                result.StopReason = leg.Blocked.Value;
+                result.NeedsReplan = leg.NeedsReplan;
+                yield break;
+            }
+
+            army = leg.Army;
+            bool moved = leg.Moved;
+            if (moved)
+            {
+                result.StepsMoved++;
+                result.ActualActorArmyId = pm.MoverArmyId;
+            }
+            result.FinalHex = leg.EndHex;
+            result.OperationStarted |= moved;
+            result.CombatChanged |= leg.BattleOccurred;
+            if (StopAfterMove(result, army, moved, leg.BattleOccurred, leg.HexEventOccurred))
+                yield break;
+            if (army.Hex.Equals(destination))
+            {
+                arrived();
+                yield break;
+            }
+            result.StopReason = army.CurrentMovement > 0
+                ? ExecutionStopReason.StepCompleted
+                : ExecutionStopReason.OutOfMovement;
+        }
+
+        // One transit step of a reinforcement convoy toward its rendezvous. The handoff is a
+        // SEPARATE step: this never moves and hands off in the same one.
+        internal static IEnumerator ConvoyStep(PlayerSetupData player, AiTurnContext ctx,
+            ExecutionResult result, ArmyData support, HexCoord rendezvous, string reason)
+        {
+            var leg = new GroundLegStepResult();
+            yield return Transit(player, ctx, support, rendezvous, reason, leg, result);
+            if (leg.Blocked.HasValue)
+            {
+                result.StopReason = leg.Blocked.Value;
+                result.NeedsReplan = leg.NeedsReplan;
+                yield break;
+            }
+
+            bool moved = leg.Moved;
+            if (moved) result.StepsMoved++;
+            result.FinalHex = leg.EndHex;
+            result.OperationStarted |= moved;
+            result.CombatChanged |= leg.BattleOccurred;
+            if (StopAfterMove(result, leg.Army, moved, leg.BattleOccurred, leg.HexEventOccurred))
+                yield break;
+            result.StopReason = ExecutionStopReason.StepCompleted;
+        }
+
+        // The settled facts of one ground move a lane routed itself (its own authority and target):
+        // the re-resolved mover (null when lost), its position and step count, and the physical
+        // start of the operation — a battle or an ordinary hex event starts it as surely as a step.
+        internal static ArmyData RecordMove(PlayerSetupData player, ProvisionedMission pm,
+            ExecutionResult result, HexCoord before, AiMoveExecutionTrace trace, out bool moved)
+        {
+            ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
+            HexCoord endHex = army != null ? army.Hex : trace.EndHex;
+            moved = !endHex.Equals(before);
+            WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
+                || trace.EnteredStealthThisStep);
+            if (moved)
+                result.StepsMoved++;
+            result.FinalHex = endHex;
+            bool operationStarted = moved || trace.BattleOccurred || trace.HexEventOccurred;
+            result.OperationStarted |= operationStarted;
+            if (operationStarted)
+                result.ActualActorArmyId = pm.MoverArmyId;
+            return army;
+        }
+
+        // The shared end of a ground step after its move: a battle or a hex event ends the step for
+        // a fresh observation, a lost mover asks for a re-plan, a move the rules refused stops it.
+        // False when the mover stands, moved and may go on.
+        internal static bool StopAfterMove(ExecutionResult result, ArmyData army, bool moved,
+            bool battle, bool hexEvent)
+        {
+            if (battle || hexEvent)
+            {
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost
+                    : battle ? ExecutionStopReason.BattleStarted : ExecutionStopReason.HexEventStarted;
+                return true;
+            }
+            if (army == null)
+            {
+                // Lost en route: Continuity's next pass detects the loss and cleans up.
+                result.StopForReplan(ExecutionStopReason.MoverLost);
+                return true;
+            }
+            if (!moved)
+            {
+                result.StopReason = ExecutionStopReason.MoveRejected;
+                return true;
+            }
+            return false;
+        }
+
         internal static IEnumerator Transit(PlayerSetupData player, AiTurnContext ctx,
             ArmyData army, HexCoord destination, string reason, GroundLegStepResult r,
             ExecutionResult execution = null)

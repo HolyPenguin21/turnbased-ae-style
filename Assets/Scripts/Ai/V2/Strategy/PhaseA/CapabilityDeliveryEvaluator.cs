@@ -366,15 +366,15 @@ namespace Game.Ai.V2
             if (ri != null && ri.PrimaryArmyId.HasValue)
             {
                 primaryId = ri.PrimaryArmyId.Value;
-                opposition = AiV2Util.KnownOpposition(afterSnap, ri.Target);
-                hexBonus = AiV2Util.KnownRaidDefenceBonus(afterSnap, ri.Target);
+                opposition = KnownOpposition.ForRaid(afterSnap, ri.Target);
+                hexBonus = KnownOpposition.RaidDefenceBonus(afterSnap, ri.Target);
             }
             else if (ai != null && ai.PrimaryArmyId.HasValue && ai.Target.HasValue)
             {
                 primaryId = ai.PrimaryArmyId.Value;
-                opposition = AttackObjectiveEvaluator.KnownSiteOpposition(afterSnap, ai.Target.Hex);
-                hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
-                    afterSnap, null, ai.Target.Hex);
+                opposition = KnownOpposition.OnHex(afterSnap, ai.Target.Hex);
+                hexBonus = AiMapMemory.KnownHexDefenseBonus(
+                    afterSnap?.Observer, null, ai.Target.Hex);
             }
             else
             {

@@ -148,7 +148,7 @@ namespace Game.Ai.V2
             // floor it was admitted under). A weakened defender is released, never reinforced:
             // the fresh replan re-assesses the threat (another responder, regroup or retreat).
             GroundCombatAssemblyPlan continuing = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
-                ActiveDefenceObjectiveEvaluator.Opposition(snap, defence.EnemyArmyId),
+                KnownOpposition.OfEnemyArmy(snap, defence.EnemyArmyId),
                 actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor);
             bool missesDeadline = continuing.Feasible && objective.Target.EnemyEta.HasValue
                 && !ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(snap, objective.Target, continuing);
@@ -192,7 +192,7 @@ namespace Game.Ai.V2
                 : !ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, objective.Target.LastKnownHex,
                     out _) ? "immediate_unreachable"
                 : !GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
-                    ActiveDefenceObjectiveEvaluator.Opposition(snap, defence.EnemyArmyId),
+                    KnownOpposition.OfEnemyArmy(snap, defence.EnemyArmyId),
                     actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor).Feasible
                     ? "actor_no_longer_capable"
                 : null;

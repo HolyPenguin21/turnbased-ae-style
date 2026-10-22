@@ -31,10 +31,7 @@ namespace Game.Ai.V2
             if (target.Phase == ActiveDefencePhase.AirSupport)
                 return ProvisionAirSupport(player, root, ctx, session, funded, target);
 
-            AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.AllKnownEnemySightings(player)
-                .Where(s => s.ArmyId == target.EnemyArmyId && s.Owner != null
-                    && !s.Owner.IsNeutral && s.Owner != player)
-                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.KnownHostileSightingOf(player, target.EnemyArmyId);
             if (!sighting.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"active defence enemy #{target.EnemyArmyId} has no honest sighting"));
@@ -58,7 +55,7 @@ namespace Game.Ai.V2
             // pinned Hard incumbent, the fresh gate otherwise), validates and applies the same-hex
             // transfers atomically and reconciles the funded AP. This lane supplies only its fight.
             StableMissionKey key = StableMissionKey.For(mission);
-            // The same fight admission priced (ActiveDefenceObjectiveEvaluator.Opposition): the
+            // The same fight admission priced (KnownOpposition.OfEnemyArmy): the
             // enemy (with its known hex bonus) plus every other known body on its hex.
             var opposition = new List<WorthIt.DefendingArmy>
             {
@@ -66,7 +63,7 @@ namespace Game.Ai.V2
                     AiMapMemory.KnownHexDefenseBonusFor(player, ctx?.Map, sighting.Value.Hex,
                         sighting.Value.Owner), sighting.Value.ArmyId),
             };
-            AiV2Util.AddKnownCoOccupants(session.Snapshot, sighting.Value.Hex, target.EnemyArmyId, opposition);
+            KnownOpposition.AddCoOccupants(session.Snapshot, sighting.Value.Hex, target.EnemyArmyId, opposition);
             bool immediate = target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity;
             if (immediate && (!hexVisibleNow || target.ImmediateTurn != session.Snapshot?.TurnNumber))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
@@ -151,10 +148,7 @@ namespace Game.Ai.V2
             if (!target.AirSupportArmyId.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "active defence air support has no wing"));
-            AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.AllKnownEnemySightings(player)
-                .Where(s => s.ArmyId == target.EnemyArmyId && s.Owner != null
-                    && !s.Owner.IsNeutral && s.Owner != player)
-                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.KnownHostileSightingOf(player, target.EnemyArmyId);
             if (!sighting.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"active defence air support: enemy #{target.EnemyArmyId} has no honest sighting"));
@@ -192,7 +186,7 @@ namespace Game.Ai.V2
             if (target.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief)
                 return ProvisionGarrisonRelief(player, root, ctx, session, funded, target);
             ArmyData actor = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
-            if (actor == null || actor.Owner != player || actor.Members.Count == 0)
+            if (!AiV2Util.IsLiveOwnArmy(actor, player))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "active defence return actor is gone"));
             if (actor.Hex.Equals(target.ReturnHex.Value))
@@ -331,33 +325,8 @@ namespace Game.Ai.V2
             ActiveDefenceMissionTarget target, ArmyData shell, ActorCommitments commitments,
             out ArmyData donor, out List<UnitData> units, out string why)
         {
-            return TryResolveGarrisonExtraction(player, target.ReliefDonorGarrisonId, shell?.Hex,
+            return GarrisonSortieProvisioning.TryResolveExtraction(player, target.ReliefDonorGarrisonId, shell?.Hex,
                 target.ReliefUnitRuntimeIds, shell, commitments, false, out donor, out units, out why);
-        }
-
-        internal static bool TryResolveGarrisonExtraction(PlayerSetupData player, int? donorId,
-            HexCoord? sourceHex, IReadOnlyList<int> ids, ArmyData shell, ActorCommitments commitments,
-            bool allowCreate, out ArmyData donor, out List<UnitData> units, out string why)
-        {
-            donor = null; units = null; why = "no pinned extraction";
-            if (!donorId.HasValue || !sourceHex.HasValue || ids == null || ids.Count == 0
-                || ids.Distinct().Count() != ids.Count || shell == null && !allowCreate) return false;
-            donor = AiV2Util.ResolveArmy(player, donorId.Value);
-            if (donor == null || !donor.IsGarrison || donor.IsPrison || donor.Owner != player
-                || !donor.Hex.Equals(sourceHex.Value))
-            { why = "donor garrison gone or moved"; return false; }
-            ArmyData resolved = donor;
-            units = ids.Select(id => resolved.Members.FirstOrDefault(u => u != null && u.RuntimeId == id)).ToList();
-            if (units.Any(u => u == null || u.HitPointsCurrent <= 0))
-            { why = "planned bodies left the garrison or died"; return false; }
-            if (shell != null && (shell.Owner != player || !shell.Hex.Equals(donor.Hex)
-                || shell.Members.Count != 0 || shell.HasActivatedThisTurn || shell.IsGarrison || shell.IsPrison
-                || shell.IsCarrierContainer || AviationRules.IsAirfield(shell) || AviationRules.IsAirArmy(shell)
-                || commitments != null && !ReusableArmySelector.IsReusableShell(shell, player, commitments)))
-            { why = "shell no longer an empty free container"; return false; }
-            if (!AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
-            { why = "garrison floor keeps the bodies"; return false; }
-            why = null; return true;
         }
 
         // Re-evaluate the funded cohort together, but bind only this leg's own actor. The

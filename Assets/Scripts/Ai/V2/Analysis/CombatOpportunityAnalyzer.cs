@@ -410,7 +410,7 @@ namespace Game.Ai.V2
         }
 
         // The fight a mover landing on the target's hex really has: the target first, then every
-        // other known body standing there (AiV2Util.AddKnownCoOccupants) — the battle opens against
+        // other known body standing there (KnownOpposition.AddCoOccupants) — the battle opens against
         // the strongest. Playtest 2026-10-19: a lone drone sharing its hex with a 5-unit army
         // was reported as an asmWin 1.00 opportunity. `armyId` null = the target is the event guard.
         private static IReadOnlyList<WorthIt.DefendingArmy> TargetFight(WorldSnapshot snap,
@@ -419,9 +419,9 @@ namespace Game.Ai.V2
         {
             var fight = new List<WorthIt.DefendingArmy> { new WorthIt.DefendingArmy(defenders, commander, hexBonus) };
             if (armyId.HasValue)
-                AiV2Util.AddKnownCoOccupants(snap, hex, armyId.Value, fight);
+                KnownOpposition.AddCoOccupants(snap, hex, armyId.Value, fight);
             else
-                AiV2Util.AddKnownSightingsAt(snap, hex, -1, fight);
+                KnownOpposition.AddSightingsAt(snap, hex, -1, fight);
             return fight;
         }
 
@@ -474,7 +474,7 @@ namespace Game.Ai.V2
                 float asmWin = assembly.WinChance;
                 bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
-                int eta = CeilDiv(minDist, moverBudget);
+                int eta = AiV2Util.CeilDiv(minDist, moverBudget);
                 float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
                     AiPower.EffectiveArmyPowerFromProfiles(defenders) / AiConfigV2.assetValueArmyPowerDivisor);
                 float confidence = ConfidenceForSighting(snap, t);
@@ -524,7 +524,7 @@ namespace Game.Ai.V2
                     float asmWin = assembly.WinChance;
                     bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
-                    int eta = CeilDiv(minDist, moverBudget);
+                    int eta = AiV2Util.CeilDiv(minDist, moverBudget);
                     float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
                         AiPower.EffectiveArmyPowerFromProfiles(defenders) / AiConfigV2.assetValueArmyPowerDivisor);
                     // A remembered event guard is a fixed, card-defined encounter, not a moving
@@ -735,6 +735,5 @@ namespace Game.Ai.V2
             return AiConfigV2.threatConfidenceLastKnown;
         }
 
-        private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }

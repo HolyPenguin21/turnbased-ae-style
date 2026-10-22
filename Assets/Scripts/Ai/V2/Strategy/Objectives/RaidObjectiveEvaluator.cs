@@ -64,7 +64,7 @@ namespace Game.Ai.V2
         // The tracked target's freshest honest sighting, or null. Physical-army lookup only —
         // callers must branch on RaidTargetKind BEFORE calling this for an EventGuard target.
         public static AiMapMemory.KnownEnemySighting? FindSighting(WorldSnapshot snap, int trackedArmyId) =>
-            FindSightingIn(snap?.Known?.EnemySightings, snap?.Known?.NeutralSightings, trackedArmyId);
+            snap?.Known?.SightingOf(trackedArmyId);
 
         // The one answer to "what do WE know about this event target" for Provisioning/Execution:
         // Active = remembered, still pending; Completed = we confirmed it is done; Unknown = we hold
@@ -231,10 +231,10 @@ namespace Game.Ai.V2
             bool needsHero = !haveViable && !report.HeroAvailable;
             bool needsCombatPower = !haveViable;
 
-            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders = AiV2Util.KnownDefenders(snap, o.Target);
+            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders = KnownOpposition.RaidDefenders(snap, o.Target);
             float targetPower = AiPower.EffectiveArmyPowerFromProfiles(knownDefenders);
             float requiredPower = GroundCombatFeasibility.RequiredPower(knownDefenders,
-                AiV2Util.KnownRaidDefenceBonus(snap, o.Target));
+                KnownOpposition.RaidDefenceBonus(snap, o.Target));
             float deficit = needsCombatPower ? Mathf.Max(1f, requiredPower - snap.Self.FieldPower) : 0f;
 
             return new RaidObjective
@@ -261,23 +261,6 @@ namespace Game.Ai.V2
         }
 
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
-
-        internal static AiMapMemory.KnownEnemySighting? FindSightingLive(
-            PlayerSetupData player, int targetArmyId) =>
-            FindSightingIn(AiMapMemory.AllKnownEnemySightings(player),
-                AiMapMemory.AllKnownNeutralSightings(player), targetArmyId);
-
-        private static AiMapMemory.KnownEnemySighting? FindSightingIn(
-            IEnumerable<AiMapMemory.KnownEnemySighting> enemies,
-            IEnumerable<AiMapMemory.KnownEnemySighting> neutrals, int armyId)
-        {
-            foreach (AiMapMemory.KnownEnemySighting sighting in
-                (enemies ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
-                    .Concat(neutrals ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>()))
-                if (sighting.ArmyId == armyId)
-                    return sighting;
-            return null;
-        }
     }
 }
 

@@ -81,8 +81,8 @@ namespace Game.Ai.V2
             if (snap?.Self == null || primary == null)
                 return new AttackMarchAssessment(AttackMarchVerdict.Continue, 0f, false, null, "no_primary");
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, target.Hex);
+                KnownOpposition.OnHex(snap, target.Hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, target.Hex);
             GroundCombatFeasibility.Clears(primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(),
                 primary.Commander, opposition, 0f, hexBonus, out float win, out _, requireCoverage: false);
             bool known = opposition != null && opposition.Any(a => a.Units.Any(u => u.IsGroundCombatant));
@@ -148,7 +148,7 @@ namespace Game.Ai.V2
                     && t.Contact.Position.Value.Equals(struckNow.Value))
                     continue;
                 IReadOnlyList<WorthIt.DefendingArmy> enemy =
-                    ActiveDefenceObjectiveEvaluator.Opposition(snap, t.Contact.Army.ArmyId);
+                    KnownOpposition.OfEnemyArmy(snap, t.Contact.Army.ArmyId);
                 if (enemy == null)
                     continue;
                 var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget

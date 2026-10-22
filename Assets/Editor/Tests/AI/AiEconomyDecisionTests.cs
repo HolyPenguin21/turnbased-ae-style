@@ -3874,8 +3874,8 @@ namespace Game.EditorTests
         private static MissionProposal AllocatorMission(
             MissionKind kind, float value, DesireAxis axis, int armyId)
         {
-            object target = kind == MissionKind.Scout
-                ? (object)new ScoutMissionTarget
+            IMissionTarget target = kind == MissionKind.Scout
+                ? (IMissionTarget)new ScoutMissionTarget
                 {
                     Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(1, 0),
                 }

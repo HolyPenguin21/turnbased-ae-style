@@ -107,7 +107,7 @@ namespace Game.Ai.V2
                     int currentMove = isAssault && projectedCurrentMovement.HasValue
                         ? projectedCurrentMovement.Value : mover.CurrentMovement;
                     eta = currentMove >= distance ? 1
-                        : 1 + CeilDiv(distance - Mathf.Max(0, currentMove), moveBudget);
+                        : 1 + AiV2Util.CeilDiv(distance - Mathf.Max(0, currentMove), moveBudget);
                 }
             }
 
@@ -126,8 +126,8 @@ namespace Game.Ai.V2
             // memory no longer resolves the defenders behind a frozen TargetPower.
             float combatDesired = combatMin <= 0f ? 0f
                 : Mathf.Max(combatMin, GroundCombatFeasibility.RequiredPower(
-                    AiV2Util.KnownDefenders(snap, target.Target),
-                    AiV2Util.KnownRaidDefenceBonus(snap, target.Target)));
+                    KnownOpposition.RaidDefenders(snap, target.Target),
+                    KnownOpposition.RaidDefenceBonus(snap, target.Target)));
 
             var requirements = new MissionRequirements
             {
@@ -153,7 +153,6 @@ namespace Game.Ai.V2
             return new RaidCostEstimate(requirements, recurringActivationAp, plannedMoverArmyId);
         }
 
-        private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }
 

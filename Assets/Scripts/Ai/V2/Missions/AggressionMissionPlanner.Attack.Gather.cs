@@ -92,8 +92,8 @@ namespace Game.Ai.V2
                 && x.ArmyId == a.PrimaryArmyId.Value);
             if (host == null)
                 return;
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
-            int defenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count;
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, a.Target.Hex);
+            int defenderCount = KnownOpposition.DefendersOnHex(snap, a.Target.Hex).Count;
             HexCoord? staging = a.Preparation
                 ? AttackPreparationPolicy.KeptStagingBase(snap, a, host) : null;
             if (a.Preparation && staging.HasValue && !host.Hex.Equals(staging.Value)

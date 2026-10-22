@@ -59,15 +59,14 @@ namespace Game.Ai.V2
 
         private sealed class Entry
         {
-            public int Turn;
             public int Checks;
             public readonly bool[] Uncovered = new bool[AllResources.Length];
             public readonly List<ReservationInvariantViolation> Violations =
                 new List<ReservationInvariantViolation>();
         }
 
-        private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
-            new Dictionary<PlayerSetupData, Entry>();
+        private static readonly TurnScopedByPlayer<Entry> ByPlayer =
+            new TurnScopedByPlayer<Entry>(() => new Entry());
 
         // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
@@ -159,7 +158,7 @@ namespace Game.Ai.V2
             if (player == null || root == null || ctx == null)
                 return;
             int turn = ctx.TurnNumber;
-            Entry e = GetOrReset(player, turn);
+            Entry e = ByPlayer.GetOrReset(player, turn);
             e.Checks++;
 
             IReadOnlyList<StrategicResourceReservation> rows =
@@ -214,7 +213,7 @@ namespace Game.Ai.V2
             if (player == null || root == null || ctx == null || probe.Before == null)
                 return;
             int turn = ctx.TurnNumber;
-            GetOrReset(player, turn).Checks++;
+            ByPlayer.GetOrReset(player, turn).Checks++;
             float[] after = Physical(root);
             foreach (StrategicReservedResource res in Overspent(probe.Before, after, probe.SpendableBefore))
             {
@@ -231,13 +230,13 @@ namespace Game.Ai.V2
 
         internal static IReadOnlyList<ReservationInvariantViolation> Violations(
             PlayerSetupData player, int turn) =>
-            player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+            ByPlayer.Peek(player, turn) is Entry e
                 ? e.Violations
                 : (IReadOnlyList<ReservationInvariantViolation>)System.Array.Empty<ReservationInvariantViolation>();
 
         internal static void LogTurnSummary(PlayerSetupData player, int turn)
         {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+            if (!(ByPlayer.Peek(player, turn) is Entry e))
                 return;
             string summary = $"[AI][V2][INVARIANT] turn {turn} {player.Nickname}: checks={e.Checks} "
                 + $"violations={e.Violations.Count}"
@@ -257,18 +256,8 @@ namespace Game.Ai.V2
             {
                 Turn = turn, Rule = rule, Resource = resource, Label = label, Detail = detail,
             };
-            GetOrReset(player, turn).Violations.Add(v);
+            ByPlayer.GetOrReset(player, turn).Violations.Add(v);
             AiDebugLog.Write($"[AI][V2][INVARIANT] {player?.Nickname}: {v}");
-        }
-
-        private static Entry GetOrReset(PlayerSetupData player, int turn)
-        {
-            if (!ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
-            {
-                e = new Entry { Turn = turn };
-                ByPlayer[player] = e;
-            }
-            return e;
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);

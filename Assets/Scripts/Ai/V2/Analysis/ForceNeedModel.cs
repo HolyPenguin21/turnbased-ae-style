@@ -215,12 +215,12 @@ namespace Game.Ai.V2
                     || (snap.Self.BaseHexes != null && snap.Self.BaseHexes.Contains(b.Hex)))
                     continue;
                 List<Game.Combat.WorthIt.DefendingArmy> opposition =
-                    AttackObjectiveEvaluator.KnownSiteOpposition(snap, b.Hex);
+                    KnownOpposition.OnHex(snap, b.Hex);
                 if (Game.Combat.WorthIt.UnitsOf(opposition).Count == 0)
                     continue;
                 known++;
                 if (own < GroundCombatDemandPolicy.RequiredSitePower(opposition,
-                        AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, b.Hex)))
+                        AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, b.Hex)))
                     unwinnable++;
             }
         }

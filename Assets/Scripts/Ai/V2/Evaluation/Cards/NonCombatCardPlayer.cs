@@ -238,7 +238,7 @@ namespace Game.Ai.V2
                     // Keep every recipient alternative without first scoring the same set to
                     // select one. Generated attachments belong to materialization below.
                     foreach (var attachment in BuildEquipmentPlays(card, snap, player, root, hand, ctx,
-                        card.EffectivePlayApCost, CombinedCost(card.EffectivePlayResourceCost, null),
+                        card.EffectivePlayApCost, StrategicCardEvaluator.AddResourceCosts(card.EffectivePlayResourceCost, null),
                         witnessedUsefulApDemand))
                         yield return attachment;
                     continue;
@@ -300,7 +300,7 @@ namespace Game.Ai.V2
             float playAp = def.isAviation ? CardCostRules.PlayAp(card) : card.EffectivePlayApCost;
             float totalAp = playAp + (generation != null
                 ? ResearchProductionSystem.AttemptApCost(generation.ChallengeCard) : 0f);
-            ResourceCost totalRes = CombinedCost(card.EffectivePlayResourceCost,
+            ResourceCost totalRes = StrategicCardEvaluator.AddResourceCosts(card.EffectivePlayResourceCost,
                 generation?.ChallengeCard?.resourceCost);
             int handOrdinal = hand.Hand.IndexOf(card);
             string sourceKey = generation != null
@@ -399,7 +399,7 @@ namespace Game.Ai.V2
             float playAp = CardCostRules.PlayAp(card);
             float totalAp = playAp + (generation != null
                 ? ResearchProductionSystem.AttemptApCost(generation.ChallengeCard) : 0f);
-            ResourceCost totalRes = CombinedCost(card.EffectivePlayResourceCost,
+            ResourceCost totalRes = StrategicCardEvaluator.AddResourceCosts(card.EffectivePlayResourceCost,
                 generation?.ChallengeCard?.resourceCost);
             int handOrdinal = hand.Hand.IndexOf(card);
             string sourceKey = generation != null
@@ -768,16 +768,6 @@ namespace Game.Ai.V2
                         + $" delta={op.ExpectedGain:0.###} tactical={op.TacticalGain:0.###} " + op.Explain,
                 };
             }
-        }
-
-        private static ResourceCost CombinedCost(ResourceCost a, ResourceCost b)
-        {
-            int h = (a?.human ?? 0) + (b?.human ?? 0);
-            int e = (a?.energy ?? 0) + (b?.energy ?? 0);
-            int m = (a?.materials ?? 0) + (b?.materials ?? 0);
-            int t = (a?.tech ?? 0) + (b?.tech ?? 0);
-            return (h | e | m | t) == 0
-                ? null : new ResourceCost { human = h, energy = e, materials = m, tech = t };
         }
 
     }

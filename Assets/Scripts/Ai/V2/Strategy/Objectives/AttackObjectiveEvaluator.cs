@@ -73,8 +73,12 @@ namespace Game.Ai.V2
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
     // Provisioning/Execution stages read and never re-derive — no target re-pick, no base re-pick,
     // no strategic re-scoring below this point.
-    public struct AttackMissionTarget
+    public struct AttackMissionTarget : IMissionTarget
     {
+        MissionKind IMissionTarget.Kind => MissionKind.Attack;
+        public MissionIntentKey IntentKey() => MissionIntentKey.ForAttack(Target);
+        public StableMissionKey StableKey() => StableMissionKey.ForAttack(this);
+
         public AttackMissionPhase Phase;
         public AttackTargetRef Target;
         // Target stays the operation identity; AssaultTarget is only this funded local fight.
@@ -431,32 +435,6 @@ namespace Game.Ai.V2
 
         // ---- site facts the mission layer needs (§30/§31) -------------------------------------
 
-        // The defence bonus a defender standing on the target site actually gets, through the one
-        // fog-honest owner. `map` may be null, in which case terrain is simply not known to this
-        // caller and only the remembered structural defence contributes.
-        public static float KnownSiteDefenceBonus(WorldSnapshot snap, HexMap map, HexCoord hex) =>
-            AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, hex);
-
-        // Every known hostile body standing on the site (§31): a garrison and two field armies on
-        // the same Base are one objective. Flat roster for counts / power / coverage.
-        public static List<WorthIt.DefenderProfile> KnownSiteDefenders(WorldSnapshot snap, HexCoord hex) =>
-            WorthIt.UnitsOf(KnownSiteOpposition(snap, hex));
-
-        // The same site as the fights it really is: every known army on the hex is its own battle,
-        // with its own observed commander (WorthIt.EstimateSequential plays them strongest first).
-        public static List<WorthIt.DefendingArmy> KnownSiteOpposition(WorldSnapshot snap, HexCoord hex)
-        {
-            IEnumerable<AiMapMemory.KnownEnemySighting> sightings = snap?.Known?.EnemySightings
-                ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>();
-            return sightings
-                .Where(s => s.Hex.Equals(hex) && s.Defenders != null)
-                .OrderBy(s => s.ArmyId)
-                .Select(s => new WorthIt.DefendingArmy(
-                    s.Defenders, s.Commander,
-                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId))
-                .ToList();
-        }
-
         // ---- response terms (§35) -------------------------------------------------------------
 
         // The response half of the Attack score, folded onto the intrinsic objective score exactly
@@ -505,7 +483,7 @@ namespace Game.Ai.V2
         {
             AttackTargetKind kind = b.IsStartingCitadel ? AttackTargetKind.Citadel
                 : AttackTargetKind.Base;
-            List<WorthIt.DefendingArmy> opposition = KnownSiteOpposition(snap, b.Hex);
+            List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, b.Hex);
             List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
 
             // §34 — the site's own defence is NOT a positive term for the attacker. It is priced

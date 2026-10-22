@@ -34,6 +34,10 @@ namespace Game.Ai.V2
         internal static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);
 
+        // The army still stands as this player's own non-empty body.
+        internal static bool IsLiveOwnArmy(ArmyData army, PlayerSetupData player) =>
+            army != null && army.Owner == player && army.Members.Count > 0;
+
         // Sighting identity for before/after discovery queries (enemy and neutral alike).
         // Army id 0 is valid; repeated sightings collapse to one identity.
         internal static HashSet<int> KnownArmyIds(IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> sightings)
@@ -126,148 +130,6 @@ namespace Game.Ai.V2
                 if (d < best) best = d;
             }
             return best == int.MaxValue ? 0 : best;
-        }
-
-        // THE single resolver every Raid consumer (objective, demand, admission, assembly,
-        // provisioning, reinforcement projection, continuity WorthIt checks) must use to find a
-        // Raid target's defenders — no event/army switch duplicated elsewhere. Note armyId 0 is a
-        // legitimate army id (see ArmyData identity sequencing), so absence is expressed only by
-        // RaidTargetRef.HasValue == false or "not found in the sighting/guard list", never by a
-        // numeric sentinel.
-        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, RaidTargetRef target) =>
-            WorthIt.UnitsOf(KnownOpposition(snap, target));
-
-        // The same target as the fight it is: the defending army (or event guard) with its
-        // observed commander, PLUS every other known body standing on that hex. A mover that
-        // lands on a hex fights everything there (an event guard and a roaming neutral army can
-        // share one; the 2026-10-02 playtest sent a lone Scav Carrier at "Guard@-2,-2" priced
-        // against its 2 defenders alone while neutral Army#6 stood on the same hex — four
-        // retreats in a row at an estimated win of 1.00). Empty when nothing is known.
-        internal static IReadOnlyList<WorthIt.DefendingArmy> KnownOpposition(WorldSnapshot snap, RaidTargetRef target) =>
-            BuildKnownOpposition(snap, target, includeSite: true);
-
-        // Execution historically revalidates only the bound primary encounter. Keep that scope
-        // explicit: do not silently turn a mechanical audit into a different fight projection.
-        internal static IReadOnlyList<WorthIt.DefendingArmy> KnownPrimaryOppositionLive(
-            Game.Players.PlayerSetupData player, RaidTargetRef target)
-        {
-            var guards = new List<KnownEventGuardSnapshot>();
-            if (target.Kind == RaidTargetKind.EventGuard)
-            {
-                Game.Ai.AiMapMemory.GuardStrength? guard = Game.Ai.AiMapMemory.KnownEventGuardStrengthAt(player, target.Hex);
-                if (guard.HasValue)
-                    guards.Add(new KnownEventGuardSnapshot(target.Hex, guard.Value, null,
-                        guard.Value.Defenders?.Count ?? 0));
-            }
-            return BuildKnownOpposition(new WorldSnapshot
-            {
-                Observer = player,
-                Known = new KnownSnapshot
-                {
-                    EnemySightings = Game.Ai.AiMapMemory.AllKnownEnemySightings(player).ToList(),
-                    NeutralSightings = Game.Ai.AiMapMemory.AllKnownNeutralSightings(player).ToList(),
-                    EventGuards = guards,
-                },
-            }, target, includeSite: false);
-        }
-
-        private static IReadOnlyList<WorthIt.DefendingArmy> BuildKnownOpposition(WorldSnapshot snap, RaidTargetRef target, bool includeSite)
-        {
-            if (snap?.Known == null || !target.HasValue)
-                return System.Array.Empty<WorthIt.DefendingArmy>();
-
-            var result = new List<WorthIt.DefendingArmy>();
-            HexCoord hex;
-            int excludeArmyId = -1;
-            if (target.Kind == RaidTargetKind.EventGuard)
-            {
-                hex = target.Hex;
-                AddEventGuard(snap, hex, result, includeSite);
-                if (result.Count == 0)
-                    return System.Array.Empty<WorthIt.DefendingArmy>();
-            }
-            else
-            {
-                Game.Ai.AiMapMemory.KnownEnemySighting? own =
-                    RaidObjectiveEvaluator.FindSighting(snap, target.ArmyId);
-                if (!own.HasValue)
-                    return System.Array.Empty<WorthIt.DefendingArmy>();
-                hex = own.Value.Hex;
-                excludeArmyId = target.ArmyId;
-                result.Add(new WorthIt.DefendingArmy(own.Value.Defenders, own.Value.Commander,
-                    includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, own.Value.Owner) : 0f, own.Value.ArmyId));
-                if (includeSite) AddEventGuard(snap, hex, result);
-            }
-
-            if (!includeSite) return result;
-
-            AddKnownSightingsAt(snap, hex, excludeArmyId, result);
-            return result;
-        }
-
-        // Every OTHER known body a ground mover landing on `hex` also fights besides the army it
-        // aims at: an event guard and each enemy/neutral sighting standing there. The battle opens
-        // against the strongest of them (BattleInitiator.FindEnemyAt) and the winner fights the
-        // next (WorthIt.EstimateSequential models the same order), so a fight priced against the
-        // target alone is not the fight that happens. The one source for Raid (KnownOpposition,
-        // RaidProvisioner), ActiveDefence (Opposition, its provisioner), Attack's local contacts
-        // (AttackTacticalOpportunity.OppositionOn) and CombatOpportunityAnalyzer (2026-10-19
-        // playtest: an intercept of a lone Watcher Drone estimated at win 1.00 walked into the
-        // 5-unit army sharing its hex, two turns in a row).
-        internal static void AddKnownCoOccupants(WorldSnapshot snap, HexCoord hex, int excludeArmyId,
-            List<WorthIt.DefendingArmy> into)
-        {
-            if (snap?.Known == null || into == null)
-                return;
-            AddEventGuard(snap, hex, into);
-            AddKnownSightingsAt(snap, hex, excludeArmyId, into);
-        }
-
-        // The sightings part alone (a caller whose target IS the hex's event guard).
-        // Air armies and airfields never join a ground battle (BattleInitiator.IsEngageable).
-        internal static void AddKnownSightingsAt(WorldSnapshot snap, HexCoord hex, int excludeArmyId,
-            List<WorthIt.DefendingArmy> into)
-        {
-            if (snap?.Known == null || into == null)
-                return;
-            IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
-                (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
-            foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all.OrderBy(x => x.ArmyId))
-                if (s.Hex.Equals(hex) && s.ArmyId != excludeArmyId && s.Defenders != null
-                    && s.Defenders.Count > 0 && !s.IsAir && s.Owner != snap.Observer)
-                    into.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
-                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId));
-        }
-
-        private static void AddEventGuard(WorldSnapshot snap, HexCoord hex, List<WorthIt.DefendingArmy> into, bool includeSite = true)
-        {
-            if (snap.Known.EventGuards == null)
-                return;
-            foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
-                if (g.Hex.Equals(hex))
-                {
-                    into.Add(new WorthIt.DefendingArmy(g.Defenders, g.Commander,
-                        includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null) : 0f));
-                    return;
-                }
-        }
-
-        // THE hex defence a Raid target fights with — the companion of KnownOpposition, resolved
-        // the same way (event guard: its stable hex; neutral army: its last observed hex) and read
-        // through the one fog-honest owner. A field battle is still a battle on a hex: terrain
-        // defends the target exactly as WorthIt folds it into the live fight.
-        internal static float KnownRaidDefenceBonus(WorldSnapshot snap, RaidTargetRef target)
-        {
-            if (snap?.Known == null || !target.HasValue)
-                return 0f;
-            if (target.Kind == RaidTargetKind.EventGuard)
-                return Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
-                    snap.Observer, target.Hex, defendingOwner: null);
-            Game.Ai.AiMapMemory.KnownEnemySighting? sighting =
-                RaidObjectiveEvaluator.FindSighting(snap, target.ArmyId);
-            return sighting.HasValue ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
-                snap.Observer, sighting.Value.Hex, sighting.Value.Owner) : 0f;
         }
     }
 }
