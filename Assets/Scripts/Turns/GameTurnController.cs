@@ -1147,7 +1147,8 @@ namespace Game.Turns
             while (opponents.Count > 0)
             {
                 int index = _greetingRandom.Next(opponents.Count);
-                FactionCardCatalog catalog = startingDeckCatalog.GetCatalog(opponents[index].Faction);
+                var opponent = opponents[index];
+                FactionCardCatalog catalog = startingDeckCatalog.GetCatalog(opponent.Faction);
                 opponents.RemoveAt(index);
                 if (catalog == null || catalog.logo == null || catalog.matchGreetings == null || catalog.cards == null)
                     continue;
@@ -1155,7 +1156,9 @@ namespace Game.Turns
                 var heroes = catalog.ForType(CardType.Hero).Where(c => c.detailArt != null || c.art != null).ToList();
                 if (messages.Count == 0 || heroes.Count == 0)
                     continue;
-                CardDefinition hero = heroes[_greetingRandom.Next(heroes.Count)];
+                CardDefinition hero = startingDeckCatalog.ResolveAiLeader(opponent.Faction, opponent.AiDeckName);
+                if (hero == null || (hero.detailArt == null && hero.art == null))
+                    hero = heroes[_greetingRandom.Next(heroes.Count)];
                 eventRewardPopup.ShowMessage(hero.detailArt != null ? hero.detailArt : hero.art,
                     catalog.logo, messages[_greetingRandom.Next(messages.Count)]);
                 if (!eventRewardPopup.IsShowing)

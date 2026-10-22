@@ -318,6 +318,9 @@ namespace Game.Ai.V2
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
             ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
+            ApplyKnownDetection(ctx, snap, targetHex ?? army?.Hex ?? deployment?.Deploy.Hex,
+                Mathf.Max(AbilityParams.GetBestRecceRadius(hostAbilities),
+                    AbilityParams.GetBestRecceRadius(predicted.Abilities)));
             if (isHero && snap?.Development != null
                 && (a.Fate != b.Fate || projectedFateMax.HasValue && projectedFateMax != hostUnit?.FateMax))
                 ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate, projectedFateMax);
@@ -416,47 +419,6 @@ namespace Game.Ai.V2
             s_operatorForecast = true;
             try
             {
-                var sources = snap.Development.ForecastSources
-                    .Where(g => g?.CardDef != null && (g.CardDef.cardType == CardType.Equipment || g.CardDef.isAviation)
-                        && ReferenceEquals(g.Hero, hero)
-                        && !(g.CardDef.equipment?.statChanges?.Any(c => c.stat == EquipmentStat.Fate) ?? false))
-                    .GroupBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal)
-                    .Select(g => g.First()).OrderBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal);
-                var player = snap.Observer;
-                PlayerRoot root = PlayerRootRegistry.FindFor(player);
-                var options = new List<(DevelopmentOpportunity Op, CardDefinition Challenge, float Utility, float Before, float After)>();
-                foreach (GenerationStep source in sources)
-                {
-                    CardDefinition card = source.CardDef;
-                    float alternative = snap.Development.ForecastSources
-                        .Where(g => g != null && !ReferenceEquals(g.Hero, hero)
-                            && ReferenceEquals(g.CardDef, card))
-                        .Select(g => ResearchProductionSystem.EstimateSuccessChance(g.Hero, g.ChallengeCard))
-                        .DefaultIfEmpty(0f).Max();
-                    float beforeChance = Mathf.Max(alternative,
-                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateBefore, source.ChallengeCard,
-                            baseTokenCount: ResearchProductionSystem.TokenPoolSizeFor(hero)));
-                    float afterChance = Mathf.Max(alternative,
-                        ResearchProductionSystem.EstimateSuccessChanceForFate(fateAfter, source.ChallengeCard,
-                            baseTokenCount: projectedFateMax ?? hero.FateMax + fateAfter - fateBefore));
-                    if (Mathf.Approximately(beforeChance, afterChance)) continue;
-                    if (card.isAviation)
-                    {
-                        float utility = NonCombatCardPlayer.OperatorAviationOutputValue(snap, source);
-                        if (utility > 0f) options.Add((new DevelopmentOpportunity {
-                            Card = card, RecipientLabel = "aviation:" + card.authoredKey
-                        }, source.ChallengeCard, utility, beforeChance, afterChance));
-                        continue;
-                    }
-                    foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.EquipmentOpportunities(
-                        source.Mode, source.FacilityHex, card, 1f, null, snap, inv, player, root,
-                        null, out _, futureAttachment: true, forecastHand: snap.Self.Hand))
-                    {
-                        float utility = EquipmentUpgradeValue(op);
-                        if (utility <= 0f) continue;
-                        options.Add((op, source.ChallengeCard, utility, beforeChance, afterChance));
-                    }
-                }
                 // The same finite horizon already used by Development. Net out pending ordinary
                 // card demand; use the snapshot's bank-aware spendable stock, never raw reserved funds.
                 ResourceBundle budget = snap.Economy != null ? snap.Economy.SpendableStockpile : default;
@@ -473,62 +435,191 @@ namespace Game.Ai.V2
                         - (snap.Self.ApEconomy.WitnessedApDemand ??
                             snap.Self.ApEconomy.EstimatedArmyApDemand + snap.Self.ApEconomy.EstimatedCardApDemand))
                         * AiConfigV2.devChainFundingHorizonTurns;
-                float apScale = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f,
-                    EffectEvaluationContext.ResolveMarginalApUtility(snap, null));
-                var remaining = new Dictionary<string, float>(System.StringComparer.Ordinal);
-                var attempts = new Dictionary<CardDefinition, int>();
-                for (int use = 0; use < AiConfigV2.devFacilityExpectedUses; use++)
-                {
-                    int best = -1;
-                    float bestValue = 0f, bestUtility = 0f, bestAttach = 0f, bestWeight = 0f;
-                    string bestSlot = null;
-                    for (int i = 0; i < options.Count; i++)
-                    {
-                        var o = options[i];
-                        CardDefinition card = o.Op.Card;
-                        CardDefinition challenge = o.Challenge;
-                        float chance = Mathf.Max(o.Before, o.After);
-                        if (chance <= 0f || challenge.resourceCost != null && ResourceBundle.All.Any(
-                                t => challenge.resourceCost.Get(t) > budget.Get(t))) continue;
-                        string slot = card.isAviation ? "aviation:" + card.authoredKey
-                            : DevelopmentOpportunityEvaluator.RecipientKey(o.Op) + ":" + card.attachmentSlot;
-                        float weight = remaining.TryGetValue(slot, out float w) ? w : 1f;
-                        float attachAp = Mathf.Max(0, card.activationApCost);
-                        float attemptAp = ResearchProductionSystem.AttemptApCost(challenge);
-                        if (ap < attemptAp + chance * weight * attachAp) continue;
-                        attempts.TryGetValue(card, out int made);
-                        // Equipment's READY evaluator discounts idle AP and repeated upgrades.
-                        // Aviation's non-combat scorer charges full AP and no attachment step.
-                        float outputApScale = card.isAviation ? 1f : apScale;
-                        float repeat = card.isAviation ? 1f : DevelopmentDiversity.RepeatFactor(
-                            DevelopmentDiversity.RecentAttempts(player, snap.TurnNumber, card) + made);
-                        float u = o.Utility * repeat * weight;
-                        float attach = ActionPrice.ToCardScore(attachAp * outputApScale) * weight;
-                        float price = StrategicCardEvaluator.StrategicResourceCostValue(challenge.resourceCost,
-                            snap, t => budget.Get(t), player) + ActionPrice.ToCardScore(attemptAp * outputApScale)
-                            + (card.isAviation ? 0f : AiConfigV2.stratChainAttachStepPenalty)
-                            + AiConfigV2.stratChainGenerationStepPenalty;
-                        float value = chance * (u - attach) - price;
-                        if (value <= AiConfigV2.devEvMargin || value <= bestValue) continue;
-                        best = i; bestValue = value; bestUtility = u; bestAttach = attach;
-                        bestSlot = slot; bestWeight = weight;
-                    }
-                    if (best < 0) break;
-                    var selected = options[best];
-                    CardDefinition output = selected.Op.Card;
-                    result.Add((bestUtility, bestAttach, selected.Before, selected.After));
-                    float p = Mathf.Max(selected.Before, selected.After);
-                    remaining[bestSlot] = bestWeight * (1f - p);
-                    foreach (ResourceType type in ResourceBundle.All)
-                        budget.Add(type, -(selected.Challenge.resourceCost?.Get(type) ?? 0));
-                    ap -= ResearchProductionSystem.AttemptApCost(selected.Challenge)
-                        + p * bestWeight * Mathf.Max(0, output.activationApCost);
-                    attempts.TryGetValue(output, out int count);
-                    attempts[output] = count + 1;
-                }
-                return result;
+                var direct = OperatorOutputPortfolio(snap, inv, hero, fateBefore, fateAfter,
+                    projectedFateMax, budget, ap, AiConfigV2.devFacilityExpectedUses);
+                var viaAssembler = ResearcherAssemblerForecast(snap, inv, hero, fateBefore, fateAfter,
+                    projectedFateMax, budget, ap);
+                // An empty alternative must not erase a signed loss when Fate decreases.
+                return viaAssembler.Count > 0 && OperatorForecastGain(viaAssembler) > OperatorForecastGain(direct)
+                    ? viaAssembler : direct;
             }
             finally { s_operatorForecast = false; }
+        }
+
+        private static float OperatorForecastGain(
+            IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)> outputs) =>
+            outputs.Sum(o => (o.PAfter - o.PBefore) * Mathf.Max(0f, o.Utility - o.CostIfSuccess));
+
+        // Leaf outputs only: explicit copied budgets make direct and staged portfolios alternatives,
+        // never two independent claims on the same resource/AP horizon.
+        private static IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>
+            OperatorOutputPortfolio(WorldSnapshot snap, CapabilityInventory inv, UnitData hero,
+                int fateBefore, int fateAfter, int? projectedFateMax, ResourceBundle budget, float ap, int maxUses)
+        {
+            var result = new List<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>();
+            var sources = snap.Development.ForecastSources
+                .Where(g => g?.CardDef != null && (g.CardDef.cardType == CardType.Equipment || g.CardDef.isAviation)
+                    && ReferenceEquals(g.Hero, hero)
+                    && !(g.CardDef.equipment?.statChanges?.Any(c => c.stat == EquipmentStat.Fate) ?? false))
+                .GroupBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal)
+                .Select(g => g.First()).OrderBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal);
+            var player = snap.Observer;
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            var options = new List<(DevelopmentOpportunity Op, CardDefinition Challenge, float Utility, float Before, float After)>();
+            foreach (GenerationStep source in sources)
+            {
+                CardDefinition card = source.CardDef;
+                float alternative = snap.Development.ForecastSources
+                    .Where(g => g != null && !ReferenceEquals(g.Hero, hero)
+                        && ReferenceEquals(g.CardDef, card))
+                    .Select(g => ResearchProductionSystem.EstimateSuccessChance(g.Hero, g.ChallengeCard))
+                    .DefaultIfEmpty(0f).Max();
+                float beforeChance = Mathf.Max(alternative,
+                    ResearchProductionSystem.EstimateSuccessChanceForFate(fateBefore, source.ChallengeCard,
+                        baseTokenCount: ResearchProductionSystem.TokenPoolSizeFor(hero)));
+                float afterChance = Mathf.Max(alternative,
+                    ResearchProductionSystem.EstimateSuccessChanceForFate(fateAfter, source.ChallengeCard,
+                        baseTokenCount: projectedFateMax ?? hero.FateMax + fateAfter - fateBefore));
+                if (Mathf.Approximately(beforeChance, afterChance)) continue;
+                if (card.isAviation)
+                {
+                    float utility = NonCombatCardPlayer.OperatorAviationOutputValue(snap, source);
+                    if (utility > 0f) options.Add((new DevelopmentOpportunity {
+                        Card = card, RecipientLabel = "aviation:" + card.authoredKey
+                    }, source.ChallengeCard, utility, beforeChance, afterChance));
+                    continue;
+                }
+                foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                    source.Mode, source.FacilityHex, card, 1f, null, snap, inv, player, root,
+                    null, out _, futureAttachment: true, forecastHand: snap.Self.Hand))
+                {
+                    float utility = EquipmentUpgradeValue(op);
+                    if (utility <= 0f) continue;
+                    options.Add((op, source.ChallengeCard, utility, beforeChance, afterChance));
+                }
+            }
+            float apScale = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f,
+                EffectEvaluationContext.ResolveMarginalApUtility(snap, null));
+            var remaining = new Dictionary<string, float>(System.StringComparer.Ordinal);
+            var attempts = new Dictionary<CardDefinition, int>();
+            for (int use = 0; use < maxUses; use++)
+            {
+                int best = -1;
+                float bestValue = 0f, bestUtility = 0f, bestAttach = 0f, bestWeight = 0f;
+                string bestSlot = null;
+                for (int i = 0; i < options.Count; i++)
+                {
+                    var o = options[i];
+                    CardDefinition card = o.Op.Card;
+                    CardDefinition challenge = o.Challenge;
+                    float chance = Mathf.Max(o.Before, o.After);
+                    if (chance <= 0f || challenge.resourceCost != null && ResourceBundle.All.Any(
+                            t => challenge.resourceCost.Get(t) > budget.Get(t))) continue;
+                    string slot = card.isAviation ? "aviation:" + card.authoredKey
+                        : DevelopmentOpportunityEvaluator.RecipientKey(o.Op) + ":" + card.attachmentSlot;
+                    bool resupply = EquipmentSystem.IsSingleUse(card);
+                    float weight = resupply ? 1f : remaining.TryGetValue(slot, out float w) ? w : 1f;
+                    float attachAp = Mathf.Max(0, card.activationApCost);
+                    float attemptAp = ResearchProductionSystem.AttemptApCost(challenge);
+                    if (ap < attemptAp + chance * weight * attachAp) continue;
+                    attempts.TryGetValue(card, out int made);
+                    // Equipment's READY evaluator discounts idle AP and repeated upgrades.
+                    // Aviation's non-combat scorer charges full AP and no attachment step.
+                    float outputApScale = card.isAviation ? 1f : apScale;
+                    float repeat = card.isAviation || EquipmentSystem.IsSingleUse(card) ? 1f : DevelopmentDiversity.RepeatFactor(
+                        DevelopmentDiversity.RecentAttempts(player, snap.TurnNumber, card) + made);
+                    float u = o.Utility * repeat * weight;
+                    float attach = ActionPrice.ToCardScore(attachAp * outputApScale) * weight;
+                    float price = StrategicCardEvaluator.StrategicResourceCostValue(challenge.resourceCost,
+                        snap, t => budget.Get(t), player) + ActionPrice.ToCardScore(attemptAp * outputApScale)
+                        + (card.isAviation ? 0f : AiConfigV2.stratChainAttachStepPenalty)
+                        + AiConfigV2.stratChainGenerationStepPenalty;
+                    float value = chance * (u - attach) - price;
+                    if (value <= AiConfigV2.devEvMargin || value <= bestValue) continue;
+                    best = i; bestValue = value; bestUtility = u; bestAttach = attach;
+                    bestSlot = slot; bestWeight = weight;
+                }
+                if (best < 0) break;
+                var selected = options[best];
+                CardDefinition output = selected.Op.Card;
+                result.Add((bestUtility, bestAttach, selected.Before, selected.After));
+                float p = Mathf.Max(selected.Before, selected.After);
+                if (!EquipmentSystem.IsSingleUse(output)) remaining[bestSlot] = bestWeight * (1f - p);
+                foreach (ResourceType type in ResourceBundle.All)
+                    budget.Add(type, -(selected.Challenge.resourceCost?.Get(type) ?? 0));
+                ap -= ResearchProductionSystem.AttemptApCost(selected.Challenge)
+                    + p * bestWeight * Mathf.Max(0, output.activationApCost);
+                attempts.TryGetValue(output, out int count);
+                attempts[output] = count + 1;
+            }
+            return result;
+        }
+
+        // One research genome, one already staffed assembler, then non-Fate leaf outputs.
+        // It witnesses an existing route; it neither equips a live hero nor creates a reservation.
+        private static IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>
+            ResearcherAssemblerForecast(WorldSnapshot snap, CapabilityInventory inv, UnitData researcher,
+                int fateBefore, int fateAfter, int? projectedFateMax, ResourceBundle budget, float ap)
+        {
+            var best = new List<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>();
+            if (!researcher.HasAbility(UnitAbilities.Researcher)) return best;
+            var genomes = snap.Development.ForecastSources.Where(g => g?.CardDef != null
+                && ReferenceEquals(g.Hero, researcher) && g.Mode == ResearchProductionMode.Research
+                && g.CardDef.attachmentSlot == AttachmentSlot.Mutator
+                && (g.CardDef.equipment?.statChanges?.Any(c => c.stat == EquipmentStat.Fate) ?? false))
+                .GroupBy(g => g.CardDef.authoredKey).Select(g => g.First());
+            var assemblers = snap.Development.ForecastSources.Where(g => g?.Hero != null
+                && g.Mode == ResearchProductionMode.Production && !ReferenceEquals(g.Hero, researcher)
+                && g.Hero.HasAbility(UnitAbilities.Assembler)).Select(g => g.Hero).Distinct().ToArray();
+            float apScale = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f,
+                EffectEvaluationContext.ResolveMarginalApUtility(snap, null));
+            foreach (var source in genomes)
+            {
+                var genome = source.CardDef;
+                var challenge = source.ChallengeCard;
+                if (challenge.resourceCost != null && ResourceBundle.All.Any(t =>
+                    challenge.resourceCost.Get(t) > budget.Get(t))) continue;
+                float alternative = snap.Development.ForecastSources.Where(g => g != null
+                    && !ReferenceEquals(g.Hero, researcher) && ReferenceEquals(g.CardDef, genome))
+                    .Select(g => ResearchProductionSystem.EstimateSuccessChance(g.Hero, g.ChallengeCard))
+                    .DefaultIfEmpty(0f).Max();
+                float before = Mathf.Max(alternative, ResearchProductionSystem.EstimateSuccessChanceForFate(
+                    fateBefore, challenge, baseTokenCount: ResearchProductionSystem.TokenPoolSizeFor(researcher)));
+                float after = Mathf.Max(alternative, ResearchProductionSystem.EstimateSuccessChanceForFate(
+                    fateAfter, challenge, baseTokenCount: projectedFateMax ?? researcher.FateMax + fateAfter - fateBefore));
+                if (Mathf.Approximately(before, after)) continue;
+                float attachAp = Mathf.Max(0, genome.activationApCost);
+                float attemptAp = ResearchProductionSystem.AttemptApCost(challenge);
+                if (ap < attemptAp + attachAp) continue;
+                var leafBudget = budget;
+                foreach (ResourceType t in ResourceBundle.All)
+                    leafBudget.Add(t, -(challenge.resourceCost?.Get(t) ?? 0));
+                foreach (var assembler in assemblers)
+                {
+                    if (!EquipmentSystem.CanAttachPreview(genome, assembler, out _)) continue;
+                    if (snap.Self.Hand?.Any(c => c?.Definition != null
+                        && c.Definition.attachmentSlot == AttachmentSlot.Mutator
+                        && (c.Definition.equipment?.statChanges?.Any(x => x.stat == EquipmentStat.Fate) ?? false)
+                        && EquipmentSystem.CanAttachPreview(c.Definition, assembler, out _)) == true) continue;
+                    var projected = EquipmentSystem.PredictAttachment(genome, assembler);
+                    int nextMax = projected.Stats[EquipmentStat.Fate];
+                    int nextFate = EquipmentSystem.CurrentAfterAttachment(assembler, EquipmentStat.Fate, nextMax);
+                    var leaf = OperatorOutputPortfolio(snap, inv, assembler, assembler.Fate, nextFate, nextMax,
+                        leafBudget, ap - attemptAp - attachAp, Mathf.Max(0, AiConfigV2.devFacilityExpectedUses - 1));
+                    float repeat = DevelopmentDiversity.RepeatFactor(
+                        DevelopmentDiversity.RecentAttempts(snap.Observer, snap.TurnNumber, genome));
+                    float utility = OperatorForecastGain(leaf) * repeat;
+                    float attach = ActionPrice.ToCardScore(attachAp * apScale);
+                    float price = StrategicCardEvaluator.StrategicResourceCostValue(challenge.resourceCost,
+                        snap, t => budget.Get(t), snap.Observer) + ActionPrice.ToCardScore(attemptAp * apScale)
+                        + AiConfigV2.stratChainGenerationStepPenalty + AiConfigV2.stratChainAttachStepPenalty;
+                    if (Mathf.Max(before, after) * (utility - attach) - price <= AiConfigV2.devEvMargin) continue;
+                    var candidate = new List<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>
+                        { (utility, attach, before, after) };
+                    if (OperatorForecastGain(candidate) > OperatorForecastGain(best)) best = candidate;
+                }
+            }
+            return best;
         }
 
         // The host as an AA carrier against the air armies honestly known to its owner: distance from its
@@ -588,6 +679,35 @@ namespace Game.Ai.V2
             if (facts.StealthRisk.HasValue) ctx.StealthRisk = facts.StealthRisk.Value;
             if (facts.RouteLength.HasValue) ctx.RouteLength = facts.RouteLength.Value;
             if (facts.OtherArmyActivationAp.HasValue) ctx.OtherArmyActivationAp = facts.OtherArmyActivationAp.Value;
+        }
+
+        internal static void ApplyKnownDetection(EfficiencyContext ctx, WorldSnapshot snap,
+            HexCoord? at, int radius)
+        {
+            if (ctx == null || snap?.Known == null || !at.HasValue || radius <= 0) return;
+            int bodies = 0, hidden = 0, strength = 0;
+            var sightings = (snap.Known.EnemySightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>());
+            foreach (var sighting in sightings)
+            {
+                if (HexGridMath.Distance(at.Value, sighting.Hex) > radius || sighting.Defenders == null) continue;
+                int bump = 0;
+                if (snap.Map != null && snap.Map.TryGetTerrainAt(sighting.Hex, out var terrain) && terrain != null)
+                    bump = Mathf.Max(0, terrain.moveCost - 1);
+                foreach (var defender in sighting.Defenders)
+                {
+                    if (defender.HitPoints <= 0) continue;
+                    bodies++;
+                    int level = 0;
+                    foreach (string ability in defender.Abilities ?? System.Array.Empty<string>())
+                        if (AbilityParams.TryGetStealthLevel(ability, out int n)) level = Mathf.Max(level, n);
+                    if (level <= 0) continue;
+                    hidden++;
+                    strength = Mathf.Max(strength, level + bump);
+                }
+            }
+            ctx.DetectionRelevance = bodies > 0 ? (float)hidden / bodies : 0f;
+            if (hidden > 0) ctx.HideStrength = strength;
         }
 
         // The context fields ApplyKnownRouteAndCoverage sets; null = left at the context default.

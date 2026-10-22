@@ -35,6 +35,28 @@ namespace Game.Campaign
                 .Concat(rules.Research.ResolveFor(ResearchProductionMode.Research, faction)).Where(c => c.cardType == CardType.Equipment).Distinct();
             return new CampaignDeck(source.deckName, pool, blueprints);
         }
+        public static StartingDeck AiSource(Faction faction, DeckRules rules, int battleSeed, string savedName = null)
+        {
+            var saved = rules.Starting.FindAiDeck(faction, savedName);
+            if (saved != null) return saved;
+            var options = rules.Starting.GetAiDecks(faction).OrderBy(d => d.leaderCardKey, StringComparer.Ordinal).ToList();
+            if (options.Count == 0) return null;
+            // Distinct faction streams; neither Unity's gameplay RNG nor the campaign roll is consumed.
+            var random = new CampaignRandom(CampaignRandom.Derive(battleSeed, (int)faction + 731));
+            return options[random.Range(options.Count)];
+        }
+        public static CampaignDeck Ai(Faction faction, DeckRules rules, int battleSeed, string savedName = null)
+        {
+            var source = AiSource(faction, rules, battleSeed, savedName);
+            if (source == null) return Standard(faction, rules);
+            if (!rules.Starting.TryBuildDeckPool(source.cards, out var pool, out string error))
+                throw new InvalidOperationException(error);
+            var keys = rules.Starting.BuildAiBlueprintKeys(faction, source.deckName);
+            var attachments = rules.Research.ResolveFor(ResearchProductionMode.Production, faction)
+                .Concat(rules.Research.ResolveFor(ResearchProductionMode.Research, faction))
+                .Where(c => keys == null || keys.Contains(c.authoredKey)).Distinct();
+            return new CampaignDeck(source.deckName, pool, attachments);
+        }
         public static CampaignDeck Saved(Game.Progression.SavedDeck deck, Game.Progression.CollectionService collection)
         {
             var loadout = new MatchLoadout(deck, collection.Rules, collection.Owned);

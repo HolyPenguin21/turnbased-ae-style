@@ -151,6 +151,9 @@ namespace Game.EditorTests
                     new GenerationStep { Hero = hero, CardDef = output, Mode = mode } } } };
             var forecast = EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5);
             Assert.That(forecast.Count, Is.EqualTo(1), "only one stake fits the shared budget");
+            var loss = EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 2);
+            Assert.That(loss.Count, Is.EqualTo(1));
+            Assert.That(loss[0].PAfter, Is.LessThan(loss[0].PBefore), "an empty staged alternative must not hide a Fate loss");
             Assert.That(forecast[0].PAfter, Is.GreaterThan(forecast[0].PBefore));
             Assert.That(forecast[0].PBefore, Is.EqualTo(22f / 64).Within(0.000001f));
             Assert.That(forecast[0].PAfter, Is.EqualTo(848f / 1024).Within(0.000001f),
@@ -605,6 +608,120 @@ namespace Game.EditorTests
         {
             var hero = new EfficiencyContext { IsHero = true, ArmyAttack = 0f, Targets = new[] { Enemy(1, 3, 4) } };
             Assert.That(U(S(0, 0, 6, 0), S(5, 0, 6, 2), hero).Combat, Is.Zero);
+        }
+        [Test]
+        public void DisposableOutputForecastValuesResupplyWithinOneSharedBudget()
+        {
+            var player = new PlayerSetupData();
+            var hero = new UnitData { IsHero = true, Fate = 3, FateMax = 3 };
+            var host = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 1, defenseRating = 1, hitPoints = 4, range = 2, initiative = 1,
+                moveMax = 3, activationApCost = 1,
+                unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry } });
+            var output = new CardDefinition { authoredKey = "test.resupply", cardType = CardType.Equipment,
+                attachmentSlot = AttachmentSlot.Equipment, fate = 4, apCost = 1, activationApCost = 1,
+                grantedAbilities = new List<string> { UnitAbilities.SingleUse },
+                resourceCost = new ResourceCost { human = 1 }, equipment = new EquipmentGrant {
+                    hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Infantry },
+                    hostKinds = new List<EquipmentHostKind> { EquipmentHostKind.Unit } } };
+            output.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 10, isOverride = true });
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 1,
+                Self = new SelfSnapshot { Hand = new[] { host }, ActionPoints = 12 },
+                Economy = new EconomyStanding { SpendableStockpile = new ResourceBundle { Human = 3 } },
+                Development = new DevelopmentReadiness { ForecastSources = new[] {
+                    new GenerationStep { Hero = hero, CardDef = output, Mode = ResearchProductionMode.Production } } } };
+            var forecast = EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5);
+            Assert.That(forecast.Count, Is.EqualTo(3));
+            foreach (var item in forecast)
+                Assert.That(item.Utility, Is.EqualTo(forecast[0].Utility).Within(0.00001f),
+                    "an expended missile leaves no permanently occupied slot or duplicate upgrade");
+            Assert.That(snap.Economy.SpendableStockpile.Human, Is.EqualTo(3));
+            snap.Economy.SpendableStockpile = new ResourceBundle { Human = 1 };
+            Assert.That(EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5).Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ResearcherFateForecastCanReachOnlyAFundedCompatibleStaffedAssembler()
+        {
+            var player = new PlayerSetupData();
+            var researcher = new UnitData { IsHero = true, Fate = 3, FateMax = 3 };
+            researcher.Abilities.Add(UnitAbilities.Researcher); researcher.TypeTags.Add(UnitTypeTag.Bio);
+            var assembler = new UnitData { IsHero = true, Fate = 3, FateMax = 3 };
+            assembler.Abilities.Add(UnitAbilities.Assembler); assembler.TypeTags.Add(UnitTypeTag.Bio);
+            var host = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 1, defenseRating = 1, hitPoints = 4, range = 2, initiative = 1,
+                moveMax = 3, activationApCost = 1,
+                unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry } });
+            var genome = new CardDefinition { authoredKey = "test.fate.genome", cardType = CardType.Equipment,
+                attachmentSlot = AttachmentSlot.Mutator, fate = 4, apCost = 1, activationApCost = 1,
+                resourceCost = new ResourceCost { human = 1 }, equipment = new EquipmentGrant {
+                    hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio },
+                    hostKinds = new List<EquipmentHostKind> { EquipmentHostKind.Hero } } };
+            genome.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Fate, amount = 2 });
+            var output = new CardDefinition { authoredKey = "test.assembler.output", cardType = CardType.Equipment,
+                attachmentSlot = AttachmentSlot.Equipment, fate = 5, apCost = 1, activationApCost = 1,
+                resourceCost = new ResourceCost { materials = 1 }, equipment = new EquipmentGrant {
+                    hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Infantry },
+                    hostKinds = new List<EquipmentHostKind> { EquipmentHostKind.Unit } } };
+            output.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 10 });
+            output.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Defense, amount = 6 });
+            output.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.HitPoints, amount = 10 });
+            var research = new GenerationStep { Hero = researcher, CardDef = genome, Mode = ResearchProductionMode.Research };
+            var production = new GenerationStep { Hero = assembler, CardDef = output, Mode = ResearchProductionMode.Production };
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 1,
+                Self = new SelfSnapshot { Hand = new[] { host }, ActionPoints = 12 },
+                Economy = new EconomyStanding { SpendableStockpile = new ResourceBundle { Human = 1, Materials = 2 } },
+                Development = new DevelopmentReadiness { ForecastSources = new[] { research, production } } };
+            IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)> Forecast() =>
+                EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, researcher, 3, 5);
+            var forecast = Forecast();
+            Assert.That(forecast.Count, Is.EqualTo(1), "one genome leads to at most two non-Fate outputs");
+            Assert.That(forecast[0].PAfter, Is.GreaterThan(forecast[0].PBefore));
+            Assert.That(assembler.Fate, Is.EqualTo(3)); Assert.That(assembler.FateMax, Is.EqualTo(3));
+            Assert.That(assembler.Mutator, Is.Null); Assert.That(snap.Economy.SpendableStockpile.Human, Is.EqualTo(1));
+            string key = DevelopmentAdmission.OperatorForecastFacts(snap, player);
+            assembler.Mutator = genome;
+            Assert.That(Forecast(), Is.Empty);
+            Assert.That(DevelopmentAdmission.OperatorForecastFacts(snap, player), Is.Not.EqualTo(key));
+            assembler.Mutator = null; assembler.TypeTags.Clear(); assembler.TypeTags.Add(UnitTypeTag.Mechanical);
+            Assert.That(Forecast(), Is.Empty, "Vessels cannot acquire an organic Fate path");
+            assembler.TypeTags.Clear(); assembler.TypeTags.Add(UnitTypeTag.Bio);
+            snap.Self.Hand = new[] { host, new CardData(genome) };
+            Assert.That(Forecast(), Is.Empty, "a genome already in hand supersedes making a second one");
+            snap.Self.Hand = new[] { host };
+            snap.Economy.SpendableStockpile = new ResourceBundle { Human = 1 };
+            Assert.That(Forecast(), Is.Empty, "the intermediate cannot consume funds promised to its leaf outputs");
+            snap.Economy.SpendableStockpile = new ResourceBundle { Human = 1, Materials = 2 };
+            snap.Development.ForecastActionPoints = 1;
+            Assert.That(Forecast(), Is.Empty);
+            snap.Development.ForecastActionPoints = null;
+            var better = new UnitData { IsHero = true, Fate = 8, FateMax = 8 };
+            snap.Development.ForecastSources = new[] { research, production,
+                new GenerationStep { Hero = better, CardDef = genome, Mode = ResearchProductionMode.Research } };
+            Assert.That(Forecast(), Is.Empty, "a better existing researcher removes marginal production value");
+            Assert.That(EquipmentUpgradeValuation.IsOperatorForecast, Is.False);
+        }
+
+        [Test, Category("UnityOnly")]
+        public void DetectionForecastUsesOnlyLocalObservedStealthProfiles()
+        {
+            var stealth = new WorthIt.DefenderProfile(1, false, attack: 2, hitPoints: 4,
+                abilities: new[] { UnitAbilities.Stealth4 });
+            var plain = new WorthIt.DefenderProfile(1, false, attack: 2, hitPoints: 4);
+            var snap = new WorldSnapshot { Known = new KnownSnapshot { EnemySightings = new[] {
+                new AiMapMemory.KnownEnemySighting(default, null, "observed", 2, 2, 4, new[] { stealth, plain }) } } };
+            var ctx = new EfficiencyContext();
+            EquipmentUpgradeValuation.ApplyKnownDetection(ctx, snap, default(HexCoord), 1);
+            Assert.That(ctx.DetectionRelevance, Is.EqualTo(0.5f)); Assert.That(ctx.HideStrength, Is.EqualTo(4));
+            var nowhere = new EfficiencyContext();
+            EquipmentUpgradeValuation.ApplyKnownDetection(nowhere, snap, null, 1);
+            Assert.That(nowhere.DetectionRelevance, Is.Zero);
+            snap.Known.EnemySightings = new[] {
+                new AiMapMemory.KnownEnemySighting(default, null, "detector only", 1, 1, 2,
+                    new[] { plain }, recceRadius: 2, recceSpotStrength: 6) };
+            var noTarget = new EfficiencyContext();
+            EquipmentUpgradeValuation.ApplyKnownDetection(noTarget, snap, default(HexCoord), 1);
+            Assert.That(noTarget.DetectionRelevance, Is.Zero, "enemy spotters cannot invent hidden targets");
         }
     }
 }

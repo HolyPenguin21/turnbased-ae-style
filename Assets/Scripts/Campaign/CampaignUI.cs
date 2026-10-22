@@ -160,7 +160,7 @@ namespace Game.Campaign
             if (Controller.View.Phase == CampaignPhase.ShowingResult) ShowResult();
             else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred) OpenDeckSelection();
             else if (op != null && !op.Manual && !op.ResultRecorded)
-                Attempt(() => { Controller.ResolveFast(CampaignDeck.Standard(op.AttackerFaction, ProgressionContext.Collection.Rules, Controller.View.Factions.Find(f => f.Faction == op.AttackerFaction).ActiveDeckReference), CampaignDeck.Standard(op.DefenderFaction, ProgressionContext.Collection.Rules, Controller.View.Factions.Find(f => f.Faction == op.DefenderFaction).ActiveDeckReference), resolver); Render(); ShowResult(); });
+                Attempt(() => { Controller.ResolveFast(CampaignDeck.Ai(op.AttackerFaction, ProgressionContext.Collection.Rules, op.RandomSeed, op.AttackerDeckName), CampaignDeck.Ai(op.DefenderFaction, ProgressionContext.Collection.Rules, op.RandomSeed, op.DefenderDeckName), resolver); Render(); ShowResult(); });
         }
         private void Update()
         {
@@ -451,7 +451,7 @@ namespace Game.Campaign
             var deck = ProgressionContext.Collection.GetDeck(deckId, s.HumanFaction)
                 ?? throw new InvalidOperationException("Test deck is no longer available.");
             var human = CampaignDeck.Saved(deck, ProgressionContext.Collection);
-            var enemy = CampaignDeck.Standard(op.AttackerFaction == s.HumanFaction ? op.DefenderFaction : op.AttackerFaction, ProgressionContext.Collection.Rules);
+            var enemy = CampaignDeck.Ai(op.AttackerFaction == s.HumanFaction ? op.DefenderFaction : op.AttackerFaction, ProgressionContext.Collection.Rules, op.RandomSeed, op.AttackerFaction == s.HumanFaction ? op.DefenderDeckName : op.AttackerDeckName);
             Controller.SelectTestDeck(deck.deckId);
             if (op.TestAutoResolve) Controller.ResolveFast(op.AttackerFaction == s.HumanFaction ? human : enemy, op.AttackerFaction == s.HumanFaction ? enemy : human, resolver);
             else Controller.ResolveHumanTest(op.AttackerFaction == s.HumanFaction ? human : enemy, op.AttackerFaction == s.HumanFaction ? enemy : human, resolver);

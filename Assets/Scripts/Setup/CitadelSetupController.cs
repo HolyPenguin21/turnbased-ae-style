@@ -207,12 +207,37 @@ namespace Game.Setup
             SpawnCitadelMarker(player, hex, layout.BuildingOffset);
             CreateGarrison(player, hex);
             CreatePrison(player, hex);
+            GrantCampaignLeader(player, hex);
 
             // The hex's resource display (already showing its plain terrain yield since map
             // generation) needs to be redrawn now with the citadel's bonus folded in.
             MapResourceDisplay resourceDisplay = map != null ? map.GetComponent<MapResourceDisplay>() : null;
             if (resourceDisplay != null)
                 resourceDisplay.RefreshHex(hex);
+        }
+
+        // Setup grant is deliberately outside paid deployment; no bank/AP transaction is opened.
+        private void GrantCampaignLeader(PlayerSetupData player, HexCoord hex)
+        {
+            if (GameSession.CampaignContext == null || player.IsHuman || player.IsNeutral
+                || !string.IsNullOrEmpty(player.AiGrantedLeaderKey) || startingDeckCatalog == null
+                || hexSelectionController == null)
+                return;
+            var definition = startingDeckCatalog.ResolveAiLeader(player.Faction, player.AiDeckName);
+            var garrison = ArmyRegistry.FindGarrisonAt(hex, player);
+            if (definition == null || garrison == null) return;
+            var leader = hexSelectionController.SpawnUnit(definition.displayName, player, definition.moveMax,
+                definition.activationApCost, true, definition.commandRating, definition.art, definition.grantedAbilities,
+                definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
+                definition.defenseRating, definition.unitTypeTags, definition.detailArt,
+                definition.apCost, definition.resourceCost, definition.isAviation, definition.launchEnergyCost,
+                definition.turnsWithoutRefuel, definition.antiAirRadius, definition);
+            if (leader == null) return;
+            garrison.AddMemberSorted(leader);
+            player.AiGrantedLeaderKey = definition.authoredKey;
+            hexSelectionController.RestackArmiesOn(hex, null);
+            VisionSystem.RecomputeFor(player);
+            VisionSystem.NotifyContentChanged(hex);
         }
 
         private FactionCardCatalog ResolveCatalog(PlayerSetupData player) =>

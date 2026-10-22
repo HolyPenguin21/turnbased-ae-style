@@ -12,6 +12,8 @@ namespace Game.Players
         public string SelectedDeckId;
         // AI players only: the StartingDeckCatalog.aiDecks entry chosen for this match.
         public string AiDeckName;
+        // Set only after the campaign's free leader is materialized. Consumed before any draws.
+        public string AiGrantedLeaderKey;
         // AI players only: authoredKeys of the chosen AI deck's blueprints; null = unrestricted.
         public System.Collections.Generic.HashSet<string> AiBlueprints;
         public Game.Cards.MatchLoadout MatchLoadout;

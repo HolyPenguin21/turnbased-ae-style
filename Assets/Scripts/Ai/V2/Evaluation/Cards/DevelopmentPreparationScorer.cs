@@ -5,6 +5,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -79,7 +80,9 @@ namespace Game.Ai.V2
             // The minted card is deployed by a later action that pays its own activation AP.
             float deferredDeployAp = CardCostRules.PlayAp(
                 new CardData(source.CardDef) { ResearchProductionCreated = true });
-            return chain + ActionPrice.ToCardScore(ActionPrice.Ap(deferredDeployAp));
+            // The chain charged later deployment only on success; a failed attempt cannot refund it.
+            return chain + Mathf.Clamp01(source.SuccessChance)
+                * ActionPrice.ToCardScore(ActionPrice.Ap(deferredDeployAp));
         }
 
         private static AxisDemand OperatorDemand(HexCoord hex, ResearchProductionMode mode) => new AxisDemand
