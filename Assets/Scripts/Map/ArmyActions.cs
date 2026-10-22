@@ -191,12 +191,22 @@ namespace Game.Map
                 attachedEquipment, sourceCard);
         }
 
-        private static bool DeployUnitFromCardCore(CardDefinition definition, PlayerSetupData owner,
-            ArmyData targetArmy, HexCoord deploymentHex, FactionCardCatalog newArmyCatalog,
-            PlayerRoot root, HexSelectionController hexSelectionController, out ArmyData resultingArmy,
-            out string failReason, CardDefinition attachedEquipment, CardData sourceCard)
+        // Read-only access to the exact validation used by deployment, including produced-card
+        // costs, RapidReaction, capacity and airfield rules. No registry writes or resource spend.
+        public static bool CanDeployUnitFromCard(CardData card, PlayerSetupData owner, ArmyData targetArmy,
+            PlayerRoot root, HexSelectionController hexSelectionController)
         {
-            resultingArmy = targetArmy;
+            return targetArmy != null && ValidateDeployUnitFromCard(card?.Definition, owner, targetArmy,
+                targetArmy.Hex, null, root, hexSelectionController, card, out _, out _, out _);
+        }
+
+        private static bool ValidateDeployUnitFromCard(CardDefinition definition, PlayerSetupData owner,
+            ArmyData targetArmy, HexCoord deploymentHex, FactionCardCatalog newArmyCatalog,
+            PlayerRoot root, HexSelectionController hexSelectionController, CardData sourceCard,
+            out ArmyData destination, out int totalAp, out string failReason)
+        {
+            destination = targetArmy;
+            totalAp = 0;
             failReason = null;
             bool creatingArmy = targetArmy == null;
 
@@ -222,7 +232,6 @@ namespace Game.Map
             // A prospective army is validation-only and never enters a registry. It lets the SAME
             // container/capacity rules below validate a fresh final roster without a special AI
             // approximation or a temporary empty shell.
-            ArmyData destination = targetArmy;
             if (creatingArmy)
             {
                 destination = ArmyData.CreateVisualSnapshot();
@@ -254,7 +263,8 @@ namespace Game.Map
                 return false;
             }
 
-            var prospectiveMember = new UnitData { IsAviation = definition.isAviation };
+            var prospectiveMember = UnitData.CreateProjection();
+            prospectiveMember.IsAviation = definition.isAviation;
             if (!AviationRules.CanContain(destination, prospectiveMember))
             {
                 failReason = definition.isAviation
@@ -282,7 +292,7 @@ namespace Game.Map
 
             bool alreadyPaidResources = sourceCard != null && sourceCard.ResearchProductionCreated;
             int deployAp = sourceCard != null ? EffectiveDeployApCost(sourceCard) : EffectiveDeployApCost(definition);
-            int totalAp = deployAp + (creatingArmy ? CreateArmyApCost : 0);
+            totalAp = deployAp + (creatingArmy ? CreateArmyApCost : 0);
             if (!root.CanSpendActionPoints(totalAp))
             {
                 failReason = creatingArmy
@@ -296,6 +306,22 @@ namespace Game.Map
                 failReason = $"Not enough resources to deploy {definition.displayName}.";
                 return false;
             }
+
+            return true;
+        }
+
+        private static bool DeployUnitFromCardCore(CardDefinition definition, PlayerSetupData owner,
+            ArmyData targetArmy, HexCoord deploymentHex, FactionCardCatalog newArmyCatalog,
+            PlayerRoot root, HexSelectionController hexSelectionController, out ArmyData resultingArmy,
+            out string failReason, CardDefinition attachedEquipment, CardData sourceCard)
+        {
+            resultingArmy = targetArmy;
+            if (!ValidateDeployUnitFromCard(definition, owner, targetArmy, deploymentHex, newArmyCatalog,
+                    root, hexSelectionController, sourceCard, out ArmyData destination, out int totalAp, out failReason))
+                return false;
+            bool creatingArmy = targetArmy == null;
+            deploymentHex = destination.Hex;
+            bool alreadyPaidResources = sourceCard != null && sourceCard.ResearchProductionCreated;
 
             // SpawnUnit only materializes UnitData; it does not publish it to ArmyRegistry. Do it
             // before the irreversible debit so an unexpected spawn refusal cannot consume AP or

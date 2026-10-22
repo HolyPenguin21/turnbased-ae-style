@@ -355,7 +355,11 @@ namespace Game.UI
         {
             if (!_awaitingHumanDecision || _humanSpent || _humanDeclined) return;
             if (_kind == ChallengeKind.ResearchProduction)
-                attackerRow?.SetSpendInteractable(CanSpendResearchProductionFate());
+            {
+                bool canSpend = CanSpendResearchProductionFate();
+                attackerRow?.SetSpendInteractable(canSpend);
+                OfferFateTutorial(attackerRow, false, canSpend);
+            }
         }
 
         private void ShowTacticResult(CardData card)

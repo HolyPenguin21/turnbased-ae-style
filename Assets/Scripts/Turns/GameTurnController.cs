@@ -266,6 +266,8 @@ namespace Game.Turns
         // turns, which never check it.
         public bool TurnConfirmed { get; private set; }
 
+        internal Button TutorialEndTurnButton => endTurnButton;
+
         // Fired right as control passes to the next actor (human, AI, or Neutral) — whatever
         // was selected on the map belongs to the outgoing turn and shouldn't carry over.
         public event Action TurnChanging;
@@ -1221,6 +1223,7 @@ namespace Game.Turns
 
         private void OnEndTurnClicked()
         {
+            Game.UI.TutorialHintController.Complete(Game.UI.TutorialHintId.EndTurn);
             AdvanceToNextPlayer();
         }
 
