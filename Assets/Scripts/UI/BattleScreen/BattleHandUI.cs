@@ -13,9 +13,8 @@ namespace Game.UI
         [SerializeField] private BattleTacticCardUI cardPrefab;
         [SerializeField] private Button scrollUpButton;
         [SerializeField] private Button scrollDownButton;
-        [SerializeField] private float cardHeight = 140f;
-        [Range(0f, 0.3f)]
-        [SerializeField] private float overlapFraction = 0.08f;
+        [SerializeField] private float cardHeight = 150f;
+        [SerializeField] private float verticalGap = 15.5f;
         // Fixed window size, matching the user's own spec ("помещается 4 карты") — unlike
         // CardHandUI's own MaxVisible, this isn't expected to ever need tuning per-instance.
         private const int MaxVisible = 4;
@@ -131,7 +130,7 @@ namespace Game.UI
             RectTransform prefabRect = cardPrefab.transform as RectTransform;
             if (prefabRect == null || prefabRect.rect.width <= 0f || prefabRect.rect.height <= 0f)
                 return;
-            float step = cardHeight * (1f - overlapFraction);
+            float step = cardHeight + verticalGap;
             float requiredHeight = prefabRect.rect.height + (MaxVisible - 1) * step;
             float requiredWidth = prefabRect.rect.width;
             float scale = Mathf.Clamp01(Mathf.Min(_lastContainerSize.x / requiredWidth,
@@ -184,7 +183,7 @@ namespace Game.UI
             if (cardContainer == null || cardPrefab == null)
                 return;
 
-            float step = cardHeight * (1f - overlapFraction);
+            float step = cardHeight + verticalGap;
             int end = Mathf.Min(_cards.Count, _scrollOffset + MaxVisible);
             // Only for the cards' ability abbreviations (see BattleTacticCardUI.Setup).
             BattleScreenUI screen = GetComponentInParent<BattleScreenUI>(true);
