@@ -19614,6 +19614,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 1950000003, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
+      propertyPath: m_PreserveAspect
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 1950000004, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
       propertyPath: menuController
       value: 
@@ -19657,6 +19661,14 @@ PrefabInstance:
     - target: {fileID: 1950000060, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
       propertyPath: m_AnchorMin.x
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1950000211, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: -248
+      objectReference: {fileID: 0}
+    - target: {fileID: 1950000211, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -55.5
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
