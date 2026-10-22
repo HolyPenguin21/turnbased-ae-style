@@ -27,9 +27,9 @@ namespace Game.Core
             ClearMapConditions();
             if (players.FindAll(p => p.IsHuman).Count > 1)
             { error = "Only one local human profile is supported."; return false; }
-            AssignAiDecks(players, config?.collectionDeckCatalog);
             if (!players.Exists(p => p.IsHuman))
             {
+                AssignAiDecks(players, config?.collectionDeckCatalog);
                 foreach (var player in players) { player.Tactics.Clear(); player.MatchLoadout = null; player.BlueprintQuota = null; }
                 MatchId = System.Guid.NewGuid().ToString("N"); RewardsEligible = false;
                 return true;
@@ -56,6 +56,9 @@ namespace Game.Core
                 player.Tactics.Clear();
                 player.BlueprintQuota = player.MatchLoadout == null ? null : new Game.Cards.BlueprintQuota(player.MatchLoadout);
             }
+            // Resolve Random only after validation/persistence succeeds. A rejected start must
+            // leave the setup row's Random choice intact instead of pinning the next attempt.
+            AssignAiDecks(players, config?.collectionDeckCatalog);
             MatchId = System.Guid.NewGuid().ToString("N");
             RewardsEligible = players.Exists(p => p.IsHuman);
             return true;
@@ -66,6 +69,7 @@ namespace Game.Core
         {
             foreach (var player in players)
             {
+                player.AiGrantedLeaderKey = null;
                 if (player.IsHuman || player.IsNeutral) { player.AiDeckName = null; player.AiBlueprints = null; continue; }
                 if (catalog == null) continue;
                 bool valid = player.AiDeckName != null && System.Linq.Enumerable.Any(

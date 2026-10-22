@@ -63,6 +63,13 @@ namespace Game.UI
             deckDropdown.onValueChanged.AddListener(index =>
             {
                 if (refreshingDecks) return;
+                if (!Data.IsHuman)
+                {
+                    var options = startingDeckCatalog?.GetAiDecks(Data.Faction).ToList();
+                    Data.AiDeckName = options != null && index > 0 && index <= options.Count
+                        ? options[index - 1].deckName : null;
+                    return;
+                }
                 var decks = Game.Progression.ProgressionContext.Collection.Decks(Data.Faction);
                 if (index >= 0 && index < decks.Count) Data.SelectedDeckId = decks[index].deckId;
             });
@@ -91,19 +98,14 @@ namespace Game.UI
             if (editDecksButton != null) editDecksButton.gameObject.SetActive(Data.IsHuman);
             if (!Data.IsHuman)
             {
-                // AI rows show the deck the AI will play this match (chosen randomly among its
-                // faction's AI decks, see GameSession.AssignAiDecks); it is not editable.
                 Data.SelectedDeckId = null;
-                deckDropdown.interactable = false;
-                if (Data.Faction == Faction.Random)
-                { Data.AiDeckName = null; deckDropdown.AddOptions(new List<string> { "Random AI deck" }); }
-                else
-                {
-                    if (startingDeckCatalog != null && !startingDeckCatalog.GetAiDecks(Data.Faction).Any(d => d.deckName == Data.AiDeckName))
-                        Data.AiDeckName = startingDeckCatalog.PickAiDeckName(Data.Faction);
-                    deckDropdown.AddOptions(new List<string> { Data.AiDeckName ?? "No AI deck - faction starter deck" });
-                }
-                deckDropdown.SetValueWithoutNotify(0);
+                var options = startingDeckCatalog?.GetAiDecks(Data.Faction).ToList()
+                    ?? new List<Game.Cards.StartingDeck>();
+                int selected = options.FindIndex(d => d.deckName == Data.AiDeckName);
+                if (selected < 0) Data.AiDeckName = null;
+                deckDropdown.AddOptions(new List<string> { "Random" }.Concat(options.Select(d => d.deckName)).ToList());
+                deckDropdown.interactable = options.Count > 0;
+                deckDropdown.SetValueWithoutNotify(selected + 1);
                 deckDropdown.RefreshShownValue();
                 refreshingDecks = false; return;
             }

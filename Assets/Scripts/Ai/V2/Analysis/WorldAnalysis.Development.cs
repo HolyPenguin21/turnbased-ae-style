@@ -40,11 +40,11 @@ namespace Game.Ai.V2
             if (player == null || root == null)
                 return rd;
 
-            // Preserve existing Equipment readiness; a second slot is relevant only when an
-            // authored catalog actually offers a compatible Mutator (none exist at this stage).
+            // The second slot is relevant only when this player's deck permits a compatible
+            // Mutator. Forecasts and execution share OfferedCards' faction/blueprint filters.
             var mutatorOutputs = ctx?.ResearchProductionCatalog == null ? new List<CardDefinition>()
                 : DevModes.SelectMany(mode => ResearchProductionSystem.OfferedCards(
-                    ctx.ResearchProductionCatalog, mode, player.Faction))
+                    ctx.ResearchProductionCatalog, mode, player))
                     .Where(d => d != null && d.attachmentSlot == AttachmentSlot.Mutator).ToList();
             bool HasMutatorOutput(CardDefinition host) => mutatorOutputs.Any(d => EquipmentSystem.FitsHost(d, host, out _));
             int targets = 0;
@@ -92,7 +92,7 @@ namespace Game.Ai.V2
                     // records readiness only, so Analysis does not keep a second copy of source
                     // eligibility/card/operator logic.
                     if (hero != null && catalog != null)
-                        staffed.AddRange(ResearchProductionSystem.OfferedCards(catalog, mode, player.Faction)
+                        staffed.AddRange(ResearchProductionSystem.OfferedCards(catalog, mode, player)
                             .Where(card => card != null));
                 }
             }
@@ -102,7 +102,7 @@ namespace Game.Ai.V2
             {
                 rd.CatalogKnown = true;
                 rd.CatalogOutputs = DevModes
-                    .SelectMany(mode => ResearchProductionSystem.OfferedCards(catalog, mode, player.Faction))
+                    .SelectMany(mode => ResearchProductionSystem.OfferedCards(catalog, mode, player))
                     .Where(card => card != null)
                     .Distinct()
                     .ToList();

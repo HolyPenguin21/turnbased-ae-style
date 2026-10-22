@@ -144,59 +144,49 @@ namespace Game.EditorTests
             Assert.That(pool, Is.Empty);
         }
 
-        [TestCase(Faction.IronConcord, "concord.card.scout", 29)]
-        [TestCase(Faction.Ashen, "ashen.card.hooded", 29)]
-        [TestCase(Faction.Vessels, "vessels.10.whisper-scout", 29)]
-        public void AuthoredDefaultAndHeadlessOpeningRespectPoolCapacityAndBlueprints(Faction faction, string scoutKey, int poolSize)
+        [TestCase(Faction.IronConcord, "concord.card.scout")]
+        [TestCase(Faction.Ashen, "ashen.card.hooded")]
+        [TestCase(Faction.Vessels, "vessels.10.whisper-scout")]
+        public void EveryAuthoredAiOpeningRespectsPoolCapacityAndBlueprints(Faction faction, string scoutKey)
         {
             var catalog = AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset");
-            Assert.That(catalog, Is.Not.Null);
-            var deck = catalog.GetAiDecks(faction).Single();
-            var original = catalog.BuildAiDeckPool(faction, deck.deckName);
-            Assert.That(original.Count, Is.EqualTo(poolSize));
-            Assert.That(original.Count(c => c.isAviation), Is.EqualTo(2));
-            Assert.That(original.Count(c => c.cardType == CardType.Unit), Is.EqualTo(18));
-            CollectionAssert.AreEquivalent(catalog.GetDeck(faction).cards.Where(e => catalog.ResolveCard(e.cardKey).cardType != CardType.Equipment)
-                .Select(e => e.cardKey + ":" + e.count), deck.cards.Select(e => e.cardKey + ":" + e.count));
-
-            var entries = deck.cards.Concat(deck.equipment).Concat(deck.mutators).ToList();
-            Assert.That(entries.All(e => catalog.ResolveCard(e.cardKey) != null), Is.True);
-            Assert.That(entries.All(e => e.count > 0 && e.count <= DeckRules.CopyLimit(catalog.ResolveCard(e.cardKey))), Is.True);
-            Assert.That(deck.cards.Select(e => e.cardKey).Distinct().Count(), Is.EqualTo(deck.cards.Count));
-            Assert.That(deck.cards.Single(e => e.cardKey == scoutKey).count, Is.EqualTo(2));
-            var heroes = catalog.GetCatalog(faction).cards.Where(c => c.cardType == CardType.Hero).ToList();
-            CollectionAssert.AreEquivalent(heroes.Select(c => c.authoredKey),
-                deck.cards.Where(e => catalog.ResolveCard(e.cardKey).cardType == CardType.Hero).Select(e => e.cardKey));
-            Assert.That(heroes.All(c => deck.cards.Single(e => e.cardKey == c.authoredKey).count == 1), Is.True);
-            Assert.That(deck.cards.Single(e => e.cardKey == "neutral.facility.lab").count, Is.EqualTo(1));
-            Assert.That(deck.cards.Single(e => e.cardKey == "neutral.facility.factory").count, Is.EqualTo(1));
             var research = AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset");
             var rules = new DeckRules(catalog, research);
-            // AI presets intentionally exceed the human deck budget. Check complete faction
-            // availability, not SavedDeck's 100-point validation; blueprints never enter the hand.
-            CollectionAssert.AreEquivalent(research.ResolveFor(ResearchProductionMode.Production, faction)
-                .Select(c => c.authoredKey), deck.equipment.Select(e => e.cardKey));
-            CollectionAssert.AreEquivalent(research.ResolveFor(ResearchProductionMode.Research, faction)
-                .Select(c => c.authoredKey), deck.mutators.Select(e => e.cardKey));
-            Assert.That(entries.All(e => rules.Permitted(catalog.ResolveCard(e.cardKey), faction)), Is.True);
-            Assert.That(deck.equipment.Concat(deck.mutators).All(e => e.count == 1), Is.True);
-
-            foreach (int capacity in new[] { 0, 1, 3, 10 })
+            Assert.That(catalog.GetAiDecks(faction).Count(), Is.EqualTo(8));
+            foreach (var deck in catalog.GetAiDecks(faction))
             {
-                var hand = new AiHandData(catalog, faction, 7, capacity, deck.deckName);
-                Assert.That(hand.Hand.Count, Is.EqualTo(System.Math.Min(7, capacity)));
-                CollectionAssert.AreEquivalent(original, hand.Hand.Select(c => c.Definition).Concat(hand.RemainingDeck));
-                Assert.That(hand.MutationVersion, Is.EqualTo(hand.Hand.Count));
-                Assert.That(hand.Hand.All(c => c.AcquiredTurn == 0), Is.True);
-                if (capacity > 0)
-                    Assert.That(hand.Hand.Any(c => c.Definition.authoredKey == scoutKey), Is.True);
+                var original = catalog.BuildAiDeckPool(faction, deck.deckName);
+                var leader = catalog.ResolveAiLeader(faction, deck.deckName);
+                Assert.That(leader, Is.Not.Null, deck.deckName);
+                Assert.That(leader.displayName, Is.EqualTo(deck.deckName));
+                Assert.That(catalog.AiDeckPoints(deck), Is.InRange(98, 100));
+                Assert.That(original.Count(c => c.cardType == CardType.Base), Is.GreaterThanOrEqualTo(1));
+                Assert.That(deck.cards.Single(e => e.cardKey == scoutKey).count, Is.GreaterThanOrEqualTo(3));
+                var entries = deck.cards.Concat(deck.equipment).Concat(deck.mutators).ToList();
+                Assert.That(entries.All(e => catalog.ResolveCard(e.cardKey) != null), Is.True);
+                Assert.That(entries.All(e => e.count > 0 && e.count <= DeckRules.CopyLimit(catalog.ResolveCard(e.cardKey))), Is.True);
+                Assert.That(entries.All(e => rules.Permitted(catalog.ResolveCard(e.cardKey), faction)), Is.True);
+                Assert.That(deck.cards.Select(e => e.cardKey).Distinct().Count(), Is.EqualTo(deck.cards.Count));
+                CollectionAssert.AreEquivalent(research.ResolveFor(ResearchProductionMode.Production, faction)
+                    .Select(c => c.authoredKey), deck.equipment.Select(e => e.cardKey));
+                CollectionAssert.AreEquivalent(research.ResolveFor(ResearchProductionMode.Research, faction)
+                    .Select(c => c.authoredKey), deck.mutators.Select(e => e.cardKey));
+                CollectionAssert.AreEquivalent(deck.equipment.Concat(deck.mutators).Select(e => e.cardKey),
+                    catalog.BuildAiBlueprintKeys(faction, deck.deckName));
+                foreach (int capacity in new[] { 0, 1, 3, 10 })
+                {
+                    var hand = new AiHandData(catalog, faction, 7, capacity, deck.deckName);
+                    Assert.That(hand.Hand.Count, Is.EqualTo(System.Math.Min(7, capacity)));
+                    CollectionAssert.AreEquivalent(original, hand.Hand.Select(c => c.Definition).Concat(hand.RemainingDeck));
+                    Assert.That(hand.MutationVersion, Is.EqualTo(hand.Hand.Count));
+                    if (capacity > 0) Assert.That(hand.Hand.Any(c => c.Definition.authoredKey == scoutKey), Is.True);
+                }
+                var campaignHand = new AiHandData(catalog, faction, 7, 10, deck.deckName, leader.authoredKey);
+                var campaignPool = campaignHand.Hand.Select(c => c.Definition).Concat(campaignHand.RemainingDeck).ToList();
+                Assert.That(campaignPool.Count, Is.EqualTo(original.Count - 1));
+                Assert.That(campaignPool.Any(c => c == leader), Is.False);
+                Assert.That(original.Count(c => c == leader), Is.EqualTo(1), "The authored quick-game deck stays intact.");
             }
-
-            // Names stored by an older match also resolve to the single remaining faction deck.
-            var oldPool = catalog.BuildAiDeckPool(faction, "Iron Concord Carrier AI Deck");
-            CollectionAssert.AreEquivalent(original, oldPool);
-            var blueprints = catalog.BuildAiBlueprintKeys(faction, deck.deckName);
-            CollectionAssert.AreEquivalent(deck.equipment.Concat(deck.mutators).Select(e => e.cardKey), blueprints);
         }
 
         [TestCase(Faction.IronConcord)]

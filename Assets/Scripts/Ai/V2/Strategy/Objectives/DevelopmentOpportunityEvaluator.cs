@@ -269,7 +269,7 @@ namespace Game.Ai.V2
             if (BattleInitiator.FindEnemyAt(hex, player) != null)
                 return "reason=enemy_on_site";
             if (!IsPreparationSite(player, hex)) return "reason=no_own_base";
-            if (ctx.ResearchProductionCatalog.ResolveFor(mode, player.Faction).Count == 0)
+            if (ResearchProductionSystem.OfferedCards(ctx.ResearchProductionCatalog, mode, player).Count == 0)
                 return "reason=no_mode_catalog";
             // A built facility of this mode elsewhere is reused, never duplicated.
             if (!facilityReady && facilityOfModeExists)
