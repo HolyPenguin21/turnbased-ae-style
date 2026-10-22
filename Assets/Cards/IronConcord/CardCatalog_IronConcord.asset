@@ -785,7 +785,7 @@ MonoBehaviour:
       statChanges: []
   - id: 15
     authoredKey: concord.card.mosquito
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Mosquito
@@ -802,14 +802,14 @@ MonoBehaviour:
       materials: 0
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 5
+    moveMax: 6
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 3
     defenseRating: 1
     range: 2
-    hitPoints: 2
+    hitPoints: 3
     initiative: 2
     isAviation: 1
     launchEnergyCost: 0
@@ -1615,7 +1615,7 @@ MonoBehaviour:
       statChanges: []
   - id: 32
     authoredKey: concord.card.sky-tug
-    deckPointCost: 5
+    deckPointCost: 4
     deckCopyLimit: 3
     deckBuilderExcluded: 0
     displayName: Sky Tug
@@ -1629,21 +1629,21 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 1
+      materials: 2
       tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 5
+    moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4
     defenseRating: 2
     range: 2
-    hitPoints: 5
+    hitPoints: 6
     initiative: 1
     isAviation: 1
     launchEnergyCost: 1
-    turnsWithoutRefuel: 0
+    turnsWithoutRefuel: 1
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -2019,21 +2019,21 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 1
+      materials: 2
       tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 6
     activationApCost: 1
     commandRating: 0
-    fate: 2
+    fate: 0
     attack: 5
     defenseRating: 2
     range: 2
     hitPoints: 5
     initiative: 2
     isAviation: 1
-    launchEnergyCost: 1
-    turnsWithoutRefuel: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 2
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -2396,7 +2396,7 @@ MonoBehaviour:
       statChanges: []
   - id: 48
     authoredKey: concord.card.storm-petrel
-    deckPointCost: 6
+    deckPointCost: 5
     deckCopyLimit: 2
     deckBuilderExcluded: 0
     displayName: Storm Petrel
@@ -2406,14 +2406,14 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
       energy: 3
       materials: 2
       tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 10
+    moveMax: 12
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -2424,12 +2424,13 @@ MonoBehaviour:
     initiative: 3
     isAviation: 1
     launchEnergyCost: 2
-    turnsWithoutRefuel: 3
+    turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s0
+    - Hyperkinetic
     resourceYield:
       human: 0
       energy: 0
@@ -2640,7 +2641,7 @@ MonoBehaviour:
       statChanges: []
   - id: 53
     authoredKey: concord.card.skydiver
-    deckPointCost: 7
+    deckPointCost: 6
     deckCopyLimit: 2
     deckBuilderExcluded: 0
     displayName: Skydiver
@@ -2650,21 +2651,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 6
+    apCost: 7
     resourceCost:
       human: 0
       energy: 3
-      materials: 2
-      tech: 2
+      materials: 4
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 5
-    activationApCost: 1
+    moveMax: 4
+    activationApCost: 2
     commandRating: 0
     fate: 0
     attack: 7
     defenseRating: 3
     range: 2
-    hitPoints: 7
+    hitPoints: 8
     initiative: 1
     isAviation: 1
     launchEnergyCost: 3
@@ -2844,21 +2845,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 7
+    apCost: 6
     resourceCost:
       human: 0
       energy: 3
       materials: 2
-      tech: 4
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 10
     activationApCost: 1
     commandRating: 0
-    fate: 2
-    attack: 8
+    fate: 0
+    attack: 6
     defenseRating: 4
     range: 2
-    hitPoints: 6
+    hitPoints: 5
     initiative: 2
     isAviation: 1
     launchEnergyCost: 2
@@ -2933,7 +2934,7 @@ MonoBehaviour:
       statChanges: []
   - id: 59
     authoredKey: concord.card.ark-carrier
-    deckPointCost: 7
+    deckPointCost: 6
     deckCopyLimit: 2
     deckBuilderExcluded: 0
     displayName: Ark Carrier
@@ -2943,7 +2944,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 8
+    apCost: 7
     resourceCost:
       human: 2
       energy: 3
@@ -2955,15 +2956,15 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 3
+    defenseRating: 4
     range: 2
-    hitPoints: 8
+    hitPoints: 10
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 0
-    airfieldCapacity: 2
+    airfieldCapacity: 3
     unitTypeTags: 01000000040000000200000007000000
     grantedAbilities:
     - Airfield
@@ -2982,7 +2983,7 @@ MonoBehaviour:
       statChanges: []
   - id: 60
     authoredKey: concord.card.shoal-destroyer
-    deckPointCost: 10
+    deckPointCost: 8
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Shoal Destroyer
@@ -2996,17 +2997,17 @@ MonoBehaviour:
     resourceCost:
       human: 2
       energy: 3
-      materials: 5
-      tech: 3
+      materials: 6
+      tech: 4
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 2
     commandRating: 0
     fate: 0
     attack: 8
     defenseRating: 4
     range: 3
-    hitPoints: 10
+    hitPoints: 12
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
