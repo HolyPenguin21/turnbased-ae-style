@@ -13,6 +13,7 @@ namespace Game.UI
         [SerializeField] private Slider masterVolumeSlider;
         [SerializeField] private TMP_Text masterVolumeLabel;
         [SerializeField] private Toggle musicEnabledToggle;
+        [SerializeField] private Toggle tutorialHintsToggle;
         [SerializeField] private Slider musicVolumeSlider;
         [SerializeField] private TMP_Text musicVolumeLabel;
         [SerializeField] private Button backButton;
@@ -20,6 +21,10 @@ namespace Game.UI
 
         private void OnEnable()
         {
+            TutorialHintProgress.Changed += RefreshTutorialHints;
+            if (tutorialHintsToggle != null) tutorialHintsToggle.onValueChanged.AddListener(OnTutorialHintsChanged);
+            RefreshTutorialHints();
+            if (backButton != null) backButton.onClick.AddListener(Close);
             var manager = GameAudioManager.Instance;
             if (manager == null) return;
             settings = manager.Settings;
@@ -27,7 +32,6 @@ namespace Game.UI
             if (masterVolumeSlider != null) masterVolumeSlider.onValueChanged.AddListener(OnMasterChanged);
             if (musicEnabledToggle != null) musicEnabledToggle.onValueChanged.AddListener(OnMusicEnabled);
             if (musicVolumeSlider != null) musicVolumeSlider.onValueChanged.AddListener(OnMusicChanged);
-            if (backButton != null) backButton.onClick.AddListener(Close);
             Refresh();
             if (masterVolumeSlider != null) masterVolumeSlider.Select();
         }
@@ -47,6 +51,11 @@ namespace Game.UI
         private void OnMasterChanged(float value) { if (settings != null) settings.MasterVolume = value; }
         private void OnMusicEnabled(bool value) { if (settings != null) settings.MusicEnabled = value; }
         private void OnMusicChanged(float value) { if (settings != null) settings.MusicVolume = value; }
+        private void RefreshTutorialHints()
+        {
+            if (tutorialHintsToggle != null) tutorialHintsToggle.SetIsOnWithoutNotify(TutorialHintProgress.Enabled);
+        }
+        private void OnTutorialHintsChanged(bool value) => TutorialHintProgress.Enabled = value;
         private void Update()
         {
             if (GameMenuPanelUI.GameplayInputBlocked) return; // In-game Escape is owned by the menu stack.
@@ -64,6 +73,8 @@ namespace Game.UI
         }
         private void OnDisable()
         {
+            TutorialHintProgress.Changed -= RefreshTutorialHints;
+            if (tutorialHintsToggle != null) tutorialHintsToggle.onValueChanged.RemoveListener(OnTutorialHintsChanged);
             if (settings != null) { settings.Changed -= Refresh; settings.Save(); }
             if (masterVolumeSlider != null) masterVolumeSlider.onValueChanged.RemoveListener(OnMasterChanged);
             if (musicEnabledToggle != null) musicEnabledToggle.onValueChanged.RemoveListener(OnMusicEnabled);

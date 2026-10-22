@@ -558,6 +558,7 @@ namespace Game.UI
                 _humanDeclined = false;
                 attackerRow?.SetSpendInteractable(canSpend);
                 OpenTacticDecision(false);
+                OfferFateTutorial(attackerRow, false, canSpend);
                 if (acceptButton != null)
                     acceptButton.interactable = true;
 
@@ -611,6 +612,7 @@ namespace Game.UI
             if (acceptButton != null)
                 acceptButton.interactable = false;
             _rpHero.Fate--;
+            TutorialHintController.Complete(TutorialHintId.Fate);
             _rerollAnimDone = attackerRow == null;
 
             if (hasMiss)
@@ -965,6 +967,8 @@ namespace Game.UI
 
                 OpenTacticDecision(isDefenderTurn);
 
+                OfferFateTutorial(isDefenderTurn ? defenderRow : attackerRow, isDefenderTurn, canSpend);
+
                 // Diagnostics for the project owner's own report (Ground Combat, 2026-08-26):
                 // the duel sometimes ends before the defender gets to react to/make a reroll.
                 // Nothing in RunDuel/RunHumanTurn's own structure looked wrong on inspection —
@@ -1092,6 +1096,19 @@ namespace Game.UI
             _turnSpent = spentThisTurn;
         }
 
+        private void OfferFateTutorial(BattleCombatantRowUI row, bool defender, bool canSpend)
+        {
+            if (!canSpend || row?.TutorialSpendButton == null) return;
+            TutorialHintController.Offer(TutorialHintId.Fate, row.TutorialSpendButton.transform as RectTransform,
+                () => this != null && IsShowing && _awaitingHumanDecision && !_humanSpent && !_humanDeclined
+                    && _defenderTurnActive == defender && !TacticInputBlocked && !RunsAutomatically
+                    && (_kind == ChallengeKind.ResearchProduction
+                        ? _rpHero?.Owner?.IsHuman == true && CanSpendResearchProductionFate()
+                        : (defender ? _defender : _attacker)?.Owner?.IsHuman == true
+                            && _challengeSession?.CanSpend(defender) == true)
+                    && row != null && row.TutorialSpendButton != null && row.TutorialSpendButton.IsInteractable());
+        }
+
         private void OnAcceptClicked()
         {
             if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || TacticInputBlocked)
@@ -1124,6 +1141,7 @@ namespace Game.UI
                 return;
             if (!_challengeSession.TrySpend(true, out int rerolledIndex, out _))
                 return;
+            TutorialHintController.Complete(TutorialHintId.Fate);
             SyncChallengePresentationState();
             defenderRow?.SetSpendInteractable(false);
             if (acceptButton != null)
@@ -1150,6 +1168,7 @@ namespace Game.UI
                 return;
             if (!_challengeSession.TrySpend(false, out int rerolledIndex, out _))
                 return;
+            TutorialHintController.Complete(TutorialHintId.Fate);
             SyncChallengePresentationState();
             attackerRow?.SetSpendInteractable(false);
             if (acceptButton != null)

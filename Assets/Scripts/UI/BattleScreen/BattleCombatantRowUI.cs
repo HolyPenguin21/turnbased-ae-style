@@ -46,6 +46,8 @@ namespace Game.UI
 
         public event Action SpendClicked;
 
+        internal Button TutorialSpendButton => spendButton;
+
         // Name colour of the card being built in a Research/Production Challenge (#4B341E).
         public static readonly Color CardNameColor = new Color32(0x4B, 0x34, 0x1E, 0xFF);
 

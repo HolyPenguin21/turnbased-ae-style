@@ -136,6 +136,15 @@ namespace Game.UI
         // army a dropped Unit/Hero card should join (see TryDeployIntoArmyModal).
         public ArmyData CurrentArmy => _currentArmy;
 
+        internal Button TutorialCreateArmyButton => contextButton;
+        internal bool CanOfferCreateArmyTutorial => IsShowing && !IsReadOnly && !_hideArmySwitcher
+            && _currentArmy?.Owner != null && _currentArmy.Owner.IsHuman && !_currentArmy.IsCarrierContainer
+            && (_currentArmy.IsGarrison || _currentArmy.IsAirfield)
+            && ResolveCatalog(_currentArmy.Owner) != null
+            && turnController != null && turnController.CurrentPlayer == _currentArmy.Owner
+            && turnController.TurnConfirmed && !IsRenamePopupShowing
+            && PlayerRootRegistry.FindFor(_currentArmy.Owner)?.CanSpendActionPoints(ArmyActions.CreateArmyApCost) == true;
+
         // True while showing someone else's army (see ShowReadOnly) — read by ArmyUnitCardUI to
         // block dragging entirely. Also true, regardless of how this modal was opened, whenever
         // the army currently on screen is a Prison (see ArmyData.IsPrison) — its captured heroes
@@ -335,6 +344,7 @@ namespace Game.UI
         // CreateArmy (jump straight to the freshly created army).
         public void SwitchTo(ArmyData army)
         {
+            TutorialHintController.Invalidate();
             _currentArmy = army;
             RefreshTitle();
             RefreshButtonRow();
@@ -948,6 +958,8 @@ namespace Game.UI
                 turnController?.ShowSpawnHint("Not enough action points to create a new army.");
                 return;
             }
+
+            TutorialHintController.Complete(TutorialHintId.CreateArmy);
 
             // Stays on whatever's currently shown (the garrison, always, since that's the only
             // thing Create Army is ever clicked from) — the new army just needs to show up as a
