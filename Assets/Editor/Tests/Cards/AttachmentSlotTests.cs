@@ -55,9 +55,10 @@ namespace Game.EditorTests
         public void EveryPublishedAttachmentProjectsTheLiveResultWithWoundsAndEitherOtherSlot()
         {
             var items = AttachmentContentTestData.Blocks(AttachmentContentTestData.NeutralPath)
-                .Select(AttachmentContentTestData.Read).Where(c => c.cardType == CardType.Equipment).ToArray();
-            Assert.That(items.Length, Is.EqualTo(62));
-            Assert.That(items.Count(c => c.attachmentSlot == AttachmentSlot.Equipment), Is.EqualTo(42));
+                .Select(AttachmentContentTestData.Read).Where(c => c.cardType == CardType.Equipment
+                    && c.equipment.hostKinds.Any(k => k == EquipmentHostKind.Unit || k == EquipmentHostKind.Hero)).ToArray();
+            Assert.That(items.Length, Is.EqualTo(67));
+            Assert.That(items.Count(c => c.attachmentSlot == AttachmentSlot.Equipment), Is.EqualTo(47));
             var paths = new[] { "IronConcord", "TheAshen", "TheVessels" };
             var hosts = paths.SelectMany(f => AttachmentContentTestData.Blocks(
                     $"Assets/Cards/{f}/CardCatalog_{f}.asset"))
@@ -104,17 +105,17 @@ namespace Game.EditorTests
             var cards = AttachmentContentTestData.Blocks(AttachmentContentTestData.NeutralPath)
                 .Select(AttachmentContentTestData.Read).ToArray();
             var equipment = cards.Single(c => c.authoredKey == "neutral.equipment.infantry.twin-smg");
-            var mutator = cards.Single(c => c.authoredKey == "neutral.mutator.regenerative-culture");
+            var mutator = cards.Single(c => c.authoredKey == "neutral.mutator.neural-accelerator");
             var host = Host(); host.attack = 3; host.unitTypeTags.Add(UnitTypeTag.Infantry);
             var body = Body(host); body.HitPointsCurrent -= 3;
             EquipmentSystem.ApplyAttachments(body, equipment, null);
-            Assert.That(body.Attack, Is.EqualTo(8));
+            Assert.That(body.Attack, Is.EqualTo(5));
             EquipmentSystem.ApplyAttachments(body, null, mutator);
-            Assert.That(body.Attack, Is.EqualTo(10));
+            Assert.That(body.Attack, Is.EqualTo(6));
             Assert.That(body.Range, Is.EqualTo(1));
             Assert.That(body.HitPointsMax - body.HitPointsCurrent, Is.EqualTo(3));
             Assert.That(body.Abilities, Has.Member(UnitAbilities.CriticalDamage));
-            Assert.That(body.Abilities, Has.Member(UnitAbilities.Regeneration));
+            Assert.That(body.Abilities, Has.Member(UnitAbilities.Counterattack));
         }
 
         [Test]
