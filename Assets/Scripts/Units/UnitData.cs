@@ -68,6 +68,10 @@ namespace Game.Units
         // (StealthSystem.IsHiddenFrom). Only a unit carrying a StealthN ability
         // (AbilityParams.GetStealthLevel > 0) can ever be put into it.
         public bool IsHidden;
+        // Stealth is entered at most once per own turn (project owner, 2026-10-22 — a unit that
+        // revealed itself cannot vanish again until its next turn). Set by
+        // StealthSystem.TryEnterStealth, cleared by GameTurnController.ReplenishMoveForOwner.
+        public bool HasEnteredStealthThisTurn;
 
         // Carried over from CardDefinition.unitTypeTags at spawn time, same as Abilities —
         // classification (Bio/Mechanical/Armored/...), shown only in ArmyViewerModalUI's

@@ -126,10 +126,10 @@ namespace Game.Ai.V2
         {
             if (mover == null)
                 return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.ActorMissing);
-            if (ReconScoutKinds.IsCapture(target.Kind))
+            if (ReconScoutKinds.IsLocalStrike(target.Kind))
             {
                 ArmyData actor = AiV2Util.ResolveArmy(player, mover.ArmyId);
-                return ReconReactionPolicy.CanCaptureStructureAt(player, ctx?.Map, actor, target.FocusHex)
+                return ReconReactionPolicy.CanStrikeLocalTarget(player, ctx?.Map, actor, target.Kind, target.FocusHex)
                     ? ReconAssignmentCandidateResult.Ok
                     : ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoRoute);
             }
@@ -277,12 +277,12 @@ namespace Game.Ai.V2
                 AppendStoredAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds);
                 return list;
             }
-            if (ReconScoutKinds.IsCapture(target.Kind))
+            if (ReconScoutKinds.IsLocalStrike(target.Kind))
             {
                 foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, excludeArmyIds))
                 {
                     if (!CanExecute(ctx, player, snap, mover, target)) continue;
-                    ScoutPairCost pc = ScoutCostModel.CapturePairCost(snap, mover, target.FocusHex);
+                    ScoutPairCost pc = ScoutCostModel.LocalStrikePairCost(snap, mover, target);
                     if (pc.Distance > mover.CurrentMovement) continue;
                     list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
@@ -589,7 +589,7 @@ namespace Game.Ai.V2
                     else if (claimed?.IsSoloRecce == true
                         && !(alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>()).Any(pm =>
                             pm != null && pm.MoverArmyId == claimedId
-                            && pm.Mission.Target is ScoutMissionTarget t && ReconScoutKinds.IsCapture(t.Kind)))
+                            && pm.Mission.Target is ScoutMissionTarget t && ReconScoutKinds.IsLocalStrike(t.Kind)))
                         claimedGroundActors++;
                 }
             }
@@ -653,7 +653,7 @@ namespace Game.Ai.V2
             List<HexCoord> fixedGroundFoci = (alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>())
                 .Where(pm => pm != null && pm.Kind == MissionKind.Scout
                     && pm.ExecutorKind == ScoutExecutorKind.Ground
-                    && pm.Mission.Target is ScoutMissionTarget t && !ReconScoutKinds.IsCapture(t.Kind))
+                    && pm.Mission.Target is ScoutMissionTarget t && !ReconScoutKinds.IsLocalStrike(t.Kind))
                 .Select(pm => pm.FocusHex).ToList();
             ReconAssignmentResult solved = AssignFromCandidates(
                 open, cands, airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
@@ -666,7 +666,7 @@ namespace Game.Ai.V2
                 if (!solved.Assigned.TryGetValue(key, out ScoutExecutionCandidate chosen))
                     continue;
                 if (chosen.ExecutorKind == ScoutExecutorKind.Ground
-                    && !ReconScoutKinds.IsCapture(((ScoutMissionTarget)fe.Mission.Target).Kind)
+                    && !ReconScoutKinds.IsLocalStrike(((ScoutMissionTarget)fe.Mission.Target).Kind)
                     && !usedGround.Contains(chosen.ActorKey))
                 {
                     if (newGroundBudget <= 0)
@@ -815,7 +815,7 @@ namespace Game.Ai.V2
                     continue;
 
                 bool isAir = cand.ExecutorKind != ScoutExecutorKind.Ground;
-                bool localCapture = ReconScoutKinds.IsCapture(((ScoutMissionTarget)open[i].Mission.Target).Kind);
+                bool localCapture = ReconScoutKinds.IsLocalStrike(((ScoutMissionTarget)open[i].Mission.Target).Kind);
                 if (isAir && usedAirActors + 1 > airActorCap)
                     continue;
                 if (!isAir && !localCapture && usedGroundActors + 1 > groundActorCap)
@@ -839,7 +839,7 @@ namespace Game.Ai.V2
                         if (other.ExecutorKind != ScoutExecutorKind.Ground)
                             continue;
                         ScoutMissionTarget otherTarget = (ScoutMissionTarget)open[j].Mission.Target;
-                        if (ReconScoutKinds.IsCapture(otherTarget.Kind)) continue;
+                        if (ReconScoutKinds.IsLocalStrike(otherTarget.Kind)) continue;
                         if (HexGridMath.Distance(target.FocusHex, otherTarget.FocusHex)
                             < AiConfigV2.scoutTargetMinSeparation)
                         {

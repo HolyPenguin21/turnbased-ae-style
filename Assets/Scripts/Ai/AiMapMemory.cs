@@ -288,6 +288,11 @@ namespace Game.Ai
         // permanent; a garrison container survives its battle and is never marked here.
         private static readonly Dictionary<PlayerSetupData, HashSet<int>> WitnessedDestroyedArmies =
             new Dictionary<PlayerSetupData, HashSet<int>>();
+        // Playtest 2026-10-22 — every structure this player lost to someone else's action
+        // (BuildingRegistry.StructureLost) and the turn it happened. The owner knows its own loss
+        // at once; Recon looks there for the saboteur that is still standing on the ruin.
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> LostStructures =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
         // HexCoord -> guard's own card-stat strength, for every Hex Event this player has ever
         // SEEN while it still had an unconsumed guard — Агрессия's own "known event with guard"
         // half of RaidWeakerArmyTask's target pool (see that class's own FindTarget). Same
@@ -529,7 +534,45 @@ namespace Game.Ai
             // for every player who fought or saw it; nobody else learns it.
             BattleEngine.EncounterFinalized += OnEncounterFinalized;
             BattleEngine.ArmyRetreated += OnArmyRetreated;
+            BuildingRegistry.StructureLost += OnStructureLost;
             _subscribed = true;
+        }
+
+        private static void OnStructureLost(HexCoord hex, PlayerSetupData formerOwner)
+        {
+            if (formerOwner == null)
+                return;
+            if (!LostStructures.TryGetValue(formerOwner, out Dictionary<HexCoord, int> lost))
+                LostStructures[formerOwner] = lost = new Dictionary<HexCoord, int>();
+            lost[hex] = _currentTurn;
+            BumpKnowledgeVersion(formerOwner);
+        }
+
+        // The most recent structure `player` lost on or after `sinceTurn` (ties: the hex nearest
+        // `near`, then by coordinates), or false when none.
+        public static bool TryRecentStructureLoss(PlayerSetupData player, int sinceTurn, HexCoord near,
+            out HexCoord hex)
+        {
+            hex = default;
+            if (player == null || !LostStructures.TryGetValue(player, out Dictionary<HexCoord, int> lost))
+                return false;
+            bool found = false;
+            int bestTurn = int.MinValue;
+            foreach (KeyValuePair<HexCoord, int> kv in lost)
+            {
+                if (kv.Value < sinceTurn)
+                    continue;
+                bool better = !found || kv.Value > bestTurn
+                    || kv.Value == bestTurn && (HexGridMath.Distance(kv.Key, near) < HexGridMath.Distance(hex, near)
+                        || HexGridMath.Distance(kv.Key, near) == HexGridMath.Distance(hex, near)
+                            && (kv.Key.Q < hex.Q || kv.Key.Q == hex.Q && kv.Key.R < hex.R));
+                if (!better)
+                    continue;
+                found = true;
+                bestTurn = kv.Value;
+                hex = kv.Key;
+            }
+            return found;
         }
 
         // Whether `player` saw this enemy army destroyed. Read by the V2 Recon history so a dead
@@ -644,6 +687,7 @@ namespace Game.Ai
             KnownResourceHexes.Clear();
             EnemySightings.Clear();
             WitnessedDestroyedArmies.Clear();
+            LostStructures.Clear();
             AirSightings.Clear();
             KnownEventGuards.Clear();
             KnownEventCompleted.Clear();
@@ -1447,6 +1491,15 @@ namespace Game.Ai
 
         public static GroundArrival KnownGroundArrival(PlayerSetupData actor, ArmyData mover, HexCoord hex)
             => KnownGroundArrival(actor, hex, StealthSystem.IsArmyFullyHidden(mover));
+
+        // A hidden army that drops stealth while standing still is a resident reveal
+        // (StealthSystem.ExitStealth -> ResidentRevealed): the same arrival rule, applied to its
+        // OWN hex. A known army sharing that hex fights it there, instead of the action the reveal
+        // was meant for (playtest 2026-10-22, Ysolde T17/T19: two Hooded scouts revealed beside
+        // Sand Fin at (-5,1) to sabotage (-6,1) and were wiped on (-5,1)).
+        public static bool KnownResidentRevealContact(PlayerSetupData actor, ArmyData mover)
+            => mover != null && StealthSystem.IsArmyFullyHidden(mover)
+               && KnownGroundArrival(actor, mover.Hex, moverFullyHidden: false).KnownArmy;
 
         // FIX-07 (2026-09-22) — is the building on `hex` KNOWN to be foreign and KNOWN to be
         // standing there with nobody to defend it? This is the one knowledge-side mirror of the

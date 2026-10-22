@@ -132,6 +132,41 @@ namespace Game.Ai.V2
                     && s.Defenders.Count > 0 && !s.IsAir && s.Owner != snap.Observer)
                     into.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
                         Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId));
+            AddRememberedSiteResidents(snap, hex, excludeArmyId, into);
+        }
+
+        // An enemy field army last observed standing on its OWN Base/Citadel is still that site's
+        // defender until a look proves it gone — the Recon history (AiReconMemory, the snapshot's
+        // LastKnown contacts) drops it on re-observation. Its short tactical sighting expiring
+        // (AiConfig.enemySightingMemoryTurns) is no evidence it left. Playtest 2026-10-22: Ironfang
+        // and Dune Wolves expired at Ysolde's T19 while standing on Kryll's Citadel; her assault
+        // priced the site at 46 instead of ~100, marched three turns and withdrew at win 0.04.
+        // Only a structure-bound staging site: a field position seen once is not kept as occupied.
+        private static void AddRememberedSiteResidents(WorldSnapshot snap, HexCoord hex,
+            int excludeArmyId, List<WorthIt.DefendingArmy> into)
+        {
+            IReadOnlyList<EnemyContactSnapshot> contacts = snap?.Threat?.Contacts;
+            IReadOnlyList<Game.Ai.AiMapMemory.KnownBuilding> buildings = snap?.Known?.Buildings;
+            if (contacts == null || buildings == null)
+                return;
+            foreach (EnemyContactSnapshot c in contacts
+                .Where(c => c?.Army != null && c.Knowledge == ContactKnowledge.LastKnown
+                    && c.Position.HasValue && c.Position.Value.Equals(hex))
+                .OrderBy(c => c.Army.ArmyId))
+            {
+                ArmySnapshot army = c.Army;
+                if (army.ArmyId == excludeArmyId || army.IsAir || army.Owner == null
+                    || army.Owner == snap.Observer || army.Owner.IsNeutral
+                    || army.Members == null || army.Members.Count == 0
+                    || into.Any(d => d.ArmyId == army.ArmyId)
+                    // The site was not looked at since the army was seen on it: a later look that
+                    // found it absent (the history keeps an army that only LEFT into the fog) wins.
+                    || !buildings.Any(b => b.Hex.Equals(hex) && b.Owner == army.Owner
+                        && (b.IsBase || b.IsStartingCitadel) && b.SeenTurn <= c.LastObservedTurn))
+                    continue;
+                into.Add(new WorthIt.DefendingArmy(army.Members, army.Commander,
+                    Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, army.Owner), army.ArmyId));
+            }
         }
 
         private static IReadOnlyList<WorthIt.DefendingArmy> BuildRaid(WorldSnapshot snap, RaidTargetRef target, bool includeSite)

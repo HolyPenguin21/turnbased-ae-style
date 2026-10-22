@@ -138,6 +138,8 @@ namespace Game.Ai.V2
         // (ActorCommitments.IsPreparationHost): it may still be weak, hero-only or an empty shell,
         // so delivery checks the exact claimed container instead of a structural combat actor.
         public bool AttackFistIsPreparationHost;
+        // Unbound Attack only: the objective the free fist is strengthened for (its fight).
+        public HexCoord? AttackObjectiveHex;
         public bool AttackLocalRefit;
         // The preparation host already clears the power bar but cannot damage every known
         // defender of AttackCoverageTargetHex (GroundCombatFeasibility.Clears' coverage): delivery

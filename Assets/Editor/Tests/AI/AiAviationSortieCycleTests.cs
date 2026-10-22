@@ -1223,7 +1223,7 @@ namespace Game.EditorTests
                 var ctx = new AiTurnContext { Map = map, TurnNumber = 1 };
                 bool Probe(out HexCoord landing) => GroundCombatAirSupport.TryFinishWing(_owner, _root,
                     ctx, session, funded, resolved, target, "active-defence", AiConfigV2.allocatorSliceEpsilon,
-                    out landing, out _, out _, out _);
+                    out landing, out _, out _, out _, out _);
                 Assert.That(Probe(out _), Is.EqualTo(launchPaid), "live AP/energy, not snapshot budget");
                 Assert.That(flight.Kind, Is.EqualTo(AirSortieKind.Recon));
                 Assert.That(flight.LandingHex, Is.EqualTo(default(HexCoord)));
@@ -1670,6 +1670,65 @@ namespace Game.EditorTests
                 ReconPatrolStateRegistry.ClearAll();
                 ReconAirSortieRegistry.ClearAll();
                 foreach (var actor in actors) Object.DestroyImmediate(actor);
+                Object.DestroyImmediate(mapObject);
+            }
+        }
+
+        // Playtest 2026-10-22 (Kryll T17-T21): Rusty Vulture stayed stored while an assault marched,
+        // because only formed wings were support candidates. A stored aircraft is the same source:
+        // the option names its airfield, and the leg forms the wing (the one formation path).
+        [Test, Category("UnityEngine")]
+        public void StoredAircraft_AreASupportSource_AndTheLegFormsTheirWing()
+        {
+            HexMap map = Line(6, out GameObject mapObject);
+            try
+            {
+                ArmyData airfield = Airfield(new HexCoord(0, 0), capacity: 4);
+                UnitData plane = Plane(1, 1);
+                airfield.AddMemberSorted(plane);
+                var target = new HexCoord(3, 0);
+                var snap = new WorldSnapshot
+                {
+                    Observer = _owner, TurnNumber = 1, Map = map,
+                    Known = new KnownSnapshot
+                    {
+                        AirSightings = new List<AiMapMemory.KnownAirSighting>(),
+                        EnemySightings = new List<AiMapMemory.KnownEnemySighting>(),
+                        NeutralSightings = new List<AiMapMemory.KnownEnemySighting>(),
+                        Buildings = new List<AiMapMemory.KnownBuilding>(),
+                    },
+                    Self = new SelfSnapshot
+                    {
+                        BaseHexes = new[] { airfield.Hex },
+                        Armies = new[] { new ArmySnapshot { ArmyId = airfield.Id, Owner = _owner,
+                            Hex = airfield.Hex, IsAirfield = true, MemberCount = 1 } },
+                    },
+                };
+
+                AirSupportOption option = GroundCombatAirSupport.Options(snap,
+                    System.Array.Empty<WorthIt.DefendingArmy>(), target, AirStrikePolicy.Standard,
+                    null, 0f, null).Single();
+                Assert.That(option.FromStorage, Is.True);
+                Assert.That(option.WingArmyId, Is.EqualTo(airfield.Id));
+                Assert.That(option.Ap, Is.EqualTo(1f), "the stored launch is priced on its aircraft");
+                Assert.That(GroundCombatAirSupport.StoredSupportGroup(snap, airfield, target,
+                    AirStrikePolicy.Standard, out _), Is.EqualTo(new[] { plane }));
+
+                var pm = new ProvisionedMission { MoverArmyId = airfield.Id,
+                    AircraftRuntimeIds = new[] { plane.RuntimeId } };
+                var result = new ExecutionResult();
+                ArmyData wing = GroundCombatLegStep.MaterializeSupportWing(_owner,
+                    new AiTurnContext { Map = map, TurnNumber = 1 }, pm, result, airfield);
+
+                Assert.That(AviationRules.IsValidAirArmy(wing), Is.True);
+                Assert.That(wing.Members, Is.EqualTo(new[] { plane }));
+                Assert.That(airfield.Members, Is.Empty);
+                Assert.That(pm.MoverArmyId, Is.EqualTo(wing.Id));
+                Assert.That(result.ActualActorArmyId, Is.EqualTo(wing.Id),
+                    "Continuity binds the formed wing, not the airfield");
+            }
+            finally
+            {
                 Object.DestroyImmediate(mapObject);
             }
         }

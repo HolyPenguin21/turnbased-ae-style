@@ -169,7 +169,7 @@ namespace Game.Ai.V2
 
             if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w,
                     target.LastKnownHex, "raid", eps, out HexCoord landing, out float ap,
-                    out float energy, out ProvisionFailure finishFailure))
+                    out float energy, out ProvisionFailure finishFailure, out IReadOnlyList<int> storedAircraft))
                 return ProvisioningResult.Fail(finishFailure);
             ArmyData wing = w.Wing;
 
@@ -187,6 +187,7 @@ namespace Game.Ai.V2
                 RaidTarget = target.Target,
                 RaidLastKnownHex = target.LastKnownHex,
                 RaidTargetIsNeutral = true,
+                AircraftRuntimeIds = storedAircraft,
                 ClaimedAp = ap, ClaimedEnergy = energy,
                 ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
             });

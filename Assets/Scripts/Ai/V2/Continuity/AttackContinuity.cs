@@ -1210,6 +1210,17 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity - [{aid}] {o.IntentKey} wing "
                         + $"#{leg.AirSupportArmyId} sortie failed ({Describe(o)}); released");
                 }
+                // A stored launch formed its wing during the leg (ActualActorArmyId): the operation
+                // binds the real wing, so its strike series is followed, not released as lost.
+                else if (!failed && intent?.Attack != null
+                    && leg.Phase == AttackMissionPhase.AirSupport
+                    && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId
+                    && o.MoverArmyId.HasValue && o.MoverArmyId != leg.AirSupportArmyId)
+                {
+                    intent.Attack.AirSupportArmyId = o.MoverArmyId;
+                    AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity - [{aid}] {o.IntentKey} "
+                        + $"stored launch from #{leg.AirSupportArmyId} formed wing #{o.MoverArmyId}");
+                }
                 return true;
             }
 

@@ -70,10 +70,13 @@ namespace Game.Ai.V2
             }
 
             // The mover's real next-action cost: once per turn for ground, once per sortie for an
-            // air wing (0 on every later step and turn of a paid sortie).
+            // air wing (0 on every later step and turn of a paid sortie); a stored support launch
+            // pays only the aircraft it launches, never the whole airfield's roster.
             int activationAp = pm.Kind == MissionKind.Scout
                 ? ScoutCostModel.PendingActivationApFor(mover, pm.ScoutKind, pm.FocusHex)
-                : mover.PendingActivationApCost;
+                : GroundCombatAirSupport.IsStoredSource(player, mover, pm.AircraftRuntimeIds)
+                    ? GroundCombatAirSupport.StoredLaunchApCost(mover, pm.AircraftRuntimeIds)
+                    : mover.PendingActivationApCost;
             if (root != null && activationAp > 0 && root.ActionPoints < activationAp)
                 return MissionValidity.StaleUnaffordable;
 
@@ -172,6 +175,7 @@ namespace Game.Ai.V2
                 // its own route every step and never captures anything.
                 if (attack.Phase == AttackMissionPhase.AirSupport)
                     return AviationRules.IsValidAirArmy(mover)
+                        || GroundCombatAirSupport.IsStoredSource(player, mover, pm.AircraftRuntimeIds)
                         ? MissionValidity.Valid : MissionValidity.StaleMoverLost;
                 // Reinforcement is a rendezvous with the primary, not a fight with the site: its
                 // validity is the primary's, and the executor re-reads the meeting hex itself.
@@ -207,8 +211,8 @@ namespace Game.Ai.V2
             if (ReconScoutKinds.IsAirSweep(pm.ScoutKind))
                 return MissionValidity.Valid;
 
-            if (ReconScoutKinds.IsCapture(pm.ScoutKind))
-                return ReconReactionPolicy.CanCaptureStructureAt(player, ctx?.Map, mover, pm.FocusHex)
+            if (ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
+                return ReconReactionPolicy.CanStrikeLocalTarget(player, ctx?.Map, mover, pm.ScoutKind, pm.FocusHex)
                     ? MissionValidity.Valid : MissionValidity.StaleTargetInvalidated;
             if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
             {

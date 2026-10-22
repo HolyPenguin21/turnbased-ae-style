@@ -42,6 +42,19 @@ namespace Game.Ai.V2
 
     internal static partial class GroundCombatAirSupport
     {
+        // One flight source of the coverage projection: a formed wing (Live) or one stored aircraft
+        // launched from its airfield (Live null — the projection starts from storage).
+        private readonly struct CoverageSource
+        {
+            internal readonly IReadOnlyList<UnitData> Members;
+            internal readonly HexCoord Hex;
+            internal readonly ArmyData Live;
+            internal readonly float Ap, Energy;
+            internal CoverageSource(IReadOnlyList<UnitData> members, HexCoord hex, ArmyData live,
+                float ap, float energy)
+            { Members = members; Hex = hex; Live = live; Ap = ap; Energy = energy; }
+        }
+
         // The physical Recon flight can change owners without losing its paid launch or
         // reserving a second landing. Return/Turning and an exhausted old Hold stay recovery.
         internal static bool CanYieldReconSortie(PlayerSetupData player, ArmyData wing, int turn)
@@ -191,22 +204,33 @@ namespace Game.Ai.V2
         {
             if (requests == null) return new List<CombatAirSupportRequest>();
             if (ctx?.Map == null || player == null || root == null) return requests.ToList();
+            // Every source a support leg can fly from: a free formed wing, or one stored aircraft
+            // launched from an own airfield (the same sources GroundCombatAirSupport.Options offers).
             var wings = OwnWorld.Of(player).Armies
                 .Where(w => AviationRules.IsValidAirArmy(w) && w.CurrentMovement > 0
                     && AirSortieRegistry.ForArmy(player, w) == null
                     && (commitments == null || !commitments.IsArmyClaimed(w.Id)))
-                .OrderBy(w => w.PendingActivationApCost + w.PendingActivationEnergyCost * AiConfigV2.actionPriceResourceAp)
-                .ThenBy(w => w.Id).ToList();
+                .Select(w => new CoverageSource(w.Members, w.Hex, w, w.PendingActivationApCost,
+                    w.PendingActivationEnergyCost))
+                .Concat(OwnWorld.Of(player).Armies
+                    .Where(f => AviationRules.IsAirfield(f) && f.Owner == player)
+                    .SelectMany(f => f.Members
+                        .Where(u => u != null && AviationRules.IsAviation(u) && AviationRules.EffectiveMoveCurrent(u) > 0)
+                        .Select(u => new CoverageSource(new[] { u }, f.Hex, null,
+                            Mathf.Max(0, u.ActivationApCost), Mathf.Max(0, u.LaunchEnergyCost)))))
+                .OrderBy(w => w.Ap + w.Energy * AiConfigV2.actionPriceResourceAp)
+                .ThenBy(w => w.Live?.Id ?? int.MaxValue).ThenBy(w => w.Members[0].RuntimeId).ToList();
             var admissible = new bool[requests.Count, wings.Count];
             for (int r = 0; r < requests.Count; r++)
                 for (int w = 0; w < wings.Count; w++)
                 {
-                    int PotentialDepartures(HexCoord hex) => -wings.Where(other => other != wings[w]
-                        && other.Hex.Equals(hex)).Sum(other => other.Members.Count);
+                    int PotentialDepartures(HexCoord hex) => -wings.Where(other => other.Live != null
+                        && other.Live != wings[w].Live && other.Hex.Equals(hex)).Sum(other => other.Members.Count);
                     // Optimistic graph only; the joint validator below must prove an executable
                     // order without borrowing the departure of a wing not proved yet.
                     admissible[r, w] = ProjectService(snap, player, ctx.Map, wings[w].Members,
-                        wings[w].Hex, requests[r], wings[w], PotentialDepartures).HasValue;
+                        wings[w].Hex, requests[r], wings[w].Live,
+                        wings[w].Live != null ? PotentialDepartures : (Func<HexCoord, int>)null).HasValue;
                 }
             var order = Enumerable.Range(0, requests.Count)
                 .OrderBy(r => Enumerable.Range(0, wings.Count).Count(w => admissible[r, w]))
@@ -215,8 +239,8 @@ namespace Game.Ai.V2
             float bankEnergy = StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy);
             bool Validate(IReadOnlyDictionary<int, int> assignments)
             {
-                if (assignments.Keys.Sum(w => wings[w].PendingActivationApCost) > bankAp + AiConfigV2.allocatorSliceEpsilon
-                    || assignments.Keys.Sum(w => wings[w].PendingActivationEnergyCost) > bankEnergy + AiConfigV2.allocatorSliceEpsilon)
+                if (assignments.Keys.Sum(w => wings[w].Ap) > bankAp + AiConfigV2.allocatorSliceEpsilon
+                    || assignments.Keys.Sum(w => wings[w].Energy) > bankEnergy + AiConfigV2.allocatorSliceEpsilon)
                     return false;
                 var claims = new Dictionary<HexCoord, int>();
                 void Add(HexCoord hex, int count) => claims[hex] =
@@ -228,10 +252,10 @@ namespace Game.Ai.V2
                     for (int i = 0; i < remaining.Count; i++)
                     {
                         var pair = remaining[i];
-                        ArmyData wing = wings[pair.Key];
+                        CoverageSource wing = wings[pair.Key];
                         int Extra(HexCoord hex) => claims.TryGetValue(hex, out int count) ? count : 0;
                         var service = ProjectService(snap, player, ctx.Map, wing.Members, wing.Hex,
-                            requests[order[pair.Value]], wing, Extra);
+                            requests[order[pair.Value]], wing.Live, Extra);
                         if (!service.HasValue) continue;
                         // Only this proved wing vacates its standing slot. A following wing
                         // must also respect its landing reservation; own exclusion remains once.

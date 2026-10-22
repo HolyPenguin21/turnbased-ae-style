@@ -684,6 +684,43 @@ namespace Game.EditorTests
             Assert.That(ForceNeedModel.JustifiedForceNeed(weak).Offensive, Is.EqualTo(1f).Within(0.0001f));
         }
 
+        // Playtest 2026-10-22: Ironfang stood on Kryll's Citadel; its tactical sighting expired at
+        // Ysolde's T19, her assault priced the site without it, marched and withdrew at win 0.04.
+        // A field army last seen on its own Base stays that site's defender until a look proves it
+        // gone (the Recon history's LastKnown contact): not in the field, and not once the site was
+        // looked at again after it (the history keeps an army that merely left into the fog).
+        [TestCase(true, 5, 2)]
+        [TestCase(false, 5, 1)]
+        [TestCase(true, 4, 1)]
+        public void SiteOpposition_KeepsAnArmyLastSeenOnItsOwnBase(bool onOwnBase, int seenOnSiteTurn,
+            int expected)
+        {
+            HexCoord seenAt = onOwnBase ? RedBase : new HexCoord(3, 0);
+            WorldSnapshot snap = Snap(new[] { B(RedBase, Red, seenTurn: 5) }, new[] { OurBase },
+                new[] { Sighting(1, RedBase, Red, Body(3, 1, 4, 1)) });
+            snap.Threat.Contacts = new List<EnemyContactSnapshot>
+            {
+                new EnemyContactSnapshot
+                {
+                    Army = new ArmySnapshot { ArmyId = 1, Owner = Red,
+                        Members = new[] { Body(3, 1, 4, 1) } },
+                    Knowledge = ContactKnowledge.LastKnown, Position = RedBase, LastObservedTurn = 5,
+                },
+                new EnemyContactSnapshot
+                {
+                    Army = new ArmySnapshot { ArmyId = 17, Owner = Red,
+                        Members = new[] { Body(6, 3, 6, 1), Body(5, 2, 5, 1) } },
+                    Knowledge = ContactKnowledge.LastKnown, Position = seenAt,
+                    LastObservedTurn = seenOnSiteTurn,
+                },
+            };
+
+            List<WorthIt.DefendingArmy> site = KnownOpposition.OnHex(snap, RedBase);
+
+            Assert.That(site.Count, Is.EqualTo(expected), "the live sighting is never counted twice");
+            Assert.That(site.Any(d => d.ArmyId == 17), Is.EqualTo(expected == 2));
+        }
+
         // ---- helpers ---------------------------------------------------------------------
 
         private static AiMapMemory.KnownBuilding B(HexCoord hex, PlayerSetupData owner,

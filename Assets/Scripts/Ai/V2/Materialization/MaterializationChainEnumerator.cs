@@ -166,6 +166,12 @@ namespace Game.Ai.V2
                     }
                 }
             }
+            // A recipient-pinned demand (Attack fist / preparation host, garrison floor) whose
+            // recipient has no slot for a card is served by the local refit: land it beside the
+            // recipient and exchange it in. The refit adds only cards that do not fit directly.
+            if (AttackBaseRefitPolicy.WindowFor(demand).HasValue)
+                candidates.AddRange(AttackBaseRefitPolicy.Enumerate(snap, player, hand, ctx, demand, commitments,
+                    reservation, excludeCards, WorldSnapshot.IntentsOf(snap), root));
             return candidates;
         }
 

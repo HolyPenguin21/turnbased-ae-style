@@ -9,6 +9,11 @@
 
         public static bool IsRefresh(ScoutTargetKind kind) => kind == ScoutTargetKind.Refresh;
         public static bool IsCapture(ScoutTargetKind kind) => kind == ScoutTargetKind.CaptureStructure;
+        public static bool IsHunt(ScoutTargetKind kind) => kind == ScoutTargetKind.Hunt;
+        // A one-shot local ground action (take/destroy an adjacent structure, strike a reachable
+        // enemy scouting force): no patrol lane, no lane quota or separation, no refocus, never
+        // aviation. Its own validity rule is ReconReactionPolicy.CanStrikeLocalTarget.
+        public static bool IsLocalStrike(ScoutTargetKind kind) => IsCapture(kind) || IsHunt(kind);
         public static bool IsExplore(ScoutTargetKind kind) => kind == ScoutTargetKind.Explore;
         // Aviation-only observation pass (support, never a ground visit). See ScoutTargetKind.
         public static bool IsAirSweep(ScoutTargetKind kind) => kind == ScoutTargetKind.AirSweep;
@@ -20,7 +25,7 @@
             requirement == StealthRequirement.Required || detectionRisk > 0f;
 
         public static bool IsGround(ScoutTargetKind kind) =>
-            kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh || IsCapture(kind);
+            kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh || IsLocalStrike(kind);
 
         public static string Name(ScoutTargetKind kind)
         {
@@ -30,6 +35,7 @@
                 case ScoutTargetKind.Explore: return "Explore";
                 case ScoutTargetKind.AirSweep: return "AirSweep";
                 case ScoutTargetKind.CaptureStructure: return "CaptureStructure";
+                case ScoutTargetKind.Hunt: return "Hunt";
                 default: return $"Unknown({(int)kind})";
             }
         }

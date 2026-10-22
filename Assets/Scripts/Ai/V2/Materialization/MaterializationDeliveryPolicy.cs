@@ -125,10 +125,11 @@ namespace Game.Ai.V2
                 return DemandLayer.EconomyEscortImprovesRoute(recipient, route, body, line.MoveMax)
                     ? DeliveryAssessment.Ok : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
             }
-            if (demand.AttackLocalRefit)
-                return p.AttackRefitPrimaryId == demand.AttackFistArmyId
-                    && AttackBaseRefitPolicy.Validate(p, snapshot, player,
-                        MissionIntentRegistry.GetOrCreate(player).All, out _, out _)
+            // A local refit delivers into its pinned recipient by the same-hex handoff, whatever
+            // the demand's ordinary shape (into the fist, into the garrison): the refit owns it.
+            if (demand.AttackLocalRefit || p.AttackRefitPrimaryId.HasValue)
+                return AttackBaseRefitPolicy.ServesDemand(p, demand, snapshot, player,
+                        MissionIntentRegistry.GetOrCreate(player).All)
                     ? DeliveryAssessment.Ok : DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
             switch (demand.Capability)
             {

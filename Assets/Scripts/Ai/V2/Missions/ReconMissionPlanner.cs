@@ -123,7 +123,7 @@ namespace Game.Ai.V2
             picked.AddRange(ordinaryIncumbents);
 
             IEnumerable<ScoutCandidate> ordinary = fresh
-                .Where(f => !ReconScoutKinds.IsCapture(f.Target.Kind)
+                .Where(f => !ReconScoutKinds.IsLocalStrike(f.Target.Kind)
                     && !incumbentKeys.Contains(CandidateKey(f)))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
                 .ThenByDescending(x => ReconScoutKinds.IsExplore(x.Target.Kind) ? x.FreshNeighbors : 0)
@@ -142,20 +142,20 @@ namespace Game.Ai.V2
             // the final one-actor/one-job binding and may rematch when live route/vantage facts move.
             ISet<int> claimed = ctx != null
                 ? ActorCommitments.FromIntents(activeIntents, snap, objectives).ClaimedArmyIdSet : new HashSet<int>();
-            foreach (ScoutCandidate capture in fresh.Where(x => ReconScoutKinds.IsCapture(x.Target.Kind))
+            foreach (ScoutCandidate capture in fresh.Where(x => ReconScoutKinds.IsLocalStrike(x.Target.Kind))
                 .OrderByDescending(x => x.BaseValue))
                 if (!picked.Any(x => CandidateKey(x).Equals(CandidateKey(capture)))) picked.Add(capture);
             var witnessedAir = new List<MissionProposal>();
             bool captureProposed = false;
             foreach (ScoutCandidate c in picked)
             {
-                if (ReconScoutKinds.IsCapture(c.Target.Kind) && captureProposed) continue;
+                if (ReconScoutKinds.IsLocalStrike(c.Target.Kind) && captureProposed) continue;
                 var excluded = new HashSet<int>(claimed);
                 if (c.IsIncumbent && c.PreferredMover.HasValue) excluded.Remove(c.PreferredMover.Value);
                 MissionProposal proposal = BuildProposal(snap, c, ctx, excluded, activeIntents, out bool airWitness);
                 if (proposal == null) continue;
                 proposals.Add(proposal);
-                captureProposed |= ReconScoutKinds.IsCapture(c.Target.Kind);
+                captureProposed |= ReconScoutKinds.IsLocalStrike(c.Target.Kind);
                 if (airWitness) witnessedAir.Add(proposal);
             }
 
@@ -221,6 +221,8 @@ namespace Game.Ai.V2
             }
             else if (o.Kind == ReconObjectiveKind.CaptureStructure)
                 explain = $"CaptureStructure @{o.FocusHex.Q},{o.FocusHex.R} task {F(o.BaseValue)} LAS {F(admission)}";
+            else if (o.Kind == ReconObjectiveKind.Hunt)
+                explain = $"Hunt @{o.FocusHex.Q},{o.FocusHex.R} task {F(o.BaseValue)} LAS {F(admission)}";
             else if (airSweep)
             {
                 explain = $"AirSweep @{o.FocusHex.Q},{o.FocusHex.R} "
@@ -262,21 +264,49 @@ namespace Game.Ai.V2
             if (ReconScoutKinds.IsAirSweep(c.Target.Kind) && !c.IsIncumbent && !airWitness)
                 return null;
             int? preferred = c.PreferredMover;
-            if (ReconScoutKinds.IsCapture(c.Target.Kind))
+            int? displaces = null;
+            if (ReconScoutKinds.IsLocalStrike(c.Target.Kind))
             {
                 ArmySnapshot actor = ScoutMoverSelector.Eligible(snap, c.Target, excluded)
-                    .OrderBy(a => ScoutCostModel.CapturePairCost(snap, a, c.Target.FocusHex).RequiredAp)
+                    .OrderBy(a => ScoutCostModel.LocalStrikePairCost(snap, a, c.Target).RequiredAp)
                     .ThenBy(a => a.ArmyId).FirstOrDefault();
+                float lost = 0f;
+                // A hunter is usually a scout already walking a Recon lane (playtest 2026-10-22:
+                // both Kryll scouts were held by Refresh lanes all game). The same displacement rule
+                // as a fresh ground job below: take it off a less valuable, non-Hard Recon role.
+                if (actor == null && ReconScoutKinds.IsHunt(c.Target.Kind) && !c.IsIncumbent && excluded != null)
+                    foreach (ArmySnapshot held in ScoutMoverSelector.Eligible(snap, c.Target, null)
+                        .Where(a => excluded.Contains(a.ArmyId))
+                        .OrderBy(a => ScoutCostModel.LocalStrikePairCost(snap, a, c.Target).RequiredAp)
+                        .ThenBy(a => a.ArmyId))
+                    {
+                        MissionIntent role = DisplaceableReconRole(activeIntents, held.ArmyId);
+                        float roleLoss = TaskScoreEvaluator.MoverOpportunityCost(role?.DisplacementValue ?? 0f);
+                        if (role == null || c.Score.Value - roleLoss <= 0f)
+                            continue;
+                        actor = held;
+                        lost = roleLoss;
+                        displaces = held.ArmyId;
+                        c = new ScoutCandidate(c.Target, c.Score, c.LocalAdmissionScore,
+                            c.Explain + $" [takes #{held.ArmyId} from {role.IntentKey}, loses {F(roleLoss)}]",
+                            c.IsIncumbent, c.Tier, c.PreferredMover, c.FreshNeighbors);
+                        break;
+                    }
                 if (actor == null) return null;
                 preferred = actor.ArmyId;
-                var cost = ScoutCostModel.CapturePairCost(snap, actor, c.Target.FocusHex);
+                var cost = ScoutCostModel.LocalStrikePairCost(snap, actor, c.Target);
                 TaskScore priced = TaskScoreEvaluator.WithExecution(c.Score,
                     new TaskScore(cardPrice: TaskScoreEvaluator.Price(cost.RequiredAp)));
+                if (lost > 0f)
+                {
+                    TaskScore withoutLoss = priced;
+                    priced = TaskScore.FromSlots(slot => slot == TaskSlot.MoverOpportunityCost
+                        ? withoutLoss[slot] + lost : withoutLoss[slot]);
+                }
                 c = new ScoutCandidate(c.Target, priced, priced.Value, c.Explain,
                     c.IsIncumbent, c.Tier, preferred, c.FreshNeighbors);
             }
             ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, preferred, air);
-            int? displaces = null;
             // 2026-10-21 (playtest Mordak T17-T21) — the cheapest scout for a fresh ground job may
             // be held by another Recon role. Refresh(1,-1) (value 16-21, the observation a parked
             // Assault waited for) priced itself on Hooded #15, two hexes away, which a durable
@@ -286,7 +316,7 @@ namespace Game.Ai.V2
             // there as soon; otherwise price the free scout the job can really get.
             if (!c.IsIncumbent && excluded != null && est.MoverKnown && est.PreferredMoverArmyId.HasValue
                 && excluded.Contains(est.PreferredMoverArmyId.Value)
-                && !ReconScoutKinds.IsCapture(c.Target.Kind) && !ReconScoutKinds.IsAirSweep(c.Target.Kind))
+                && !ReconScoutKinds.IsLocalStrike(c.Target.Kind) && !ReconScoutKinds.IsAirSweep(c.Target.Kind))
             {
                 int heldId = est.PreferredMoverArmyId.Value;
                 ScoutCostEstimate free = ScoutCostModel.Estimate(snap, c.Target, null, null,
@@ -357,7 +387,7 @@ namespace Game.Ai.V2
             activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
                 && i.Kind == MissionKind.Scout && i.Scout != null && i.PreferredMoverArmyId == armyId
                 && i.Funding < CommitmentTier.Hard
-                && !ReconScoutKinds.IsCapture(i.Scout.Kind) && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
+                && !ReconScoutKinds.IsLocalStrike(i.Scout.Kind) && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
             is MissionIntent role
             && !(activeIntents.Any(o => o != null && o.Status == IntentStatus.Active
                 && !ReferenceEquals(o, role) && o.PreferredMoverArmyId == armyId))

@@ -138,6 +138,20 @@ namespace Game.Ai.V2
                 return false;
             HexCoord home = snap.Self.Citadel;
 
+            // Playtest 2026-10-22 — a structure lost since the enemy's last turn: its saboteur still
+            // stands revealed on the ruin (destroying ends its movement; it cannot re-enter stealth
+            // before its next turn). Our own knowledge, not a cheat. While that hex is out of sight
+            // the sweep looks there first, so a Hunt (ReconHuntOpportunities) can answer it.
+            if (snap.Observer != null
+                && AiMapMemory.TryRecentStructureLoss(snap.Observer, snap.TurnNumber - 1, home, out HexCoord ruin)
+                && !OwnWorld.Of(snap.Observer).IsVisible(ruin))
+            {
+                anchor = ruin;
+                // Someone stood there to raze it: priced as an enemy presence, not a citadel guess.
+                armyConcentration = true;
+                return true;
+            }
+
             IReadOnlyList<ArmySnapshot> enemies = snap.TrueWorld.EnemyArmies;
             if (enemies != null && enemies.Count > 0)
             {

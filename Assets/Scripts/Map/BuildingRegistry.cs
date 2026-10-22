@@ -33,6 +33,15 @@ namespace Game.Map
         // narrow pre-recompute window to record a capture/destruction the player was genuinely
         // watching; after the recompute that honest observation may already be under fog.
         public static event Action<HexCoord, BuildingData> VisualStateChanged;
+        // A structure its owner LOST to someone else's action (taken, razed by an arrival or a
+        // battle, blown up) — never a construction rollback. Its former owner knows this at once.
+        public static event Action<HexCoord, PlayerSetupData> StructureLost;
+
+        internal static void RaiseStructureLost(HexCoord hex, PlayerSetupData formerOwner)
+        {
+            if (formerOwner != null)
+                StructureLost?.Invoke(hex, formerOwner);
+        }
 
         public static void Clear()
         {
@@ -130,6 +139,8 @@ namespace Game.Map
                     + $"{(previousOwner != null ? previousOwner.Nickname : "nobody")} destroyed by {(newOwner != null ? newOwner.Nickname : "nobody")}.");
                 AiMatchStats.RecordBuildingTaken(false, previousOwner, newOwner);
             }
+            if (ownerBefore != newOwner)
+                RaiseStructureLost(building.Hex, ownerBefore);
 
             // 2026-08-26 fix (project owner's own report): this is the one authoritative method
             // every capture/destroy path funnels through (see this method's own class comment),
@@ -196,7 +207,14 @@ namespace Game.Map
             foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
                 if (resident.Owner == building.Owner && BattleInitiator.DefendsBuildingAgainst(resident, mover))
                     return;
+            bool destroys = !building.IsBase;
             CaptureOrDestroy(building, mover, hexSelection);
+            // Destroying a structure is the army's strategic action for this turn, as starting a
+            // battle or exploring an event is: its remaining movement ends on the ruin (project
+            // owner, 2026-10-22 — the victim gets a turn to answer a saboteur before it walks on).
+            if (destroys && moverArmy != null)
+                foreach (Game.Units.UnitData member in moverArmy.Members)
+                    member.MoveCurrent = 0;
         }
 
         // Shared by CaptureOrDestroy (a Base changing hands) and HexSelectionController.Factory's

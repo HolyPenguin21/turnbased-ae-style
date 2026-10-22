@@ -61,6 +61,7 @@ namespace Game.Ai.V2
                     yield return RunReinforcementStep(player, ctx, pm, result, army, snapshot);
                     yield break;
                 case AttackMissionPhase.AirSupport:
+                    army = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, army);
                     if (!AviationRules.IsValidAirArmy(army) || !target.AirSupportLandingHex.HasValue)
                     {
                         result.StopForReplan(ExecutionStopReason.TargetInvalidated);

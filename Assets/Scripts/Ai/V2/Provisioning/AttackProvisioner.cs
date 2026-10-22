@@ -111,7 +111,7 @@ namespace Game.Ai.V2
 
             if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w, targetHex,
                     "attack", eps, out HexCoord landing, out float ap, out float energy,
-                    out ProvisionFailure finishFailure))
+                    out ProvisionFailure finishFailure, out IReadOnlyList<int> storedAircraft))
                 return ProvisioningResult.Fail(finishFailure);
 
             target.AirSupportLandingHex = landing;
@@ -124,6 +124,7 @@ namespace Game.Ai.V2
                 FocusHex = targetHex,
                 ExecutionHex = targetHex,
                 AttackTarget = target,
+                AircraftRuntimeIds = storedAircraft,
                 ClaimedAp = ap,
                 ClaimedEnergy = energy,
                 ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),

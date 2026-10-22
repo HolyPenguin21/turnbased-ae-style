@@ -75,6 +75,13 @@ namespace Game.Ai.V2
             if (mover.Hex.Equals(hex)) { cost.RequiredAp = 0; cost.EffActivationAp = 0; }
             return cost;
         }
+        // A one-shot local action's pair price: a capture standing on its structure is free; a hunt
+        // walks its reachable route like any ground step.
+        internal static ScoutPairCost LocalStrikePairCost(WorldSnapshot snap, ArmySnapshot mover,
+            ScoutMissionTarget target) =>
+            ReconScoutKinds.IsCapture(target.Kind) ? CapturePairCost(snap, mover, target.FocusHex)
+                : PairCost(snap, mover, target.FocusHex, false);
+
         public static ScoutPairCost PairCost(WorldSnapshot snap, ArmySnapshot mover, HexCoord executionHex, bool stealthRequired)
         {
             int fleetBudget = snap?.Self?.Armies != null

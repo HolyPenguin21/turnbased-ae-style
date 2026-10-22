@@ -436,6 +436,75 @@ namespace Game.EditorTests
             AviationObligationStallRegistry.Clear();
         }
 
+        // ---- Hunt (2026-10-22) ------------------------------------------------------------------
+
+        [Test]
+        public void Hunt_IsAOneShotLocalGroundStrike()
+        {
+            Assert.That((int)ScoutTargetKind.Hunt, Is.EqualTo(5), "persisted identity");
+            Assert.That(ReconScoutKinds.IsLocalStrike(ScoutTargetKind.Hunt), Is.True);
+            Assert.That(ReconScoutKinds.IsLocalStrike(ScoutTargetKind.CaptureStructure), Is.True);
+            Assert.That(ReconScoutKinds.IsLocalStrike(ScoutTargetKind.Refresh), Is.False);
+            Assert.That(ReconScoutKinds.IsGround(ScoutTargetKind.Hunt), Is.True);
+            Assert.That(ReconScoutKinds.Name(ScoutTargetKind.Hunt), Is.EqualTo("Hunt"));
+        }
+
+        // A hunt exists only for a hunter Analysis proved reaches and beats the force this turn;
+        // only that hunter is eligible, and it is never a Recon lane nor a scout to buy.
+        [Test]
+        public void HuntObjective_ExistsOnlyForAProvenHunter()
+        {
+            var player = new PlayerSetupData();
+            var focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, 11, focus);
+            snap.Observer = player;
+            Assert.That(ReconObjectiveEvaluator.HuntAt(snap, focus), Is.Null);
+
+            snap.Self.ReconHuntOpportunities = new[] { (10, focus) };
+            ReconObjective hunt = ReconObjectiveEvaluator.HuntAt(snap, focus);
+
+            Assert.That(hunt, Is.Not.Null);
+            Assert.That(hunt.ToTarget().Kind, Is.EqualTo(ScoutTargetKind.Hunt));
+            Assert.That(hunt.IsLocalStrike, Is.True);
+            Assert.That(hunt.BaseValue, Is.GreaterThan(0f));
+            Assert.That(ScoutMoverSelector.Eligible(snap, hunt.ToTarget(), null).Select(a => a.ArmyId),
+                Is.EqualTo(new[] { 10 }), "the scout without a proven hunt is not a hunter");
+            MissionProposal proposal = ReconMissionPlanner.Propose(snap, new DesireBreakdown(),
+                new MissionIntent[0], new[] { hunt }).Single();
+            Assert.That(((ScoutMissionTarget)proposal.Target).Kind, Is.EqualTo(ScoutTargetKind.Hunt));
+            Assert.That(proposal.PreferredMoverArmyId, Is.EqualTo(10));
+        }
+
+        // A structure lost since the enemy's last turn: its saboteur stands revealed on the ruin.
+        // While the ruin is out of sight the air sweep looks there first; an old loss does not.
+        [TestCase(7, true)]
+        [TestCase(9, false)]
+        public void RecentStructureLoss_AnchorsTheAirSweepOnTheUnseenRuin(int turnNow, bool anchored)
+        {
+            var player = new PlayerSetupData();
+            var ruin = new HexCoord(2, -1);
+            AiMapMemory.Clear();
+            AiMapMemory.EnsureSubscribed();
+            try
+            {
+                AiMapMemory.OnTurnStarted(player, 7);
+                Game.Map.BuildingRegistry.RaiseStructureLost(ruin, player);
+                WorldSnapshot snap = Snapshot(player, turnNow, new HexCoord(4, 3));
+                snap.Observer = player;
+                snap.TrueWorld = new TrueWorldSnapshot { EnemyArmies = new ArmySnapshot[0] };
+
+                bool found = WorldAnalysis.TryAirSweepAnchor(snap, out HexCoord anchor, out bool enemyThere);
+
+                Assert.That(found && anchor.Equals(ruin), Is.EqualTo(anchored));
+                if (anchored)
+                    Assert.That(enemyThere, Is.True, "priced as an enemy presence");
+            }
+            finally
+            {
+                AiMapMemory.Clear();
+            }
+        }
+
         internal static MissionProposal Scout(ScoutTargetKind kind, HexCoord focus) =>
             new MissionProposal
             {

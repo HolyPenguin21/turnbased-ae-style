@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // Refresh — stale previously-observed information;
     // AirSweep — aviation-only observation pass toward the strategic sweep anchor.
     // ===========================================================================================
-    public enum ReconObjectiveKind { Explore = 0, Refresh = 1, AirSweep = 3, CaptureStructure = 4 }
+    public enum ReconObjectiveKind { Explore = 0, Refresh = 1, AirSweep = 3, CaptureStructure = 4, Hunt = 5 }
 
     public sealed class ReconObjective
     {
@@ -42,6 +42,8 @@ namespace Game.Ai.V2
                 // become a new intent every time the concentration moves.
                 if (Kind == ReconObjectiveKind.AirSweep)
                     return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
+                if (Kind == ReconObjectiveKind.Hunt)
+                    return MissionIntentKey.ForScoutTarget(ToTarget());
                 ScoutTargetKind sub = Kind == ReconObjectiveKind.Refresh
                     ? ScoutTargetKind.Refresh
                     : ScoutTargetKind.Explore;
@@ -51,10 +53,14 @@ namespace Game.Ai.V2
 
         public bool NeedsStealth => ReconScoutKinds.NeedsStealth(Stealth, DetectionRisk);
 
+        // A one-shot local action (capture / hunt): never a Recon lane, never a scout to buy.
+        public bool IsLocalStrike => Kind == ReconObjectiveKind.CaptureStructure || Kind == ReconObjectiveKind.Hunt;
+
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
         {
             FocusHex = FocusHex,
             Kind = Kind == ReconObjectiveKind.CaptureStructure ? ScoutTargetKind.CaptureStructure
+                : Kind == ReconObjectiveKind.Hunt ? ScoutTargetKind.Hunt
                 : Kind == ReconObjectiveKind.AirSweep ? ScoutTargetKind.AirSweep
                 : Kind == ReconObjectiveKind.Refresh ? ScoutTargetKind.Refresh : ScoutTargetKind.Explore,
             Stealth = Stealth,
@@ -153,7 +159,32 @@ namespace Game.Ai.V2
                 ReconObjective capture = CaptureAt(snap, hex);
                 if (capture != null) list.Add(capture);
             }
+            foreach (HexCoord hex in (snap.Self?.ReconHuntOpportunities
+                ?? System.Array.Empty<(int ArmyId, HexCoord Hex)>()).Select(x => x.Hex).Distinct())
+            {
+                ReconObjective hunt = HuntAt(snap, hex);
+                if (hunt != null) list.Add(hunt);
+            }
             return list;
+        }
+
+        // A visible enemy scouting force an own solo Recce beats and reaches this turn (Analysis'
+        // ReconHuntOpportunities). Killing it denies the enemy its eyes and its saboteur; it is worth
+        // most beside our own ground (OwnTerritoryProximity), where it scouts or razes our sites.
+        internal static ReconObjective HuntAt(WorldSnapshot snap, HexCoord hex)
+        {
+            if (snap?.Self?.ReconHuntOpportunities?.Any(x => x.Hex.Equals(hex)) != true) return null;
+            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.Hunt, FocusHex = hex };
+            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, target);
+            if (!cost.MoverKnown) return null;
+            float relevance = AiConfigV2.reconHuntStrategicRelevance;
+            TaskScore score = new TaskScore(
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
+                cardPrice: TaskScoreEvaluator.Price(cost.ActivationApNow),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
+                    TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex)));
+            return new ReconObjective { Kind = ReconObjectiveKind.Hunt, FocusHex = hex,
+                TaskScore = score, BaseValue = score.Value, StrategicRelevance = relevance };
         }
 
         internal static ReconObjective CaptureAt(WorldSnapshot snap, HexCoord hex)
@@ -281,6 +312,7 @@ namespace Game.Ai.V2
             switch (si.Kind)
             {
                 case ScoutTargetKind.CaptureStructure: return CaptureAt(snap, si.FocusHex);
+                case ScoutTargetKind.Hunt: return HuntAt(snap, si.FocusHex);
                 case ScoutTargetKind.Explore: return ExploreAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.Refresh: return RefreshAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.AirSweep: return AirSweepOf(snap, preferredMoverArmyId);

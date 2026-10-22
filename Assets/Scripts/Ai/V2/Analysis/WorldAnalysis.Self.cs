@@ -59,6 +59,11 @@ namespace Game.Ai.V2
                 .SelectMany(a => HexGridMath.Neighbors(a.Hex).Concat(new[] { a.Hex })
                     .Where(h => ReconReactionPolicy.CanCaptureStructureAt(player, ctx?.Map, a, h))
                     .Select(h => (a.Id, h))).ToList();
+            using (new ProfileScope("AI/Self.ReconHunt"))
+                self.ReconHuntOpportunities = ownArmies.Where(a => AiArmyRoles.IsSoloRecce(a) && a.CurrentMovement > 0)
+                .SelectMany(a => HexGridMath.HexesInRange(a.Hex, a.CurrentMovement)
+                    .Where(h => ReconReactionPolicy.CanHuntAt(player, ctx?.Map, a, h))
+                    .Select(h => (a.Id, h))).ToList();
 
             // Freeze the GENUINE route-existence fact for every structural raid
             // actor against every own base, the exact same SafeStepPathing oracle Provisioning

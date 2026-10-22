@@ -347,6 +347,111 @@ namespace Game.EditorTests
             Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
         }
 
+        // ---- the local refit's other windows (playtest 2026-10-22, Kryll T19-T23) --------------
+
+        private CardData StrongBody() => new CardData(new CardDefinition {
+            cardType = CardType.Unit, displayName = "Heavy Tank", requiredBuildingAbility = UnitAbilities.Barracks,
+            attack = 9, defenseRating = 4, hitPoints = 8, moveMax = 3, apCost = 1, activationApCost = 1 });
+
+        private ArmyData OwnBaseArmy(bool garrison, params UnitData[] members)
+        {
+            if (BuildingRegistry.FindAt(Base) == null)
+            {
+                var building = new BuildingData { Owner = player, Hex = Base, IsBase = true };
+                building.Abilities.Add(UnitAbilities.Barracks);
+                BuildingRegistry.Register(Base, building);
+            }
+            var army = new ArmyData { Owner = player, Hex = Base, IsGarrison = garrison };
+            army.Members.AddRange(members);
+            ArmyRegistry.Register(army);
+            return army;
+        }
+
+        private System.Collections.Generic.List<MaterializationPlan> Enumerate(AxisDemand demand, CardData card,
+            WorldSnapshot snap)
+        {
+            var hand = new AiHandData(null, default, 0);
+            hand.AddCard(card);
+            return AttackBaseRefitPolicy.Enumerate(snap, player, hand, new AiTurnContext { TurnNumber = 6 },
+                demand, new ActorCommitments(), null, null, MissionIntentRegistry.GetOrCreate(player).All);
+        }
+
+        // Host #17 was full 7/7 on the Citadel and every pinned demand needed the card inside it:
+        // Heavy Tank never reached it. The preparation window lands it beside the host and
+        // exchanges it for the weakest body; nothing is promised for an onward activation.
+        [TestCase(true)] [TestCase(false)]
+        public void PreparationHost_FullRosterIsServedByExchange_FreeSlotByOrdinaryPlacement(bool full)
+        {
+            var host = full ? OwnBaseArmy(false, Body(2), Body(3)) : OwnBaseArmy(false, Body(2));
+            var attack = new AttackIntent { PrimaryArmyId = host.Id, Preparation = true,
+                Phase = AttackMissionPhase.Gather };
+            MissionIntentRegistry.GetOrCreate(player).Put(new MissionIntent {
+                Kind = MissionKind.Attack, Status = IntentStatus.Active, Funding = CommitmentTier.Hard,
+                IntentKey = MissionIntentKey.ForAttack(attack.Target), Objective = attack });
+            var snap = Snapshot(); snap.Self.Armies.Single().ArmyId = host.Id;
+            var demand = new AxisDemand { AttackFistArmyId = host.Id, AttackFistIsPreparationHost = true,
+                TargetHex = Base, Capability = CapabilityKind.FieldCombatPower };
+
+            var plans = Enumerate(demand, StrongBody(), snap);
+
+            if (!full)
+            {
+                Assert.That(plans, Is.Empty, "a card that fits is the ordinary direct placement's");
+                return;
+            }
+            var plan = plans.Single();
+            Assert.That(plan.AttackRefitWindow, Is.EqualTo(AttackBaseRefitPolicy.RefitWindow.AttackPreparation));
+            Assert.That(plan.Deploy.Kind, Is.EqualTo(DeploymentKind.NewArmy));
+            Assert.That(plan.AttackRefitFollowupAp, Is.Zero);
+            Assert.That(AttackBaseRefitPolicy.ServesDemand(plan, demand, snap, player,
+                MissionIntentRegistry.GetOrCreate(player).All), Is.True);
+            Assert.That(AttackBaseRefitPolicy.ExchangeRaisesRecipient(host, plan.BaseCardInHand.Definition,
+                AiPower.EffectiveLine(plan.BaseCardInHand.Definition, null, null), player), Is.True,
+                "the demand's wait witness reads the same exchange");
+            Assert.That(host.Members.Count, Is.EqualTo(2), "planning moves nobody");
+        }
+
+        // The unbound demand's free fist: the same exchange; a fist an operation owns is not free.
+        [TestCase(false, 1)] [TestCase(true, 0)]
+        public void FreeFist_FullRosterIsServedByExchangeOnlyWhileUnclaimed(bool claimed, int expected)
+        {
+            var fist = OwnBaseArmy(false, Body(2), Body(3));
+            if (claimed)
+                MissionIntentRegistry.GetOrCreate(player).Put(new MissionIntent {
+                    Kind = MissionKind.Attack, Status = IntentStatus.Active, Funding = CommitmentTier.Hard,
+                    PreferredMoverArmyId = fist.Id,
+                    IntentKey = MissionIntentKey.ForAttack(new AttackIntent().Target),
+                    Objective = new AttackIntent { PrimaryArmyId = fist.Id, Phase = AttackMissionPhase.Assault } });
+            var snap = Snapshot(); snap.Self.Armies.Single().ArmyId = fist.Id;
+            var demand = new AxisDemand { AttackFistArmyId = fist.Id, TargetHex = Base,
+                Capability = CapabilityKind.FieldCombatPower };
+
+            Assert.That(Enumerate(demand, StrongBody(), snap).Count, Is.EqualTo(expected));
+        }
+
+        // A full garrison below its floor: the card lands beside it and the weakest garrison body
+        // moves out to the new container; only a power gain counts.
+        [Test]
+        public void GarrisonFloor_FullGarrisonIsServedByExchange()
+        {
+            var garrison = OwnBaseArmy(true, Body(1), Body(2), Body(2), Body(3));
+            var snap = Snapshot();
+            var demand = new AxisDemand { DeliveryShape = CapabilityDeliveryShape.Garrison, TargetHex = Base,
+                Capability = CapabilityKind.FieldCombatPower };
+
+            var plan = Enumerate(demand, StrongBody(), snap).Single();
+
+            Assert.That(plan.AttackRefitWindow, Is.EqualTo(AttackBaseRefitPolicy.RefitWindow.GarrisonFloor));
+            Assert.That(plan.AttackRefitPrimaryId, Is.EqualTo(garrison.Id));
+            Assert.That(AttackBaseRefitPolicy.Validate(plan, snap, player,
+                MissionIntentRegistry.GetOrCreate(player).All, out HandoffPlan handoff, out _), Is.True);
+            Assert.That(handoff.Displaced.Single().Attack, Is.EqualTo(1), "the weakest body gives way");
+            Assert.That(Enumerate(demand, new CardData(new CardDefinition {
+                cardType = CardType.Unit, displayName = "weak", requiredBuildingAbility = UnitAbilities.Barracks,
+                attack = 0, defenseRating = 0, hitPoints = 1, moveMax = 3, apCost = 1 }), snap), Is.Empty,
+                "a body that adds no power is never an exchange");
+        }
+
     }
 }
 #endif

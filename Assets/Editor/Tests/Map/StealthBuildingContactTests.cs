@@ -71,6 +71,21 @@ namespace Game.EditorTests
                 Assert.That(BuildingRegistry.FindAt(_hex), Is.Null);
         }
 
+        // Project owner, 2026-10-22: destroying a structure is the army's action for the turn — its
+        // remaining movement ends on the ruin. A captured Base keeps the ordinary arrival rules.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DestroyingAStructureEndsTheArmysMovement(bool isBase)
+        {
+            _building.IsBase = isBase;
+            _unit.MoveMax = 3;
+            _unit.MoveCurrent = 2;
+
+            StealthSystem.ExitStealth(_unit);
+
+            Assert.That(_unit.MoveCurrent, Is.EqualTo(isBase ? 2 : 0));
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void VisibleGuardPreventsTakeoverOnReveal(bool hero)
@@ -248,6 +263,38 @@ namespace Game.EditorTests
             BuildingRegistry.Register(_hex, _building);
             StealthSystem.ExitStealth(_unit);
             Assert.That(BuildingRegistry.FindAt(_hex), Is.SameAs(_building));
+        }
+
+        // Playtest 2026-10-22 (Ysolde T17/T19): a Hooded scout hidden on the neutral Sand Fin's hex
+        // revealed there to sabotage the next hex and was wiped on its own hex. A resident reveal
+        // meets a known army sharing the hex; only that, never the structure, is the contact.
+        [Test]
+        public void ResidentRevealContact_IsAKnownArmySharingTheHex()
+        {
+            Game.Ai.AiMapMemory.Clear();
+            Game.Ai.AiMapMemory.EnsureSubscribed();
+            GameSession.Players = new List<PlayerSetupData> { _owner, _enemy };
+            var neutral = new PlayerSetupData { IsNeutral = true };
+            try
+            {
+                VisionSystem.NotifyContentChanged(_hex);
+                Assert.That(Game.Ai.AiMapMemory.KnownResidentRevealContact(_owner, _army), Is.False,
+                    "the undefended structure is the reveal's own action, not a contact");
+
+                var sandFin = new ArmyData { Owner = neutral, Hex = _hex, Name = "Sand Fin" };
+                sandFin.Members.Add(new UnitData { Owner = neutral, HitPointsCurrent = 5 });
+                ArmyRegistry.Register(sandFin);
+                VisionSystem.NotifyContentChanged(_hex);
+                Assert.That(Game.Ai.AiMapMemory.KnownResidentRevealContact(_owner, _army), Is.True);
+
+                _unit.IsHidden = false;
+                Assert.That(Game.Ai.AiMapMemory.KnownResidentRevealContact(_owner, _army), Is.False,
+                    "a visible army has no reveal left to make");
+            }
+            finally
+            {
+                Game.Ai.AiMapMemory.Clear();
+            }
         }
 
         [TestCase(false)]

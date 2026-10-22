@@ -1125,6 +1125,7 @@ namespace Game.Ai.V2
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 AttackFistArmyId = d.AttackFistArmyId,
                 AttackFistIsPreparationHost = d.AttackFistIsPreparationHost,
+                AttackObjectiveHex = d.AttackObjectiveHex,
                 AttackLocalRefit = d.AttackLocalRefit,
                 AttackCoverageGap = d.AttackCoverageGap,
                 AttackCoverageTargetHex = d.AttackCoverageTargetHex,

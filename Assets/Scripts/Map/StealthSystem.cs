@@ -104,7 +104,8 @@ namespace Game.Map
         public const int EnterStealthApCost = 1;
 
         public static bool CanEnterStealth(UnitData unit)
-            => unit != null && !unit.IsHidden && AbilityParams.GetStealthLevel(unit) > 0;
+            => unit != null && !unit.IsHidden && !unit.HasEnteredStealthThisTurn
+               && AbilityParams.GetStealthLevel(unit) > 0;
 
         public static bool CanPayToEnterStealth(UnitData unit, PlayerRoot root, int preserveActionPoints = 0)
         {
@@ -126,6 +127,7 @@ namespace Game.Map
 
             root.SpendActionPoints(EnterStealthApCost);
             unit.IsHidden = true;
+            unit.HasEnteredStealthThisTurn = true;
             Notify(unit, null);
             return true;
         }

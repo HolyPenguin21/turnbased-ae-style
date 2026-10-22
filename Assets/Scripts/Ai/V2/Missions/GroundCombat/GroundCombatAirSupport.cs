@@ -7,6 +7,7 @@ using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -32,11 +33,15 @@ namespace Game.Ai.V2
         // Always 0: continuing a paid sortie costs nothing on later turns.
         internal readonly float RecurringAp;
         internal readonly ResourceVector Resources;
+        // WingArmyId names an own airfield: its stored aircraft (StoredSupportGroup) launch for
+        // this sortie, and the wing is formed when the leg executes.
+        internal readonly bool FromStorage;
 
         internal AirSupportOption(int wingArmyId, HexCoord landingHex, int etaTurns,
             int firstStrikeEta, int strikeTurns, float expectedDamage, bool rosterKnown,
-            float winAfter, float ap, ResourceVector resources)
+            float winAfter, float ap, ResourceVector resources, bool fromStorage = false)
         {
+            FromStorage = fromStorage;
             WingArmyId = wingArmyId;
             LandingHex = landingHex;
             EtaTurns = etaTurns;
@@ -51,10 +56,12 @@ namespace Game.Ai.V2
         }
     }
 
-    // A resolved wing and its current sortie state, for the provisioning half below.
+    // A resolved wing and its current sortie state, for the provisioning half below. `Wing` is an
+    // own airfield when the sortie launches stored aircraft (IsStored).
     internal readonly struct AirSupportWing
     {
         internal readonly ArmyData Wing;
+        internal bool IsStored => AviationRules.IsAirfield(Wing);
         internal readonly AirSortie Active;
         // An existing strike sortie this lane already flies (outbound or holding over the target).
         internal readonly bool Continuing;
@@ -304,8 +311,113 @@ namespace Game.Ai.V2
                     damage, rosterKnown, winAfter, wing.PendingActivationApCost,
                     new ResourceVector(0f, 0f, wing.PendingActivationEnergyCost, 0f, 0f)));
             }
+
+            // Stored aircraft are the same support (playtest 2026-10-22, Kryll T17-T21: Rusty
+            // Vulture stayed in its airfield while Ysolde's assault marched three turns, because
+            // only formed wings were candidates). The airfield stands for the launch; the wing is
+            // formed when the leg executes (GroundCombatLegStep.MaterializeSupportWing).
+            if (ReferenceEquals(snap.Map, null) || !observedAir)
+                return result;
+            foreach (ArmySnapshot field in snap.Self.Armies
+                .Where(x => x != null && x.IsAirfield && !x.IsPrison && x.MemberCount > 0
+                    && (!fixedWingArmyId.HasValue || x.ArmyId == fixedWingArmyId.Value)
+                    && (unavailableArmyIds == null || !unavailableArmyIds.Contains(x.ArmyId)))
+                .OrderBy(x => x.ArmyId))
+            {
+                ArmyData live = OwnWorld.Of(snap.Observer).Army(field.ArmyId);
+                if (StoredSupportGroup(snap, live, targetHex, policy, out CombatAirService service).Count == 0)
+                    continue;
+                float projectedWin = service.RosterKnown && winAgainst != null
+                    ? winAgainst(AfterAirStrike(opposition, airTargets, service.Estimate)) : currentWin;
+                result.Add(new AirSupportOption(field.ArmyId, service.Landing, service.FirstStrikeEta,
+                    service.FirstStrikeEta, service.StrikeTurns,
+                    service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
+                    service.RosterKnown, projectedWin, service.Ap,
+                    new ResourceVector(0f, 0f, service.Energy, 0f, 0f), fromStorage: true));
+            }
             return result;
         }
+
+        // THE stored aircraft one support launch takes from `airfield` against this strike: the
+        // single aircraft with the best projected service (more damage, then cheaper launch, then
+        // runtime id). The option, the provisioning and the execution all read this one choice,
+        // so they always name the same aircraft. Empty when no stored aircraft can serve.
+        internal static List<UnitData> StoredSupportGroup(WorldSnapshot snap, ArmyData airfield,
+            HexCoord targetHex, AirStrikePolicy policy, out CombatAirService service)
+        {
+            service = default;
+            var best = new List<UnitData>();
+            if (snap?.Observer == null || ReferenceEquals(snap.Map, null) || airfield == null
+                || !AviationRules.IsAirfield(airfield) || airfield.Owner != snap.Observer)
+                return best;
+            var request = new CombatAirSupportRequest(default, targetHex, policy, default);
+            foreach (UnitData aircraft in airfield.Members
+                .Where(u => u != null && AviationRules.IsAviation(u) && AviationRules.EffectiveMoveCurrent(u) > 0)
+                .OrderBy(u => u.RuntimeId))
+            {
+                CombatAirService? s = ProjectService(snap, snap.Observer, snap.Map, new[] { aircraft },
+                    airfield.Hex, request);
+                if (!s.HasValue)
+                    continue;
+                float damage = s.Value.RosterKnown ? s.Value.Estimate.NetExpectedDamage : 0f;
+                float bestDamage = best.Count == 0 ? -1f
+                    : service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f;
+                float price = s.Value.Ap + s.Value.Energy * AiConfigV2.actionPriceResourceAp;
+                float bestPrice = service.Ap + service.Energy * AiConfigV2.actionPriceResourceAp;
+                if (best.Count == 0 || damage > bestDamage + AiConfigV2.allocatorSliceEpsilon
+                    || (System.Math.Abs(damage - bestDamage) <= AiConfigV2.allocatorSliceEpsilon && price < bestPrice))
+                {
+                    best.Clear();
+                    best.Add(aircraft);
+                    service = s.Value;
+                }
+            }
+            return best;
+        }
+
+        // THE support source of a lane's bound id: a formed wing, or an own airfield whose stored
+        // aircraft launch for the sortie. Null when the id is neither any more.
+        internal static ArmySnapshot SupportSource(WorldSnapshot snap, int armyId) =>
+            snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == armyId && !a.IsPrison
+                && (a.IsAirfield || a.IsAir));
+
+        // A support leg from its source: the ETA of the first strike and the leg requirements
+        // (a stored launch is priced on the aircraft StoredSupportGroup names). False when a stored
+        // source has nothing left to launch against this target.
+        internal static bool SourceLeg(WorldSnapshot snap, ArmySnapshot source, HexCoord targetHex,
+            AirStrikePolicy policy, out int eta, out MissionRequirements requirements)
+        {
+            eta = 0;
+            requirements = default;
+            if (source == null)
+                return false;
+            if (!source.IsAirfield)
+            {
+                eta = SortieEta(source, targetHex);
+                requirements = LegRequirements(source, targetHex, eta);
+                return true;
+            }
+            ArmyData field = OwnWorld.Of(snap.Observer).Army(source.ArmyId);
+            if (StoredSupportGroup(snap, field, targetHex, policy, out CombatAirService service).Count == 0)
+                return false;
+            eta = service.FirstStrikeEta;
+            requirements = LegRequirements(source, targetHex, eta, service.Ap, service.Energy);
+            return true;
+        }
+
+        // The launch AP of exactly the stored aircraft a support leg names.
+        internal static int StoredLaunchApCost(ArmyData airfield, IReadOnlyList<int> aircraftRuntimeIds) =>
+            airfield == null || aircraftRuntimeIds == null ? 0
+                : airfield.Members.Where(u => u != null && aircraftRuntimeIds.Contains(u.RuntimeId))
+                    .Sum(u => Math.Max(0, u.ActivationApCost));
+
+        // Is this execution-time mover a stored launch still able to form its wing?
+        internal static bool IsStoredSource(PlayerSetupData player, ArmyData mover,
+            IReadOnlyList<int> aircraftRuntimeIds) =>
+            mover != null && AviationRules.IsAirfield(mover) && mover.Owner == player
+            && aircraftRuntimeIds != null && aircraftRuntimeIds.Count > 0
+            && aircraftRuntimeIds.All(id => mover.Members.Any(u => u != null && u.RuntimeId == id
+                && AviationRules.IsAviation(u) && AviationRules.EffectiveMoveCurrent(u) > 0));
 
         // The ONE ranking of support options: more expected damage of the series, a better lane
         // win, then sooner, cheaper, lower id.
@@ -380,10 +492,10 @@ namespace Game.Ai.V2
         // The requirements of a support sortie leg: the sortie launch (0 / 0 on a paid sortie, on
         // every turn of it), its distance and ETA.
         internal static MissionRequirements LegRequirements(ArmySnapshot wing, HexCoord destination,
-            int etaTurns)
+            int etaTurns, float? launchAp = null, float? launchEnergy = null)
         {
-            float activation = wing?.PendingActivationApCost ?? 0f;
-            float energy = wing?.PendingActivationEnergyCost ?? 0f;
+            float activation = launchAp ?? wing?.PendingActivationApCost ?? 0f;
+            float energy = launchEnergy ?? wing?.PendingActivationEnergyCost ?? 0f;
             return new MissionRequirements
             {
                 RequiresArmy = true, RequiresHero = false, MoverKnown = wing != null,
@@ -398,7 +510,9 @@ namespace Game.Ai.V2
         internal static bool SortieLive(PlayerSetupData player, int? wingArmyId, out bool wingValid)
         {
             ArmyData wing = wingArmyId.HasValue ? OwnWorld.Of(player).Army(wingArmyId.Value) : null;
-            wingValid = wing != null && AviationRules.IsValidAirArmy(wing);
+            // A bound stored launch (an own airfield) is a valid source that has not taken off.
+            wingValid = wing != null && (AviationRules.IsValidAirArmy(wing)
+                || AviationRules.IsAirfield(wing) && wing.Owner == player);
             AirSortie sortie = wingValid ? AirSortieRegistry.ForArmy(player, wing) : null;
             // The task owns the wing only while it flies the strike series. Once execution turns
             // the sortie into Rebase (series over), generic aviation obligations own the return.
@@ -501,11 +615,17 @@ namespace Game.Ai.V2
             resolved = default;
             failure = default;
             ArmyData wing = OwnWorld.Of(player).Army(wingArmyId);
-            if (wing == null || !AviationRules.IsValidAirArmy(wing) || wing.Owner != player
-                || wing.Members.Count == 0 || session.ClaimedArmyIds.Contains(wing.Id))
+            if (wing == null || !(AviationRules.IsValidAirArmy(wing) || AviationRules.IsAirfield(wing))
+                || wing.Owner != player || wing.Members.Count == 0 || session.ClaimedArmyIds.Contains(wing.Id))
             {
                 failure = ProvisionFailure.MoverContended($"{lane} support wing #{wingArmyId} unavailable");
                 return false;
+            }
+            // A stored launch: the airfield stands for the wing until the leg forms it.
+            if (AviationRules.IsAirfield(wing))
+            {
+                resolved = new AirSupportWing(wing, null, false);
+                return true;
             }
             AirSortie active = AirSortieRegistry.ForArmy(player, wing);
             bool continuing = active != null && active.Kind == AirSortieKind.Strike;
@@ -527,13 +647,14 @@ namespace Game.Ai.V2
         internal static bool TryFinishWing(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, FundedEntry funded, AirSupportWing w, HexCoord targetHex,
             string lane, float eps, out HexCoord landing, out float ap, out float energy,
-            out ProvisionFailure failure)
+            out ProvisionFailure failure, out IReadOnlyList<int> storedAircraftIds)
         {
             ArmyData wing = w.Wing;
             failure = default;
             landing = default;
             ap = 0f;
             energy = 0f;
+            storedAircraftIds = null;
 
             AirStrikePolicy targetPolicy = funded.Mission.Target is RaidMissionTarget raid
                 ? AirStrikePolicy.RaidSupport(raid.Target.ArmyId)
@@ -551,6 +672,24 @@ namespace Game.Ai.V2
                 failure = ProvisionFailure.TargetInvalidated("air support has no observed strike target");
                 return false;
             }
+            if (w.IsStored)
+            {
+                // The same aircraft the option was priced on; its launch is the claimed cost.
+                List<UnitData> group = StoredSupportGroup(session.Snapshot, wing, targetHex, targetPolicy,
+                    out CombatAirService service);
+                if (group.Count == 0)
+                {
+                    failure = ProvisionFailure.NoExecutableStep(
+                        $"airfield #{wing.Id} has no stored aircraft with a recoverable {lane} strike");
+                    return false;
+                }
+                storedAircraftIds = group.Select(u => u.RuntimeId).ToList();
+                landing = service.Landing;
+                ap = service.Ap;
+                energy = service.Energy;
+                return FitsLaunchBudget(player, root, ctx, session, funded, wing, lane, eps, ap, energy,
+                    out failure);
+            }
             Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player, singleUseStrike: true);
             MultiTurnSortie? multi = sameTurn.HasValue ? null
                 : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player, singleUseStrike: true);
@@ -564,6 +703,17 @@ namespace Game.Ai.V2
 
             ap = wing.PendingActivationApCost;
             energy = wing.PendingActivationEnergyCost;
+            return FitsLaunchBudget(player, root, ctx, session, funded, wing, lane, eps, ap, energy,
+                out failure);
+        }
+
+        // The launch AP/Energy against the funded envelope, the turn's AP and the free Energy after
+        // reservations and earlier claims this pass — one gate for a live wing and a stored launch.
+        private static bool FitsLaunchBudget(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisioningSession session, FundedEntry funded, ArmyData wing, string lane, float eps,
+            float ap, float energy, out ProvisionFailure failure)
+        {
+            failure = default;
             if (ap > funded.Tentative.Ap + eps || energy > funded.PhysicalDraw.Energy + eps)
             {
                 failure = ProvisionFailure.EnvelopeTooSmall(

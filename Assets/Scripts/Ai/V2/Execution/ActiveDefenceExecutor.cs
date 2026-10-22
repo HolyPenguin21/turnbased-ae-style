@@ -37,7 +37,7 @@ namespace Game.Ai.V2
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
             ArmyData initial = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            int limit = (initial?.CurrentMovement ?? 0) + 1;
+            int limit = GroundCombatLegStep.StepBudget(initial, pm) + 1;
             for (int i = 0; i < limit; ++i)
             {
                 yield return RunActiveDefenceStepCore(player, ctx, pm, result);
@@ -208,6 +208,7 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ExecutionResult result, ArmyData wing)
         {
             int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
+            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing);
             AiMapMemory.KnownEnemySighting? witness = AiMapMemory.KnownHostileSightingOf(player, enemyId);
             if (!AviationRules.IsValidAirArmy(wing) || !witness.HasValue
                 || !pm.ActiveDefenceTarget.AirSupportLandingHex.HasValue)

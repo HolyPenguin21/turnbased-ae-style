@@ -364,7 +364,7 @@ namespace Game.Ai.V2
         // capable if it is already hidden, or can still slip into stealth (CanEnterStealth) before
         // its first move.
         public bool IsHidden;
-        public bool CanEnterStealth;       // StealthSystem.CanEnterStealth — !hidden AND stealthLevel > 0
+        public bool CanEnterStealth;       // StealthSystem.CanEnterStealth — !hidden, stealthLevel > 0, not yet entered this turn
         public int StealthLevel;           // best AbilityParams.GetStealthLevel among members (0 = none)
 
         // Vision reach for THIS army, EXACTLY VisionSystem's own formula
@@ -549,6 +549,10 @@ namespace Game.Ai.V2
         public IReadOnlyList<ArmySnapshot> Armies;
         // Current observation plus an affordable safe local step, frozen at Analysis.
         public IReadOnlyList<(int ArmyId, HexCoord Hex)> ReconCaptureOpportunities =
+            System.Array.Empty<(int, HexCoord)>();
+        // Visible enemy scouting forces an own solo Recce beats and still reaches this turn
+        // (ReconReactionPolicy.CanHuntAt), frozen at Analysis like the capture opportunities.
+        public IReadOnlyList<(int ArmyId, HexCoord Hex)> ReconHuntOpportunities =
             System.Array.Empty<(int, HexCoord)>();
 
 

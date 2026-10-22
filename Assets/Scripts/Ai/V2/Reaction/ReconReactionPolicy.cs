@@ -200,46 +200,71 @@ namespace Game.Ai.V2
             float bestWin = AttackOpportunityWinChance;
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!map.CanEnter(h, army) || !VisionSystem.IsVisible(player, h)
-                    || !map.TryGetTerrainAt(h, out var terrain)
-                    || AviationRules.MovementCost(army, terrain.moveCost) > army.CurrentMovement)
+                if (!map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain)
+                    || AviationRules.MovementCost(army, terrain.moveCost) > army.CurrentMovement
+                    || !TryScoutingForceFight(player, map, army, h, out int targetId, out float win)
+                    || win < bestWin)
                     continue;
-                ArmyData target = BattleInitiator.FindEnemyAt(h, army);
-                if (target == null || target.Owner == null || target.Owner.IsNeutral
-                    || target.IsGarrison || target.IsPrison)
-                    continue;
-
-                List<Game.Units.UnitData> visible = StealthSystem.TargetableMembersFor(target, player).ToList();
-                if (visible.Count == 0)
-                    continue;
-                // 2026-10-01 (user decision) — an enemy SCOUTING force: a lone scout, or an army
-                // whose every visible member is a Recce unit. Real combat armies stay Aggression's.
-                if (!AiArmyRoles.IsSoloRecce(target)
-                    && !visible.All(u => u != null && !u.IsAviation && Game.Cards.AbilityParams.UnitHasAnyRecce(u)))
-                    continue;
-                List<WorthIt.DefenderProfile> profiles = visible.Select(WorthIt.FromLiveUnit).ToList();
-                // CURRENTLY visible target, so the full live hex bonus is honest here.
-                float hexBonus = WorthIt.HexDefenseBonus(h, map);
-
-                // §17 — every safety gate, not just a raw win chance. The scout must be able to
-                // damage every defender, a win must not routinely leave it critically wounded, and
-                // the hex it would end on must not sit under a second known threat it cannot beat.
-                if (!WorthIt.CanDamageAll(army, profiles, hexBonus))
-                    continue;
-                WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus,
-                    visible.Contains(target.Commander) ? WorthIt.SideCommander.Of(target.Commander) : default);
-                if (est.WinChance < bestWin)
-                    continue;
-                if (est.CriticalAfterBattleChance > AiConfigV2.scoutReactionAttackMaxCriticalAfter)
-                    continue;
-                if (PostCombatPositionUnsafe(player, map, army, h, target.Id))
-                    continue;
-
-                bestWin = est.WinChance;
-                best = new ReconReactionDecision(ReconReactionAction.AttackOpportunity, h, target.Id,
-                    est.WinChance, "adjacent enemy scouting force: beatable, damage-complete, post-combat safe");
+                bestWin = win;
+                best = new ReconReactionDecision(ReconReactionAction.AttackOpportunity, h, targetId,
+                    win, "adjacent enemy scouting force: beatable, damage-complete, post-combat safe");
             }
             return best;
+        }
+
+        // THE fight rule against an enemy SCOUTING force at `h` — the adjacent reaction and the
+        // funded Hunt (CanHuntAt) both ask this, so a hunt is never admitted on a fight the step
+        // reaction would refuse. Honest: the target hex is VISIBLE now.
+        // 2026-10-01 (user decision) — a scouting force is a lone scout, or an army whose every
+        // visible member is a Recce unit. Real combat armies stay Aggression's.
+        // §17 — every safety gate, not just a raw win chance: the scout must damage every defender,
+        // a win must not routinely leave it critically wounded, and the hex it ends on must not sit
+        // under a second known threat it cannot beat.
+        internal static bool TryScoutingForceFight(PlayerSetupData player, HexMap map, ArmyData army,
+            HexCoord h, out int targetArmyId, out float winChance)
+        {
+            targetArmyId = -1;
+            winChance = 0f;
+            if (!BattleInitiator.IsCombatCapable(army) || !map.CanEnter(h, army)
+                || !VisionSystem.IsVisible(player, h))
+                return false;
+            ArmyData target = BattleInitiator.FindEnemyAt(h, army);
+            if (target == null || target.Owner == null || target.Owner.IsNeutral
+                || target.IsGarrison || target.IsPrison)
+                return false;
+            List<Game.Units.UnitData> visible = StealthSystem.TargetableMembersFor(target, player).ToList();
+            if (visible.Count == 0
+                || !AiArmyRoles.IsSoloRecce(target)
+                    && !visible.All(u => u != null && !u.IsAviation && Game.Cards.AbilityParams.UnitHasAnyRecce(u)))
+                return false;
+            List<WorthIt.DefenderProfile> profiles = visible.Select(WorthIt.FromLiveUnit).ToList();
+            // CURRENTLY visible target, so the full live hex bonus is honest here.
+            float hexBonus = WorthIt.HexDefenseBonus(h, map);
+            if (!WorthIt.CanDamageAll(army, profiles, hexBonus))
+                return false;
+            WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus,
+                visible.Contains(target.Commander) ? WorthIt.SideCommander.Of(target.Commander) : default);
+            if (est.WinChance < AttackOpportunityWinChance
+                || est.CriticalAfterBattleChance > AiConfigV2.scoutReactionAttackMaxCriticalAfter
+                || PostCombatPositionUnsafe(player, map, army, h, target.Id))
+                return false;
+            targetArmyId = target.Id;
+            winChance = est.WinChance;
+            return true;
+        }
+
+        // A funded Hunt (ScoutTargetKind.Hunt) of the scouting force at `hex`: the same fight rule
+        // as the adjacent reaction, from any distance this solo Recce still covers THIS turn by a
+        // safe route (the target is terminal, not transit). A revealed saboteur stands on its ruin
+        // with no movement and cannot re-enter stealth this turn — this is the answer window.
+        internal static bool CanHuntAt(PlayerSetupData player, HexMap map, ArmyData army, HexCoord hex)
+        {
+            if (player == null || map == null || army == null || !AiArmyRoles.IsSoloRecce(army)
+                || army.CurrentMovement <= 0 || army.Hex.Equals(hex)
+                || HexGridMath.Distance(army.Hex, hex) > army.CurrentMovement
+                || !TryScoutingForceFight(player, map, army, hex, out _, out _))
+                return false;
+            return SafeStepPathing.FindSafePathCost(map, army, hex) <= army.CurrentMovement;
         }
 
         // A scout passing an enemy structure nobody defends should not walk by it. Honest, live
@@ -270,6 +295,13 @@ namespace Game.Ai.V2
                     : "adjacent undefended enemy Facility: destroy it");
         }
 
+        // THE live validity of a one-shot local Recon action (ReconScoutKinds.IsLocalStrike), read
+        // by Analysis, Assignment, Provisioning and the revalidator alike.
+        internal static bool CanStrikeLocalTarget(PlayerSetupData player, HexMap map, ArmyData army,
+            ScoutTargetKind kind, HexCoord hex) =>
+            ReconScoutKinds.IsCapture(kind) ? CanCaptureStructureAt(player, map, army, hex)
+            : ReconScoutKinds.IsHunt(kind) && CanHuntAt(player, map, army, hex);
+
         internal static bool CanCaptureStructureAt(PlayerSetupData player, HexMap map,
             ArmyData army, HexCoord hex)
         {
@@ -279,6 +311,8 @@ namespace Game.Ai.V2
             // Visible arrivals have already run the canonical contact rule. Only a hidden
             // resident needs a separate reveal action on its current hex.
             if (army.Hex.Equals(hex) && !StealthSystem.IsArmyFullyHidden(army)) return false;
+            // That reveal would fight a known army sharing the hex instead of taking the structure.
+            if (army.Hex.Equals(hex) && AiMapMemory.KnownResidentRevealContact(player, army)) return false;
             AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(player, hex);
             return building.HasValue && building.Value.Owner != null
                 && building.Value.Owner != player && !building.Value.Owner.IsNeutral

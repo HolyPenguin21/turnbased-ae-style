@@ -284,6 +284,7 @@ namespace Game.Combat
                 if (building.StructurePointsCurrent <= 0)
                 {
                     BuildingRegistry.Unregister(Hex);
+                    BuildingRegistry.RaiseStructureLost(Hex, building.Owner);
                     if (building.Visual != null) UnityEngine.Object.Destroy(building.Visual.gameObject);
                 }
             }

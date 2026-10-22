@@ -619,7 +619,7 @@ namespace Game.Ai.V2
             ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
             if (purpose?.Kind == MissionKind.Scout && purpose.Scout != null
                 && !ReconScoutKinds.IsAirSweep(purpose.Scout.Kind)
-                && !ReconScoutKinds.IsCapture(purpose.Scout.Kind))
+                && !ReconScoutKinds.IsLocalStrike(purpose.Scout.Kind))
             {
                 var target = new ScoutMissionTarget { Kind = purpose.Scout.Kind,
                     FocusHex = purpose.Scout.FocusHex,

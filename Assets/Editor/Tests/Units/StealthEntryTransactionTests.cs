@@ -92,6 +92,24 @@ namespace Game.EditorTests
             }
         }
 
+        // Project owner, 2026-10-22: stealth is entered at most once per own turn — a unit that
+        // revealed itself (a sabotage, a strike) cannot vanish again until its next turn.
+        [Test]
+        public void EntryIsOncePerOwnTurn()
+        {
+            _root.ActionPoints = 5;
+            Assert.That(StealthSystem.TryEnterStealth(_unit, _root), Is.True);
+            StealthSystem.ExitStealth(_unit);
+
+            Assert.That(StealthSystem.CanEnterStealth(_unit), Is.False);
+            Assert.That(StealthSystem.TryEnterStealth(_unit, _root), Is.False);
+            Assert.That(_unit.IsHidden, Is.False);
+            Assert.That(_root.ActionPoints, Is.EqualTo(4), "a refused re-entry debits nothing");
+
+            _unit.HasEnteredStealthThisTurn = false; // the owner's next turn (ReplenishMoveForOwner)
+            Assert.That(StealthSystem.TryEnterStealth(_unit, _root), Is.True);
+        }
+
         [Test]
         public void VoluntaryExitRemainsFree()
         {

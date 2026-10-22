@@ -298,7 +298,10 @@ namespace Game.Ai.V2
                     MaterializationChainMatching.EffectiveAbilities(d, equipped, mutator), d.cardType,
                     CapabilityKind.FieldCombatPower, recceMayFight: true)
                 && (host.CanFitAdditionalCard(d)
-                    || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d))
+                    || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d)
+                    // A full host on its Base still takes the card by the local refit's exchange.
+                    || AttackBaseRefitPolicy.ExchangeRaisesRecipient(host, d,
+                        AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment), snap.Observer))
                 && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
                     AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment))
                 && (coverageGap
@@ -504,6 +507,7 @@ namespace Game.Ai.V2
                 DesiredAmount = deficit,
                 RequiredCapabilityPower = deficit,
                 AttackFistArmyId = fist.ArmyId,
+                AttackObjectiveHex = objective.Hex,
                 RequiredTraits = TraitPreference.None,
                 MinimumFollowupAp = 0f,
                 TargetHex = fist?.Hex,
