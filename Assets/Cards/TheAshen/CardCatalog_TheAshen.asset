@@ -537,7 +537,7 @@ MonoBehaviour:
       statChanges: []
   - id: 10
     authoredKey: ashen.unit.ashdrifter
-    deckPointCost: 1
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Ash Drifter
@@ -547,11 +547,11 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 1
+    apCost: 2
     resourceCost:
-      human: 0
+      human: 1
       energy: 0
-      materials: 0
+      materials: 1
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 2
@@ -561,7 +561,7 @@ MonoBehaviour:
     attack: 3
     defenseRating: 1
     range: 1
-    hitPoints: 5
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -612,7 +612,7 @@ MonoBehaviour:
     defenseRating: 1
     range: 2
     hitPoints: 4
-    initiative: 1
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -656,10 +656,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 2
+    attack: 3
     defenseRating: 2
     range: 1
-    hitPoints: 5
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -683,7 +683,7 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     authoredKey: ashen.card.hooded
-    deckPointCost: 1
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Hooded
@@ -698,9 +698,9 @@ MonoBehaviour:
       human: 0
       energy: 1
       materials: 0
-      tech: 0
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -755,11 +755,11 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 2
+    attack: 3
     defenseRating: 1
-    range: 1
-    hitPoints: 3
-    initiative: 1
+    range: 2
+    hitPoints: 4
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -784,7 +784,7 @@ MonoBehaviour:
       statChanges: []
   - id: 15
     authoredKey: ashen.card.scrap-locust
-    deckPointCost: 1
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scrap Locust
@@ -794,22 +794,22 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 0
       energy: 1
-      materials: 1
+      materials: 2
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
-    range: 1
-    hitPoints: 4
-    initiative: 3
+    range: 2
+    hitPoints: 5
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -856,8 +856,8 @@ MonoBehaviour:
     attack: 4
     defenseRating: 1
     range: 2
-    hitPoints: 5
-    initiative: 1
+    hitPoints: 4
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -880,7 +880,7 @@ MonoBehaviour:
       statChanges: []
   - id: 17
     authoredKey: ashen.card.dust-runner
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Dust Runner
@@ -890,7 +890,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 0
       energy: 0
@@ -901,10 +901,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -929,7 +929,7 @@ MonoBehaviour:
       statChanges: []
   - id: 18
     authoredKey: ashen.card.fumehound
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Fumehound
@@ -939,10 +939,10 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 2
-      energy: 0
+      energy: 1
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
@@ -950,7 +950,7 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 5
     defenseRating: 2
     range: 1
     hitPoints: 6
@@ -998,10 +998,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
     range: 2
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1025,7 +1025,7 @@ MonoBehaviour:
       statChanges: []
   - id: 20
     authoredKey: ashen.card.rad-leaper
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rad Leaper
@@ -1040,17 +1040,17 @@ MonoBehaviour:
       human: 1
       energy: 1
       materials: 1
-      tech: 1
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 1
+    defenseRating: 2
     range: 1
-    hitPoints: 5
-    initiative: 2
+    hitPoints: 4
+    initiative: 3
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -1086,16 +1086,16 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 2
     resourceCost:
-      human: 1
-      energy: 0
-      materials: 1
+      human: 0
+      energy: 1
+      materials: 2
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 1
     range: 2
     hitPoints: 4
@@ -1123,7 +1123,7 @@ MonoBehaviour:
       statChanges: []
   - id: 22
     authoredKey: ashen.card.scab-shield
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scab Shield
@@ -1133,21 +1133,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 1
       energy: 0
-      materials: 1
-      tech: 0
+      materials: 2
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
-    defenseRating: 3
+    attack: 4
+    defenseRating: 4
     range: 1
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1172,7 +1172,7 @@ MonoBehaviour:
       statChanges: []
   - id: 23
     authoredKey: ashen.card.spore-drifter
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Spore Drifter
@@ -1182,22 +1182,22 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 1
       energy: 1
-      materials: 0
-      tech: 1
+      materials: 1
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 1
+    range: 1
+    hitPoints: 4
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -1221,7 +1221,7 @@ MonoBehaviour:
       statChanges: []
   - id: 24
     authoredKey: ashen.card.carrion
-    deckPointCost: 1
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Carrion
@@ -1231,7 +1231,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 2
     resourceCost:
       human: 0
       energy: 1
@@ -1242,14 +1242,14 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 3
     defenseRating: 1
     range: 1
     hitPoints: 3
     initiative: 2
     isAviation: 1
     launchEnergyCost: 1
-    turnsWithoutRefuel: 0
+    turnsWithoutRefuel: 1
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -1280,18 +1280,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 1
       energy: 0
       materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
     range: 2
     hitPoints: 4
@@ -1336,14 +1336,14 @@ MonoBehaviour:
       materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 1
     range: 3
-    hitPoints: 3
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1367,7 +1367,7 @@ MonoBehaviour:
       statChanges: []
   - id: 27
     authoredKey: ashen.card.rad-brute
-    deckPointCost: 3
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rad Brute
@@ -1379,17 +1379,17 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 4
     resourceCost:
-      human: 1
-      energy: 2
+      human: 2
+      energy: 1
       materials: 0
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 3
+    attack: 5
+    defenseRating: 2
     range: 1
     hitPoints: 6
     initiative: 2
@@ -1427,18 +1427,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 1
       energy: 1
-      materials: 0
+      materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 2
     hitPoints: 4
@@ -1466,7 +1466,7 @@ MonoBehaviour:
       statChanges: []
   - id: 29
     authoredKey: ashen.card.rattle-gunner
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rattle Gunner
@@ -1480,8 +1480,8 @@ MonoBehaviour:
     resourceCost:
       human: 1
       energy: 0
-      materials: 1
-      tech: 1
+      materials: 2
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
@@ -1490,7 +1490,7 @@ MonoBehaviour:
     attack: 4
     defenseRating: 2
     range: 2
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1515,7 +1515,7 @@ MonoBehaviour:
       statChanges: []
   - id: 30
     authoredKey: ashen.card.scrap-mortar
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scrap Mortar
@@ -1529,17 +1529,17 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 1
-      tech: 1
+      materials: 2
+      tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 5
     defenseRating: 1
     range: 3
-    hitPoints: 3
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1563,7 +1563,7 @@ MonoBehaviour:
       statChanges: []
   - id: 31
     authoredKey: ashen.card.furnace-bearer
-    deckPointCost: 3
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Furnace Bearer
@@ -1575,19 +1575,19 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 5
     resourceCost:
-      human: 1
+      human: 2
       energy: 2
       materials: 1
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4
     defenseRating: 3
     range: 1
-    hitPoints: 6
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1624,14 +1624,14 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 3
     resourceCost:
       human: 1
       energy: 0
       materials: 2
-      tech: 1
+      tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -1662,7 +1662,7 @@ MonoBehaviour:
       statChanges: []
   - id: 33
     authoredKey: ashen.card.gravebell-mortar
-    deckPointCost: 3
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Gravebell Mortar
@@ -1672,21 +1672,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
       energy: 3
-      materials: 1
-      tech: 3
+      materials: 2
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 6
     defenseRating: 1
     range: 4
-    hitPoints: 3
+    hitPoints: 4
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1724,17 +1724,17 @@ MonoBehaviour:
     apCost: 4
     resourceCost:
       human: 0
-      energy: 2
-      materials: 2
+      energy: 1
+      materials: 3
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
-    defenseRating: 4
-    range: 1
+    attack: 4
+    defenseRating: 3
+    range: 2
     hitPoints: 6
     initiative: 1
     isAviation: 0
@@ -1759,7 +1759,7 @@ MonoBehaviour:
       statChanges: []
   - id: 35
     authoredKey: ashen.card.rad-hunter
-    deckPointCost: 3
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rad Hunter
@@ -1769,21 +1769,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 0
       energy: 2
-      materials: 0
-      tech: 1
+      materials: 1
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1818,21 +1818,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
-      materials: 2
+      materials: 3
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 3
-    range: 1
-    hitPoints: 5
+    range: 2
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1856,7 +1856,7 @@ MonoBehaviour:
       statChanges: []
   - id: 37
     authoredKey: ashen.card.roadbreaker
-    deckPointCost: 3
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Roadbreaker
@@ -1866,10 +1866,10 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
-      energy: 1
+      energy: 2
       materials: 3
       tech: 1
     requiredBuildingAbility: Barracks
@@ -1877,10 +1877,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 3
     range: 2
-    hitPoints: 5
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1919,7 +1919,7 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 1
-      materials: 2
+      materials: 3
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
@@ -1963,21 +1963,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
-      human: 1
-      energy: 0
+      human: 2
+      energy: 1
       materials: 2
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 3
     range: 1
-    hitPoints: 8
+    hitPoints: 7
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2011,22 +2011,22 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
-      energy: 1
-      materials: 2
-      tech: 2
+      energy: 2
+      materials: 3
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 2
+    attack: 5
+    defenseRating: 3
     range: 1
-    hitPoints: 5
-    initiative: 2
+    hitPoints: 6
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -2051,7 +2051,7 @@ MonoBehaviour:
       statChanges: []
   - id: 41
     authoredKey: ashen.card.iron-maw
-    deckPointCost: 4
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Iron Maw
@@ -2061,22 +2061,22 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
-      materials: 2
-      tech: 2
+      materials: 4
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 6
+    attack: 7
     defenseRating: 4
     range: 1
-    hitPoints: 6
-    initiative: 2
+    hitPoints: 7
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -2099,7 +2099,7 @@ MonoBehaviour:
       statChanges: []
   - id: 42
     authoredKey: ashen.card.rust-breacher
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rust Breacher
@@ -2111,19 +2111,19 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 4
     resourceCost:
-      human: 0
-      energy: 2
+      human: 1
+      energy: 0
       materials: 2
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 5
-    defenseRating: 3
+    defenseRating: 4
     range: 1
-    hitPoints: 6
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2147,7 +2147,7 @@ MonoBehaviour:
       statChanges: []
   - id: 43
     authoredKey: ashen.card.scav-carrier
-    deckPointCost: 4
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scav Carrier
@@ -2159,19 +2159,19 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 5
     resourceCost:
-      human: 3
+      human: 2
       energy: 1
       materials: 2
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 4
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 3
-    defenseRating: 1
+    defenseRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2197,7 +2197,7 @@ MonoBehaviour:
       statChanges: []
   - id: 44
     authoredKey: ashen.card.scrapwing
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scrapwing
@@ -2211,21 +2211,21 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 1
+      materials: 2
       tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 6
     activationApCost: 1
     commandRating: 0
-    fate: 2
+    fate: 0
     attack: 5
     defenseRating: 2
     range: 2
     hitPoints: 5
     initiative: 2
     isAviation: 1
-    launchEnergyCost: 1
-    turnsWithoutRefuel: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 2
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000006000000
@@ -2256,21 +2256,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
-      energy: 2
+      energy: 3
       materials: 2
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 1
+    attack: 5
+    defenseRating: 2
     range: 2
-    hitPoints: 5
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2296,7 +2296,7 @@ MonoBehaviour:
       statChanges: []
   - id: 46
     authoredKey: ashen.card.grave-engine
-    deckPointCost: 4
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Grave Engine
@@ -2306,21 +2306,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
-      materials: 2
-      tech: 3
+      materials: 4
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 5
     defenseRating: 4
     range: 1
-    hitPoints: 7
+    hitPoints: 8
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2345,7 +2345,7 @@ MonoBehaviour:
       statChanges: []
   - id: 47
     authoredKey: ashen.card.boomstick
-    deckPointCost: 5
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Boomstick
@@ -2355,12 +2355,12 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 6
+    apCost: 5
     resourceCost:
       human: 0
       energy: 2
-      materials: 3
-      tech: 1
+      materials: 4
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -2403,22 +2403,22 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
-      materials: 4
+      materials: 5
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
-    defenseRating: 3
+    attack: 6
+    defenseRating: 4
     range: 2
-    hitPoints: 8
-    initiative: 2
+    hitPoints: 9
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -2441,7 +2441,7 @@ MonoBehaviour:
       statChanges: []
   - id: 49
     authoredKey: ashen.card.flywheel
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Flywheel
@@ -2451,21 +2451,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
-      materials: 1
-      tech: 1
+      materials: 3
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 1
-    hitPoints: 5
+    hitPoints: 6
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -2489,7 +2489,7 @@ MonoBehaviour:
       statChanges: []
   - id: 50
     authoredKey: ashen.card.slag-lobber
-    deckPointCost: 3
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Slag Lobber
@@ -2503,8 +2503,8 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 2
-      tech: 2
+      materials: 3
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
@@ -2513,7 +2513,7 @@ MonoBehaviour:
     attack: 6
     defenseRating: 2
     range: 3
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2537,7 +2537,7 @@ MonoBehaviour:
       statChanges: []
   - id: 51
     authoredKey: ashen.card.striker
-    deckPointCost: 3
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Striker
@@ -2557,11 +2557,11 @@ MonoBehaviour:
     moveMax: 10
     activationApCost: 1
     commandRating: 0
-    fate: 2
+    fate: 0
     attack: 7
-    defenseRating: 4
+    defenseRating: 3
     range: 2
-    hitPoints: 6
+    hitPoints: 5
     initiative: 2
     isAviation: 1
     launchEnergyCost: 2
@@ -2596,18 +2596,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 6
+    apCost: 8
     resourceCost:
       human: 0
-      energy: 2
-      materials: 4
+      energy: 3
+      materials: 5
       tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 1
     activationApCost: 2
     commandRating: 0
     fate: 0
-    attack: 6
+    attack: 7
     defenseRating: 4
     range: 2
     hitPoints: 10
@@ -2647,18 +2647,18 @@ MonoBehaviour:
     apCost: 8
     resourceCost:
       human: 0
-      energy: 5
+      energy: 4
       materials: 2
-      tech: 5
+      tech: 4
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 7
     defenseRating: 2
     range: 4
-    hitPoints: 3
+    hitPoints: 5
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -2694,18 +2694,18 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 7
+    apCost: 8
     resourceCost:
       human: 0
       energy: 3
-      materials: 4
-      tech: 3
+      materials: 5
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 4
     defenseRating: 5
     range: 1
     hitPoints: 10
@@ -2734,7 +2734,7 @@ MonoBehaviour:
       statChanges: []
   - id: 55
     authoredKey: ashen.card.carrion-mother
-    deckPointCost: 4
+    deckPointCost: 7
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Carrion Mother
@@ -2747,18 +2747,18 @@ MonoBehaviour:
     apCost: 8
     resourceCost:
       human: 2
-      energy: 2
-      materials: 3
-      tech: 3
+      energy: 3
+      materials: 4
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 6
     defenseRating: 4
     range: 2
-    hitPoints: 8
+    hitPoints: 10
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2785,7 +2785,7 @@ MonoBehaviour:
       statChanges: []
   - id: 56
     authoredKey: ashen.card.colossus
-    deckPointCost: 5
+    deckPointCost: 6
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Colossus
@@ -2795,21 +2795,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 6
+    apCost: 8
     resourceCost:
       human: 0
       energy: 3
-      materials: 2
-      tech: 4
+      materials: 4
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 1
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 6
-    defenseRating: 2
+    attack: 7
+    defenseRating: 3
     range: 3
-    hitPoints: 4
+    hitPoints: 8
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -2834,7 +2834,7 @@ MonoBehaviour:
       statChanges: []
   - id: 57
     authoredKey: ashen.card.rivetstorm
-    deckPointCost: 5
+    deckPointCost: 6
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rivetstorm
@@ -2883,7 +2883,7 @@ MonoBehaviour:
       statChanges: []
   - id: 58
     authoredKey: ashen.card.walking-refinery
-    deckPointCost: 5
+    deckPointCost: 7
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Walking Refinery
@@ -2893,19 +2893,19 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 10
+    apCost: 9
     resourceCost:
       human: 2
-      energy: 4
+      energy: 3
       materials: 6
       tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 1
-    activationApCost: 1
+    activationApCost: 2
     commandRating: 0
     fate: 0
-    attack: 9
-    defenseRating: 5
+    attack: 8
+    defenseRating: 4
     range: 3
     hitPoints: 12
     initiative: 1
@@ -2931,7 +2931,7 @@ MonoBehaviour:
       statChanges: []
   - id: 59
     authoredKey: ashen.card.tow-rig
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 2
     deckBuilderExcluded: 0
     displayName: Tow Rig
@@ -2941,21 +2941,21 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 3
     resourceCost:
       human: 0
-      energy: 3
+      energy: 1
       materials: 3
-      tech: 3
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 2
+    attack: 3
     defenseRating: 4
     range: 1
-    hitPoints: 5
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
