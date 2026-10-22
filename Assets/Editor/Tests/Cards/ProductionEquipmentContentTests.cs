@@ -42,7 +42,7 @@ namespace Game.EditorTests
             var cards = Cards(); var keys = Keys("productionCards");
             var physical = cards.Where(c => c.cardType == CardType.Equipment
                 && c.attachmentSlot == AttachmentSlot.Equipment && c.equipment.hostKinds.Contains(EquipmentHostKind.Unit)).ToArray();
-            Assert.That(keys.Length, Is.GreaterThanOrEqualTo(42));
+            Assert.That(keys.Length, Is.GreaterThanOrEqualTo(47));
             Assert.That(keys.Distinct().Count(), Is.EqualTo(keys.Length));
             Assert.That(keys, Is.EquivalentTo(physical.Select(c => c.authoredKey).Concat(new[] { "neutral.tactic.tactical-missile" })));
             Assert.That(keys.Intersect(Keys("researchCards")), Is.Empty);
@@ -95,7 +95,8 @@ namespace Game.EditorTests
             var missile = cards.Single(c => c.authoredKey == "neutral.production.unit.tactical-missile");
             Assert.That(blueprint.cardType, Is.EqualTo(CardType.Equipment));
             Assert.That(blueprint.isAviation, Is.False);
-            Assert.That(blueprint.equipment.hostKinds, Is.EqualTo(new[] { EquipmentHostKind.Facility }));
+            Assert.That(blueprint.equipment.hostKinds, Has.No.Member(EquipmentHostKind.Unit));
+            Assert.That(blueprint.equipment.hostKinds, Has.No.Member(EquipmentHostKind.Hero));
             Assert.That(Text(CatalogPath), Does.Contain("resultCardKey: " + missile.authoredKey));
             Assert.That(Scalar(Blocks(NeutralPath).Single(b => Scalar(b, "authoredKey") == missile.authoredKey), "deckBuilderExcluded"), Is.EqualTo("1"));
             Assert.That(missile.isAviation, Is.True);
@@ -158,16 +159,16 @@ namespace Game.EditorTests
         [TestCase("Mobility Harness", 5, 3, 10, 7, 2)]
         [TestCase("Shotgun", 6, 3, 10, 6, 1)]
         [TestCase("Ballistic Shield", 5, 4, 10, 6, 2)]
-        [TestCase("Reinforced Chassis", 5, 3, 12, 5, 2)]
-        [TestCase("Reactive Armor", 5, 5, 10, 5, 2)]
-        [TestCase("Turbocharger", 5, 2, 10, 8, 2)]
-        [TestCase("Dozer Blade", 6, 4, 10, 6, 1)]
-        [TestCase("Siege Ram", 5, 3, 10, 5, 1)]
-        [TestCase("Mortar Rack", 4, 3, 10, 6, 3)]
-        [TestCase("Flame Projector", 5, 3, 10, 6, 1)]
+        [TestCase("Reinforced Chassis", 5, 3, 12, 6, 2)]
+        [TestCase("Reactive Armor", 5, 5, 10, 6, 2)]
+        [TestCase("Turbocharger", 5, 3, 10, 7, 2)]
+        [TestCase("Dozer Blade", 6, 4, 10, 6, 2)]
+        [TestCase("Siege Ram", 7, 3, 10, 6, 1)]
+        [TestCase("Mortar Rack", 5, 3, 10, 5, 3)]
+        [TestCase("Flame Projector", 6, 3, 10, 6, 1)]
         [TestCase("Recoil Cannon", 7, 3, 10, 5, 2)]
-        [TestCase("Portable Mortar", 5, 3, 10, 5, 3)]
-        [TestCase("Assault Conversion Kit", 5, 4, 12, 6, 1)]
+        [TestCase("Portable Mortar", 4, 3, 10, 5, 3)]
+        [TestCase("Assault Conversion Kit", 5, 4, 12, 6, 2)]
         public void RepresentativeAuthoredEffects(string name, int attack, int defense, int hp, int move, int range)
         {
             var projected = EquipmentSystem.Project(new CardData(Host()), Gear(name));
@@ -206,7 +207,7 @@ namespace Game.EditorTests
         [TestCase("Heavy MG")]
         [TestCase("Plasma Gun")]
         [TestCase("Plasma Cannon")]
-        [TestCase("Dozer Blade")]
+        [TestCase("Rail Rifle")]
         [TestCase("Shotgun")]
         [TestCase("Marksman Rifle")]
         public void WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities(string name)
@@ -216,7 +217,8 @@ namespace Game.EditorTests
                 UnitAbilities.Hyperkinetic, UnitAbilities.Pyrokinetic, UnitAbilities.AntiAir });
             var body = AttachmentSlotTests.Body(host);
             EquipmentSystem.ApplyAttachments(body, Gear(name), null);
-            Assert.That(body.Abilities, Is.EquivalentTo(new[] { UnitAbilities.CeramicArmor, UnitAbilities.R1S4 }));
+            Assert.That(body.Abilities, Is.EquivalentTo(new[] { UnitAbilities.CeramicArmor, UnitAbilities.R1S4 }
+                .Concat(name == "Rail Rifle" ? new[] { UnitAbilities.Hyperkinetic } : Array.Empty<string>())));
         }
 
         [TestCase("Dozer Blade")]
@@ -349,6 +351,8 @@ namespace Game.EditorTests
 
         [TestCase("Optical Scope")]
         [TestCase("Mobility Harness")]
+        [TestCase("Dozer Blade")]
+        [TestCase("Assault Conversion Kit")]
         public void InfantryAddonsPreserveExistingWeaponAndUtilityAbilities(string name)
         {
             var host = Host();
@@ -394,24 +398,24 @@ namespace Game.EditorTests
         {
             var host = Host(); host.grantedAbilities.Clear();
             var projected = EquipmentSystem.Project(new CardData(host), Gear("Twin SMG"));
-            Assert.That(projected.Stats[EquipmentStat.Attack], Is.EqualTo(8));
+            Assert.That(projected.Stats[EquipmentStat.Attack], Is.EqualTo(5));
             Assert.That(projected.Stats[EquipmentStat.Range], Is.EqualTo(1));
             var damage = ChallengeResult.ApplyAbilityModifiers(2, projected.Abilities,
                 new[] { UnitTypeTag.Bio }, Array.Empty<string>(), AbilityMagnitudes.Default);
             Assert.That(damage, Is.EqualTo(4));
-            Assert.That(Gear("Twin SMG").fate, Is.EqualTo(Gear("Double Barrel").fate));
+            Assert.That(Gear("Twin SMG").fate, Is.LessThan(Gear("Double Barrel").fate));
             // This is a contract check, not a claim that gameplay balance has been validated.
         }
 
         [Test, Category("UnityOnly")]
-        public void UnityCatalogResolvesFortyTwoCardsWithBothSpriteReferencesForAllFactions()
+        public void UnityCatalogResolvesFortySevenCardsWithBothSpriteReferencesForAllFactions()
         {
             var catalog = AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>(CatalogPath);
             Assert.That(catalog, Is.Not.Null);
             foreach (var faction in new[] { Faction.IronConcord, Faction.Ashen, Faction.Vessels })
             {
                 var cards = catalog.ResolveFor(ResearchProductionMode.Production, faction);
-                Assert.That(cards.Count, Is.GreaterThanOrEqualTo(42));
+                Assert.That(cards.Count, Is.GreaterThanOrEqualTo(47));
                 foreach (var c in cards)
                 {
                     Assert.That(c.attachmentSlot, Is.EqualTo(AttachmentSlot.Equipment));
@@ -422,6 +426,98 @@ namespace Game.EditorTests
                     Assert.That(preview, Does.Contain("Unit").And.Not.Contain("required"));
                 }
             }
+        }
+        private static readonly string[] PartNames = { "Ballistic Shield", "Assault Rifle Kit", "Optical Scope",
+            "Armor Plate", "Reinforced Chassis", "Reactive Armor", "Ceramic Vest", "Ceramic Plating",
+            "Mobility Harness", "Servo Actuators", "Turbocharger", "Nuclear Engine", "Dozer Blade", "Assault Conversion Kit" };
+
+        [Test]
+        public void EveryWeaponHasOwnAttackAndRangeOnEveryCompatibleHostAndMutator()
+        {
+            var cards = Cards();
+            var weapons = cards.Where(c => c.cardType == CardType.Equipment
+                && c.authoredKey.StartsWith("neutral.equipment.") && !PartNames.Contains(c.displayName)).ToArray();
+            Assert.That(weapons.Length, Is.EqualTo(33));
+            var hosts = FactionPaths.SelectMany(Blocks).Select(Read)
+                .Where(c => c.cardType == CardType.Unit || c.cardType == CardType.Hero).ToArray();
+            int combinations = 0;
+            foreach (var weapon in weapons)
+            {
+                var attack = weapon.equipment.statChanges.Single(c => c.stat == EquipmentStat.Attack);
+                var range = weapon.equipment.statChanges.Single(c => c.stat == EquipmentStat.Range);
+                Assert.That(attack.isOverride && range.isOverride, Is.True, weapon.displayName);
+                foreach (var host in hosts.Where(h => EquipmentSystem.FitsHost(weapon, h, out _)))
+                foreach (var mutator in new CardDefinition[] { null }.Concat(cards.Where(c =>
+                    c.attachmentSlot == AttachmentSlot.Mutator && EquipmentSystem.FitsHost(c, host, out _))))
+                {
+                    var p = EquipmentSystem.Project(host, weapon, mutator);
+                    int Bonus(EquipmentStat stat) => mutator?.equipment.statChanges
+                        .Where(c => c.stat == stat).Sum(c => c.amount) ?? 0;
+                    string context = $"{weapon.displayName}/{host.displayName}/{mutator?.displayName}";
+                    Assert.That(p.Stats[EquipmentStat.Attack], Is.EqualTo(attack.amount + Bonus(EquipmentStat.Attack)), context);
+                    Assert.That(p.Stats[EquipmentStat.Range], Is.EqualTo(System.Math.Max(1, range.amount) + Bonus(EquipmentStat.Range)), context);
+                    foreach (string removed in weapon.equipment.removeAbilities)
+                        if (!weapon.equipment.addAbilities.Contains(removed)
+                            && !(mutator?.equipment.addAbilities.Contains(removed) ?? false))
+                            Assert.That(p.Abilities, Has.No.Member(removed), context);
+                    combinations++;
+                }
+            }
+            TestContext.WriteLine($"Validated {combinations} compatible weapon/host/mutator combinations");
+            Assert.That(combinations, Is.GreaterThan(10000));
+            foreach (var part in cards.Where(c => PartNames.Contains(c.displayName)))
+            {
+                Assert.That(part.equipment.statChanges.All(c => !c.isOverride), Is.True, part.displayName);
+                Assert.That(part.equipment.removeAbilities, Is.Empty, part.displayName);
+            }
+        }
+
+        [TestCase("Infantry Missile")]
+        [TestCase("Vehicle Missile")]
+        [TestCase("Air Missile")]
+        [TestCase("Air Bomb 5")]
+        public void DisposableWeaponCannotInheritAnOldWarheadAndConsumptionRestoresBothSlots(string name)
+        {
+            var weapon = Gear(name);
+            var host = FactionPaths.SelectMany(Blocks).Select(Read)
+                .Where(h => EquipmentSystem.FitsHost(weapon, h, out _))
+                .OrderByDescending(h => h.unitTypeTags.Contains(UnitTypeTag.Bio)).First();
+            host.grantedAbilities.AddRange(new[] { UnitAbilities.CriticalDamage, "Ionic", "Explosion10" });
+            var mutation = Cards().Single(c => c.authoredKey == "neutral.mutator.neural-accelerator");
+            if (!EquipmentSystem.FitsHost(mutation, host, out _)) mutation = null;
+            var body = AttachmentSlotTests.Body(host);
+            body.IsAviation = host.isAviation;
+            EquipmentSystem.ApplyAttachments(body, null, mutation);
+            int attack = body.Attack, range = body.Range, defense = body.Defense, hp = body.HitPointsMax;
+            var abilities = body.Abilities.ToArray();
+            EquipmentSystem.ApplyAttachments(body, weapon, null);
+            Assert.That(body.Abilities, Has.No.Member(UnitAbilities.CriticalDamage));
+            Assert.That(body.Abilities, Has.No.Member("Ionic"));
+            Assert.That(body.Abilities, Has.No.Member("Explosion10"));
+            Assert.That(EquipmentSystem.ConsumeAfterAttack(body), Is.True);
+            Assert.That(new[] { body.Attack, body.Range, body.Defense, body.HitPointsMax },
+                Is.EqualTo(new[] { attack, range, defense, hp }));
+            Assert.That(body.Abilities, Is.EquivalentTo(abilities));
+            Assert.That(body.Equipment, Is.Null); Assert.That(body.Mutator, Is.SameAs(mutation));
+        }
+
+        [Test]
+        public void SelectedVesselsKeepInnateAdvantagesAndStillRejectBioGenomes()
+        {
+            var vessels = Blocks(FactionPaths[2]).Select(Read).ToArray();
+            var expected = new Dictionary<string, (int Attack, int Defense, int Hp)> {
+                ["Vessel Rifleman"] = (3, 1, 5), ["Bulwark Vessel"] = (4, 4, 5),
+                ["Spindle Gunner"] = (5, 2, 4), ["Lens Watcher"] = (6, 1, 4),
+                ["Bell Tortoise"] = (6, 4, 8), ["Heavy Sentinel"] = (6, 4, 8),
+                ["Palisade Frame"] = (5, 5, 12) };
+            foreach (var row in expected)
+            {
+                var c = vessels.Single(v => v.displayName == row.Key);
+                Assert.That((c.attack, c.defenseRating, c.hitPoints), Is.EqualTo(row.Value), row.Key);
+            }
+            foreach (var host in vessels.Where(c => c.cardType == CardType.Unit || c.cardType == CardType.Hero))
+            foreach (var genome in Cards().Where(c => c.attachmentSlot == AttachmentSlot.Mutator))
+                Assert.That(EquipmentSystem.FitsHost(genome, host, out _), Is.False, host.displayName);
         }
     }
 }

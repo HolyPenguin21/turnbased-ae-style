@@ -1106,7 +1106,7 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 1
     resourceCost:
-      human: 3
+      human: 2
       energy: 0
       materials: 0
       tech: 0
@@ -1114,7 +1114,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 3
     attack: 0
     defenseRating: 0
     range: 0
@@ -1380,7 +1380,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 6
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -1863,12 +1863,12 @@ MonoBehaviour:
       human: 0
       energy: 0
       materials: 2
-      tech: 0
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 3
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -1896,9 +1896,6 @@ MonoBehaviour:
       statChanges:
       - stat: 1
         amount: 2
-        isOverride: 0
-      - stat: 5
-        amount: -1
         isOverride: 0
   - id: 36
     authoredKey: neutral.equipment.mechanical.reinforced-chassis
@@ -1950,9 +1947,6 @@ MonoBehaviour:
       statChanges:
       - stat: 4
         amount: 2
-        isOverride: 0
-      - stat: 5
-        amount: -1
         isOverride: 0
   - id: 37
     authoredKey: neutral.equipment.vehicle.turbocharger
@@ -2022,7 +2016,7 @@ MonoBehaviour:
       human: 0
       energy: 1
       materials: 1
-      tech: 1
+      tech: 0
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2127,7 +2121,7 @@ MonoBehaviour:
       human: 0
       energy: 1
       materials: 1
-      tech: 4
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 1
@@ -2159,16 +2153,20 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Hyperkinetic
       statChanges:
       - stat: 0
-        amount: 1
-        isOverride: 0
+        amount: 7
+        isOverride: 1
       - stat: 3
         amount: 2
         isOverride: 1
@@ -2270,10 +2268,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -2304,7 +2306,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 3
     attack: 0
     defenseRating: 0
     range: 0
@@ -2331,10 +2333,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -2392,10 +2398,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Splash
       statChanges:
@@ -2420,14 +2430,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 2
+      energy: 1
       materials: 1
       tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -2454,10 +2464,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Pyrokinetic
       statChanges:
@@ -2516,10 +2530,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Pyrokinetic
       - Scorcher
@@ -2579,10 +2597,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - ShockAttack
       statChanges:
@@ -2609,7 +2631,7 @@ MonoBehaviour:
       human: 0
       energy: 2
       materials: 1
-      tech: 3
+      tech: 2
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2641,10 +2663,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - CriticalDamage
       statChanges:
@@ -2703,16 +2729,23 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Splash
       statChanges:
+      - stat: 0
+        amount: 4
+        isOverride: 1
       - stat: 3
-        amount: 1
-        isOverride: 0
+        amount: 3
+        isOverride: 1
       - stat: 5
         amount: -1
         isOverride: 0
@@ -2733,7 +2766,7 @@ MonoBehaviour:
       human: 0
       energy: 1
       materials: 2
-      tech: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -2765,10 +2798,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -2795,14 +2832,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 1
-      materials: 0
-      tech: 1
+      energy: 0
+      materials: 1
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 3
     attack: 0
     defenseRating: 0
     range: 0
@@ -2847,8 +2884,8 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 1
-      materials: 1
-      tech: 4
+      materials: 2
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 1
@@ -2880,15 +2917,22 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
+      - stat: 0
+        amount: 6
+        isOverride: 1
       - stat: 3
-        amount: 1
-        isOverride: 0
+        amount: 3
+        isOverride: 1
   - id: 53
     authoredKey: neutral.equipment.bio.heavy-mg
     deckPointCost: 1
@@ -2911,7 +2955,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 3
     attack: 0
     defenseRating: 0
     range: 0
@@ -2938,10 +2982,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -2995,13 +3043,27 @@ MonoBehaviour:
       hostTypeTags: 03000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - AA
       statChanges:
       - stat: 0
-        amount: 1
-        isOverride: 0
+        amount: 5
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 55
     authoredKey: neutral.equipment.mechanical.ceramic-plating
     deckPointCost: 1
@@ -3100,15 +3162,19 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
-        amount: 1
-        isOverride: 0
+        amount: 6
+        isOverride: 1
       - stat: 3
         amount: 2
         isOverride: 1
@@ -3161,13 +3227,20 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Splash
       statChanges:
+      - stat: 0
+        amount: 6
+        isOverride: 1
       - stat: 3
         amount: 2
         isOverride: 1
@@ -3186,9 +3259,9 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 2
-      materials: 0
-      tech: 2
+      energy: 1
+      materials: 1
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 1
@@ -3220,16 +3293,20 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Hyperkinetic
       statChanges:
       - stat: 0
-        amount: 1
-        isOverride: 0
+        amount: 5
+        isOverride: 1
       - stat: 3
         amount: 1
         isOverride: 1
@@ -3282,16 +3359,20 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Hyperkinetic
       statChanges:
       - stat: 0
-        amount: 1
-        isOverride: 0
+        amount: 6
+        isOverride: 1
       - stat: 3
         amount: 2
         isOverride: 1
@@ -3317,7 +3398,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0
@@ -3344,14 +3425,21 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Pyrokinetic
       - Scorcher
       statChanges:
+      - stat: 0
+        amount: 6
+        isOverride: 1
       - stat: 3
         amount: 1
         isOverride: 1
@@ -3400,10 +3488,27 @@ MonoBehaviour:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - ShockAttack
-      statChanges: []
+      statChanges:
+      - stat: 0
+        amount: 6
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 62
     authoredKey: neutral.equipment.vehicle.aa-mount
     deckPointCost: 1
@@ -3449,10 +3554,27 @@ MonoBehaviour:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - AA
-      statChanges: []
+      statChanges:
+      - stat: 0
+        amount: 6
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 63
     authoredKey: neutral.equipment.infantry-missile
     deckPointCost: 2
@@ -3468,9 +3590,9 @@ MonoBehaviour:
     apCost: 4
     resourceCost:
       human: 0
-      energy: 2
-      materials: 3
-      tech: 3
+      energy: 1
+      materials: 2
+      tech: 2
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -3499,7 +3621,18 @@ MonoBehaviour:
       hostTypeTags: 03000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -3523,9 +3656,9 @@ MonoBehaviour:
     apCost: 5
     resourceCost:
       human: 0
-      energy: 3
-      materials: 4
-      tech: 3
+      energy: 2
+      materials: 3
+      tech: 2
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -3554,7 +3687,18 @@ MonoBehaviour:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -3578,9 +3722,9 @@ MonoBehaviour:
     apCost: 5
     resourceCost:
       human: 0
-      energy: 3
-      materials: 3
-      tech: 4
+      energy: 2
+      materials: 2
+      tech: 3
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -3609,7 +3753,18 @@ MonoBehaviour:
       hostTypeTags: 06000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -3634,7 +3789,7 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 1
-      materials: 3
+      materials: 2
       tech: 2
     requiredBuildingAbility: 
     moveMax: 0
@@ -3664,12 +3819,26 @@ MonoBehaviour:
       hostTypeTags: 06000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Explosion3
       statChanges:
       - stat: 0
         amount: 10
+        isOverride: 1
+      - stat: 3
+        amount: 0
         isOverride: 1
   - id: 67
     authoredKey: neutral.equipment.air-bomb-5
@@ -3686,9 +3855,9 @@ MonoBehaviour:
     apCost: 5
     resourceCost:
       human: 0
-      energy: 3
-      materials: 5
-      tech: 4
+      energy: 2
+      materials: 4
+      tech: 3
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -3717,12 +3886,26 @@ MonoBehaviour:
       hostTypeTags: 06000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Explosion5
       statChanges:
       - stat: 0
         amount: 10
+        isOverride: 1
+      - stat: 3
+        amount: 0
         isOverride: 1
   - id: 68
     authoredKey: neutral.equipment.vehicle.dozer-blade
@@ -3769,19 +3952,9 @@ MonoBehaviour:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - Scorcher
-      - Splash
-      - CriticalDamage
-      - AA
+      removeAbilities: []
       addAbilities: []
       statChanges:
-      - stat: 3
-        amount: 1
-        isOverride: 1
       - stat: 0
         amount: 1
         isOverride: 0
@@ -3837,19 +4010,23 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - CriticalDamage
       statChanges:
+      - stat: 0
+        amount: 7
+        isOverride: 1
       - stat: 3
         amount: 1
         isOverride: 1
-      - stat: 5
-        amount: -1
-        isOverride: 0
   - id: 70
     authoredKey: neutral.equipment.vehicle.spiked-ram
     deckPointCost: 1
@@ -3899,19 +4076,23 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - ShockAttack
       statChanges:
+      - stat: 0
+        amount: 6
+        isOverride: 1
       - stat: 3
         amount: 1
         isOverride: 1
-      - stat: 0
-        amount: 1
-        isOverride: 0
   - id: 71
     authoredKey: neutral.equipment.vehicle.mortar-rack
     deckPointCost: 1
@@ -3928,6 +4109,75 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 1
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 0400000005000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
+      addAbilities:
+      - Splash
+      statChanges:
+      - stat: 0
+        amount: 5
+        isOverride: 1
+      - stat: 3
+        amount: 3
+        isOverride: 1
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 72
+    authoredKey: neutral.equipment.vehicle.assault-conversion-kit
+    deckPointCost: 2
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Assault Conversion Kit
+    art: {fileID: 21300000, guid: 9c156d1d89dd1e44b83134bb0e055763, type: 3}
+    detailArt: {fileID: 21300000, guid: 0da74156cb1b3a5438ec4dd719fbdefc, type: 3}
+    faction: 2
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
       materials: 2
       tech: 1
     requiredBuildingAbility: 
@@ -3957,82 +4207,9 @@ MonoBehaviour:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - Scorcher
-      - Splash
-      - CriticalDamage
-      - AA
-      addAbilities:
-      - Splash
+      removeAbilities: []
+      addAbilities: []
       statChanges:
-      - stat: 3
-        amount: 1
-        isOverride: 0
-      - stat: 0
-        amount: -1
-        isOverride: 0
-  - id: 72
-    authoredKey: neutral.equipment.vehicle.assault-conversion-kit
-    deckPointCost: 2
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Assault Conversion Kit
-    art: {fileID: 21300000, guid: 9c156d1d89dd1e44b83134bb0e055763, type: 3}
-    detailArt: {fileID: 21300000, guid: 0da74156cb1b3a5438ec4dd719fbdefc, type: 3}
-    faction: 2
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 2
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 0400000005000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - Scorcher
-      - Splash
-      - CriticalDamage
-      - AA
-      addAbilities:
-      - ShockAttack
-      statChanges:
-      - stat: 3
-        amount: 1
-        isOverride: 1
       - stat: 1
         amount: 1
         isOverride: 0
@@ -4054,9 +4231,9 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 3
-      materials: 0
-      tech: 4
+      energy: 2
+      materials: 1
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 1
@@ -4106,8 +4283,8 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 1
-      tech: 4
+      materials: 2
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 1
@@ -4135,10 +4312,27 @@ MonoBehaviour:
       hostTypeTags: 04000000
       hostKinds: 00000000
       clearAbilityFamilies: 
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - CriticalDamage
-      statChanges: []
+      statChanges:
+      - stat: 0
+        amount: 7
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 75
     authoredKey: neutral.equipment.infantry.rail-rifle
     deckPointCost: 1
@@ -4154,14 +4348,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 1
+      energy: 2
       materials: 1
-      tech: 2
+      tech: 3
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 6
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -4188,10 +4382,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Hyperkinetic
       statChanges:
@@ -4199,7 +4397,7 @@ MonoBehaviour:
         amount: 6
         isOverride: 1
       - stat: 3
-        amount: 2
+        amount: 3
         isOverride: 1
   - id: 76
     authoredKey: neutral.equipment.vehicle.rail-cannon
@@ -4223,7 +4421,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 6
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -4250,10 +4448,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities:
       - Hyperkinetic
       statChanges:
@@ -4261,7 +4463,7 @@ MonoBehaviour:
         amount: 7
         isOverride: 1
       - stat: 3
-        amount: 2
+        amount: 3
         isOverride: 1
   - id: 77
     authoredKey: neutral.equipment.bio.plasma-gun
@@ -4285,7 +4487,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 6
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -4312,10 +4514,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0
@@ -4339,14 +4545,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 4
-      materials: 1
-      tech: 4
+      energy: 3
+      materials: 2
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 6
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -4373,10 +4579,14 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Ionic
       - Scorcher
       - Splash
       - CriticalDamage
       - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
       addAbilities: []
       statChanges:
       - stat: 0

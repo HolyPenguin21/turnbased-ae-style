@@ -760,7 +760,7 @@ MonoBehaviour:
     attack: 3
     defenseRating: 1
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -858,7 +858,7 @@ MonoBehaviour:
     attack: 4
     defenseRating: 4
     range: 1
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1050,7 +1050,7 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 6
     defenseRating: 1
     range: 3
     hitPoints: 4
@@ -1294,7 +1294,7 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 2
     hitPoints: 4
@@ -2174,7 +2174,7 @@ MonoBehaviour:
     attack: 6
     defenseRating: 4
     range: 2
-    hitPoints: 7
+    hitPoints: 8
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2316,9 +2316,9 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 6
-    defenseRating: 3
+    defenseRating: 4
     range: 2
-    hitPoints: 7
+    hitPoints: 8
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2852,7 +2852,7 @@ MonoBehaviour:
     attack: 5
     defenseRating: 5
     range: 2
-    hitPoints: 10
+    hitPoints: 12
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
