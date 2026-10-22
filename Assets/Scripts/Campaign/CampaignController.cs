@@ -141,7 +141,12 @@ namespace Game.Campaign
             }).OrderByDescending(a => a.Score).First().Pair;
             bool manual = state.Regions.Find(r => r.RegionId == selected.Target).OwnerFaction == state.HumanFaction;
             BeginAttack(selected.Source, selected.Target, manual);
-            if (!manual && resolveImmediately) ResolveFast(attacker, CampaignDeck.Standard(state.PendingOperation.DefenderFaction, rules, state.Factions.Find(f => f.Faction == state.PendingOperation.DefenderFaction).ActiveDeckReference), resolver);
+            if (!manual && resolveImmediately)
+            {
+                var op = state.PendingOperation;
+                ResolveFast(CampaignDeck.Ai(op.AttackerFaction, rules, op.RandomSeed, op.AttackerDeckName),
+                    CampaignDeck.Ai(op.DefenderFaction, rules, op.RandomSeed, op.DefenderDeckName), resolver);
+            }
         }
     }
 }

@@ -213,7 +213,6 @@ namespace Game.Setup
         {
             if (!map.CanEnter(hex)) return null;
             var army = new ArmyData { Name = definition.name, Hex = hex, Owner = _neutralPlayer };
-            ArmyRegistry.Register(army);
 
             foreach (ArmyUnitEntry entry in definition.members)
             {
@@ -231,6 +230,9 @@ namespace Game.Setup
             if (army.Members.Count == 0)
                 return null; // every entry failed to resolve — nothing to actually show on this hex
 
+            // A campaign's free leader can already see this hex. Publish the complete roster
+            // through Register's visibility/content notification, never an empty placeholder.
+            ArmyRegistry.Register(army);
             army.RefreshTransport();
 
             // Only now, once every member's already in — CreateArmyMarker's very first

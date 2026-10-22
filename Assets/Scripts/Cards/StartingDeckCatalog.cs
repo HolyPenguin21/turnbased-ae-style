@@ -21,6 +21,8 @@ namespace Game.Cards
     public class StartingDeck
     {
         public string deckName;
+        // AI identity uses the card's immutable key, independently of the displayed deck name.
+        public string leaderCardKey;
         public Faction faction;
         public List<DeckCardEntry> cards = new List<DeckCardEntry>();
         // AI decks only: blueprints (equipment / mutators) the AI may produce without limit.
@@ -89,17 +91,40 @@ namespace Game.Cards
             return options.Count == 0 ? null : options[Random.Range(0, options.Count)].deckName;
         }
 
+        public StartingDeck FindAiDeck(Faction faction, string deckName) =>
+            GetAiDecks(faction).FirstOrDefault(d => d.deckName == deckName);
+
+        public CardDefinition ResolveAiLeader(Faction faction, string deckName)
+        {
+            var deck = FindAiDeck(faction, deckName);
+            var leader = ResolveCard(deck?.leaderCardKey);
+            return leader != null && leader.cardType == CardType.Hero && leader.faction == faction
+                && deck.cards.Any(e => e != null && e.cardKey == leader.authoredKey && e.count == 1)
+                ? leader : null;
+        }
+
+        // Only main cards consume the AI's deck budget. Blueprints still cost resources/AP in play.
+        public int AiDeckPoints(StartingDeck deck) => deck?.cards?.Sum(e =>
+            e == null ? 0 : (ResolveCard(e.cardKey)?.deckPointCost ?? 0) * e.count) ?? 0;
+
         public StartingDeck GetAiDeck(Faction faction, string deckName)
         {
-            List<StartingDeck> options = GetAiDecks(faction).ToList();
-            return options.FirstOrDefault(d => d.deckName == deckName)
-                ?? (options.Count > 0 ? options[Random.Range(0, options.Count)] : null);
+            // Random is resolved once by GameSession.AssignAiDecks. Reads never reroll a deck.
+            return FindAiDeck(faction, deckName) ?? GetAiDecks(faction).FirstOrDefault();
         }
 
         // The pool an AI player draws from: its chosen AI deck, else (no AI deck authored for the
         // faction) the faction's starting deck. Human players keep BuildDeckPool(faction).
-        public List<CardDefinition> BuildAiDeckPool(Faction faction, string deckName) =>
-            BuildPool(GetAiDeck(faction, deckName) ?? GetDeck(faction));
+        public List<CardDefinition> BuildAiDeckPool(Faction faction, string deckName, string grantedLeaderKey = null)
+        {
+            var pool = BuildPool(GetAiDeck(faction, deckName) ?? GetDeck(faction));
+            if (!string.IsNullOrEmpty(grantedLeaderKey))
+            {
+                int index = pool.FindIndex(c => c.authoredKey == grantedLeaderKey);
+                if (index >= 0) pool.RemoveAt(index);
+            }
+            return pool;
+        }
 
         // Keys of the AI deck's blueprints; null when the faction has no AI deck (no restriction).
         public HashSet<string> BuildAiBlueprintKeys(Faction faction, string deckName)
@@ -113,7 +138,7 @@ namespace Game.Cards
         }
 
         public List<CardDefinition> BuildDeckPool(PlayerSetupData player) =>
-            player.IsHuman ? BuildDeckPool(player.Faction) : BuildAiDeckPool(player.Faction, player.AiDeckName);
+            player.IsHuman ? BuildDeckPool(player.Faction) : BuildAiDeckPool(player.Faction, player.AiDeckName, player.AiGrantedLeaderKey);
 
         private List<CardDefinition> BuildPool(StartingDeck deck)
         {

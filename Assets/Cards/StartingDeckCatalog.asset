@@ -202,12 +202,1097 @@ MonoBehaviour:
     equipment: []
     mutators: []
   aiDecks:
-  - deckName: Iron Concord AI Deck
+  - deckName: Aldric Voss
+    leaderCardKey: concord.card.aldric-voss
+    faction: 0
+    cards:
+    - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.vector-vance
+      count: 1
+    - cardKey: concord.card.bolt-jax
+      count: 1
+    - cardKey: concord.card.tessa-rourke
+      count: 1
+    - cardKey: concord.card.ark-carrier
+      count: 2
+    - cardKey: concord.card.mosquito
+      count: 4
+    - cardKey: concord.card.rusty-vulture
+      count: 3
+    - cardKey: concord.card.storm-petrel
+      count: 2
+    - cardKey: concord.card.skydiver
+      count: 1
+    - cardKey: concord.card.medium-tank
+      count: 2
+    - cardKey: concord.card.crawler
+      count: 1
+    - cardKey: concord.card.heavy-tank
+      count: 1
+    - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.light-infantry
+      count: 4
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
+      count: 1
+    - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Kessa Vrail
+    leaderCardKey: concord.card.kessa-vrail
+    faction: 0
+    cards:
+    - cardKey: concord.card.kessa-vrail
+      count: 1
+    - cardKey: concord.card.vector-vance
+      count: 1
+    - cardKey: concord.card.bolt-jax
+      count: 1
+    - cardKey: concord.card.tessa-rourke
+      count: 1
+    - cardKey: concord.card.nadia-thorne
+      count: 1
+    - cardKey: concord.card.heavy-infantry
+      count: 4
+    - cardKey: concord.card.trench-guardian
+      count: 4
+    - cardKey: concord.card.siege-grenadier
+      count: 3
+    - cardKey: concord.card.at-infantry
+      count: 3
+    - cardKey: concord.card.medium-infantry
+      count: 3
+    - cardKey: concord.card.dust-medic
+      count: 1
+    - cardKey: concord.card.barracuda
+      count: 2
+    - cardKey: concord.card.crawler
+      count: 1
+    - cardKey: concord.card.light-infantry
+      count: 4
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
+      count: 1
+    - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Vector Vance
+    leaderCardKey: concord.card.vector-vance
+    faction: 0
+    cards:
+    - cardKey: concord.card.vector-vance
+      count: 1
+    - cardKey: concord.card.bolt-jax
+      count: 1
+    - cardKey: concord.card.kessa-vrail
+      count: 1
+    - cardKey: concord.card.nadia-thorne
+      count: 1
+    - cardKey: concord.card.tessa-rourke
+      count: 1
+    - cardKey: concord.card.light-infantry
+      count: 4
+    - cardKey: concord.card.medium-infantry
+      count: 4
+    - cardKey: concord.card.hazard-pioneer
+      count: 4
+    - cardKey: concord.card.at-infantry
+      count: 3
+    - cardKey: concord.card.coil-marksman
+      count: 3
+    - cardKey: concord.card.flamer
+      count: 2
+    - cardKey: concord.card.heavy-infantry
+      count: 3
+    - cardKey: concord.card.sand-jackal
+      count: 2
+    - cardKey: concord.card.crawler
+      count: 1
+    - cardKey: concord.card.dust-medic
+      count: 1
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
+      count: 1
+    - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Dorian Kesh
+    leaderCardKey: concord.card.dorian-kesh
     faction: 0
     cards:
     - cardKey: concord.card.dorian-kesh
       count: 1
+    - cardKey: concord.card.vector-vance
+      count: 1
+    - cardKey: concord.card.bolt-jax
+      count: 1
+    - cardKey: concord.card.lira-sable
+      count: 1
+    - cardKey: concord.card.light-tank
+      count: 4
+    - cardKey: concord.card.medium-tank
+      count: 4
+    - cardKey: concord.card.heavy-tank
+      count: 3
+    - cardKey: concord.card.needle-rail-tank
+      count: 2
+    - cardKey: concord.card.boatswain
+      count: 1
+    - cardKey: concord.card.roadwarden-aa
+      count: 1
+    - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.light-infantry
+      count: 4
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
+      count: 1
+    - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Bolt Jax
+    leaderCardKey: concord.card.bolt-jax
+    faction: 0
+    cards:
+    - cardKey: concord.card.bolt-jax
+      count: 1
+    - cardKey: concord.card.vector-vance
+      count: 1
     - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.tessa-rourke
+      count: 1
+    - cardKey: concord.card.light-infantry
+      count: 4
+    - cardKey: concord.card.medium-infantry
+      count: 3
+    - cardKey: concord.card.atlas
+      count: 3
+    - cardKey: concord.card.claimjumper
+      count: 3
+    - cardKey: concord.card.mantis
+      count: 3
+    - cardKey: concord.card.duelist
+      count: 1
+    - cardKey: concord.card.arsenal
+      count: 1
+    - cardKey: concord.card.crawler
+      count: 1
+    - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
+      count: 1
+    - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Nadia Thorne
+    leaderCardKey: concord.card.nadia-thorne
+    faction: 0
+    cards:
+    - cardKey: concord.card.nadia-thorne
+      count: 1
+    - cardKey: concord.card.vector-vance
+      count: 1
+    - cardKey: concord.card.bolt-jax
+      count: 1
+    - cardKey: concord.card.tessa-rourke
+      count: 1
+    - cardKey: concord.card.lira-sable
+      count: 1
+    - cardKey: concord.card.jackal
+      count: 4
+    - cardKey: concord.card.grapeshot
+      count: 4
+    - cardKey: concord.card.medium-infantry
+      count: 4
+    - cardKey: concord.card.light-tank
+      count: 4
+    - cardKey: concord.card.barracuda
+      count: 3
+    - cardKey: concord.card.roadwarden-aa
+      count: 4
+    - cardKey: concord.card.mosquito
+      count: 2
+    - cardKey: concord.card.light-infantry
+      count: 2
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
+      count: 1
+    - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Lira Sable
+    leaderCardKey: concord.card.lira-sable
+    faction: 0
+    cards:
+    - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.vector-vance
       count: 1
@@ -215,41 +1300,29 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.nadia-thorne
       count: 1
-    - cardKey: concord.card.kessa-vrail
-      count: 1
-    - cardKey: concord.card.lira-sable
-      count: 1
     - cardKey: concord.card.tessa-rourke
       count: 1
-    - cardKey: concord.card.scout
-      count: 2
-    - cardKey: concord.card.rc-vehicle
-      count: 1
-    - cardKey: concord.card.light-infantry
+    - cardKey: concord.card.jackal
+      count: 4
+    - cardKey: concord.card.sandnought
       count: 2
     - cardKey: concord.card.medium-infantry
-      count: 1
-    - cardKey: concord.card.trench-guardian
-      count: 1
+      count: 4
+    - cardKey: concord.card.coil-marksman
+      count: 4
     - cardKey: concord.card.at-infantry
-      count: 1
-    - cardKey: concord.card.sand-jackal
-      count: 1
+      count: 3
+    - cardKey: concord.card.rusty-vulture
+      count: 3
     - cardKey: concord.card.crawler
       count: 1
-    - cardKey: concord.card.light-tank
-      count: 2
-    - cardKey: concord.card.medium-tank
+    - cardKey: concord.card.light-infantry
+      count: 4
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
       count: 1
-    - cardKey: concord.card.heavy-tank
-      count: 1
-    - cardKey: concord.card.artillery-cannon
-      count: 1
-    - cardKey: concord.card.sand-organ
-      count: 1
-    - cardKey: concord.card.mosquito
-      count: 1
-    - cardKey: concord.card.rusty-vulture
+    - cardKey: concord.card.concord-base
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
@@ -395,54 +1468,221 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.mutator.reflex-genome
       count: 1
-  - deckName: The Ashen AI Deck
+  - deckName: Tessa Rourke
+    leaderCardKey: concord.card.tessa-rourke
+    faction: 0
+    cards:
+    - cardKey: concord.card.tessa-rourke
+      count: 1
+    - cardKey: concord.card.vector-vance
+      count: 1
+    - cardKey: concord.card.bolt-jax
+      count: 1
+    - cardKey: concord.card.dorian-kesh
+      count: 1
+    - cardKey: concord.card.light-infantry
+      count: 3
+    - cardKey: concord.card.medium-infantry
+      count: 2
+    - cardKey: concord.card.artillery-cannon
+      count: 2
+    - cardKey: concord.card.sand-organ
+      count: 3
+    - cardKey: concord.card.artillery-tank
+      count: 2
+    - cardKey: concord.card.pulse-cannon
+      count: 1
+    - cardKey: concord.card.heavy-tank
+      count: 3
+    - cardKey: concord.card.breakwater-crab
+      count: 1
+    - cardKey: concord.card.crawler
+      count: 1
+    - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.scout
+      count: 3
+    - cardKey: concord.card.rc-vehicle
+      count: 1
+    - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Miller Hayes
+    leaderCardKey: ashen.card.miller-hayes
     faction: 4
     cards:
     - cardKey: ashen.card.miller-hayes
       count: 1
-    - cardKey: ashen.card.hank-mercer
+    - cardKey: ashen.card.nova-sterling
       count: 1
     - cardKey: ashen.card.rusty-miller
       count: 1
-    - cardKey: ashen.card.nora-blackwell
-      count: 1
-    - cardKey: ashen.card.elena-hayes
-      count: 1
-    - cardKey: ashen.card.vera-sterling
-      count: 1
-    - cardKey: ashen.card.nova-sterling
-      count: 1
     - cardKey: ashen.card.iri-vane
       count: 1
-    - cardKey: ashen.card.hooded
-      count: 2
-    - cardKey: ashen.card.dust-runner
-      count: 1
     - cardKey: ashen.card.ash-runner
-      count: 2
+      count: 3
     - cardKey: ashen.card.iron-husk
-      count: 1
-    - cardKey: ashen.card.scab-shield
-      count: 1
-    - cardKey: ashen.card.scrap-shaman
-      count: 1
-    - cardKey: ashen.card.roadbreaker
-      count: 1
+      count: 3
+    - cardKey: ashen.card.rust-tank
+      count: 4
+    - cardKey: ashen.card.iron-maw
+      count: 3
+    - cardKey: ashen.card.scrap-mortar
+      count: 3
+    - cardKey: ashen.card.slag-lobber
+      count: 3
     - cardKey: ashen.card.rad-hunter
       count: 1
-    - cardKey: ashen.card.rust-tank
-      count: 2
-    - cardKey: ashen.card.iron-maw
+    - cardKey: ashen.card.tow-rig
       count: 1
-    - cardKey: ashen.card.boomstick
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
       count: 1
-    - cardKey: ashen.card.scrap-mortar
-      count: 1
-    - cardKey: ashen.card.gravebell-mortar
-      count: 1
-    - cardKey: ashen.card.carrion
-      count: 1
-    - cardKey: ashen.card.scrapwing
+    - cardKey: ashen.card.ashen-base
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
@@ -588,54 +1828,2557 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.mutator.reflex-genome
       count: 1
-  - deckName: The Vessels AI Deck
+  - deckName: Hank Mercer
+    leaderCardKey: ashen.card.hank-mercer
+    faction: 4
+    cards:
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.nova-sterling
+      count: 1
+    - cardKey: ashen.card.rusty-miller
+      count: 1
+    - cardKey: ashen.card.iri-vane
+      count: 1
+    - cardKey: ashen.card.ash-runner
+      count: 4
+    - cardKey: ashen.card.iron-husk
+      count: 4
+    - cardKey: ashen.card.scab-shield
+      count: 2
+    - cardKey: ashen.card.rad-brute
+      count: 3
+    - cardKey: ashen.card.furnace-bearer
+      count: 3
+    - cardKey: ashen.card.rad-leaper
+      count: 3
+    - cardKey: ashen.card.roadbreaker
+      count: 2
+    - cardKey: ashen.card.rad-hunter
+      count: 1
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
+      count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Rusty Miller
+    leaderCardKey: ashen.card.rusty-miller
+    faction: 4
+    cards:
+    - cardKey: ashen.card.rusty-miller
+      count: 1
+    - cardKey: ashen.card.nova-sterling
+      count: 1
+    - cardKey: ashen.card.miller-hayes
+      count: 1
+    - cardKey: ashen.card.iri-vane
+      count: 1
+    - cardKey: ashen.card.ash-runner
+      count: 3
+    - cardKey: ashen.card.bone-picker
+      count: 3
+    - cardKey: ashen.card.ash-walker
+      count: 3
+    - cardKey: ashen.card.scrap-locust
+      count: 3
+    - cardKey: ashen.card.colossus
+      count: 3
+    - cardKey: ashen.card.rivetstorm
+      count: 2
+    - cardKey: ashen.card.scrap-mountain
+      count: 1
+    - cardKey: ashen.card.rad-hunter
+      count: 1
+    - cardKey: ashen.card.tow-rig
+      count: 1
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
+      count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Nora Blackwell
+    leaderCardKey: ashen.card.nora-blackwell
+    faction: 4
+    cards:
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.nova-sterling
+      count: 1
+    - cardKey: ashen.card.rusty-miller
+      count: 1
+    - cardKey: ashen.card.iri-vane
+      count: 1
+    - cardKey: ashen.card.vera-sterling
+      count: 1
+    - cardKey: ashen.card.ash-runner
+      count: 4
+    - cardKey: ashen.card.cinder-stalker
+      count: 4
+    - cardKey: ashen.card.deadeye
+      count: 4
+    - cardKey: ashen.card.rad-leaper
+      count: 3
+    - cardKey: ashen.card.rattletrap
+      count: 4
+    - cardKey: ashen.card.flywheel
+      count: 3
+    - cardKey: ashen.card.carrion
+      count: 2
+    - cardKey: ashen.card.rad-hunter
+      count: 1
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
+      count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Elena Hayes
+    leaderCardKey: ashen.card.elena-hayes
+    faction: 4
+    cards:
+    - cardKey: ashen.card.elena-hayes
+      count: 1
+    - cardKey: ashen.card.nova-sterling
+      count: 1
+    - cardKey: ashen.card.rusty-miller
+      count: 1
+    - cardKey: ashen.card.iri-vane
+      count: 1
+    - cardKey: ashen.card.ash-runner
+      count: 4
+    - cardKey: ashen.card.iron-husk
+      count: 3
+    - cardKey: ashen.card.rust-tank
+      count: 3
+    - cardKey: ashen.card.boomstick
+      count: 3
+    - cardKey: ashen.card.iron-maw
+      count: 3
+    - cardKey: ashen.card.roadbreaker
+      count: 2
+    - cardKey: ashen.card.rad-hunter
+      count: 1
+    - cardKey: ashen.card.scrap-mortar
+      count: 1
+    - cardKey: ashen.card.tow-rig
+      count: 1
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
+      count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Vera Sterling
+    leaderCardKey: ashen.card.vera-sterling
+    faction: 4
+    cards:
+    - cardKey: ashen.card.vera-sterling
+      count: 1
+    - cardKey: ashen.card.nova-sterling
+      count: 1
+    - cardKey: ashen.card.rusty-miller
+      count: 1
+    - cardKey: ashen.card.iri-vane
+      count: 1
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.ash-runner
+      count: 4
+    - cardKey: ashen.card.iron-husk
+      count: 4
+    - cardKey: ashen.card.rattletrap
+      count: 4
+    - cardKey: ashen.card.flywheel
+      count: 3
+    - cardKey: ashen.card.roadbreaker
+      count: 3
+    - cardKey: ashen.card.scrapwing
+      count: 3
+    - cardKey: ashen.card.rad-hunter
+      count: 1
+    - cardKey: ashen.card.rad-leaper
+      count: 2
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
+      count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Nova Sterling
+    leaderCardKey: ashen.card.nova-sterling
+    faction: 4
+    cards:
+    - cardKey: ashen.card.nova-sterling
+      count: 1
+    - cardKey: ashen.card.rusty-miller
+      count: 1
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.iri-vane
+      count: 1
+    - cardKey: ashen.card.ash-runner
+      count: 4
+    - cardKey: ashen.card.bone-picker
+      count: 4
+    - cardKey: ashen.card.iron-husk
+      count: 4
+    - cardKey: ashen.card.rad-leaper
+      count: 3
+    - cardKey: ashen.card.rad-brute
+      count: 3
+    - cardKey: ashen.card.spore-drifter
+      count: 2
+    - cardKey: ashen.card.scrap-shaman
+      count: 2
+    - cardKey: ashen.card.scab-shield
+      count: 2
+    - cardKey: ashen.card.roadbreaker
+      count: 1
+    - cardKey: ashen.card.rad-hunter
+      count: 1
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
+      count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Iri Vane
+    leaderCardKey: ashen.card.iri-vane
+    faction: 4
+    cards:
+    - cardKey: ashen.card.iri-vane
+      count: 1
+    - cardKey: ashen.card.nova-sterling
+      count: 1
+    - cardKey: ashen.card.rusty-miller
+      count: 1
+    - cardKey: ashen.card.miller-hayes
+      count: 1
+    - cardKey: ashen.card.ash-runner
+      count: 4
+    - cardKey: ashen.card.iron-husk
+      count: 2
+    - cardKey: ashen.card.gravebell-mortar
+      count: 3
+    - cardKey: ashen.card.ash-howitzer
+      count: 1
+    - cardKey: ashen.card.dune-locomotive
+      count: 2
+    - cardKey: ashen.card.grave-engine
+      count: 1
+    - cardKey: ashen.card.walking-refinery
+      count: 1
+    - cardKey: ashen.card.rad-hunter
+      count: 1
+    - cardKey: ashen.card.tow-rig
+      count: 1
+    - cardKey: ashen.card.rust-tank
+      count: 2
+    - cardKey: ashen.card.hooded
+      count: 3
+    - cardKey: ashen.card.dust-runner
+      count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Mara the Archivist
+    leaderCardKey: vessels.02.mara-the-archivist
     faction: 5
     cards:
     - cardKey: vessels.02.mara-the-archivist
       count: 1
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.04.vale-the-machinist
+      count: 1
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
+    - cardKey: vessels.15.vessel-rifleman
+      count: 4
+    - cardKey: vessels.27.arc-cantor
+      count: 3
+    - cardKey: vessels.24.prism-engine
+      count: 3
+    - cardKey: vessels.unit.censer-keeper
+      count: 2
+    - cardKey: vessels.21.resonance-tank
+      count: 3
+    - cardKey: vessels.unit.halo-kite
+      count: 2
+    - cardKey: vessels.unit.moth-bomber
+      count: 3
+    - cardKey: vessels.13.arc-sentry
+      count: 1
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 1
+    - cardKey: vessels.10.whisper-scout
+      count: 3
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Edda the Conductor
+    leaderCardKey: vessels.09.edda-the-conductor
+    faction: 5
+    cards:
     - cardKey: vessels.09.edda-the-conductor
       count: 1
     - cardKey: vessels.08.thren-the-scholar
       count: 1
     - cardKey: vessels.04.vale-the-machinist
       count: 1
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
+    - cardKey: vessels.15.vessel-rifleman
+      count: 4
+    - cardKey: vessels.unit.spindle-gunner
+      count: 3
+    - cardKey: vessels.27.lens-watcher
+      count: 3
+    - cardKey: vessels.unit.prism-lancer
+      count: 3
+    - cardKey: vessels.unit.lensbreaker
+      count: 3
+    - cardKey: vessels.unit.tuning-fork
+      count: 3
+    - cardKey: vessels.13.arc-sentry
+      count: 1
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 1
+    - cardKey: vessels.unit.bell-tortoise
+      count: 1
+    - cardKey: vessels.10.whisper-scout
+      count: 3
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Thren the Scholar
+    leaderCardKey: vessels.08.thren-the-scholar
+    faction: 5
+    cards:
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.04.vale-the-machinist
+      count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
+    - cardKey: vessels.15.vessel-rifleman
+      count: 4
+    - cardKey: vessels.unit.spindle-gunner
+      count: 4
+    - cardKey: vessels.unit.tuning-blade
+      count: 4
+    - cardKey: vessels.27.lens-watcher
+      count: 4
+    - cardKey: vessels.27.arc-cantor
+      count: 3
+    - cardKey: vessels.16.bulwark-vessel
+      count: 3
+    - cardKey: vessels.unit.censer-battery
+      count: 1
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 2
+    - cardKey: vessels.13.arc-sentry
+      count: 1
+    - cardKey: vessels.10.whisper-scout
+      count: 3
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Vale the Machinist
+    leaderCardKey: vessels.04.vale-the-machinist
+    faction: 5
+    cards:
+    - cardKey: vessels.04.vale-the-machinist
+      count: 1
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
+    - cardKey: vessels.15.vessel-rifleman
+      count: 4
+    - cardKey: vessels.unit.pilgrim-strider
+      count: 2
+    - cardKey: vessels.18.bastion-frame
+      count: 3
+    - cardKey: vessels.20.siege-walker
+      count: 3
+    - cardKey: vessels.19.heavy-sentinel
+      count: 3
+    - cardKey: vessels.unit.reliquary-crab
+      count: 1
+    - cardKey: vessels.13.arc-sentry
+      count: 1
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 1
+    - cardKey: vessels.10.whisper-scout
+      count: 3
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Orr the Keeper
+    leaderCardKey: vessels.03.orr-the-keeper
+    faction: 5
+    cards:
     - cardKey: vessels.03.orr-the-keeper
       count: 1
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.04.vale-the-machinist
+      count: 1
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
+    - cardKey: vessels.15.vessel-rifleman
+      count: 4
+    - cardKey: vessels.unit.tuning-blade
+      count: 4
+    - cardKey: vessels.16.bulwark-vessel
+      count: 4
+    - cardKey: vessels.unit.bell-breacher
+      count: 3
+    - cardKey: vessels.unit.anchor-warden
+      count: 3
+    - cardKey: vessels.unit.chime-grenadier
+      count: 3
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 2
+    - cardKey: vessels.13.arc-sentry
+      count: 1
+    - cardKey: vessels.10.whisper-scout
+      count: 3
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Ilex the Surveyor
+    leaderCardKey: vessels.05.ilex-the-surveyor
+    faction: 5
+    cards:
     - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.04.vale-the-machinist
       count: 1
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.15.vessel-rifleman
+      count: 3
+    - cardKey: vessels.14.shard-wanderer
+      count: 4
+    - cardKey: vessels.unit.mantle-skirmisher
+      count: 4
+    - cardKey: vessels.unit.spindle-gunner
+      count: 3
+    - cardKey: vessels.17.relay-carrier
+      count: 4
+    - cardKey: vessels.unit.pilgrim-strider
+      count: 3
+    - cardKey: vessels.27.gyrocopter
+      count: 3
+    - cardKey: vessels.13.arc-sentry
+      count: 1
     - cardKey: vessels.10.whisper-scout
-      count: 2
+      count: 3
     - cardKey: vessels.11.glass-runner
       count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Jol the Warden
+    leaderCardKey: vessels.06.jol-the-warden
+    faction: 5
+    cards:
+    - cardKey: vessels.06.jol-the-warden
+      count: 1
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.04.vale-the-machinist
+      count: 1
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
+      count: 4
+    - cardKey: vessels.14.shard-wanderer
+      count: 4
+    - cardKey: vessels.21.resonance-tank
+      count: 4
+    - cardKey: vessels.unit.duplex-crawler
+      count: 4
+    - cardKey: vessels.unit.halo-interceptor
+      count: 3
+    - cardKey: vessels.unit.chordbreaker
       count: 2
-    - cardKey: vessels.16.bulwark-vessel
-      count: 1
-    - cardKey: vessels.unit.bell-breacher
-      count: 1
-    - cardKey: vessels.27.arc-cantor
-      count: 1
-    - cardKey: vessels.unit.mnemonic-carrier
+    - cardKey: vessels.17.relay-carrier
       count: 1
     - cardKey: vessels.13.arc-sentry
       count: 1
-    - cardKey: vessels.21.resonance-tank
+    - cardKey: vessels.10.whisper-scout
+      count: 3
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
+    equipment:
+    - cardKey: neutral.tactic.tactical-missile
+      count: 1
+    - cardKey: neutral.equipment.infantry-missile
+      count: 1
+    - cardKey: neutral.equipment.vehicle-missile
+      count: 1
+    - cardKey: neutral.equipment.air-missile
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-5
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.equipment.bio.heavy-mg
+      count: 1
+    - cardKey: neutral.equipment.bio.plasma-gun
+      count: 1
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.ceramic-vest
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.marksman-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.infantry.shotgun
+      count: 1
+    - cardKey: neutral.equipment.infantry.grenade-launcher
+      count: 1
+    - cardKey: neutral.equipment.infantry.shock-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.incendiary-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.rail-rifle
+      count: 1
+    - cardKey: neutral.equipment.infantry.twin-smg
+      count: 1
+    - cardKey: neutral.equipment.infantry.portable-mortar
+      count: 1
+    - cardKey: neutral.equipment.infantry.recoil-cannon
+      count: 1
+    - cardKey: neutral.equipment.infantry.aa-launcher
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
+      count: 1
+    - cardKey: neutral.equipment.mechanical.servo-actuators
+      count: 1
+    - cardKey: neutral.equipment.mechanical.ceramic-plating
+      count: 1
+    - cardKey: neutral.equipment.mechanical.reactive-armor
+      count: 1
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.armored.artillery-cannon
+      count: 1
+    - cardKey: neutral.equipment.armored.at-vh-launcher
+      count: 1
+    - cardKey: neutral.equipment.armored.double-barrel
+      count: 1
+    - cardKey: neutral.equipment.armored.plasma-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.he-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.flame-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.rail-cannon
+      count: 1
+    - cardKey: neutral.equipment.vehicle.shock-projector
+      count: 1
+    - cardKey: neutral.equipment.vehicle.aa-mount
+      count: 1
+    - cardKey: neutral.equipment.vehicle.dozer-blade
+      count: 1
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.spiked-ram
+      count: 1
+    - cardKey: neutral.equipment.vehicle.mortar-rack
+      count: 1
+    - cardKey: neutral.equipment.vehicle.assault-conversion-kit
+      count: 1
+    mutators:
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.reactive-marrow
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.pain-suppression
+      count: 1
+    - cardKey: neutral.mutator.regenerative-culture
+      count: 1
+    - cardKey: neutral.mutator.hyper-regeneration
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.metabolic-overdrive
+      count: 1
+    - cardKey: neutral.mutator.predator-reflexes
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.rapid-synapse
+      count: 1
+    - cardKey: neutral.mutator.hunter-glands
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
+      count: 1
+    - cardKey: neutral.mutator.chameleon-tissue
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.ghost-genome
+      count: 1
+    - cardKey: neutral.mutator.hunter-genome
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+  - deckName: Nyx the Cartographer
+    leaderCardKey: vessels.07.nyx-the-cartographer
+    faction: 5
+    cards:
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.04.vale-the-machinist
+      count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.15.vessel-rifleman
+      count: 4
+    - cardKey: vessels.16.bulwark-vessel
       count: 2
     - cardKey: vessels.unit.bell-tortoise
-      count: 1
-    - cardKey: vessels.unit.lensbreaker
-      count: 1
+      count: 3
     - cardKey: vessels.23.echo-mortar
-      count: 1
+      count: 3
+    - cardKey: vessels.25.harmonic-howitzer
+      count: 3
     - cardKey: vessels.unit.counterweight-lobber
       count: 1
-    - cardKey: vessels.unit.halo-kite
+    - cardKey: vessels.unit.palisade-frame
+      count: 2
+    - cardKey: vessels.13.arc-sentry
       count: 1
-    - cardKey: vessels.27.gyrocopter
+    - cardKey: vessels.unit.mnemonic-carrier
+      count: 1
+    - cardKey: vessels.10.whisper-scout
+      count: 3
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: neutral.facility.lab
       count: 1

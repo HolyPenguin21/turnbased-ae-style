@@ -120,6 +120,17 @@ namespace Game.EditorTests
             finally { (flow as System.IDisposable)?.Dispose(); }
         }
 
+        [TestCase(Faction.IronConcord, "Aldric Voss")]
+        [TestCase(Faction.Ashen, "Nova Sterling")]
+        [TestCase(Faction.Vessels, "Orr the Keeper")]
+        public void GreetingUsesTheSelectedDeckLeader(Faction faction, string name)
+        {
+            var opponent = GameSession.Players[1]; opponent.Faction = faction; opponent.AiDeckName = name;
+            Assert.That(Call(_turns, "TryShowMatchGreeting", _human), Is.True);
+            var leader = _decks.ResolveAiLeader(faction, name);
+            Assert.That(_portrait.sprite, Is.SameAs(leader.detailArt != null ? leader.detailArt : leader.art));
+        }
+
         [Test]
         public void DuplicateConfirmation_IsIgnoredWhilePendingAndAfterCompletion()
         {

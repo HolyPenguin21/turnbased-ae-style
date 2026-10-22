@@ -59,6 +59,28 @@ public sealed class CampaignCollectionIntegrationTests
             }
         }
     }
+    [Test] public void RejectedMatchPreparationPreservesRandomAndExplicitAiChoices()
+    {
+        var previous = ProgressionContext.Collection;
+        var config = AssetDatabase.LoadAssetAtPath<GameConfig>("Assets/Config/GameConfig.asset");
+        try
+        {
+            typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
+            foreach (string requested in new[] { null, "Aldric Voss" })
+            {
+                var ai = new PlayerSetupData { Faction = Faction.IronConcord, AiDeckName = requested };
+                var players = new System.Collections.Generic.List<PlayerSetupData> {
+                    new PlayerSetupData { Faction = Faction.Ashen, IsHuman = true, SelectedDeckId = "missing-deck" }, ai };
+                var random = UnityEngine.Random.state;
+                Assert.IsFalse(GameSession.TryPrepareMatch(players, config, out _));
+                Assert.AreEqual(requested, ai.AiDeckName);
+                Assert.AreEqual(random, UnityEngine.Random.state, "Rejected setup must not consume the random deck roll.");
+                Assert.IsNull(ai.AiBlueprints);
+            }
+        }
+        finally { typeof(ProgressionContext).GetProperty("Collection").SetValue(null, previous); }
+    }
+
     [Test] public void SelectedSavedDeckUsesExistingValidatorAndDetachedLoadout()
     {
         foreach (var faction in DeckRules.PlayableFactions)
@@ -209,11 +231,17 @@ public sealed class CampaignCollectionIntegrationTests
             string deck = collection.DefaultDeck(state.HumanFaction).deckId;
             Assert.IsTrue(CampaignMatchBridge.PrepareMatch(config, deck, out var error), error);
             string match = GameSession.MatchId;
+            var ai = GameSession.Players.Single(p => !p.IsHuman);
+            string aiDeck = ai.AiDeckName;
+            Assert.IsNotNull(config.collectionDeckCatalog.ResolveAiLeader(ai.Faction, aiDeck));
+            Assert.AreEqual(aiDeck, ai.Faction == controller.View.PendingOperation.AttackerFaction
+                ? controller.View.PendingOperation.AttackerDeckName : controller.View.PendingOperation.DefenderDeckName);
             Assert.AreEqual(Biome.Desert, GameSession.SelectedBiome);
             Assert.AreEqual(ResourceSpecialization.Materials, GameSession.SelectedResourceConditions.Value.Specialization);
             Assert.AreEqual(ResourceRichness.Rich, GameSession.SelectedResourceConditions.Value.Richness);
             Assert.IsTrue(CampaignMatchBridge.PrepareMatch(config, deck, out error), error);
             Assert.AreEqual(match, GameSession.MatchId);
+            Assert.AreEqual(aiDeck, GameSession.Players.Single(p => !p.IsHuman).AiDeckName);
             Assert.AreEqual(Biome.Desert, GameSession.ResolveBiome());
             // Registry cleanup on entering Game cannot erase prepared inputs.
             Game.Setup.MatchStateInventory.ResetForNewMatch();

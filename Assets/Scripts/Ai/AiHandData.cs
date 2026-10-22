@@ -59,12 +59,12 @@ namespace Game.Ai
         public IReadOnlyList<CardDefinition> RemainingDeck => _remainingDeck;
 
         public AiHandData(StartingDeckCatalog deckCatalog, Faction faction, int startingHandSize, int capacity = 10,
-            string aiDeckName = null)
+            string aiDeckName = null, string grantedLeaderKey = null)
         {
             Capacity = Mathf.Max(0, capacity);
 
             if (deckCatalog != null)
-                _remainingDeck.AddRange(deckCatalog.BuildAiDeckPool(faction, aiDeckName));
+                _remainingDeck.AddRange(deckCatalog.BuildAiDeckPool(faction, aiDeckName, grantedLeaderKey));
 
             foreach (CardDefinition definition in DeckDraw.DrawStartingHand(_remainingDeck,
                 Math.Min(startingHandSize, Capacity)))
@@ -186,7 +186,7 @@ namespace Game.Ai
                 return null;
             if (!ByPlayer.TryGetValue(player, out AiHandData hand))
             {
-                hand = new AiHandData(deckCatalog, player.Faction, startingHandSize, capacity ?? 10, player.AiDeckName);
+                hand = new AiHandData(deckCatalog, player.Faction, startingHandSize, capacity ?? 10, player.AiDeckName, player.AiGrantedLeaderKey);
                 ByPlayer[player] = hand;
                 OwnerByHand[hand] = player;
             }

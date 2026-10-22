@@ -84,9 +84,12 @@ namespace Game.Campaign
                 var players = new List<PlayerSetupData>();
                 foreach (var faction in new[] { op.AttackerFaction, op.DefenderFaction })
                     players.Add(new PlayerSetupData { Nickname = faction.ToString(), Faction = faction, ColorIndex = players.Count, IsHuman = faction == s.HumanFaction, SelectedDeckId = faction == s.HumanFaction ? deckId : null });
+                var enemyPlayer = players.Find(p => !p.IsHuman);
+                string savedEnemyName = enemy == op.AttackerFaction ? op.AttackerDeckName : op.DefenderDeckName;
+                enemyPlayer.AiDeckName = CampaignDeck.AiSource(enemy, collection.Rules, op.RandomSeed, savedEnemyName)?.deckName;
                 if (!GameSession.TryPrepareMatch(players, config, out error)) return false;
                 // A retry reuses the saved MatchId, only a fresh tactical world is created.
-                Controller.RegisterMatch(deckId, deck.name, collection.Rules.Starting.GetDeck(enemy)?.deckName ?? "Standard " + enemy);
+                Controller.RegisterMatch(deckId, deck.name, enemyPlayer.AiDeckName ?? collection.Rules.Starting.GetDeck(enemy)?.deckName ?? "Standard " + enemy);
                 GameSession.Players = players;
                 GameSession.SetCampaignContext(new CampaignMatchContext { CampaignId = s.CampaignId, OperationId = op.OperationId,
                     MatchId = op.MatchId, AttackerFaction = op.AttackerFaction, DefenderFaction = op.DefenderFaction, HumanFaction = s.HumanFaction,

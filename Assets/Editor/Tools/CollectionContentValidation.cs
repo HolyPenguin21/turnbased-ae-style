@@ -56,6 +56,20 @@ namespace Game.EditorTools
                         if (rules.Resolve(row.cardKey) == null) throw new BuildFailedException("Unresolved starter reference: " + row.cardKey);
                 foreach (var row in rules.Research.researchCards.Concat(rules.Research.productionCards))
                     if (rules.Resolve(row.cardKey) == null) throw new BuildFailedException("Unresolved blueprint: " + row.cardKey);
+                foreach (var deck in rules.Starting.aiDecks)
+                {
+                    if (rules.Starting.ResolveAiLeader(deck.faction, deck.deckName) == null)
+                        throw new BuildFailedException("Missing AI leader: " + deck.deckName);
+                    if (rules.Starting.AiDeckPoints(deck) > DeckRules.MaximumPoints)
+                        throw new BuildFailedException("AI main deck exceeds 100 points: " + deck.deckName);
+                    foreach (var row in deck.cards.Concat(deck.equipment).Concat(deck.mutators))
+                    {
+                        var card = rules.Resolve(row.cardKey);
+                        if (card == null || !rules.Permitted(card, deck.faction) || row.count <= 0
+                            || row.count > DeckRules.CopyLimit(card))
+                            throw new BuildFailedException("Invalid AI deck card: " + deck.deckName + "/" + row.cardKey);
+                    }
+                }
                 var profile = new CollectionProfile();
                 var service = new CollectionService(rules, null, profile);
                 service.InitializeStarters(profile);
