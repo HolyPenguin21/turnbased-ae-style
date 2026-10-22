@@ -354,7 +354,9 @@ namespace Game.Map
         {
             if (incoming == null) return false;
             bool hero = incoming.cardType == CardType.Hero;
-            var prospective = new UnitData { IsHero = hero, CommandRating = hero ? incoming.commandRating : 0 };
+            var prospective = UnitData.CreateProjection();
+            prospective.IsHero = hero;
+            prospective.CommandRating = hero ? incoming.commandRating : 0;
             return RosterFits(ProjectAdd(Members, prospective, IsGarrison), IsGarrison);
         }
 

@@ -189,6 +189,7 @@ namespace Game.UI
 
         private void Awake()
         {
+            TutorialHintController.Install(turnController, this, armyViewerModal);
             InitializeTacticSwitch();
             if (drawButton != null)
                 drawButton.onClick.AddListener(OnDrawClicked);
@@ -1299,6 +1300,7 @@ namespace Game.UI
 
         private void Relayout(bool animated)
         {
+            TutorialHintController.Invalidate();
             if (_tacticFlipping) return;
             ClampScroll();
             RelayoutTactics(animated);
@@ -1379,6 +1381,7 @@ namespace Game.UI
             RefreshDeckCountText();
             root.SpendActionPoints(drawApCost);
             AddCard(new CardData(card));
+            TutorialHintController.Complete(TutorialHintId.Draw);
         }
 
         private void OnScrollLeftClicked()
