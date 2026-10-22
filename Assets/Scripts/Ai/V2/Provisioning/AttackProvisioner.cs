@@ -411,7 +411,7 @@ namespace Game.Ai.V2
         }
 
         // 2026-10-21 — the second operation materialized from a garrison: the same pinned-pair and
-        // AP-envelope proof ActiveDefence's sortie uses (ActiveDefenceProvisioner.TryResolveSortieCore)
+        // AP-envelope proof ActiveDefence's sortie uses (GarrisonSortieProvisioning.TryResolve)
         // with Attack's own fight test (AttackSecondaryPolicy.SortieStillTakesSite). Nothing moves
         // here; the executor's terminal step does (AttackExecutor.TryMaterializeSortie).
         private static ProvisioningResult ProvisionSortie(PlayerSetupData player, PlayerRoot root,

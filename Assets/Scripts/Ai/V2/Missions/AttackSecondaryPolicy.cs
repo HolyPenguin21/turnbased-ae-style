@@ -186,7 +186,7 @@ namespace Game.Ai.V2
         }
 
         // Provisioning's and execution's re-proof of the exact pinned bodies before they leave the
-        // garrison (ActiveDefenceProvisioner.TryResolveSortieCore's `evaluate`): still a hostile
+        // garrison (GarrisonSortieProvisioning.TryResolve's `evaluate`): still a hostile
         // Base observed, still surplus, still a decisive fight reached this turn, cover intact.
         internal static bool SortieStillTakesSite(WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx,
             AttackMissionTarget leg, HexCoord from, IReadOnlyList<UnitData> units, out string why)

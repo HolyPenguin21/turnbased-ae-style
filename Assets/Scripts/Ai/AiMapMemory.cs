@@ -74,7 +74,7 @@ namespace Game.Ai
             a.ArmyId == b.ArmyId && a.Hex.Equals(b.Hex) && a.Owner == b.Owner
             && a.SeenTurn == b.SeenTurn && a.IsGroundArmy == b.IsGroundArmy
             && a.Roster.CommanderIndex == b.Roster.CommanderIndex
-            && SameProfiles(a.Roster.Units, b.Roster.Units)
+            && WorthIt.DefenderProfile.SameContent(a.Roster.Units, b.Roster.Units)
             && a.Roster.CurrentFates.SequenceEqual(b.Roster.CurrentFates);
 
         private class EnemySighting
@@ -197,6 +197,18 @@ namespace Game.Ai
                     return RecceRadius > 0 && RecceSpotStrength > 0;
                 return false;
             }
+
+            // THE change rule of a remembered sighting, read by memory updates and by snapshot
+            // observation alike: every field a decision reads, the roster by content. Keep it in
+            // step with the field list above.
+            public bool SameContent(KnownEnemySighting o) =>
+                ArmyId == o.ArmyId && Hex.Equals(o.Hex) && Owner == o.Owner && Name == o.Name
+                && MemberCount == o.MemberCount && DefenseSum == o.DefenseSum && AttackSum == o.AttackSum
+                && HasAntiAir == o.HasAntiAir && SeenTurn == o.SeenTurn
+                && RecceRadius == o.RecceRadius && RecceSpotStrength == o.RecceSpotStrength
+                && IsGarrison == o.IsGarrison && IsAir == o.IsAir && MaxMovement == o.MaxMovement
+                && Commander.Equals(o.Commander)
+                && WorthIt.DefenderProfile.SameContent(Defenders, o.Defenders);
         }
 
         // Aggregate Attack/Defense sums plus the per-unit DefenderProfile list WorthIt.CanDamageAll
@@ -774,48 +786,12 @@ namespace Game.Ai
                 yield return (zone.Center, zone.Radius);
         }
 
-        private static bool SameEnemySighting(EnemySighting a, EnemySighting b)
-        {
-            if (a == null || b == null) return a == b;
-            if (a.ArmyId != b.ArmyId || !a.Hex.Equals(b.Hex) || a.Owner != b.Owner
-                || a.Name != b.Name || a.MemberCount != b.MemberCount
-                || a.DefenseSum != b.DefenseSum || a.AttackSum != b.AttackSum
-                || a.HasAntiAir != b.HasAntiAir || a.SeenTurn != b.SeenTurn
-                || a.RecceRadius != b.RecceRadius || a.RecceSpotStrength != b.RecceSpotStrength
-                || a.IsGarrison != b.IsGarrison || a.IsAir != b.IsAir
-                || a.MaxMovement != b.MaxMovement || !a.Commander.Equals(b.Commander))
-                return false;
-            return SameProfiles(a.Defenders, b.Defenders);
-        }
+        private static bool SameEnemySighting(EnemySighting a, EnemySighting b) =>
+            a == null || b == null ? a == b : Known(a).SameContent(Known(b));
 
         private static bool SameGuardStrength(GuardStrength a, GuardStrength b) =>
             a.Defense == b.Defense && a.Attack == b.Attack && a.Name == b.Name
-            && a.Commander.Equals(b.Commander) && SameProfiles(a.Defenders, b.Defenders);
-
-        private static bool SameProfiles(IReadOnlyList<WorthIt.DefenderProfile> a,
-            IReadOnlyList<WorthIt.DefenderProfile> b)
-        {
-            int ac = a?.Count ?? 0;
-            int bc = b?.Count ?? 0;
-            if (ac != bc) return false;
-            for (int i = 0; i < ac; i++)
-            {
-                WorthIt.DefenderProfile x = a[i];
-                WorthIt.DefenderProfile y = b[i];
-                if (x.IsHero != y.IsHero || x.FateMax != y.FateMax
-                    || x.IsGroundCombatant != y.IsGroundCombatant || x.IsSummoned != y.IsSummoned
-                    || x.Attack != y.Attack || x.Defense != y.Defense
-                    || x.HitPoints != y.HitPoints || x.MaxHitPoints != y.MaxHitPoints
-                    || x.Initiative != y.Initiative || x.HasCeramicArmor != y.HasCeramicArmor
-                    || x.Consumption?.Key != y.Consumption?.Key || x.SingleUseUnit != y.SingleUseUnit
-                    || !(x.TypeTags ?? System.Array.Empty<UnitTypeTag>())
-                        .SequenceEqual(y.TypeTags ?? System.Array.Empty<UnitTypeTag>())
-                    || !(x.Abilities ?? System.Array.Empty<string>())
-                        .SequenceEqual(y.Abilities ?? System.Array.Empty<string>()))
-                    return false;
-            }
-            return true;
-        }
+            && a.Commander.Equals(b.Commander) && WorthIt.DefenderProfile.SameContent(a.Defenders, b.Defenders);
 
         private static bool SameBuildingSighting(BuildingSighting a, BuildingSighting b)
         {
@@ -824,7 +800,7 @@ namespace Game.Ai
                 && a.IsStartingCitadel == b.IsStartingCitadel && a.IsBase == b.IsBase
                 && a.Defense == b.Defense && a.SeenTurn == b.SeenTurn
                 && a.FreeFacilitySlots == b.FreeFacilitySlots
-                && SameProfiles(a.ExplosionStructures, b.ExplosionStructures)
+                && WorthIt.DefenderProfile.SameContent(a.ExplosionStructures, b.ExplosionStructures)
                 && (a.FacilityAbilities ?? new HashSet<string>())
                     .SetEquals(b.FacilityAbilities ?? new HashSet<string>())
                 && (a.CollectedAmounts ?? System.Array.Empty<int>())
