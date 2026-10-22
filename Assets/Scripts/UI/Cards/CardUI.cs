@@ -137,7 +137,7 @@ namespace Game.UI
             if (artImage != null && definition != null)
                 artImage.sprite = definition.art;
             if (nameText != null)
-                nameText.text = definition != null && definition.cardType != CardType.Tactic ? definition.displayName : string.Empty;
+                nameText.text = definition != null ? definition.displayName : string.Empty;
             RefreshAbilityText();
 
             RefreshStatsRow(definition);

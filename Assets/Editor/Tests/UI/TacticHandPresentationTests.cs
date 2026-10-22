@@ -236,7 +236,7 @@ namespace Game.EditorTests
             Assert.AreEqual(1, inventory.Cards.Count);
         }
 
-        [Test] public void TacticalFacesHaveNoTextOrStatBadges()
+        [Test] public void TacticalFacesShowOnlyHandTitleAndNoStatBadges()
         {
             var face = Child("ordinary-tactic-face").AddComponent<CardUI>();
             var name = Child("name").AddComponent<TextMeshProUGUI>();
@@ -247,7 +247,7 @@ namespace Game.EditorTests
             Set(face, "statsRow", stats); Set(face, "apBadgeRoot", ap);
             definition.displayName = "A tactic"; definition.apCost = 3;
             face.Setup(null, new CardData(definition), 0.9f, 1.2f, 20f, 0.12f, 0.5f);
-            Assert.AreEqual(string.Empty, name.text);
+            Assert.AreEqual("A tactic", name.text, "The hex-map hand card shows the tactic title.");
             Assert.AreEqual(string.Empty, description.text);
             Assert.IsFalse(stats.activeSelf); Assert.IsFalse(ap.activeSelf);
             var battleFace = Child("battle-tactic-face").AddComponent<BattleTacticCardUI>();
