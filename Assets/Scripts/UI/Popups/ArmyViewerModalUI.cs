@@ -263,7 +263,7 @@ namespace Game.UI
 
         private void Awake()
         {
-            armyButtonRow?.SetMaxVisible(7);
+            armyButtonRow?.SetMaxVisible(8);
             _canvas = GetComponentInParent<Canvas>();
             tutorialScroll = gridContainer != null ? gridContainer.GetComponentInParent<ScrollRect>() : null;
             if (tutorialScroll != null) tutorialScroll.onValueChanged.AddListener(OnTutorialScroll);

@@ -67,7 +67,7 @@ namespace Game.Ai
                 _remainingDeck.AddRange(deckCatalog.BuildAiDeckPool(faction, aiDeckName, grantedLeaderKey));
 
             foreach (CardDefinition definition in DeckDraw.DrawStartingHand(_remainingDeck,
-                Math.Min(startingHandSize, Capacity)))
+                Math.Min(startingHandSize, Capacity), reserveRapidHero: true))
                 AddCard(new CardData(definition));
         }
 

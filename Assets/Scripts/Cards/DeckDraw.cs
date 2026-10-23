@@ -17,7 +17,10 @@ namespace Game.Cards
         // Reserve one cheapest mobile ground scout before the random draws, then insert it
         // into a random slot. Human and AI opening deals use this in every match mode. All cards
         // come from the selected deck and are consumed once; scout-free decks still draw normally.
-        public static List<CardDefinition> DrawStartingHand(List<CardDefinition> remainingDeck, int count)
+        // AI-only extra (reserveRapidHero): after the scout, one Hero with RapidReaction from the
+        // same deck is also reserved (random among such heroes) while a slot remains. Humans draw fairly.
+        public static List<CardDefinition> DrawStartingHand(List<CardDefinition> remainingDeck, int count,
+            bool reserveRapidHero = false)
         {
             var hand = new List<CardDefinition>();
             if (remainingDeck == null || count <= 0 || remainingDeck.Count == 0)
@@ -56,12 +59,33 @@ namespace Game.Cards
                 remainingDeck.RemoveAt(scoutIndex);
             }
             int randomCount = count - (scout != null ? 1 : 0);
+            CardDefinition rapidHero = null;
+            if (reserveRapidHero && randomCount > 0)
+            {
+                int heroes = 0, heroIndex = -1;
+                for (int i = 0; i < remainingDeck.Count; i++)
+                {
+                    CardDefinition c = remainingDeck[i];
+                    if (c != null && c.cardType == CardType.Hero && c.grantedAbilities != null
+                        && c.grantedAbilities.Contains(UnitAbilities.RapidReaction)
+                        && Random.Range(0, ++heroes) == 0)
+                        heroIndex = i;
+                }
+                if (heroIndex >= 0)
+                {
+                    rapidHero = remainingDeck[heroIndex];
+                    remainingDeck.RemoveAt(heroIndex);
+                    randomCount--;
+                }
+            }
             for (int i = 0; i < randomCount; i++)
             {
                 CardDefinition card = PopRandom(remainingDeck);
                 if (card == null) break;
                 hand.Add(card);
             }
+            if (rapidHero != null)
+                hand.Insert(Random.Range(0, hand.Count + 1), rapidHero);
             if (scout != null)
                 hand.Insert(Random.Range(0, hand.Count + 1), scout);
             return hand;

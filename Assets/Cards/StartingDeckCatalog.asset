@@ -220,12 +220,20 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.tessa-rourke
       count: 1
+    - cardKey: concord.card.dorian-kesh
+      count: 1
+    - cardKey: concord.card.nadia-thorne
+      count: 1
+    - cardKey: concord.card.kessa-vrail
+      count: 1
+    - cardKey: concord.card.lira-sable
+      count: 1
     - cardKey: concord.card.ark-carrier
       count: 2
     - cardKey: concord.card.mosquito
       count: 4
     - cardKey: concord.card.rusty-vulture
-      count: 3
+      count: 2
     - cardKey: concord.card.storm-petrel
       count: 2
     - cardKey: concord.card.skydiver
@@ -404,8 +412,14 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.nadia-thorne
       count: 1
+    - cardKey: concord.card.dorian-kesh
+      count: 1
+    - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.lira-sable
+      count: 1
     - cardKey: concord.card.heavy-infantry
-      count: 3
+      count: 2
     - cardKey: concord.card.trench-guardian
       count: 4
     - cardKey: concord.card.siege-grenadier
@@ -586,8 +600,14 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.tessa-rourke
       count: 1
+    - cardKey: concord.card.dorian-kesh
+      count: 1
+    - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.lira-sable
+      count: 1
     - cardKey: concord.card.light-infantry
-      count: 4
+      count: 3
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.hazard-pioneer
@@ -768,10 +788,18 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.lira-sable
       count: 1
+    - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.nadia-thorne
+      count: 1
+    - cardKey: concord.card.kessa-vrail
+      count: 1
+    - cardKey: concord.card.tessa-rourke
+      count: 1
     - cardKey: concord.card.light-tank
       count: 1
     - cardKey: concord.card.medium-tank
-      count: 2
+      count: 1
     - cardKey: concord.card.heavy-tank
       count: 2
     - cardKey: concord.card.needle-rail-tank
@@ -788,8 +816,6 @@ MonoBehaviour:
       count: 2
     - cardKey: concord.card.dust-medic
       count: 2
-    - cardKey: concord.card.scrapper
-      count: 1
     - cardKey: concord.card.scout
       count: 3
     - cardKey: concord.card.rc-vehicle
@@ -952,12 +978,20 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.tessa-rourke
       count: 1
+    - cardKey: concord.card.dorian-kesh
+      count: 1
+    - cardKey: concord.card.nadia-thorne
+      count: 1
+    - cardKey: concord.card.kessa-vrail
+      count: 1
+    - cardKey: concord.card.lira-sable
+      count: 1
     - cardKey: concord.card.light-infantry
       count: 4
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.atlas
-      count: 3
+      count: 2
     - cardKey: concord.card.claimjumper
       count: 2
     - cardKey: concord.card.mantis
@@ -1136,8 +1170,14 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.lira-sable
       count: 1
+    - cardKey: concord.card.dorian-kesh
+      count: 1
+    - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.kessa-vrail
+      count: 1
     - cardKey: concord.card.jackal
-      count: 2
+      count: 1
     - cardKey: concord.card.grapeshot
       count: 2
     - cardKey: concord.card.medium-infantry
@@ -1318,10 +1358,16 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.tessa-rourke
       count: 1
+    - cardKey: concord.card.dorian-kesh
+      count: 1
+    - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.kessa-vrail
+      count: 1
     - cardKey: concord.card.jackal
       count: 4
     - cardKey: concord.card.sandnought
-      count: 2
+      count: 1
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.coil-marksman
@@ -1496,6 +1542,14 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.dorian-kesh
       count: 1
+    - cardKey: concord.card.aldric-voss
+      count: 1
+    - cardKey: concord.card.nadia-thorne
+      count: 1
+    - cardKey: concord.card.kessa-vrail
+      count: 1
+    - cardKey: concord.card.lira-sable
+      count: 1
     - cardKey: concord.card.light-infantry
       count: 4
     - cardKey: concord.card.medium-infantry
@@ -1503,7 +1557,7 @@ MonoBehaviour:
     - cardKey: concord.card.artillery-cannon
       count: 2
     - cardKey: concord.card.sand-organ
-      count: 3
+      count: 2
     - cardKey: concord.card.artillery-tank
       count: 1
     - cardKey: concord.card.pulse-cannon
@@ -1682,10 +1736,18 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.iri-vane
       count: 1
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.elena-hayes
+      count: 1
+    - cardKey: ashen.card.vera-sterling
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 3
     - cardKey: ashen.card.iron-husk
-      count: 3
+      count: 2
     - cardKey: ashen.card.rust-tank
       count: 1
     - cardKey: ashen.card.iron-maw
@@ -1700,8 +1762,6 @@ MonoBehaviour:
       count: 2
     - cardKey: ashen.card.rust-breacher
       count: 2
-    - cardKey: ashen.card.tech-scrapper
-      count: 1
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -1864,12 +1924,20 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.iri-vane
       count: 1
+    - cardKey: ashen.card.miller-hayes
+      count: 1
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.elena-hayes
+      count: 1
+    - cardKey: ashen.card.vera-sterling
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 3
     - cardKey: ashen.card.iron-husk
       count: 4
     - cardKey: ashen.card.scab-shield
-      count: 2
+      count: 1
     - cardKey: ashen.card.rad-brute
       count: 3
     - cardKey: ashen.card.furnace-bearer
@@ -2042,6 +2110,14 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.iri-vane
       count: 1
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.elena-hayes
+      count: 1
+    - cardKey: ashen.card.vera-sterling
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 2
     - cardKey: ashen.card.bone-picker
@@ -2053,7 +2129,7 @@ MonoBehaviour:
     - cardKey: ashen.card.colossus
       count: 2
     - cardKey: ashen.card.rivetstorm
-      count: 2
+      count: 1
     - cardKey: ashen.card.scrap-mountain
       count: 1
     - cardKey: ashen.card.rad-hunter
@@ -2226,10 +2302,16 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.vera-sterling
       count: 1
+    - cardKey: ashen.card.miller-hayes
+      count: 1
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.elena-hayes
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 4
     - cardKey: ashen.card.cinder-stalker
-      count: 4
+      count: 3
     - cardKey: ashen.card.deadeye
       count: 4
     - cardKey: ashen.card.rad-leaper
@@ -2406,10 +2488,18 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.iri-vane
       count: 1
+    - cardKey: ashen.card.miller-hayes
+      count: 1
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.vera-sterling
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 4
     - cardKey: ashen.card.iron-husk
-      count: 2
+      count: 1
     - cardKey: ashen.card.rust-tank
       count: 2
     - cardKey: ashen.card.boomstick
@@ -2425,7 +2515,7 @@ MonoBehaviour:
     - cardKey: ashen.card.rad-brute
       count: 2
     - cardKey: ashen.card.tech-scrapper
-      count: 2
+      count: 1
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -2590,6 +2680,12 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.nora-blackwell
       count: 1
+    - cardKey: ashen.card.miller-hayes
+      count: 1
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.elena-hayes
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 4
     - cardKey: ashen.card.iron-husk
@@ -2599,7 +2695,7 @@ MonoBehaviour:
     - cardKey: ashen.card.flywheel
       count: 1
     - cardKey: ashen.card.roadbreaker
-      count: 3
+      count: 2
     - cardKey: ashen.card.scrapwing
       count: 3
     - cardKey: ashen.card.rad-hunter
@@ -2770,6 +2866,14 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.iri-vane
       count: 1
+    - cardKey: ashen.card.miller-hayes
+      count: 1
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.elena-hayes
+      count: 1
+    - cardKey: ashen.card.vera-sterling
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 3
     - cardKey: ashen.card.bone-picker
@@ -2777,7 +2881,7 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 2
     - cardKey: ashen.card.rad-leaper
-      count: 2
+      count: 1
     - cardKey: ashen.card.rad-brute
       count: 3
     - cardKey: ashen.card.spore-drifter
@@ -2952,12 +3056,20 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.miller-hayes
       count: 1
+    - cardKey: ashen.card.hank-mercer
+      count: 1
+    - cardKey: ashen.card.nora-blackwell
+      count: 1
+    - cardKey: ashen.card.elena-hayes
+      count: 1
+    - cardKey: ashen.card.vera-sterling
+      count: 1
     - cardKey: ashen.card.ash-runner
       count: 4
     - cardKey: ashen.card.iron-husk
       count: 2
     - cardKey: ashen.card.gravebell-mortar
-      count: 3
+      count: 2
     - cardKey: ashen.card.ash-howitzer
       count: 1
     - cardKey: ashen.card.dune-locomotive
@@ -3136,10 +3248,18 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.06.jol-the-warden
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 4
     - cardKey: vessels.27.arc-cantor
-      count: 3
+      count: 2
     - cardKey: vessels.24.prism-engine
       count: 2
     - cardKey: vessels.unit.censer-keeper
@@ -3156,8 +3276,6 @@ MonoBehaviour:
       count: 2
     - cardKey: vessels.unit.spindle-gunner
       count: 2
-    - cardKey: vessels.12.salvage-drone
-      count: 1
     - cardKey: vessels.10.whisper-scout
       count: 3
     - cardKey: vessels.11.glass-runner
@@ -3320,12 +3438,20 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.06.jol-the-warden
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 4
     - cardKey: vessels.unit.spindle-gunner
       count: 3
     - cardKey: vessels.27.lens-watcher
-      count: 3
+      count: 2
     - cardKey: vessels.unit.prism-lancer
       count: 3
     - cardKey: vessels.unit.lensbreaker
@@ -3500,10 +3626,18 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.06.jol-the-warden
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 4
     - cardKey: vessels.unit.spindle-gunner
-      count: 4
+      count: 3
     - cardKey: vessels.unit.tuning-blade
       count: 4
     - cardKey: vessels.27.lens-watcher
@@ -3680,12 +3814,20 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.06.jol-the-warden
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 2
     - cardKey: vessels.unit.pilgrim-strider
       count: 2
     - cardKey: vessels.18.bastion-frame
-      count: 4
+      count: 3
     - cardKey: vessels.20.siege-walker
       count: 2
     - cardKey: vessels.19.heavy-sentinel
@@ -3860,12 +4002,20 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.06.jol-the-warden
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 4
     - cardKey: vessels.unit.tuning-blade
       count: 4
     - cardKey: vessels.16.bulwark-vessel
-      count: 3
+      count: 2
     - cardKey: vessels.unit.bell-breacher
       count: 3
     - cardKey: vessels.unit.anchor-warden
@@ -4040,10 +4190,16 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 3
     - cardKey: vessels.14.shard-wanderer
-      count: 4
+      count: 3
     - cardKey: vessels.unit.mantle-skirmisher
       count: 4
     - cardKey: vessels.unit.spindle-gunner
@@ -4218,12 +4374,20 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 4
     - cardKey: vessels.14.shard-wanderer
       count: 4
     - cardKey: vessels.21.resonance-tank
-      count: 4
+      count: 3
     - cardKey: vessels.unit.duplex-crawler
       count: 4
     - cardKey: vessels.unit.halo-interceptor
@@ -4396,10 +4560,18 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.02.mara-the-archivist
       count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.06.jol-the-warden
+      count: 1
     - cardKey: vessels.15.vessel-rifleman
       count: 4
     - cardKey: vessels.16.bulwark-vessel
-      count: 4
+      count: 3
     - cardKey: vessels.unit.bell-tortoise
       count: 3
     - cardKey: vessels.23.echo-mortar

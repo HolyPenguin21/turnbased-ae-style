@@ -71,6 +71,28 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ReserveRapidHeroAddsOneRapidHeroOnlyWhenRequested()
+        {
+            var rapidHero = Unit("rapid-hero", 2, 1); rapidHero.cardType = CardType.Hero;
+            rapidHero.grantedAbilities.Add(UnitAbilities.RapidReaction);
+            var scout = Unit("scout", 1, 1, true);
+            for (int seed = 0; seed < 64; seed++)
+            {
+                Random.InitState(seed);
+                var pool = Enumerable.Range(0, 20).Select(i => Unit("unit-" + i)).ToList();
+                pool.Add(rapidHero); pool.Add(scout);
+                var hand = DeckDraw.DrawStartingHand(pool, 7, reserveRapidHero: true);
+                Assert.That(hand, Has.Count.EqualTo(7));
+                Assert.That(hand, Does.Contain(rapidHero));
+                Assert.That(hand, Does.Contain(scout));
+                Assert.That(pool.Contains(rapidHero), Is.False);
+            }
+            Random.InitState(1);
+            var human = new List<CardDefinition> { rapidHero, scout };
+            Assert.That(DeckDraw.DrawStartingHand(human, 1), Is.EqualTo(new[] { scout }));
+        }
+
+        [Test]
         public void EqualApPrefersLowerResourceCost()
         {
             var cheap = Unit("cheap", 1, 1, true);
@@ -162,6 +184,8 @@ namespace Game.EditorTests
                 Assert.That(catalog.AiDeckPoints(deck), Is.InRange(98, 100));
                 Assert.That(original.Count(c => c.cardType == CardType.Base), Is.GreaterThanOrEqualTo(1));
                 Assert.That(deck.cards.Single(e => e.cardKey == scoutKey).count, Is.GreaterThanOrEqualTo(3));
+                Assert.That(original.Where(c => c.cardType == CardType.Hero).Select(c => c.authoredKey).Distinct().Count(),
+                    Is.EqualTo(8), deck.deckName + " must contain all 8 faction heroes.");
                 var entries = deck.cards.Concat(deck.equipment).Concat(deck.mutators).ToList();
                 Assert.That(entries.All(e => catalog.ResolveCard(e.cardKey) != null), Is.True);
                 Assert.That(entries.All(e => e.count > 0 && e.count <= DeckRules.CopyLimit(catalog.ResolveCard(e.cardKey))), Is.True);
