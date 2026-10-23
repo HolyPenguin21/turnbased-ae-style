@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Game.Cards;
+using Game.Core;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -31,6 +32,8 @@ namespace Game.EditorTests
                 Assert.That(root, Is.Not.Null, id.ToString());
                 var hint = root.GetComponent<TutorialHintView>();
                 Assert.That(hint, Is.Not.Null);
+                Assert.That(GameAssetCatalog.Load<GameObject>("UI/TutorialHints/" + id + "Hint"),
+                    Is.EqualTo(root), "Every editable hint must also be registered for runtime loading.");
                 var serialized = new SerializedObject(hint);
                 foreach (string field in new[] { "titleText", "bodyText", "dismissButton", "bubble", "pointer", "highlight" })
                     Assert.That(serialized.FindProperty(field).objectReferenceValue, Is.Not.Null, id + ": " + field);
@@ -151,6 +154,32 @@ namespace Game.EditorTests
                 Assert.That(notifications, Is.Zero);
                 Assert.That(army.Members, Is.Empty);
                 Assert.That(ArmyRegistry.AllAt(army.Hex), Has.Count.EqualTo(1));
+            }
+            finally { root.ResourcesChanged -= onChanged; }
+        }
+
+        [Test]
+        public void SingleUnitTransferTutorialPreviewDoesNotChangeRostersOrSpendAp()
+        {
+            var unit = new UnitData { Owner = owner, IsHero = true, CommandRating = 6 };
+            army.Members.Add(unit);
+            var target = new ArmyData { Owner = owner, Hex = army.Hex };
+            ArmyRegistry.Register(target);
+            int ap = root.ActionPoints;
+            int notifications = 0;
+            Action onChanged = () => notifications++;
+            root.ResourcesChanged += onChanged;
+            try
+            {
+                for (int i = 0; i < 20; i++)
+                    Assert.That(ArmyActions.CanTransferMember(unit, army, target, out _), Is.True);
+                Assert.That(root.ActionPoints, Is.EqualTo(ap));
+                Assert.That(notifications, Is.Zero);
+                Assert.That(army.Members, Is.EqualTo(new[] { unit }));
+                Assert.That(target.Members, Is.Empty);
+                Assert.That(ArmyActions.TransferMember(unit, army, target, selector, out _), Is.True);
+                Assert.That(army.Members, Is.Empty);
+                Assert.That(target.Members, Is.EqualTo(new[] { unit }));
             }
             finally { root.ResourcesChanged -= onChanged; }
         }

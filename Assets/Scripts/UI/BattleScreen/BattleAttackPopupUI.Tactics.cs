@@ -189,6 +189,33 @@ namespace Game.UI
                 _mapHand.BindTactics(owner?.Tactics, canSelect, select, reason, drop, ShowTacticError, _pendingTactic);
             else _tacticHand?.Bind(owner?.Tactics, canSelect, select, reason, drop, ShowTacticError, _pendingTactic);
             RefreshSlottedTactic();
+            OfferTacticTutorials();
+        }
+
+        private bool TacticDragInProgress => _slottedTacticView?.IsDragging == true
+            || (_mapHand != null ? _mapHand.TutorialActionInProgress
+                : _tacticHand != null && _tacticHand.TutorialDragInProgress);
+
+        private bool TacticTutorialDecisionReady(int version) => this != null && IsShowing
+            && version == _tacticDecisionVersion && _phase == Phase.InProgress
+            && _awaitingHumanDecision && !_humanSpent && !_humanDeclined
+            && !RunsAutomatically && !TacticInputBlocked
+            && !TacticDragInProgress
+            && (_mapHand != null ? _mapHand.TutorialTacticInputReady
+                : _tacticHand != null && _tacticHand.TutorialInputReady)
+            && (_kind == ChallengeKind.ResearchProduction ? _rpHero
+                : _defenderTurnActive ? _defender : _attacker)?.Owner?.IsHuman == true;
+
+        private void OfferTacticTutorials()
+        {
+            if (tacticalCardInput == null) return;
+            int version = _tacticDecisionVersion;
+            TutorialHintController.OfferDropTarget(TutorialHintId.Tactic, tacticalCardInput.rectTransform,
+                () => TacticTutorialDecisionReady(version) && _pendingTactic == null
+                    && (_kind == ChallengeKind.ResearchProduction ? _rpTactics?.HasTactic == true
+                        : _challengeSession?.HasTactic(_defenderTurnActive) == true));
+            TutorialHintController.OfferDropTarget(TutorialHintId.EditTactic, tacticalCardInput.rectTransform,
+                () => TacticTutorialDecisionReady(version) && SlottedTacticFailure() == null);
         }
 
         private void OpenTacticDecision(bool defenderSide)
@@ -243,10 +270,13 @@ namespace Game.UI
         {
             string reason = TacticSelectionFailure(card);
             if (reason != null) { ShowTacticError(reason); return false; }
+            bool replacing = _pendingTactic != null && !ReferenceEquals(_pendingTactic, card);
             _pendingTactic = card;
             _pendingTacticDefender = _defenderTurnActive;
             _selectedTactic = null;
             if (_tacticSlot != null) _tacticSlot.interactable = false;
+            TutorialHintController.Learned(TutorialHintId.Tactic);
+            if (replacing) TutorialHintController.Learned(TutorialHintId.EditTactic);
             BindTacticHand(true);
             RefreshTacticTotals();
             RefreshTacticSpendButtons();
@@ -300,6 +330,7 @@ namespace Game.UI
                 return false;
             }
             _pendingTactic = null;
+            TutorialHintController.Learned(TutorialHintId.EditTactic);
             BindTacticHand(true);
             RefreshTacticTotals();
             RefreshTacticSpendButtons();

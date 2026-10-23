@@ -105,6 +105,108 @@ namespace Game.EditorTests
         }
 
         [UnityTest]
+        public IEnumerator HintHasItsOwnRaycasterAboveTheRaisedTacticalHand()
+        {
+            var raised = target.gameObject.AddComponent<Canvas>();
+            raised.overrideSorting = true;
+            raised.sortingOrder = 25000;
+            target.gameObject.AddComponent<GraphicRaycaster>();
+            Tick();
+            var hintCanvas = View.GetComponent<Canvas>();
+            Assert.That(hintCanvas, Is.Not.Null);
+            Assert.That(hintCanvas.overrideSorting, Is.True);
+            Assert.That(hintCanvas.sortingLayerID, Is.EqualTo(raised.sortingLayerID));
+            Assert.That(hintCanvas.sortingOrder, Is.GreaterThan(25001));
+            Assert.That(View.GetComponent<GraphicRaycaster>(), Is.Not.Null);
+            Assert.That(View.GetComponent<Graphic>(), Is.Null, "No full-screen raycast surface.");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator TacticalDropTargetCanBeTaughtBeforeItsClickButtonIsEnabled()
+        {
+            target.interactable = false;
+            bool decisionActive = true;
+            Static("OfferDropTarget", TutorialHintId.Tactic, (RectTransform)target.transform,
+                (Func<bool>)(() => decisionActive));
+            Tick();
+            Assert.That(View.name, Does.StartWith("TacticHint"));
+            decisionActive = false; Tick();
+            Assert.That(View, Is.Null, "A closed challenge decision must not leave a stale hint.");
+            Assert.That(TutorialHintProgress.HasSeen(TutorialHintId.Tactic), Is.False);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator AnActionLearnsItsTopicEvenBeforeTheHintIsShown()
+        {
+            Static("Learned", TutorialHintId.EditTactic);
+            Assert.That(TutorialHintProgress.HasSeen(TutorialHintId.EditTactic), Is.True);
+            Static("OfferDropTarget", TutorialHintId.EditTactic, (RectTransform)target.transform,
+                (Func<bool>)(() => true));
+            Tick();
+            Assert.That(View.name, Does.StartWith("EndTurnHint"));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator StagedTacticHintIsInvalidatedWhenTheHumanDecisionEnds()
+        {
+            var popup = host.AddComponent<BattleAttackPopupUI>();
+            var hero = new UnitData { Owner = human, IsHero = true };
+            Field(popup, "panelRoot", canvasObject);
+            Field(popup, "tacticalCardInput", target.GetComponent<Image>());
+            Field(popup, "_rpHero", hero); Field(popup, "_attacker", hero);
+            Field(popup, "_awaitingHumanDecision", true);
+            Field(popup, "_pendingTactic", new CardData(new CardDefinition()));
+            var handObject = new GameObject("challenge hand", typeof(RectTransform));
+            handObject.transform.SetParent(canvasObject.transform, false);
+            var battleHand = handObject.AddComponent<BattleHandUI>();
+            Field(battleHand, "_inventory", new TacticHand());
+            Field(popup, "_tacticHand", battleHand);
+            var phase = typeof(BattleAttackPopupUI).GetField("_phase", BindingFlags.Instance | BindingFlags.NonPublic);
+            phase.SetValue(popup, Enum.Parse(phase.FieldType, "InProgress"));
+            var kind = typeof(BattleAttackPopupUI).GetField("_kind", BindingFlags.Instance | BindingFlags.NonPublic);
+            kind.SetValue(popup, Enum.Parse(kind.FieldType, "ResearchProduction"));
+            target.interactable = false;
+            Invoke(popup, "OfferTacticTutorials"); Tick();
+            Assert.That(View.name, Does.StartWith("EditTacticHint"));
+            var slotObject = new GameObject("slotted tactic", typeof(RectTransform), typeof(Image), typeof(CardUI));
+            slotObject.transform.SetParent(canvasObject.transform, false);
+            var slotCard = slotObject.GetComponent<CardUI>();
+            Field(popup, "_slottedTacticView", slotCard);
+            typeof(CardUI).GetProperty("IsDragging").SetValue(slotCard, true);
+            Tick(); Assert.That(View, Is.Null, "Hints must not interrupt a drag from the slot.");
+            typeof(CardUI).GetProperty("IsDragging").SetValue(slotCard, false);
+            Tick(); Assert.That(View.name, Does.StartWith("EditTacticHint"));
+            Field(popup, "_mapHand", hand); // Main map hand is inactive while the battle screen is open.
+            Tick(); Assert.That(View, Is.Null, "An unavailable hand cannot receive a card returned from the slot.");
+            Field(popup, "_mapHand", null);
+            Tick(); Assert.That(View.name, Does.StartWith("EditTacticHint"));
+            Field(popup, "_pendingTacticDefender", true);
+            Tick(); Assert.That(View, Is.Null, "A tactic from the other side's decision cannot be edited.");
+            Field(popup, "_pendingTacticDefender", false);
+            Tick(); Assert.That(View.name, Does.StartWith("EditTacticHint"));
+            Field(popup, "_humanDeclined", true); Tick();
+            Assert.That(View, Is.Null);
+            Assert.That(TutorialHintProgress.HasSeen(TutorialHintId.EditTactic), Is.False);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator CompletingAHintPausesBeforeShowingTheNextTopic()
+        {
+            Static("Offer", TutorialHintId.Repair, (RectTransform)target.transform, (Func<bool>)(() => true));
+            Tick(); Assert.That(View.name, Does.StartWith("RepairHint"));
+            Static("Learned", TutorialHintId.Repair); Tick();
+            Assert.That(View, Is.Null);
+            Assert.That(TutorialHintProgress.HasSeen(TutorialHintId.EndTurn), Is.False);
+            Field(controller, "nextHintAt", Time.unscaledTime - 1f); Tick();
+            Assert.That(View.name, Does.StartWith("EndTurnHint"));
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator DisabledControlsAreNotHighlightedAndRecoverWithoutAResourceChange()
         {
             target.interactable = false; Tick();

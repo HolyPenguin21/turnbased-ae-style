@@ -97,6 +97,7 @@ namespace Game.UI
         // view these must never query ArmyRegistry, which may already contain newer hidden data.
         private IReadOnlyList<ArmyData> _snapshotSiblings;
         private Canvas _canvas;
+        private ScrollRect tutorialScroll;
         // Live drag-reorder state (see BeginReorderPreview/PreviewReorder/TryDropUnit) — a
         // scratch copy of _currentArmy.Members that's live-reordered as the card moves, so the
         // rest of the grid visibly makes room for it before the drop, the same way CardHandUI's
@@ -143,6 +144,7 @@ namespace Game.UI
             && ResolveCatalog(_currentArmy.Owner) != null
             && turnController != null && turnController.CurrentPlayer == _currentArmy.Owner
             && turnController.TurnConfirmed && !IsRenamePopupShowing
+            && _draggingCard == null
             && PlayerRootRegistry.FindFor(_currentArmy.Owner)?.CanSpendActionPoints(ArmyActions.CreateArmyApCost) == true;
 
         // True while showing someone else's army (see ShowReadOnly) — read by ArmyUnitCardUI to
@@ -151,6 +153,56 @@ namespace Game.UI
         // "just lie there" per the user's own spec, not draggable/interactable even from the
         // owner's own otherwise-editable modal session.
         public bool IsReadOnly => _readOnly || (_currentArmy != null && _currentArmy.IsPrison);
+
+        private bool TutorialArmyReady => IsShowing && !IsReadOnly && !_hideArmySwitcher
+            && !IsRenamePopupShowing && _draggingCard == null
+            && _currentArmy?.Owner == GameSession.FindHumanPlayer()
+            && TutorialHintController.HandInteractionReady;
+
+        internal void RefreshContextTutorials()
+        {
+            TutorialHintController.Withdraw(TutorialHintId.TransferUnit);
+            TutorialHintController.Withdraw(TutorialHintId.Repair);
+            if (!TutorialArmyReady || _currentArmy == null) return;
+            var source = _currentArmy;
+            if (!TutorialHintProgress.HasSeen(TutorialHintId.TransferUnit) && armyButtonRow != null)
+            {
+                foreach (var button in armyButtonRow.Buttons)
+                {
+                    var target = button != null ? button.Army : null;
+                    if (target == null || target == source || target.Owner != source.Owner
+                        || !target.Hex.Equals(source.Hex)) continue;
+                    var unit = source.Members.FirstOrDefault(u => ArmyActions.CanTransferMember(u, source, target, out _));
+                    if (unit == null) continue;
+                    TutorialHintController.Offer(TutorialHintId.TransferUnit, button.RectTransform,
+                        () => this != null && TutorialArmyReady && _currentArmy == source
+                            && button != null && button.Army == target
+                            && ArmyRegistry.IsRegistered(source) && ArmyRegistry.IsRegistered(target)
+                            && ArmyActions.CanTransferMember(unit, source, target, out _));
+                    break;
+                }
+            }
+            if (TutorialHintProgress.HasSeen(TutorialHintId.Repair)) return;
+            foreach (var card in _cards)
+            {
+                var unit = card != null ? card.Unit : null;
+                if (!CanOfferRepairTutorial(unit)
+                    || !TutorialHintController.TargetIsVisible(card.transform as RectTransform)) continue;
+                TutorialHintController.Offer(TutorialHintId.Repair, card.transform as RectTransform,
+                    () => this != null && TutorialArmyReady && _currentArmy == source
+                        && card != null && card.Unit == unit && CanOfferRepairTutorial(unit));
+                break;
+            }
+        }
+
+        private bool CanOfferRepairTutorial(UnitData unit)
+        {
+            var root = PlayerRootRegistry.FindFor(_currentArmy?.Owner);
+            // Never initialize/randomize repair costs while querying tutorial availability.
+            return unit != null && CanRepairUnit(unit) && unit.RepairResourceCost != null
+                && root != null && root.CanSpendActionPoints(UnitRepair.ApCost(unit))
+                && unit.RepairResourceCost.CanAfford(root);
+        }
 
         // Hit-test used by CardHandUI while a card is being dragged, to tell "dropped on the
         // modal" apart from "dropped on the map behind it" — screenPosition is raw mouse/pointer
@@ -213,12 +265,21 @@ namespace Game.UI
         {
             armyButtonRow?.SetMaxVisible(7);
             _canvas = GetComponentInParent<Canvas>();
+            tutorialScroll = gridContainer != null ? gridContainer.GetComponentInParent<ScrollRect>() : null;
+            if (tutorialScroll != null) tutorialScroll.onValueChanged.AddListener(OnTutorialScroll);
             if (closeButton != null)
                 closeButton.onClick.AddListener(Hide);
             if (contextButton != null)
                 contextButton.onClick.AddListener(OnContextButtonClicked);
             if (renamePopup != null)
                 renamePopup.VisibilityChanged += () => VisibilityChanged?.Invoke();
+        }
+
+        private void OnTutorialScroll(Vector2 position) => TutorialHintController.Invalidate();
+
+        private void OnDestroy()
+        {
+            if (tutorialScroll != null) tutorialScroll.onValueChanged.RemoveListener(OnTutorialScroll);
         }
 
         public void Show(ArmyData army)
@@ -397,6 +458,7 @@ namespace Game.UI
                 turnController?.ShowSpawnHint(failReason);
                 return;
             }
+            TutorialHintController.Learned(TutorialHintId.Repair);
             RefreshGrid();
             ShowUnitDetail(unit);
         }
@@ -535,6 +597,7 @@ namespace Game.UI
 
         private void ClearReorderPreview()
         {
+            TutorialHintController.Invalidate();
             _draggingCard = null;
             _dragPreviewOrder = null;
         }
@@ -614,6 +677,7 @@ namespace Game.UI
                     return false;
                 }
 
+                TutorialHintController.Learned(TutorialHintId.TransferUnit);
                 ClearReorderPreview();
 
                 // _currentArmy may have just lost its last member. It stays an empty army the
@@ -731,6 +795,7 @@ namespace Game.UI
         // through the back door.
         private void RefreshButtonRow()
         {
+            TutorialHintController.Invalidate();
             if (armyButtonRow == null || _currentArmy == null)
                 return;
             if (_hideArmySwitcher)
@@ -805,6 +870,7 @@ namespace Game.UI
         // every member it actually has.
         private void RefreshGrid()
         {
+            TutorialHintController.Invalidate();
             ClearGrid();
             if (gridContainer == null || gameConfig == null || gameConfig.armyUnitCardPrefab == null || _currentArmy == null)
                 return;

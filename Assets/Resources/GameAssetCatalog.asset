@@ -265,15 +265,45 @@ MonoBehaviour:
   - key: UI/TutorialHints/AircraftHint
     assets:
     - {fileID: 1000, guid: 8aa1df4383275b4395c4a02f373aebd3, type: 3}
+  - key: UI/TutorialHints/AttemptCostHint
+    assets:
+    - {fileID: 1000, guid: f8367a9e3b725b70a54b18de40d2a647, type: 3}
+  - key: UI/TutorialHints/BuildBaseHint
+    assets:
+    - {fileID: 1000, guid: 1bfe8f255cae5364a2da3840d15e332c, type: 3}
+  - key: UI/TutorialHints/BuildFacilityHint
+    assets:
+    - {fileID: 1000, guid: 1f3fcb07deb25ad4acc3c9a0c5d723d8, type: 3}
   - key: UI/TutorialHints/CreateArmyHint
     assets:
     - {fileID: 1000, guid: 42fe5cd287ec5ecc80a6ce426890830e, type: 3}
   - key: UI/TutorialHints/DrawHint
     assets:
     - {fileID: 1000, guid: f60253cb86b7580c8a5b0e9715cf9b8a, type: 3}
+  - key: UI/TutorialHints/EditTacticHint
+    assets:
+    - {fileID: 1000, guid: dff6fdb4b460549c9dd230002b8fcd40, type: 3}
   - key: UI/TutorialHints/EndTurnHint
     assets:
     - {fileID: 1000, guid: b4c25a9764f85257998f7bd5919932c6, type: 3}
+  - key: UI/TutorialHints/EquipmentProductionHint
+    assets:
+    - {fileID: 1000, guid: 1927d4182d2e5035bc72e6e065d8ac11, type: 3}
   - key: UI/TutorialHints/FateHint
     assets:
     - {fileID: 1000, guid: 3a94e09da86f5850afa7189781533c96, type: 3}
+  - key: UI/TutorialHints/MutagenProductionHint
+    assets:
+    - {fileID: 1000, guid: 554b8f41c2a5503991ff3f922b8769d2, type: 3}
+  - key: UI/TutorialHints/RepairHint
+    assets:
+    - {fileID: 1000, guid: e0fc668ce5745fe38f4daae4290061b8, type: 3}
+  - key: UI/TutorialHints/TacticHint
+    assets:
+    - {fileID: 1000, guid: 2014e728d246594080f141c3f0bcf150, type: 3}
+  - key: UI/TutorialHints/TransferUnitHint
+    assets:
+    - {fileID: 1000, guid: 1d24aff4fdaf5ead8852a6de7888ebfb, type: 3}
+  - key: UI/TutorialHints/UpgradeHint
+    assets:
+    - {fileID: 1000, guid: c2b73db557ee58c788b2ae0b28fd4845, type: 3}

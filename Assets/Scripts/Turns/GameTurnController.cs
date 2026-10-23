@@ -267,6 +267,7 @@ namespace Game.Turns
         public bool TurnConfirmed { get; private set; }
 
         internal Button TutorialEndTurnButton => endTurnButton;
+        internal bool TutorialMessageShowing => popupPanel != null && popupPanel.IsShowing;
 
         // Fired right as control passes to the next actor (human, AI, or Neutral) — whatever
         // was selected on the map belongs to the outgoing turn and shouldn't carry over.
