@@ -230,8 +230,6 @@ MonoBehaviour:
       count: 2
     - cardKey: concord.card.skydiver
       count: 1
-    - cardKey: concord.card.medium-tank
-      count: 2
     - cardKey: concord.card.crawler
       count: 1
     - cardKey: concord.card.heavy-tank
@@ -239,6 +237,8 @@ MonoBehaviour:
     - cardKey: concord.card.Mule
       count: 1
     - cardKey: concord.card.light-infantry
+      count: 4
+    - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.scout
       count: 3
@@ -405,21 +405,21 @@ MonoBehaviour:
     - cardKey: concord.card.nadia-thorne
       count: 1
     - cardKey: concord.card.heavy-infantry
-      count: 4
+      count: 3
     - cardKey: concord.card.trench-guardian
       count: 4
     - cardKey: concord.card.siege-grenadier
-      count: 3
+      count: 4
     - cardKey: concord.card.at-infantry
-      count: 3
+      count: 2
     - cardKey: concord.card.medium-infantry
-      count: 3
+      count: 1
     - cardKey: concord.card.dust-medic
       count: 1
     - cardKey: concord.card.barracuda
-      count: 2
+      count: 3
     - cardKey: concord.card.crawler
-      count: 1
+      count: 2
     - cardKey: concord.card.light-infantry
       count: 4
     - cardKey: concord.card.scout
@@ -591,7 +591,7 @@ MonoBehaviour:
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.hazard-pioneer
-      count: 4
+      count: 3
     - cardKey: concord.card.at-infantry
       count: 3
     - cardKey: concord.card.coil-marksman
@@ -599,13 +599,13 @@ MonoBehaviour:
     - cardKey: concord.card.flamer
       count: 2
     - cardKey: concord.card.heavy-infantry
-      count: 3
+      count: 2
     - cardKey: concord.card.sand-jackal
       count: 2
     - cardKey: concord.card.crawler
-      count: 1
+      count: 2
     - cardKey: concord.card.dust-medic
-      count: 1
+      count: 2
     - cardKey: concord.card.scout
       count: 3
     - cardKey: concord.card.rc-vehicle
@@ -769,21 +769,27 @@ MonoBehaviour:
     - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.light-tank
-      count: 4
+      count: 1
     - cardKey: concord.card.medium-tank
-      count: 4
-    - cardKey: concord.card.heavy-tank
-      count: 3
-    - cardKey: concord.card.needle-rail-tank
       count: 2
+    - cardKey: concord.card.heavy-tank
+      count: 2
+    - cardKey: concord.card.needle-rail-tank
+      count: 1
     - cardKey: concord.card.boatswain
-      count: 1
-    - cardKey: concord.card.roadwarden-aa
-      count: 1
-    - cardKey: concord.card.Mule
       count: 1
     - cardKey: concord.card.light-infantry
       count: 4
+    - cardKey: concord.card.atlas
+      count: 3
+    - cardKey: concord.card.coil-marksman
+      count: 3
+    - cardKey: concord.card.crawler
+      count: 2
+    - cardKey: concord.card.dust-medic
+      count: 2
+    - cardKey: concord.card.scrapper
+      count: 1
     - cardKey: concord.card.scout
       count: 3
     - cardKey: concord.card.rc-vehicle
@@ -949,21 +955,23 @@ MonoBehaviour:
     - cardKey: concord.card.light-infantry
       count: 4
     - cardKey: concord.card.medium-infantry
-      count: 3
+      count: 4
     - cardKey: concord.card.atlas
       count: 3
     - cardKey: concord.card.claimjumper
-      count: 3
+      count: 2
     - cardKey: concord.card.mantis
-      count: 3
+      count: 2
     - cardKey: concord.card.duelist
       count: 1
     - cardKey: concord.card.arsenal
       count: 1
     - cardKey: concord.card.crawler
-      count: 1
+      count: 2
     - cardKey: concord.card.Mule
       count: 1
+    - cardKey: concord.card.dust-medic
+      count: 2
     - cardKey: concord.card.scout
       count: 3
     - cardKey: concord.card.rc-vehicle
@@ -1129,13 +1137,13 @@ MonoBehaviour:
     - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.jackal
-      count: 4
+      count: 2
     - cardKey: concord.card.grapeshot
-      count: 4
+      count: 2
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.light-tank
-      count: 4
+      count: 3
     - cardKey: concord.card.barracuda
       count: 3
     - cardKey: concord.card.roadwarden-aa
@@ -1143,7 +1151,9 @@ MonoBehaviour:
     - cardKey: concord.card.mosquito
       count: 2
     - cardKey: concord.card.light-infantry
-      count: 2
+      count: 4
+    - cardKey: concord.card.coil-marksman
+      count: 3
     - cardKey: concord.card.scout
       count: 3
     - cardKey: concord.card.rc-vehicle
@@ -1487,24 +1497,28 @@ MonoBehaviour:
     - cardKey: concord.card.dorian-kesh
       count: 1
     - cardKey: concord.card.light-infantry
-      count: 3
+      count: 4
     - cardKey: concord.card.medium-infantry
-      count: 2
+      count: 4
     - cardKey: concord.card.artillery-cannon
       count: 2
     - cardKey: concord.card.sand-organ
       count: 3
     - cardKey: concord.card.artillery-tank
-      count: 2
+      count: 1
     - cardKey: concord.card.pulse-cannon
       count: 1
     - cardKey: concord.card.heavy-tank
-      count: 3
+      count: 1
     - cardKey: concord.card.breakwater-crab
       count: 1
     - cardKey: concord.card.crawler
       count: 1
     - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.hazard-pioneer
+      count: 4
+    - cardKey: concord.card.sand-jackal
       count: 1
     - cardKey: concord.card.scout
       count: 3
@@ -1673,16 +1687,20 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 3
     - cardKey: ashen.card.rust-tank
-      count: 4
+      count: 1
     - cardKey: ashen.card.iron-maw
-      count: 3
+      count: 2
     - cardKey: ashen.card.scrap-mortar
-      count: 3
+      count: 2
     - cardKey: ashen.card.slag-lobber
       count: 3
     - cardKey: ashen.card.rad-hunter
-      count: 1
-    - cardKey: ashen.card.tow-rig
+      count: 2
+    - cardKey: ashen.card.rad-brute
+      count: 2
+    - cardKey: ashen.card.rust-breacher
+      count: 2
+    - cardKey: ashen.card.tech-scrapper
       count: 1
     - cardKey: ashen.card.hooded
       count: 3
@@ -1847,7 +1865,7 @@ MonoBehaviour:
     - cardKey: ashen.card.iri-vane
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 4
+      count: 3
     - cardKey: ashen.card.iron-husk
       count: 4
     - cardKey: ashen.card.scab-shield
@@ -1857,11 +1875,11 @@ MonoBehaviour:
     - cardKey: ashen.card.furnace-bearer
       count: 3
     - cardKey: ashen.card.rad-leaper
-      count: 3
+      count: 2
     - cardKey: ashen.card.roadbreaker
       count: 2
     - cardKey: ashen.card.rad-hunter
-      count: 1
+      count: 2
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -2025,15 +2043,15 @@ MonoBehaviour:
     - cardKey: ashen.card.iri-vane
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 3
+      count: 2
     - cardKey: ashen.card.bone-picker
       count: 3
     - cardKey: ashen.card.ash-walker
-      count: 3
+      count: 2
     - cardKey: ashen.card.scrap-locust
-      count: 3
+      count: 4
     - cardKey: ashen.card.colossus
-      count: 3
+      count: 2
     - cardKey: ashen.card.rivetstorm
       count: 2
     - cardKey: ashen.card.scrap-mountain
@@ -2042,6 +2060,8 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.tow-rig
       count: 1
+    - cardKey: ashen.card.rad-brute
+      count: 2
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -2215,13 +2235,15 @@ MonoBehaviour:
     - cardKey: ashen.card.rad-leaper
       count: 3
     - cardKey: ashen.card.rattletrap
-      count: 4
+      count: 2
     - cardKey: ashen.card.flywheel
-      count: 3
+      count: 1
     - cardKey: ashen.card.carrion
       count: 2
     - cardKey: ashen.card.rad-hunter
-      count: 1
+      count: 2
+    - cardKey: ashen.card.scrap-shaman
+      count: 2
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -2387,21 +2409,23 @@ MonoBehaviour:
     - cardKey: ashen.card.ash-runner
       count: 4
     - cardKey: ashen.card.iron-husk
-      count: 3
-    - cardKey: ashen.card.rust-tank
-      count: 3
-    - cardKey: ashen.card.boomstick
-      count: 3
-    - cardKey: ashen.card.iron-maw
-      count: 3
-    - cardKey: ashen.card.roadbreaker
       count: 2
+    - cardKey: ashen.card.rust-tank
+      count: 2
+    - cardKey: ashen.card.boomstick
+      count: 1
+    - cardKey: ashen.card.iron-maw
+      count: 2
+    - cardKey: ashen.card.roadbreaker
+      count: 3
     - cardKey: ashen.card.rad-hunter
+      count: 2
+    - cardKey: ashen.card.furnace-bearer
       count: 1
-    - cardKey: ashen.card.scrap-mortar
-      count: 1
-    - cardKey: ashen.card.tow-rig
-      count: 1
+    - cardKey: ashen.card.rad-brute
+      count: 2
+    - cardKey: ashen.card.tech-scrapper
+      count: 2
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -2571,17 +2595,19 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 4
     - cardKey: ashen.card.rattletrap
-      count: 4
-    - cardKey: ashen.card.flywheel
       count: 3
+    - cardKey: ashen.card.flywheel
+      count: 1
     - cardKey: ashen.card.roadbreaker
       count: 3
     - cardKey: ashen.card.scrapwing
       count: 3
     - cardKey: ashen.card.rad-hunter
-      count: 1
+      count: 2
     - cardKey: ashen.card.rad-leaper
       count: 2
+    - cardKey: ashen.card.rad-brute
+      count: 1
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -2745,25 +2771,25 @@ MonoBehaviour:
     - cardKey: ashen.card.iri-vane
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 4
+      count: 3
     - cardKey: ashen.card.bone-picker
       count: 4
     - cardKey: ashen.card.iron-husk
-      count: 4
+      count: 2
     - cardKey: ashen.card.rad-leaper
-      count: 3
+      count: 2
     - cardKey: ashen.card.rad-brute
       count: 3
     - cardKey: ashen.card.spore-drifter
-      count: 2
+      count: 1
     - cardKey: ashen.card.scrap-shaman
       count: 2
     - cardKey: ashen.card.scab-shield
-      count: 2
+      count: 3
     - cardKey: ashen.card.roadbreaker
-      count: 1
+      count: 2
     - cardKey: ashen.card.rad-hunter
-      count: 1
+      count: 2
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
@@ -2935,7 +2961,7 @@ MonoBehaviour:
     - cardKey: ashen.card.ash-howitzer
       count: 1
     - cardKey: ashen.card.dune-locomotive
-      count: 2
+      count: 1
     - cardKey: ashen.card.grave-engine
       count: 1
     - cardKey: ashen.card.walking-refinery
@@ -2945,6 +2971,8 @@ MonoBehaviour:
     - cardKey: ashen.card.tow-rig
       count: 1
     - cardKey: ashen.card.rust-tank
+      count: 1
+    - cardKey: ashen.card.rad-brute
       count: 2
     - cardKey: ashen.card.hooded
       count: 3
@@ -3113,18 +3141,22 @@ MonoBehaviour:
     - cardKey: vessels.27.arc-cantor
       count: 3
     - cardKey: vessels.24.prism-engine
-      count: 3
-    - cardKey: vessels.unit.censer-keeper
       count: 2
+    - cardKey: vessels.unit.censer-keeper
+      count: 1
     - cardKey: vessels.21.resonance-tank
       count: 3
     - cardKey: vessels.unit.halo-kite
       count: 2
     - cardKey: vessels.unit.moth-bomber
-      count: 3
+      count: 2
     - cardKey: vessels.13.arc-sentry
-      count: 1
+      count: 2
     - cardKey: vessels.unit.mnemonic-carrier
+      count: 2
+    - cardKey: vessels.unit.spindle-gunner
+      count: 2
+    - cardKey: vessels.12.salvage-drone
       count: 1
     - cardKey: vessels.10.whisper-scout
       count: 3
@@ -3649,21 +3681,23 @@ MonoBehaviour:
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 4
+      count: 2
     - cardKey: vessels.unit.pilgrim-strider
       count: 2
     - cardKey: vessels.18.bastion-frame
-      count: 3
+      count: 4
     - cardKey: vessels.20.siege-walker
-      count: 3
+      count: 2
     - cardKey: vessels.19.heavy-sentinel
-      count: 3
+      count: 2
     - cardKey: vessels.unit.reliquary-crab
       count: 1
     - cardKey: vessels.13.arc-sentry
-      count: 1
+      count: 2
     - cardKey: vessels.unit.mnemonic-carrier
       count: 1
+    - cardKey: vessels.unit.silt-pilgrim
+      count: 2
     - cardKey: vessels.10.whisper-scout
       count: 3
     - cardKey: vessels.11.glass-runner
@@ -3831,7 +3865,7 @@ MonoBehaviour:
     - cardKey: vessels.unit.tuning-blade
       count: 4
     - cardKey: vessels.16.bulwark-vessel
-      count: 4
+      count: 3
     - cardKey: vessels.unit.bell-breacher
       count: 3
     - cardKey: vessels.unit.anchor-warden
@@ -3841,7 +3875,7 @@ MonoBehaviour:
     - cardKey: vessels.unit.mnemonic-carrier
       count: 2
     - cardKey: vessels.13.arc-sentry
-      count: 1
+      count: 2
     - cardKey: vessels.10.whisper-scout
       count: 3
     - cardKey: vessels.11.glass-runner
@@ -4365,21 +4399,19 @@ MonoBehaviour:
     - cardKey: vessels.15.vessel-rifleman
       count: 4
     - cardKey: vessels.16.bulwark-vessel
-      count: 2
+      count: 4
     - cardKey: vessels.unit.bell-tortoise
       count: 3
     - cardKey: vessels.23.echo-mortar
-      count: 3
+      count: 2
     - cardKey: vessels.25.harmonic-howitzer
       count: 3
-    - cardKey: vessels.unit.counterweight-lobber
-      count: 1
     - cardKey: vessels.unit.palisade-frame
-      count: 2
+      count: 1
     - cardKey: vessels.13.arc-sentry
-      count: 1
+      count: 2
     - cardKey: vessels.unit.mnemonic-carrier
-      count: 1
+      count: 2
     - cardKey: vessels.10.whisper-scout
       count: 3
     - cardKey: vessels.11.glass-runner
