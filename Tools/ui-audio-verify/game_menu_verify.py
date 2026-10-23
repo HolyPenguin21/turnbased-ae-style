@@ -13,6 +13,32 @@ class MenuIntegration(unittest.TestCase):
   s=(ROOT/'Assets/Scenes/Game.unity').read_text()
   for name in ['GameMenuUI','GameMenuPanel','SaveGameDisabled','LoadGameDisabled','ContinueGame']:
    self.assertTrue('m_Name: '+name in s,name)
+ def test_match_exit_is_authored_in_the_scene_and_wired_to_the_menu(self):
+  scene=(ROOT/'Assets/Scenes/Game.unity').read_text()
+  blocks={m.group(1):m.group(0) for m in re.finditer(
+   r'^--- !u!\d+ &(\d+)\n[\s\S]*?(?=^--- !u!|\Z)',scene,re.M)}
+  def ref(block,field):
+   match=re.search(r'^  '+field+r': \{fileID: (\d+)\}$',block,re.M)
+   self.assertIsNotNone(match,field+' must be wired in the scene')
+   return match.group(1)
+  def transform_of(game_object):
+   return next((key,block) for key,block in blocks.items()
+    if block.startswith('--- !u!224 ') and f'm_GameObject: {{fileID: {game_object}}}\n' in block)
+  menu=next(b for b in blocks.values() if 'Assembly-CSharp::Game.UI.GameMenuPanelUI\n' in b)
+  button=blocks[ref(menu,'exitButton')]
+  label=blocks[ref(menu,'exitButtonText')]
+  self.assertIn('UnityEngine.UI::UnityEngine.UI.Button\n',button)
+  self.assertIn('Unity.TextMeshPro::TMPro.TextMeshProUGUI\n',label)
+  button_object=ref(button,'m_GameObject')
+  self.assertIn('  m_IsActive: 1\n',blocks[button_object])
+  self.assertIn('  m_Interactable: 1\n',button)
+  panel_rect,panel=transform_of(ref(menu,'menuPanel'))
+  button_rect,button_transform=transform_of(button_object)
+  self.assertEqual(ref(button_transform,'m_Father'),panel_rect)
+  self.assertIn(f'  - {{fileID: {button_rect}}}\n',panel)
+  _,label_transform=transform_of(ref(label,'m_GameObject'))
+  self.assertEqual(ref(label_transform,'m_Father'),button_rect)
+  self.assertIn('  m_RaycastTarget: 0\n',label)
  def test_corner_button_sprite(self):
   sprite=ROOT/'Assets/Textures/UI/Buttons/Button_Settings.png'
   self.assertTrue(sprite.exists())
