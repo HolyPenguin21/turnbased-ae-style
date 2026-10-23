@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Game.Cards;
 using Game.Core;
+using Game.Map;
 using Game.Players;
 using Game.Units;
 using TMPro;
@@ -356,6 +357,11 @@ namespace Game.UI
                 detailTextResult.text = _selected != null ? DescribeCard(_selected) : string.Empty;
             if (createButton != null)
                 createButton.interactable = _selected != null && !_busy;
+            TutorialHintController.Offer(TutorialHintId.AttemptCost, createButton?.transform as RectTransform,
+                () => this != null && IsShowing && !_busy && _selected != null
+                    && _player != null && _player == GameSession.FindHumanPlayer()
+                    && TutorialHintController.HumanTurnIsReady
+                    && ResearchProductionSystem.CanAffordCard(PlayerRootRegistry.FindFor(_player), _selected));
         }
 
         private string DescribeHero(UnitData hero)

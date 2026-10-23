@@ -4,7 +4,13 @@ using UnityEngine;
 namespace Game.UI
 {
     // Explicit values are persisted. Append new topics without renumbering existing ones.
-    public enum TutorialHintId { Draw = 0, EndTurn = 1, CreateArmy = 2, Fate = 3, Aircraft = 4 }
+    public enum TutorialHintId
+    {
+        Draw = 0, EndTurn = 1, CreateArmy = 2, Fate = 3, Aircraft = 4,
+        TransferUnit = 5, Tactic = 6, EditTactic = 7, Upgrade = 8,
+        MutagenProduction = 9, EquipmentProduction = 10, AttemptCost = 11,
+        Repair = 12, BuildBase = 13, BuildFacility = 14
+    }
 
     public static class TutorialHintProgress
     {

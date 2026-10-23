@@ -32,6 +32,17 @@ namespace Game.UI
         private CardData _revealOnRefresh;
         public bool IsBound => _inventory != null;
 
+        internal bool TutorialInputReady => isActiveAndEnabled && IsBound && !TutorialDragInProgress;
+        internal bool TutorialDragInProgress
+        {
+            get
+            {
+                foreach (var card in _visible)
+                    if (card != null && card.IsDragging) return true;
+                return false;
+            }
+        }
+
         public void Bind(TacticHand inventory, Func<CardData, bool> canSelect = null, Action<CardData> onSelect = null,
             Func<CardData, string> unavailableReason = null, Func<CardData, Vector2, Camera, bool> onDrop = null,
             Action<string> showError = null, CardData excluded = null)

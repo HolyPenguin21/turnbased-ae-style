@@ -1137,6 +1137,13 @@ namespace Game.UI
         // comes back.
         private void RemoveCard(CardUI card)
         {
+            // All successful play/attach paths converge here; rejected drops never reach it.
+            switch (card.Data?.Definition?.cardType)
+            {
+                case CardType.Base: TutorialHintController.Learned(TutorialHintId.BuildBase); break;
+                case CardType.Facility: TutorialHintController.Learned(TutorialHintId.BuildFacility); break;
+                case CardType.Equipment: TutorialHintController.Learned(TutorialHintId.Upgrade); break;
+            }
             StopTacticFlip();
             _cards.Remove(card);
             card.gameObject.SetActive(false);
@@ -1171,6 +1178,7 @@ namespace Game.UI
                 return;
             }
             _pendingAttachment = equipmentCard;
+            TutorialHintController.Invalidate();
             actionHint?.Show(
                 $"Attaching {equipmentCard.Definition.displayName} - left-click a unit or hero. Right-click or Esc to cancel.");
             turnController?.SetAttachModeActive(true);
@@ -1190,6 +1198,7 @@ namespace Game.UI
         private void EndAttachMode()
         {
             _pendingAttachment = null;
+            TutorialHintController.Invalidate();
             actionHint?.Hide();
             turnController?.SetAttachModeActive(false);
         }

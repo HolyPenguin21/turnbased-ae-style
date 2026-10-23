@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // All visuals and text are serialized in the five prefabs, including their editor preview.
+    // All visuals and text are serialized in the topic prefabs, including their editor preview.
     // The overlay has no background raycast; only the visible bubble receives pointer input.
     public sealed class TutorialHintView : MonoBehaviour
     {
@@ -24,6 +24,15 @@ namespace Game.UI
 
         private void Awake()
         {
+            // Tactical hands use nested canvases at 25000 (dragged cards: 25001).
+            // Sibling order alone cannot bring a root-canvas hint above those surfaces.
+            var parentCanvas = transform.parent != null ? transform.parent.GetComponentInParent<Canvas>() : null;
+            var canvas = GetComponent<Canvas>();
+            if (canvas == null) canvas = gameObject.AddComponent<Canvas>();
+            canvas.overrideSorting = true;
+            canvas.sortingLayerID = parentCanvas != null ? parentCanvas.sortingLayerID : 0;
+            canvas.sortingOrder = Mathf.Max(25002, parentCanvas != null ? parentCanvas.sortingOrder + 1 : 0);
+            if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
             if (dismissButton != null) dismissButton.onClick.AddListener(Dismiss);
         }
         private void Dismiss() => Dismissed?.Invoke();
