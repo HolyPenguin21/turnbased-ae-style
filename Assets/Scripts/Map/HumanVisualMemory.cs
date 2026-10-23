@@ -45,6 +45,7 @@ namespace Game.Map
         {
             ArmySightings.Clear();
             KnownBuildingHexes.Clear();
+            ObserverMatch = false;
         }
 
         public static void ObserveArmy(PlayerSetupData viewer, ArmyData army, HexCoord observedHex)

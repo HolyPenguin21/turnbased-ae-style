@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
@@ -36,6 +37,7 @@ namespace Game.Setup
     // (plus the popup canvas) in one shot — no separate per-highlight cleanup calls needed.
     // Citadel markers are spawned unparented instead, specifically so they're unaffected by
     // that cleanup.
+    [DefaultExecutionOrder(-11000)]
     public partial class CitadelSetupController : MonoBehaviour
     {
         [Header("References")]
@@ -93,7 +95,15 @@ namespace Game.Setup
         private int _currentPlayerIndex = -1;
         private bool _canPlace;
 
-        private void Start()
+        private void Awake()
+        {
+            // HexMapGenerator builds fog and resource visuals in OnEnable. Clear the previous
+            // match before those default-order components run, including direct Game loads.
+            // Prepared GameSession players, map choices and campaign context stay intact.
+            MatchStateInventory.ResetForNewMatch();
+        }
+
+        private IEnumerator Start()
         {
             if (hexSelectionController != null)
                 hexSelectionController.enabled = false;
@@ -114,13 +124,8 @@ namespace Game.Setup
             }
 
             if (gameConfig == null || map == null || GameSession.Players == null || GameSession.Players.Count == 0)
-                return;
+                yield break;
 
-            // Every per-match static holder starts empty (MatchStateInventory owns the list).
-            MatchStateInventory.ResetForNewMatch();
-            // HexMapGenerator.OnEnable draws before this Start and may have seen the previous
-            // match's static bonuses. Redraw after the silent world reset to remove stale icons.
-            map.GetComponent<MapResourceDisplay>()?.RefreshAll();
             // Configure before AssignStartingHexes/the per-player loop below ever registers an
             // army or building — both registries recompute vision the moment something is
             // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii
@@ -142,8 +147,11 @@ namespace Game.Setup
             _allPlayers.Clear();
             _allPlayers.AddRange(GameSession.Players);
             if (_allPlayers.Count == 0)
-                return;
+                yield break;
 
+            // Our Awake runs early to reset the world before generation. Let default-order
+            // Start methods initialize the camera/HUD before placement can pan or start a game.
+            yield return null;
             BeginPlayerTurn(0);
         }
 

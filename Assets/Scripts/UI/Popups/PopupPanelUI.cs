@@ -20,6 +20,10 @@ namespace Game.UI
         [SerializeField] private TMP_Text infoText;
         [SerializeField] private Button confirmButton;
 
+        private bool _textLayoutCaptured;
+        private Vector2 _textAnchorMin, _textAnchorMax, _textOffsetMin, _textOffsetMax;
+        private VerticalAlignmentOptions _textVerticalAlignment;
+
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
         private bool _isOtherTurn;
         public bool IsOtherTurnShowing => IsShowing && _isOtherTurn;
@@ -75,12 +79,52 @@ namespace Game.UI
 
         private void SetButton(bool visible, Action onClick)
         {
+            SetTextLayout(visible);
             if (confirmButton == null)
                 return;
             confirmButton.gameObject.SetActive(visible);
             Game.UI.UIButtonEventUtility.ResetRuntimeListeners(confirmButton);
             if (onClick != null)
                 confirmButton.onClick.AddListener(() => onClick());
+        }
+
+        private void SetTextLayout(bool hasButton)
+        {
+            if (infoText == null || !(infoText.rectTransform.parent is RectTransform parent))
+                return;
+            RectTransform rect = infoText.rectTransform;
+            if (!_textLayoutCaptured)
+            {
+                _textAnchorMin = rect.anchorMin;
+                _textAnchorMax = rect.anchorMax;
+                _textOffsetMin = rect.offsetMin;
+                _textOffsetMax = rect.offsetMax;
+                _textVerticalAlignment = infoText.verticalAlignment;
+                _textLayoutCaptured = true;
+            }
+
+            if (hasButton)
+            {
+                rect.anchorMin = _textAnchorMin;
+                rect.anchorMax = _textAnchorMax;
+                rect.offsetMin = _textOffsetMin;
+                rect.offsetMax = _textOffsetMax;
+                infoText.verticalAlignment = _textVerticalAlignment;
+                return;
+            }
+
+            // The authored text top already clears the panel's decorative header. When the
+            // button is hidden, its lower edge becomes the message area's lower edge instead
+            // of leaving an empty button row. Recalculate against the current panel size.
+            float top = _textAnchorMax.y * parent.rect.height + _textOffsetMax.y;
+            float bottom = confirmButton != null
+                ? RectTransformUtility.CalculateRelativeRectTransformBounds(parent, confirmButton.transform).min.y - parent.rect.yMin
+                : parent.rect.height - top;
+            rect.anchorMin = new Vector2(_textAnchorMin.x, 0f);
+            rect.anchorMax = new Vector2(_textAnchorMax.x, 1f);
+            rect.offsetMin = new Vector2(_textOffsetMin.x, bottom);
+            rect.offsetMax = new Vector2(_textOffsetMax.x, top - parent.rect.height);
+            infoText.verticalAlignment = VerticalAlignmentOptions.Middle;
         }
 
         private void Display(string message)

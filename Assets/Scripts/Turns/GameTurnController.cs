@@ -308,6 +308,21 @@ namespace Game.Turns
         // HandleBuildingOnArmyDefeat — rather than destroyed; see the user's own Siege spec).
         // Blocks any further turn advancement once true.
         private bool _gameOver;
+
+        // Scene loading completes later. Disable the outgoing scene before its static world
+        // is cleared: owners cancel movement/transactions in OnDisable and Unity stops their
+        // coroutines. PlayerRoot data stays alive for the final statistics snapshot.
+        internal void PrepareForExit()
+        {
+            _gameOver = true;
+            TurnConfirmed = false;
+            CurrentPlayer = null;
+            _inputBlocked = true;
+            _cardDraggingBlocked = true;
+            foreach (GameObject root in gameObject.scene.GetRootGameObjects())
+                root.SetActive(false);
+        }
+
         public event System.Action<Game.Progression.ParticipantResult> ParticipantFinished;
         public event System.Action<Game.Campaign.CompletedMatchResult> MatchFinished;
         private void PublishOutcome(PlayerSetupData player, Game.Progression.MatchOutcome outcome)
@@ -403,6 +418,9 @@ namespace Game.Turns
                 return;
 
             _gameOver = true;
+            // Result/reward subscribers can return to another scene synchronously. Finish
+            // metrics before publishing the result so exit cleanup cannot label it stopped.
+            Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);
             var finalResult = new Game.Campaign.CompletedMatchResult(GameSession.MatchId,
                 survivors.Count == 1 ? survivors[0].Faction : Faction.None, player.Faction, survivors.Count == 0);
             GameSession.CompleteMatch(finalResult);
@@ -416,7 +434,6 @@ namespace Game.Turns
                 else if (player.IsHuman) PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
             }
             if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
-            Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw - no citadels remain.");
         }
 
@@ -1230,6 +1247,8 @@ namespace Game.Turns
 
         private void AdvanceToNextPlayer()
         {
+            if (_gameOver)
+                return;
             var aviationMessages = AviationTurnLifecycle.ResolveEndOfTurn(CurrentPlayer, hexSelectionController);
             if (aviationMessages.Count > 0)
                 _pendingAviationMessages[CurrentPlayer] = aviationMessages;

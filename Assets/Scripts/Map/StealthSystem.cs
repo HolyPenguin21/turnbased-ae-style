@@ -88,6 +88,16 @@ namespace Game.Map
             _detectionNotices.Clear();
         }
 
+        internal static void ResetForMatch()
+        {
+            Clear();
+            // These delegates capture the outgoing turn controller and map. They are wired
+            // again by citadel setup/BeginGame; retain no scene through the main menu.
+            CompletedTurnsProvider = _ => 0L;
+            ObserverTakingTurnProvider = _ => false;
+            TerrainMoveCostProvider = _ => 1;
+        }
+
         // Removes and returns `observer`'s queued detection announcements (empty list if none).
         public static List<string> TakeDetectionNotices(PlayerSetupData observer)
         {

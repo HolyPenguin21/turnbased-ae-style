@@ -84,8 +84,22 @@ namespace Game.Core
             }
         }
         public static void EndRewardEligibility() => RewardsEligible = false;
+
+        // Tactical session only. The campaign controller, its pending operation and the
+        // collection/reward profile have independent persistence and must survive this reset.
+        public static void ClearMatch()
+        {
+            Players = new List<PlayerSetupData>();
+            ClearMapConditions();
+            MatchId = null;
+            RewardsEligible = false;
+            SetupError = null;
+            CampaignContext = null;
+            FinalResult = null;
+        }
+
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetCollectionSession() { ClearMapConditions(); MatchId = null; RewardsEligible = false; SetupError = null; CampaignContext = null; FinalResult = null; }
+        private static void ResetCollectionSession() => ClearMatch();
 
         public static List<PlayerSetupData> Players { get; set; } = new List<PlayerSetupData>();
 

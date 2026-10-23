@@ -126,7 +126,7 @@ namespace Game.UI
             if (!IsShowing) return;
             string destination = CampaignMatchBridge.ReturnScene(GameSession.MatchId);
             ContinueGame();
-            GameSession.EndRewardEligibility();
+            Game.Setup.MatchStateInventory.EndMatch(turnController);
             SceneManager.LoadScene(destination);
         }
         private void BlockGameplayCanvases()
