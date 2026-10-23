@@ -37,6 +37,14 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ClearAlsoLeavesObserverMode()
+        {
+            HumanVisualMemory.ObserverMatch = true;
+            VisionSystem.Clear();
+            Assert.That(HumanVisualMemory.ObserverMatch, Is.False);
+        }
+
+        [Test]
         public void ArmyWithMembersStillGivesVision()
         {
             var owner = new PlayerSetupData { ColorIndex = 0 };

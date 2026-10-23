@@ -217,6 +217,21 @@ namespace Game.Ai
             Finish(winner != null ? $"game over - {winner.Nickname} wins" : "game over - draw");
         }
 
+        // Called while the tactical world still exists, before its registries are cleared.
+        // Finish is a no-op for a match whose victory/defeat has already been recorded.
+        public static void EndMatch()
+        {
+            Finish("stopped (returned from match)");
+            CloseWriter();
+            ByPlayer.Clear();
+            Order.Clear();
+            _active = false;
+            _turn = 0;
+            _outcome = null;
+            _startedAt = default;
+            _summaryPath = null;
+        }
+
         private static void Finish(string outcome)
         {
             if (!_active)

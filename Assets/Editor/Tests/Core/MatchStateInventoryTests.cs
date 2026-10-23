@@ -102,6 +102,63 @@ namespace Game.EditorTests
         public void EveryTypeIsListedOnce() =>
             Assert.That(MatchStateInventory.All.Select(e => e.TypeName), Is.Unique);
 
+        [Test]
+        public void NewGameBootstrapResetsOldWorldBeforeDefaultOrderMapVisuals()
+        {
+            var bootstrapType = typeof(CitadelSetupController);
+            var order = (UnityEngine.DefaultExecutionOrder)Attribute.GetCustomAttribute(
+                bootstrapType, typeof(UnityEngine.DefaultExecutionOrder));
+            var generatorOrder = (UnityEngine.DefaultExecutionOrder)Attribute.GetCustomAttribute(
+                typeof(Game.Map.HexMapGenerator), typeof(UnityEngine.DefaultExecutionOrder));
+            Assert.That(order, Is.Not.Null);
+            Assert.That(order.order, Is.LessThan(generatorOrder?.order ?? 0));
+            var awake = bootstrapType.GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(awake, Is.Not.Null, "Start runs after the map has already drawn its fog.");
+
+            var players = Game.Core.GameSession.Players;
+            var mapSize = Game.Core.GameSession.SelectedMapSize;
+            var biome = Game.Core.GameSession.SelectedBiome;
+            var campaign = Game.Core.GameSession.CampaignContext;
+            var matchId = Game.Core.GameSession.MatchId;
+            var root = new UnityEngine.GameObject("new match bootstrap");
+            root.SetActive(false);
+            try
+            {
+                var bootstrap = root.AddComponent<CitadelSetupController>();
+                var player = new Game.Players.PlayerSetupData { IsHuman = true };
+                var hex = new Game.HexGrid.HexCoord(1, 1);
+                Game.Map.VisionSystem.Configure(null);
+                var building = new Game.Map.BuildingData { Owner = player, Hex = hex, IsBase = true };
+                Game.Map.BuildingRegistry.Register(hex, building);
+                Game.Map.VisionSystem.CurrentViewer = player;
+                Game.Map.HumanVisualMemory.ObserverMatch = true;
+                Assert.That(Game.Map.VisionSystem.IsVisible(player, hex), Is.True);
+                var preparedPlayers = new List<Game.Players.PlayerSetupData> { player };
+                Game.Core.GameSession.Players = preparedPlayers;
+
+                awake.Invoke(bootstrap, null);
+
+                Assert.That(Game.Map.VisionSystem.CurrentViewer, Is.Null);
+                Assert.That(Game.Map.VisionSystem.IsVisible(player, hex), Is.False);
+                Assert.That(Game.Map.VisionSystem.HasEverSeen(player, hex), Is.False);
+                Assert.That(Game.Map.VisionSystem.IsVisibleToCurrentViewer(hex), Is.True,
+                    "Citadel placement starts without a previous match's fog.");
+                Assert.That(Game.Map.BuildingRegistry.FindAt(hex), Is.Null);
+                Assert.That(Game.Map.HumanVisualMemory.ObserverMatch, Is.False);
+                Assert.That(Game.Core.GameSession.Players, Is.SameAs(preparedPlayers));
+                Assert.That(Game.Core.GameSession.SelectedMapSize, Is.EqualTo(mapSize));
+                Assert.That(Game.Core.GameSession.SelectedBiome, Is.EqualTo(biome));
+                Assert.That(Game.Core.GameSession.CampaignContext, Is.SameAs(campaign));
+                Assert.That(Game.Core.GameSession.MatchId, Is.EqualTo(matchId));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                MatchStateInventory.ResetForNewMatch();
+                Game.Core.GameSession.Players = players;
+            }
+        }
+
         // World, AI memory and turn-scoped holders must start every match empty: either the
         // inventory clears them or the entry names the reset that already does.
         [Test]

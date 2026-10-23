@@ -344,6 +344,43 @@ public sealed class CampaignSystemTests
             typeof(Game.Core.GameSession).GetProperty("FinalResult").SetValue(null, priorResult);
         }
     }
+
+    [Test]
+    public void LeavingTacticalMatchPreservesThePendingCampaignRetry()
+    {
+        var s = HumanTurn(Planet()); var c = Controller(s);
+        var pair = CampaignRules.LegalAttacks(s).First();
+        c.BeginAttack(pair.Source, pair.Target, true);
+        c.RegisterMatch("deck", "Human", "AI");
+        var op = c.Snapshot.PendingOperation;
+        var priorController = CampaignMatchBridge.Controller;
+        var session = typeof(Game.Core.GameSession).GetProperties(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+            .Where(p => p.CanRead && p.CanWrite).ToDictionary(p => p, p => p.GetValue(null));
+        string setupError = Game.Core.GameSession.SetupError;
+        try
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, c);
+            Game.Core.GameSession.SetCampaignContext(new CampaignMatchContext { CampaignId = s.CampaignId,
+                OperationId = op.OperationId, MatchId = op.MatchId });
+            Assert.That(CampaignMatchBridge.ReturnScene(op.MatchId), Is.EqualTo(Game.Core.SceneNames.Campaign));
+            string before = JsonUtility.ToJson(c.Snapshot);
+
+            Game.Setup.MatchStateInventory.EndMatch();
+
+            Assert.That(Game.Core.GameSession.CampaignContext, Is.Null);
+            Assert.That(CampaignMatchBridge.Controller, Is.SameAs(c));
+            Assert.That(JsonUtility.ToJson(c.Snapshot), Is.EqualTo(before));
+            Assert.DoesNotThrow(() => c.RegisterMatch("deck", "Human", "AI"));
+            Assert.That(c.Snapshot.PendingOperation.MatchId, Is.EqualTo(op.MatchId));
+            Assert.That(c.Snapshot.PendingOperation.ResultRecorded, Is.False);
+        }
+        finally
+        {
+            foreach (var saved in session) saved.Key.SetValue(null, saved.Value);
+            Game.Core.GameSession.SetupError = setupError;
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, priorController);
+        }
+    }
     [Test] public void CancelAttackDoesNotConsumeTurnAndDefenceCannotBeCancelled()
     {
         var s = HumanTurn(Planet()); var c = Controller(s); var pair = CampaignRules.LegalAttacks(s).First(); c.BeginAttack(pair.Source, pair.Target, true); c.CancelHumanAttack();

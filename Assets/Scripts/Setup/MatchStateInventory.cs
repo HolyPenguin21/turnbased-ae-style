@@ -75,6 +75,13 @@ namespace Game.Setup
 
         public static readonly IReadOnlyList<MatchStateEntry> All = new[]
         {
+            // Capture final metrics before world/player-root registries are emptied.
+            new MatchStateEntry("Game.Ai.AiMatchStats", MatchStateKind.Diagnostics, AiMatchStats.EndMatch),
+            // Close abandoned coroutine scopes while their world, roots and reservation
+            // inputs still exist. A stopped Unity coroutine need not dispose every iterator.
+            Memory("Game.Ai.V2.MissionIntentRegistry", MissionIntentRegistry.Clear),
+            new MatchStateEntry("Game.Combat.WorthIt", MatchStateKind.Cache,
+                () => WorthIt.EndEstimateCacheScope()),
             // --- world ---------------------------------------------------------------------------
             World("Game.Map.BuildingRegistry", BuildingRegistry.Clear),
             World("Game.Map.HexResourceBonusRegistry", HexResourceBonusRegistry.Clear),
@@ -90,10 +97,10 @@ namespace Game.Setup
             World("Game.Ai.AiHandRegistry", AiHandRegistry.Clear),
             World("Game.Map.VisionSystem", VisionSystem.Clear),
             new MatchStateEntry("Game.Map.HumanVisualMemory", MatchStateKind.World, resetBy: ByVision),
-            World("Game.Map.StealthSystem", StealthSystem.Clear),
+            World("Game.Map.StealthSystem", StealthSystem.ResetForMatch),
             World("Game.Turns.InitiativePublicHistory", InitiativePublicHistory.Clear),
             new MatchStateEntry("Game.Core.GameSession", MatchStateKind.World,
-                resetNote: "TryPrepareMatch clears map/resource choices before the caller prepares them; MainMenu/subsystem registration clear them too. World reset must preserve prepared inputs until generation."),
+                resetNote: "EndMatch clears session inputs on exit. ResetForNewMatch preserves prepared players, map choices and campaign context until generation."),
 
             // --- AI memory carried between turns ------------------------------------------------
             Memory("Game.Ai.AiMapMemory", AiMapMemory.Clear),
@@ -112,7 +119,6 @@ namespace Game.Setup
             Memory("Game.Ai.V2.ResourceStarvationRegistry", ResourceStarvationRegistry.Clear),
             Memory("Game.Ai.V2.DevelopmentInvestmentGate", DevelopmentInvestmentGate.Clear),
             Memory("Game.Ai.V2.AiAllocatorStateRegistry", AiAllocatorStateRegistry.Clear),
-            Memory("Game.Ai.V2.MissionIntentRegistry", MissionIntentRegistry.Clear),
             Memory("Game.Ai.V2.Initiative.InitiativeAnalyticsHistory", Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Clear),
             // Mobilization hold spans turns; the settled/open stamps are turn-local.
             Memory("Game.Ai.V2.OperationContinuationWindow", OperationContinuationWindow.ClearAll),
@@ -137,7 +143,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.GroundCombatAdmissionRegistry", MatchStateKind.Scoped),
             new MatchStateEntry("Game.Ai.V2.EquipmentUpgradeValuation.EquipmentTargetMemo", MatchStateKind.Scoped),
             // the active scope plus the per-player verdict store, replaced whenever its input key differs
-            new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Cache,
+                DevelopmentOpportunityEvaluator.ClearRecipientEvaluationCache),
 
             // --- identities ------------------------------------------------------------------------
             new MatchStateEntry("Game.Map.ArmyData", MatchStateKind.IdentitySequence, resetBy: "Game.Map.ArmyRegistry"),
@@ -151,7 +158,6 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.DevelopmentOutcomeTelemetry", MatchStateKind.Diagnostics, DevelopmentOutcomeTelemetry.ClearAll),
             new MatchStateEntry("Game.Ai.V2.ReconAcceptanceAudit", MatchStateKind.Diagnostics, resetBy: ByRecon),
             new MatchStateEntry("Game.Ai.AiDebugLog", MatchStateKind.Diagnostics),
-            new MatchStateEntry("Game.Ai.AiMatchStats", MatchStateKind.Diagnostics),
             new MatchStateEntry("Game.Combat.BattleDebugLog", MatchStateKind.Diagnostics),
 
             // --- caches ----------------------------------------------------------------------------
@@ -164,7 +170,6 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.EconomyBuilderSelection", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EquipmentEfficiency", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.Initiative.InitiativeOutcomeEvaluator", MatchStateKind.Cache),
-            new MatchStateEntry("Game.Combat.WorthIt", MatchStateKind.Cache),
             // the analytic exchange memo, keyed by its full numeric input (constant magnitudes)
             new MatchStateEntry("Game.Combat.BattleSimulationKernel", MatchStateKind.Cache),
             new MatchStateEntry("Game.Combat.AviationCombatEstimator", MatchStateKind.Cache),
@@ -200,6 +205,16 @@ namespace Game.Setup
         {
             foreach (MatchStateEntry entry in All)
                 entry.Reset?.Invoke();
+        }
+
+        // Call after saving/dismissing any reward and choosing the return scene, while the
+        // outgoing world is still alive. Campaign/profile state is outside this inventory.
+        public static void EndMatch(GameTurnController outgoingMatch = null)
+        {
+            if (outgoingMatch != null)
+                outgoingMatch.PrepareForExit();
+            ResetForNewMatch();
+            Game.Core.GameSession.ClearMatch();
         }
 
         private static MatchStateEntry World(string type, Action reset) =>
