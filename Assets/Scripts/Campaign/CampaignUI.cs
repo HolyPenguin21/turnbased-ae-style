@@ -97,7 +97,12 @@ namespace Game.Campaign
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
             map.EmblemFor = LogoFor;
             try { var state = Controller.View; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId, gameConfig.moveArrowStyle); }
-            catch (Exception ex) { Failure(ex.Message, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(ex);
+                Failure("Could not open the campaign map. Try again.", () => SceneManager.LoadScene(SceneNames.Campaign));
+                return;
+            }
             if (!ProgressionContext.Initialize(gameConfig)) { Failure(ProgressionContext.Error, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
             started = true; Recover();
         }
@@ -208,7 +213,14 @@ namespace Game.Campaign
             UIFocusUtility.SetOverlay(this, false);
         }
         private void Attempt(Action action)
-        { try { action(); } catch (Exception ex) { Failure(ex.Message, Recover); } }
+        {
+            try { action(); }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(ex);
+                Failure(ex is InvalidOperationException ? ex.Message : "Could not complete this campaign action. Try again.", Recover);
+            }
+        }
         private void HoverRegion(int? id)
         {
             if (continueAfterCapture || acting) return;
@@ -464,7 +476,15 @@ namespace Game.Campaign
             if (op.ResultRecorded) return;
             // Never cancel a started match receipt; defending and interrupted battles stay pending.
             if (Controller.View.Phase == CampaignPhase.PreparingBattle && op.AttackerFaction == Controller.View.HumanFaction)
-                { try { Controller.CancelHumanAttack(); } catch (Exception ex) { Failure(ex.Message, Recover); return; } }
+                {
+                    try { Controller.CancelHumanAttack(); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning(ex);
+                        Failure("Could not cancel this attack. Try again.", Recover);
+                        return;
+                    }
+                }
             else defenceDeferred = true;
             CloseModal(); Render();
         }

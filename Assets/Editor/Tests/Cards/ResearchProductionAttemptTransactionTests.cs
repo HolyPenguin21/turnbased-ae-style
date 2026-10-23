@@ -309,9 +309,10 @@ namespace Game.EditorTests
 
             bool started = ResearchProductionSystem.TryStartAttempt(
                 _player, _root, _hero, Site, ResearchProductionMode.Research,
-                _card, _catalog, out _);
+                _card, _catalog, out var reason);
 
             Assert.That(started, Is.False);
+            Assert.That(reason, Is.EqualTo("Need 2 AP to start this challenge."));
             Assert.That(_hero.IsHidden, Is.True,
                 "AI/headless Research must not reveal before the shared attempt transaction commits.");
             Assert.That(_root.ActionPoints, Is.EqualTo(1));
@@ -398,7 +399,7 @@ namespace Game.EditorTests
                 Assert.That(ResearchProductionSystem.IsEligible(_player, Site, mode, out _), Is.True);
                 Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site, mode,
                     _card, _catalog, out var reason, out var attempt), Is.False);
-                Assert.That(reason, Does.Contain("Blueprint is not selected")); Assert.That(attempt, Is.Null);
+                Assert.That(reason, Is.EqualTo("This blueprint is not in your selected deck.")); Assert.That(attempt, Is.Null);
                 Assert.That(_root.ActionPoints, Is.EqualTo(5));
                 Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
                 Assert.That(_hero.IsHidden, Is.True);
@@ -426,7 +427,8 @@ namespace Game.EditorTests
                 Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
                     ResearchProductionMode.Research, _card, _catalog, out _, out var failed), Is.True);
                 Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
-                    ResearchProductionMode.Research, _card, _catalog, out _, out _), Is.False, "Pending duplicate must not debit.");
+                    ResearchProductionMode.Research, _card, _catalog, out var pendingReason, out _), Is.False, "Pending duplicate must not debit.");
+                Assert.That(pendingReason, Is.EqualTo("Finish this blueprint's current challenge first."));
                 failed.Complete(false);
                 Assert.That(_player.BlueprintQuota.Available(_card.authoredKey), Is.True);
                 Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,

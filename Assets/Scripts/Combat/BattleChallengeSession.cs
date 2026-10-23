@@ -106,7 +106,7 @@ namespace Game.Combat
 
         public bool TryPlayTactic(bool defenderSide, CardData card, out string reason)
         {
-            reason = _decisionSide != defenderSide ? "Wait for your challenge decision. The defender acts first."
+            reason = _decisionSide != defenderSide ? "Wait for your challenge turn; the defender acts first."
                 : TacticUnavailableReason(defenderSide, card);
             if (reason != null) return false;
             var result = CurrentResult;

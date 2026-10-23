@@ -26,7 +26,7 @@ namespace Game.Core
             CampaignContext = null; FinalResult = null;
             ClearMapConditions();
             if (players.FindAll(p => p.IsHuman).Count > 1)
-            { error = "Only one local human profile is supported."; return false; }
+            { error = "Only one human player is supported. Set other players to AI."; return false; }
             if (!players.Exists(p => p.IsHuman))
             {
                 AssignAiDecks(players, config?.collectionDeckCatalog);
@@ -44,10 +44,15 @@ namespace Game.Core
                 if (!player.IsHuman) continue;
                 var deck = string.IsNullOrEmpty(player.SelectedDeckId) ? collection.DefaultDeck(player.Faction)
                     : collection.GetDeck(player.SelectedDeckId, player.Faction);
-                if (deck == null) { error = "Select a saved deck for " + player.Faction; return false; }
+                if (deck == null) { error = "Select a saved deck for " + player.Nickname + "."; return false; }
                 selectedHumanDeck = deck;
                 try { snapshots[player] = new Game.Cards.MatchLoadout(deck, collection.Rules, collection.Owned); }
-                catch (System.Exception ex) { error = ex.Message; return false; }
+                catch (System.Exception ex)
+                {
+                    UnityEngine.Debug.LogWarning(ex);
+                    error = "Could not load this deck. Check it in Collection & Decks.";
+                    return false;
+                }
             }
             if (!collection.SelectDeck(selectedHumanDeck, out error)) return false;
             foreach (var player in players)

@@ -145,11 +145,19 @@ namespace Game.UI
         {
             try
             {
-                if (!Game.Progression.ProgressionContext.Initialize(gameConfig)) throw new System.InvalidOperationException(Game.Progression.ProgressionContext.Error);
+                if (!Game.Progression.ProgressionContext.Initialize(gameConfig))
+                {
+                    CollectionScreensUI.ShowMessage(transform, Game.Progression.ProgressionContext.Error);
+                    return;
+                }
                 Game.Campaign.CampaignMatchBridge.Create(human);
                 CloseCampaignSetup(); UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.Campaign);
             }
-            catch (System.Exception ex) { CollectionScreensUI.ShowMessage(transform, ex.Message); }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning(ex);
+                CollectionScreensUI.ShowMessage(transform, "Could not start the campaign. Try again.");
+            }
         }
         private void CloseCampaignSetup()
         {

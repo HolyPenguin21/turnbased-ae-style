@@ -23,9 +23,9 @@ namespace Game.Campaign
         { var next = state.Copy(); edit(next); store.Save(next); state = next; }
         public void BeginAttack(int sourceId, int targetId, bool manual)
         {
-            if (!CampaignRules.CanAttack(state, state.CurrentFaction, sourceId, targetId)) throw new InvalidOperationException("Illegal campaign attack.");
+            if (!CampaignRules.CanAttack(state, state.CurrentFaction, sourceId, targetId)) throw new InvalidOperationException("You cannot attack this region now.");
             var target = state.Regions.Find(r => r.RegionId == targetId);
-            if (manual != (state.CurrentFaction == state.HumanFaction || target.OwnerFaction == state.HumanFaction)) throw new InvalidOperationException("Battle mode mismatch.");
+            if (manual != (state.CurrentFaction == state.HumanFaction || target.OwnerFaction == state.HumanFaction)) throw new InvalidOperationException("This battle cannot use the selected mode.");
             Transact(s =>
             {
                 s.PendingOperation = new CampaignOperation { OperationId = Guid.NewGuid().ToString("N"), MatchId = manual ? Guid.NewGuid().ToString("N") : null,
@@ -42,7 +42,7 @@ namespace Game.Campaign
         public void RegisterMatch(string deckId, string humanDeckName, string enemyDeckName)
         {
             if (state.PendingOperation?.Manual != true || state.PendingOperation.TestAutoResolve || state.PendingOperation.ResultRecorded
-                || (state.Phase != CampaignPhase.PreparingBattle && state.Phase != CampaignPhase.BattleInProgress)) throw new InvalidOperationException("No interrupted or prepared battle.");
+                || (state.Phase != CampaignPhase.PreparingBattle && state.Phase != CampaignPhase.BattleInProgress)) throw new InvalidOperationException("No battle is available to resume.");
             Transact(s =>
             {
                 var op = s.PendingOperation; op.SelectedHumanDeckId = deckId;
@@ -53,37 +53,37 @@ namespace Game.Campaign
         }
         public void RecordManualResult(string campaignId, string operationId, string matchId, CampaignOutcome outcome)
         {
-            if (state.CampaignId != campaignId) throw new InvalidOperationException("Result identity mismatch.");
+            if (state.CampaignId != campaignId) throw new InvalidOperationException("This result does not belong to the current campaign battle.");
             // Continue clears the pending slot, but the durable receipt still identifies a
             // late duplicate callback. It must not interrupt the next faction's operation.
             var completed = state.BattleHistory.Find(h => h.OperationId == operationId);
             if (completed != null)
             {
-                if (!completed.Manual || completed.MatchId != matchId || completed.Outcome != outcome) throw new InvalidOperationException("Conflicting completed match result.");
+                if (!completed.Manual || completed.MatchId != matchId || completed.Outcome != outcome) throw new InvalidOperationException("This battle already has a different saved result.");
                 return;
             }
             var op = state.PendingOperation;
-            if (op == null || !op.Manual || op.OperationId != operationId || op.MatchId != matchId) throw new InvalidOperationException("Result identity mismatch.");
-            if (op.ResultRecorded) { if (op.Outcome != outcome) throw new InvalidOperationException("Conflicting match result."); return; }
+            if (op == null || !op.Manual || op.OperationId != operationId || op.MatchId != matchId) throw new InvalidOperationException("This result does not belong to the current campaign battle.");
+            if (op.ResultRecorded) { if (op.Outcome != outcome) throw new InvalidOperationException("This battle already has a different saved result."); return; }
             if (state.Phase != CampaignPhase.BattleInProgress) throw new InvalidOperationException("Battle has not started.");
             Transact(s => { s.PendingOperation.Outcome = outcome; s.PendingOperation.ResultRecorded = true; s.Phase = CampaignPhase.BattleResolved; });
         }
         public void SelectTestDeck(string deckId)
         {
-            if (state.Phase != CampaignPhase.PreparingBattle || state.PendingOperation?.Manual != true || string.IsNullOrWhiteSpace(deckId)) throw new InvalidOperationException("No test deck to select.");
+            if (state.Phase != CampaignPhase.PreparingBattle || state.PendingOperation?.Manual != true || string.IsNullOrWhiteSpace(deckId)) throw new InvalidOperationException("No battle is ready for deck selection.");
             Transact(s => s.PendingOperation.SelectedHumanDeckId = deckId);
         }
         public void ResolveHumanTest(CampaignDeck attacker, CampaignDeck defender, CampaignBattleResolver resolver)
         {
             if (state.Phase != CampaignPhase.PreparingBattle || state.PendingOperation?.Manual != true || state.PendingOperation.ResultRecorded)
-                throw new InvalidOperationException("No human battle prepared for test resolution.");
+                throw new InvalidOperationException("No player battle is ready to resolve.");
             Transact(s => s.PendingOperation.TestAutoResolve = true);
             ResolveFast(attacker, defender, resolver);
         }
         public void ResolveFast(CampaignDeck attacker, CampaignDeck defender, CampaignBattleResolver resolver)
         {
             var op = state.PendingOperation;
-            if (op == null || (op.Manual && !op.TestAutoResolve) || state.Phase != CampaignPhase.PreparingBattle || op.ResultRecorded) throw new InvalidOperationException("No fast operation to resolve.");
+            if (op == null || (op.Manual && !op.TestAutoResolve) || state.Phase != CampaignPhase.PreparingBattle || op.ResultRecorded) throw new InvalidOperationException("No battle is ready to resolve automatically.");
             var result = resolver.Resolve(attacker, defender, op.RandomSeed);
             Transact(s =>
             {
@@ -97,7 +97,7 @@ namespace Game.Campaign
         public void AcknowledgeReward(string matchId)
         {
             var op = state.PendingOperation;
-            if (op == null || !op.ResultRecorded || op.MatchId != matchId) throw new InvalidOperationException("No completed campaign match.");
+            if (op == null || !op.ResultRecorded || op.MatchId != matchId) throw new InvalidOperationException("No completed campaign battle is available.");
             if (!op.RewardAcknowledged) Transact(s => s.PendingOperation.RewardAcknowledged = true);
             ApplyResult();
         }
@@ -119,14 +119,14 @@ namespace Game.Campaign
         }
         public void EndTurn()
         {
-            if (state.Phase != CampaignPhase.AwaitingFactionAction || state.PendingOperation != null || CampaignRules.HumanFinished(state)) throw new InvalidOperationException("Turn is blocked.");
+            if (state.Phase != CampaignPhase.AwaitingFactionAction || state.PendingOperation != null || CampaignRules.HumanFinished(state)) throw new InvalidOperationException("Finish the current campaign action first.");
             Transact(CampaignRules.Advance);
         }
         // UI can present the already selected/persisted operation before resolution.
         // Default preserves the atomic convenience flow for existing callers/tests.
         public void TakeAiTurn(DeckRules rules, CampaignBattleResolver resolver, bool resolveImmediately = true)
         {
-            if (state.CurrentFaction == state.HumanFaction) throw new InvalidOperationException("Human turn.");
+            if (state.CurrentFaction == state.HumanFaction) throw new InvalidOperationException("Wait for the player to finish their turn.");
             var attacks = CampaignRules.LegalAttacks(state).ToList();
             if (attacks.Count == 0) { EndTurn(); return; }
             var attacker = CampaignDeck.Standard(state.CurrentFaction, rules, state.Factions.Find(f => f.Faction == state.CurrentFaction).ActiveDeckReference);

@@ -17,14 +17,22 @@ namespace Game.Map
         public const int CreateArmyApCost = 2;
 
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog, HexSelectionController hexSelectionController)
+            => CreateArmy(owner, hex, catalog, hexSelectionController, out _);
+
+        public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog,
+            HexSelectionController hexSelectionController, out string failReason)
         {
-            if (owner == null || catalog == null || hexSelectionController?.Map == null
-                || !hexSelectionController.Map.CanEnter(hex))
-                return null;
+            failReason = null;
+            if (owner == null || catalog == null || hexSelectionController?.Map == null)
+            { failReason = "Cannot create an army here."; return null; }
+            if (!hexSelectionController.Map.CanEnter(hex))
+            { failReason = "Ground armies cannot occupy this terrain."; return null; }
 
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
-            if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
-                return null;
+            if (root == null)
+            { failReason = "Your resources are unavailable. Try again."; return null; }
+            if (!root.CanSpendActionPoints(CreateArmyApCost))
+            { failReason = $"Need {CreateArmyApCost} AP to create an army."; return null; }
             root.SpendActionPoints(CreateArmyApCost);
             return RegisterNewArmy(owner, hex, catalog, hexSelectionController);
         }
@@ -45,17 +53,17 @@ namespace Game.Map
         {
             failReason = null;
             if (hexSelectionController?.Map == null || !hexSelectionController.Map.CanEnter(hex))
-            { failReason = "Terrain cannot host a ground army."; return null; }
+            { failReason = "Ground armies cannot occupy this terrain."; return null; }
             if (owner == null || catalog == null || source == null || members == null || members.Count == 0
                 || members.Any(u => u == null || u.IsAviation) || source.Owner != owner || source.IsPrison
                 || !source.Hex.Equals(hex))
-            { failReason = "Invalid create-army-with-members request."; return null; }
+            { failReason = "Cannot create an army with these units."; return null; }
             ArmyData prospective = ArmyData.CreateVisualSnapshot();
             prospective.Owner = owner; prospective.Hex = hex;
             if (!CanTransferMembers(members, source, prospective, out failReason)) return null;
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
-            { failReason = $"Not enough action points to create an army ({CreateArmyApCost} AP needed)."; return null; }
+            { failReason = $"Need {CreateArmyApCost} AP to create an army."; return null; }
             root.SpendActionPoints(CreateArmyApCost);
             foreach (UnitData unit in members) source.Members.Remove(unit);
             ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController, members);
@@ -213,7 +221,7 @@ namespace Game.Map
             if (definition == null || owner == null || root == null || hexSelectionController == null
                 || (creatingArmy && newArmyCatalog == null))
             {
-                failReason = "Invalid deploy request.";
+                failReason = "Cannot deploy this card here.";
                 return false;
             }
             // One authoritative mutation boundary for human, V1, V2 and aviation. A new field
@@ -225,7 +233,8 @@ namespace Game.Map
                 || (!creatingArmy && (targetArmy.Owner != owner || targetArmy.IsPrison))
                 || (creatingArmy && definition.isAviation))
             {
-                failReason = "Card, owner, target army or resource owner is invalid for deployment.";
+                failReason = root.Setup != owner || !object.ReferenceEquals(root, PlayerRootRegistry.FindFor(owner))
+                    ? "Your resources are unavailable. Try again." : "Cannot deploy this card to this army.";
                 return false;
             }
 
@@ -245,7 +254,7 @@ namespace Game.Map
             }
 
             if (hexSelectionController.Map == null || !hexSelectionController.Map.CanEnter(deploymentHex))
-            { failReason = "Terrain cannot host deployment."; return false; }
+            { failReason = "Units cannot deploy on this terrain."; return false; }
 
             // Ground deployment requires an OWN building with the card's declared ability.
             // Aviation remains Airfield-only.
@@ -253,13 +262,13 @@ namespace Game.Map
             {
                 if (!destination.IsAirfield || !AviationRules.IsOwnedAirfieldAt(deploymentHex, owner))
                 {
-                    failReason = "Aircraft must be deployed into an owned airfield first.";
+                    failReason = "Deploy aircraft to your airfield first.";
                     return false;
                 }
             }
             else if (!HasRequiredGroundDeploymentBuilding(owner, deploymentHex, definition))
             {
-                failReason = $"{definition.displayName} requires your building with '{definition.requiredBuildingAbility}' at this hex.";
+                failReason = $"Requires your building with {definition.requiredBuildingAbility} on this hex.";
                 return false;
             }
 
@@ -268,25 +277,25 @@ namespace Game.Map
             if (!AviationRules.CanContain(destination, prospectiveMember))
             {
                 failReason = definition.isAviation
-                    ? "Aircraft must be deployed into an airfield or an aviation army."
-                    : "Ground units and heroes cannot join an aviation army.";
+                    ? "Aircraft require an airfield or air wing."
+                    : "Ground units and heroes cannot join an air wing.";
                 return false;
             }
             if (definition.isAviation && !destination.IsAirfield)
             {
-                failReason = "Aircraft must be deployed into an owned airfield first.";
+                failReason = "Deploy aircraft to your airfield first.";
                 return false;
             }
             if (destination.IsAirfield
                 && AviationRules.FreeContainerCapacity(destination) < 1)
             {
-                failReason = $"The airfield at {deploymentHex} is full.";
+                failReason = $"Airfield at {deploymentHex} is full.";
                 return false;
             }
             if (!destination.IsAirfield && !destination.CanFitAdditionalCard(definition))
             {
                 string targetName = creatingArmy ? "a fresh army" : destination.Name;
-                failReason = $"{definition.displayName} would exceed {targetName}'s capacity after deployment.";
+                failReason = $"Not enough capacity in {targetName} for {definition.displayName}.";
                 return false;
             }
 
@@ -296,8 +305,8 @@ namespace Game.Map
             if (!root.CanSpendActionPoints(totalAp))
             {
                 failReason = creatingArmy
-                    ? $"Not enough action points to create an army and deploy {definition.displayName} ({totalAp} AP needed)."
-                    : $"Not enough action points to deploy {definition.displayName}.";
+                    ? $"Need {totalAp} AP to create an army and deploy {definition.displayName}."
+                    : $"Not enough AP to deploy {definition.displayName}.";
                 return false;
             }
             if (!alreadyPaidResources && definition.resourceCost != null
@@ -373,7 +382,7 @@ namespace Game.Map
             failReason = null;
             if (unit == null || source == null || target == null || source == target || target.IsPrison)
             {
-                failReason = "Invalid transfer request.";
+                failReason = "Cannot transfer this unit between these armies.";
                 return false;
             }
             if (!source.Members.Contains(unit))
@@ -383,7 +392,7 @@ namespace Game.Map
             }
             if ((source.IsCarrierContainer || target.IsCarrierContainer) && !source.Hex.Equals(target.Hex))
             {
-                failReason = "Aircraft must be on the carrier's hex to board or leave its deck.";
+                failReason = "Aircraft must share the carrier's hex to board or leave.";
                 return false;
             }
             bool promoteToAirArmy = source.IsAirfield && unit.IsAviation && !AviationRules.IsAirArmy(target)
@@ -391,8 +400,8 @@ namespace Game.Map
             if (!promoteToAirArmy && !AviationRules.CanContain(target, unit))
             {
                 failReason = unit.IsAviation
-                    ? "Aircraft can only be moved between an airfield and an aviation army."
-                    : "Ground units and heroes cannot join aviation.";
+                    ? "Transfer aircraft between an airfield and an air wing."
+                    : "Ground units and heroes cannot join an air wing.";
                 return false;
             }
             if (target.IsAirfield && unit.IsAviation && !source.Hex.Equals(target.Hex))
@@ -403,7 +412,7 @@ namespace Game.Map
             if ((target.IsAirfield || target.IsCarrierFlightDeck)
                 && AviationRules.FreeContainerCapacity(target, source) < 1)
             {
-                failReason = $"The airfield at {target.Hex} is full.";
+                failReason = $"Airfield at {target.Hex} is full.";
                 return false;
             }
             if (!target.IsAirfield && !target.IsCarrierFlightDeck)
@@ -412,13 +421,13 @@ namespace Game.Map
                 if (!ArmyData.RosterFits(ArmyData.ProjectAdd(target.Members, unit, target.IsGarrison),
                         target.IsGarrison))
                 {
-                    failReason = $"{unit.Name} wouldn't fit in {target.Name} after the transfer.";
+                    failReason = $"Not enough capacity in {target.Name} for {unit.Name}.";
                     return false;
                 }
             }
             if (!source.CanLeaveWithoutOvercrowding(unit))
             {
-                failReason = $"Moving {unit.Name} out would leave {source.Name} without room for everyone else.";
+                failReason = $"Moving {unit.Name} would leave {source.Name} over capacity.";
                 return false;
             }
 
@@ -432,8 +441,8 @@ namespace Game.Map
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost))
                 {
-                    failReason = $"Not enough action points to add {unit.Name} to {target.Name} "
-                        + $"({unit.ActivationApCost} AP needed - it already moved this turn).";
+                    failReason = targetRoot == null ? "Your resources are unavailable. Try again."
+                        : $"Need {unit.ActivationApCost} AP to join {target.Name}; this army already activated.";
                     return false;
                 }
             }
@@ -497,19 +506,19 @@ namespace Game.Map
             if (units == null || units.Count == 0 || source == null || target == null
                 || source == target || source.IsPrison || target.IsPrison)
             {
-                failReason = "Invalid batch transfer request.";
+                failReason = "Cannot transfer these units between these armies.";
                 return false;
             }
 
             var distinct = units.Where(u => u != null).Distinct().ToList();
             if ((source.IsCarrierContainer || target.IsCarrierContainer) && !source.Hex.Equals(target.Hex))
             {
-                failReason = "Aircraft must be on the carrier's hex to board or leave its deck.";
+                failReason = "Aircraft must share the carrier's hex to board or leave.";
                 return false;
             }
             if (distinct.Count != units.Count)
             {
-                failReason = "Batch contains a null or duplicate member.";
+                failReason = "Select each available unit only once.";
                 return false;
             }
             foreach (UnitData unit in distinct)
@@ -521,7 +530,7 @@ namespace Game.Map
                 }
                 if (!AviationRules.CanContain(target, unit))
                 {
-                    failReason = "A batch transfer cannot mix incompatible aviation/ground containers.";
+                    failReason = "Aircraft and ground units cannot share an army.";
                     return false;
                 }
             }
@@ -544,7 +553,7 @@ namespace Game.Map
                 projectedSource = ArmyData.ProjectAdd(projectedSource, unit, source.IsGarrison);
             if (!source.IsCarrierFlightDeck && !ArmyData.RosterFits(projectedSource, source.IsGarrison))
             {
-                failReason = $"The batch would leave {source.Name} without room for everyone else.";
+                failReason = $"This transfer would leave {source.Name} over capacity.";
                 return false;
             }
             var projectedTarget = target.Members.Where(u => !back.Contains(u)).ToList();
@@ -555,7 +564,7 @@ namespace Game.Map
                 projectedTarget.Insert(0, promoteToCommander);
             if (!target.IsAirfield && !target.IsCarrierFlightDeck && !ArmyData.RosterFits(projectedTarget, target.IsGarrison))
             {
-                failReason = $"The batch wouldn't fit in {target.Name}.";
+                failReason = $"Not enough capacity in {target.Name} for these units.";
                 return false;
             }
             if (target.IsAirfield && distinct.Any(u => u.IsAviation) && !source.Hex.Equals(target.Hex))
@@ -566,7 +575,7 @@ namespace Game.Map
             if ((target.IsAirfield || target.IsCarrierFlightDeck)
                 && distinct.Count - back.Count > AviationRules.FreeContainerCapacity(target, source))
             {
-                failReason = $"The airfield at {target.Hex} is full.";
+                failReason = $"Airfield at {target.Hex} is full.";
                 return false;
             }
 
@@ -583,8 +592,8 @@ namespace Game.Map
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost))
                 {
-                    failReason = $"Not enough action points to add the batch to {target.Name} "
-                        + $"({totalApCost} AP needed - it already moved this turn).";
+                    failReason = targetRoot == null ? "Your resources are unavailable. Try again."
+                        : $"Need {totalApCost} AP to transfer units into already activated armies.";
                     return false;
                 }
             }
@@ -604,7 +613,7 @@ namespace Game.Map
             if (promoteToCommander != null
                 && (!promoteToCommander.IsHero || units == null || !units.Contains(promoteToCommander)))
             {
-                failReason = "The promoted commander must be a hero of the batch.";
+                failReason = "The new commander must be a hero among the selected units.";
                 return false;
             }
             if (!CanTransferMembers(units, source, target, promoteToCommander, displaced,
@@ -707,13 +716,13 @@ namespace Game.Map
             if (unitA == null || armyA == null || unitB == null || armyB == null || armyA == armyB
                 || armyA.IsPrison || armyB.IsPrison)
             {
-                failReason = "Invalid swap request.";
+                failReason = "Cannot swap these units.";
                 return false;
             }
             if (armyA.IsAirfield || AviationRules.IsAirArmy(armyA) || armyB.IsAirfield || AviationRules.IsAirArmy(armyB)
                 || unitA.IsAviation || unitB.IsAviation)
             {
-                failReason = "Aircraft and ground units/heroes can't be swapped between armies.";
+                failReason = "Aircraft cannot swap with ground units or heroes.";
                 return false;
             }
             if (!armyA.Members.Contains(unitA))
@@ -732,7 +741,7 @@ namespace Game.Map
             remainingA = ArmyData.ProjectAdd(remainingA, unitB, armyA.IsGarrison);
             if (!ArmyData.RosterFits(remainingA, armyA.IsGarrison))
             {
-                failReason = $"{unitB.Name} wouldn't fit in {armyA.Name} once {unitA.Name} leaves.";
+                failReason = $"Not enough capacity in {armyA.Name} after the swap.";
                 return false;
             }
             var remainingB = new List<UnitData>(armyB.Members);
@@ -740,7 +749,7 @@ namespace Game.Map
             remainingB = ArmyData.ProjectAdd(remainingB, unitA, armyB.IsGarrison);
             if (!ArmyData.RosterFits(remainingB, armyB.IsGarrison))
             {
-                failReason = $"{unitA.Name} wouldn't fit in {armyB.Name} once {unitB.Name} leaves.";
+                failReason = $"Not enough capacity in {armyB.Name} after the swap.";
                 return false;
             }
 
@@ -750,14 +759,12 @@ namespace Game.Map
             PlayerRoot rootB = chargeBIncoming ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
             if (chargeAIncoming && rootA == null)
             {
-                failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
-                    + $"({unitB.ActivationApCost} AP needed - it already moved this turn).";
+                failReason = "Your resources are unavailable. Try again.";
                 return false;
             }
             if (chargeBIncoming && rootB == null)
             {
-                failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
-                    + $"({unitA.ActivationApCost} AP needed - it already moved this turn).";
+                failReason = "Your resources are unavailable. Try again.";
                 return false;
             }
             if (rootA != null && rootA == rootB)
@@ -766,8 +773,7 @@ namespace Game.Map
                     + (chargeBIncoming ? unitA.ActivationApCost : 0);
                 if (!rootA.CanSpendActionPoints(combinedCost))
                 {
-                    failReason = $"Not enough action points for \"{armyA.Owner.Nickname}\" to swap {unitB.Name} "
-                        + $"and {unitA.Name} between {armyA.Name} and {armyB.Name} ({combinedCost} AP needed).";
+                    failReason = $"Need {combinedCost} AP to swap {unitA.Name} and {unitB.Name}.";
                     return false;
                 }
             }
@@ -775,14 +781,12 @@ namespace Game.Map
             {
                 if (chargeAIncoming && !rootA.CanSpendActionPoints(unitB.ActivationApCost))
                 {
-                    failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
-                        + $"({unitB.ActivationApCost} AP needed - it already moved this turn).";
+                    failReason = $"Need {unitB.ActivationApCost} AP to join {armyA.Name}; this army already activated.";
                     return false;
                 }
                 if (chargeBIncoming && !rootB.CanSpendActionPoints(unitA.ActivationApCost))
                 {
-                    failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
-                        + $"({unitA.ActivationApCost} AP needed - it already moved this turn).";
+                    failReason = $"Need {unitA.ActivationApCost} AP to join {armyB.Name}; this army already activated.";
                     return false;
                 }
             }

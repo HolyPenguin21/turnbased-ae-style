@@ -661,7 +661,7 @@ namespace Game.UI
                 return HumanPlayer?.Tactics.Add(data) == true;
             if (_cards.Count >= maxHandSize)
             {
-                turnController?.ShowSpawnHint($"Hand is full ({maxHandSize}) - {data.Definition.displayName} was lost.");
+                turnController?.ShowSpawnHint($"Hand full ({maxHandSize}). {data.Definition.displayName} was lost.");
                 return false;
             }
             AddCard(data);
@@ -913,7 +913,7 @@ namespace Game.UI
 
             if (!IsValidDropTarget(definition, human, hex.Value))
             {
-                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here - needs a building with {definition.requiredBuildingAbility}.");
+                turnController.ShowSpawnHint($"Requires your building with {definition.requiredBuildingAbility} on this hex.");
                 return false;
             }
 
@@ -926,7 +926,7 @@ namespace Game.UI
             ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex.Value, human);
             if (garrison == null || !garrison.CanFitAdditionalCard(definition))
             {
-                turnController.ShowSpawnHint($"Garrison here is full - can't deploy {definition.displayName}.");
+                turnController.ShowSpawnHint($"Not enough garrison capacity for {definition.displayName}.");
                 return false;
             }
 
@@ -968,7 +968,7 @@ namespace Game.UI
                 card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
             if (!outcome.Ok)
             {
-                turnController.ShowSpawnHint($"Can't build {definition.displayName} here - {outcome.FailReason}.");
+                turnController.ShowSpawnHint($"{definition.displayName}: {outcome.FailReason}");
                 return false;
             }
 
@@ -1003,7 +1003,7 @@ namespace Game.UI
             {
                 if (!targetArmy.IsAirfield)
                 {
-                    turnController.ShowSpawnHint("Aircraft can only be deployed into an airfield.");
+                    turnController.ShowSpawnHint("Deploy aircraft to your airfield first.");
                     return false;
                 }
                 if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
@@ -1019,13 +1019,13 @@ namespace Game.UI
 
             if (!IsValidDropTarget(definition, human, targetArmy.Hex))
             {
-                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here - {targetArmy.Name} needs to be on a building with {definition.requiredBuildingAbility}.");
+                turnController.ShowSpawnHint($"Move {targetArmy.Name} to your building with {definition.requiredBuildingAbility}.");
                 return false;
             }
 
             if (!targetArmy.CanFitAdditionalCard(definition))
             {
-                turnController.ShowSpawnHint($"{targetArmy.Name} is full - can't deploy {definition.displayName}.");
+                turnController.ShowSpawnHint($"Not enough capacity in {targetArmy.Name} for {definition.displayName}.");
                 return false;
             }
 
@@ -1064,7 +1064,7 @@ namespace Game.UI
                 card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
             if (!outcome.Ok)
             {
-                turnController?.ShowSpawnHint($"Can't deploy {definition.displayName} here - {outcome.FailReason}.");
+                turnController?.ShowSpawnHint($"{definition.displayName}: {outcome.FailReason}");
                 return false;
             }
 
@@ -1102,7 +1102,7 @@ namespace Game.UI
                 card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
             if (!outcome.Ok)
             {
-                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} - {outcome.FailReason}.");
+                turnController.ShowSpawnHint($"{definition.displayName}: {outcome.FailReason}");
                 return false;
             }
 
@@ -1167,7 +1167,7 @@ namespace Game.UI
                 return;
             if (!CanDragCards())
             {
-                turnController?.ShowSpawnHint("You can only attach cards on your own turn.");
+                turnController?.ShowSpawnHint("Wait for your turn to attach upgrades.");
                 return;
             }
             _pendingAttachment = equipmentCard;
@@ -1367,7 +1367,7 @@ namespace Game.UI
                 return;
             if (_cards.Count >= maxHandSize)
             {
-                turnController.ShowSpawnHint($"Hand is full ({maxHandSize} cards) - play or discard before drawing.");
+                turnController.ShowSpawnHint($"Hand full ({maxHandSize}). Play or discard a card before drawing.");
                 return;
             }
             PlayerRoot root = FindHumanRoot();

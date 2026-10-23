@@ -71,7 +71,7 @@ namespace Game.EditorTools
         {
             var deck = Deck(1); deck.mainCards.Add(new DeckCardEntry { cardKey = "removed", count = 1 });
             var validation = rules.Validate(deck, _ => 4);
-            Assert.That(validation.IsValid, Is.True); Assert.That(validation.Warnings.Any(w => w.Contains("removed")), Is.True);
+            Assert.That(validation.IsValid, Is.True); Assert.That(validation.Warnings.Any(w => w.Contains("unavailable")), Is.True);
             Assert.That(new MatchLoadout(deck, rules, _ => 4).TryBuildPool(rules, out var pool, out _), Is.True);
             Assert.That(pool.Single(), Is.SameAs(card)); Assert.That(deck.mainCards.Count, Is.EqualTo(2));
         }

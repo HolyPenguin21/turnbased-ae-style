@@ -49,7 +49,7 @@ namespace Game.Aviation
                     else landed = AviationActions.LandInSlotOrder(airArmy, hexSelection);
                     int unlanded = airArmy.Members.Count - refuelledInPlace.Count;
                     if (unlanded == 0) continue;
-                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: the airfield is full - {unlanded} aircraft could not land"
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: airfield full; {unlanded} aircraft could not land"
                         + (landed > 0 ? $" ({landed} landed)." : "."));
                 }
                 int destroyed = 0;
@@ -72,7 +72,7 @@ namespace Game.Aviation
                     VisionSystem.NotifyContentChanged(airArmy.Hex);
                     if (aircraft.HitPointsCurrent > 0)
                     {
-                        messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: {aircraft.Name} lost 50% max HP because it did not finish the turn at an airfield.");
+                        messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: {aircraft.Name} lost 50% max HP: refuelling overdue. Land at your airfield.");
                         continue;
                     }
                     aircraft.HitPointsCurrent = 0;
@@ -82,11 +82,11 @@ namespace Game.Aviation
                 if (airArmy.Members.Count == 0)
                 {
                     hexSelection?.DeleteArmyIfEmptied(airArmy);
-                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: all aircraft were destroyed because they did not finish the turn at an airfield.");
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: all aircraft destroyed: refuelling overdue.");
                 }
                 else if (destroyed > 0)
                 {
-                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: {destroyed} aircraft were destroyed because they did not finish the turn at an airfield.");
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: {destroyed} aircraft destroyed: refuelling overdue.");
                 }
             }
             return messages;

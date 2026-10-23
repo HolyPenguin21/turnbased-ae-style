@@ -17,7 +17,16 @@ namespace Game.Campaign
         { public ObsoleteCampaignException() : base("Obsolete campaign schema. Start a new campaign.") { } }
         public CampaignState Load(out string notice)
         {
-            try { return AtomicJsonFile.Load(path, Read, "Campaign recovered from backup: ", out notice); }
+            try
+            {
+                var campaign = AtomicJsonFile.Load(path, Read, "Campaign restored from backup: ", out notice);
+                if (!string.IsNullOrEmpty(notice))
+                {
+                    Debug.LogWarning(notice);
+                    notice = "Campaign restored from backup.";
+                }
+                return campaign;
+            }
             catch (ObsoleteCampaignException)
             {
                 // Never recover an old schema from backup. Preserve a future-version file even
@@ -42,11 +51,11 @@ namespace Game.Campaign
                     // The obsolete primary does not authorize deleting a valid NEW-schema backup.
                     // Leave the backup intact for the next atomic save, as ordinary recovery does.
                     if (File.Exists(path)) File.Delete(path);
-                    notice = "Campaign recovered from current-schema backup after obsolete primary.";
+                    notice = "Campaign restored from backup.";
                     return currentBackup;
                 }
                 foreach (string file in new[] { path, path + ".bak" }) if (File.Exists(file)) File.Delete(file);
-                notice = "Obsolete campaign removed. Start a new campaign; collection and decks are retained.";
+                notice = "Old campaign is incompatible. Start a new campaign. Your collection and decks are kept.";
                 return null;
             }
         }
