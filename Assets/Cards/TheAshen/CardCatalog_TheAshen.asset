@@ -379,7 +379,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
-    grantedAbilities: []
+    grantedAbilities:
+    - RapidReaction
     resourceYield:
       human: 0
       energy: 0
