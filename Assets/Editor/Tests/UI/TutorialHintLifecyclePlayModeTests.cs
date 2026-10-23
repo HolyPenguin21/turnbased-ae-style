@@ -177,7 +177,7 @@ namespace Game.EditorTests
             rect.anchoredPosition = new Vector2(-20, -20);
             foreach (TutorialHintId id in Enum.GetValues(typeof(TutorialHintId)))
             {
-                var asset = Resources.Load<GameObject>("UI/TutorialHints/" + id + "Hint");
+                var asset = GameAssetCatalog.Load<GameObject>("UI/TutorialHints/" + id + "Hint");
                 var hint = Object.Instantiate(asset, canvasObject.transform).GetComponent<TutorialHintView>();
                 Canvas.ForceUpdateCanvases(); hint.Follow(rect);
                 var body = hint.transform.Find("Bubble/Body").GetComponent<TMP_Text>();

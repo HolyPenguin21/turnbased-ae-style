@@ -27,7 +27,7 @@ namespace Game.EditorTests
             foreach (TutorialHintId id in Enum.GetValues(typeof(TutorialHintId)))
             {
                 var root = AssetDatabase.LoadAssetAtPath<GameObject>(
-                    "Assets/Resources/UI/TutorialHints/" + id + "Hint.prefab");
+                    "Assets/Prefabs/TutorialHints/" + id + "Hint.prefab");
                 Assert.That(root, Is.Not.Null, id.ToString());
                 var hint = root.GetComponent<TutorialHintView>();
                 Assert.That(hint, Is.Not.Null);

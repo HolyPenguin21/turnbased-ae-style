@@ -168,7 +168,7 @@ namespace Game.UI
                 HideView();
                 if (!prefabs.TryGetValue(next.Id, out var prefab))
                 {
-                    var asset = Resources.Load<GameObject>("UI/TutorialHints/" + next.Id + "Hint");
+                    var asset = GameAssetCatalog.Load<GameObject>("UI/TutorialHints/" + next.Id + "Hint");
                     prefab = asset != null ? asset.GetComponent<TutorialHintView>() : null;
                     prefabs[next.Id] = prefab;
                 }
