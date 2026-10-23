@@ -32296,7 +32296,7 @@ MonoBehaviour:
   scrollUpButton: {fileID: 8880000000000000097}
   scrollDownButton: {fileID: 8880000000000000106}
   cardHeight: 150
-  verticalGap: 15.5
+  verticalGap: 16
 --- !u!1 &8880000000000000091
 GameObject:
   m_ObjectHideFlags: 0

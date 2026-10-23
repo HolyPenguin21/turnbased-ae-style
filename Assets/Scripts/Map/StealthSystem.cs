@@ -142,6 +142,9 @@ namespace Game.Map
             if (unit == null || !unit.IsHidden)
                 return;
             unit.IsHidden = false;
+            // Leaving stealth spends this turn's toggle too, not only entering it: a unit that
+            // started the turn hidden and came out to act cannot vanish again until next turn.
+            unit.HasEnteredStealthThisTurn = true;
             _detected.Remove(unit);
             // Arrival intentionally does nothing for a fully hidden army. Revealing a resident
             // must resolve the same undefended-building contact even without another move.
@@ -194,6 +197,7 @@ namespace Game.Map
                     if (!member.IsHidden)
                         continue;
                     member.IsHidden = false;
+                    member.HasEnteredStealthThisTurn = true;
                     _detected.Remove(member);
                     anyChanged = true;
                 }

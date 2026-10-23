@@ -407,7 +407,10 @@ namespace Game.UI
                 hit = ready && (_kind == ChallengeKind.CaptureKill
                     ? result.AttackerSuccesses >= result.DefenderSuccesses : result.Damage > 0);
             }
-            currentResultText.text = ready ? (hit ? "Result : Hit" : "Result : Miss") : string.Empty;
+            string label = _kind == ChallengeKind.ResearchProduction
+                ? (hit ? "Result : Success" : "Result : Fail")
+                : (hit ? "Result : Hit" : "Result : Miss");
+            currentResultText.text = ready ? label : string.Empty;
         }
 
         private void CloseTacticDecision()

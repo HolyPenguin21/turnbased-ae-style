@@ -77,6 +77,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.mutator.dermal-plating
       count: 1
+    - cardKey: vessels.01.relay-base
+      count: 1
     equipment: []
     mutators: []
   - deckName: The Ashen Starter
@@ -138,6 +140,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.mutator.dermal-plating
       count: 1
+    - cardKey: ashen.card.ashen-base
+      count: 1
     equipment: []
     mutators: []
   - deckName: Iron Concord Starter
@@ -198,6 +202,8 @@ MonoBehaviour:
     - cardKey: neutral.equipment.bio.heavy-mg
       count: 1
     - cardKey: neutral.equipment.bio.at-launcher
+      count: 1
+    - cardKey: concord.card.concord-base
       count: 1
     equipment: []
     mutators: []

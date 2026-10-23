@@ -490,7 +490,10 @@ namespace Game.UI
                 if (roundText != null)
                     roundText.text = string.Empty;
                 UIListUtility.DestroyAndClear(_queueIcons);
-                ShowUnitDetail(null);
+                // Same panel the round loop fills later: the local army's first slot.
+                ShowUnitDetail(_localArmy != null && _localArmy.Members.Count > 0 ? _localArmy.Members[0] : null);
+                if (IsAutomatedSide(_attacker) || IsAutomatedSide(_defender))
+                    aiThoughts?.Show(null, "Establishing link... stand by.", immediate: true);
                 RefreshGrid();
 
                 arrangePopup.Show(BeginArrangement);

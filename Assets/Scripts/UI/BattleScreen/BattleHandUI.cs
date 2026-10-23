@@ -14,7 +14,7 @@ namespace Game.UI
         [SerializeField] private Button scrollUpButton;
         [SerializeField] private Button scrollDownButton;
         [SerializeField] private float cardHeight = 150f;
-        [SerializeField] private float verticalGap = 15.5f;
+        [SerializeField] private float verticalGap = 16f;
         // Fixed window size, matching the user's own spec ("помещается 4 карты") — unlike
         // CardHandUI's own MaxVisible, this isn't expected to ever need tuning per-instance.
         private const int MaxVisible = 4;

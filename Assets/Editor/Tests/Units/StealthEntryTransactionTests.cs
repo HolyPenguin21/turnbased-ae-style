@@ -110,6 +110,22 @@ namespace Game.EditorTests
             Assert.That(StealthSystem.TryEnterStealth(_unit, _root), Is.True);
         }
 
+        // A unit already hidden when its turn began (flag cleared by ReplenishMoveForOwner) that
+        // comes out to act has spent this turn's toggle as well.
+        [Test]
+        public void ExitFromStealthHeldSinceEarlierTurnBlocksReEntry()
+        {
+            _root.ActionPoints = 5;
+            _unit.IsHidden = true;
+            _unit.HasEnteredStealthThisTurn = false;
+
+            StealthSystem.ExitStealth(_unit);
+
+            Assert.That(StealthSystem.CanEnterStealth(_unit), Is.False);
+            Assert.That(StealthSystem.TryEnterStealth(_unit, _root), Is.False);
+            Assert.That(_root.ActionPoints, Is.EqualTo(5));
+        }
+
         [Test]
         public void VoluntaryExitRemainsFree()
         {

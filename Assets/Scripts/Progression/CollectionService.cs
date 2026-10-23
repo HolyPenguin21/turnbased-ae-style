@@ -14,7 +14,7 @@ namespace Game.Progression
 
     public sealed class CollectionService
     {
-        private const int CurrentStarterDeckRevision = 1;
+        private const int CurrentStarterDeckRevision = 2;
         public DeckRules Rules { get; }
         private readonly CollectionProfileStore store;
         private CollectionProfile profile;
