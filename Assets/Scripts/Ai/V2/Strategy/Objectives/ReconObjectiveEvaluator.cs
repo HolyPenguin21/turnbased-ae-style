@@ -178,6 +178,13 @@ namespace Game.Ai.V2
             ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, target);
             if (!cost.MoverKnown) return null;
             float relevance = AiConfigV2.reconHuntStrategicRelevance;
+            // The same executable Hunt also removes a known saboteur beside our actual income.
+            // This is task relevance, not a new guard mission or an override of fight/route safety.
+            if (snap.Observer != null && (snap.Known?.Buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>()).Any(b =>
+                b.Owner == snap.Observer && !b.IsBase && !b.IsStartingCitadel
+                && HexGridMath.Distance(b.Hex, hex) <= AiConfigV2.economySiteThreatRadius
+                && ResourceBundle.All.Any(t => b.CollectedAmount(t) > 0)))
+                relevance = 1f;
             TaskScore score = new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
                 cardPrice: TaskScoreEvaluator.Price(cost.ActivationApNow),
@@ -407,8 +414,10 @@ namespace Game.Ai.V2
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
             float homeWeight = Mathf.Lerp(1f, AiConfigV2.scoutExploreHomeProximityWeight,
                 ScoutObjectiveEvaluator.LocalExplorationGap(snap));
+            float relevance = AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex)
+                ? 1f : RuinsRelevance(snap, hex);
             return new TaskScore(
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(RuinsRelevance(snap, hex)),
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance) * homeWeight,
                 cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),

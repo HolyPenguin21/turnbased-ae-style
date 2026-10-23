@@ -617,17 +617,19 @@ namespace Game.Ai.V2
         // own turn; future equal ETA is unsafe because the enemy can act before our next turn.
         // Pack actual entering-hex costs into MP budgets: total cost division underestimates
         // routes whose terrain steps cannot consume the last MP of each turn.
-        internal static int ArrivalEta(WorldSnapshot snap, ArmySnapshot actor, HexCoord destination)
+        internal static int ArrivalEta(WorldSnapshot snap, ArmySnapshot actor, HexCoord destination,
+            bool fastestByTurns = false)
         {
             if (actor == null) return int.MaxValue;
             if (ReferenceEquals(snap?.Map, null) && !actor.Hex.Equals(destination)
                 && actor.ReachableOwnBaseHexes?.Contains(destination) != true) return int.MaxValue;
-            return GroundArrivalEta(snap, actor.Hex, destination, actor.CurrentMovement, actor.MaxMovement);
+            return GroundArrivalEta(snap, actor.Hex, destination, actor.CurrentMovement, actor.MaxMovement,
+                fastestByTurns);
         }
 
         // Preserve the reinforcement route contract. Intercept deadlines instead use execution's
         // turn-optimal route; movement belongs to the final roster rather than the untouched host.
-        private static int GroundArrivalEta(WorldSnapshot snap, HexCoord from, HexCoord destination,
+        internal static int GroundArrivalEta(WorldSnapshot snap, HexCoord from, HexCoord destination,
             int currentMovement, int maxMovement, bool fastestByTurns = false)
         {
             if (from.Equals(destination)) return 0;
@@ -655,9 +657,9 @@ namespace Game.Ai.V2
         }
 
         internal static bool CanArriveBeforeThreat(WorldSnapshot snap, ArmySnapshot actor,
-            HexCoord destination, int? enemyEta, out int eta)
+            HexCoord destination, int? enemyEta, out int eta, bool fastestByTurns = false)
         {
-            eta = ArrivalEta(snap, actor, destination);
+            eta = ArrivalEta(snap, actor, destination, fastestByTurns);
             return eta != int.MaxValue && enemyEta.HasValue && eta < enemyEta.Value;
         }
 
@@ -708,16 +710,14 @@ namespace Game.Ai.V2
             if (!IsDefendableAsset(snap, kind, objective.Target.ProtectedAssetHex))
                 return -1f;
             HexCoord hex = objective.Target.ProtectedAssetHex;
-            // Snapshot-pure: the structure's own defence as remembered (terrain is not in this read, so
-            // the estimate is conservative by exactly that much).
-            float bonus = 0f;
-            if (snap.Known?.Buildings != null)
-                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
-                    if (b.Hex.Equals(hex) && (b.IsBase || b.IsStartingCitadel) && b.Owner == snap.Observer)
-                    {
-                        bonus = Mathf.Max(0f, b.Defense);
-                        break;
-                    }
+            // Analysis freezes the complete terrain + structure bonus. Reuse that fact for both
+            // existing and arriving defenders, without a second live world read or a zero clamp.
+            StrategicAssetSnapshot asset = snap.Threat?.Assets?.FirstOrDefault(a => a.Hex.Equals(hex)
+                && a.Kind == kind);
+            float bonus = asset?.HexDefenseBonus ?? (snap.Known?.Buildings
+                ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                .Where(b => b.Hex.Equals(hex) && (b.IsBase || b.IsStartingCitadel) && b.Owner == snap.Observer)
+                .Select(b => b.Defense).FirstOrDefault();
             var seen = new HashSet<int>();
             var defenders = new List<WorthIt.DefendingArmy>();
             void Add(ArmySnapshot a)

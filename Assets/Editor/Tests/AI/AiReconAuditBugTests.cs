@@ -475,6 +475,27 @@ namespace Game.EditorTests
             Assert.That(proposal.PreferredMoverArmyId, Is.EqualTo(10));
         }
 
+        [TestCase(true, false, 1, 2, true)]
+        [TestCase(true, false, 1, 3, false)]
+        [TestCase(false, false, 1, 1, false)]
+        [TestCase(true, true, 1, 1, false)]
+        [TestCase(true, false, 0, 1, false)]
+        public void HuntPrioritizesOnlyNearbyKnownOwnExtractionIncome(bool own, bool isBase,
+            int collected, int distance, bool prioritize)
+        {
+            var player = new PlayerSetupData();
+            var focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, 11, focus);
+            snap.Observer = player;
+            snap.Self.ReconHuntOpportunities = new[] { (10, focus) };
+            float baseline = ReconObjectiveEvaluator.HuntAt(snap, focus).BaseValue;
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(
+                new HexCoord(focus.Q + distance, focus.R), own ? player : new PlayerSetupData(),
+                false, new string[0], collectedAmounts: new[] { collected, 0, 0, 0 }, isBase: isBase) };
+            float changed = ReconObjectiveEvaluator.HuntAt(snap, focus).BaseValue;
+            Assert.That(changed - baseline, Is.EqualTo(prioritize ? 1.8f : 0f).Within(0.0001f));
+        }
+
         // A structure lost since the enemy's last turn: its saboteur stands revealed on the ruin.
         // While the ruin is out of sight the air sweep looks there first; an old loss does not.
         [TestCase(7, true)]

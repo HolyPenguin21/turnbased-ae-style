@@ -23,7 +23,7 @@ namespace Game.Ai.V2
         // Reuses the EXACT Economy garrison-extraction solver/claim fields and the canonical
         // SafeStepPathing route. No new mover, reservation ledger or actor assignment manager.
         private static ProvisioningResult ProvisionDevelopment(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            AiHandData hand, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             DevelopmentMissionTarget target)
         {
             MissionProposal mission = funded.Mission;
@@ -35,9 +35,10 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "bound Development hero lost or no longer qualified"));
 
-            if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, target.FacilityHex))
+            if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, target.FacilityHex,
+                    target.Mode, hand, ctx))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    "bound Development preparation base missing"));
+                    "bound Development preparation base or structural purpose lost"));
             if (BattleInitiator.FindEnemyAt(target.FacilityHex, player) != null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     "Development preparation base temporarily contested"));

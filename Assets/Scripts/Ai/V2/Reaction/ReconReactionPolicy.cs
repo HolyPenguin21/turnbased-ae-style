@@ -101,28 +101,29 @@ namespace Game.Ai.V2
         private static ReconReactionDecision? FindStrongExposedThreat(PlayerSetupData player, HexMap map,
             ArmyData army, bool inStealth)
         {
+            if (inStealth)
+                return null;
             float worstWin = 1f;
             AiMapMemory.KnownEnemySighting? worst = null;
+            var threats = new List<AiMapMemory.KnownEnemySighting>();
             foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.scoutFleeRadius))
+                     AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.scoutFleeRadius + 1))
             {
                 // A building-bound garrison cannot leave its structure to catch the scout
                 // (AiMapMemory keeps it permanently since audit F1); it is detection risk only,
                 // which DetectorRisk still counts.
-                if (sighting.Owner == null || sighting.Owner.IsNeutral || sighting.IsGarrison)
+                if (sighting.Owner == null || sighting.Owner.IsNeutral || sighting.Owner.IsEliminated || sighting.IsGarrison)
                     continue;
-                // Own stealth state only — whether this enemy has DETECTED the scout is unknown to
-                // its owner (stealth design), so it is never read here.
-                if (inStealth && StealthSystem.IsArmyFullyHidden(army))
-                    continue;
-
                 // Do NOT call WorthIt.HexDefenseBonus on a stale/non-visible enemy position: that
                 // helper includes live BuildingRegistry and would leak a structure change through
                 // fog. Terrain is immutable/public and safe; structural defence is added only when
                 // the hex is currently visible to this player.
                 float hexBonus = HonestHexDefenseBonus(player, map, sighting.Hex);
                 float win = WorthIt.WinChance(army, sighting.Defenders, hexBonus, sighting.Commander);
-                if (win < worstWin)
+                if (win < StrongEnemyFleeWinChance)
+                    threats.Add(sighting);
+                if (HexGridMath.Distance(army.Hex, sighting.Hex) <= AiConfig.scoutFleeRadius
+                    && win < worstWin)
                 {
                     worstWin = win;
                     worst = sighting;
@@ -132,35 +133,43 @@ namespace Game.Ai.V2
             if (!worst.HasValue || worstWin >= StrongEnemyFleeWinChance)
                 return null;
 
-            HexCoord? fleeTo = PickFleeTarget(player, map, army, worst.Value.Hex);
+            HexCoord? fleeTo = PickFleeTarget(player, map, army, threats);
             return new ReconReactionDecision(ReconReactionAction.Flee, fleeTo, worst.Value.ArmyId,
                 worstWin, fleeTo.HasValue
                     ? $"exposed to stronger known enemy near ({worst.Value.Hex.Q},{worst.Value.Hex.R})"
-                    : "exposed to stronger known enemy; no safe affordable escape, hold position");
+                    : "exposed to stronger known enemy; no affordable step improves safety, hold position");
         }
 
-        // §14 — a real flee-destination evaluator. The nearest owned garrison supplies only the
-        // friendly-approach term; the chosen hex also maximises distance from the threat,
-        // keeps recon useful, and avoids known detectors / hostile zones / backtracking. Running
-        // home to the citadel is no longer the automatic answer to any strong sighting.
+        // Rank the executable adjacent step, not an attractive endpoint behind it. Include the
+        // one-hex outer band: an enemy outside today's flee radius can threaten the next step.
+        // Strictly increasing minimum clearance prevents unchanged Flee reversals without a new
+        // blacklist/state: on changed observations, a previously used hex may become safer again.
         private static HexCoord? PickFleeTarget(PlayerSetupData player, HexMap map, ArmyData army,
-            HexCoord threatHex)
+            IReadOnlyList<AiMapMemory.KnownEnemySighting> threats)
         {
             HexCoord friendlyAnchor = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
-            int radius = Math.Max(2, AiConfig.scoutFleeRadius);
+            int clearanceCap = AiConfig.scoutFleeRadius + 1;
+            int currentClearance = Math.Min(clearanceCap,
+                threats.Min(t => HexGridMath.Distance(army.Hex, t.Hex)));
+            int bestClearance = currentClearance;
             HexCoord? best = null;
             float bestScore = float.NegativeInfinity;
 
-            foreach (HexCoord h in HexGridMath.HexesInRange(army.Hex, radius))
+            foreach (HexCoord h in HexGridMath.Neighbors(army.Hex).OrderBy(h => h.Q).ThenBy(h => h.R))
             {
-                if (h.Equals(army.Hex) || !map.CanEnter(h, army)
-                    || SafeStepPathing.FindSafePathCost(map, army, h) == int.MaxValue)
+                if (!map.CanEnter(h, army))
                     continue;
                 // The one Recon step rule, for the scout as it is now (a flee never enters stealth).
                 if (ScoutExecutionSafety.StepBlocked(player, army, h))
                     continue;
 
-                float fromThreat = HexGridMath.Distance(h, threatHex);
+                HexCoord? step = SafeStepPathing.FindNextSafeStep(map, army, h);
+                if (!step.HasValue || !step.Value.Equals(h))
+                    continue;
+                int fromThreat = Math.Min(clearanceCap,
+                    threats.Min(t => HexGridMath.Distance(h, t.Hex)));
+                if (fromThreat <= currentClearance || fromThreat < bestClearance)
+                    continue;
                 float toFriendly = HexGridMath.Distance(h, friendlyAnchor);
                 float detector = ScoutRiskModel.DetectorRiskLive(player, h);
                 int freshNeighbors = ReconGroundStepPlanner.FreshNeighborCount(player, map, h);
@@ -172,21 +181,14 @@ namespace Game.Ai.V2
                     + AiConfigV2.scoutFleeFutureReconWeight * futureRecon
                     - AiConfigV2.scoutFleeDetectorWeight * detector
                     - AiConfigV2.scoutFleeBacktrackWeight * backtrack;
-                // The executor asks the shared SafeStepPathing owner for Flee's first step. Its
-                // target evaluator must ask that SAME owner before selecting this candidate, or
-                // an unreachable hex wins here and execution reports NoSafeStep while a lower-
-                // scoring legal escape was available. Probe only candidates capable of beating
-                // the current best; this is an emergency reaction, not a full-map routing sweep.
-                if (score > bestScore
-                    && SafeStepPathing.FindNextSafeStep(map, army, h) != null)
+                if (fromThreat > bestClearance || score > bestScore)
                 {
+                    bestClearance = fromThreat;
                     bestScore = score;
                     best = h;
                 }
             }
-            // The search includes every adjacent hex, so any safe affordable first step is
-            // itself a candidate, even if the preferred destination or garrison is unreachable.
-            // With none left, end movement in place rather than emit an unproved home route.
+            // A null escape deliberately stops the existing executor without spending AP/MP.
             return best;
         }
 

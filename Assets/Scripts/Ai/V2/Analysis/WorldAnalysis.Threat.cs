@@ -83,7 +83,7 @@ namespace Game.Ai.V2
                 {
                     Hex = b.Hex,
                     Kind = kind,
-                    HexDefenseBonus = b.Defense,
+                    HexDefenseBonus = WorthIt.HexDefenseBonus(b.Hex, snap.Map),
                     Opposition = opposition,
                     Value = BuildingAssetValue(kind, b, snap, totalIncome),
                 });

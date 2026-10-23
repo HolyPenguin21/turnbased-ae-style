@@ -408,7 +408,12 @@ namespace Game.Ai
                             seenTurn: o.LastObservedTurn, armyId: o.ArmyId, isGarrison: o.IsGarrison,
                             commander: o.Commander, isAir: o.IsAir, maxMovement: o.MaxMovement),
                         Math.Max(0, turn - o.LastObservedTurn)));
-            return GarrisonThreatFloor(live.Select(s => (s, 0)).Concat(historical), garrisons,
+            // Known sightings also contain last-known positions under fog. Their container is
+            // not evidence of a fresh observation: use the same age as Historical. A currently
+            // visible observation remains exact even when its stored stamp predates this scan.
+            return GarrisonThreatFloor(live.Select(s => (s,
+                    turn == int.MinValue || VisionSystem.IsVisible(player, s.Hex)
+                        ? 0 : Math.Max(0, turn - s.SeenTurn))).Concat(historical), garrisons,
                 garrisonHex, isCitadel);
         }
 
@@ -430,7 +435,7 @@ namespace Game.Ai
             foreach ((AiMapMemory.KnownEnemySighting enemy, int unseen) in enemies
                 ?? Enumerable.Empty<(AiMapMemory.KnownEnemySighting, int)>())
             {
-                if (enemy.IsGarrison || enemy.IsAir || enemy.MaxMovement <= 0)
+                if (enemy.Owner?.IsEliminated == true || enemy.IsGarrison || enemy.IsAir || enemy.MaxMovement <= 0)
                     continue;
                 float confidence = unseen <= 0 ? 1f : AiReconMemory.ConfidenceDecay(unseen);
                 if (confidence <= 0f)

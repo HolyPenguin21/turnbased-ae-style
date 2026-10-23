@@ -141,7 +141,7 @@ namespace Game.Ai.V2
             // A new turn constructs a fresh MaterializationReservation. Restore the exact
             // pending Hero even when the current dirty-demand subset omits Development.
             InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, intentState, hand,
-                ctx.TurnNumber, result.Reservation);
+                ctx.TurnNumber, result.Reservation, ctx);
             // Early admissions defer NEW zero-priority work, but never delay a durable
             // Economy build or a consumer-linked Raid reinforcement. Late residual admission
             // uses this same owner with deferFreshZeroRadar=false.
@@ -543,7 +543,7 @@ namespace Game.Ai.V2
                             // A minted card is protected immediately. A consumed card or a
                             // newly invalid factory loses protection in this same pass.
                             InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player,
-                                intentState, hand, ctx.TurnNumber, result.Reservation);
+                                intentState, hand, ctx.TurnNumber, result.Reservation, ctx);
                         }
                         if (infra.Built && istate.Demand.RequestingAxis == DesireAxis.Economy
                             && infra.BuilderArmyId.HasValue)

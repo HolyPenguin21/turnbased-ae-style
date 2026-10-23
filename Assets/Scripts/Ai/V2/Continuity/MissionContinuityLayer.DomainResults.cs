@@ -176,11 +176,13 @@ namespace Game.Ai.V2
             internal readonly HashSet<Game.HexGrid.HexCoord> ScoutFoci = new HashSet<Game.HexGrid.HexCoord>();
             internal readonly IReadOnlyList<ReconObjective> ReconObjectives;
             internal readonly Func<Game.HexGrid.HexCoord, Game.HexGrid.HexCoord, int, int> SafeRouteCost;
+            internal readonly Game.Ai.AiTurnContext Context;
             internal HashSet<int> ActorClaims;
             internal HashSet<int> AttackGatherUnavailable;
             internal ActiveResolution(MissionIntentState state, IReadOnlyList<ReconObjective> objectives,
-                Func<Game.HexGrid.HexCoord, Game.HexGrid.HexCoord, int, int> routeCost)
-            { State = state; ReconObjectives = objectives; SafeRouteCost = routeCost; }
+                Func<Game.HexGrid.HexCoord, Game.HexGrid.HexCoord, int, int> routeCost,
+                Game.Ai.AiTurnContext context = null)
+            { State = state; ReconObjectives = objectives; SafeRouteCost = routeCost; Context = context; }
         }
         private delegate void ResolutionPreparation(Game.Players.PlayerSetupData player,
             WorldSnapshot snapshot, ActiveResolution pass);

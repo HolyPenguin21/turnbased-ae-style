@@ -510,6 +510,19 @@ namespace Game.Ai.V2
             {
                 if (pm.EconomyExtractionGarrisonArmyId < 0)
                     return false;
+                if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player,
+                        pm.DevelopmentTarget.FacilityHex, pm.DevelopmentTarget.Mode, ctx: ctx))
+                {
+                    result.StopForReplan(ExecutionStopReason.TargetInvalidated);
+                    result.FinalHex = pm.ExecutionHex;
+                    return true;
+                }
+                if (BattleInitiator.FindEnemyAt(pm.DevelopmentTarget.FacilityHex, player) != null)
+                {
+                    result.StopForReplan(ExecutionStopReason.NoSafeStep);
+                    result.FinalHex = pm.ExecutionHex;
+                    return true;
+                }
                 ArmyData garrison = AiV2Util.ResolveArmy(player, pm.EconomyExtractionGarrisonArmyId);
                 ProvisioningManager.GarrisonExtractionCandidate pinned = pm.EconomyExtractionPlan;
                 if (garrison == null || pinned.Tier == ProvisioningManager.GarrisonExtractionTier.None

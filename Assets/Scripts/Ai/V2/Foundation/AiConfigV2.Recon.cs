@@ -41,7 +41,7 @@
         // Explore value of an unvisited "City ruins" hex (always seeded with a Hex Event), as the
         // normalized StrategicRelevance of knowing that site: 1 = +taskScoreStrategicRelevanceMax.
         // Knowledge only — the event reward itself is priced once, by the Raid on its guard.
-        public const float reconRuinsRelevance = 1f;
+        public const float reconRuinsRelevance = 0.5f;
         // AirSweep (aviation-only observation pass). Anchor = the TRUE enemy army concentration
         // (cheat, owner-approved): the enemy army hex maximising the summed EffectiveArmyPower of
         // enemy armies within this radius; the enemy citadel is only the fallback.

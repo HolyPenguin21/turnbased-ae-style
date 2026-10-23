@@ -50,7 +50,8 @@ namespace Game.Ai.V2
                     || target.Hero.Owner != player || target.Hero.IsPrisoner
                     || !target.Hero.HasAbility(ResearchProductionSystem.RoleAbility(target.Mode)))
                     return MissionValidity.StaleMoverLost;
-                if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, target.FacilityHex))
+                if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, target.FacilityHex,
+                        target.Mode, ctx: ctx))
                     return MissionValidity.StaleTargetInvalidated;
                 // Only this exact Hero arriving at its owned preparation base is success.
                 // A different operator at the site may justify retiring an unnecessary mission,

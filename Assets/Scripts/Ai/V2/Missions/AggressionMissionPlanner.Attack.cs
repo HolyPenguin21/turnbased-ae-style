@@ -90,8 +90,6 @@ namespace Game.Ai.V2
                 if (incumbent != null && incumbent.Attack.Phase != AttackMissionPhase.Assault
                     && prepDetour == null)
                     continue;
-                if (incumbent == null && !AttackForceReadiness.MobilizationOpen(snap.Self))
-                    continue;
                 // A fresh objective while the main operation lives may only be the surplus-only
                 // second operation: one at a time, never on a site whose defenders are unknown.
                 bool secondary = incumbent == null && liveOperation != null;
@@ -195,7 +193,8 @@ namespace Game.Ai.V2
                         AcceptPlan = marching != null ? null : candidate =>
                         {
                             bool allowed = AttackSecondaryPolicy.CanStart(snap,
-                                new AttackMissionTarget { Target = objective.Target, Secondary = secondary },
+                                new AttackMissionTarget { Target = objective.Target, Secondary = secondary,
+                                    ForceCommitted = keepsRoster },
                                 candidate, intentState, opposition, out string why);
                             if (!allowed)
                                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#" + candidate.BaseArmyId,
@@ -210,7 +209,8 @@ namespace Game.Ai.V2
                 {
                     // Audit F7 — a FRESH objective no single army nor same-hex package can take
                     // may still be formed by free armies spread over several hexes: gather them.
-                    if (incumbent == null && !secondary && TryAppendFreshAttackGather(snap, objective, opposition,
+                    if (incumbent == null && !secondary && AttackForceReadiness.MobilizationOpen(snap.Self)
+                        && TryAppendFreshAttackGather(snap, objective, opposition,
                             hexBonus, excluded, freshCandidates, intentState))
                     {
                         attackProposed = true;

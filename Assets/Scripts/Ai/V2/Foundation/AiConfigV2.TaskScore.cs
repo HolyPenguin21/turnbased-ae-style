@@ -24,11 +24,11 @@
         public const float taskScorePaybackMax = 8f;
         public const float taskScorePaybackHorizonTurns = 8f;             // shape: payback worth zero at this horizon
         // Base-only facts.
-        public const float taskScoreAirfieldMax = 8f;
+        public const float taskScoreAirfieldMax = 4f;
         public const float taskScoreGlobalCardEffectMax = 6f;
         // This Base would open a resource cluster no owned base reaches. Deliberately below the
-        // income terms: it justifies a Base existing at all, never outranks an income-positive one.
-        public const float taskScoreEconomicExpansionMax = 6f;
+        // income terms: future access is useful, but is not already delivered resource income.
+        public const float taskScoreEconomicExpansionMax = 3f;
         public const float economyBaseExpansionClusterFullCount = 2f;     // shape: new cluster hexes for the full value
 
         // ---- BENEFIT · Recon -------------------------------------------------------------------
