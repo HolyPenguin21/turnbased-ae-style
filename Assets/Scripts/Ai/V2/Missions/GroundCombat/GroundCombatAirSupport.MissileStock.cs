@@ -155,13 +155,8 @@ namespace Game.Ai.V2
         internal static string MissileStockFacts(WorldSnapshot snap, PlayerSetupData player)
         {
             string Profiles(IEnumerable<WorthIt.DefenderProfile> profiles) => string.Join(";",
-                (profiles ?? Array.Empty<WorthIt.DefenderProfile>()).Select(p => string.Join("/", new[] {
-                    p.Attack.ToString("R", CultureInfo.InvariantCulture), p.Defense.ToString("R", CultureInfo.InvariantCulture),
-                    p.HitPoints.ToString("R", CultureInfo.InvariantCulture), p.MaxHitPoints.ToString("R", CultureInfo.InvariantCulture),
-                    p.Initiative.ToString(), p.IsHero.ToString(), p.FateMax.ToString(), p.SingleUseUnit.ToString(),
-                    string.Join(",", p.TypeTags ?? Array.Empty<UnitTypeTag>()),
-                    string.Join(",", (p.Abilities ?? Array.Empty<string>()).OrderBy(a => a, StringComparer.Ordinal))
-                })));
+                (profiles ?? Array.Empty<WorthIt.DefenderProfile>()).Select(p =>
+                    ProfileRowCache.Get(p, ProfileRowCache.Format.MissileStock, MissileProfileRow)));
             string contacts = string.Join("|", (snap?.Known?.AirSightings ?? Array.Empty<AiMapMemory.KnownAirSighting>())
                 .OrderBy(s => s.ArmyId).Select(s => $"{s.ArmyId}:{s.Hex}:{s.SeenTurn}:{s.IsGroundArmy}:"
                     + $"{s.Owner == player}:{s.Owner?.IsNeutral}:{s.Owner?.IsEliminated}:"
@@ -188,5 +183,13 @@ namespace Game.Ai.V2
                     + string.Join(",", c.Definition.grantedAbilities.OrderBy(a => a, StringComparer.Ordinal))));
             return $"turn={snap?.TurnNumber}|contacts={contacts}|own={own}|structures={structures}|inventory={inventory}|hand={held}";
         }
+
+        private static string MissileProfileRow(WorthIt.DefenderProfile p) => string.Join("/", new[] {
+            p.Attack.ToString("R", CultureInfo.InvariantCulture), p.Defense.ToString("R", CultureInfo.InvariantCulture),
+            p.HitPoints.ToString("R", CultureInfo.InvariantCulture), p.MaxHitPoints.ToString("R", CultureInfo.InvariantCulture),
+            p.Initiative.ToString(), p.IsHero.ToString(), p.FateMax.ToString(), p.SingleUseUnit.ToString(),
+            string.Join(",", p.TypeTags ?? Array.Empty<UnitTypeTag>()),
+            string.Join(",", (p.Abilities ?? Array.Empty<string>()).OrderBy(a => a, StringComparer.Ordinal))
+        });
     }
 }
