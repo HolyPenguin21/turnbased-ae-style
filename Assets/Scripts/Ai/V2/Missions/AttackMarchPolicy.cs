@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
-using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -31,9 +30,9 @@ namespace Game.Ai.V2
     //  2026-10-16 (user decision) — the strategic verdict for an Attack army on its way to the main
     //  target, re-read every turn on the facts now known. Snapshot-pure; Continuity applies it.
     //    1. Own stronghold in danger: an honest hostile army threatens an own Citadel / Base that
-    //       cannot hold without this army, this army gets there no later than the enemy and its
+    //       cannot hold without this army, this army arrives before the enemy's action and its
     //       return makes it hold -> DefendHome. The one exception: a decisive blow at the enemy's
-    //       Citadel that lands no later than the enemy reaches ours (taking the Citadel ends that
+    //       Citadel that lands before the enemy reaches ours (taking the Citadel ends that
     //       player) -> Continue. A threat whose army stands on the target and is struck decisively
     //       this turn is removed by the march itself, so it calls nobody home (2026-10-18).
     //    2. Unknown defenders (location only) give no estimate -> Continue.
@@ -90,15 +89,17 @@ namespace Game.Ai.V2
             bool decisive = observed && AttackForceReadiness.IsOpportunity(win, opposition);
             // 2026-10-18 — a decisive blow that lands this very turn (before the enemy moves again)
             // removes every threat whose army stands on the target: such a threat calls nobody home.
-            HexCoord? struckNow = decisive && primary.CurrentMovement > 0
-                && HexGridMath.Distance(primary.Hex, target.Hex) <= primary.CurrentMovement
+            HexCoord? struckNow = decisive
+                && ActiveDefenceObjectiveEvaluator.CanReachNow(snap, primary, target.Hex, out _)
                 ? target.Hex : (HexCoord?)null;
 
             HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta, struckNow, projectedArmies);
             if (home.HasValue)
             {
+                int strikeEta = ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, primary.Hex,
+                    target.Hex, primary.CurrentMovement, primary.MaxMovement, fastestByTurns: true);
                 bool mateFirst = decisive && target.Kind == AttackTargetKind.Citadel
-                    && EtaTurns(primary, target.Hex) <= enemyEta;
+                    && (strikeEta == 0 || strikeEta < enemyEta);
                 if (!mateFirst)
                     return new AttackMarchAssessment(AttackMarchVerdict.DefendHome, win, decisive, home,
                         $"own stronghold ({home.Value.Q},{home.Value.R}) falls without this army (enemy eta {enemyEta})");
@@ -117,7 +118,7 @@ namespace Game.Ai.V2
 
         // The own Citadel / Base that an honest hostile army will take unless `army` returns: the
         // threat is imminent (activeDefenceWithdrawMaxEnemyEta), it does not hold without the army
-        // (activeDefenceHoldWinChance), the army reaches it no later than the enemy, and with the
+        // (activeDefenceHoldWinChance), the army is already there or arrives before the enemy, and with the
         // army it holds. The Citadel first, then the nearest
         // enemy. Null when no stronghold needs this army. `struckNow` — the hex this army strikes
         // decisively this turn: an enemy standing there is destroyed before it can move, so its
@@ -142,7 +143,10 @@ namespace Game.Ai.V2
                 int eta = t.EnemyEta.Value;
                 // The same imminence ActiveDefence answers (threat_not_imminent beyond it): a
                 // distant contact does not call a march home.
-                if (eta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta || EtaTurns(army, t.Asset.Hex) > eta)
+                if (eta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta
+                    || (!army.Hex.Equals(t.Asset.Hex)
+                        && !ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snap, army,
+                            t.Asset.Hex, eta, out _, fastestByTurns: true)))
                     continue;
                 if (struckNow.HasValue && t.Contact.Position.HasValue
                     && t.Contact.Position.Value.Equals(struckNow.Value))
@@ -169,8 +173,5 @@ namespace Game.Ai.V2
             }
             return best;
         }
-
-        private static int EtaTurns(ArmySnapshot army, HexCoord to) =>
-            AiV2Util.CeilDiv(HexGridMath.Distance(army.Hex, to), Mathf.Max(1, army.MaxMovement));
     }
 }

@@ -349,9 +349,9 @@ namespace Game.EditorTests
                 grantedAbilities = new List<string> { UnitAbilities.Assembler },
             });
             _hand.AddCard(_facility); _hand.AddCard(_operator);
-            // No recipient and an unpayable future output: neither is a preparation dependency.
+            // A deployable output needs no attachment recipient or affordable future spend today.
             var output = new CardDefinition
-                { cardType = CardType.Equipment, authoredKey = "test-output", resourceCost = new ResourceCost(tech: 99) };
+                { cardType = CardType.Unit, authoredKey = "test-output", resourceCost = new ResourceCost(tech: 99) };
             _cards = ScriptableObject.CreateInstance<FactionCardCatalog>(); _cards.cards.Add(output);
             _catalog = ScriptableObject.CreateInstance<ResearchProductionCatalog>(); _catalog.cardCatalogs.Add(_cards);
             _catalog.productionCards.Add(new ResearchProductionEntry { cardKey = output.authoredKey });
@@ -397,6 +397,212 @@ namespace Game.EditorTests
             Assert.That(steps.All(o => o.Card == null && o.RecipientCard == null && o.RecipientUnit == null), Is.True);
             Assert.That(steps.Single(o => o.PreparationKind == DevelopmentPreparationKind.Facility).StageResourceCost.tech, Is.Zero);
             Assert.That(steps.Single(o => o.PreparationKind == DevelopmentPreparationKind.Operator).StageResourceCost, Is.Null);
+        }
+
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        public void MutatorPreparationRequiresCompatibleHostIncludingTheRemainingDeck(bool bio, bool viable)
+        {
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+            output.authoredKey = "test-output";
+            _cards.cards[0] = output;
+            _snapshot.Self.Deck = new[] { AttachmentSlotTests.Host(bio: bio) };
+            Assert.That(Facts().Count > 0, Is.EqualTo(viable));
+            Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(ResearchProductionMode.Production,
+                _snapshot, _player, _hand, _ctx, Array.Empty<MissionIntent>()), Is.Null,
+                "Without a standing operator no site is pinned merely by potential hosts.");
+        }
+
+        [Test]
+        public void MutatorPreparationUsesTheResolvedOutputAndAFreeHandSlot()
+        {
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+            output.authoredKey = "resolved-mutator";
+            _cards.cards.Add(output);
+            _catalog.productionCards[0].resultCardKey = output.authoredKey;
+            var host = new CardData(AttachmentSlotTests.Host());
+            _hand.AddCard(host);
+            Assert.That(Facts(), Is.Not.Empty);
+            host.Mutator = output;
+            Assert.That(Facts(), Is.Empty,
+                "A deployable blueprint must not hide an unusable attachment result.");
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void OperatorInTransitLosesItsPurposeWhenTheLastCompatibleHostDisappears(bool facilityBuilt)
+        {
+            AiHandRegistry.Clear();
+            try
+            {
+                var output = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+                output.authoredKey = "test-output";
+                _cards.cards[0] = output;
+                if (facilityBuilt)
+                {
+                    var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production);
+                    _base.FacilitySlots[0] = facility;
+                }
+                AiHandData liveHand = AiHandRegistry.GetOrCreate(_player, null, 0);
+                liveHand.AddCard(_facility);
+                var host = new CardData(AttachmentSlotTests.Host()); liveHand.AddCard(host);
+                var hero = new UnitData { Owner = _player, IsHero = true, Name = "incoming assembler",
+                    HitPointsMax = 6, HitPointsCurrent = 6, MoveMax = 3, MoveCurrent = 3, ActivationApCost = 1 };
+                hero.Abilities.Add(UnitAbilities.Assembler);
+                var army = new ArmyData { Owner = _player, Hex = new HexCoord(90, -17) };
+                army.Members.Add(hero); ArmyRegistry.Register(army);
+                var target = new DevelopmentMissionTarget { FacilityHex = Site,
+                    Mode = ResearchProductionMode.Production, Hero = hero,
+                    HeroKey = GenerationSource.StableHeroKey(hero), SourceArmyId = army.Id };
+                var intent = new MissionIntent { Kind = MissionKind.Development, Status = IntentStatus.Active,
+                    PreferredMoverArmyId = army.Id, CreatedTurn = 2, Objective = new DevelopmentIntent {
+                        FacilityHex = Site, Mode = target.Mode, Hero = hero, HeroKey = target.HeroKey } };
+                intent.IntentKey = MissionIntentKey.For(intent);
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(_player); state.Put(intent);
+                _snapshot.Intents = state;
+                _snapshot.Self.Armies = new[] { WorldAnalysis.ToArmySnapshot(army, _player, true, 0, null) };
+                var pm = new ProvisionedMission { Kind = MissionKind.Development,
+                    MoverArmyId = army.Id, DevelopmentTarget = target };
+                Assert.That(MissionRevalidator.Validate(_player, _root, _ctx, pm), Is.EqualTo(MissionValidity.Valid));
+                Assert.That(MissionContinuityLayer.ResolveActive(_player, _snapshot,
+                    ctx: _ctx, refreshSafeRoutes: false), Does.Contain(intent));
+
+                var blocker = new ArmyData { Owner = new PlayerSetupData(), Hex = Site };
+                blocker.Members.Add(new UnitData { Owner = blocker.Owner, HitPointsMax = 5, HitPointsCurrent = 5 });
+                ArmyRegistry.Register(blocker);
+                Assert.That(MissionRevalidator.Validate(_player, _root, _ctx, pm),
+                    Is.EqualTo(MissionValidity.StaleUnaffordable), "a contest waits while the structural purpose survives");
+                Assert.That(MissionContinuityLayer.ResolveActive(_player, _snapshot,
+                    ctx: _ctx, refreshSafeRoutes: false), Does.Contain(intent));
+                ArmyRegistry.Unregister(blocker);
+
+                liveHand.RemoveCard(host);
+                int ap = _root.ActionPoints, movement = army.CurrentMovement;
+                Assert.That(MissionRevalidator.Validate(_player, _root, _ctx, pm),
+                    Is.EqualTo(MissionValidity.StaleTargetInvalidated));
+                Assert.That(MissionContinuityLayer.ResolveActive(_player, _snapshot,
+                    ctx: _ctx, refreshSafeRoutes: false), Does.Not.Contain(intent));
+                Assert.That(state.All, Is.Empty, "the pointless delivery must stop claiming its actor");
+                Assert.That(_root.ActionPoints, Is.EqualTo(ap));
+                Assert.That(army.CurrentMovement, Is.EqualTo(movement));
+            }
+            finally { AiHandRegistry.Clear(); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StalePreparationCardDemandCannotSpendAfterPurposeDisappears(bool operatorCard)
+        {
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+            output.authoredKey = "test-output"; _cards.cards[0] = output;
+            var host = new CardData(AttachmentSlotTests.Host()); _hand.AddCard(host);
+            _facility.Definition.resourceCost = new ResourceCost();
+            _facility.Definition.apCost = 0;
+            DevelopmentOpportunity opportunity = Facts().Single(o => o.PreparationKind == (operatorCard
+                ? DevelopmentPreparationKind.Operator : DevelopmentPreparationKind.Facility));
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Development,
+                Capability = operatorCard ? CapabilityKind.DevelopmentOperator : CapabilityKind.DevelopmentInfrastructure,
+                TargetHex = Site, DevelopmentOperatorMode = ResearchProductionMode.Production,
+                DevOpportunity = opportunity };
+            var candidate = typeof(InfrastructureFulfillment).GetMethod(operatorCard
+                ? "BuildDevelopmentOperatorCandidate" : "BuildDevelopmentCandidate",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            object[] args = { _snapshot, _player, _root, _hand, _ctx, demand,
+                operatorCard ? (object)new MaterializationReservation() : Array.Empty<MissionIntent>() };
+            Assert.That(candidate.Invoke(null, args), Is.Not.Null, "the original demand has a legal funded candidate");
+            int ap = _root.ActionPoints;
+            _hand.RemoveCard(host);
+            Assert.That(candidate.Invoke(null, args), Is.Null,
+                "a prior demand must re-read applicability after another action removed the last host");
+            Assert.That(_hand.Hand, Does.Contain(operatorCard ? _operator : _facility));
+            Assert.That(_root.ActionPoints, Is.EqualTo(ap));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void GeneratedOperatorClaimTracksStructuralPurposeWithoutWaitingForExpiry(bool facilityBuilt)
+        {
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+            output.authoredKey = "test-output"; _cards.cards[0] = output;
+            if (facilityBuilt)
+            {
+                var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production);
+                _base.FacilitySlots[0] = facility;
+            }
+            var host = new CardData(AttachmentSlotTests.Host()); _hand.AddCard(host);
+            _operator.ResearchProductionCreated = true;
+            var state = new MissionIntentState();
+            state.Development.RememberGeneratedDevelopmentOperator(_operator, Site,
+                ResearchProductionMode.Production, _ctx.TurnNumber);
+            var reservation = new MaterializationReservation();
+            _root.ActionPoints = 0;
+            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(_player, state, _hand,
+                _ctx.TurnNumber, reservation, _ctx);
+            Assert.That(reservation.ClaimsDevelopmentOperatorCard(_operator), Is.True,
+                "temporary lack of AP must not release a structurally justified card");
+            _hand.RemoveCard(host);
+            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(_player, state, _hand,
+                _ctx.TurnNumber, reservation, _ctx);
+            Assert.That(reservation.ClaimsDevelopmentOperatorCard(_operator), Is.False);
+            Assert.That(state.Development.GeneratedOperatorFor(Site,
+                ResearchProductionMode.Production, _ctx.TurnNumber), Is.Null,
+                "loss of purpose releases the durable binding in the same turn, without waiting for TTL");
+            Assert.That(_hand.Hand, Does.Contain(_operator));
+            Assert.That(_root.ActionPoints, Is.Zero);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DeferredDevelopmentExtractionRechecksPurposeAndContestBeforeAnyMutation(bool contested)
+        {
+            AiHandRegistry.Clear();
+            try
+            {
+                var output = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+                output.authoredKey = "test-output"; _cards.cards[0] = output;
+                AiHandData liveHand = AiHandRegistry.GetOrCreate(_player, null, 0);
+                liveHand.AddCard(_facility);
+                var host = new CardData(AttachmentSlotTests.Host()); liveHand.AddCard(host);
+                var source = new ArmyData { Owner = _player, Hex = new HexCoord(90, -17), IsGarrison = true };
+                var hero = new UnitData { Owner = _player, IsHero = true, Name = "delivery", CommandRating = 12,
+                    HitPointsMax = 6, HitPointsCurrent = 6, MoveMax = 3, MoveCurrent = 3 };
+                hero.Abilities.Add(UnitAbilities.Assembler); source.Members.Add(hero);
+                for (int i = 0; i < AiConfig.secureBaseMinNonHeroUnits; i++)
+                    source.Members.Add(new UnitData { Owner = _player, HitPointsMax = 5, HitPointsCurrent = 5 });
+                ArmyRegistry.Register(source);
+                Assert.That(AiArmyRoles.CanSpareGarrisonMember(_player, source, hero), Is.True);
+                Assert.That(DevelopmentOpportunityEvaluator.IsPreparationSite(_player, Site,
+                    ResearchProductionMode.Production, ctx: _ctx), Is.True);
+                var pm = new ProvisionedMission { Kind = MissionKind.Development, ExecutionHex = source.Hex,
+                    EconomyExtractionGarrisonArmyId = source.Id,
+                    EconomyExtractionPlan = ProvisioningManager.GarrisonExtractionCandidate.Yes(
+                        ProvisioningManager.GarrisonExtractionTier.Create, hero, null, ArmyActions.CreateArmyApCost),
+                    ClaimedAp = ArmyActions.CreateArmyApCost,
+                    DevelopmentTarget = new DevelopmentMissionTarget { FacilityHex = Site,
+                        Mode = ResearchProductionMode.Production, Hero = hero } };
+                if (contested)
+                {
+                    var blocker = new ArmyData { Owner = new PlayerSetupData(), Hex = Site };
+                    blocker.Members.Add(new UnitData { Owner = blocker.Owner, HitPointsMax = 5, HitPointsCurrent = 5 });
+                    ArmyRegistry.Register(blocker);
+                }
+                else liveHand.RemoveCard(host);
+                int ap = _root.ActionPoints, armies = ArmyRegistry.AllForOwner(_player).Count();
+                int version = WorldDeltaLifecycle.Current;
+                var result = new ExecutionResult();
+                var execute = typeof(TaskExecutor).GetMethod("TryHandleDeferredEconomyMaterialization",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                Assert.That(execute.Invoke(null, new object[] { _player, _root, _ctx, pm, result,
+                    ap, _snapshot }), Is.EqualTo(true));
+                Assert.That(result.StopReason, Is.EqualTo(contested
+                    ? ExecutionStopReason.NoSafeStep : ExecutionStopReason.TargetInvalidated));
+                Assert.That(result.ActorMaterialized, Is.False);
+                Assert.That(source.Members, Does.Contain(hero));
+                Assert.That(ArmyRegistry.AllForOwner(_player).Count(), Is.EqualTo(armies));
+                Assert.That(_root.ActionPoints, Is.EqualTo(ap));
+                Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(version));
+            }
+            finally { AiHandRegistry.Clear(); }
         }
 
         [TestCase(false)]

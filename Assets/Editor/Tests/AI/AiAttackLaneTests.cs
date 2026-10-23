@@ -1464,6 +1464,36 @@ namespace Game.EditorTests
             Assert.That(demands, Is.Empty);
             Assert.That(diagnostics.Any(x => x.Contains("mobilization_closed")), Is.True);
         }
+
+        [TestCase(true, false, true, true)]
+        [TestCase(false, false, true, false)]
+        [TestCase(true, true, true, false)]
+        [TestCase(true, false, false, false)]
+        public void ClosedMobilization_OnlyProposesAFreshObservedDecisiveAssault(
+            bool decisive, bool stale, bool defended, bool expected)
+        {
+            ArmySnapshot actor = Army(7, EnRoute, decisive ? Strong() : Contested());
+            WorldSnapshot snap = DefendedSite(new[] { actor }, new[] { OurBase }, alsoOwnBuilding: true);
+            snap.Self.DeployedPower = 10f;
+            snap.Self.AvailablePower = 100f;
+            snap.Self.TotalMilitaryPotential = 1000f;
+            if (stale) snap.TurnNumber = 30;
+            if (!defended) snap.Known.EnemySightings = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            Assert.That(AttackForceReadiness.MobilizationOpen(snap.Self), Is.False);
+            var proposals = new List<MissionProposal>();
+            AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
+                new HashSet<int>(), proposals, null, new Dictionary<MissionIntentKey, string>(),
+                MissionIntentRegistry.GetOrCreate(snap.Observer), null);
+
+            Assert.That(proposals.Any(p => p.Target is AttackMissionTarget t
+                && t.Phase == AttackMissionPhase.Assault && !t.Secondary), Is.EqualTo(expected));
+            Assert.That(proposals.Any(p => p.Target is AttackMissionTarget t
+                && t.Phase == AttackMissionPhase.Gather), Is.False,
+                "a rejected opportunity cannot open gathering or preparation through the fallback");
+            foreach (MissionProposal p in proposals.Where(p => p.Target is AttackMissionTarget t && !t.Secondary))
+                Assert.That(GroundCombatAdmissionRegistry.EligibleIds(p), Does.Contain("7"),
+                    "admission must recognize the same opportunity as the planner");
+        }
     }
 }
 #endif

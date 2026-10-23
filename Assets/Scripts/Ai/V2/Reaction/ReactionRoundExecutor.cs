@@ -101,7 +101,7 @@ namespace Game.Ai.V2
                     + $"gate {(ao.GatePassed ? 1 : 0)}");
 
             List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(
-                player, snapshot, reconObjectives, aggressionObjectives);
+                player, snapshot, reconObjectives, aggressionObjectives, ctx, refreshSafeRoutes: false);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
             // No separate prepass: DemandLayer measures air
             // capacity itself (ReconAssignmentPlanner.MeasureAirCapacity), recomputed fresh against
@@ -132,7 +132,7 @@ namespace Game.Ai.V2
                 aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                     snapshot, assessment.Breakdown.OpportunityReport);
                 activeIntents = MissionContinuityLayer.ResolveActive(
-                    player, snapshot, reconObjectives, aggressionObjectives);
+                    player, snapshot, reconObjectives, aggressionObjectives, ctx, refreshSafeRoutes: false);
                 actorCommitments = ActorCommitments.FromIntents(
                     activeIntents, snapshot, reconObjectives);
             }

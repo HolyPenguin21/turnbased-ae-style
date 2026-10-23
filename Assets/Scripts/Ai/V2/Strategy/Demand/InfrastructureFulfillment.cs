@@ -80,7 +80,7 @@ namespace Game.Ai.V2
         // infrastructure mutations. Never duplicate generation, movement or card execution.
         // Current AP/resources are deliberately NOT eligibility criteria for a future turn.
         internal static void RestoreGeneratedOperatorClaims(PlayerSetupData player, MissionIntentState intentState,
-            AiHandData hand, int turn, MaterializationReservation reservation)
+            AiHandData hand, int turn, MaterializationReservation reservation, AiTurnContext ctx)
         {
             if (player == null || intentState == null || reservation == null) return;
             IReadOnlyList<CardData> cards = intentState
@@ -92,7 +92,7 @@ namespace Game.Ai.V2
                             card.Definition, card.Equipment, card.Mutator)
                             .Contains(ResearchProductionSystem.RoleAbility(mode)))
                         return false;
-                    if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, site)
+                    if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, site, mode, hand, ctx)
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
                         || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
@@ -571,6 +571,14 @@ namespace Game.Ai.V2
                     if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(baseHex))
                         continue;
                     string at = $"{card.Definition.displayName}@({baseHex.Q},{baseHex.R})";
+                    // A demand can survive another mutation in this Phase A pass. Reuse the
+                    // preparation owner's current structural verdict before spending on its card.
+                    if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, baseHex,
+                            demand.DevelopmentOperatorMode, hand, ctx))
+                    {
+                        rejected.Add($"{at}:preparation_purpose_lost");
+                        continue;
+                    }
                     // A full Base is NOT upgraded behind the placement: that is the stand-alone
                     // CapacityUnlock step. A placement pays only the Facility's own bill.
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex,
@@ -699,7 +707,8 @@ namespace Game.Ai.V2
         {
             if (hand?.Hand == null || !demand.TargetHex.HasValue
                 || !demand.DevelopmentOperatorMode.HasValue
-                || !DevelopmentOpportunityEvaluator.IsPreparationSite(player, demand.TargetHex.Value))
+                || !DevelopmentOpportunityEvaluator.IsPreparationSite(player, demand.TargetHex.Value,
+                    demand.DevelopmentOperatorMode, hand, ctx))
                 return null;
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);

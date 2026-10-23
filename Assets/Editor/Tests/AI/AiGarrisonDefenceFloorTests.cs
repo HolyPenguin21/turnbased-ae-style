@@ -94,6 +94,50 @@ namespace Game.EditorTests
                 new[] { Enemy(new Game.HexGrid.HexCoord(1, 0), 3, garrison: true),
                     Enemy(new Game.HexGrid.HexCoord(1, 0), 3, air: true) }, new[] { baseHex }, baseHex), Is.Zero);
         }
+        [Test]
+        public void LastKnownContactHasTheSameAgeBeforeAndAfterCanonicalMemoryExpires()
+        {
+            AiMapMemory.Clear(); Game.Ai.V2.AiReconMemory.Clear();
+            Game.Map.VisionSystem.Clear();
+            var player = new Game.Players.PlayerSetupData();
+            var enemy = new Game.Players.PlayerSetupData();
+            var hex = new Game.HexGrid.HexCoord(0, 0);
+            var profiles = new[] { new Game.Combat.WorthIt.DefenderProfile(3f, false, attack: 5f, hitPoints: 5f) };
+            var sighting = new AiMapMemory.KnownEnemySighting(hex, enemy, "remembered", 1, 3f, 5f,
+                profiles, seenTurn: 8, armyId: 11, maxMovement: 3);
+            try
+            {
+                Game.Ai.V2.AiReconMemory.Observe(player, 10, 0, new[] { sighting });
+                var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+                System.Type type = typeof(AiMapMemory).GetNestedType("EnemySighting", System.Reflection.BindingFlags.NonPublic);
+                object record = System.Activator.CreateInstance(type, nonPublic: true);
+                void Put(string field, object value) => type.GetField(field).SetValue(record, value);
+                Put("ArmyId", 11); Put("Owner", enemy); Put("Hex", hex); Put("MemberCount", 1);
+                Put("DefenseSum", 3f); Put("AttackSum", 5f); Put("SeenTurn", 8); Put("MaxMovement", 3);
+                Put("Defenders", profiles.ToList());
+                var all = (System.Collections.IDictionary)typeof(AiMapMemory).GetField("EnemySightings", flags).GetValue(null);
+                var store = (System.Collections.IDictionary)System.Activator.CreateInstance(
+                    typeof(Dictionary<,>).MakeGenericType(typeof(int), type));
+                store[11] = record; all[player] = store;
+                float expected = Game.Ai.V2.AiPower.SightingPower(sighting) * 1.3f * (5f / 6f);
+                float canonical = AiArmyRoles.GarrisonThreatFloor(player, hex);
+                Assert.That(canonical, Is.EqualTo(expected).Within(0.0001f));
+                enemy.IsEliminated = true;
+                Assert.That(AiArmyRoles.GarrisonThreatFloor(player, hex), Is.Zero,
+                    "A defeated owner cannot send this remembered army to our base.");
+                enemy.IsEliminated = false;
+                store.Clear();
+                Assert.That(AiArmyRoles.GarrisonThreatFloor(player, hex), Is.EqualTo(canonical).Within(0.0001f),
+                    "Moving the same observation to Historical must not change its age or confidence.");
+                enemy.IsEliminated = true;
+                Assert.That(AiArmyRoles.GarrisonThreatFloor(player, hex), Is.Zero);
+            }
+            finally
+            {
+                AiMapMemory.Clear(); Game.Ai.V2.AiReconMemory.Clear(); Game.Map.VisionSystem.Clear();
+                Game.Ai.V2.ReconIntelSnapshotRegistry.Clear();
+            }
+        }
     }
 }
 #endif

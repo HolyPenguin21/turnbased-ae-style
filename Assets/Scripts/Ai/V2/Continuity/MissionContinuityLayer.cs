@@ -39,13 +39,13 @@ namespace Game.Ai.V2
         public static List<MissionIntent> ResolveActive(PlayerSetupData player, WorldSnapshot snap,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             IReadOnlyList<RaidObjective> aggressionObjectives = null,
-            AiTurnContext ctx = null)
+            AiTurnContext ctx = null, bool refreshSafeRoutes = true)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Continuity.ResolveActive");
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            var pass = new ActiveResolution(state, reconObjectives, ctx?.Map == null ? null
+            var pass = new ActiveResolution(state, reconObjectives, !refreshSafeRoutes || ctx?.Map == null ? null
                 : (Func<HexCoord, HexCoord, int, int>)((from, to, maxMovement) =>
-                    SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to, maxMovement)));
+                    SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to, maxMovement)), ctx);
             // A builder released by the last retirement still needs its recovery decision.
             if (state.Count == 0 && !state.Economy.HasEndedOutboundBuilders)
             {

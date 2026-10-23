@@ -532,6 +532,116 @@ namespace Game.EditorTests
         private static ActiveDefenceObjective AssetObjective(WorldSnapshot snap) =>
             ActiveDefenceObjectiveEvaluator.Enumerate(snap).Single();
 
+        [TestCase(3, 1, true)]
+        [TestCase(0, 1, false)]
+        [TestCase(0, 2, true)]
+        public void AttackHomeReturn_UsesRemainingMovementAndStrictEnemyDeadline(int mp, int enemyEta, bool needed)
+        {
+            ArmySnapshot marcher = DefenceActor(new PlayerSetupData(), 26, new HexCoord(0, 0), 30f, 15f, 40f);
+            marcher.CurrentMovement = mp;
+            WorldSnapshot snap = AssetWorld(marcher);
+            snap.Threat.Threats[0].EnemyEta = enemyEta;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _).HasValue, Is.EqualTo(needed));
+        }
+
+        [Test]
+        public void AttackHomeReturn_DoesNotInventASameTurnStrikeAcrossExpensiveTerrain()
+        {
+            ArmySnapshot marcher = DefenceActor(new PlayerSetupData(), 26, new HexCoord(-3, 0), 30f, 15f, 40f);
+            marcher.CurrentMovement = 1;
+            WorldSnapshot snap = AssetWorld(marcher);
+            AssetThreatSnapshot threat = snap.Threat.Threats[0];
+            AttackTargetRef site = AttackTargetRef.For(threat.Contact.Position.Value,
+                threat.Contact.Army.Owner, AttackTargetKind.Base);
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(site.Hex,
+                threat.Contact.Army.Owner, false, null, null, 0, true, 0f, 8) };
+            var go = new UnityEngine.GameObject("AttackReturnTerrain");
+            try
+            {
+                var map = go.AddComponent<Game.Map.HexMap>();
+                var tiles = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+                for (int q = -4; q <= -1; q++)
+                    tiles[new HexCoord(q, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = q == -4 ? 2 : 1 };
+                map.SetData(5, 1f, tiles);
+                snap.Map = map;
+                Assert.That(AttackMarchPolicy.Assess(snap, site, marcher).Verdict,
+                    Is.EqualTo(AttackMarchVerdict.DefendHome), "one hex away is not proof of a strike this turn");
+                tiles[new HexCoord(-4, 0)].moveCost = 1;
+                map.SetData(5, 1f, tiles);
+                Assert.That(AttackMarchPolicy.Assess(snap, site, marcher).Verdict,
+                    Is.EqualTo(AttackMarchVerdict.Continue), "an executable decisive strike removes the threat");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AttackMarch_UsesFastestTurnRouteForReturnAndDecisiveCitadel(bool finishOpponent)
+        {
+            var from = new HexCoord(0, 0);
+            var destination = new HexCoord(2, 0);
+            ArmySnapshot marcher = DefenceActor(new PlayerSetupData(), 26, from, 30f, 15f, 40f);
+            marcher.CurrentMovement = 2;
+            WorldSnapshot snap = AssetWorld(marcher);
+            AssetThreatSnapshot threat = snap.Threat.Threats[0];
+            threat.Asset.Hex = finishOpponent ? from : destination;
+            snap.Self.BaseHexes = new[] { threat.Asset.Hex };
+            var go = new UnityEngine.GameObject("AttackFastestTurnRoute");
+            try
+            {
+                var map = go.AddComponent<Game.Map.HexMap>();
+                var tiles = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+                foreach (HexCoord h in new[] { from, destination, new HexCoord(0, -1),
+                    new HexCoord(1, -2), new HexCoord(2, -2), new HexCoord(2, -1) })
+                    tiles[h] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 };
+                tiles[new HexCoord(1, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 3 };
+                map.SetData(3, 1f, tiles);
+                snap.Map = map;
+                Assert.That(ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, from, destination, 2, 3),
+                    Is.EqualTo(2), "the cheap [3,1] route wastes the remaining movement");
+                Assert.That(ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, from, destination,
+                    2, 3, fastestByTurns: true), Is.EqualTo(1), "the 5-MP bypass beats EnemyEta=2");
+                if (!finishOpponent)
+                    Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.EqualTo(destination));
+                else
+                {
+                    PlayerSetupData enemy = threat.Contact.Army.Owner;
+                    snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(destination,
+                        enemy, true, null, null, 0, true, 0f, 8) };
+                    snap.Known.EnemySightings = snap.Known.EnemySightings.Concat(new[] {
+                        new AiMapMemory.KnownEnemySighting(destination, enemy, "weak", 1, 0f, 1f,
+                            new[] { new WorthIt.DefenderProfile(0f, false, null, 1f, 2f, 0) },
+                            false, 0, 0, 8, 98) }).ToArray();
+                    Assert.That(AttackMarchPolicy.Assess(snap,
+                        AttackTargetRef.For(destination, enemy, AttackTargetKind.Citadel), marcher).Verdict,
+                        Is.EqualTo(AttackMarchVerdict.Continue));
+                    Assert.That(AttackMarchPolicy.Assess(snap,
+                        AttackTargetRef.For(destination, enemy, AttackTargetKind.Base), marcher).Verdict,
+                        Is.EqualTo(AttackMarchVerdict.DefendHome));
+                }
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [TestCase(10f)]
+        [TestCase(-3f)]
+        public void HoldChance_UsesFrozenFullHexDefenceExactlyOnce(float bonus)
+        {
+            var defender = DefenceActor(new PlayerSetupData(), 1, Secondary, 8f, 8f, 18f, true);
+            WorldSnapshot snap = AssetWorld(defender);
+            StrategicAssetSnapshot asset = snap.Threat.Threats[0].Asset;
+            asset.HexDefenseBonus = bonus;
+            snap.Threat.Assets = new[] { asset };
+            // Deliberately different: the remembered structure alone is not the full hex bonus.
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(Secondary, snap.Observer,
+                false, null, null, 0, true, 1f, 8) };
+            var opposition = KnownOpposition.OfEnemyArmy(snap, snap.Threat.Threats[0].Contact.Army.ArmyId);
+            float expected = 1f - WorthIt.EstimateSequential(opposition[0].Units, opposition[0].Commander,
+                new[] { new WorthIt.DefendingArmy(defender.Members, defender.Commander, bonus) }, bonus).WinChance;
+            Assert.That(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, AssetObjective(snap),
+                null, null, opposition), Is.EqualTo(expected).Within(0.001f));
+        }
+
         [Test]
         public void FacilityOnly_CreatesNeitherObjectiveReserveNorDemand()
         {

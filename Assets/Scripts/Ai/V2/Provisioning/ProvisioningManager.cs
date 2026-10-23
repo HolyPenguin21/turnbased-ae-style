@@ -248,7 +248,7 @@ namespace Game.Ai.V2
                 return ProvisionEconomy(player, root, hand, ctx, session, funded, economy);
 
             if (m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget development)
-                return ProvisionDevelopment(player, root, ctx, session, funded, development);
+                return ProvisionDevelopment(player, root, hand, ctx, session, funded, development);
 
             if (m.Kind != MissionKind.Scout || !(m.Target is ScoutMissionTarget target))
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("unsupported mission kind"));
