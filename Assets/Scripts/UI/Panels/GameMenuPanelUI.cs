@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using TMPro;
+using Game.Core;
+using Game.Campaign;
+using UnityEngine.SceneManagement;
 
 namespace Game.UI
 {
@@ -18,6 +22,8 @@ namespace Game.UI
         [SerializeField] private Button saveButton;
         [SerializeField] private Button loadButton;
         [SerializeField] private Button continueButton;
+        [SerializeField] private Button exitButton;
+        [SerializeField] private TMP_Text exitButtonText;
         private Game.Turns.GameTurnController turnController;
         private bool MenuAvailable => !UIFocusUtility.HasOverlay && !BattleActive && turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
         private struct GroupState
@@ -54,6 +60,7 @@ namespace Game.UI
             if (gearButton != null) gearButton.onClick.AddListener(OpenMenu);
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
             if (continueButton != null) continueButton.onClick.AddListener(ContinueGame);
+            if (exitButton != null) exitButton.onClick.AddListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed += OnOptionsClosed;
             if (battleScreen != null) battleScreen.VisibilityChanged += RefreshBattleAvailability;
             if (saveButton != null) saveButton.interactable = false;
@@ -79,6 +86,9 @@ namespace Game.UI
             if (gearButton != null) gearButton.gameObject.SetActive(false);
             blockingRoot.SetActive(true);
             menuPanel.SetActive(true);
+            if (exitButtonText != null)
+                exitButtonText.text = CampaignMatchBridge.ReturnScene(GameSession.MatchId) == SceneNames.Campaign
+                    ? "Return to Campaign" : "Return to Main Menu";
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             VisibilityChanged?.Invoke();
             optionsButton?.Select();
@@ -109,6 +119,15 @@ namespace Game.UI
             if (selectable != null && selectable.isActiveAndEnabled && selectable.IsInteractable()) selectable.Select();
             else if (MenuAvailable) gearButton?.Select();
             previousSelection = null;
+        }
+
+        public void ExitMatch()
+        {
+            if (!IsShowing) return;
+            string destination = CampaignMatchBridge.ReturnScene(GameSession.MatchId);
+            ContinueGame();
+            GameSession.EndRewardEligibility();
+            SceneManager.LoadScene(destination);
         }
         private void BlockGameplayCanvases()
         {
@@ -157,6 +176,7 @@ namespace Game.UI
             if (gearButton != null) gearButton.onClick.RemoveListener(OpenMenu);
             if (optionsButton != null) optionsButton.onClick.RemoveListener(OpenOptions);
             if (continueButton != null) continueButton.onClick.RemoveListener(ContinueGame);
+            if (exitButton != null) exitButton.onClick.RemoveListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed -= OnOptionsClosed;
             if (battleScreen != null) battleScreen.VisibilityChanged -= RefreshBattleAvailability;
             if (turnController != null) turnController.TurnStateChanged -= RefreshBattleAvailability;
