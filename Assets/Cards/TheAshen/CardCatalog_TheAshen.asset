@@ -16,26 +16,30 @@ MonoBehaviour:
   displayName: The Ashen
   logo: {fileID: 21300000, guid: ac8dae4f174ab61469d2e7c17b1a991f, type: 3}
   matchGreetings:
-  - "Another citadel in the dust. Welcome, stranger. Try not to become part of the scenery."
-  - "We are the Ashen. The wastes tried to bury us. They ran out of shovels."
-  - "Nice walls. The last people who trusted walls left us some excellent boots."
-  - "Relax. We only take what we need. Today, that might be everything."
-  - "That deck looks clean. Did the shop forget to include a survival instinct?"
-  - "You brought a plan. Lovely. The sand loves eating those."
-  - "Keep your water close and your heroes closer. Both disappear quickly out here."
-  - "Welcome to our little patch of ruin. The dust is free. Everything else is negotiable."
-  - "We were betting on who would arrive next. Nobody guessed a walking supply delivery."
-  - "Your cards look promising. So did the last batch of prewar rations."
-  - "Do not mind the smoke. If it turns out to be your citadel, we will let you know."
-  - "No grand speeches from us. Save your breath; the filters are getting expensive."
-  - "You can have the first polite word. We are saving ours for your surrender."
-  - "We have survived worse than you. In fairness, some of it also had better equipment."
-  - "Shuffle that deck again. Maybe a working strategy fell to the bottom."
-  - "Good hunting, stranger. Around here, the distinction between hunter and salvage changes fast."
-  - "We are not picky about trophies. Fuel, ammunition, an entire citadel... whatever you have spare."
-  - "Build something worth stealing. We would hate to march all that way for disappointment."
-  - "Your deck has the confidence of someone who has never drunk radiator water."
-  - "If you make it through this, we can trade stories. If you do not, we can trade your gear."
+  - Another citadel in the dust. Welcome, stranger. Try not to become part of the
+    scenery.
+  - We are the Ashen. The wastes tried to bury us. They ran out of shovels.
+  - Nice walls. The last people who trusted walls left us some excellent boots.
+  - Relax. We only take what we need. Today, that might be everything.
+  - That deck looks clean. Did the shop forget to include a survival instinct?
+  - You brought a plan. Lovely. The sand loves eating those.
+  - Keep your water close and your heroes closer. Both disappear quickly out here.
+  - Welcome to our little patch of ruin. The dust is free. Everything else is negotiable.
+  - We were betting on who would arrive next. Nobody guessed a walking supply delivery.
+  - Your cards look promising. So did the last batch of prewar rations.
+  - Do not mind the smoke. If it turns out to be your citadel, we will let you know.
+  - No grand speeches from us. Save your breath; the filters are getting expensive.
+  - You can have the first polite word. We are saving ours for your surrender.
+  - We have survived worse than you. In fairness, some of it also had better equipment.
+  - Shuffle that deck again. Maybe a working strategy fell to the bottom.
+  - Good hunting, stranger. Around here, the distinction between hunter and salvage
+    changes fast.
+  - We are not picky about trophies. Fuel, ammunition, an entire citadel... whatever
+    you have spare.
+  - Build something worth stealing. We would hate to march all that way for disappointment.
+  - Your deck has the confidence of someone who has never drunk radiator water.
+  - If you make it through this, we can trade stories. If you do not, we can trade
+    your gear.
   cards:
   - id: 0
     authoredKey: ashen.card.ashen-citadel
@@ -549,9 +553,9 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 2
     resourceCost:
-      human: 1
+      human: 0
       energy: 0
-      materials: 1
+      materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 2
@@ -561,7 +565,7 @@ MonoBehaviour:
     attack: 3
     defenseRating: 1
     range: 1
-    hitPoints: 4
+    hitPoints: 3
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -698,7 +702,7 @@ MonoBehaviour:
       human: 0
       energy: 1
       materials: 0
-      tech: 1
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
