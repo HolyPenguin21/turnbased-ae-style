@@ -72,7 +72,7 @@ namespace Game.UI
                 {
                     if (!Game.Campaign.CampaignMatchBridge.RecoverReward(config, out error))
                     { retryResult = new ParticipantResult(GameSession.MatchId, GameSession.FindHumanPlayer(), MatchOutcome.Draw); Draw(); return; }
-                    Close(); GameSession.EndRewardEligibility(); SceneManager.LoadScene(SceneNames.Campaign); return;
+                    Close(); Game.Setup.MatchStateInventory.EndMatch(turns); SceneManager.LoadScene(SceneNames.Campaign); return;
                 }
                 Close(); var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); return;
             }
@@ -147,7 +147,7 @@ namespace Game.UI
             failedDismissMatchId = null;
             if (ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) { Draw(); return; }
             Close();
-            if (returnToMenu) { GameSession.EndRewardEligibility(); SceneManager.LoadScene(destination); }
+            if (returnToMenu) { Game.Setup.MatchStateInventory.EndMatch(turns); SceneManager.LoadScene(destination); }
             else { var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); }
         }
         private void Close() { UIFocusUtility.SetOverlay(this, false); if (canvas != null) { canvas.gameObject.SetActive(false); Destroy(canvas.gameObject); } canvas = null; view = null; }

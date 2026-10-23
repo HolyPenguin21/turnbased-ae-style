@@ -202,6 +202,10 @@ namespace Game.Map
                 filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp,
             };
+            // RefreshVisibility only uploads changes. An entirely hidden first view has no
+            // changes against the zeroed CPU buffer, so initialize the GPU texture as well.
+            _mask.SetPixelData(_maskPixels, 0);
+            _mask.Apply(updateMipmaps: false);
         }
 
         private void BuildLabels(HexMap map)

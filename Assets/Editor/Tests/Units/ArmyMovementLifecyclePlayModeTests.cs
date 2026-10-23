@@ -13,11 +13,14 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Setup;
 using Game.Terrain;
+using Game.Turns;
 using Game.Units;
 using Game.UI;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
@@ -143,6 +146,57 @@ namespace Game.EditorTests
                 "Revealing must commit the same attack action as an arrival without another move order.");
             Assert.That(mover.Hex, Is.EqualTo(_origin));
             Assert.That(ArmyRegistry.IsRegistered(mover), Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator MatchExitCancelsOldSceneWorkBeforeClearingTheWorld()
+        {
+            // Keep the test runner in its own scene: only the outgoing match is disabled.
+            var outgoing = SceneManager.CreateScene("match-exit-" + Guid.NewGuid().ToString("N"));
+            var host = NewObject("outgoing turns");
+            host.SetActive(false);
+            var turns = host.AddComponent<GameTurnController>();
+            ArmyData mover = Army(air: false);
+            Field(mover.Controller, "stepDuration", 10f);
+            foreach (GameObject go in _objects)
+                if (go != null && go.transform.parent == null)
+                    SceneManager.MoveGameObjectToScene(go, outgoing);
+            host.SetActive(true);
+            _owner.IsHuman = true;
+            GameSession.Players = new List<PlayerSetupData> { _owner };
+            Field(turns, "<CurrentPlayer>k__BackingField", _owner);
+            Field(turns, "<TurnConfirmed>k__BackingField", true);
+            Field(turns, "<TurnNumber>k__BackingField", 1);
+            Assert.That(_selection.IssueMoveOrder(mover.Controller, _last), Is.EqualTo(MoveOrderResult.Started));
+            Assert.That(mover.Controller.IsMoving, Is.True);
+            Assert.That(mover.Controller.CurrentHex, Is.EqualTo(_first));
+            int apAfterEntry = _root.ActionPoints;
+            bool lateCommandRan = false;
+            var ghost = new ArmyData { Owner = _owner, Hex = _last };
+            IEnumerator LateCommand()
+            {
+                yield return null;
+                lateCommandRan = true;
+                ArmyRegistry.Register(ghost);
+            }
+            _map.StartCoroutine(LateCommand());
+
+            MatchStateInventory.EndMatch(turns);
+
+            Assert.That(host.activeSelf, Is.False);
+            Assert.That(_map.gameObject.activeSelf, Is.False);
+            Assert.That(mover.Controller.IsMoving, Is.False);
+            Assert.That(mover.Hex, Is.EqualTo(_first), "OnDisable must settle cancellation before registry removal");
+            Assert.That(turns.CurrentPlayer, Is.Null);
+            Assert.That(turns.TurnConfirmed, Is.False);
+            Assert.That(_root.ActionPoints, Is.EqualTo(apAfterEntry), "exit must not spend movement AP again");
+            Assert.That(ArmyRegistry.AllAt(_first), Is.Empty);
+            Assert.That(GameSession.Players, Is.Empty);
+            yield return null;
+            yield return null;
+            Assert.That(lateCommandRan, Is.False, "a pending old-scene coroutine must not repopulate the cleared world");
+            Assert.That(ArmyRegistry.AllAt(_last), Is.Empty);
+            yield return SceneManager.UnloadSceneAsync(outgoing);
         }
 
         [UnityTest]

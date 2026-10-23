@@ -1099,6 +1099,8 @@ namespace Game.Ai.V2
             { Legal = legal; Why = why; Gain = gain; Purpose = purpose; NoNeed = noNeed; PendingCovers = pendingCovers; }
         }
 
+        internal static void ClearRecipientEvaluationCache() => RecipientEvaluationMemo.Clear();
+
         private sealed class RecipientEvaluationMemo : System.IDisposable
         {
             [System.ThreadStatic] private static RecipientEvaluationMemo s_current;
@@ -1127,6 +1129,12 @@ namespace Game.Ai.V2
             }
 
             private static readonly Dictionary<PlayerSetupData, VerdictStore> s_stores = new();
+
+            internal static void Clear()
+            {
+                s_stores.Clear();
+                s_current = null;
+            }
 
             internal static VerdictStore StoreFor(PlayerSetupData player, string key)
             {
