@@ -481,7 +481,7 @@ namespace Game.EditorTests
                 Assert.That(MissionRevalidator.Validate(_player, _root, _ctx, pm),
                     Is.EqualTo(MissionValidity.StaleTargetInvalidated));
                 Assert.That(MissionContinuityLayer.ResolveActive(_player, _snapshot,
-                    ctx: _ctx, refreshSafeRoutes: false), Does.Not.Contain(intent));
+                    ctx: _ctx, refreshSafeRoutes: false), Has.No.Member(intent));
                 Assert.That(state.All, Is.Empty, "the pointless delivery must stop claiming its actor");
                 Assert.That(_root.ActionPoints, Is.EqualTo(ap));
                 Assert.That(army.CurrentMovement, Is.EqualTo(movement));
