@@ -39,7 +39,7 @@ namespace Game.Progression
             if (!Transact(p =>
             {
                 if (p.Owned(chosen.authoredKey) >= DeckRules.CopyLimit(chosen))
-                    throw new InvalidOperationException("The collection copy limit has been reached.");
+                    throw new InvalidOperationException("Collection copy limit reached for this card.");
                 var row = p.ownedCards.Find(e => e.cardKey == chosen.authoredKey);
                 if (row == null) p.ownedCards.Add(new DeckCardEntry { cardKey = chosen.authoredKey, count = 1 });
                 else row.count++;
@@ -73,7 +73,12 @@ namespace Game.Progression
             {
                 var next = profile.Copy(); edit(next); store.Save(next); profile = next;
             }
-            catch (Exception ex) { error = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning(ex);
+                error = ex is InvalidOperationException ? ex.Message : "Could not save your collection. Try again.";
+                return false;
+            }
             Changed?.Invoke();
             return true;
         }
@@ -200,7 +205,11 @@ namespace Game.Progression
         {
             var validation = Rules.Validate(draft, Owned);
             if (!validation.IsValid) { error = string.Join("\n", validation.Errors); return false; }
-            if (string.IsNullOrWhiteSpace(draft.name) || string.IsNullOrWhiteSpace(draft.deckId)) { error = "Deck needs a name and identity."; return false; }
+            if (string.IsNullOrWhiteSpace(draft.name) || string.IsNullOrWhiteSpace(draft.deckId))
+            {
+                error = string.IsNullOrWhiteSpace(draft.name) ? "Enter a deck name." : "Cannot save this deck. Create a new deck.";
+                return false;
+            }
             bool starter = IsStarter(draft.deckId) || draft.isStarter;
             if (starter && profile.savedDecks.Any(d => d.isStarter && d.faction == draft.faction && d.deckId != draft.deckId))
             { error = "This faction already has a starter deck."; return false; }

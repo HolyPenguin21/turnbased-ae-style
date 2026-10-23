@@ -950,12 +950,13 @@ namespace Game.UI
 
             // Every army needs its own map marker (see Game.Map.ArmyController) — starts
             // invisible (RestackArmiesOn never shows an empty army) until units are dragged
-            // into it from the garrison. Null only means "couldn't afford it" here — catalog/
-            // _currentArmy are already guaranteed non-null above.
-            ArmyData army = ArmyActions.CreateArmy(_currentArmy.Owner, _currentArmy.Hex, catalog, hexSelectionController);
+            // into it from the garrison. The shared transaction also reports map/resource
+            // failures, so a missing dependency must not be presented as an AP shortage.
+            ArmyData army = ArmyActions.CreateArmy(_currentArmy.Owner, _currentArmy.Hex, catalog,
+                hexSelectionController, out string failReason);
             if (army == null)
             {
-                turnController?.ShowSpawnHint("Not enough action points to create a new army.");
+                turnController?.ShowSpawnHint(failReason);
                 return;
             }
 

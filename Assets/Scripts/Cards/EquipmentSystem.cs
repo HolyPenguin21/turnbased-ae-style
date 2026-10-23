@@ -346,7 +346,7 @@ namespace Game.Cards
         {
             if (target == null)
             {
-                reason = "No target.";
+                reason = "Select a unit or hero.";
                 return false;
             }
             EquipmentHostKind kind = target.IsHero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
@@ -399,12 +399,12 @@ namespace Game.Cards
             hostTags = null;
             if (host == null)
             {
-                reason = "No target.";
+                reason = "Select a unit or hero.";
                 return false;
             }
             if (host.cardType != CardType.Unit && host.cardType != CardType.Hero)
             {
-                reason = "Equipment can only go on a unit or hero card.";
+                reason = "Only units and heroes can receive upgrades.";
                 return false;
             }
             kind = host.cardType == CardType.Hero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
@@ -419,13 +419,13 @@ namespace Game.Cards
             reason = null;
             if (equipment == null || equipment.cardType != CardType.Equipment || equipment.equipment == null)
             {
-                reason = "Not an equipment card.";
+                reason = "Select equipment or a mutator.";
                 return false;
             }
             EquipmentGrant grant = equipment.equipment;
             if (equipment.attachmentSlot != AttachmentSlot.Equipment && equipment.attachmentSlot != AttachmentSlot.Mutator)
             {
-                reason = "Unknown attachment slot.";
+                reason = "This upgrade has no valid slot.";
                 return false;
             }
             if (equipment.attachmentSlot == AttachmentSlot.Mutator
@@ -437,7 +437,7 @@ namespace Game.Cards
 
             if (grant.hostKinds == null || !grant.hostKinds.Contains(kind))
             {
-                reason = $"{equipment.displayName} can't be attached to that.";
+                reason = $"{equipment.displayName} is incompatible with this target.";
                 return false;
             }
 
@@ -465,7 +465,8 @@ namespace Game.Cards
 
             if (slotTaken)
             {
-                reason = $"This already has {equipment.attachmentSlot.ToString().ToLowerInvariant()} attached.";
+                reason = equipment.attachmentSlot == AttachmentSlot.Mutator
+                    ? "Mutator slot already occupied." : "Equipment slot already occupied.";
                 return false;
             }
 
@@ -473,7 +474,7 @@ namespace Game.Cards
 
             if (owner == null || !owner.CanSpendActionPoints(apCost))
             {
-                reason = $"Not enough action points to attach {equipment.displayName}.";
+                reason = $"Not enough AP to attach {equipment.displayName}.";
                 return false;
             }
             if (resourceCost != null && !resourceCost.CanAfford(owner))

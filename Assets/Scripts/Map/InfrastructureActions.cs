@@ -63,7 +63,7 @@ namespace Game.Map
     public static class InfrastructureActions
     {
         public static event Action<BuildingData> BaseFounded;
-        internal const string NoFreeFacilitySlotReason = "Base has no free Facility slot";
+        internal const string NoFreeFacilitySlotReason = "No free facility slots in this base.";
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
@@ -83,22 +83,22 @@ namespace Game.Map
         {
             reason = null;
             if (map != null && !map.CanEnter(hex))
-            { reason = "terrain cannot host infrastructure"; return false; }
+            { reason = "Buildings cannot be placed on this terrain."; return false; }
             if (definition == null || definition.cardType != CardType.Base || owner == null)
-            { reason = "not a Base card"; return false; }
+            { reason = "Select a base card."; return false; }
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
-            if (root == null) { reason = "no player root"; return false; }
+            if (root == null) { reason = "Your resources are unavailable. Try again."; return false; }
             BuildingData existing = BuildingRegistry.FindAt(hex);
             if (existing != null && (existing.Owner != owner || !CanMergeIntoResourceSite(existing)))
-            { reason = "hex already has a building"; return false; }
+            { reason = "This hex already has a building."; return false; }
             if (!HexSelectionController.HasOwnHeroArmyAt(hex, owner))
-            { reason = "needs one of your hero-led armies on the hex"; return false; }
+            { reason = "Move one of your armies with a hero onto this hex."; return false; }
             if (BattleInitiator.FindEnemyAt(hex, owner) != null)
-            { reason = "an enemy army holds this hex"; return false; }
+            { reason = "An enemy army controls this hex."; return false; }
             if (apCost < 0 || !root.CanSpendActionPoints(apCost))
-            { reason = $"not enough action points ({apCost})"; return false; }
+            { reason = apCost < 0 ? "This card has an invalid AP cost." : $"Need {apCost} AP to build here."; return false; }
             if (resourceCost != null && !resourceCost.CanAfford(root))
-            { reason = "not enough resources"; return false; }
+            { reason = "Not enough resources."; return false; }
             return true;
         }
 
@@ -107,7 +107,7 @@ namespace Game.Map
             Func<BuildingData, bool> completeBeforeCommit = null)
         {
             if (hexSelection == null || hexSelection.Map == null || !hexSelection.Map.CanEnter(hex))
-                return InfrastructureBuildOutcome.Fail("terrain cannot host infrastructure");
+                return InfrastructureBuildOutcome.Fail("Buildings cannot be placed on this terrain.");
             if (!CanFoundBase(definition, hex, owner, apCost, resourceCost, out string reason, hexSelection.Map))
                 return InfrastructureBuildOutcome.Fail(reason);
 
@@ -148,9 +148,7 @@ namespace Game.Map
                         ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
                 root.ActionPoints = apBefore;
                 Refund(root, resourceCost);
-                return InfrastructureBuildOutcome.Fail(threw
-                    ? "SpawnBuilding threw; transaction rolled back"
-                    : "SpawnBuilding refused (missing scene config); rolled back");
+                return InfrastructureBuildOutcome.Fail("Could not build the base. Costs refunded.");
             }
 
             if (carriedOver != null)
@@ -199,7 +197,7 @@ namespace Game.Map
                 RestoreResources(root, resourcesBefore);
                 RollbackPartialSpawn(hexSelection, hex, owner, existing,
                     ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
-                return InfrastructureBuildOutcome.Fail("founding completion refused; rolled back");
+                return InfrastructureBuildOutcome.Fail("Could not finish building the base. Costs refunded.");
             }
             if (oldVisual != null)
                 UnityEngine.Object.Destroy(oldVisual.gameObject);
@@ -257,22 +255,22 @@ namespace Game.Map
             tier = null;
             reason = null;
             if (building == null || building.Owner == null || !ReferenceEquals(BuildingRegistry.FindAt(building.Hex), building))
-            { reason = "base is not registered at its hex"; return false; }
+            { reason = "This base is no longer available."; return false; }
             // Only a tiered Base/Citadel has levels; a hero-built resource site is never upgraded.
             if (!building.IsBase || !building.HasTieredUnlock)
-            { reason = "building has no upgrade levels"; return false; }
+            { reason = "This building cannot be upgraded."; return false; }
             if (expectedLevel.HasValue && building.Level != expectedLevel.Value)
-            { reason = $"base level changed ({building.Level} != {expectedLevel.Value})"; return false; }
+            { reason = "Base level changed. Reopen the base window."; return false; }
             int tierIndex = building.Level - 1;
             if (tiers == null || tierIndex < 0 || tierIndex >= tiers.Length || tiers[tierIndex] == null)
-            { reason = "no next upgrade tier"; return false; }
+            { reason = "This base is fully upgraded."; return false; }
             PlayerRoot root = PlayerRootRegistry.FindFor(building.Owner);
-            if (root == null) { reason = "no player root"; return false; }
+            if (root == null) { reason = "Your resources are unavailable. Try again."; return false; }
             BaseUpgradeTier next = tiers[tierIndex];
             if (!root.CanSpendActionPoints(next.apCost))
-            { reason = $"not enough action points ({next.apCost})"; return false; }
+            { reason = $"Need {next.apCost} AP to upgrade this base."; return false; }
             if (next.cost != null && !next.cost.CanAfford(root))
-            { reason = "not enough resources"; return false; }
+            { reason = "Not enough resources."; return false; }
             tier = next;
             return true;
         }
@@ -301,16 +299,16 @@ namespace Game.Map
         {
             reason = null;
             if (definition == null || definition.cardType != CardType.Facility || owner == null)
-            { reason = "not a Facility card"; return false; }
+            { reason = "Select a facility card."; return false; }
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
-            if (root == null) { reason = "no player root"; return false; }
+            if (root == null) { reason = "Your resources are unavailable. Try again."; return false; }
             BuildingData building = BuildingRegistry.FindAt(baseHex);
             if (building == null || building.Owner != owner || !building.IsBase)
-            { reason = "no owned Base at the hex"; return false; }
+            { reason = "Facilities require one of your bases on this hex."; return false; }
             if (apCost < 0 || !root.CanSpendActionPoints(apCost))
-            { reason = $"not enough action points ({apCost})"; return false; }
+            { reason = apCost < 0 ? "This card has an invalid AP cost." : $"Need {apCost} AP to build here."; return false; }
             if (resourceCost != null && !resourceCost.CanAfford(root))
-            { reason = "not enough resources"; return false; }
+            { reason = "Not enough resources."; return false; }
             if (building.FindFirstAvailableFacilitySlot() < 0)
             { reason = NoFreeFacilitySlotReason; return false; }
             return true;
@@ -333,7 +331,7 @@ namespace Game.Map
             catch (Exception e)
             {
                 Debug.LogError($"[Infra] FacilityData.FromDefinition threw: {e.Message}");
-                return InfrastructureBuildOutcome.Fail("facility build threw");
+                return InfrastructureBuildOutcome.Fail("Could not build this facility. Try again.");
             }
 
             int apBefore = root.ActionPoints;
@@ -350,12 +348,12 @@ namespace Game.Map
             CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
         {
             if (hexSelection == null || facilityDefinition == null || owner == null)
-                return InfrastructureBuildOutcome.Fail("bad args");
+                return InfrastructureBuildOutcome.Fail("Cannot build this resource facility here.");
             if (!HexSelectionController.HasOwnHeroArmyAt(hex, owner))
-                return InfrastructureBuildOutcome.Fail("no hero-led army on the resource hex");
+                return InfrastructureBuildOutcome.Fail("Move one of your armies with a hero onto this resource hex.");
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root == null)
-                return InfrastructureBuildOutcome.Fail("no player root");
+                return InfrastructureBuildOutcome.Fail("Your resources are unavailable. Try again.");
 
             int apBefore = root.ActionPoints;
             int[] resBefore = SnapshotResources(root);
@@ -393,8 +391,8 @@ namespace Game.Map
                         RestoreFacilitySlots(siteBefore, slotsBefore);
                 }
                 return InfrastructureBuildOutcome.Fail(threw
-                    ? "TryBuildExtractionFacility threw; transaction rolled back"
-                    : "TryBuildExtractionFacility rejected the hex");
+                    ? "Could not build this resource facility. Costs refunded."
+                    : "Cannot build this resource facility on this hex.");
             }
             // HexSelectionController.TryBuildExtractionFacility is also called directly by
             // human UI. That primitive owns its content notification; do not double it here.

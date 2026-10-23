@@ -58,7 +58,7 @@ namespace Game.EditorTests
             bool deployed = ArmyActions.DeployUnitFromCard(_card, _player, _army, _alternate,
                 _selector, out string reason);
             Assert.That(deployed, Is.False);
-            Assert.That(reason, Does.Contain("resource owner is invalid"),
+            Assert.That(reason, Is.EqualTo("Your resources are unavailable. Try again."),
                 "Setup equality alone must not authorize a separate resource account.");
             Assert.That(_registered.ActionPoints, Is.EqualTo(10));
             Assert.That(_alternate.ActionPoints, Is.EqualTo(10));
@@ -70,9 +70,24 @@ namespace Game.EditorTests
             deployed = ArmyActions.DeployUnitFromCard(_card, _player, _army, _registered,
                 _selector, out reason);
             Assert.That(deployed, Is.False);
-            Assert.That(reason, Does.Contain("requires your building"));
+            Assert.That(reason, Does.Contain("Requires your building"));
             Assert.That(_registered.ActionPoints, Is.EqualTo(10));
             Assert.That(_army.Members, Is.Empty);
+        }
+
+        [Test]
+        public void MissingMapDoesNotReportAnApShortageWhenCreatingArmy()
+        {
+            var catalog = ScriptableObject.CreateInstance<FactionCardCatalog>();
+            try
+            {
+                var army = ArmyActions.CreateArmy(_player, _army.Hex, catalog, _selector, out var reason);
+                Assert.That(army, Is.Null);
+                Assert.That(reason, Is.EqualTo("Cannot create an army here."));
+                Assert.That(_registered.ActionPoints, Is.EqualTo(10));
+                Assert.That(_army.Members, Is.Empty);
+            }
+            finally { Object.DestroyImmediate(catalog); }
         }
 
         [Test]
@@ -82,7 +97,7 @@ namespace Game.EditorTests
             bool deployed = ArmyActions.DeployUnitFromCard(_card, _player, _army, _registered,
                 _selector, out string reason);
             Assert.That(deployed, Is.False);
-            Assert.That(reason, Does.Contain("resource owner is invalid"));
+            Assert.That(reason, Is.EqualTo("Your resources are unavailable. Try again."));
             Assert.That(_registered.ActionPoints, Is.EqualTo(10));
             Assert.That(_army.Members, Is.Empty);
         }

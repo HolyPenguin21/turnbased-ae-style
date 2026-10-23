@@ -335,7 +335,7 @@ namespace Game.EditorTests
             var production = new ResearchProductionChallengeSession(Unit(owner), new CardDefinition { fate = 0 })
                 { Tokens = new[] { true } };
             Assert.That(production.TryPlay(card, out string productionReason), Is.False);
-            Assert.That(reason, Is.EqualTo("There are no opposing successes to remove."));
+            Assert.That(reason, Is.EqualTo("No opposing successes to remove."));
             Assert.That(productionReason, Is.EqualTo(reason));
             Assert.That(owner.Tactics.Version, Is.EqualTo(1));
         }
@@ -363,7 +363,7 @@ namespace Game.EditorTests
             var owner = new PlayerSetupData(); var card = Card(TacticEffect.AddSuccess); owner.Tactics.Add(card);
             var production = new ResearchProductionChallengeSession(Unit(owner), new CardDefinition { fate = 4 });
             Assert.That(production.TryPlay(card, out string reason), Is.False);
-            Assert.That(reason, Does.Contain("tokens roll"));
+            Assert.That(reason, Does.Contain("token roll"));
             Assert.That(owner.Tactics.Cards.Count, Is.EqualTo(1));
         }
 

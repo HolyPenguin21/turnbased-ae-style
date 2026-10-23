@@ -225,7 +225,7 @@ namespace Game.Map
                 return false;
             if (!HasOwnHeroArmyAt(hex, owner))
             {
-                NotifyBuildBlocked(owner, $"Needs one of your armies with a Hero on this hex to build {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"Move your army with a hero here to build {definition.displayName}.");
                 return false;
             }
 
@@ -275,14 +275,14 @@ namespace Game.Map
             if (marginalGain <= 0)
             {
                 NotifyBuildBlocked(owner,
-                    $"{definition.displayName} would not increase {resourceType} income on this hex.");
+                    $"{definition.displayName} adds no {resourceType} income here.");
                 return false;
             }
 
             int slotIndex = building.FindFirstAvailableFacilitySlot();
             if (slotIndex < 0)
             {
-                NotifyBuildBlocked(owner, $"{building.Name} has no free Facility slot for {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"No free facility slots in {building.Name}.");
                 return false;
             }
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
@@ -290,7 +290,7 @@ namespace Game.Map
                 return false;
             if (!root.CanSpendActionPoints(definition.apCost))
             {
-                NotifyBuildBlocked(owner, $"Not enough action points to build {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"Not enough AP to build {definition.displayName}.");
                 return false;
             }
             if (!definition.resourceCost.CanAfford(root))
