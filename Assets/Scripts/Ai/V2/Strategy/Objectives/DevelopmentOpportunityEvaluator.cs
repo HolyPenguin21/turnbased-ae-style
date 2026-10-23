@@ -219,7 +219,11 @@ namespace Game.Ai.V2
             EquipmentUpgradeValuation.EquipmentTargetMemo targets =
                 EquipmentUpgradeValuation.EquipmentTargetMemo.Detached();
             var warmed = new HashSet<CardDefinition>();
-            foreach (GenerationStep source in sources)
+            // Fate-bearing outputs last: their hero verdicts run the operator look-ahead, which
+            // prices every leaf output against every recipient inside ONE verdict. Warmed first,
+            // those leaf verdicts are already in the shared store, one card per frame.
+            foreach (GenerationStep source in sources.OrderBy(s =>
+                s.CardDef?.equipment?.statChanges?.Any(c => c.stat == EquipmentStat.Fate) == true))
             {
                 if (!source.ProducesEquipment || source.CardDef?.equipment == null
                     || !warmed.Add(source.CardDef))
@@ -1109,8 +1113,10 @@ namespace Game.Ai.V2
             // Pending-hand coverage depends only on the recipient and the slot being produced
             // (snapshot, inventory and hand are fixed for one Enumerate); negatives are cached too.
             private readonly Dictionary<(object, object), bool> _pending;
-            // Nested operator (Fate) look-ahead verdicts: computed with recursive genomes
-            // suppressed and against the snapshot hand, so they never mix with the ordinary ones.
+            // Nested operator (Fate) look-ahead verdicts of a HERO unit: computed with recursive
+            // genomes suppressed, so they never mix with the ordinary ones. Every other recipient
+            // reads no forecast state (OperatorOutputForecast needs a hero unit, and the snapshot
+            // hand is the same live AiHandData list), so its verdict is shared by both modes.
             // The store key carries every forecast input (OperatorForecastFacts).
             private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _forecastVerdicts;
             private readonly Dictionary<(object, object), bool> _forecastPending;
@@ -1156,34 +1162,36 @@ namespace Game.Ai.V2
             }
             public void Dispose() => s_current = _outer;
 
-            private Dictionary<(CardDefinition, object, bool), RecipientVerdict> Verdicts =>
-                EquipmentUpgradeValuation.IsOperatorForecast ? _forecastVerdicts : _verdicts;
-            private Dictionary<(object, object), bool> Pending =>
-                EquipmentUpgradeValuation.IsOperatorForecast ? _forecastPending : _pending;
+            private static bool ForecastScoped(object recipient) =>
+                EquipmentUpgradeValuation.IsOperatorForecast && recipient is UnitData { IsHero: true };
+            private Dictionary<(CardDefinition, object, bool), RecipientVerdict> Verdicts(object recipient) =>
+                ForecastScoped(recipient) ? _forecastVerdicts : _verdicts;
+            private Dictionary<(object, object), bool> Pending(object recipient) =>
+                ForecastScoped(recipient) ? _forecastPending : _pending;
 
             public static bool TryGet(CardDefinition equipment, object recipient, bool future,
                 out RecipientVerdict verdict)
             {
                 verdict = default;
                 return s_current != null
-                    && s_current.Verdicts.TryGetValue((equipment, recipient, future), out verdict);
+                    && s_current.Verdicts(recipient).TryGetValue((equipment, recipient, future), out verdict);
             }
 
             public static void Store(CardDefinition equipment, object recipient, bool future,
                 RecipientVerdict verdict)
             {
-                if (s_current != null) s_current.Verdicts[(equipment, recipient, future)] = verdict;
+                if (s_current != null) s_current.Verdicts(recipient)[(equipment, recipient, future)] = verdict;
             }
 
             public static bool TryGetPending(object recipient, object slot, out bool covers)
             {
                 covers = false;
-                return s_current != null && s_current.Pending.TryGetValue((recipient, slot), out covers);
+                return s_current != null && s_current.Pending(recipient).TryGetValue((recipient, slot), out covers);
             }
 
             public static void StorePending(object recipient, object slot, bool covers)
             {
-                if (s_current != null) s_current.Pending[(recipient, slot)] = covers;
+                if (s_current != null) s_current.Pending(recipient)[(recipient, slot)] = covers;
             }
         }
 
