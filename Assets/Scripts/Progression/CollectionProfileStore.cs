@@ -12,7 +12,16 @@ namespace Game.Progression
     {
         private readonly string path;
         public CollectionProfileStore(string directory) { path = Path.Combine(directory, "collection-v1.json"); }
-        public CollectionProfile Load(out string notice) => AtomicJsonFile.Load(path, Read, "Profile recovered from backup: ", out notice);
+        public CollectionProfile Load(out string notice)
+        {
+            var profile = AtomicJsonFile.Load(path, Read, "Collection restored from backup: ", out notice);
+            if (!string.IsNullOrEmpty(notice))
+            {
+                Debug.LogWarning(notice);
+                notice = "Collection restored from backup.";
+            }
+            return profile;
+        }
         private static CollectionProfile Read(string file)
         {
             var profile = JsonUtility.FromJson<CollectionProfile>(File.ReadAllText(file));

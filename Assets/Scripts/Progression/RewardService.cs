@@ -43,12 +43,12 @@ namespace Game.Progression
             return collection.Transact(p =>
             {
                 var reward = p.pendingRewards.Find(r => r.matchId == matchId);
-                if (reward == null) throw new InvalidOperationException("Reward is not pending.");
+                if (reward == null) throw new InvalidOperationException("This reward is no longer available.");
                 if (reward.claimed || p.claimedMatchIds.Contains(matchId)) return;
                 var available = AvailableOffers(reward, p);
                 int required = Math.Min(2, available.Count);
                 if (keys.Count != required || keys.Distinct().Count() != keys.Count || keys.Any(k => !available.Contains(k)))
-                    throw new InvalidOperationException("Select the required distinct offered cards.");
+                    throw new InvalidOperationException($"Choose {required} different reward cards.");
                 Apply(p, reward, keys);
             }, out error);
         }
@@ -59,7 +59,7 @@ namespace Game.Progression
             {
                 var card = collection.Rules.Resolve(key);
                 if (!CanGrant(card, reward.faction, p))
-                    throw new InvalidOperationException("Reward is no longer eligible: " + key);
+                    throw new InvalidOperationException("This reward card is no longer available.");
             }
             foreach (string key in granted)
             {

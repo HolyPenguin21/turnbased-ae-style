@@ -29,12 +29,18 @@ namespace Game.Progression
                 Collection = service; Rewards = new RewardService(service);
                 var obsolete = service.Snapshot.ownedCards.Where(e => service.Rules.Resolve(e.cardKey) == null).Select(e => e.cardKey).ToList();
                 Notice = notice;
-                if (obsolete.Count > 0) Notice = (notice ?? "") + "\nObsolete card identities retained: " + string.Join(", ", obsolete);
-                if (service.StarterIssues.Count > 0) Notice = (Notice ?? "") + "\n" + string.Join("\n", service.StarterIssues);
+                if (obsolete.Count > 0) Notice = (notice ?? "") + $"\n{obsolete.Count} collection cards are currently unavailable. Your ownership is retained.";
+                if (service.StarterIssues.Count > 0) Notice = (Notice ?? "") + "\nSome unavailable cards were skipped in starter decks.";
                 Error = null;
                 return true;
             }
-            catch (Exception ex) { Error = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning(ex);
+                Error = ex is NotSupportedException ? "Update the game to load your collection."
+                    : "Could not load your collection. Try again.";
+                return false;
+            }
         }
     }
 }

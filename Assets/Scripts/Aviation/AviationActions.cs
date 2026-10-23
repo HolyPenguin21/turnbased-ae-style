@@ -45,14 +45,14 @@ namespace Game.Aviation
             failReason = null;
             if (definition == null || !definition.isAviation)
             {
-                failReason = "This is not an aviation card.";
+                failReason = "Select an aircraft card.";
                 return false;
             }
             ArmyData airfield = airfieldTarget ?? EnsureAirfield(hexSelection, owner, hex);
             if (airfield == null || !airfield.IsAirfield || airfield.Owner != owner
                 || !airfield.Hex.Equals(hex) || !ArmyRegistry.IsRegistered(airfield))
             {
-                failReason = "Aircraft can only be deployed to your airfield.";
+                failReason = "Deploy aircraft to your airfield first.";
                 return false;
             }
             return ArmyActions.DeployUnitFromCard(definition, owner, airfield, root, hexSelection, out failReason, attachedEquipment, sourceCard);
@@ -71,7 +71,7 @@ namespace Game.Aviation
             if (aircraft.Distinct().Count() != aircraft.Count
                 || aircraft.Any(unit => unit == null || !airfield.Members.Contains(unit) || !unit.IsAviation))
             {
-                failReason = "Every launched card must be an aircraft stored in this airfield.";
+                failReason = "Select only aircraft stored at this airfield.";
                 return false;
             }
 

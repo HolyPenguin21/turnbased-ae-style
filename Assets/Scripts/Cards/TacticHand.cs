@@ -53,9 +53,9 @@ namespace Game.Cards
         // from the side's own match inventory. Effect-specific checks follow in UnavailableReason.
         public static string SideUnavailableReason(TacticHand hand, CardData card, bool tokensReady, bool sideUsed)
         {
-            if (card == null) return "Select a tactical card first.";
-            if (!tokensReady) return "Wait for the tokens roll to finish.";
-            if (sideUsed) return "You have already used a tactical card in this challenge.";
+            if (card == null) return "Select a tactical card.";
+            if (!tokensReady) return "Wait for the token roll to finish.";
+            if (sideUsed) return "Tactical card already used in this challenge.";
             if (hand?.Contains(card) != true) return "This tactical card is not in your hand.";
             return null;
         }
@@ -69,9 +69,9 @@ namespace Game.Cards
 
         public static string UnavailableReason(CardDefinition card, int opposingSuccesses)
         {
-            if (!IsTactic(card)) return "This card has no usable tactical effect.";
+            if (!IsTactic(card)) return "This card has no tactical effect.";
             if (card.tacticEffect == TacticEffect.SuppressSuccess && opposingSuccesses <= 0)
-                return "There are no opposing successes to remove.";
+                return "No opposing successes to remove.";
             return null;
         }
 

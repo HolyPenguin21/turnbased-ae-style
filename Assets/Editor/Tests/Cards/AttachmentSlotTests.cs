@@ -426,15 +426,15 @@ namespace Game.EditorTests
             var card = new CardData(Host()) { Equipment = Attachment(AttachmentSlot.Equipment) };
             var mutator = Attachment(AttachmentSlot.Mutator);
             Assert.That(EquipmentSystem.CanAttach(card.Equipment, card, null, out var why), Is.False);
-            Assert.That(why, Does.Contain("already has equipment"));
+            Assert.That(why, Is.EqualTo("Equipment slot already occupied."));
             Assert.That(EquipmentSystem.GetAttachment(card, mutator), Is.Null,
                 "Equipment occupancy must not occupy the Mutator slot");
             card.Mutator = mutator;
             Assert.That(EquipmentSystem.CanAttach(mutator, card, null, out why), Is.False);
-            Assert.That(why, Does.Contain("already has mutator"));
+            Assert.That(why, Is.EqualTo("Mutator slot already occupied."));
             var unit = Body(); unit.Mutator = mutator;
             Assert.That(EquipmentSystem.CanAttach(mutator, unit, null, out why), Is.False);
-            Assert.That(why, Does.Contain("already has mutator"));
+            Assert.That(why, Is.EqualTo("Mutator slot already occupied."));
         }
     }
 }

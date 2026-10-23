@@ -420,7 +420,7 @@ namespace Game.Map
             ArmyData army = controller.Data;
             if (army == null || army.IsGarrison || army.IsAirfield)
             {
-                NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} can't move - assign its units to a real army first.");
+                NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} cannot move. Transfer its units to a mobile army.");
                 return MoveOrderResult.CannotMove;
             }
 
@@ -429,12 +429,12 @@ namespace Game.Map
             if (!AviationRules.IsAirArmy(army) && BattleInitiator.CanInitiateContact(army)
                 && BattleInitiator.FindEnemyAt(army.Hex, army) != null)
             {
-                NotifyMoveBlocked(army, $"{army.Name} is locked in combat and can't move away.");
+                NotifyMoveBlocked(army, $"{army.Name} cannot move while in combat.");
                 return MoveOrderResult.LockedInCombat;
             }
             if (army.CurrentMovement <= 0)
             {
-                NotifyMoveBlocked(army, $"{army.Name} has no movement points left this turn.");
+                NotifyMoveBlocked(army, $"{army.Name} has no movement left this turn.");
                 return MoveOrderResult.NoMovementLeft;
             }
             if (destination.Equals(army.Hex))
@@ -469,7 +469,7 @@ namespace Game.Map
             if (army.CurrentMovement < firstStepCost)
             {
                 NotifyMoveBlocked(army,
-                    $"Not enough movement points to enter that hex ({firstStepCost} needed, {army.CurrentMovement} left).");
+                    $"Need {firstStepCost} movement to enter this hex; {army.CurrentMovement} left.");
                 return MoveOrderResult.InsufficientStepMovement;
             }
 
@@ -485,7 +485,7 @@ namespace Game.Map
             // continuing a paid sortie, this turn or a later one, is free.
             if (!ArmyActions.CanAffordActivation(army, ownerRoot))
             {
-                NotifyMoveBlocked(army, $"Not enough resources to move {army.Name} ({army.PendingActivationApCost} AP, {army.PendingActivationEnergyCost} Energy needed).");
+                NotifyMoveBlocked(army, $"{army.Name} needs {army.PendingActivationApCost} AP and {army.PendingActivationEnergyCost} Energy to move.");
                 return MoveOrderResult.InsufficientActionPoints;
             }
 

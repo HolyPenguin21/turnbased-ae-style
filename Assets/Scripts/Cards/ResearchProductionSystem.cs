@@ -126,28 +126,28 @@ namespace Game.Cards
             reason = null;
             if (player == null)
             {
-                reason = "no player";
+                reason = "No active player.";
                 return false;
             }
             BuildingData building = BuildingRegistry.FindAt(hex);
             if (building == null || building.Owner != player)
             {
-                reason = "no own building on the hex";
+                reason = "Requires one of your buildings on this hex.";
                 return false;
             }
             if (BattleInitiator.FindEnemyAt(hex, player) != null)
             {
-                reason = "an enemy stands on the hex";
+                reason = "An enemy army occupies this hex.";
                 return false;
             }
             if (!building.HasFacilityWithAbility(FacilityAbility(mode)))
             {
-                reason = $"the building has no {FacilityAbility(mode)} Facility";
+                reason = $"Requires a {FacilityAbility(mode)} facility here.";
                 return false;
             }
             if (FindActor(player, hex, mode) == null)
             {
-                reason = $"no own {RoleAbility(mode)} Hero on the hex";
+                reason = $"Move your {RoleAbility(mode)} hero onto this hex.";
                 return false;
             }
             return true;
@@ -210,7 +210,7 @@ namespace Game.Cards
             ResearchProductionCatalog catalog, out string reason)
         {
             if (player?.IsHuman == true || player?.MatchLoadout != null)
-            { reason = "A tracked Research/Production attempt is required."; return false; }
+            { reason = "Start research or production from its window."; return false; }
             return TryStartAttempt(player, root, hero, hex, mode, card, catalog, out reason, out _);
         }
 
@@ -222,45 +222,50 @@ namespace Game.Cards
             reason = null;
             if (player == null || root == null || hero == null || card == null || catalog == null)
             {
-                reason = "missing Research/Production attempt data";
+                reason = "Cannot start this challenge. Reopen the window.";
                 return false;
             }
             if (player.IsHuman && player.MatchLoadout == null)
             {
-                reason = "Select a saved deck before starting Research/Production.";
+                reason = "Select a saved deck before research or production.";
                 return false;
             }
             if (!object.ReferenceEquals(root, PlayerRootRegistry.FindFor(player))
                 || !object.ReferenceEquals(root.Setup, player))
             {
-                reason = "player resource account is not the canonical registered root";
+                reason = "Your resources are unavailable. Try again.";
                 return false;
             }
             if (!Offers(catalog, mode, player.Faction, card)
                 || (!player.IsHuman && player.AiBlueprints != null && !player.AiBlueprints.Contains(card.authoredKey)))
             {
-                reason = "card is not offered by the current Research/Production catalog";
+                reason = "This card is unavailable for research or production.";
                 return false;
             }
             if (!IsEligible(player, hex, mode, out reason))
                 return false;
             if (!ActorStillQualifies(player, hero, hex, mode))
             {
-                reason = "the selected Research/Production hero no longer qualifies";
+                reason = "This hero can no longer perform this action here.";
                 return false;
             }
             CardDefinition output = catalog.ResolveResult(card);
             if (output == null)
-            { reason = "the production result cannot be resolved"; return false; }
+            { reason = "This card cannot be produced."; return false; }
             if (!CanAffordCard(root, card))
             {
-                reason = "not enough AP or resources for the Research/Production attempt";
+                reason = !root.CanSpendActionPoints(AttemptApCost(card))
+                    ? $"Need {AttemptApCost(card)} AP to start this challenge." : "Not enough resources for this challenge.";
                 return false;
             }
 
             var quota = player.IsHuman && player.MatchLoadout != null ? player.BlueprintQuota : null;
             if (player.IsHuman && player.MatchLoadout != null && (quota == null || !quota.TryReserve(card.authoredKey)))
-            { reason = "Blueprint is not selected, exhausted, or already in use."; return false; }
+            {
+                reason = quota == null || !quota.Unlocked(card.authoredKey)
+                    ? "This blueprint is not in your selected deck." : "Finish this blueprint's current challenge first.";
+                return false;
+            }
             attempt = new ProductionAttempt(card, quota, output);
             try { ApplyResearchReveal(mode, hero); PayCardCost(root, card); }
             catch { attempt.Dispose(); throw; }

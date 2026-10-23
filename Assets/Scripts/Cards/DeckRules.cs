@@ -90,30 +90,32 @@ namespace Game.Cards
         {
             var result = new DeckValidation();
             if (deck == null) { result.Errors.Add("No deck selected."); return result; }
-            if (!PlayableFactions.Contains(deck.faction)) result.Errors.Add("Invalid faction.");
+            if (!PlayableFactions.Contains(deck.faction)) result.Errors.Add("Choose a playable faction.");
             var keys = new HashSet<string>(StringComparer.Ordinal);
             foreach (var category in new[] { DeckCategory.Main, DeckCategory.Equipment, DeckCategory.Mutator })
             {
                 var entries = Entries(deck, category);
-                if (entries == null) { result.Errors.Add("Missing deck category."); continue; }
+                if (entries == null) { result.Errors.Add("Deck data is incomplete."); continue; }
                 foreach (var row in entries)
                 {
-                    if (row == null || string.IsNullOrWhiteSpace(row.cardKey)) { result.Errors.Add("Missing card identity."); continue; }
-                    if (!keys.Add(row.cardKey)) result.Errors.Add("Duplicate card row: " + row.cardKey);
+                    if (row == null || string.IsNullOrWhiteSpace(row.cardKey)) { result.Errors.Add("Deck contains an unreadable card."); continue; }
+                    if (!keys.Add(row.cardKey)) result.Errors.Add("Duplicate card in deck: " + (Resolve(row.cardKey)?.displayName ?? "unavailable card"));
                     var card = Resolve(row.cardKey);
                     // Kept in the saved deck so the row returns if the card does; ignored in play (see MatchLoadout).
-                    if (card == null) { result.Warnings.Add("Unknown card ignored: " + row.cardKey); continue; }
-                    if (Category(card) != category || !Permitted(card, deck.faction)) result.Errors.Add("Forbidden card: " + card.displayName);
-                    if (card.deckPointCost < 0 || card.deckCopyLimit < 0) result.Errors.Add("Invalid card metadata: " + row.cardKey);
+                    if (card == null) { result.Warnings.Add("An unavailable card was skipped."); continue; }
+                    if (Category(card) != category || !Permitted(card, deck.faction)) result.Errors.Add(card.displayName + " is not allowed in this deck.");
+                    if (card.deckPointCost < 0 || card.deckCopyLimit < 0) result.Errors.Add("Card data is invalid: " + card.displayName);
                     if (row.count < 0 || row.count > CopyLimit(card) || row.count > owned(row.cardKey))
-                        result.Errors.Add("Invalid quantity: " + card.displayName);
+                        result.Errors.Add(row.count < 0 ? $"{card.displayName}: copy count cannot be negative."
+                            : row.count > CopyLimit(card) ? $"Maximum {CopyLimit(card)} copies of {card.displayName} per deck."
+                            : $"You own only {owned(row.cardKey)} copies of {card.displayName}.");
                     result.Points += (long)card.deckPointCost * row.count;
                 }
             }
             if (result.Points > MaximumPoints) result.Errors.Add("Deck exceeds 100 points.");
             int heroCards = deck.mainCards?.Where(e => e != null && e.count > 0 && Resolve(e.cardKey)?.cardType == CardType.Hero).Sum(e => e.count) ?? 0;
             if (heroCards == 0)
-                result.Warnings.Add("No heroes: this deck may not field armies or operate facilities.");
+                result.Warnings.Add("No heroes: army command and facility use will be limited.");
             if (deck.mainCards?.Any(e => e != null && e.count > 0 && Resolve(e.cardKey)?.cardType == CardType.Base) != true)
                 result.Warnings.Add("No base cards: expansion may be limited.");
             return result;
@@ -125,12 +127,12 @@ namespace Game.Cards
         {
             reason = null;
             var card = Resolve(key);
-            if (card == null || Category(card) == DeckCategory.System) { reason = "Unknown or system card."; return false; }
+            if (card == null || Category(card) == DeckCategory.System) { reason = "This card cannot be added to a deck."; return false; }
             var candidate = CollectionProfile.CopyDeck(draft);
             var rows = Entries(candidate, Category(card));
             var row = rows.Find(e => e.cardKey == key);
             int count = (row?.count ?? 0) + delta;
-            if (count < 0) { reason = "Quantity cannot be negative."; return false; }
+            if (count < 0) { reason = "No copies of this card remain in the deck."; return false; }
             if (row == null) { row = new DeckCardEntry { cardKey = key, count = 0 }; rows.Add(row); }
             row.count = count;
             if (count == 0) rows.Remove(row);

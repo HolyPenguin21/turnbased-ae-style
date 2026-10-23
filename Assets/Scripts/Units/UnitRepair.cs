@@ -130,7 +130,7 @@ namespace Game.Units
             ResourceCost cost = ResourceCost(unit);
             if (!root.CanSpendActionPoints(apCost))
             {
-                failReason = $"Not enough action points to repair {unit.Name}.";
+                failReason = $"Need {apCost} AP to repair {unit.Name}.";
                 return false;
             }
             if (!cost.CanAfford(root))

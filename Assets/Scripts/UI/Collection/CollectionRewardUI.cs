@@ -59,11 +59,11 @@ namespace Game.UI
             view.PrimaryButton.onClick.RemoveAllListeners();
             if (retryResult.HasValue)
             {
-                DrawSaveError("Cannot save the match reward.\n" + error, () => OnResult(retryResult.Value)); return;
+                DrawSaveError(error ?? "Could not save the reward. Select Retry.", () => OnResult(retryResult.Value)); return;
             }
             if (failedDismissMatchId != null)
             {
-                DrawSaveError("Cannot save campaign continuation.\n" + error, () => FinishDismiss(failedDismissMatchId)); return;
+                DrawSaveError(error ?? "Could not save campaign progress. Select Retry.", () => FinishDismiss(failedDismissMatchId)); return;
             }
             var reward = ProgressionContext.Collection.Snapshot.pendingRewards.FirstOrDefault();
             if (reward == null)
@@ -80,7 +80,7 @@ namespace Game.UI
             if (!reward.claimed) selection.RemoveWhere(key => !keys.Contains(key));
             int required = Mathf.Min(2, keys.Count);
             string notice = !reward.claimed && keys.Count < reward.offeredKeys.Count
-                ? $"{reward.offeredKeys.Count - keys.Count} offers unavailable after a content/limit update. Original identities retained; no replacements." : "";
+                ? $"{reward.offeredKeys.Count - keys.Count} reward cards are no longer available." : "";
             string title = reward.outcome == MatchOutcome.Victory ? "VICTORY" : "DEFEAT";
             view.Title.text = title;
             view.Subtitle.text = keys.Count == 0 ? "No eligible rewards remain." : reward.claimed ? "REWARD ACQUIRED" : $"Choose {required} rewards - selected {selection.Count}/{required}";
@@ -128,7 +128,7 @@ namespace Game.UI
         }
         private void DrawSaveError(string message, System.Action retry)
         {
-            view.Title.text = "REWARD SAVE ERROR";
+            view.Title.text = "REWARD ERROR";
             view.CardsHost.gameObject.SetActive(false);
             view.Subtitle.gameObject.SetActive(false);
             view.Status.gameObject.SetActive(false);

@@ -228,7 +228,7 @@ namespace Game.UI
                 _currentBuilding, gameConfig.baseUpgradeTiers);
             if (!outcome.Ok)
             {
-                turnController?.ShowSpawnHint($"Not enough resources to upgrade {_currentBuilding.Name}.");
+                turnController?.ShowSpawnHint(outcome.FailReason);
                 return;
             }
             RefreshTitle();

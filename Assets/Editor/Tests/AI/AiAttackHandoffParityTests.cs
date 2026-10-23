@@ -102,7 +102,7 @@ namespace Game.EditorTests
             HandoffPlan now = GroundCombatReinforcement.PlanAttackHandoff(host, support, Site(),
                 0f, requireChargeNow: true, out string nowWhy);
             Assert.That(now, Is.Null, "no player root pays the newcomer's activation today");
-            Assert.That(nowWhy, Does.Contain("action points"));
+            Assert.That(nowWhy, Does.Contain("resources are unavailable"));
         }
 
         // Kryll T18/T20: a support [hero, body] whose hero would take command but adds no power —

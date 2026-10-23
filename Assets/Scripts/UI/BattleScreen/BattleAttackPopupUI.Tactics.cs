@@ -113,16 +113,16 @@ namespace Game.UI
 
         private string TacticSelectionFailure(CardData card, bool checkInput)
         {
-            if (checkInput && TacticInputBlocked) return "Close the information window before continuing the challenge.";
+            if (checkInput && TacticInputBlocked) return "Close the message to continue.";
             if (_phase != Phase.InProgress || !_awaitingHumanDecision || _humanSpent || _humanDeclined)
-                return "Wait for your challenge decision. The defender acts first.";
+                return "Wait for your challenge turn; the defender acts first.";
             var owner = (_kind == ChallengeKind.ResearchProduction ? _rpHero
                 : _defenderTurnActive ? _defender : _attacker)?.Owner;
             if (_automateHumanSides || owner?.IsHuman != true)
-                return "It is not your challenge decision.";
+                return "Wait for your turn in this challenge.";
             if (_kind == ChallengeKind.ResearchProduction)
-                return _rpTactics == null ? "There is no active challenge." : _rpTactics.TacticUnavailableReason(card);
-            return _challengeSession == null ? "There is no active challenge."
+                return _rpTactics == null ? "No active challenge." : _rpTactics.TacticUnavailableReason(card);
+            return _challengeSession == null ? "No active challenge."
                 : _challengeSession.TacticUnavailableReason(_defenderTurnActive, card);
         }
 
@@ -257,7 +257,7 @@ namespace Game.UI
             || _phase != Phase.InProgress || !_awaitingHumanDecision || _humanSpent || _humanDeclined
             || _pendingTacticDefender != _defenderTurnActive
                 ? "Wait for your challenge decision."
-                : TacticInputBlocked ? "Close the information window before continuing the challenge." : null;
+                : TacticInputBlocked ? "Close the message to continue." : null;
 
         private void RefreshSlottedTactic()
         {

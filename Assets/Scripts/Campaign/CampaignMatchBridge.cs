@@ -58,7 +58,13 @@ namespace Game.Campaign
                 if (pendingOwnershipChange.HasValue && !pendingOwnershipChange.Value.Matches(s)) pendingOwnershipChange = null;
                 return s != null;
             }
-            catch (Exception ex) { error = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(ex);
+                error = ex is NotSupportedException ? "Update the game to load this campaign."
+                    : "Could not load the campaign. Try again.";
+                return false;
+            }
         }
         public static void Create(Faction human)
         {
@@ -71,15 +77,16 @@ namespace Game.Campaign
             error = null;
             try
             {
-                if (Controller == null) throw new InvalidOperationException("Campaign is not loaded.");
+                if (Controller == null) { error = "Campaign is not loaded."; return false; }
                 var s = Controller.View; var op = s.PendingOperation;
-                if (op == null || !op.Manual || op.TestAutoResolve || op.ResultRecorded) throw new InvalidOperationException("No pending manual battle.");
-                if (!ProgressionContext.Initialize(config)) throw new InvalidOperationException(ProgressionContext.Error);
+                if (op == null || !op.Manual || op.TestAutoResolve || op.ResultRecorded)
+                { error = "No battle is ready to play."; return false; }
+                if (!ProgressionContext.Initialize(config)) { error = ProgressionContext.Error; return false; }
                 var collection = ProgressionContext.Collection;
                 var deck = collection.GetDeck(deckId, s.HumanFaction);
-                if (deck == null) throw new InvalidOperationException("Select a saved deck of your faction.");
+                if (deck == null) { error = "Select a saved deck of your faction."; return false; }
                 var validation = collection.Rules.Validate(deck, collection.Owned);
-                if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
+                if (!validation.IsValid) { error = "Deck needs changes. Open Collection & Decks."; return false; }
                 var enemy = op.AttackerFaction == s.HumanFaction ? op.DefenderFaction : op.AttackerFaction;
                 var players = new List<PlayerSetupData>();
                 foreach (var faction in new[] { op.AttackerFaction, op.DefenderFaction })
@@ -100,7 +107,12 @@ namespace Game.Campaign
                 GameSession.SelectedResourceConditions = target.ResourceConditions;
                 return true;
             }
-            catch (Exception ex) { error = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(ex);
+                error = "Could not prepare the battle. Try again.";
+                return false;
+            }
         }
         public static bool RecordFinalResult(out string error)
         {
@@ -110,29 +122,34 @@ namespace Game.Campaign
             {
                 var context = GameSession.CampaignContext;
                 var final = GameSession.FinalResult ?? throw new InvalidOperationException("Match has not finished.");
-                if (final.MatchId != context.MatchId) throw new InvalidOperationException("Match identity mismatch.");
+                if (final.MatchId != context.MatchId) throw new InvalidOperationException("This result belongs to a different battle.");
                 if (Controller == null && !Load(out error)) return false;
                 var state = Controller.View; var op = state.PendingOperation;
-                if (state.CampaignId != context.CampaignId || state.HumanFaction != context.HumanFaction) throw new InvalidOperationException("Campaign context mismatch.");
+                if (state.CampaignId != context.CampaignId || state.HumanFaction != context.HumanFaction) throw new InvalidOperationException("This battle belongs to a different campaign.");
                 if (op?.OperationId == context.OperationId)
                 {
                     if (op.MatchId != context.MatchId || op.AttackerFaction != context.AttackerFaction || op.DefenderFaction != context.DefenderFaction
                         || op.SourceRegionId != context.SourceRegionId || op.TargetRegionId != context.TargetRegionId || op.SelectedHumanDeckId != context.SelectedHumanDeckId)
-                        throw new InvalidOperationException("Pending battle context mismatch.");
+                        throw new InvalidOperationException("This result does not match the current campaign battle.");
                 }
                 else
                 {
                     var receipt = state.BattleHistory.Find(h => h.OperationId == context.OperationId);
                     if (receipt == null || !receipt.Manual || receipt.MatchId != context.MatchId || receipt.Attacker != context.AttackerFaction
-                        || receipt.Defender != context.DefenderFaction || receipt.TargetRegionId != context.TargetRegionId) throw new InvalidOperationException("Completed battle context mismatch.");
+                        || receipt.Defender != context.DefenderFaction || receipt.TargetRegionId != context.TargetRegionId) throw new InvalidOperationException("This result does not match the saved campaign battle.");
                 }
-                if (!final.Draw && final.WinnerFaction != context.AttackerFaction && final.WinnerFaction != context.DefenderFaction) throw new InvalidOperationException("Winner is not a participant.");
+                if (!final.Draw && final.WinnerFaction != context.AttackerFaction && final.WinnerFaction != context.DefenderFaction) throw new InvalidOperationException("Battle result is invalid: the winner did not take part.");
                 if (final.Draw ? final.WinnerFaction != Faction.None : final.LoserFaction != (final.WinnerFaction == context.AttackerFaction ? context.DefenderFaction : context.AttackerFaction))
-                    throw new InvalidOperationException("Inconsistent whole-match outcome.");
+                    throw new InvalidOperationException("Battle result is invalid: winner and loser do not match.");
                 var outcome = final.Draw ? CampaignOutcome.Draw : final.WinnerFaction == context.AttackerFaction ? CampaignOutcome.AttackerVictory : CampaignOutcome.DefenderVictory;
                 Controller.RecordManualResult(context.CampaignId, context.OperationId, context.MatchId, outcome); return true;
             }
-            catch (Exception ex) { error = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(ex);
+                error = "Could not save the battle result. Try again.";
+                return false;
+            }
         }
         // Called on recovery before UI continuation. RewardService's MatchId receipt reconciles files.
         public static bool RecoverReward(GameConfig config, out string error)
@@ -143,7 +160,7 @@ namespace Game.Campaign
                 var s = Controller.View; var op = s.PendingOperation;
                 if (op?.ResultRecorded != true) return true;
                 if (!op.Manual || op.RewardAcknowledged) { Controller.ApplyResult(); return true; }
-                if (!ProgressionContext.Initialize(config)) throw new InvalidOperationException(ProgressionContext.Error);
+                if (!ProgressionContext.Initialize(config)) { error = ProgressionContext.Error; return false; }
                 if (op.Outcome == CampaignOutcome.Draw) { Controller.AcknowledgeReward(op.MatchId); return true; }
                 var player = new PlayerSetupData { Faction = s.HumanFaction, IsHuman = true };
                 bool victory = op.Outcome == CampaignOutcome.AttackerVictory ? op.AttackerFaction == s.HumanFaction : op.DefenderFaction == s.HumanFaction;
@@ -153,7 +170,12 @@ namespace Game.Campaign
                 if (profile.claimedMatchIds.Contains(op.MatchId) && !profile.pendingRewards.Exists(r => r.matchId == op.MatchId)) Controller.AcknowledgeReward(op.MatchId);
                 return true;
             }
-            catch (Exception ex) { error = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(ex);
+                error = "Could not restore campaign rewards. Try again.";
+                return false;
+            }
         }
         public static bool RewardDismissed(string matchId, out string error)
         {
@@ -164,7 +186,12 @@ namespace Game.Campaign
                 if (Controller?.View.PendingOperation?.MatchId == matchId) Controller.AcknowledgeReward(matchId);
                 return true;
             }
-            catch (Exception ex) { error = ex.Message; return false; }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(ex);
+                error = "Could not save campaign progress. Try again.";
+                return false;
+            }
         }
         public static string ReturnScene(string matchId) => !string.IsNullOrWhiteSpace(matchId)
             && (Controller?.View.PendingOperation?.MatchId == matchId || GameSession.CampaignContext?.MatchId == matchId) ? SceneNames.Campaign : SceneNames.MainMenu;
