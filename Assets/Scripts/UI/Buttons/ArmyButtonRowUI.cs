@@ -192,6 +192,7 @@ namespace Game.UI
 
         private void Render(bool animated)
         {
+            TutorialHintController.Invalidate();
             ClearButtons();
             ArmyButtonUI prefab = gameConfig == null ? null
                 : !_showStats && gameConfig.armyModalButtonPrefab != null

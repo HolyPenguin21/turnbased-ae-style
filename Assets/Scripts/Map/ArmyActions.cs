@@ -379,6 +379,39 @@ namespace Game.Map
         public static bool TransferMember(UnitData unit, ArmyData source, ArmyData target,
             HexSelectionController hexSelectionController, out string failReason)
         {
+            if (!CanTransferMember(unit, source, target, out PlayerRoot targetRoot,
+                    out bool requiresCharge, out failReason)) return false;
+
+            source.Members.Remove(unit);
+            source.NormalizeGarrisonOrder();
+            target.AddMemberSorted(unit);
+            if (target.IsAirfield)
+                AviationRules.ResetAfterLanding(unit);
+            AviationRules.SyncAirArmyShell(source, hexSelectionController);
+            AviationRules.SyncAirArmyShell(target, hexSelectionController);
+            if (target.IsCarrierFlightDeck && target.Controller == null)
+                hexSelectionController?.CreateArmyMarker(target);
+            if (requiresCharge)
+                targetRoot?.SpendActionPoints(unit.ActivationApCost);
+            target.MarkUnitActivationPaid(unit);
+            hexSelectionController?.RestackArmiesOn(source.Hex, null);
+            if (!target.Hex.Equals(source.Hex))
+                hexSelectionController?.RestackArmiesOn(target.Hex, null);
+            PublishRosterChange(source, target, AbilityParams.GetBestRecceRadius(unit) > 0);
+            if (target.IsAirfield) AviationActions.NotifyLandingCompleted(source, target, unit);
+            return true;
+        }
+
+        // Read-only preview of the single-unit UI transaction, including empty air-wing
+        // promotion. The multi-unit exchange preview has different aviation rules.
+        public static bool CanTransferMember(UnitData unit, ArmyData source, ArmyData target, out string failReason)
+            => CanTransferMember(unit, source, target, out _, out _, out failReason);
+
+        private static bool CanTransferMember(UnitData unit, ArmyData source, ArmyData target,
+            out PlayerRoot targetRoot, out bool requiresCharge, out string failReason)
+        {
+            targetRoot = null;
+            requiresCharge = false;
             failReason = null;
             if (unit == null || source == null || target == null || source == target || target.IsPrison)
             {
@@ -434,8 +467,7 @@ namespace Game.Map
             // Aviation never pays on a transfer: an aircraft that has not yet paid its sortie
             // launch (UnitData.SortieLaunchPaid) is charged by its stack's next flight action
             // (TryPayActivation), and storing an aircraft in its airfield is a landing.
-            PlayerRoot targetRoot = null;
-            bool requiresCharge = !unit.IsAviation && target.RequiresActivationCharge(unit);
+            requiresCharge = !unit.IsAviation && target.RequiresActivationCharge(unit);
             if (requiresCharge)
             {
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
@@ -447,23 +479,6 @@ namespace Game.Map
                 }
             }
 
-            source.Members.Remove(unit);
-            source.NormalizeGarrisonOrder();
-            target.AddMemberSorted(unit);
-            if (target.IsAirfield)
-                AviationRules.ResetAfterLanding(unit);
-            AviationRules.SyncAirArmyShell(source, hexSelectionController);
-            AviationRules.SyncAirArmyShell(target, hexSelectionController);
-            if (target.IsCarrierFlightDeck && target.Controller == null)
-                hexSelectionController?.CreateArmyMarker(target);
-            if (requiresCharge)
-                targetRoot?.SpendActionPoints(unit.ActivationApCost);
-            target.MarkUnitActivationPaid(unit);
-            hexSelectionController?.RestackArmiesOn(source.Hex, null);
-            if (!target.Hex.Equals(source.Hex))
-                hexSelectionController?.RestackArmiesOn(target.Hex, null);
-            PublishRosterChange(source, target, AbilityParams.GetBestRecceRadius(unit) > 0);
-            if (target.IsAirfield) AviationActions.NotifyLandingCompleted(source, target, unit);
             return true;
         }
 

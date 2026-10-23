@@ -734,6 +734,7 @@ namespace Game.Map
         // should stay selected rather than being reset to "none".
         private void SelectHex(HexCoord coord, bool preserveSelection = false)
         {
+            TutorialHintController.Invalidate();
             _selectedHex = coord;
             map.TryGetTerrainAt(coord, out TerrainTypeEntry entry);
 
@@ -939,6 +940,45 @@ namespace Game.Map
         // ResearchProductionModalUI opens in the matching mode with the qualifying Hero; the
         // catalog list, faction filtering, pagination and the (still inert) Create button all
         // live inside the modal. The Research/Production action itself is the next milestone.
+        internal bool CanOfferBuildTutorial(CardData card, PlayerSetupData owner, PlayerRoot root)
+        {
+            if (!_selectedHex.HasValue || card?.Definition == null || root == null) return false;
+            var hex = _selectedHex.Value;
+            return card.Definition.cardType == CardType.Base
+                ? InfrastructureActions.CanFoundBase(card.Definition, hex, owner,
+                    card.EffectivePlayApCost, card.EffectivePlayResourceCost, out _, map)
+                : card.Definition.cardType == CardType.Facility
+                    && InfrastructureActions.CanPlaceFacility(card.Definition, hex, owner,
+                        card.EffectivePlayApCost, card.EffectivePlayResourceCost, out _);
+        }
+
+        internal void RefreshContextTutorials()
+        {
+            TutorialHintController.Withdraw(TutorialHintId.MutagenProduction);
+            TutorialHintController.Withdraw(TutorialHintId.EquipmentProduction);
+            if (!TutorialHintController.MapInteractionReady || !_selectedHex.HasValue || infoPanel == null) return;
+            var hex = _selectedHex.Value;
+            foreach (var mode in new[] { ResearchProductionMode.Research, ResearchProductionMode.Production })
+            {
+                var id = mode == ResearchProductionMode.Research
+                    ? TutorialHintId.MutagenProduction : TutorialHintId.EquipmentProduction;
+                if (TutorialHintProgress.HasSeen(id) || !CanOfferFacilityTutorial(hex, mode)) continue;
+                TutorialHintController.Offer(id, infoPanel.TutorialFacilityAnchor(mode == ResearchProductionMode.Research),
+                    () => this != null && TutorialHintController.MapInteractionReady
+                        && _selectedHex.HasValue && _selectedHex.Value.Equals(hex)
+                        && CanOfferFacilityTutorial(hex, mode));
+            }
+        }
+
+        private bool CanOfferFacilityTutorial(HexCoord hex, ResearchProductionMode mode)
+        {
+            var human = GameSession.FindHumanPlayer();
+            var building = BuildingRegistry.FindAt(hex);
+            return human != null && building != null && building.Owner == human
+                && building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
+                && BattleInitiator.FindEnemyAt(hex, human) == null;
+        }
+
         private void OnResearchActionClicked(HexCoord hex)
         {
             OpenResearchProductionModal(hex, ResearchProductionMode.Research);
@@ -1001,6 +1041,9 @@ namespace Game.Map
             if (baseViewerModal != null) baseViewerModal.Hide();
             armyButtonRow?.Hide();
             researchProductionModal?.Show(mode, human, hero, ResolveFactionLogo(human));
+            if (researchProductionModal != null && researchProductionModal.IsShowing)
+                TutorialHintController.Learned(mode == ResearchProductionMode.Research
+                    ? TutorialHintId.MutagenProduction : TutorialHintId.EquipmentProduction);
         }
 
         // Create pressed in the modal (spec §13). Everything here is re-validated against the
@@ -1037,6 +1080,7 @@ namespace Game.Map
 
             // Lock the presentation only after the shared transaction commits.
             _rpTransactionActive = true;
+            TutorialHintController.Learned(TutorialHintId.AttemptCost);
             researchProductionModal.SetBusy(true);
 
             // Start the animated Challenge through its dedicated presentation entry point.
@@ -1137,6 +1181,7 @@ namespace Game.Map
         // battle screen would just be stale/confusing once it closes again.
         public void Deselect()
         {
+            TutorialHintController.Invalidate();
             _selectedHex = null;
             if (highlight != null) highlight.Hide();
             if (infoPanel != null) infoPanel.Hide();

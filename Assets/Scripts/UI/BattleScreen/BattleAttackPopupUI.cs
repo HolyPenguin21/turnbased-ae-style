@@ -1101,7 +1101,7 @@ namespace Game.UI
             if (!canSpend || row?.TutorialSpendButton == null) return;
             TutorialHintController.Offer(TutorialHintId.Fate, row.TutorialSpendButton.transform as RectTransform,
                 () => this != null && IsShowing && _awaitingHumanDecision && !_humanSpent && !_humanDeclined
-                    && _defenderTurnActive == defender && !TacticInputBlocked && !RunsAutomatically
+                    && _defenderTurnActive == defender && !TacticInputBlocked && !RunsAutomatically && !TacticDragInProgress
                     && (_kind == ChallengeKind.ResearchProduction
                         ? _rpHero?.Owner?.IsHuman == true && CanSpendResearchProductionFate()
                         : (defender ? _defender : _attacker)?.Owner?.IsHuman == true

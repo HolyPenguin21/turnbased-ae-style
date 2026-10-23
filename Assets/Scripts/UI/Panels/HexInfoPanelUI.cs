@@ -88,6 +88,10 @@ namespace Game.UI
         public void SetResearchButtonVisible(bool visible, Action onClick) => SetWanted(Research, visible, onClick);
         public void SetProductionButtonVisible(bool visible, Action onClick) => SetWanted(Production, visible, onClick);
 
+        internal RectTransform TutorialFacilityAnchor(bool research) =>
+            (_wanted[research ? Research : Production]
+                ? (research ? researchButton : productionButton) : baseButton)?.transform as RectTransform;
+
         // Selection only records what is available; ShowHex/HideAnimated apply it.
         private void SetWanted(int index, bool available, Action onClick)
         {

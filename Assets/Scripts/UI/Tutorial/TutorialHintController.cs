@@ -21,6 +21,7 @@ namespace Game.UI
             public TutorialHintId Id;
             public RectTransform Target;
             public Func<bool> Relevant;
+            public bool IsDropTarget;
         }
         private static TutorialHintController instance;
         private readonly List<Candidate> candidates = new List<Candidate>();
@@ -32,6 +33,27 @@ namespace Game.UI
         private Candidate current;
         private TutorialHintView view;
         private bool dirty = true, canOfferDraw, aircraftPending;
+        private float nextHintAt;
+        private const float HintPause = 2f;
+
+        internal static bool HumanTurnIsReady => instance != null && instance.HumanTurnReady;
+        internal static bool HandInteractionReady => HumanTurnIsReady
+            && !instance.turn.CardDraggingBlocked && instance.hand != null
+            && !instance.hand.TutorialActionInProgress;
+        internal static bool MapInteractionReady => HandInteractionReady && !instance.turn.InputBlocked;
+
+        internal static bool TargetIsVisible(RectTransform target)
+        {
+            if (target == null || !target.gameObject.activeInHierarchy) return false;
+            var canvas = target.GetComponentInParent<Canvas>();
+            if (canvas == null) return false;
+            Vector3 center = target.TransformPoint(target.rect.center);
+            var canvasRect = canvas.rootCanvas.transform as RectTransform;
+            if (canvasRect != null && !canvasRect.rect.Contains((Vector2)canvasRect.InverseTransformPoint(center))) return false;
+            var scroll = target.GetComponentInParent<ScrollRect>();
+            return scroll == null || scroll.viewport == null
+                || scroll.viewport.rect.Contains((Vector2)scroll.viewport.InverseTransformPoint(center));
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics() => instance = null;
@@ -123,6 +145,34 @@ namespace Game.UI
             }
             candidate.Target = target;
             candidate.Relevant = relevant;
+            candidate.IsDropTarget = false;
+        }
+
+        // A tactical slot accepts drops even while its click-to-place Button is disabled.
+        internal static void OfferDropTarget(TutorialHintId id, RectTransform target, Func<bool> relevant)
+        {
+            Offer(id, target, relevant);
+            var candidate = instance?.candidates.Find(c => c.Id == id);
+            if (candidate != null) candidate.IsDropTarget = true;
+        }
+
+        internal static void Withdraw(TutorialHintId id)
+        {
+            if (instance == null) return;
+            var candidate = instance.candidates.Find(c => c.Id == id);
+            if (candidate != null) candidate.Target = null;
+        }
+
+        // A successful player action also teaches the topic when its bubble was never shown.
+        // Keep Complete's visible-hint contract for the original five topics.
+        internal static void Learned(TutorialHintId id)
+        {
+            TutorialHintProgress.Complete(id);
+            if (instance != null && instance.current?.Id == id)
+            {
+                instance.nextHintAt = Time.unscaledTime + HintPause;
+                instance.HideView();
+            }
         }
 
         private static int Priority(TutorialHintId id)
@@ -130,17 +180,28 @@ namespace Game.UI
             switch (id)
             {
                 case TutorialHintId.Fate: return 0;
-                case TutorialHintId.CreateArmy: return 1;
-                case TutorialHintId.Aircraft: return 2;
-                case TutorialHintId.EndTurn: return 3;
-                default: return 4;
+                case TutorialHintId.Tactic: return 1;
+                case TutorialHintId.EditTactic: return 1;
+                case TutorialHintId.AttemptCost: return 1;
+                case TutorialHintId.CreateArmy: return 2;
+                case TutorialHintId.TransferUnit: return 3;
+                case TutorialHintId.Repair: return 3;
+                case TutorialHintId.Aircraft: return 4;
+                case TutorialHintId.Upgrade: return 5;
+                case TutorialHintId.MutagenProduction: return 6;
+                case TutorialHintId.EquipmentProduction: return 6;
+                case TutorialHintId.BuildBase: return 7;
+                case TutorialHintId.BuildFacility: return 7;
+                case TutorialHintId.EndTurn: return 8;
+                default: return 9;
             }
         }
 
         private void LateUpdate()
         {
             BindRoot();
-            if (!TutorialHintProgress.Enabled || UIFocusUtility.IsGameplayInputBlocked)
+            if (!TutorialHintProgress.Enabled || UIFocusUtility.IsGameplayInputBlocked
+                || (turn != null && turn.TutorialMessageShowing))
             {
                 HideView();
                 return;
@@ -152,17 +213,22 @@ namespace Game.UI
                 dirty = false;
                 canOfferDraw = !TutorialHintProgress.HasSeen(TutorialHintId.Draw)
                     && MapInputReady && hand != null && hand.CanOfferDrawTutorial();
+                hand?.RefreshContextTutorials();
+                armyViewer?.RefreshContextTutorials();
             }
             Candidate next = null;
             foreach (var candidate in candidates)
             {
                 if (TutorialHintProgress.HasSeen(candidate.Id) || candidate.Target == null
-                    || !candidate.Target.gameObject.activeInHierarchy || !candidate.Relevant()) continue;
+                    || !candidate.Target.gameObject.activeInHierarchy || !candidate.Relevant()
+                    || ((int)candidate.Id >= (int)TutorialHintId.TransferUnit && !TargetIsVisible(candidate.Target))) continue;
                 var control = candidate.Target.GetComponent<Selectable>();
-                if (control != null && (!control.isActiveAndEnabled || !control.IsInteractable())) continue;
+                if (!candidate.IsDropTarget && control != null
+                    && (!control.isActiveAndEnabled || !control.IsInteractable())) continue;
                 if (next == null || Priority(candidate.Id) < Priority(next.Id)) next = candidate;
             }
             if (next == null) { HideView(); return; }
+            if (view == null && Time.unscaledTime < nextHintAt) return;
             if (current != next || view == null)
             {
                 HideView();
@@ -186,6 +252,7 @@ namespace Game.UI
         {
             if (current == null) return;
             TutorialHintProgress.Complete(current.Id);
+            nextHintAt = Time.unscaledTime + HintPause;
             HideView();
         }
         internal static void Complete(TutorialHintId id)
@@ -193,6 +260,7 @@ namespace Game.UI
             if (instance == null || instance.current?.Id != id || instance.view == null
                 || !instance.view.gameObject.activeInHierarchy) return;
             TutorialHintProgress.Complete(id);
+            instance.nextHintAt = Time.unscaledTime + HintPause;
             instance.HideView();
         }
         private void HideView()
