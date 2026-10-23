@@ -7,6 +7,9 @@ using Game.UI;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
+using Game.Campaign;
+using Game.Core;
 
 namespace Game.EditorTests
 {
@@ -87,6 +90,37 @@ namespace Game.EditorTests
             Assert.That(gear.interactable, Is.False);
             menu.OpenMenu();
             Assert.That(menu.IsShowing, Is.False);
+        }
+
+        [TestCase(false, "Return to Main Menu")]
+        [TestCase(true, "Return to Campaign")]
+        public void ExitLabelFollowsTheCurrentMatchEntry(bool campaign, string expected)
+        {
+            var priorContext = GameSession.CampaignContext;
+            var priorMatch = GameSession.MatchId;
+            var priorController = CampaignMatchBridge.Controller;
+            try
+            {
+                const string matchId = "menu-return-test";
+                typeof(GameSession).GetProperty("MatchId").SetValue(null, matchId);
+                typeof(GameSession).GetProperty("CampaignContext").SetValue(null,
+                    campaign ? new CampaignMatchContext { MatchId = matchId } : null);
+                typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, null);
+                var labelObject = new GameObject("exit label", typeof(RectTransform));
+                labelObject.transform.SetParent(menuObject.transform);
+                var label = labelObject.AddComponent<TextMeshProUGUI>();
+                Field(menu, "exitButtonText", label);
+                StartTurn(new PlayerSetupData { IsHuman = true });
+                menu.OpenMenu();
+                Assert.That(menu.IsShowing, Is.True);
+                Assert.That(label.text, Is.EqualTo(expected));
+            }
+            finally
+            {
+                typeof(GameSession).GetProperty("MatchId").SetValue(null, priorMatch);
+                typeof(GameSession).GetProperty("CampaignContext").SetValue(null, priorContext);
+                typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, priorController);
+            }
         }
     }
 }
