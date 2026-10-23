@@ -1,0 +1,510 @@
+{
+  "version": 2,
+  "status": "visual-prototype-not-integrated",
+  "arrivalMs": 480,
+  "blend": "premultiplied adjacent-frame crossfade, final 40 ms or half frame duration if shorter",
+  "effects": [
+    {
+      "name": "Scorcher",
+      "file": "Scorcher_Flipbook.png",
+      "frameCount": 19,
+      "columns": 4,
+      "rows": 5,
+      "cellSize": 384,
+      "durationMs": 1380,
+      "arrivalMs": 480,
+      "engulfStartMs": 540,
+      "engulfEndMs": 900,
+      "frames": [
+        {
+          "rect": [
+            0,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 40,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-0"
+        },
+        {
+          "rect": [
+            384,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 40,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-1"
+        },
+        {
+          "rect": [
+            768,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 40,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-2"
+        },
+        {
+          "rect": [
+            1152,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 40,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-3"
+        },
+        {
+          "rect": [
+            0,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-4"
+        },
+        {
+          "rect": [
+            384,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-5"
+        },
+        {
+          "rect": [
+            768,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-6"
+        },
+        {
+          "rect": [
+            1152,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-7"
+        },
+        {
+          "rect": [
+            0,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-8"
+        },
+        {
+          "rect": [
+            384,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-9"
+        },
+        {
+          "rect": [
+            768,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-10"
+        },
+        {
+          "rect": [
+            1152,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-11"
+        },
+        {
+          "rect": [
+            0,
+            1152,
+            384,
+            384
+          ],
+          "durationMs": 100,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "additional-0"
+        },
+        {
+          "rect": [
+            384,
+            1152,
+            384,
+            384
+          ],
+          "durationMs": 100,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "additional-1"
+        },
+        {
+          "rect": [
+            768,
+            1152,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "additional-2"
+        },
+        {
+          "rect": [
+            1152,
+            1152,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "additional-3"
+        },
+        {
+          "rect": [
+            0,
+            1536,
+            384,
+            384
+          ],
+          "durationMs": 100,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-13"
+        },
+        {
+          "rect": [
+            384,
+            1536,
+            384,
+            384
+          ],
+          "durationMs": 100,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-14"
+        },
+        {
+          "rect": [
+            768,
+            1536,
+            384,
+            384
+          ],
+          "durationMs": 120,
+          "pivot": [
+            0.17,
+            0.09999999999999998
+          ],
+          "source": "original-15"
+        }
+      ]
+    },
+    {
+      "name": "Splash",
+      "file": "Splash_Flipbook.png",
+      "frameCount": 15,
+      "columns": 4,
+      "rows": 4,
+      "cellSize": 384,
+      "durationMs": 1080,
+      "arrivalMs": 480,
+      "frames": [
+        {
+          "rect": [
+            0,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 40,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-0"
+        },
+        {
+          "rect": [
+            384,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 40,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-1"
+        },
+        {
+          "rect": [
+            768,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 40,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-2"
+        },
+        {
+          "rect": [
+            1152,
+            0,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-3"
+        },
+        {
+          "rect": [
+            0,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-4"
+        },
+        {
+          "rect": [
+            384,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 60,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-5"
+        },
+        {
+          "rect": [
+            768,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-6"
+        },
+        {
+          "rect": [
+            1152,
+            384,
+            384,
+            384
+          ],
+          "durationMs": 100,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "original-7"
+        },
+        {
+          "rect": [
+            0,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "clean-tail-9"
+        },
+        {
+          "rect": [
+            384,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "clean-tail-10"
+        },
+        {
+          "rect": [
+            768,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "clean-tail-11"
+        },
+        {
+          "rect": [
+            1152,
+            768,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "clean-tail-12"
+        },
+        {
+          "rect": [
+            0,
+            1152,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "clean-tail-13"
+        },
+        {
+          "rect": [
+            384,
+            1152,
+            384,
+            384
+          ],
+          "durationMs": 80,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "clean-tail-14"
+        },
+        {
+          "rect": [
+            768,
+            1152,
+            384,
+            384
+          ],
+          "durationMs": 120,
+          "pivot": [
+            0.25,
+            0.43999999999999995
+          ],
+          "source": "clean-tail-15"
+        }
+      ]
+    }
+  ]
+}
