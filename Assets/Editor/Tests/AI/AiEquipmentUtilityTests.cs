@@ -196,6 +196,50 @@ namespace Game.EditorTests
                 "a genome must not recursively finance itself");
         }
 
+        // The Development verdict store shares a non-hero recipient's verdict between the ordinary
+        // and the nested Fate look-ahead pass: that is valid only while both passes price it alike.
+        [Test]
+        public void ForecastLeafVerdictOfANonHeroEqualsTheOrdinaryVerdict()
+        {
+            var player = new PlayerSetupData();
+            var hero = new UnitData { IsHero = true, Fate = 3, FateMax = 3 };
+            var host = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 3, defenseRating = 1, hitPoints = 4, range = 2, initiative = 1,
+                moveMax = 3, activationApCost = 1,
+                unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry } });
+            var output = new CardDefinition { authoredKey = "test.operator.shared", cardType = CardType.Equipment,
+                attachmentSlot = AttachmentSlot.Equipment, fate = 4, apCost = 1, activationApCost = 1,
+                resourceCost = new ResourceCost { human = 1 }, equipment = new EquipmentGrant {
+                    hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Infantry },
+                    hostKinds = new List<EquipmentHostKind> { EquipmentHostKind.Unit } } };
+            output.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 4 });
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 1,
+                Self = new SelfSnapshot { Hand = new[] { host }, ActionPoints = 12 },
+                Economy = new EconomyStanding { SpendableStockpile = new ResourceBundle { Human = 1 } },
+                Development = new DevelopmentReadiness { ForecastSources = new[] {
+                    new GenerationStep { Hero = hero, CardDef = output, Mode = ResearchProductionMode.Production } } } };
+            var forecast = EquipmentUpgradeValuation.OperatorOutputForecast(snap, null, hero, 3, 5);
+            var ordinary = DevelopmentOpportunityEvaluator.EquipmentOpportunities(ResearchProductionMode.Production,
+                default, output, 1f, null, snap, null, player, null, null, out _,
+                futureAttachment: true, forecastHand: snap.Self.Hand);
+            Assert.That(forecast.Count, Is.EqualTo(1));
+            Assert.That(ordinary.Count, Is.EqualTo(1));
+            Assert.That(forecast[0].Utility,
+                Is.EqualTo(EquipmentUpgradeValuation.EquipmentUpgradeValue(ordinary[0])).Within(1e-6f));
+        }
+
+        [Test]
+        public void IdenticalTargetBodies_DoNotChangeTheMeanContactValue()
+        {
+            var berserk = new[] { UnitAbilities.Berserk };
+            WorthIt.DefenderProfile Rifle() => new WorthIt.DefenderProfile(1, false,
+                new[] { UnitTypeTag.Bio }, 3, 4, 1, berserk);
+            var tank = Enemy(3, 4, 6, 0, UnitTypeTag.Armored);
+            float one = U(Medium, S(4, 2, 5, 2), Ctx(Rifle(), tank, Rifle())).Combat;
+            float many = U(Medium, S(4, 2, 5, 2), Ctx(Rifle(), Rifle(), tank, Rifle(), tank, Rifle())).Combat;
+            Assert.That(many, Is.EqualTo(one).Within(1e-5f), "same 2:1 mix of bodies, same mean");
+        }
+
         [Test]
         public void Regeneration_HealsOnlyAWoundedSurvivor()
         {

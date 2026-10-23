@@ -55,14 +55,14 @@ namespace Game.Ai.V2
             float dC = 0f, offense = 0f, defense = 0f;
             if (includeCombat && !ctx.IsHero)
             {
-                IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx);
+                GroundSet ground = GroundTargets(ctx);
                 // One common value of the already owned body, including its existing stat upgrades.
                 // End-of-horizon survival is separate from attacks already earned inside it.
                 float survivorValue = Base(before) * AiConfigV2.equipCardValuePerE;
                 bool area = ctx.SingleUseHost || ExplosionAttack.TargetLimit(beforeAbilities) > 0 || ExplosionAttack.TargetLimit(afterAbilities) > 0;
-                float cBefore = area ? ExplosionBattleValue(before, beforeAbilities, ctx, ground, ctx.BeforeConsumption)
+                float cBefore = area ? ExplosionBattleValue(before, beforeAbilities, ctx, ground.All, ctx.BeforeConsumption)
                     : Contribution(before, beforeAbilities, ctx, ground, survivorValue, ctx.BeforeConsumption);
-                float cAfter = area ? ExplosionBattleValue(after, afterAbilities, ctx, ground, ctx.AfterConsumption)
+                float cAfter = area ? ExplosionBattleValue(after, afterAbilities, ctx, ground.All, ctx.AfterConsumption)
                     : Contribution(after, afterAbilities, ctx, ground, survivorValue, ctx.AfterConsumption);
                 dC = cAfter - cBefore;
                 float scale = AiConfigV2.equipCombatCardScale;
@@ -198,7 +198,7 @@ namespace Game.Ai.V2
         internal static float AviationOffenseDelta(EfficiencyStats before, IReadOnlyCollection<string> beforeAbilities,
             EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx)
         {
-            IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx);
+            IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx).All;
             if (ctx.SingleUseHost || ExplosionAttack.TargetLimit(beforeAbilities) > 0 || ExplosionAttack.TargetLimit(afterAbilities) > 0)
                 return AiConfigV2.equipCombatCardScale * (ExplosionSortieValue(after, afterAbilities, ctx, ground, ctx.AfterConsumption)
                     - ExplosionSortieValue(before, beforeAbilities, ctx, ground, ctx.BeforeConsumption));
@@ -299,7 +299,43 @@ namespace Game.Ai.V2
         }
 
         // ---- combat model -------------------------------------------------------------------------------
-        private static IReadOnlyList<WorthIt.DefenderProfile> GroundTargets(EfficiencyContext ctx)
+        // The priced ground targets of one context, and the same list folded by content: identical
+        // bodies (four Riflemen of one army) give identical contact series, so Contribution prices
+        // each distinct profile once and weights it by its count. Pure in ctx.Targets: memoised per
+        // target-list instance for as long as the list lives. Consumers treat both lists as read-only.
+        private sealed class GroundSet
+        {
+            internal IReadOnlyList<WorthIt.DefenderProfile> All;
+            internal List<WorthIt.DefenderProfile> Distinct;
+            internal List<int> Counts;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, GroundSet> s_groundSets =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<object, GroundSet>();
+
+        private static GroundSet GroundTargets(EfficiencyContext ctx)
+        {
+            if (ctx.Targets == null)
+                return Fold(GroundTargetList(ctx));
+            if (s_groundSets.TryGetValue(ctx.Targets, out GroundSet known))
+                return known;
+            GroundSet built = Fold(GroundTargetList(ctx));
+            return s_groundSets.GetValue(ctx.Targets, _ => built);
+        }
+
+        private static GroundSet Fold(IReadOnlyList<WorthIt.DefenderProfile> all)
+        {
+            var set = new GroundSet { All = all, Distinct = new List<WorthIt.DefenderProfile>(), Counts = new List<int>() };
+            foreach (var t in all)
+            {
+                int at = set.Distinct.FindIndex(d => d.SameContent(t));
+                if (at >= 0) set.Counts[at]++;
+                else { set.Distinct.Add(t); set.Counts.Add(1); }
+            }
+            return set;
+        }
+
+        private static IReadOnlyList<WorthIt.DefenderProfile> GroundTargetList(EfficiencyContext ctx)
         {
             var list = new List<WorthIt.DefenderProfile>();
             if (ctx.Targets != null)
@@ -321,42 +357,89 @@ namespace Game.Ai.V2
         // Contributions are pure in (host state, context inputs, target list): one host's "before" state is
         // read once per product, so memoise per target-list instance. The table lives exactly as long as
         // the list (ConditionalWeakTable), so nothing outlives the snapshot / purpose scope that built it.
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>
-            s_contributions = new System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<ContributionKey, float>>
+            s_contributions = new System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<ContributionKey, float>>();
 
-        private static string ContributionKey(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx, float survivorValue,
-            EquipmentConsumption consumption)
+        // Every input of Contribution besides the target list (the memo owner).
+        private readonly struct ContributionKey : IEquatable<ContributionKey>
         {
-            var tags = ctx.HostTags != null ? string.Join(",", ctx.HostTags) : string.Empty;
-            return $"{survivorValue}|{s.Attack}|{s.Defense}|{s.HitPoints}|{s.Range}|{s.Initiative}|{ctx.HpSpent}|{ctx.KnownDistance}|"
-                + $"{ctx.HostCommanderInitiative}|{ctx.EnemyCommanderInitiative}|{ctx.SecondaryNeighbors}|{tags}|"
-                + string.Join(",", abilities) + "|stateful="
-                + (ctx.BeforeConsumption != null || ctx.AfterConsumption != null) + "|consumption=" + consumption?.Key;
+            private readonly float _survivorValue, _secondaryNeighbors;
+            private readonly int _attack, _defense, _hitPoints, _range, _initiative;
+            private readonly int _hpSpent, _hostCommanderInitiative, _enemyCommanderInitiative;
+            private readonly int? _knownDistance;
+            private readonly bool _stateful;
+            private readonly string _tags, _abilities, _consumption;
+
+            internal ContributionKey(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx,
+                float survivorValue, EquipmentConsumption consumption)
+            {
+                _survivorValue = survivorValue; _secondaryNeighbors = ctx.SecondaryNeighbors;
+                _attack = s.Attack; _defense = s.Defense; _hitPoints = s.HitPoints; _range = s.Range;
+                _initiative = s.Initiative;
+                _hpSpent = ctx.HpSpent; _knownDistance = ctx.KnownDistance;
+                _hostCommanderInitiative = ctx.HostCommanderInitiative;
+                _enemyCommanderInitiative = ctx.EnemyCommanderInitiative;
+                _stateful = ctx.BeforeConsumption != null || ctx.AfterConsumption != null;
+                _tags = ctx.HostTags != null ? string.Join(",", ctx.HostTags) : string.Empty;
+                _abilities = string.Join(",", abilities);
+                _consumption = consumption?.Key;
+            }
+
+            public bool Equals(ContributionKey o) =>
+                _survivorValue.Equals(o._survivorValue) && _secondaryNeighbors.Equals(o._secondaryNeighbors)
+                && _attack == o._attack && _defense == o._defense && _hitPoints == o._hitPoints
+                && _range == o._range && _initiative == o._initiative
+                && _hpSpent == o._hpSpent && _knownDistance == o._knownDistance
+                && _hostCommanderInitiative == o._hostCommanderInitiative
+                && _enemyCommanderInitiative == o._enemyCommanderInitiative && _stateful == o._stateful
+                && string.Equals(_tags, o._tags, StringComparison.Ordinal)
+                && string.Equals(_abilities, o._abilities, StringComparison.Ordinal)
+                && string.Equals(_consumption, o._consumption, StringComparison.Ordinal);
+
+            public override bool Equals(object obj) => obj is ContributionKey o && Equals(o);
+
+            public override int GetHashCode() =>
+                (_attack, _defense, _hitPoints, _range, _initiative, _survivorValue,
+                    StringComparer.Ordinal.GetHashCode(_abilities)).GetHashCode();
         }
 
         // Mean over the enemy profiles of the unscaled contribution, times the body scale.
         // Each contact carries the complete surviving HP distribution, including lethal tails.
         private static float Contribution(EfficiencyStats s, IReadOnlyCollection<string> abilities,
-            EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets, float survivorValue,
+            EfficiencyContext ctx, GroundSet ground, float survivorValue,
             EquipmentConsumption consumption = null)
         {
-            Dictionary<string, float> memo = null;
-            string key = null;
+            Dictionary<ContributionKey, float> memo = null;
+            ContributionKey key = default;
             object owner = ctx.Targets;
             if (owner != null)
             {
-                memo = s_contributions.GetValue(owner, _ => new Dictionary<string, float>());
-                key = ContributionKey(s, abilities, ctx, survivorValue, consumption);
+                memo = s_contributions.GetValue(owner, _ => new Dictionary<ContributionKey, float>());
+                key = new ContributionKey(s, abilities, ctx, survivorValue, consumption);
                 lock (memo)
                     if (memo.TryGetValue(key, out float cached))
                         return cached;
             }
+            bool stateful = ctx.BeforeConsumption != null || ctx.AfterConsumption != null || consumption != null;
             float sum = 0f;
-            foreach (var t in targets)
-                sum += ctx.BeforeConsumption != null || ctx.AfterConsumption != null || consumption != null || t.Consumption != null
-                    ? ConsumableContactSeries(s, abilities, consumption, ctx, t, survivorValue)
-                    : ContactSeries(s, abilities, ctx, t, survivorValue);
-            float value = AiConfigV2.equipCombatBodyScale * sum / targets.Count;
+            // Splash / Scorcher read a target's battle neighbours by profile IDENTITY, and a
+            // consumption may rewrite the ability list: only the plain series folds equal bodies.
+            if (!stateful && !abilities.Contains(UnitAbilities.Splash) && !abilities.Contains(UnitAbilities.Scorcher))
+            {
+                for (int i = 0; i < ground.Distinct.Count; i++)
+                {
+                    var t = ground.Distinct[i];
+                    sum += ground.Counts[i] * (t.Consumption != null
+                        ? ConsumableContactSeries(s, abilities, null, ctx, t, survivorValue)
+                        : ContactSeries(s, abilities, ctx, t, survivorValue));
+                }
+            }
+            else
+                foreach (var t in ground.All)
+                    sum += stateful || t.Consumption != null
+                        ? ConsumableContactSeries(s, abilities, consumption, ctx, t, survivorValue)
+                        : ContactSeries(s, abilities, ctx, t, survivorValue);
+            float value = AiConfigV2.equipCombatBodyScale * sum / ground.All.Count;
             if (memo != null)
                 lock (memo)
                     memo[key] = value;
@@ -411,12 +494,13 @@ namespace Game.Ai.V2
             // Compute both enemy damage distributions once; no mean-HP approximation and no
             // separate combat rules. The final bucket is lethal for the host's maximum HP.
             int maxHp = Mathf.Max(1, s.HitPoints);
-            double[] plain = BattleSimulationKernel.ExchangeDamageDistribution(
-                Mathf.RoundToInt(t.Attack), defense, t.Abilities, hostTags, abilities, maxHp, out _);
+            // The kernel's memoised PMFs themselves: read only.
+            double[] plain = BattleSimulationKernel.SharedExchangeDamageDistribution(
+                Mathf.RoundToInt(t.Attack), defense, t.Abilities, hostTags, abilities, maxHp);
             double[] raised = targetBerserk
-                ? BattleSimulationKernel.ExchangeDamageDistribution(
+                ? BattleSimulationKernel.SharedExchangeDamageDistribution(
                     Mathf.RoundToInt(t.Attack) + mags.BerserkAttackGain, defense,
-                    t.Abilities, hostTags, abilities, maxHp, out _)
+                    t.Abilities, hostTags, abilities, maxHp)
                 : plain;
 
             float Series(bool hostCan, bool targetCan, bool adjacent = false)
@@ -425,13 +509,16 @@ namespace Game.Ai.V2
                 float hBoosted = hostCan ? boosted : 0f;
                 float hHit = hostCan ? hitA : 0f, hKill = hostCan ? killA : 0f;
                 bool answers = counterattack && adjacent && hostCan && targetCan;
-                var hpMass = new double[maxHp + 1];
+                AnswerWeights(hHit, hKill, shock, out float unhurt, out float hurt);
+                // Two scratch HP distributions, swapped per contact (the series never nests).
+                double[] hpMass = Scratch(ref s_massA, maxHp + 1), next = Scratch(ref s_massB, maxHp + 1);
+                Array.Clear(hpMass, 0, maxHp + 1);
                 int initialHp = Mathf.Max(0, maxHp - Mathf.Max(0, ctx.HpSpent));
                 hpMass[initialHp] = 1d;
                 double total = 0d;
                 for (int contact = 0; contact < AiConfigV2.equipContactCount; contact++)
                 {
-                    var next = new double[maxHp + 1];
+                    Array.Clear(next, 0, maxHp + 1);
                     void Survive(int hp, double weight)
                     {
                         if (hp <= 0 || weight <= 0d) return;
@@ -443,7 +530,6 @@ namespace Game.Ai.V2
                         if (mass <= 0d) continue;
                         double first = mass * hostFirst, second = mass * (1f - hostFirst);
                         total += first * hDealt;
-                        AnswerWeights(hHit, hKill, shock, out float unhurt, out float hurt);
                         // A killed or Shock-stopped enemy cannot answer this contact.
                         if (!targetCan)
                         {
@@ -463,7 +549,7 @@ namespace Game.Ai.V2
                             total += pSecond * (damage > 0 && berserk ? hBoosted : hDealt);
                         }
                     }
-                    hpMass = next;
+                    (hpMass, next) = (next, hpMass);
                 }
                 // Salvage the same pre-upgrade body in both projections. This prices losses
                 // after the last contact without counting its already scored attacks again.
@@ -479,10 +565,25 @@ namespace Game.Ai.V2
                 int d = ctx.KnownDistance.Value;
                 return Series(s.Range >= d, EnemyCan(d), d == 1);
             }
-            return AiConfigV2.equipDistanceShare1 * Series(s.Range >= 1, EnemyCan(1), true)
-                + AiConfigV2.equipDistanceShare2 * Series(s.Range >= 2, EnemyCan(2))
-                + AiConfigV2.equipDistanceShare3 * Series(s.Range >= 3, EnemyCan(3))
-                + AiConfigV2.equipDistanceShare4 * Series(s.Range >= 4, EnemyCan(4));
+            // A bucket's series depends only on who reaches whom (adjacency only through
+            // Counterattack): buckets with the same reach share one computation.
+            int Reach(int d) => (s.Range >= d ? 1 : 0) | (EnemyCan(d) ? 2 : 0) | (counterattack && d == 1 ? 4 : 0);
+            int r1 = Reach(1), r2 = Reach(2), r3 = Reach(3), r4 = Reach(4);
+            float v1 = Series(s.Range >= 1, EnemyCan(1), true);
+            float v2 = r2 == r1 ? v1 : Series(s.Range >= 2, EnemyCan(2));
+            float v3 = r3 == r2 ? v2 : r3 == r1 ? v1 : Series(s.Range >= 3, EnemyCan(3));
+            float v4 = r4 == r3 ? v3 : r4 == r2 ? v2 : r4 == r1 ? v1 : Series(s.Range >= 4, EnemyCan(4));
+            return AiConfigV2.equipDistanceShare1 * v1 + AiConfigV2.equipDistanceShare2 * v2
+                + AiConfigV2.equipDistanceShare3 * v3 + AiConfigV2.equipDistanceShare4 * v4;
+        }
+
+        [ThreadStatic] private static double[] s_massA, s_massB;
+
+        private static double[] Scratch(ref double[] buffer, int length)
+        {
+            if (buffer == null || buffer.Length < length)
+                buffer = new double[Math.Max(length, 16)];
+            return buffer;
         }
 
         private static EfficiencyStats SpentStats(EfficiencyStats s, EquipmentConsumption c) => c == null ? s
@@ -543,9 +644,9 @@ namespace Game.Ai.V2
                         if (host.HitPoints <= 0 || enemy.HitPoints <= 0 || host.Range < distance)
                         { then(host, enemy, weight, false); return; }
                         int limit = Mathf.Max(1, Mathf.CeilToInt(enemy.HitPoints));
-                        double[] outcomes = BattleSimulationKernel.ExchangeDamageDistribution(
+                        double[] outcomes = BattleSimulationKernel.SharedExchangeDamageDistribution(
                             Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(enemy.Defense), host.Abilities,
-                            enemy.TypeTags, enemy.Abilities, limit, out _);
+                            enemy.TypeTags, enemy.Abilities, limit);
                         total += weight * SecondaryFraction(Mathf.RoundToInt(host.Attack), host.Abilities, ctx, enemy, target);
                         var after = WorthIt.AfterAttack(host);
                         for (int damage = 0; damage < outcomes.Length; damage++)
@@ -568,9 +669,9 @@ namespace Game.Ai.V2
                             return;
                         }
                         int limit = Mathf.Max(1, Mathf.CeilToInt(host.HitPoints));
-                        double[] outcomes = BattleSimulationKernel.ExchangeDamageDistribution(
+                        double[] outcomes = BattleSimulationKernel.SharedExchangeDamageDistribution(
                             Mathf.RoundToInt(enemy.Attack), Mathf.RoundToInt(host.Defense), enemy.Abilities,
-                            host.TypeTags, host.Abilities, limit, out _);
+                            host.TypeTags, host.Abilities, limit);
                         var afterEnemy = WorthIt.AfterAttack(enemy);
                         for (int damage = 0; damage < outcomes.Length; damage++)
                         {

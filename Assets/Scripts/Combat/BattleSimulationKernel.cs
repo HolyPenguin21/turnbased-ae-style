@@ -66,6 +66,14 @@ namespace Game.Combat
             return (double[])exchange.Distribution.Clone();
         }
 
+        // The memoised PMF itself, for hot read-only consumers (equipment valuation's contact
+        // series). The caller must never write to it.
+        internal static double[] SharedExchangeDamageDistribution(int attack, int defense,
+            IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTags,
+            IEnumerable<string> defenderAbilities, int hpCap)
+            => Exchange(attack, defense, attackerAbilities, defenderTags, defenderAbilities, hpCap,
+                false, null).Distribution;
+
         private sealed class ExchangeEntry
         {
             internal double[] Distribution;
