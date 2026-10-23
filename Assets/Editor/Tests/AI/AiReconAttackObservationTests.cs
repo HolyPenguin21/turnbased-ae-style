@@ -73,6 +73,49 @@ namespace Game.EditorTests
                 Is.EqualTo(new HexCoord(3, 0)));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ExploreScore_OperationalNeedOutweighsTheSameCellWithoutTheNeed(bool ruins)
+        {
+            WorldSnapshot snap = Scenario(out _);
+            ReconIntelSnapshotRegistry.Clear();
+            snap.MapKnowledge.UnvisitedRuinsHexes = ruins
+                ? new HashSet<HexCoord> { Site } : new HashSet<HexCoord>();
+            var cost = new ScoutCostEstimate { EtaTurns = 2, ActivationApNow = 1f };
+            TaskScore needed = ReconObjectiveEvaluator.BuildExploreScore(snap, Site, 0.5f, 6, cost, 0f);
+            snap.Intents = new MissionIntentState();
+            TaskScore ordinary = ReconObjectiveEvaluator.BuildExploreScore(snap, Site, 0.5f, 6, cost, 0f);
+            Assert.That(needed.StrategicRelevance, Is.EqualTo(TaskScoreEvaluator.StrategicRelevance(1f)));
+            Assert.That(ordinary.StrategicRelevance, Is.LessThan(needed.StrategicRelevance));
+            Assert.That(needed.CardPrice, Is.EqualTo(ordinary.CardPrice));
+            Assert.That(needed.InfoGain, Is.EqualTo(ordinary.InfoGain));
+            Assert.That(needed.OwnTerritoryProximity, Is.EqualTo(ordinary.OwnTerritoryProximity));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void NeverObservedAttackNeed_UsesFullRelevanceWithoutAddingTheRuinsBonus(bool ruins)
+        {
+            WorldSnapshot snap = Scenario(out _);
+            ReconIntelSnapshotRegistry.Clear();
+            snap.MapKnowledge.VisibleArrivalBlockedHexes.Clear();
+            snap.MapKnowledge.UnvisitedRuinsHexes = ruins
+                ? new HashSet<HexCoord> { Site } : new HashSet<HexCoord>();
+            ReconObjective objective = ReconObjectiveEvaluator.ExploreAt(snap, Site);
+            Assert.That(objective, Is.Not.Null);
+            Assert.That(objective.TaskScore.StrategicRelevance,
+                Is.EqualTo(TaskScoreEvaluator.StrategicRelevance(1f)));
+            Assert.That(ReconObjectiveEvaluator.Enumerate(snap).Any(o =>
+                o.Kind == ReconObjectiveKind.Explore && o.FocusHex.Equals(Site)
+                    && o.TaskScore.StrategicRelevance == objective.TaskScore.StrategicRelevance), Is.True);
+            MissionIntentRegistry.Clear();
+            snap.Intents = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            ReconObjective ordinary = ReconObjectiveEvaluator.ExploreAt(snap, Site);
+            Assert.That(ordinary.TaskScore.StrategicRelevance,
+                Is.EqualTo(TaskScoreEvaluator.StrategicRelevance(ruins ? AiConfigV2.reconRuinsRelevance : 0f)),
+                "after the need ends the same cell reverts to ordinary exploration");
+        }
+
         private static WorldSnapshot Scenario(out ArmySnapshot scout)
         {
             var player = new PlayerSetupData { Nickname = "Recon audit", ColorIndex = 1 };

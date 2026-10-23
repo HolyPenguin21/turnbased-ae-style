@@ -13,7 +13,7 @@ namespace Game.EditorTests
         [Test]
         public void LocalCoverageGap_OutscoresDistantRuinsWithAFreeScout_ThenFades()
         {
-            // Tessek T1: a distant ruins focus has 4 fresh neighbours and 6 relevance points;
+            // Tessek T1: a distant ruins focus has 4 fresh neighbours and the public ruins relevance;
             // the local frontier has only 3 fresh neighbours, some already observed.
             HexCoord home = new HexCoord(-1, -4);
             HexCoord near = new HexCoord(0, -5);
@@ -36,7 +36,8 @@ namespace Game.EditorTests
             TaskScore ruins = ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f);
             Assert.That(local.Value, Is.GreaterThan(ruins.Value),
                 "a reachable local knowledge gap must not lose to the public ruins bonus");
-            Assert.That(ruins.StrategicRelevance, Is.EqualTo(6f),
+            Assert.That(ruins.StrategicRelevance,
+                Is.EqualTo(TaskScoreEvaluator.StrategicRelevance(AiConfigV2.reconRuinsRelevance)),
                 "ruins keep their real opportunity value");
             snap.MapKnowledge.VisitedHexSet.UnionWith(cells.Where(h => !h.Equals(far)));
             TaskScore afterCoverage = ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f);

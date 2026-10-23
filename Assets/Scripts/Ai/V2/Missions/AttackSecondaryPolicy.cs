@@ -43,7 +43,18 @@ namespace Game.Ai.V2
             if (!AttackMarchPolicy.CanStart(snap, leg.Target, candidate, intents, out why))
                 return false;
             if (!leg.Secondary)
+            {
+                // Mobilization funds new preparation, not a blanket ban on an already executable
+                // opportunity. Keep this proof shared by nomination, admission and provisioning.
+                if (!leg.ForceCommitted && !AttackForceReadiness.MobilizationOpen(snap?.Self))
+                {
+                    if (!AttackObjectiveEvaluator.HasAssaultObservation(snap, leg.Target, out why))
+                        return false;
+                    if (!AttackForceReadiness.IsOpportunity(candidate.ProjectedWinChance, opposition))
+                    { why = "mobilization_closed:not_decisive"; return false; }
+                }
                 return true;
+            }
             if (!UsesOnlySurplus(snap, candidate, out why))
             { why = "secondary_" + why; return false; }
             if (!ClearsStart(snap, leg.Target, candidate, opposition, out why))

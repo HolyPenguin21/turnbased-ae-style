@@ -79,7 +79,8 @@ namespace Game.Ai.V2
                 && d.Hero.HasAbility(ResearchProductionSystem.RoleAbility(d.Mode))
                 && string.Equals(d.HeroKey, GenerationSource.StableHeroKey(d.Hero),
                     System.StringComparison.Ordinal)
-                && DevelopmentOpportunityEvaluator.IsPreparationSite(player, d.FacilityHex)
+                && DevelopmentOpportunityEvaluator.IsPreparationSite(player, d.FacilityHex,
+                    d.Mode, ctx: pass.Context)
                 && (intent.PreferredMoverArmyId == actual.Id
                     || !intent.PreferredMoverArmyId.HasValue);
             bool arrived = valid && DevelopmentOpportunityEvaluator.OperatorPreparedAt(player, d.Hero, d.FacilityHex, d.Mode)

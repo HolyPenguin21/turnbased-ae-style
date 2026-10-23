@@ -58,14 +58,17 @@ namespace Game.Ai.V2
                 Map = ctx.Map,
                 MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
+            // Self's garrison floor reads the observation clock/history. Advance them before
+            // building Self, so the initial scan and later live donor checks agree this turn.
+            AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
+                AiMapMemory.AllKnownEnemySightings(player)
+                    .Where(s => s.Owner == null || !s.Owner.IsEliminated), HideableHex(ctx));
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
                 snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
                 snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
-            AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
-                snap.Known.EnemySightings, HideableHex(ctx));
             using (new Game.Core.ProfileScope("AI/Analysis.BuildTrueWorld"))
                 snap.TrueWorld = BuildTrueWorld(player, ctx);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildMapKnowledge"))
@@ -156,14 +159,15 @@ namespace Game.Ai.V2
                 Map = ctx.Map,
                 MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
+            AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
+                AiMapMemory.AllKnownEnemySightings(player)
+                    .Where(s => s.Owner == null || !s.Owner.IsEliminated), HideableHex(ctx));
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
                 snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
                 snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
-            AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
-                snap.Known.EnemySightings, HideableHex(ctx));
             using (new Game.Core.ProfileScope("AI/Analysis.BuildTrueWorld"))
                 snap.TrueWorld = BuildTrueWorld(player, ctx);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildMapKnowledge"))

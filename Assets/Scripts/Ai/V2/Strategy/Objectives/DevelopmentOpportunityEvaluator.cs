@@ -262,15 +262,32 @@ namespace Game.Ai.V2
         private static string StructuralPreparationBlock(ResearchProductionMode mode, HexCoord hex,
             bool facilityReady, bool facilityOfModeExists, IReadOnlyList<CardDefinition> deck,
             PlayerSetupData player, AiHandData hand,
-            AiTurnContext ctx, out List<CardData> facilityCards, out BaseUpgradeTier capacityTier)
+            AiTurnContext ctx, out List<CardData> facilityCards, out BaseUpgradeTier capacityTier,
+            bool ignoreSiteContest = false)
         {
             facilityCards = new List<CardData>();
             capacityTier = null;
-            if (BattleInitiator.FindEnemyAt(hex, player) != null)
+            if (!ignoreSiteContest && BattleInitiator.FindEnemyAt(hex, player) != null)
                 return "reason=enemy_on_site";
             if (!IsPreparationSite(player, hex)) return "reason=no_own_base";
-            if (ResearchProductionSystem.OfferedCards(ctx.ResearchProductionCatalog, mode, player).Count == 0)
+            List<CardDefinition> offered = ResearchProductionSystem.OfferedCards(ctx.ResearchProductionCatalog, mode, player);
+            if (offered.Count == 0)
                 return "reason=no_mode_catalog";
+            // Structural applicability, not selection/EV of a particular future product. Resolve
+            // blueprint results exactly like GenerationSource and include the WHOLE own deck.
+            // Current recipients must have a free slot; future deck cards have no occupied slot.
+            List<CardDefinition> outputs = offered.Select(ctx.ResearchProductionCatalog.ResolveResult)
+                .Where(d => d != null && !string.IsNullOrWhiteSpace(d.authoredKey)).Distinct().ToList();
+            List<UnitData> units = OwnWorld.Of(player).Armies.Where(a => a != null && !a.IsPrison)
+                .SelectMany(a => a.Members).Where(u => u != null && !u.IsPrisoner && !u.IsSummoned).ToList();
+            if (!outputs.Any(output => output.cardType == CardType.Unit || output.cardType == CardType.Hero
+                || output.cardType == CardType.Equipment
+                    && (units.Any(u => EquipmentSystem.CanAttachPreview(output, u, out _))
+                        || ((IReadOnlyList<CardData>)hand?.Hand ?? System.Array.Empty<CardData>())
+                            .Any(c => c?.Definition != null && EquipmentSystem.CanAttachPreview(output, c, out _))
+                        || (deck ?? System.Array.Empty<CardDefinition>())
+                            .Any(d => EquipmentSystem.FitsHost(output, d, out _)))))
+                return "reason=no_applicable_mode_output";
             // A built facility of this mode elsewhere is reused, never duplicated.
             if (!facilityReady && facilityOfModeExists)
                 return "reason=mode_facility_exists_elsewhere";
@@ -918,10 +935,24 @@ namespace Game.Ai.V2
 
         // A prepared operator can stand on its own base before a facility exists. This is NOT
         // permission to generate: ResearchProductionSystem keeps the staffed-source contract.
-        internal static bool IsPreparationSite(Game.Players.PlayerSetupData player, HexCoord hex)
+        internal static bool IsPreparationSite(Game.Players.PlayerSetupData player, HexCoord hex,
+            ResearchProductionMode? mode = null, AiHandData hand = null, AiTurnContext ctx = null)
         {
             BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
-            return b != null && b.Owner == player && b.IsBase;
+            if (b == null || b.Owner != player || !b.IsBase)
+                return false;
+            if (!mode.HasValue || ctx == null)
+                return true;
+            hand ??= AiHandRegistry.Peek(player);
+            if (hand?.Hand == null)
+                return false;
+            bool ready = b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode.Value));
+            bool exists = OwnWorld.Of(player).Buildings.Any(site => site.HasFacilityWithAbility(
+                ResearchProductionSystem.FacilityAbility(mode.Value)));
+            // Durable delivery reuses the same structural verdict as fresh PREPARE. Contest is
+            // a transient wait, not loss of purpose; live execution keeps its separate enemy gate.
+            return StructuralPreparationBlock(mode.Value, hex, ready, exists, hand.RemainingDeck,
+                player, hand, ctx, out _, out _, ignoreSiteContest: true) == null;
         }
 
         internal static bool OperatorPreparedAt(PlayerSetupData player, UnitData hero, HexCoord hex,

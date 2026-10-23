@@ -40,10 +40,11 @@ namespace Game.Ai.V2
             EnumerateRecon = snap => ReconObjectiveEvaluator.Enumerate(snap),
             RefreshAggressionFacts = snap => StrategyLayer.RefreshAggressionOperationalFacts(snap, breakdown),
             EnumerateAggression = snap => RaidObjectiveEvaluator.Enumerate(snap, breakdown.OpportunityReport),
-            // The first resolution of the turn passes the turn context; every later one does not.
-            ResolveActive = (snap, recon, aggression, withContext) => withContext
-                ? MissionContinuityLayer.ResolveActive(player, snap, recon, aggression, ctx)
-                : MissionContinuityLayer.ResolveActive(player, snap, recon, aggression),
+            // Route discovery keeps its first-resolution contract. Live structural validation
+            // still needs the same context on every later resolution inside this turn.
+            ResolveActive = (snap, recon, aggression, withContext) =>
+                MissionContinuityLayer.ResolveActive(player, snap, recon, aggression, ctx,
+                    refreshSafeRoutes: withContext),
             RefreshActors = (intents, snap, recon) => session.RefreshActors(intents, snap, recon),
             RefreshPersistentActors = (snap, recon) =>
                 session.RefreshActors(session.PersistentState.All, snap, recon),

@@ -168,6 +168,58 @@ namespace Game.EditorTests
             Assert.That(ScoutExecutionSafety.StepBlocked(player, scout, step.Value), Is.False);
         }
 
+        [Test]
+        public void OpposingThreatOutsideInitialRadius_StopsBeforeTheEscapeBecomesLessSafe()
+        {
+            SetMap(new Dictionary<HexCoord, TerrainTypeEntry>
+            {
+                [default] = new TerrainTypeEntry { moveCost = 1 },
+                [new HexCoord(1, 0)] = new TerrainTypeEntry { moveCost = 1 },
+                [new HexCoord(2, 0)] = new TerrainTypeEntry { moveCost = 1 },
+            });
+            RememberThreat(new HexCoord(-1, 0));
+            RememberThreat(new HexCoord(3, 0), 901);
+            var patrol = new ReconPatrolState { Mode = ReconMode.Explore };
+            ReconReactionDecision first = ReconReactionPolicy.Evaluate(player, map, scout, patrol);
+            Assert.That(first.Action, Is.EqualTo(ReconReactionAction.Flee));
+            Assert.That(SafeStepPathing.FindNextSafeStep(map, scout, first.TargetHex.Value),
+                Is.EqualTo(new HexCoord(1, 0)));
+
+            scout.Hex = new HexCoord(1, 0);
+            scout.Members[0].MoveCurrent = 3;
+            patrol.LastEscape = new ReconEscape { FromHex = default,
+                Cause = ReconEscapeCause.Threat, ThreatArmyId = 900, Turn = 1 };
+            ReconReactionDecision next = ReconReactionPolicy.Evaluate(player, map, scout, patrol);
+            Assert.That(next.Action, Is.EqualTo(ReconReactionAction.Flee));
+            Assert.That(next.TargetHex, Is.Null,
+                "Neither direction improves safety against both known threats; hold instead of oscillating.");
+            Assert.That(scout.CurrentMovement, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void EscapeThatOnlyChangesTheThreat_HoldsWithoutSpendingMovement()
+        {
+            SetMap(new Dictionary<HexCoord, TerrainTypeEntry>
+            {
+                [default] = new TerrainTypeEntry { moveCost = 1 },
+                [new HexCoord(1, 0)] = new TerrainTypeEntry { moveCost = 1 },
+            });
+            RememberThreat(new HexCoord(-1, 0));
+            RememberThreat(new HexCoord(2, 0), 901);
+            Assert.That(Evaluate().Action, Is.EqualTo(ReconReactionAction.Flee));
+            Assert.That(Evaluate().TargetHex, Is.Null);
+            Assert.That(scout.CurrentMovement, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void DefeatedOwnerDoesNotTriggerFleeFromItsRememberedArmy()
+        {
+            RememberThreat(targetHex);
+            enemy.IsEliminated = true;
+            Assert.That(Evaluate().Action, Is.EqualTo(ReconReactionAction.Continue));
+            Assert.That(scout.CurrentMovement, Is.EqualTo(4));
+        }
+
         [TestCase(false)] [TestCase(true)]
         public void OccupiedEscape_IsRejectedEvenByDestinationExemption(bool isHome)
         {
@@ -255,18 +307,19 @@ namespace Game.EditorTests
 
         // Inject an honest remembered roster, as in AiReconRuleOwnershipTests. No TrueWorld or
         // native visibility mutation is needed to represent the observed threat.
-        private void RememberThreat(HexCoord hex)
+        private void RememberThreat(HexCoord hex, int armyId = 900)
         {
             Type type = typeof(AiMapMemory).GetNestedType("EnemySighting", BindingFlags.NonPublic);
             var record = Activator.CreateInstance(type, nonPublic: true);
             void Put(string name, object value) => type.GetField(name).SetValue(record, value);
-            Put("ArmyId", 900); Put("Owner", enemy); Put("Hex", hex); Put("MemberCount", 1);
+            Put("ArmyId", armyId); Put("Owner", enemy); Put("Hex", hex); Put("MemberCount", 1);
             Put("Defenders", new List<WorthIt.DefenderProfile> { WorthIt.FromLiveUnit(new UnitData
                 { Attack = 100, Defense = 100, HitPointsCurrent = 100, HitPointsMax = 100 }) });
             IDictionary all = (IDictionary)typeof(AiMapMemory).GetField("EnemySightings",
                 BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
-            var store = (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(int), type));
-            store.Add(900, record); all[player] = store;
+            var store = all.Contains(player) ? (IDictionary)all[player]
+                : (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(int), type));
+            store[armyId] = record; all[player] = store;
         }
 
         private static void Drain(IEnumerator routine)
