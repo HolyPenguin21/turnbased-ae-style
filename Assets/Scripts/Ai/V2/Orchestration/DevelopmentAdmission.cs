@@ -322,14 +322,7 @@ namespace Game.Ai.V2
                         .Select(r => r.Key).OrderBy(x => x, System.StringComparer.Ordinal))
                     + ":gather=" + string.Join(",", (i.Attack?.GatherSupportArmyIds ?? new List<int>()).OrderBy(x => x))
                     + $":devHero={i.Development?.Hero?.RuntimeId}:scout={i.Scout?.Kind}:{i.Scout?.RequiresStealth}:{i.Scout?.FocusHex}:raid={i.Raid?.Target}:def={i.ActiveDefence?.EnemyArmyId}"));
-            string benchmarks = string.Join(";", (snapshot?.Self?.Deck
-                    ?? System.Array.Empty<Game.Cards.CardDefinition>()).Where(d => d != null)
-                .Select(d => d.cardType + ":" + string.Join(",", EquipmentSystem.Project(d, null, null).Stats
-                        .OrderBy(x => x.Key).Select(x => $"{x.Key}={x.Value}"))
-                    + ":" + string.Join(",", d.unitTypeTags ?? new List<Game.Cards.UnitTypeTag>())
-                    + ":" + string.Join(",", MaterializationChainMatching.EffectiveAbilities(d, null)
-                        .OrderBy(x => x, System.StringComparer.Ordinal)))
-                .OrderBy(x => x, System.StringComparer.Ordinal));
+            string benchmarks = Benchmarks(snapshot?.Self?.Deck);
             string knownTargets = string.Join(";", (snapshot?.Known?.EnemySightings
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                 .Concat(snapshot?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
@@ -381,25 +374,170 @@ namespace Game.Ai.V2
         {
             if (defenders == null || defenders.Count == 0)
                 return "0";
+            // The same roster list holding the same profiles (Equals) has the same digest.
+            RosterMemo memo = s_rosters.GetValue(defenders, _ => new RosterMemo());
+            lock (memo)
+            {
+                if (memo.Digest != null && memo.Profiles.Length == defenders.Count)
+                {
+                    bool same = true;
+                    for (int i = 0; i < defenders.Count && same; i++)
+                        same = memo.Profiles[i].Equals(defenders[i]);
+                    if (same) return memo.Digest;
+                }
+                memo.Profiles = defenders.ToArray();
+                return memo.Digest = BuildDefenderFingerprint(defenders);
+            }
+        }
+
+        private sealed class RosterMemo
+        {
+            internal Game.Combat.WorthIt.DefenderProfile[] Profiles;
+            internal string Digest;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, RosterMemo> s_rosters =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<object, RosterMemo>();
+
+        private static string BuildDefenderFingerprint(IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> defenders)
+        {
             var rows = new List<string>(defenders.Count);
             foreach (Game.Combat.WorthIt.DefenderProfile d in defenders)
-            {
-                string tags = d.TypeTags == null ? string.Empty
-                    : string.Join(",", d.TypeTags.Select(t => ((int)t).ToString(CultureInfo.InvariantCulture))
-                        .OrderBy(t => t, System.StringComparer.Ordinal));
-                string abilities = d.Abilities == null ? string.Empty
-                    : string.Join(",", d.Abilities.Where(x => x != null)
-                        .OrderBy(x => x, System.StringComparer.Ordinal));
-                rows.Add($"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
-                    + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/"
-                    + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}/singleUnit={d.SingleUseUnit}");
-            }
+                rows.Add(DefenderRow(d));
             rows.Sort(System.StringComparer.Ordinal);
             return $"{defenders.Count}:" + string.Join("|", rows);
         }
 
+        // The deck's projected reference profiles read only these definition fields
+        // (EquipmentSystem.Project with no attachment: DefinitionStats + granted abilities). The
+        // text is reused while the deck holds the same definitions in the same order AND each
+        // still carries the same field values, so an in-place edit is still seen.
+        private readonly struct DefinitionFacts
+        {
+            private readonly Game.Cards.CardDefinition _def;
+            private readonly Game.Cards.CardType _type;
+            private readonly int _attack, _defense, _range, _hp, _move, _initiative, _activationAp, _command, _fate;
+            private readonly Game.Cards.UnitTypeTag[] _tags;
+            private readonly string[] _abilities;
+
+            internal DefinitionFacts(Game.Cards.CardDefinition d)
+            {
+                _def = d;
+                _type = d?.cardType ?? default;
+                _attack = d?.attack ?? 0; _defense = d?.defenseRating ?? 0; _range = d?.range ?? 0;
+                _hp = d?.hitPoints ?? 0; _move = d?.moveMax ?? 0; _initiative = d?.initiative ?? 0;
+                _activationAp = d?.activationApCost ?? 0; _command = d?.commandRating ?? 0; _fate = d?.fate ?? 0;
+                _tags = d?.unitTypeTags?.ToArray();
+                _abilities = d?.grantedAbilities?.ToArray();
+            }
+
+            internal bool Matches(Game.Cards.CardDefinition d) =>
+                ReferenceEquals(_def, d) && (d == null
+                    || _type == d.cardType && _attack == d.attack && _defense == d.defenseRating
+                    && _range == d.range && _hp == d.hitPoints && _move == d.moveMax
+                    && _initiative == d.initiative && _activationAp == d.activationApCost
+                    && _command == d.commandRating && _fate == d.fate
+                    && SameItems(_tags, d.unitTypeTags) && SameItems(_abilities, d.grantedAbilities));
+
+            private static bool SameItems<T>(T[] captured, List<T> current)
+            {
+                if (captured == null || current == null) return captured == null && current == null;
+                if (captured.Length != current.Count) return false;
+                var eq = EqualityComparer<T>.Default;
+                for (int i = 0; i < captured.Length; i++)
+                    if (!eq.Equals(captured[i], current[i])) return false;
+                return true;
+            }
+        }
+
+        private sealed class BenchmarkMemo
+        {
+            internal DefinitionFacts[] Deck;
+            internal string Value;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, BenchmarkMemo> s_benchmarks =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<object, BenchmarkMemo>();
+
+        private static string Benchmarks(IReadOnlyList<Game.Cards.CardDefinition> deck)
+        {
+            deck = deck ?? System.Array.Empty<Game.Cards.CardDefinition>();
+            BenchmarkMemo memo = s_benchmarks.GetValue(deck, _ => new BenchmarkMemo());
+            lock (memo)
+            {
+                if (memo.Value != null && memo.Deck.Length == deck.Count)
+                {
+                    bool same = true;
+                    for (int i = 0; i < deck.Count && same; i++)
+                        same = memo.Deck[i].Matches(deck[i]);
+                    if (same) return memo.Value;
+                }
+                memo.Deck = deck.Select(d => new DefinitionFacts(d)).ToArray();
+                memo.Value = string.Join(";", deck.Where(d => d != null)
+                    .Select(d => d.cardType + ":" + string.Join(",", EquipmentSystem.Project(d, null, null).Stats
+                            .OrderBy(x => x.Key).Select(x => $"{x.Key}={x.Value}"))
+                        + ":" + string.Join(",", d.unitTypeTags ?? new List<Game.Cards.UnitTypeTag>())
+                        + ":" + string.Join(",", MaterializationChainMatching.EffectiveAbilities(d, null)
+                            .OrderBy(x => x, System.StringComparer.Ordinal)))
+                    .OrderBy(x => x, System.StringComparer.Ordinal));
+                return memo.Value;
+            }
+        }
+
+        private static string DefenderRow(Game.Combat.WorthIt.DefenderProfile d) =>
+            ProfileRowCache.Get(d, ProfileRowCache.Format.DevelopmentAdmission, BuildDefenderRow);
+
+        private static string BuildDefenderRow(Game.Combat.WorthIt.DefenderProfile d)
+        {
+            string tags = d.TypeTags == null ? string.Empty
+                : string.Join(",", d.TypeTags.Select(t => ((int)t).ToString(CultureInfo.InvariantCulture))
+                    .OrderBy(t => t, System.StringComparer.Ordinal));
+            string abilities = d.Abilities == null ? string.Empty
+                : string.Join(",", d.Abilities.Where(x => x != null)
+                    .OrderBy(x => x, System.StringComparer.Ordinal));
+            return $"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
+                + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/"
+                + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}/singleUnit={d.SingleUseUnit}";
+        }
+
         private static string CommanderFingerprint(Game.Combat.WorthIt.SideCommander commander)
             => $"/cmd:{commander.Present}:{commander.Initiative}:{commander.Fate}";
+    }
+
+    // Exact text rows of DefenderProfiles for the "did anything change" keys. A profile owns
+    // private read-only copies of its lists, so the identity of its Abilities list names one
+    // constructed profile, and its Equals (fields, lists by identity) proves a remembered row
+    // still describes it. Sightings keep their profiles across snapshots and every key of one
+    // pass reads the same ones: each row is formatted once instead of once per key.
+    internal static class ProfileRowCache
+    {
+        internal enum Format { DevelopmentAdmission, MissileStock, Count }
+
+        private sealed class Rows
+        {
+            internal Game.Combat.WorthIt.DefenderProfile Profile;
+            internal readonly string[] Text = new string[(int)Format.Count];
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Rows> s_rows =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<object, Rows>();
+
+        internal static string Get(Game.Combat.WorthIt.DefenderProfile profile, Format format,
+            System.Func<Game.Combat.WorthIt.DefenderProfile, string> build)
+        {
+            if (profile.Abilities == null)
+                return build(profile);
+            Rows rows = s_rows.GetValue(profile.Abilities, _ => new Rows());
+            lock (rows)
+            {
+                if (!rows.Profile.Equals(profile))
+                {
+                    rows.Profile = profile;
+                    System.Array.Clear(rows.Text, 0, rows.Text.Length);
+                }
+                return rows.Text[(int)format] ?? (rows.Text[(int)format] = build(profile));
+            }
+        }
     }
 }
 
