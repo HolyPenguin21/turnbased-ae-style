@@ -308,7 +308,7 @@ namespace Game.UI
         {
             if (_idleTimer < 0f || _idleNudgeShown)
                 return;
-            if (!HasInteractiveParticipant || !IsHumanAction(_currentActingUnit)
+            if (_isPresentingAttack || !HasInteractiveParticipant || !IsHumanAction(_currentActingUnit)
                 || (attackPopup != null && attackPopup.IsShowing)
                 || (roundStartPopup != null && roundStartPopup.IsShowing)
                 || (arrangePopup != null && arrangePopup.IsShowing)
@@ -349,6 +349,7 @@ namespace Game.UI
 
         public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed, bool fastResolve = false)
         {
+            CancelAttackPresentation();
             _fastResolve = fastResolve;
             _unpacedBattleFrameStart = -1f;
             _onClosed = onClosed;
@@ -675,6 +676,7 @@ namespace Game.UI
 
         private void OnPassClicked()
         {
+            if (_isPresentingAttack) return;
             EndTurn();
         }
 
@@ -845,6 +847,7 @@ namespace Game.UI
         // Show() is about to run again immediately after.
         private void ResetBattlePanel()
         {
+            CancelAttackPresentation();
             // RaiseTheRots-summoned units exist only for the battle that's now tearing down — pull
             // them out of both armies while _grid/_turnOrder are still valid, so nothing summoned
             // ever survives back onto the strategic map (the retreat path strips the retreating

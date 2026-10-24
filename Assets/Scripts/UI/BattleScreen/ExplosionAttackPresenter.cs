@@ -16,7 +16,8 @@ namespace Game.UI
         public static IEnumerator Run(ExplosionAttack attack, BattleAttackPopupUI popup,
             HexSelectionController selection = null, BattleEngine battle = null,
             bool fastResolve = false, bool tacticsCritical = false,
-            Action<ExplosionAttack.Target, BattleAttackApplication> onHit = null, HexMap map = null)
+            Action<ExplosionAttack.Target, BattleAttackApplication> onHit = null, HexMap map = null,
+            Func<ExplosionAttack.Target, BattleAttackApplication, IEnumerator> presentHit = null)
         {
             int index = 0;
             try
@@ -33,11 +34,13 @@ namespace Game.UI
                     var defense = battle != null && target.Unit != null
                         ? battle.GetDefenseBreakdown(target.Unit, map) : default;
                     bool resolved = false;
+                    BattleAttackApplication resolvedApplication = null;
                     void Apply(BattleChallengeRollResult roll)
                     {
                         var application = attack.Resolve(target, defender, roll,
                             popup != null ? popup.Magnitudes : AbilityMagnitudes.Default,
                             attackerHero, defenderHero, battle);
+                        resolvedApplication = application;
                         onHit?.Invoke(target, application);
                         resolved = true;
                     }
@@ -61,6 +64,7 @@ namespace Game.UI
                         challenge.ResolveAiDecisions();
                         Apply(challenge.ToRollResult());
                     }
+                    if (presentHit != null) yield return presentHit(target, resolvedApplication);
                 }
             }
             finally { attack.Complete(battle, selection); }

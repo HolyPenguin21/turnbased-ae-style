@@ -132,6 +132,8 @@ namespace Game.UI
             RefreshActingHighlight(isActingUnit);
         }
 
+        public void RefreshCombatStats() => RefreshStatsRow(Unit);
+
         private void RefreshSkillsText(UnitData unit)
         {
             if (skillsText == null)

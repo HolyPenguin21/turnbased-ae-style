@@ -58,6 +58,54 @@ namespace Game.EditorTests
         private static BattleChallengeRollResult Roll(int raw) =>
             new BattleChallengeRollResult(new bool[raw].Populate(true), new bool[0], 0, 0);
 
+        [TestCase(0, false)]
+        [TestCase(1, true)]
+        public void PresentationBerserkFactRecordsAnAppliedPositiveHit(int damage, bool expected)
+        {
+            var attacker = Body(Own);
+            var victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
+            var engine = Engine(Army(Own, attacker), Army(Foe, victim), (attacker, 2, 1), (victim, 1, 1));
+            var hit = engine.ApplyGroundAttack(attacker, victim, damage);
+            Assert.That(hit.BerserkTriggered, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void PresentationShockFactIncludesCounterSuppressionWithoutPendingTurn()
+        {
+            var attacker = Body(Own, abilities: new[] { UnitAbilities.ShockAttack });
+            var victim = Body(Foe, abilities: new[] { UnitAbilities.Counterattack });
+            var engine = Engine(Army(Own, attacker), Army(Foe, victim), (attacker, 2, 1), (victim, 1, 1));
+            var hit = engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(1));
+            Assert.That(hit.Shocked, Is.False);
+            Assert.That(hit.ShockTriggered, Is.True);
+            Assert.That(hit.Counterattacker, Is.Null);
+        }
+
+        [TestCase(0)]
+        [TestCase(6)]
+        public void PresentationShockDoesNotFlashForMissOrDestroyedVictim(int raw)
+        {
+            var attacker = Body(Own, abilities: new[] { UnitAbilities.ShockAttack });
+            var victim = Body(Foe, abilities: new[] { UnitAbilities.Counterattack });
+            var engine = Engine(Army(Own, attacker), Army(Foe, victim), (attacker, 2, 1), (victim, 1, 1));
+            var hit = engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(raw));
+            Assert.That(hit.ShockTriggered, Is.False);
+        }
+
+        [Test]
+        public void PresentationCollateralArmorAbsorptionDoesNotTriggerBerserk()
+        {
+            var attacker = Body(Own, abilities: new[] { UnitAbilities.Splash });
+            var victim = Body(Foe);
+            var neighbour = Body(Foe, abilities: new[] { UnitAbilities.Berserk, UnitAbilities.CeramicArmor });
+            var engine = Engine(Army(Own, attacker), Army(Foe, victim, neighbour),
+                (attacker, 2, 1), (victim, 1, 1), (neighbour, 1, 2));
+            var hit = engine.ApplyGroundAttack(attacker, victim, 2);
+            Assert.That(hit.SecondaryHits.Count, Is.EqualTo(1));
+            Assert.That(hit.SecondaryHits[0].Damage, Is.Zero);
+            Assert.That(hit.SecondaryHits[0].BerserkTriggered, Is.False);
+        }
+
         [Test]
         public void HitEffectSummary_ListsEffectSkillsWithoutChangingCombatState()
         {
