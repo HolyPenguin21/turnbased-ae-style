@@ -20,6 +20,12 @@ namespace Game.UI
         [SerializeField] private TMP_Text infoText;
         [SerializeField] private Button confirmButton;
 
+        // Message area while the Confirm button is hidden ("Current turn: X"), as anchors in the
+        // panel's normalized space; the text stretches to them with zero offsets.
+        [Header("Message area without button")]
+        [SerializeField] private Vector2 noButtonTextAnchorMin = new Vector2(0.0508f, 0.0325f);
+        [SerializeField] private Vector2 noButtonTextAnchorMax = new Vector2(0.9582f, 0.594f);
+
         private bool _textLayoutCaptured;
         private Vector2 _textAnchorMin, _textAnchorMax, _textOffsetMin, _textOffsetMax;
         private VerticalAlignmentOptions _textVerticalAlignment;
@@ -77,6 +83,13 @@ namespace Game.UI
             Hidden?.Invoke();
         }
 
+        // Inspector tweaks during Play apply to the message that is already showing.
+        private void OnValidate()
+        {
+            if (Application.isPlaying && _textLayoutCaptured && IsShowing && confirmButton != null && !confirmButton.gameObject.activeSelf)
+                SetTextLayout(false);
+        }
+
         private void SetButton(bool visible, Action onClick)
         {
             SetTextLayout(visible);
@@ -90,7 +103,7 @@ namespace Game.UI
 
         private void SetTextLayout(bool hasButton)
         {
-            if (infoText == null || !(infoText.rectTransform.parent is RectTransform parent))
+            if (infoText == null)
                 return;
             RectTransform rect = infoText.rectTransform;
             if (!_textLayoutCaptured)
@@ -113,17 +126,10 @@ namespace Game.UI
                 return;
             }
 
-            // The authored text top already clears the panel's decorative header. When the
-            // button is hidden, its lower edge becomes the message area's lower edge instead
-            // of leaving an empty button row. Recalculate against the current panel size.
-            float top = _textAnchorMax.y * parent.rect.height + _textOffsetMax.y;
-            float bottom = confirmButton != null
-                ? RectTransformUtility.CalculateRelativeRectTransformBounds(parent, confirmButton.transform).min.y - parent.rect.yMin
-                : parent.rect.height - top;
-            rect.anchorMin = new Vector2(_textAnchorMin.x, 0f);
-            rect.anchorMax = new Vector2(_textAnchorMax.x, 1f);
-            rect.offsetMin = new Vector2(_textOffsetMin.x, bottom);
-            rect.offsetMax = new Vector2(_textOffsetMax.x, top - parent.rect.height);
+            rect.anchorMin = noButtonTextAnchorMin;
+            rect.anchorMax = noButtonTextAnchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
             infoText.verticalAlignment = VerticalAlignmentOptions.Middle;
         }
 

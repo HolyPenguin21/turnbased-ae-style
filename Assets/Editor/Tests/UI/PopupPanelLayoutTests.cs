@@ -48,18 +48,19 @@ namespace Game.EditorTests
         public void TearDown() => Object.DestroyImmediate(root);
 
         [Test]
-        public void OtherTurnUsesTheEmptyButtonAreaAndRestoresAuthoredLayout()
+        public void OtherTurnStretchesToInspectorAnchorsAndRestoresAuthoredLayout()
         {
             Vector2 min = textRect.anchorMin, max = textRect.anchorMax;
             Vector2 offsetMin = textRect.offsetMin, offsetMax = textRect.offsetMax;
-            float authoredTop = textRect.localPosition.y + textRect.rect.yMax;
+            Set("noButtonTextAnchorMin", new Vector2(0.1f, 0.2f));
+            Set("noButtonTextAnchorMax", new Vector2(0.9f, 0.7f));
             popup.ShowForOther(null);
             Assert.That(buttonRect.gameObject.activeSelf, Is.False);
             Assert.That(text.verticalAlignment, Is.EqualTo(VerticalAlignmentOptions.Middle));
-            Assert.That(textRect.localPosition.y + textRect.rect.yMax, Is.EqualTo(authoredTop).Within(0.001f));
-            Assert.That(textRect.localPosition.y + textRect.rect.yMin,
-                Is.EqualTo(buttonRect.localPosition.y + buttonRect.rect.yMin).Within(0.001f));
-            Assert.That(textRect.rect.height, Is.GreaterThan(145f * (max.y - min.y)));
+            AssertVector(textRect.anchorMin, new Vector2(0.1f, 0.2f));
+            AssertVector(textRect.anchorMax, new Vector2(0.9f, 0.7f));
+            AssertVector(textRect.offsetMin, Vector2.zero);
+            AssertVector(textRect.offsetMax, Vector2.zero);
 
             popup.ShowForHuman(null, null);
             AssertAuthored(min, max, offsetMin, offsetMax);
@@ -69,18 +70,16 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void RepeatedOtherTurnMessagesRecalculateAfterResizeWithoutDrift()
+        public void OtherTurnAreaFollowsPanelResize()
         {
+            Set("noButtonTextAnchorMin", new Vector2(0.1f, 0.2f));
+            Set("noButtonTextAnchorMax", new Vector2(0.9f, 0.7f));
             popup.ShowForOther(null);
             panel.sizeDelta = new Vector2(500f, 200f);
-            popup.ShowForOther(null);
-            Vector2 min = textRect.offsetMin, max = textRect.offsetMax;
             popup.Hide();
             popup.ShowForOther(null);
-            AssertVector(textRect.offsetMin, min);
-            AssertVector(textRect.offsetMax, max);
-            Assert.That(textRect.localPosition.y + textRect.rect.yMax,
-                Is.EqualTo(panel.rect.yMin + 200f * 0.59f).Within(0.001f));
+            Assert.That(textRect.rect.height, Is.EqualTo(200f * 0.5f).Within(0.001f));
+            Assert.That(textRect.rect.width, Is.EqualTo(500f * 0.8f).Within(0.001f));
         }
 
         private void AssertAuthored(Vector2 min, Vector2 max, Vector2 offsetMin, Vector2 offsetMax)
