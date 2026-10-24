@@ -400,6 +400,19 @@ namespace Game.Ai.V2
             main.EquipmentAssignmentsSucceeded = phaseA.EquipmentAssignmentsSucceeded + phaseB.EquipmentAssignmentsSucceeded;
             main.CapabilityDeliveries = phaseA.CapabilityDeliveries + phaseB.CapabilityDeliveries;
 
+            // Measure against the final live world while owner reservations still exist.
+            // Analysis and Materialization retain ownership of facts and candidate valuation.
+            WorldSnapshot apSnapshot = WorldAnalysis.RefreshStrategicKnowledge(frame.Snapshot,
+                player, root, hand, ctx);
+            ActorCommitments apCommitments = ActorCommitments.FromIntents(
+                WorldSnapshot.IntentsOf(apSnapshot), apSnapshot, null);
+            float usefulHandAp = MaterializationCandidateBuilder.PhaseBWitnessedApWorkload(
+                apSnapshot, player, root, hand, ctx,
+                CapabilityInventory.Build(apSnapshot, player, apCommitments), apCommitments,
+                phaseB.Reservation, out int usefulHandCards, turnEndMeasurement: true) ?? 0f;
+            ApTurnMeasure apMeasure = ApTurnPressure.Measure(player, root, hand, ctx,
+                initiativeStartAp, telemetry.Allocation.Deferred, usefulHandAp, usefulHandCards);
+
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
             turnSession.AuditTurnEnd(frame.Snapshot, frame.Recon);
@@ -415,8 +428,6 @@ namespace Game.Ai.V2
                 + $"lastPackFunded {telemetry.Allocation.Funded.Count}, turnFundedUnique {telemetry.FundedKeys.Count}, "
                 + $"provisioned {telemetry.Provisioned.Count}, executed {telemetry.AllExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
-            ApTurnMeasure apMeasure = ApTurnPressure.Measure(player, root, hand, ctx,
-                initiativeStartAp, telemetry.Allocation.Deferred);
             ApTurnPressure.Record(player, ctx.TurnNumber, apMeasure);
             ApBudgetTelemetry.End(player, ctx,
                 StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, apMeasure);

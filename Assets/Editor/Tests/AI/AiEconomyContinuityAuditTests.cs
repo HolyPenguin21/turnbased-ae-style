@@ -668,7 +668,7 @@ namespace Game.EditorTests
         // --- B7: the allocator funds an Economy completion from the pool Provisioning checks --
 
         private static TentativeAllocation PackEconomyCompletion(PlayerSetupData player,
-            StrategicReservationReason otherOwnersReason)
+            StrategicReservationReason otherOwnersReason, int actionPoints = 5)
         {
             MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
             m.FromDurableIntent = false;
@@ -684,7 +684,7 @@ namespace Game.EditorTests
                 TurnNumber = 1,
                 Self = new SelfSnapshot
                 {
-                    ActionPoints = 5,
+                    ActionPoints = actionPoints,
                     Stockpile = new ResourceBundle { Materials = 4f },
                 },
             };
@@ -711,6 +711,20 @@ namespace Game.EditorTests
 
             Assert.That(a.Funded.Count, Is.EqualTo(1),
                 "a build completing now outranks other builds' deferred holds, as in Provisioning");
+        }
+
+        [TestCase(StrategicReservationReason.EconomyBuildCompletion, 1f)]
+        [TestCase(StrategicReservationReason.EconomyDeferredBuild, 0f)]
+        public void ApDeferralKeepsEconomyCompletionSpendAuthority(
+            StrategicReservationReason otherOwnersReason, float missingMaterials)
+        {
+            var allocation = PackEconomyCompletion(new PlayerSetupData(), otherOwnersReason, actionPoints: 0);
+            DeferredEntry deferred = allocation.Deferred.Single();
+            Assert.That(deferred.Reason, Is.EqualTo(DeferReason.InsufficientBudget));
+            Assert.That(deferred.Required.Materials, Is.EqualTo(3f));
+            Assert.That(deferred.Missing.Materials, Is.EqualTo(missingMaterials),
+                "AP-first deferral must use the same owner exceptions as physical funding");
+            Assert.That(allocation.Funded, Is.Empty);
         }
 
         [Test]

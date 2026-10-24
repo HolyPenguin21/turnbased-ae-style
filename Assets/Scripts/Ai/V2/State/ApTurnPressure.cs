@@ -54,35 +54,36 @@ namespace Game.Ai.V2
         internal static void ClearAll() => ByPlayer.Clear();
 
         internal static ApTurnMeasure Measure(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, int startAp, IReadOnlyList<DeferredEntry> lastDeferred)
+            AiTurnContext ctx, int startAp, IReadOnlyList<DeferredEntry> lastDeferred,
+            float usefulHandAp = 0f, int usefulHandCards = 0)
         {
             int endAp = root != null ? root.ActionPoints : startAp;
             int drawCost = ctx != null ? ctx.DrawApCost : 0;
             int handCount = hand?.Hand?.Count ?? 0;
             int deckCount = hand?.RemainingDeck?.Count ?? 0;
-            int drawsShort = Mathf.Min(deckCount,
-                Mathf.Max(0, AiConfigV2.handReplenishTargetCards - handCount));
-
-            float cardsUnmet = 0f;
-            int cardsAffordable = 0;
-            if (hand?.Hand != null && root != null && ctx != null)
-                foreach (CardData c in hand.Hand)
-                {
-                    int ap = c != null ? CardCostRules.PlayAp(c) : 0;
-                    if (ap <= 0)
-                        continue;
-                    var cost = CardCostRules.PlayResources(c);
-                    if (cost != null && !StrategicSpendability.FitsSpendableResources(player, root, ctx, cost))
-                        continue;
-                    cardsAffordable++;
-                    cardsUnmet += ap;
-                }
+            StrategicTempoBudget tempo = StrategicTempoBudget.For(player, ctx?.TurnNumber ?? 0);
+            int drawsShort = tempo.TotalCapHit ? 0 : Mathf.Min(deckCount,
+                Mathf.Min(Mathf.Max(0, (hand?.Capacity ?? 0) - handCount),
+                    Mathf.Min(Mathf.Max(0, AiConfigV2.handReplenishTargetCards - handCount),
+                        Mathf.Min(Mathf.Max(0, AiConfigV2.maxTerminalDrawsPerTurn - tempo.DrawActionsUsed),
+                            Mathf.Max(0, AiConfigV2.maxEndOfTurnTempoActionsPerTurn - tempo.TotalTempoActionsUsed)))));
+            float drawWork = drawsShort * Mathf.Max(0, drawCost);
+            float drawsUnmet = drawWork > endAp + AiConfigV2.allocatorSliceEpsilon ? drawWork : 0f;
+            // The full useful remainder is unmet only when AP cannot cover it. An idle
+            // playable-looking card alone is not a scarcity witness; its owners supplied this set.
+            float cardsUnmet = !tempo.TotalCapHit
+                && usefulHandAp > endAp + AiConfigV2.allocatorSliceEpsilon ? usefulHandAp : 0f;
 
             List<DeferredEntry> budget = (lastDeferred ?? System.Array.Empty<DeferredEntry>())
-                .Where(d => d?.Mission?.Requirements != null && (d.Reason == DeferReason.InsufficientBudget || d.Reason == DeferReason.LowValuePerAp))
+                .Where(d => d?.Mission?.Requirements != null
+                    && d.Reason == DeferReason.InsufficientBudget
+                    && d.Mission.BaseValue > 0f && d.Missing.Ap > AiConfigV2.allocatorSliceEpsilon
+                    && !d.Missing.AnyPhysical && d.Required.Ap > endAp + AiConfigV2.allocatorSliceEpsilon)
                 .ToList();
-            return new ApTurnMeasure(startAp, endAp, drawsShort * drawCost, drawsShort,
-                cardsUnmet, cardsAffordable, budget.Sum(d => d.Mission.Requirements.ApDesired), budget.Count);
+            // Deferred proposals can be alternatives for the same actor/target. Count the
+            // largest proven AP requirement, not the sum of mutually exclusive proposals.
+            return new ApTurnMeasure(startAp, endAp, drawsUnmet, drawsShort,
+                cardsUnmet, usefulHandCards, budget.Select(d => d.Required.Ap).DefaultIfEmpty(0f).Max(), budget.Count);
         }
 
         internal static void Record(PlayerSetupData player, int turn, ApTurnMeasure measure)

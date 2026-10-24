@@ -728,7 +728,7 @@ namespace Game.Ai.V2
                 float min = ApMinimum(m);
                 if (affordable + eps < min)
                 {
-                    AddBudgetDeferred(alloc, m, min, affordable);
+                    AddBudgetDeferred(alloc, m, min, affordable, physicalRemaining);
                     continue;
                 }
 
@@ -751,7 +751,7 @@ namespace Game.Ai.V2
                 float fundAp = Mathf.Min(ApDesired(m), Mathf.Max(min, affordable));
                 if (affordable + eps < fundAp)
                 {
-                    AddBudgetDeferred(alloc, m, min, Mathf.Max(0f, budget));
+                    AddBudgetDeferred(alloc, m, min, Mathf.Max(0f, budget), physicalRemaining);
                     continue;
                 }
                 var v = new ResourceVector(fundAp);
@@ -874,10 +874,15 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static void AddBudgetDeferred(TentativeAllocation alloc, MissionProposal m, float min, float available)
+        private void AddBudgetDeferred(TentativeAllocation alloc, MissionProposal m, float min, float available,
+            ResourceVector physicalRemaining)
         {
-            var required = new ResourceVector(Mathf.Max(0f, min));
-            var have = new ResourceVector(Mathf.Max(0f, available));
+            // AP is the first admission gate, not proof that physical resources are available.
+            // Preserve the same minimum and owner-aware pool the next gate would have checked,
+            // including repriced floors and resources already held/drawn by other operations.
+            ResourceVector required = new ResourceVector(Mathf.Max(0f, min)) + PhysicalMinimum(m);
+            ResourceVector have = new ResourceVector(Mathf.Max(0f, available))
+                + PhysicalAvailableFor(m, physicalRemaining, alloc.Funded);
             alloc.Deferred.Add(new DeferredEntry
             {
                 Mission = m, Reason = DeferReason.InsufficientBudget,

@@ -200,7 +200,8 @@ namespace Game.Ai.V2
         // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
-            MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null)
+            MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null,
+            bool ignoreApForMeasurement = false)
         {
             if (player == null || root == null || hand?.Hand == null || ctx == null)
                 yield break;
@@ -229,7 +230,7 @@ namespace Game.Ai.V2
                 if (def.isAviation)
                 {
                     foreach (NonCombatPlay aviation in BuildAviationPlays(card, null, snap,
-                        player, root, hand, ctx, blocked, witnessedUsefulApDemand))
+                        player, root, hand, ctx, blocked, witnessedUsefulApDemand, ignoreApForMeasurement))
                         yield return aviation;
                     continue;
                 }
@@ -239,12 +240,12 @@ namespace Game.Ai.V2
                     // select one. Generated attachments belong to materialization below.
                     foreach (var attachment in BuildEquipmentPlays(card, snap, player, root, hand, ctx,
                         card.EffectivePlayApCost, StrategicCardEvaluator.AddResourceCosts(card.EffectivePlayResourceCost, null),
-                        witnessedUsefulApDemand))
+                        witnessedUsefulApDemand, ignoreApForMeasurement))
                         yield return attachment;
                     continue;
                 }
                 NonCombatPlay p = BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
-                    ownBaseHexes, blocked, witnessedUsefulApDemand);
+                    ownBaseHexes, blocked, witnessedUsefulApDemand, ignoreApForMeasurement);
                 if (p != null)
                     yield return p;
             }
@@ -254,7 +255,7 @@ namespace Game.Ai.V2
             // NetScore band (throwaway pre-mint stand-in), discounted by the Challenge success
             // chance + the generation step penalty; NonCombatPlayExecutor.Execute mints then deploys
             // via the canonical API. Generated Equipment stays with the materialization GenerateAttachDeploy chain.
-            if (reservation != null && reservation.CanGenerateMore)
+            if (!ignoreApForMeasurement && reservation != null && reservation.CanGenerateMore)
             {
                 foreach (GenerationStep g in GenerationSource.Enumerate(player, root, ctx, hand,
                     reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards))
@@ -330,7 +331,7 @@ namespace Game.Ai.V2
                 foreach (HexCoord h in ownBaseHexes)
                 {
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r,
-                            requireCardInHand: generation == null))
+                            requireCardInHand: generation == null, requireCurrentAp: !investmentPreview))
                     {
                         if (r != null) why = r;
                         continue;
@@ -738,18 +739,22 @@ namespace Game.Ai.V2
 
         private static IEnumerable<NonCombatPlay> BuildEquipmentPlays(CardData card,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            float ap, ResourceCost resources, float? workload)
+            float ap, ResourceCost resources, float? workload, bool ignoreApForMeasurement = false)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.EquipmentOpportunities(
                 ResearchProductionMode.Production, default, card.Definition, 1f, null,
-                snap, inv, player, root, hand, out _, card))
+                snap, inv, player, root, hand, out _, card, ignoreApForMeasurement: ignoreApForMeasurement))
             {
                 // The candidate is the actual card in hand; a reservation on its recipient is
                 // respected through the same bank/physical portfolio, and installation is rechecked.
                 if (op.RecipientCard != null
-                    ? !EquipmentSystem.CanAttach(card, op.RecipientCard, root, out _)
-                    : !EquipmentSystem.CanAttach(card, op.RecipientUnit, root, out _)) continue;
+                    ? !(ignoreApForMeasurement
+                        ? EquipmentSystem.CanAttachPreview(card.Definition, op.RecipientCard, out _)
+                        : EquipmentSystem.CanAttach(card, op.RecipientCard, root, out _))
+                    : !(ignoreApForMeasurement
+                        ? EquipmentSystem.CanAttachPreview(card.Definition, op.RecipientUnit, out _)
+                        : EquipmentSystem.CanAttach(card, op.RecipientUnit, root, out _))) continue;
                 // The item's own utility, without production context (no Challenge, repeat or supply).
                 float value = EquipmentUpgradeValuation.EquipmentUpgradeValue(op);
                 yield return new NonCombatPlay

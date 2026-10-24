@@ -134,9 +134,13 @@ namespace Game.Ai.V2
                 TrackUnaffordable(apCost);
             }
 
-            // A fresh empty army always has room for the first member (CardPlayExecutor.Preflight
-            // makes the same assumption for its own NewArmy path), so no CanTransferMembers probe
-            // is possible or needed here — there is no ArmyData yet to probe against.
+            // The first member must leave a legal source AND fit its destination, exactly as
+            // CreateArmyWithMember requires. Preview allocates no real id or registered army.
+            ArmyData fresh = ArmyData.CreateVisualSnapshot();
+            fresh.Owner = player;
+            fresh.Hex = garrison.Hex;
+            if (!ArmyActions.CanTransferMembers(new[] { sparable }, garrison, fresh, out string whyCreate))
+                return GarrisonExtractionCandidate.No(whyCreate, cheapestUnaffordable ?? 0f);
             if (Affordable(ArmyActions.CreateArmyApCost))
                 return GarrisonExtractionCandidate.Yes(
                     GarrisonExtractionTier.Create, sparable, null, ArmyActions.CreateArmyApCost);
@@ -178,8 +182,9 @@ namespace Game.Ai.V2
 
         // Applies the resolved extraction through canonical domain actions.
         internal static ArmyData ApplyGarrisonExtraction(PlayerSetupData player, ArmyData garrison,
-            GarrisonExtractionCandidate candidate, AiTurnContext ctx)
+            GarrisonExtractionCandidate candidate, AiTurnContext ctx, out string reason)
         {
+            reason = candidate.Reason;
             if (candidate.Tier == GarrisonExtractionTier.None)
                 return null;
 
@@ -188,7 +193,7 @@ namespace Game.Ai.V2
             {
                 FactionCardCatalog catalog = ctx.StartingDeckCatalog?.GetCatalog(player.Faction);
                 container = ArmyActions.CreateArmyWithMember(player, garrison.Hex, catalog,
-                    garrison, candidate.Hero, ctx.HexSelection, out string whyCreate);
+                    garrison, candidate.Hero, ctx.HexSelection, out reason);
                 if (container == null)
                     return null;
                 AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
@@ -198,7 +203,7 @@ namespace Game.Ai.V2
             }
 
             if (!ArmyActions.TransferMember(candidate.Hero, garrison, container,
-                    ctx.HexSelection, out string why))
+                    ctx.HexSelection, out reason))
                 return null;
             AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
                 + $"from garrison #{garrison.Id} into #{container.Id} ({candidate.Tier}, "

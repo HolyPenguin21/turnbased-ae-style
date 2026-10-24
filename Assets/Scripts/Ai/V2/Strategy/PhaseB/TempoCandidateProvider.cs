@@ -66,7 +66,7 @@ namespace Game.Ai.V2
             // reachable this turn (=> both lanes keep the discounted structural fallback).
             float? phaseBWitnessedApDemand = MaterializationCandidateBuilder.PhaseBWitnessedApWorkload(
                 snap, player, root, hand, ctx,
-                CapabilityInventory.Build(snap, player, commitments), commitments, result.Reservation);
+                CapabilityInventory.Build(snap, player, commitments), commitments, result.Reservation, out _);
 
             // PlayCard — materialization lane. Utility = StrategicCardEvaluator decision score, verbatim.
             foreach (MatSurplusDecision mat in ComputeMatDecisions(snap, player, root, hand, ctx,

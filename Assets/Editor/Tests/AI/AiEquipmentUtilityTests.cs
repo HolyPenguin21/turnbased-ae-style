@@ -17,6 +17,82 @@ namespace Game.EditorTests
     {
         private static readonly string[] None = new string[0];
 
+        [TestCase(ScoutTargetKind.Explore, false, true)]
+        [TestCase(ScoutTargetKind.Refresh, true, true)]
+        [TestCase(ScoutTargetKind.Explore, true, true)]
+        [TestCase(ScoutTargetKind.Hunt, false, false)]
+        [TestCase(ScoutTargetKind.CaptureStructure, false, false)]
+        [TestCase(ScoutTargetKind.AirSweep, false, false)]
+        public void ScoutAssignmentProtectsPatrolMobility(ScoutTargetKind kind, bool activationCost, bool rejects)
+        {
+            var before = EquipmentSystem.DefinitionStats(new CardDefinition {
+                attack = 3, defenseRating = 1, hitPoints = 4, range = 2,
+                moveMax = 2, initiative = 1, activationApCost = 1 });
+            var grant = new EquipmentGrant();
+            grant.statChanges.Add(new EquipmentStatChange {
+                stat = activationCost ? EquipmentStat.ActivationApCost : EquipmentStat.MoveMax,
+                amount = activationCost ? 1 : -1 });
+            var purpose = new MissionIntent { Kind = MissionKind.Scout,
+                Objective = new ScoutIntent { Kind = kind } };
+            var method = typeof(EquipmentUpgradeValuation).GetMethod("ScoreEquipmentDelta",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var parameters = method.GetParameters();
+            var args = new object[parameters.Length];
+            for (int i = 0; i < args.Length; i++)
+                args[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : null;
+            args[0] = grant; args[1] = before; args[2] = None; args[3] = false;
+            args[System.Array.FindIndex(parameters, p => p.Name == "purpose")] = purpose;
+            var result = (EquipmentUpgradeValuation.EquipmentDelta)method.Invoke(null, args);
+            Assert.That(result.Detail?.Contains("reject=assignment-capability-loss") == true, Is.EqualTo(rejects));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        [Category("UnityEngine")]
+        public void PatrolMobilityVetoReachesHandAttachmentEnumeration(bool measurement)
+        {
+            var player = new PlayerSetupData();
+            var root = PlayerRoot.Create(player, "Patrol equipment audit");
+            try
+            {
+                PlayerRootRegistry.Register(player, root);
+                root.ActionPoints = measurement ? 0 : 20;
+                var scout = new UnitData { Owner = player, MoveMax = 2, MoveCurrent = 2,
+                    Attack = 2, Defense = 1, HitPointsMax = 4, HitPointsCurrent = 4, ActivationApCost = 1 };
+                scout.Abilities.Add("r1s0");
+                var army = new ArmyData { Owner = player, Hex = new HexCoord(2, 0) };
+                army.Members.Add(scout); ArmyRegistry.Register(army);
+                var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
+                    PreferredMoverArmyId = army.Id,
+                    Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(3, 0) } };
+                intent.IntentKey = MissionIntentKey.For(intent);
+                var intents = new MissionIntentState(); intents.Put(intent);
+                var item = new CardDefinition { cardType = CardType.Equipment, apCost = 1,
+                    equipment = new EquipmentGrant() };
+                item.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 10 });
+                item.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.MoveMax, amount = -1 });
+                var card = new CardData(item);
+                var hand = new AiHandData(null, default, 0); hand.AddCard(card);
+                var snap = new WorldSnapshot { Observer = player, TurnNumber = 1, Intents = intents,
+                    Self = new SelfSnapshot { Hand = hand.Hand, Armies = System.Array.Empty<ArmySnapshot>() } };
+                Assert.That(EquipmentSystem.CanAttachPreview(item, scout, out string legal), Is.True, legal);
+                Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, null, scout), Is.SameAs(intent));
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(item, scout, snap).Total, Is.LessThan(0f));
+                var plays = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand,
+                    new AiTurnContext { TurnNumber = 1 }, new List<string>(),
+                    ignoreApForMeasurement: measurement);
+                Assert.That(System.Linq.Enumerable.Any(plays), Is.False);
+                Assert.That(root.ActionPoints, Is.EqualTo(measurement ? 0 : 20));
+                Assert.That(scout.Equipment, Is.Null);
+                Assert.That(scout.MoveMax, Is.EqualTo(2));
+            }
+            finally
+            {
+                ArmyRegistry.Clear(); PlayerRootRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
+        }
+
         private static EfficiencyStats S(int a, int d, int hp, int r, int move = 3, int ini = 1, int ap = 1, int fate = 0) =>
             new EfficiencyStats(a, d, hp, r, move, ini, ap, fate);
 

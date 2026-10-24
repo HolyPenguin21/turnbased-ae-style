@@ -175,10 +175,10 @@
         // A fresh opportunistic Raid (no capability demand, no durable intent) that is worth less
         // than this many TaskScore points per AP it asks is parked and funded only from the AP
         // remainder (ResourceAllocator, DeferReason.LowValuePerAp). 1 TaskScore point = 1 AP
-        // (taskScorePerApEquivalent), so 2 = "must return at least twice its AP". Guard raids in the
+        // (taskScorePerApEquivalent), so 3 = "must return at least three times its AP". Guard raids in the
         // 2026-10-02 log were worth 14-27 for 1-5 AP, so this only catches genuinely thin raids;
         // with spare AP they still run the same turn through the remainder pass.
-        public const float raidParkValuePerAp = 2.0f;
+        public const float raidParkValuePerAp = 3.0f;
         public const float stagingReturnMinFistShare = 0.30f;
         // A Collector demand draws on other builds' deferred holds only when its resource's
         // ResourcePriority is at least this (2026-10-02 log averages: Human 0.82, Tech 0.54, Energy

@@ -539,7 +539,9 @@ namespace Game.Ai.V2
                     return true;
                 }
                 ArmyData extracted = ProvisioningManager.ApplyGarrisonExtraction(
-                    player, garrison, pinned, ctx);
+                    player, garrison, pinned, ctx, out string extractionReason);
+                if (extracted == null)
+                    AiDebugLog.Write($"[AI][V2][Development] extraction rejected for {pm.Key}: {extractionReason}");
                 result.StartHex = pm.ExecutionHex;
                 result.FinalHex = extracted?.Hex ?? pm.ExecutionHex;
                 result.ActualActorArmyId = extracted?.Id;
@@ -566,7 +568,10 @@ namespace Game.Ai.V2
             {
                 result.FinalHex = pm.ExecutionHex;
                 if (!result.ActualActorArmyId.HasValue)
-                    result.StopForReplan(ExecutionStopReason.MoverLost);
+                    result.StopForReplan(pm.EconomyExtractionGarrisonArmyId >= 0
+                        ? ExecutionStopReason.TargetInvalidated : ExecutionStopReason.MoverLost);
+                else
+                    result.NeedsReplan = true;
                 return true;
             }
 
@@ -625,9 +630,12 @@ namespace Game.Ai.V2
                     return false;
                 }
                 materialized = ProvisioningManager.ApplyGarrisonExtraction(
-                    player, garrison, plan, ctx);
+                    player, garrison, plan, ctx, out string extractionReason);
                 if (materialized == null)
+                {
+                    AiDebugLog.Write($"[AI][V2][Economy] extraction rejected for {pm.Key}: {extractionReason}");
                     return false;
+                }
 
                 // Extraction is one complete task step; preparation and movement are re-admitted.
                 pm.MoverArmyId = materialized.Id;
