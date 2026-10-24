@@ -26,7 +26,6 @@ namespace Game.EditorTests
             float previousScale = Time.timeScale;
             GameObject root = null;
             Texture2D atlas = null, mask = null;
-            Mesh mesh = null;
             try
             {
                 var shader = Shader.Find("Game/UI/MainMenuAtmosphere");
@@ -39,7 +38,7 @@ namespace Game.EditorTests
                 go.transform.SetParent(root.transform, false);
                 ((RectTransform)go.transform).sizeDelta = new Vector2(1600, 900);
                 var graphic = go.AddComponent<MainMenuAtmosphereGraphic>();
-                atlas = new Texture2D(4, 4); mask = new Texture2D(1, 1); mesh = new Mesh();
+                atlas = new Texture2D(4, 4); mask = new Texture2D(1, 1);
                 Set(graphic, "mainMenuPanel", menu); Set(graphic, "collectionWindow", collection);
                 Set(graphic, "dustAtlas", atlas); Set(graphic, "architectureMask", mask); Set(graphic, "atmosphereShader", shader);
                 root.SetActive(true);
@@ -57,8 +56,8 @@ namespace Game.EditorTests
                 yield return null;
                 Assert.That(Clock(graphic), Is.EqualTo(paused));
                 Canvas.ForceUpdateCanvases();
-                graphic.canvasRenderer.GetMesh(mesh);
-                Assert.That(mesh.vertexCount, Is.Zero, "The actual CanvasRenderer must contain no effects in collection.");
+                Mesh mesh = graphic.canvasRenderer.GetMesh();
+                Assert.That(mesh != null ? mesh.vertexCount : 0, Is.Zero, "The actual CanvasRenderer must contain no effects in collection.");
 
                 menu.SetActive(false); collection.SetActive(false);
                 yield return null;
@@ -68,7 +67,8 @@ namespace Game.EditorTests
                 yield return null;
                 Assert.That(Clock(graphic), Is.GreaterThan(paused));
                 Canvas.ForceUpdateCanvases();
-                graphic.canvasRenderer.GetMesh(mesh);
+                mesh = graphic.canvasRenderer.GetMesh();
+                Assert.That(mesh, Is.Not.Null);
                 Assert.That(mesh.vertexCount, Is.GreaterThan(0));
             }
             finally
@@ -77,7 +77,6 @@ namespace Game.EditorTests
                 if (root != null) Object.Destroy(root);
                 if (atlas != null) Object.Destroy(atlas);
                 if (mask != null) Object.Destroy(mask);
-                if (mesh != null) Object.Destroy(mesh);
             }
             yield return null;
         }
