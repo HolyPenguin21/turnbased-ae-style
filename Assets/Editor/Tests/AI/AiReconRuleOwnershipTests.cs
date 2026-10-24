@@ -31,27 +31,18 @@ namespace Game.EditorTests
             var focus = new HexCoord(4, 3);
             // Inject honest remembered observations, without relying on native scene visibility.
             // Near-memory includes neutrals/ownerless encounters; the live owner must exclude them.
-            Type recordType = typeof(AiMapMemory).GetNestedType("EnemySighting", BindingFlags.NonPublic);
-            IDictionary byPlayer = (IDictionary)typeof(AiMapMemory)
-                .GetField("EnemySightings", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-            var store = (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>)
-                .MakeGenericType(typeof(int), recordType));
             var honest = new List<AiMapMemory.KnownEnemySighting>();
             for (int id = 0; id < detectors + 3; id++)
             {
                 PlayerSetupData owner = id < detectors || id == detectors + 2 ? enemy
                     : id == detectors ? new PlayerSetupData { IsNeutral = true } : null;
                 HexCoord hex = id == detectors + 2 ? new HexCoord(30, 30) : focus;
-                object record = Activator.CreateInstance(recordType, nonPublic: true);
-                recordType.GetField("ArmyId").SetValue(record, id);
-                recordType.GetField("Owner").SetValue(record, owner);
-                recordType.GetField("Hex").SetValue(record, hex);
-                store.Add(id, record);
+                AiMapMemory.RememberForTest(player, new AiMapMemory.KnownEnemySighting(hex, owner, null, 0, 0f, 0f,
+                    null, armyId: id));
                 if (owner == enemy)
                     honest.Add(new AiMapMemory.KnownEnemySighting(hex, owner, "known", 1, 1f, 1f,
                         null, armyId: id));
             }
-            byPlayer.Add(player, store);
             try
             {
                 var snap = new WorldSnapshot { Known = new KnownSnapshot { EnemySightings = honest } };
@@ -59,7 +50,7 @@ namespace Game.EditorTests
                 Assert.That(ScoutRiskModel.DetectorRisk(snap, focus), Is.EqualTo(expected));
                 Assert.That(ScoutRiskModel.DetectorRisk(honest, focus), Is.EqualTo(expected));
             }
-            finally { byPlayer.Remove(player); }
+            finally { AiMapMemory.ForgetSightingsForTest(player); }
         }
 
         [Test]

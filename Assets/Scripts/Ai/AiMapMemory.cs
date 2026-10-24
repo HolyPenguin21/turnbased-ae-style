@@ -1,286 +1,42 @@
 using System.Collections.Generic;
 using System.Linq;
-using Game.Aviation;
-using Game.Cards;
 using Game.Combat;
-using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
-using Game.Units;
 
 namespace Game.Ai
 {
-    // Honest per-player memory of hex CONTENT — the piece VisionSystem itself explicitly does
-    // NOT keep (see its own class comment: "Content has no memory either way and re-hides the
-    // instant vision leaves"). Subscribes to VisionSystem.VisibilityChanged and, on every
-    // recompute, snapshots whatever's on `player`'s own currently-visible hexes into four
-    // permanent-until-corrected stores: which hexes are known to carry a resource bonus (including
-    // the complete effective resource line last observed there — reading it off an already-visible
-    // hex is no cheat, while reconstructing it later from the live map would be),
-    // where an enemy/neutral army was last actually seen, which hexes carry a known active Hex
-    // Event with a real guard (see KnownEventGuardStrengthAt), and (2026-08-24, section 3.2) which
-    // hexes carry a known building and its own last-observed owner (KnownBuildings). Per the
-    // project owner's own "Видимость с памятью" principle — stale info is never auto-expired,
-    // only overwritten by a fresh observation of that SAME hex (see OnVisibilityChanged's own
-    // `sightings.Remove` branch) — with two narrow exceptions: a PLAYER-owned army sighting still
-    // expires after AiConfig.enemySightingMemoryTurns turns (a physical NEUTRAL army sighting does
-    // NOT — see OnTurnStarted's own comment, 2026-08-24 fix), and an event's own guard being
-    // consumed corrects immediately, but ONLY for a player CURRENTLY watching that hex (see
-    // OnEventConsumed's own comment, same 2026-08-24 fix) — everyone else still only learns about
-    // it by re-observing the hex later, same as any other correction here.
+    // Honest per-player memory of hex CONTENT — the piece VisionSystem itself does NOT keep
+    // (content re-hides the instant vision leaves). Every vision recompute copies what is on the
+    // player's currently visible hexes into permanent-until-corrected stores: resource hexes with
+    // their last observed effective yield, the last sighting of every enemy/neutral army (ground
+    // and air), buildings with their last observed owner, and the Hex Events the player met in
+    // person. "Видимость с памятью": stale knowledge is never auto-expired, only overwritten by a
+    // fresh observation of that SAME hex — with narrow exceptions: a roaming player-owned army
+    // sighting expires after AiConfig.enemySightingMemoryTurns (neutrals and garrisons never do),
+    // a destroyed army is forgotten by its witnesses, the claimant of an event and a player
+    // watching it learn of its consumption at once, and scout danger zones end at AvoidUntilTurn.
     //
-    // Deliberately narrow in scope — only the slices AiGoalScorer/AiScoutPlanner/AiTurnController/
-    // RaidWeakerArmyTask actually need honesty for right now (resource hexes + observed yield, enemy
-    // armies, event guards). Other players' own resource stockpiles stay the project's own
-    // documented cheat exception (see AiGoalScorer's own IncomeBehindBonus) and never route
-    // through here.
+    // This is the one sanctioned source of concrete foreign positions and rosters for the AI:
+    // Strategy V2 (WorldAnalysis, Recon, Aggression, SafeStepPathing route blockers) reads it,
+    // never live ArmyData of other players.
     //
-    // Spec item 18 boundary (2026-08-28 P1): this store is the ONLY sanctioned source of a
-    // concrete enemy POSITION for Оборона — AiDefencePlanner.FindActiveThreatSighting builds its
-    // intercept target purely from KnownEnemySightingsNear here. The live-ArmyData Defence cheats
-    // (AiDefencePlanner.CheatEstimateRaiderThreat / DynamicPatrolUrgencyScore) may sense that a
-    // sector is threatened and size the patrol response, but they return only scalars and must
-    // never turn a hidden army into a targetable hex; that always goes through this memory.
-    public static class AiMapMemory
+    // Files: AiMapMemory.cs — stores, revisions, subscriptions, turn lifecycle, scout danger zones;
+    // .Records.cs — the public read-only records; .Observation.cs — every write from vision and
+    // events; .Queries.cs — every read.
+    public static partial class AiMapMemory
     {
-        // Aviation has a different target pool from ground contact. This store is observed
-        // only on visible hexes; it never changes the existing ground/route sightings.
-        public readonly struct KnownAirSighting
-        {
-            public readonly HexCoord Hex;
-            public readonly PlayerSetupData Owner;
-            public readonly int SeenTurn;
-            public readonly bool IsGroundArmy;
-            public readonly AviationCombatEstimator.DefendingAirArmy Roster;
-            public int ArmyId => Roster.ArmyId;
-            public KnownAirSighting(HexCoord hex, PlayerSetupData owner, int seenTurn,
-                bool isGroundArmy, AviationCombatEstimator.DefendingAirArmy roster)
-            {
-                Hex = hex; Owner = owner; SeenTurn = seenTurn;
-                IsGroundArmy = isGroundArmy; Roster = roster;
-            }
-        }
+        // ---- Stores (per player) ----
 
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, KnownAirSighting>> AirSightings =
             new Dictionary<PlayerSetupData, Dictionary<int, KnownAirSighting>>();
-
-        public static IEnumerable<KnownAirSighting> AllKnownAirSightings(PlayerSetupData player) =>
-            player != null && AirSightings.TryGetValue(player, out var sightings)
-                ? sightings.Values.OrderBy(s => s.ArmyId)
-                : Enumerable.Empty<KnownAirSighting>();
-
-        internal static bool SameAirSighting(KnownAirSighting a, KnownAirSighting b) =>
-            a.ArmyId == b.ArmyId && a.Hex.Equals(b.Hex) && a.Owner == b.Owner
-            && a.SeenTurn == b.SeenTurn && a.IsGroundArmy == b.IsGroundArmy
-            && a.Roster.CommanderIndex == b.Roster.CommanderIndex
-            && WorthIt.DefenderProfile.SameContent(a.Roster.Units, b.Roster.Units)
-            && a.Roster.CurrentFates.SequenceEqual(b.Roster.CurrentFates);
-
-        private class EnemySighting
-        {
-            // The physical army's own stable ArmyData.Id — this is now the dictionary key in
-            // EnemySightings below (2026-08-23, project owner's own call), so a moved army's
-            // sighting is updated IN PLACE under this same Id rather than left behind as an orphan
-            // record under its old Hex while a second, independent entry accumulates at its new
-            // Hex. Also carried here (not just as the dictionary key) so every read site can still
-            // get back to it without a reverse lookup.
-            public int ArmyId;
-            // No longer the dictionary key (see ArmyId above) — now just this sighting's own last-
-            // observed position, read the same way everywhere a caller needs "where was this
-            // recorded".
-            public HexCoord Hex;
-            public PlayerSetupData Owner;
-            public string Name;
-            public int MemberCount;
-            public float DefenseSum;
-            public float AttackSum;
-            public List<WorthIt.DefenderProfile> Defenders;
-            // The army's commander (ArmyData.Commander) as observed — public battle information.
-            // Absent when the army has no hero or its commander is hidden from the observer.
-            public WorthIt.SideCommander Commander;
-            // True if any member observed in this sighting carries an AntiAirRules-recognized AA
-            // ability — retained as an observed tactical capability. Strategic aviation route
-            // selection does not read it. A hidden army's AA remains unknown under fog of war.
-            public bool HasAntiAir;
-            // The global turn (see _currentTurn/OnTurnStarted below) this sighting was last
-            // actually (re)observed — drives expiry in ExpireStaleSightings. Stamped, not left at
-            // its default, even for a sighting recorded before the very first OnTurnStarted call
-            // (initial army placement) — that default (0) is exactly right, since turn numbering
-            // itself starts at 1 (see GameTurnController.TurnNumber).
-            public int SeenTurn;
-            // Best Recce radius / spot strength observed among this sighting's VISIBLE members
-            // (2026-08-27, стелс §2) — lets VisitHexTask.ScoreCandidate apply its hidden-scout
-            // detection-risk penalty only where this army could ACTUALLY roll a stealth
-            // challenge (co-located, or adjacent with radius>0 AND spot>0 — mirrors
-            // StealthSystem.SourcePool), instead of penalising every enemy army within
-            // scoutFleeRadius regardless of whether it can see stealth at all. Same "видимость с
-            // памятью" honesty rule as every other field here — a hidden member's own Recce is
-            // simply unknown.
-            public int RecceRadius;
-            public int RecceSpotStrength;
-            // True for a building-bound garrison army (ArmyData.IsGarrison, observed fact). A
-            // garrison is part of its structure's defence, not a roaming force: it never expires by
-            // elapsed turns (see OnTurnStarted) and is corrected only by re-observing its hex, the
-            // same "видимость с памятью" rule neutral sightings and KnownBuildings follow.
-            public bool IsGarrison;
-            public bool IsAir;
-            public int MaxMovement;
-        }
-
-        public readonly struct KnownEnemySighting
-        {
-            // The sighted army's stable ArmyData.Id — carried through from the internal
-            // EnemySighting (which is keyed by it). Lets a consumer track one physical army across
-            // moves: Strategy V2's AiReconMemory keys its longer observation history by this so a
-            // stale last-known position is matched to the SAME army, not to a hex the army left.
-            public readonly int ArmyId;
-            public readonly HexCoord Hex;
-            public readonly PlayerSetupData Owner;
-            public readonly string Name;
-            public readonly int MemberCount;
-            public readonly float DefenseSum;
-            public readonly float AttackSum;
-            public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
-            public readonly bool HasAntiAir;
-            // Best Recce radius / spot strength among the sighting's visible members (стелс §2) —
-            // see EnemySighting.RecceRadius' own comment. 0/0 for an army with no Recce at all.
-            public readonly int RecceRadius;
-            public readonly int RecceSpotStrength;
-            // The global turn this sighting was last actually (re)observed — carried through from
-            // EnemySighting.SeenTurn (see its own comment). Lets a consumer age a last-known
-            // position: ThreatModel can age honest last-known observations by
-            // (currentTurn - SeenTurn). 0 for a sighting recorded before the first OnTurnStarted
-            // (initial placement) — turn numbering starts at 1, so that default reads as "very old".
-            public readonly int SeenTurn;
-            // Building-bound garrison (see EnemySighting.IsGarrison). Consumers that model a
-            // roaming threat skip it; consumers that price a site's defender package keep it.
-            public readonly bool IsGarrison;
-            public readonly bool IsAir;
-            public readonly int MaxMovement;
-            // The observed commander (see EnemySighting.Commander).
-            public readonly WorthIt.SideCommander Commander;
-
-            public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, string name, int memberCount, float defenseSum, float attackSum,
-                IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false, int recceRadius = 0, int recceSpotStrength = 0,
-                int seenTurn = 0, int armyId = 0, bool isGarrison = false,
-                WorthIt.SideCommander commander = default, bool isAir = false, int maxMovement = 1)
-            {
-                IsAir = isAir;
-                MaxMovement = System.Math.Max(1, maxMovement);
-                IsGarrison = isGarrison;
-                Commander = commander;
-                ArmyId = armyId;
-                Hex = hex;
-                Owner = owner;
-                Name = name;
-                MemberCount = memberCount;
-                DefenseSum = defenseSum;
-                AttackSum = attackSum;
-                Defenders = defenders == null ? null : System.Array.AsReadOnly(defenders.ToArray());
-                HasAntiAir = hasAntiAir;
-                RecceRadius = recceRadius;
-                RecceSpotStrength = recceSpotStrength;
-                SeenTurn = seenTurn;
-            }
-
-            // Could this remembered army actually roll a stealth-detection challenge against a
-            // hidden unit standing on `hex`? Mirrors StealthSystem.SourcePool: co-located →
-            // always (pool ≥ 1); exactly adjacent → only with radius>0 AND spot>0 (an r1s0
-            // source reveals the hex but never detects stealth); 2+ hexes → never.
-            public bool CanDetectStealthAt(HexCoord hex)
-            {
-                int dist = HexGridMath.Distance(Hex, hex);
-                if (dist == 0)
-                    return true;
-                if (dist == 1)
-                    return RecceRadius > 0 && RecceSpotStrength > 0;
-                return false;
-            }
-
-            // THE change rule of a remembered sighting, read by memory updates and by snapshot
-            // observation alike: every field a decision reads, the roster by content. Keep it in
-            // step with the field list above.
-            public bool SameContent(KnownEnemySighting o) =>
-                ArmyId == o.ArmyId && Hex.Equals(o.Hex) && Owner == o.Owner && Name == o.Name
-                && MemberCount == o.MemberCount && DefenseSum == o.DefenseSum && AttackSum == o.AttackSum
-                && HasAntiAir == o.HasAntiAir && SeenTurn == o.SeenTurn
-                && RecceRadius == o.RecceRadius && RecceSpotStrength == o.RecceSpotStrength
-                && IsGarrison == o.IsGarrison && IsAir == o.IsAir && MaxMovement == o.MaxMovement
-                && Commander.Equals(o.Commander)
-                && WorthIt.DefenderProfile.SameContent(Defenders, o.Defenders);
-        }
-
-        // Aggregate Attack/Defense sums plus the per-unit DefenderProfile list WorthIt.CanDamageAll
-        // needs for its coverage check (see that method's own comment) — shared shape for both a
-        // Hex Event's card-stat guard (KnownEventGuards below) and a physical army sighting
-        // (EnemySighting above reuses the same three numbers/list, just not through this struct
-        // directly since it's already its own class). `Name` — the sighted army's own ArmyData.Name,
-        // or a Hex Event guard's own HexEventRegistry.Entry.GuardArmyName; never a per-unit read (see
-        // DefenderProfile's own comment — this file only ever remembers the OTHER side as an
-        // aggregate), added 2026-08-22 purely for AiAggressionPlanner's own "not enough force" log
-        // line (project owner's own report) to name the target instead of just its numbers.
-        public readonly struct GuardStrength
-        {
-            public readonly float Defense;
-            public readonly float Attack;
-            public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
-            public readonly string Name;
-            // The guard's commander: its first hero card, if the guard has one.
-            public readonly WorthIt.SideCommander Commander;
-            // Hex Event guards only: the authored guard tier (HexEventGuardEstimate.RewardTier,
-            // light 0 / medium 1 / heavy 2), which carries the event's reward tier; -1 unknown.
-            public readonly int RewardTier;
-
-            public GuardStrength(float defense, float attack, IReadOnlyList<WorthIt.DefenderProfile> defenders, string name = null,
-                WorthIt.SideCommander commander = default, int rewardTier = -1)
-            {
-                Commander = commander;
-                RewardTier = rewardTier;
-                Defense = defense;
-                Attack = attack;
-                Defenders = defenders == null ? null : System.Array.AsReadOnly(defenders.ToArray());
-                Name = name;
-            }
-        }
-
-        // Full effective resource line last observed while the hex was genuinely visible.  The
-        // dominant type is retained only for legacy display/prioritisation callers; Economy V2
-        // consumes Yield directly and must never reconstruct hidden quantities from the live map.
-        public readonly struct KnownResourceHex
-        {
-            public readonly HexCoord Hex;
-            public readonly ResourceType DominantType;
-            public readonly ResourceYields Yield;
-
-            public KnownResourceHex(HexCoord hex, ResourceType dominantType, ResourceYields yield)
-            {
-                Hex = hex;
-                DominantType = dominantType;
-                // Own the observation instead of retaining a terrain/bonus object's mutable
-                // ResourceYields reference.
-                Yield = new ResourceYields
-                {
-                    human = yield?.human ?? 0,
-                    energy = yield?.energy ?? 0,
-                    materials = yield?.materials ?? 0,
-                    tech = yield?.tech ?? 0,
-                };
-            }
-        }
-
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, KnownResourceHex>> KnownResourceHexes =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, KnownResourceHex>>();
-        // Keyed by ArmyData.Id, NOT HexCoord (changed 2026-08-23, project owner's own call — see
-        // EnemySighting.ArmyId's own comment): a hex-keyed store left a moved army's old-hex
-        // sighting orphaned forever (until its own turns-based expiry) alongside a second, fresher
-        // entry at its new hex, and AiDefencePlanner's Active branch had no reason to prefer the
-        // fresher one, so it could march the defender to a stale last-seen position even while the
-        // same army sat plainly visible somewhere else. Keying by the army's own stable identity
-        // means the SAME dictionary slot gets overwritten on every re-sighting, move included, so
-        // there's only ever one live record per physical army.
-        private static readonly Dictionary<PlayerSetupData, Dictionary<int, EnemySighting>> EnemySightings =
-            new Dictionary<PlayerSetupData, Dictionary<int, EnemySighting>>();
+        // Keyed by ArmyData.Id, NOT HexCoord: the same slot is overwritten on every re-sighting,
+        // move included, so there is only ever one live record per physical army.
+        private static readonly Dictionary<PlayerSetupData, Dictionary<int, KnownEnemySighting>> EnemySightings =
+            new Dictionary<PlayerSetupData, Dictionary<int, KnownEnemySighting>>();
         // 2026-10-21 (playtest Vex/Mordak) — field armies this player SAW destroyed (a battle it
         // fought or watched, a retreat with no way out). Vex wiped Mud Crawl #33 at T20, yet the
         // Recon history kept it as a threat drifting toward its Citadel until T22 and called a
@@ -293,152 +49,25 @@ namespace Game.Ai
         // at once; Recon looks there for the saboteur that is still standing on the ruin.
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> LostStructures =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
-        // HexCoord -> guard's own card-stat strength, for every Hex Event this player has ever
-        // SEEN while it still had an unconsumed guard — Агрессия's own "known event with guard"
-        // half of RaidWeakerArmyTask's target pool (see that class's own FindTarget). Same
-        // "видимость с памятью" honesty rule as everything else here: a hex only enters this once
-        // personally encountered (HexEventRegistry.MarkDiscovered) AND still active AND it carries a real guard
-        // (an unguarded event is never a combat target, nothing to remember here for it).
+        // The guard of every Hex Event this player met in person (HexEventRegistry.MarkDiscovered)
+        // while it is still active and really guarded. An unguarded event has no entry here.
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>> KnownEventGuards =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>>();
-
-        // What a player knows about each Hex Event it has PERSONALLY encountered (its own ground
-        // army got the Explore/Skip choice - HexEventRegistry.MarkDiscovered); true = confirmed
+        // What a player knows about each Hex Event it has PERSONALLY encountered; true = confirmed
         // completed. Absent = unknown: being in vision range never adds a hex here, and a missing
         // guard entry in KnownEventGuards is NOT proof of completion (the event may be unguarded).
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, bool>> KnownEventCompleted =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, bool>>();
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, KnownBuilding>> KnownBuildings =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, KnownBuilding>>();
+        // Opponent starting-Citadel coordinates this player has already seen empty (see
+        // ObserveBuilding).
+        private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> RefutedStartingCitadels =
+            new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
 
-        public enum KnownEventState { Unknown, Active, Completed }
-
-        public static KnownEventState KnownEventStateAt(PlayerSetupData actor, HexCoord hex) =>
-            actor != null && KnownEventCompleted.TryGetValue(actor, out Dictionary<HexCoord, bool> states)
-                && states.TryGetValue(hex, out bool completed)
-                ? (completed ? KnownEventState.Completed : KnownEventState.Active)
-                : KnownEventState.Unknown;
-
-        // Every hex whose event this player knows to be active (guarded or not) / confirmed done.
-        public static IEnumerable<HexCoord> KnownEventHexes(PlayerSetupData actor, bool completed) =>
-            actor != null && KnownEventCompleted.TryGetValue(actor, out Dictionary<HexCoord, bool> states)
-                ? states.Where(kv => kv.Value == completed).Select(kv => kv.Key)
-                : Enumerable.Empty<HexCoord>();
-
-        // Per-hex last-observed building snapshot (2026-08-24, "память тумана войны не
-        // соответствует правилам 3.1–3.2" fix, section 3.2 — project owner's own report) — RaidWeaker
-        // ArmyTask used to read BuildingRegistry.FindAt/AllBuildings LIVE for every OTHER player's
-        // buildings, so an enemy building's true current owner (captured/destroyed/rebuilt by
-        // anyone, anywhere, any time) was always instantly known regardless of whether this actor
-        // had ever looked at that hex again since. Same "видимость с памятью" rule as
-        // KnownResourceHexes/EnemySightings above — a hex only enters (or gets corrected in) this
-        // dictionary once actually VISIBLE, and stays exactly as last observed forever after,
-        // never auto-expired.
-        private class BuildingSighting
-        {
-            public IReadOnlyList<WorthIt.DefenderProfile> ExplosionStructures;
-            public HexCoord Hex;
-            public PlayerSetupData Owner;
-            public bool IsStartingCitadel;
-            public bool IsBase;
-            // Union of every placed Facility's own Abilities, as of this sighting (e.g.
-            // UnitAbilities.CollectHuman/Energy/Materials/Tech) — ResourcesScrapTask.
-            // HasExtractionFacility's own memory-based read (2026-08-24 fix). A facility's own
-            // ability set is fixed once placed (never changes independent of a real, observable
-            // world event — an upgrade still keeps the same ability, just a higher UpgradeLevel
-            // this snapshot doesn't need), so this stays honestly "as last observed" the same way
-            // Owner/IsStartingCitadel already do.
-            // T08 — OWN buildings only: a foreign base's facility cards are internal slot contents
-            // no AI task may know (not targets, not monitoring, not economic reads). Null for a
-            // building another player owned when observed.
-            public HashSet<string> FacilityAbilities;
-            // Last-observed physical collection of the hex's resources by this structure — an
-            // observed aggregate EFFECT on the hex, kept for every owner (opponent income floor,
-            // remaining yield at a site), never a list of the cards behind it. The player sees
-            // this per-hex collection on a foreign building in the UI (owner decision, T08), so
-            // it is honest observation, not facility-card knowledge. Four entries,
-            // indexed by ResourceType.
-            public int[] CollectedAmounts;
-            // Last-observed unlocked empty slot count — OWN buildings only (T08); 0 for a foreign
-            // one, whose slot vacancies are internal. Unlike TotalFacilitySlots this is the
-            // authoritative answer to whether another Facility could actually be placed now.
-            public int FreeFacilitySlots;
-            // FIX-05 (2026-09-22) — the building's own last-observed Defense stat. Only a Base
-            // actually contributes it to a fight (see WorthIt.HexDefenseBonus and
-            // BattleScreenUI.Combat.cs's own gate), but it is stored unconditionally: what was
-            // observed is what is remembered, and the "is it a Base" question is IsBase's.
-            // Exists because AI code asking "how well defended is that hex" used to call
-            // WorthIt.HexDefenseBonus, which reads BuildingRegistry LIVE — so a base upgraded,
-            // captured or razed deep in the fog changed an AI estimate with no observation behind
-            // it. Same honesty rule as every other field here: written only for a hex this player
-            // can genuinely see right now, then frozen until that same hex is re-observed.
-            public float Defense;
-            // ATK §66 — the global game turn this sighting was last written (same _currentTurn
-            // stamp EnemySighting.SeenTurn already uses). A structure's LOCATION never expires
-            // here; this only lets a consumer tell a fresh observation apart from a remembered one
-            // whose owner/defence/facility data may long since have changed in the fog, so
-            // TaskScore.Staleness can price structural intel age instead of every caller inventing
-            // its own age model. Never auto-expired in this class.
-            public int SeenTurn;
-        }
-
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, BuildingSighting>> KnownBuildings =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, BuildingSighting>>();
-
-        public readonly struct KnownBuilding
-        {
-            public readonly IReadOnlyList<WorthIt.DefenderProfile> ExplosionStructures;
-            public readonly HexCoord Hex;
-            public readonly PlayerSetupData Owner;
-            public readonly bool IsStartingCitadel;
-            public readonly bool IsBase;
-            public readonly IReadOnlyCollection<string> FacilityAbilities;
-            public readonly IReadOnlyList<int> CollectedAmounts;
-            public readonly int FreeFacilitySlots;
-            // FIX-05 — last-observed Defense stat (see BuildingSighting.Defense).
-            public readonly float Defense;
-            // ATK §66 — see BuildingSighting.SeenTurn. 0 means "never stamped" (a synthesised
-            // record in a test, or memory written before this field existed), which callers must
-            // read as "age unknown", never as "observed on turn 0".
-            public readonly int SeenTurn;
-
-            public KnownBuilding(HexCoord hex, PlayerSetupData owner, bool isStartingCitadel,
-                IReadOnlyCollection<string> facilityAbilities,
-                IReadOnlyList<int> collectedAmounts = null, int freeFacilitySlots = int.MaxValue,
-                bool isBase = false, float defense = 0f, int seenTurn = 0,
-                IReadOnlyList<WorthIt.DefenderProfile> explosionStructures = null)
-            {
-                ExplosionStructures = System.Array.AsReadOnly((explosionStructures
-                    ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToArray());
-                Defense = defense;
-                SeenTurn = seenTurn;
-                Hex = hex;
-                Owner = owner;
-                IsStartingCitadel = isStartingCitadel;
-                IsBase = isBase;
-                FacilityAbilities = facilityAbilities;
-                CollectedAmounts = collectedAmounts;
-                FreeFacilitySlots = freeFacilitySlots;
-            }
-
-            public bool HasFacilityWithAbility(string ability) =>
-                FacilityAbilities != null && FacilityAbilities.Contains(ability);
-
-            public int CollectedAmount(ResourceType type)
-            {
-                int index = (int)type;
-                return CollectedAmounts != null && index >= 0 && index < CollectedAmounts.Count
-                    ? System.Math.Max(0, CollectedAmounts[index])
-                    : 0;
-            }
-        }
-
-        // A recorded scout retreat (VisitHexTask.TryFlee) — deliberately OUTLIVES the
-        // EnemySighting that triggered it (enemySightingMemoryTurns is only 2 turns; a scout that
-        // retreats home and stops observing the threat lets that sighting go stale well before the
-        // enemy army has actually moved on, so relying on sighting memory alone had the scout walk
-        // straight back into the same still-there army every few turns — project owner's own
-        // 2026-08-24 report). One zone per triggering sighting hex, not per scout — any scout
-        // (this player's own) approaching the same area is turned away, not just the one that first
-        // found it.
+        // A recorded scout retreat zone around a threat's hex — deliberately OUTLIVES the sighting
+        // that triggered it (enemySightingMemoryTurns is only 2 turns). One zone per center; any of
+        // this player's scouts is turned away from it until AvoidUntilTurn.
         private class ScoutDangerZone
         {
             public HexCoord Center;
@@ -451,13 +80,35 @@ namespace Game.Ai
 
         private static bool _subscribed;
         private static HexMap _map;
-        public static bool GroundTerrainBlocked(HexCoord hex) => _map != null && !_map.CanEnter(hex);
-        // Global game turn (GameTurnController.TurnNumber, same one AiTurnContext.TurnNumber
-        // snapshots) as of the most recent OnTurnStarted call — used only to stamp/expire
-        // EnemySighting.SeenTurn (see that field's own comment). Not a live reference, just a
-        // plain int updated once per AI player's own turn, same shape as AiTurnContext.TurnNumber
-        // itself.
+        // Global game turn as of the most recent OnTurnStarted — stamps SeenTurn of new records.
         private static int _currentTurn;
+
+        public static bool GroundTerrainBlocked(HexCoord hex) => _map != null && !_map.CanEnter(hex);
+
+        private static Dictionary<TKey, TValue> StoreFor<TKey, TValue>(
+            Dictionary<PlayerSetupData, Dictionary<TKey, TValue>> stores, PlayerSetupData player)
+        {
+            if (!stores.TryGetValue(player, out Dictionary<TKey, TValue> store))
+                stores[player] = store = new Dictionary<TKey, TValue>();
+            return store;
+        }
+
+        private static bool TryStore<TKey, TValue>(Dictionary<PlayerSetupData, Dictionary<TKey, TValue>> stores,
+            PlayerSetupData player, out Dictionary<TKey, TValue> store)
+        {
+            store = null;
+            return player != null && stores.TryGetValue(player, out store);
+        }
+
+        private static IEnumerable<PlayerSetupData> SessionPlayers() =>
+            Game.Core.GameSession.Players ?? Enumerable.Empty<PlayerSetupData>();
+
+        // The memory layer classifies ownerless physical encounter armies with explicit neutrals;
+        // Raid legality remains owned by RaidObjectiveEvaluator in V2, never called upward here.
+        private static bool IsNeutralSightingOwner(PlayerSetupData owner) =>
+            owner == null || owner.IsNeutral;
+
+        // ---- Revisions ----
 
         // Player-scoped revision of exactly the memory that can change SafeStepPathing blockers.
         // One player's observation must never invalidate another player's route cache. The high
@@ -504,6 +155,14 @@ namespace Game.Ai
             KnowledgeVersions[player] = KnowledgeVersionFor(player) + 1;
         }
 
+        private static void BumpRouteAndKnowledge(PlayerSetupData player)
+        {
+            BumpRouteMemoryVersion(player);
+            BumpKnowledgeVersion(player);
+        }
+
+        // ---- Subscriptions ----
+
         // Idempotent — safe to call every new-game setup without risking a doubled subscription
         // (see CitadelSetupController, which calls this right after VisionSystem.Configure).
         public static void EnsureSubscribed(HexMap map = null)
@@ -523,10 +182,7 @@ namespace Game.Ai
             // so a now-hidden enemy drops out of current sightings and a freshly-revealed one
             // enters (spec §8: no stale-memory targeting of a unit that's hidden again now).
             StealthSystem.StealthChanged += OnStealthChanged;
-            // The event's own guard just got beaten for real — only a player CURRENTLY watching
-            // the hex gets its memory corrected right here; everyone else only learns about it by
-            // actually re-observing the hex later (see OnEventConsumed's own comment, 2026-08-24
-            // fix).
+            // The event's own guard just got beaten for real (see OnEventConsumed).
             HexEventRegistry.EventConsumed += OnEventConsumed;
             // The only way an event enters memory: this player's own ground army met it.
             HexEventRegistry.EventDiscovered += OnEventDiscovered;
@@ -538,13 +194,43 @@ namespace Game.Ai
             _subscribed = true;
         }
 
+        // VisionSystem emits this only when visible/visited sets change. A newly visited empty
+        // hex must refresh MapKnowledge even when object memory and this turn's IntelAge match.
+        private static void OnVisionStateChanged(PlayerSetupData player)
+        {
+            BumpKnowledgeVersion(player);
+            OnVisibilityChanged(player);
+        }
+
+        // Content changed under an already-visible hex (arrival, departure, capture) — separate
+        // from a vision-radius change, so the snapshot does not rerun on every animation step
+        // whose reveal area stayed identical.
+        private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
+        {
+            OnVisibilityChanged(player);
+        }
+
+        private static void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
+        {
+            // VisualStateChanged is deliberately emitted before BuildingRegistry recomputes the
+            // old/new owners' vision. Only players whose CURRENT pre-change visibility includes
+            // this hex receive the memory write; players out of sight learn nothing.
+            foreach (PlayerSetupData player in SessionPlayers())
+                if (player != null && VisionSystem.IsVisible(player, hex))
+                    OnVisibleContentChanged(player, hex);
+        }
+
+        private static void OnStealthChanged()
+        {
+            foreach (PlayerSetupData player in SessionPlayers())
+                OnVisibilityChanged(player);
+        }
+
         private static void OnStructureLost(HexCoord hex, PlayerSetupData formerOwner)
         {
             if (formerOwner == null)
                 return;
-            if (!LostStructures.TryGetValue(formerOwner, out Dictionary<HexCoord, int> lost))
-                LostStructures[formerOwner] = lost = new Dictionary<HexCoord, int>();
-            lost[hex] = _currentTurn;
+            StoreFor(LostStructures, formerOwner)[hex] = _currentTurn;
             BumpKnowledgeVersion(formerOwner);
         }
 
@@ -554,7 +240,7 @@ namespace Game.Ai
             out HexCoord hex)
         {
             hex = default;
-            if (player == null || !LostStructures.TryGetValue(player, out Dictionary<HexCoord, int> lost))
+            if (!TryStore(LostStructures, player, out Dictionary<HexCoord, int> lost))
                 return false;
             bool found = false;
             int bestTurn = int.MinValue;
@@ -601,7 +287,7 @@ namespace Game.Ai
         {
             if (army.IsGarrison || army.Owner == null)
                 return;
-            foreach (PlayerSetupData player in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
+            foreach (PlayerSetupData player in SessionPlayers())
             {
                 if (player == null || player == army.Owner)
                     continue;
@@ -613,10 +299,8 @@ namespace Game.Ai
                     WitnessedDestroyedArmies[player] = ids = new HashSet<int>();
                 if (!ids.Add(army.Id))
                     continue;
-                bool removed = EnemySightings.TryGetValue(player, out Dictionary<int, EnemySighting> sightings)
-                    && sightings.Remove(army.Id);
-                removed |= AirSightings.TryGetValue(player, out Dictionary<int, KnownAirSighting> air)
-                    && air.Remove(army.Id);
+                bool removed = TryStore(EnemySightings, player, out var sightings) && sightings.Remove(army.Id);
+                removed |= TryStore(AirSightings, player, out var air) && air.Remove(army.Id);
                 AiDebugLog.Write($"[AI] {player.Nickname}: memory - army \"{army.Name}\" id={army.Id} "
                     + $"seen destroyed at ({hex.Q},{hex.R}); forgotten as a contact.");
                 if (removed)
@@ -624,42 +308,6 @@ namespace Game.Ai
                 BumpKnowledgeVersion(player);
             }
         }
-
-        // Content changed under an already-visible hex (arrival, departure, capture). This is
-        // intentionally separate from a vision-radius change; the existing snapshot routine is
-        // kept as the single source of truth, but no longer runs on every animation step whose
-        // reveal area stayed identical.
-        // VisionSystem emits this only when visible/visited sets change. A newly visited empty
-        // hex must refresh MapKnowledge even when object memory and this turn's IntelAge match.
-        private static void OnVisionStateChanged(PlayerSetupData player)
-        {
-            BumpKnowledgeVersion(player);
-            OnVisibilityChanged(player);
-        }
-
-        private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
-        {
-            OnVisibilityChanged(player);
-        }
-
-        private static void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
-        {
-            // VisualStateChanged is deliberately emitted before BuildingRegistry recomputes the
-            // old/new owners' vision. Only players whose CURRENT pre-change visibility includes
-            // this hex receive the memory write; players out of sight learn nothing.
-            foreach (PlayerSetupData player in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
-                if (player != null && VisionSystem.IsVisible(player, hex))
-                    OnVisibleContentChanged(player, hex);
-        }
-
-        private static void OnStealthChanged()
-        {
-            foreach (PlayerSetupData player in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
-                OnVisibilityChanged(player);
-        }
-
-        private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> RefutedStartingCitadels =
-            new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
 
         private static HashSet<HexCoord> RefutedStartingCitadelsFor(PlayerSetupData player)
         {
@@ -670,11 +318,13 @@ namespace Game.Ai
 
         private static bool IsOpponentStartingCitadel(PlayerSetupData player, HexCoord hex)
         {
-            foreach (PlayerSetupData p in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
+            foreach (PlayerSetupData p in SessionPlayers())
                 if (p != null && p != player && p.CitadelHexQ == hex.Q && p.CitadelHexR == hex.R)
                     return true;
             return false;
         }
+
+        // ---- Lifecycle ----
 
         public static void Clear()
         {
@@ -701,88 +351,54 @@ namespace Game.Ai
             _routeMemoryEpoch++;
         }
 
-        // The memory layer classifies ownerless physical encounter armies with explicit neutrals;
-        // Raid legality remains owned by RaidObjectiveEvaluator in V2, never called upward here.
-        private static bool IsNeutralSightingOwner(PlayerSetupData owner) =>
-            owner == null || owner.IsNeutral;
-
-        // Called once, right at the top of AiTurnController.RunTurn, before that turn's own
-        // Decide loop ever reads memory — stamps _currentTurn for every EnemySighting recorded
-        // from this point on (OnVisibilityChanged below) AND expires `actor`'s own enemy-army
-        // sightings last (re)observed more than AiConfig.enemySightingMemoryTurns turns ago (see
-        // that field's own comment — resource hexes/event guards are NOT touched here, both stay
-        // permanent-until-corrected). Scoped to `actor` alone rather than sweeping every player's
-        // memory at once — this only ever needs to be accurate for the player whose own Decide
-        // loop is about to read it; every other player's memory gets swept the same way at the
-        // top of their own next RunTurn instead.
+        // Called at the top of AiTurnController.RunTurn, before the turn reads memory: stamps
+        // _currentTurn for every record written from now on and expires `actor`'s own roaming
+        // player-owned army sightings last (re)observed more than AiConfig.enemySightingMemoryTurns
+        // turns ago, plus its expired scout danger zones. Scoped to `actor` alone — every other
+        // player's memory is swept the same way at the top of its own turn.
         public static void OnTurnStarted(PlayerSetupData actor, int turnNumber)
         {
             _currentTurn = turnNumber;
             if (actor == null)
                 return;
 
-            if (EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
+            if (EnemySightings.TryGetValue(actor, out Dictionary<int, KnownEnemySighting> sightings))
             {
-                List<int> stale = null;
-                foreach (KeyValuePair<int, EnemySighting> kv in sightings)
+                // A physical NEUTRAL army never expires by elapsed turns: it stays as last observed
+                // until its hex is re-observed ("узнаёт об уничтожении только после повторного
+                // наблюдения"). A player-owned GARRISON is building-bound: elapsed turns are no
+                // evidence it is gone, and expiring it turned "not re-looked at" into "undefended"
+                // for every site-defender read (2026-09-25 audit F1).
+                List<int> stale = sightings
+                    .Where(kv => !IsNeutralSightingOwner(kv.Value.Owner) && !kv.Value.IsGarrison
+                        && turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
+                    .Select(kv => kv.Key).ToList();
+                foreach (int armyId in stale)
                 {
-                    // Physical NEUTRAL armies never expire by elapsed turns (2026-08-24, "память
-                    // тумана войны не соответствует правилам 3.1–3.2" fix, section 3.1 — project
-                    // owner's own report): only a player-owned sighting is time-bounded here.
-                    // A neutral sighting instead stays exactly as last observed until this same
-                    // hex is actually re-observed (OnVisibilityChanged's own stale-removal/
-                    // overwrite logic below already handles that correction honestly — a hex seen
-                    // empty now clears it, a different army seen there overwrites it), matching
-                    // "узнаёт об уничтожении только после повторного наблюдения" rather than
-                    // silently forgetting a still-real neutral garrison just because nobody's
-                    // looked at it in enemySightingMemoryTurns turns.
-                    if (IsNeutralSightingOwner(kv.Value.Owner))
-                        continue;
-                    // A player-owned GARRISON is building-bound: it cannot walk away, so elapsed
-                    // turns are no evidence it is gone. Expiring it turned "not re-looked at" into
-                    // "undefended" for every site-defender read (Attack objective, 2026-09-25 audit
-                    // F1). Re-observation of its hex still corrects it (OnVisibilityChanged).
-                    if (kv.Value.IsGarrison)
-                        continue;
-                    if (turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
-                        (stale ?? (stale = new List<int>())).Add(kv.Key);
+                    KnownEnemySighting s = sightings[armyId];
+                    AiDebugLog.Write($"[AI] {actor.Nickname}: memory - army sighting \"{s.Name}\" "
+                        + $"at ({s.Hex.Q},{s.Hex.R}) expired after {AiConfig.enemySightingMemoryTurns} turns.");
+                    sightings.Remove(armyId);
                 }
-                if (stale != null)
-                {
-                    foreach (int armyId in stale)
-                    {
-                        AiDebugLog.Write($"[AI] {actor.Nickname}: memory - army sighting \"{sightings[armyId].Name}\" "
-                            + $"at ({sightings[armyId].Hex.Q},{sightings[armyId].Hex.R}) expired after "
-                            + $"{AiConfig.enemySightingMemoryTurns} turns.");
-                        sightings.Remove(armyId);
-                    }
-                    BumpRouteMemoryVersion(actor);
-                    BumpKnowledgeVersion(actor);
-                }
+                if (stale.Count > 0)
+                    BumpRouteAndKnowledge(actor);
             }
 
             if (ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
                 && zones.RemoveAll(z => turnNumber > z.AvoidUntilTurn) > 0)
-            {
-                BumpRouteMemoryVersion(actor);
-                BumpKnowledgeVersion(actor);
-            }
+                BumpRouteAndKnowledge(actor);
         }
 
-        // Called by VisitHexTask.TryFlee the moment a retreat actually triggers — `center` is the
-        // triggering sighting's own hex (not the fleeing scout's), so the zone sits on the actual
-        // threat regardless of which direction a scout approached it. Repeated calls for a
-        // center already inside an existing zone just extend that zone's own AvoidUntilTurn rather
-        // than piling up duplicate overlapping entries.
+        // ---- Scout danger zones ----
+
+        // `center` is the triggering threat's own hex (not the fleeing scout's). A center already
+        // marked just takes the new radius and extends its AvoidUntilTurn.
         public static void MarkScoutDanger(PlayerSetupData actor, HexCoord center, int radius, int avoidUntilTurn)
         {
             if (actor == null)
                 return;
             if (!ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
-            {
-                zones = new List<ScoutDangerZone>();
-                ScoutDangerZones[actor] = zones;
-            }
+                ScoutDangerZones[actor] = zones = new List<ScoutDangerZone>();
 
             ScoutDangerZone existing = zones.Find(z => z.Center.Equals(center));
             if (existing != null)
@@ -790,775 +406,32 @@ namespace Game.Ai
                 existing.Radius = radius;
                 if (avoidUntilTurn > existing.AvoidUntilTurn)
                     existing.AvoidUntilTurn = avoidUntilTurn;
-                BumpRouteMemoryVersion(actor);
-                BumpKnowledgeVersion(actor);
-                return;
             }
-            zones.Add(new ScoutDangerZone { Center = center, Radius = radius, AvoidUntilTurn = avoidUntilTurn });
-            BumpRouteMemoryVersion(actor);
-            BumpKnowledgeVersion(actor);
+            else
+                zones.Add(new ScoutDangerZone { Center = center, Radius = radius, AvoidUntilTurn = avoidUntilTurn });
+            BumpRouteAndKnowledge(actor);
         }
 
-        // VisitHexTask's own FindTarget/FindNextSafeStep read this to keep a Recce scout out of a
-        // recently-fled-from area even after the EnemySighting that first triggered the retreat has
-        // gone stale (see ScoutDangerZones' own comment) — cooldown-bounded, not permanent, so the
-        // sector opens back up once AvoidUntilTurn passes (OnTurnStarted purges it above).
         public static bool IsScoutDangerous(PlayerSetupData actor, HexCoord hex)
         {
-            if (!ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
+            if (actor == null || !ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
                 return false;
-            // Plain loop, not zones.Any(z => ...) — that lambda captures `hex` fresh on every
-            // call (a new closure allocation each time) and List<T>.Any boxes its enumerator
-            // when resolved through IEnumerable<T>. Called per-hex by SafeStepPathing's own
-            // blocker snapshot, so both costs were multiplying by map size.
+            // Plain loop: called per hex by SafeStepPathing's blocker snapshot, so a capturing
+            // lambda or a boxed enumerator would multiply by map size.
             for (int i = 0; i < zones.Count; i++)
                 if (HexGridMath.Distance(zones[i].Center, hex) <= zones[i].Radius)
                     return true;
             return false;
         }
 
-        // Every scout-danger zone this player currently has, as a cheap (center, radius) pair —
-        // SafeStepPathing's blocker snapshot expands just these (bounded by zone radius) instead
-        // of calling IsScoutDangerous once per hex on the WHOLE map, which cost O(map size ×
-        // zone count) plus one allocation per call for no reason when zones are typically few
-        // and small.
+        // Every zone as a cheap (center, radius) pair — SafeStepPathing's blocker snapshot expands
+        // just these instead of asking IsScoutDangerous for every hex of the map.
         public static IEnumerable<(HexCoord Center, int Radius)> ScoutDangerZoneRanges(PlayerSetupData actor)
         {
-            if (!ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
+            if (actor == null || !ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
                 yield break;
             foreach (ScoutDangerZone zone in zones)
                 yield return (zone.Center, zone.Radius);
-        }
-
-        private static bool SameEnemySighting(EnemySighting a, EnemySighting b) =>
-            a == null || b == null ? a == b : Known(a).SameContent(Known(b));
-
-        private static bool SameGuardStrength(GuardStrength a, GuardStrength b) =>
-            a.Defense == b.Defense && a.Attack == b.Attack && a.Name == b.Name
-            && a.Commander.Equals(b.Commander) && WorthIt.DefenderProfile.SameContent(a.Defenders, b.Defenders);
-
-        private static bool SameBuildingSighting(BuildingSighting a, BuildingSighting b)
-        {
-            if (a == null || b == null) return a == b;
-            return a.Hex.Equals(b.Hex) && a.Owner == b.Owner
-                && a.IsStartingCitadel == b.IsStartingCitadel && a.IsBase == b.IsBase
-                && a.Defense == b.Defense && a.SeenTurn == b.SeenTurn
-                && a.FreeFacilitySlots == b.FreeFacilitySlots
-                && WorthIt.DefenderProfile.SameContent(a.ExplosionStructures, b.ExplosionStructures)
-                && (a.FacilityAbilities ?? new HashSet<string>())
-                    .SetEquals(b.FacilityAbilities ?? new HashSet<string>())
-                && (a.CollectedAmounts ?? System.Array.Empty<int>())
-                    .SequenceEqual(b.CollectedAmounts ?? System.Array.Empty<int>());
-        }
-
-        private static bool SameResourceHex(KnownResourceHex a, KnownResourceHex b) =>
-            a.Hex.Equals(b.Hex) && a.DominantType == b.DominantType
-            && (a.Yield?.human ?? 0) == (b.Yield?.human ?? 0)
-            && (a.Yield?.energy ?? 0) == (b.Yield?.energy ?? 0)
-            && (a.Yield?.materials ?? 0) == (b.Yield?.materials ?? 0)
-            && (a.Yield?.tech ?? 0) == (b.Yield?.tech ?? 0);
-
-#if UNITY_INCLUDE_TESTS
-        internal static void RefreshVisibleForTest(PlayerSetupData player) =>
-            OnVisibilityChanged(player);
-#endif
-
-        private static void OnVisibilityChanged(PlayerSetupData player)
-        {
-            if (player == null)
-                return;
-
-            if (!KnownResourceHexes.TryGetValue(player, out Dictionary<HexCoord, KnownResourceHex> resources))
-            {
-                resources = new Dictionary<HexCoord, KnownResourceHex>();
-                KnownResourceHexes[player] = resources;
-            }
-            if (!EnemySightings.TryGetValue(player, out Dictionary<int, EnemySighting> sightings))
-            {
-                sightings = new Dictionary<int, EnemySighting>();
-                EnemySightings[player] = sightings;
-            }
-            if (!KnownBuildings.TryGetValue(player, out Dictionary<HexCoord, BuildingSighting> buildings))
-            {
-                buildings = new Dictionary<HexCoord, BuildingSighting>();
-                KnownBuildings[player] = buildings;
-            }
-
-            if (!AirSightings.TryGetValue(player, out var airSightings))
-                AirSightings[player] = airSightings = new Dictionary<int, KnownAirSighting>();
-
-            // Route-relevant changes only ever touch `sightings` (KnownResourceHexes/
-            // KnownEventGuards never feed SafeRouteBlocker. KnownBuildings now do: known foreign
-            // structures are blocked for every non-Attack AI movement, so owner/existence changes
-            // participate in RouteMemoryVersion alongside hostile sightings.
-            // Bumping unconditionally here (this runs on EVERY vision recompute, of which a
-            // single AI turn with several moving armies can trigger many) forced SafeStepPathing's
-            // per-owner blocker snapshot to rebuild — an O(map size) scan — on nearly every
-            // pathing call, even when nothing about known hostiles/danger zones had changed.
-            bool sightingsChanged = false;
-            bool buildingsChanged = false;
-            bool eventGuardsChanged = false;
-            bool knowledgeChanged = false;
-            foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
-            {
-                ResourceType? dominant = HexResourceBonusRegistry.DominantResourceType(hex);
-                if (dominant.HasValue && _map != null
-                    && _map.TryGetTerrainAt(hex, out var terrain))
-                {
-                    ResourceYields observed = HexResourceBonusRegistry.EffectiveYield(terrain, hex);
-                    var nextResource = new KnownResourceHex(hex, dominant.Value, observed);
-                    if (!resources.TryGetValue(hex, out KnownResourceHex previousResource)
-                        || !SameResourceHex(previousResource, nextResource))
-                        knowledgeChanged = true;
-                    resources[hex] = nextResource;
-                }
-
-                var observedAirIds = new HashSet<int>();
-                foreach (ArmyData army in AviationCombatPresenter.FindAirStrikeTargetsAt(hex, player))
-                {
-                    var visible = army.Members.Where(u => !StealthSystem.IsHiddenFrom(u, player)).ToList();
-                    var roster = new AviationCombatEstimator.DefendingAirArmy(army.Id,
-                        visible.Select(WorthIt.FromLiveUnit).ToList(),
-                        visible.Select(u => u.IsHero ? u.Fate : 0).ToList(),
-                        visible.IndexOf(army.Commander));
-                    var sighting = new KnownAirSighting(hex, army.Owner, _currentTurn,
-                        BattleInitiator.IsEngageable(army, player), roster);
-                    observedAirIds.Add(army.Id);
-                    if (!airSightings.TryGetValue(army.Id, out var priorAir)
-                        || !SameAirSighting(priorAir, sighting)) knowledgeChanged = true;
-                    airSightings[army.Id] = sighting;
-                }
-                foreach (int id in airSightings.Where(kv => kv.Value.Hex.Equals(hex)
-                    && !observedAirIds.Contains(kv.Key)).Select(kv => kv.Key).ToList())
-                {
-                    airSightings.Remove(id);
-                    knowledgeChanged = true;
-                }
-
-                // A hex can contain several armies (ArmyRegistry's explicit contract). Observe
-                // every engageable physical army independently by ID, but never transient event
-                // guards. Only THIS visible hex is reconciled: fogged sightings stay untouched.
-                // StealthSystem.IsHiddenFrom filters individual roster members as before.
-                List<ArmyData> observedArmies = ArmyRegistry.AllAt(hex)
-                    .Where(a => a.Owner != player && BattleInitiator.IsEngageable(a, player)
-                        && !HexEventRegistry.IsEventGuardArmy(hex, a))
-                    .ToList();
-                var observedIds = new HashSet<int>();
-                foreach (ArmyData enemy in observedArmies)
-                {
-                    observedIds.Add(enemy.Id);
-                    List<UnitData> visibleMembers = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player)).ToList();
-                    List<UnitData> nonHero = visibleMembers.Where(m => m.IsGroundCombatant).ToList();
-                    int visibleMemberCount = visibleMembers.Count;
-                    // Keyed by the army's own stable Id (see EnemySightings' own comment) — if this
-                    // same army was last recorded at a DIFFERENT hex, this overwrites that record in
-                    // place instead of leaving it behind as an orphan under its old Hex.
-                    bool wasKnown = sightings.TryGetValue(enemy.Id, out EnemySighting previous);
-                    if (wasKnown && !previous.Hex.Equals(hex))
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - army \"{enemy.Name}\" id={enemy.Id} relocated "
-                            + $"({previous.Hex.Q},{previous.Hex.R}) → ({hex.Q},{hex.R}).");
-                    else if (IsNeutralSightingOwner(enemy.Owner) && !wasKnown)
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - neutral \"{enemy.Name}\" remembered at ({hex.Q},{hex.R}).");
-                    // Route blockers depend on the known army's hex, not its observed HP,
-                    // roster or observation turn. Keep updating the whole sighting below,
-                    // but invalidate routes only when its presence/position changes.
-                    if (!wasKnown || !previous.Hex.Equals(hex))
-                        sightingsChanged = true;
-                    var nextSighting = new EnemySighting
-                    {
-                        ArmyId = enemy.Id,
-                        // Only visible members supply movement facts. Hidden roster changes are
-                        // never read; the observed budget is a conservative fastest possibility.
-                        IsAir = !enemy.IsGarrison && !enemy.IsAirfield && !enemy.IsPrison
-                            && enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player)).All(m => m.IsAviation),
-                        MaxMovement = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
-                            .Select(Game.Aviation.AviationRules.EffectiveMoveMax).DefaultIfEmpty(1).Min(),
-                        Hex = hex,
-                        Owner = enemy.Owner,
-                        Name = enemy.Name,
-                        MemberCount = visibleMemberCount,
-                        DefenseSum = nonHero.Sum(m => m.Defense),
-                        AttackSum = nonHero.Sum(m => m.Attack),
-                        // Full per-unit snapshot (2026-08-22, project owner's own call: "если мы
-                        // когда-то видели армию значит мы видели её состав и знаем всё о ней кроме
-                        // текущего состояния") — Attack/Initiative alongside Defense/CeramicArmor/
-                        // TypeTags now, so WorthIt's own full-roster Monte Carlo (WinChance's
-                        // DefenderProfile-list overload) can actually play this army out round by
-                        // round instead of only reading its aggregate sums. HitPointsCurrent
-                        // (2026-08-26, air-strike-memory fix — was HitPointsMax): this loop only
-                        // ever runs over a hex `player` can see RIGHT NOW (see the `foreach
-                        // (HexCoord hex in VisionSystem.VisibleHexesFor(player))` above), so the
-                        // damage on it is exactly as real an observed fact as its composition —
-                        // freezing it at last-observed value (never auto-healed, only corrected by
-                        // a later re-observation) matches the same "видимость с памятью" honesty
-                        // rule every other field here already follows for resource hexes/army sightings/event guards.
-                        // Base/field repairs and regeneration become known only on observation.
-                        // Preserve contact targets as well as tactical actors. A lone hero is an
-                        // engageable Capture/Kill target, not an army with an unknown empty roster.
-                        // Combat sums remain body-only; WorthIt owns the actor/target distinction.
-                        Defenders = visibleMembers.Select(WorthIt.FromLiveUnit).ToList(),
-                        // Scanned over the FULL roster (not just nonHero above) — nothing rules out
-                        // a hero carrying an AA ability, and this flag only ever feeds a
-                        // conservative "don't fly recon here" gate, never a combat estimate, so
-                        // it follows the same visibility filter as the stored contact roster.
-                        HasAntiAir = enemy.Members.Any(m => !StealthSystem.IsHiddenFrom(m, player) && AntiAirRules.TryGetRadius(m, out _)),
-                        SeenTurn = _currentTurn,
-                        IsGarrison = enemy.IsGarrison,
-                        Commander = enemy.Commander != null && !StealthSystem.IsHiddenFrom(enemy.Commander, player)
-                            ? WorthIt.SideCommander.Of(visibleMembers) : default,
-                        RecceRadius = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
-                            .Select(m => AbilityParams.GetBestRecceRadius(m)).DefaultIfEmpty(0).Max(),
-                        RecceSpotStrength = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
-                            .Select(m => AbilityParams.GetBestRecceSpotStrength(m)).DefaultIfEmpty(0).Max(),
-                    };
-                    if (!wasKnown || !SameEnemySighting(previous, nextSighting))
-                        knowledgeChanged = true;
-                    sightings[enemy.Id] = nextSighting;
-                }
-
-                // A fresh observation of THIS hex invalidates every old identity no longer
-                // visible here, not merely the first old ID and not an army already re-sighted
-                // somewhere else. This also corrects a replaced or defeated neutral while a
-                // different physical army still occupies the hex. Do not touch fogged hexes.
-                List<int> staleIdsAtHex = sightings
-                    .Where(kv => kv.Value.Hex.Equals(hex) && !observedIds.Contains(kv.Key))
-                    .Select(kv => kv.Key).ToList();
-                foreach (int staleId in staleIdsAtHex)
-                {
-                    EnemySighting stale = sightings[staleId];
-                    if (IsNeutralSightingOwner(stale.Owner))
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - neutral \"{stale.Name}\" at "
-                            + $"({hex.Q},{hex.R}) corrected (gone on re-observation).");
-                    sightings.Remove(staleId);
-                    sightingsChanged = true;
-                    knowledgeChanged = true;
-                }
-
-                // Only an event this player already met in person is re-read (never a merely
-                // visible one) - see ApplyEventKnowledge. A known guard changes whether an otherwise
-                // undefended foreign structure is a safe transit hex (KnownGroundArrival).
-                if (ApplyEventKnowledge(player, hex, false, out bool guardPresenceChanged))
-                    knowledgeChanged = true;
-                if (guardPresenceChanged)
-                    eventGuardsChanged = true;
-
-                // Building snapshot (2026-08-24, section 3.2 fix — see KnownBuildings' own class
-                // comment) — a real, direct read of BuildingRegistry, but only ever for a hex this
-                // loop already confirmed is actually VISIBLE this call, exactly the same
-                // "honest right now, stale afterward until re-observed" shape every other store in
-                // this method already follows for resource hexes/army sightings/event guards.
-                BuildingData building = BuildingRegistry.FindAt(hex);
-                if (building != null)
-                {
-                    bool wasKnown = buildings.TryGetValue(hex, out BuildingSighting previousBuilding);
-                    if (!wasKnown || previousBuilding.Owner != building.Owner)
-                        buildingsChanged = true;
-                    if (!wasKnown)
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - building \"{building.Name}\" "
-                            + $"(owner={(building.Owner != null ? building.Owner.Nickname : "none")}) remembered at ({hex.Q},{hex.R}).");
-                    else if (previousBuilding.Owner != building.Owner)
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - building at ({hex.Q},{hex.R}) corrected, owner "
-                            + $"{(previousBuilding.Owner != null ? previousBuilding.Owner.Nickname : "none")} → "
-                            + $"{(building.Owner != null ? building.Owner.Nickname : "none")}.");
-                    // T08 — slot contents are recorded only for this player's own building.
-                    bool ownBuilding = building.Owner == player;
-                    HashSet<string> facilityAbilities = null;
-                    if (ownBuilding)
-                    {
-                        facilityAbilities = new HashSet<string>();
-                        foreach (FacilityData facility in building.FacilitySlots)
-                            if (facility != null)
-                                facilityAbilities.UnionWith(facility.Abilities);
-                    }
-                    var collectedAmounts = new int[UnitAbilities.CollectAbilities.Length];
-                    for (int i = 0; i < collectedAmounts.Length; i++)
-                        collectedAmounts[i] = building.CollectedAmount((ResourceType)i);
-                    var nextBuilding = new BuildingSighting
-                    {
-                        Hex = hex,
-                        Owner = building.Owner,
-                        IsStartingCitadel = building.IsStartingCitadel,
-                        IsBase = building.IsBase,
-                        FacilityAbilities = facilityAbilities,
-                        CollectedAmounts = collectedAmounts,
-                        FreeFacilitySlots = ownBuilding
-                            ? Enumerable.Range(0, building.UnlockedFacilitySlots)
-                                .Count(i => building.FacilitySlots[i] == null)
-                            : 0,
-                        // FIX-05 — the hex is genuinely visible in this loop, so its structural
-                        // defence is exactly as honest an observation as its owner or facilities.
-                        Defense = building.Defense,
-                        // Only public structure stats of foreign buildings. Their internal facility
-                        // slots remain private; own slots may be priced for friendly-fire risk.
-                        ExplosionStructures = ExplosionAttack.StructureProfiles(building, includeFacilities: ownBuilding),
-                        // ATK §66 — this hex is genuinely visible in this loop, so the stamp is a
-                        // real observation turn, not a bookkeeping default.
-                        SeenTurn = _currentTurn,
-                    };
-                    if (!wasKnown || !SameBuildingSighting(previousBuilding, nextBuilding))
-                        knowledgeChanged = true;
-                    buildings[hex] = nextBuilding;
-                }
-                else
-                {
-                    if (buildings.ContainsKey(hex))
-                    {
-                        AiDebugLog.Write($"[AI] {player.Nickname}: memory - building at ({hex.Q},{hex.R}) corrected (gone on re-observation).");
-                        buildingsChanged = true;
-                        knowledgeChanged = true;
-                    }
-                    // T01 — the first honest look at an opponent's sanctioned starting-Citadel
-                    // coordinates finding NO structure refutes the location-only Attack objective
-                    // (AttackObjectiveEvaluator reads MapKnowledge.EverSeenHexSet). Nothing in the
-                    // memory itself changes then, so without this revision the snapshot would keep
-                    // its stale ever-seen set for the rest of the turn. Once per hex per session.
-                    else if (IsOpponentStartingCitadel(player, hex)
-                        && RefutedStartingCitadelsFor(player).Add(hex))
-                        knowledgeChanged = true;
-                    buildings.Remove(hex);
-                }
-            }
-            // KnowledgeVersion (WorldAnalysis's own snapshot-refresh gate) stays coarse on
-            // purpose — resource/building/event observations matter to it even when nothing
-            // route-relevant changed. The player-scoped route revision only bumps when this
-            // observer's own blocker memory actually changed.
-            if (knowledgeChanged)
-                BumpKnowledgeVersion(player);
-            if (sightingsChanged || buildingsChanged || eventGuardsChanged)
-                BumpRouteMemoryVersion(player);
-        }
-
-        // The event's own guard just got beaten for real (reward claimed) — a genuine world-state
-        // change, but (2026-08-24 fix, "память тумана войны не соответствует правилам 3.1–3.2",
-        // project owner's own report) no longer force-corrected into EVERY player's memory the
-        // instant it happens regardless of whether they can currently see the hex — a player not
-        // watching right now must only learn about it by actually re-observing the hex later, same
-        // "видимость с памятью" rule as everything else here. Only a player CURRENTLY seeing the
-        // hex gets an explicit nudge here at all: OnVisibilityChanged's own eventGuards[hex]
-        // correction only fires on a vision RECOMPUTE, which "the guard I'm already looking at just
-        // got beaten" doesn't by itself trigger, so without this a watching player would keep
-        // believing a guard is still there until their vision happens to recompute for some other
-        // reason. Now also: the claimant itself learns at once (ConsumedBy), and only an event the
-        // player already knows is ever corrected.
-        private static void OnEventConsumed(HexCoord hex)
-        {
-            // The claimant learns of its own completion at once, army or no army left after the
-            // fight; any other player only if it already knows this event AND sees the hex now.
-            PlayerSetupData consumer = HexEventRegistry.FindAt(hex)?.ConsumedBy;
-            var holders = new List<PlayerSetupData>(KnownEventCompleted.Keys);
-            if (consumer != null && !holders.Contains(consumer))
-                holders.Add(consumer);
-            foreach (PlayerSetupData player in holders)
-            {
-                if (player != consumer && !VisionSystem.IsVisible(player, hex))
-                    continue;
-                PublishEventKnowledge(player, hex, player == consumer);
-            }
-        }
-
-        // The authoritative handler recorded a personal encounter: remember the event (and its
-        // guard, if any) for exactly this player. Idempotent - a repeat changes nothing.
-        private static void OnEventDiscovered(HexCoord hex, PlayerSetupData player)
-        {
-            if (player == null || player.IsNeutral)
-                return;
-            PublishEventKnowledge(player, hex, true);
-        }
-
-        // A re-observation of a hex the player can currently see: confirms completion of, or
-        // refreshes, an event it already knows. No effect for an unknown event.
-        public static void ObserveEventAt(PlayerSetupData player, HexCoord hex)
-        {
-            if (player != null && VisionSystem.IsVisible(player, hex))
-                PublishEventKnowledge(player, hex, false);
-        }
-
-        private static void PublishEventKnowledge(PlayerSetupData player, HexCoord hex, bool discover)
-        {
-            if (!ApplyEventKnowledge(player, hex, discover, out bool guardPresenceChanged))
-                return;
-            BumpKnowledgeVersion(player);
-            if (guardPresenceChanged)
-                BumpRouteMemoryVersion(player);
-        }
-
-        // The single reader of the hidden event data on behalf of memory. It touches the registry
-        // only for an event `player` knows already (or is just discovering), so a hex that is merely
-        // visible never reveals its guard. Returns true when stored knowledge changed.
-        private static bool ApplyEventKnowledge(PlayerSetupData player, HexCoord hex, bool discover,
-            out bool guardPresenceChanged)
-        {
-            guardPresenceChanged = false;
-            if (!KnownEventCompleted.TryGetValue(player, out Dictionary<HexCoord, bool> states))
-                KnownEventCompleted[player] = states = new Dictionary<HexCoord, bool>();
-            if (!KnownEventGuards.TryGetValue(player, out Dictionary<HexCoord, GuardStrength> guards))
-                KnownEventGuards[player] = guards = new Dictionary<HexCoord, GuardStrength>();
-
-            bool known = states.TryGetValue(hex, out bool completed);
-            if (completed)
-                return false; // confirmed completion is final
-            if (!known && (!discover || !HexEventRegistry.IsKnownBy(hex, player)))
-                return false;
-
-            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            bool hadGuard = guards.TryGetValue(hex, out GuardStrength previousGuard);
-            bool changed = !known;
-            if (entry == null || entry.Consumed)
-            {
-                states[hex] = true;
-                guards.Remove(hex);
-                guardPresenceChanged = hadGuard;
-                return true;
-            }
-
-            states[hex] = false;
-            if (entry.ResolvedGuardMembers.Count > 0)
-            {
-                GuardStrength guard = BuildEventGuard(entry);
-                guards[hex] = guard;
-                guardPresenceChanged = !hadGuard;
-                changed |= !hadGuard || !SameGuardStrength(previousGuard, guard);
-            }
-            else if (hadGuard)
-            {
-                guards.Remove(hex);
-                guardPresenceChanged = true;
-                changed = true;
-            }
-            return changed;
-        }
-
-        private static GuardStrength BuildEventGuard(HexEventRegistry.Entry eventEntry)
-        {
-            // Same flat card-stat sum WorthIt/AiEventPlanner.ShouldExplore already use - the guard
-            // is never a live ArmyData until Explore is chosen (see HexEventRegistry.Entry's own
-            // comment), so card stats are all there is to read.
-            var guardMembers = eventEntry.ResolvedGuardMembers
-                .Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
-            float defense = guardMembers.Sum(g => g.card.defenseRating * g.count);
-            float attack = guardMembers.Sum(g => g.card.attack * g.count);
-            // One DefenderProfile per PHYSICAL copy (repeated by g.count), not one per card type:
-            // WorthIt's full-roster Monte Carlo needs one real combatant/HP-pool per copy to play a
-            // "3 Grunts" guard out as three separate units. CanDamageAll's coverage check does not
-            // care about the duplication.
-            var defenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
-                g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
-                g.card.unitTypeTags, g.card.attack, g.card.hitPoints, g.card.initiative,
-                g.card.grantedAbilities, range: g.card.range), g.count)).ToList();
-            return new GuardStrength(defense, attack, defenders, eventEntry.GuardArmyName,
-                HexEventGuardEstimate.GuardCommander(eventEntry), HexEventGuardEstimate.RewardTier(eventEntry));
-        }
-
-        // Every known resource hex and its complete last-observed effective yield — the whole-map read
-        // for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
-        // needs the set itself (opportunity map + per-resource economy weighting), not just a
-        // per-hex membership test. Same honesty rule as everything else here — only ever hexes
-        // this player has actually seen the bonus on.
-        public static IEnumerable<KnownResourceHex> AllKnownResourceHexes(PlayerSetupData actor)
-        {
-            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, KnownResourceHex> set)
-                ? set.Values
-                : System.Array.Empty<KnownResourceHex>();
-        }
-
-        // Every hex this observer remembers as a Hex Event with a real guard. The guard is not a
-        // sighting (it spawns on arrival), so KnownGroundArrival cannot see it; Combat routing
-        // reads this list so a march toward one target does not walk into another guard's hex.
-        public static IEnumerable<HexCoord> AllKnownEventGuardHexes(PlayerSetupData actor)
-        {
-            if (actor == null || !KnownEventGuards.TryGetValue(actor, out Dictionary<HexCoord, GuardStrength> guards))
-                return System.Array.Empty<HexCoord>();
-            return guards.Keys;
-        }
-        // The read-only view of one remembered sighting.
-        private static KnownEnemySighting Known(EnemySighting s) =>
-            new KnownEnemySighting(s.Hex, s.Owner, s.Name, s.MemberCount, s.DefenseSum, s.AttackSum,
-                s.Defenders, s.HasAntiAir, s.RecceRadius, s.RecceSpotStrength, s.SeenTurn, s.ArmyId,
-                s.IsGarrison, s.Commander, s.IsAir, s.MaxMovement);
-
-
-        // Every known neutral-army hex on the whole map, no radius — RaidWeakerArmyTask's own
-        // target pool isn't wavefront/radius-bounded like Разведка's (see that class's own class
-        // comment), it just scores every known target by raw distance from the citadel.
-        public static IEnumerable<KnownEnemySighting> AllKnownNeutralSightings(PlayerSetupData actor)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                yield break;
-            foreach (EnemySighting sighting in sightings.Values)
-                if (IsNeutralSightingOwner(sighting.Owner))
-                    yield return Known(sighting);
-        }
-
-        // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
-        // Patrol target picker (FindPatrolTarget/RandomKnownEnemyHex), same "знаем направление, не
-        // содержимое хекса" cheat the project owner explicitly sanctioned for Patrol's first target
-        // of a fresh cycle. Mirrors AllKnownNeutralSightings' own shape, just the opposite owner
-        // filter.
-        public static IEnumerable<KnownEnemySighting> AllKnownEnemySightings(PlayerSetupData actor)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                yield break;
-            foreach (EnemySighting sighting in sightings.Values)
-                if (!IsNeutralSightingOwner(sighting.Owner))
-                    yield return Known(sighting);
-        }
-
-        // The remembered sighting of one physical army (an enemy player's or a neutral) by its
-        // stable id, or null. Army id 0 is valid.
-        public static KnownEnemySighting? KnownSightingOf(PlayerSetupData actor, int armyId)
-        {
-            foreach (KnownEnemySighting s in AllKnownEnemySightings(actor))
-                if (s.ArmyId == armyId) return s;
-            foreach (KnownEnemySighting s in AllKnownNeutralSightings(actor))
-                if (s.ArmyId == armyId) return s;
-            return null;
-        }
-
-        // The same, only while it is an enemy PLAYER's army — never a neutral, never the actor's own.
-        public static KnownEnemySighting? KnownHostileSightingOf(PlayerSetupData actor, int armyId)
-        {
-            foreach (KnownEnemySighting s in AllKnownEnemySightings(actor))
-                if (s.ArmyId == armyId && s.Owner != null && !s.Owner.IsNeutral && s.Owner != actor)
-                    return s;
-            return null;
-        }
-
-        // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
-        // removed 2026-08-26 (project owner's own spec item 4) — see EnemySighting.HasAntiAir's own
-        // comment for what replaced it.
-
-        public static IEnumerable<KnownEnemySighting> KnownEnemySightingsNear(PlayerSetupData actor,
-            IReadOnlyList<HexCoord> ownHexes, int radius)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                yield break;
-
-            foreach (EnemySighting sighting in sightings.Values)
-                if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
-                    yield return Known(sighting);
-        }
-
-        // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
-        // RequiredStrengthAt/IsStillValidTarget need exactly this hex, not a radius scan. Scans by
-        // sighting.Hex rather than a dictionary key lookup since EnemySightings is keyed by ArmyId
-        // now, not HexCoord (see that dictionary's own comment) — at most one live sighting can
-        // ever have a given Hex at a time (each write overwrites its army's own single slot), so
-        // the first match is the only match.
-        public static KnownEnemySighting? KnownEnemySightingAt(PlayerSetupData actor, HexCoord hex)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                return null;
-            foreach (EnemySighting sighting in sightings.Values)
-                if (sighting.Hex.Equals(hex))
-                    return Known(sighting);
-            return null;
-        }
-
-        // Null = no known active guarded event at this hex (never seen one, or it's since been
-        // consumed — see OnEventConsumed). RaidWeakerArmyTask's own event-guard half of a target's
-        // required strength (see that class's own FindTarget/RequiredStrengthAt — takes the max of
-        // this and the physical garrison defense for a hex, not their sum, since a physical neutral army
-        // sharing this hex and this event's own card-guard are two separate fights, never fought
-        // at once).
-        public static GuardStrength? KnownEventGuardStrengthAt(PlayerSetupData actor, HexCoord hex)
-        {
-            return KnownEventGuards.TryGetValue(actor, out Dictionary<HexCoord, GuardStrength> eventGuards)
-                && eventGuards.TryGetValue(hex, out GuardStrength strength)
-                ? strength
-                : (GuardStrength?)null;
-        }
-
-        // Every hex this player has ever seen an active guarded event on — RaidWeakerArmyTask's
-        // own candidate-gatherer needs to enumerate these the same way it enumerates
-        // EnemySightings via KnownEnemySightingsNear, just without a radius (Агрессия's own
-        // target pool isn't wavefront-bounded — see that class's own class comment).
-        public static IEnumerable<HexCoord> KnownEventGuardHexes(PlayerSetupData actor)
-        {
-            return KnownEventGuards.TryGetValue(actor, out Dictionary<HexCoord, GuardStrength> eventGuards)
-                ? eventGuards.Keys
-                : Enumerable.Empty<HexCoord>();
-        }
-
-        // One specific hex's own last-known building snapshot, if any — null means either no
-        // building has ever been observed there, or the hex was last observed WITHOUT one (see
-        // KnownBuildings' own class comment) — RaidWeakerArmyTask.IsStillValidTarget's own use.
-        public static KnownBuilding? KnownBuildingAt(PlayerSetupData actor, HexCoord hex)
-        {
-            if (!KnownBuildings.TryGetValue(actor, out Dictionary<HexCoord, BuildingSighting> buildings)
-                || !buildings.TryGetValue(hex, out BuildingSighting sighting))
-                return null;
-            return new KnownBuilding(sighting.Hex, sighting.Owner,
-                sighting.IsStartingCitadel, sighting.FacilityAbilities,
-                sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
-                sighting.Defense, sighting.SeenTurn, sighting.ExplosionStructures);
-        }
-
-        // FIX-05 (2026-09-22) — the ONE fog-honest answer to "what structural/terrain defence
-        // would a defender standing on `hex` actually get", for every AI caller.
-        // Game.Combat.WorthIt.HexDefenseBonus stays exactly as it is — it is correct whenever it
-        // is called with an honest context (a real fight, a currently-visible hex, the player's
-        // own hex) — but it reads BuildingRegistry LIVE, so calling it about a fogged hex let a
-        // base built, upgraded, captured or razed out of sight change an AI estimate with no
-        // observation behind it. This wraps the same rule in the knowledge boundary:
-        //   * terrain is immutable public map data and is always included (the same call
-        //     ReconReactionPolicy.HonestHexDefenseBonus has been making since it was written);
-        //   * a CURRENTLY VISIBLE hex reads the live building, because looking at it is the
-        //     observation - and that is also what keeps a just-captured/just-razed base correct
-        //     without waiting for a vision recompute;
-        //   * a fogged hex contributes the last OBSERVED Defense of the building remembered
-        //     there, and nothing at all where no building was ever seen.
-        // Two players' answers are independent because KnownBuildings is per-player.
-        //
-        // Combat-owner-aware form: terrain belongs to the hex and applies to every defender,
-        // while a Base's structural Defense applies only to an army owned by that Base's owner.
-        // A null defendingOwner intentionally means terrain only (for example an event guard).
-        public static float KnownHexDefenseBonusFor(PlayerSetupData actor, HexCoord hex,
-            PlayerSetupData defendingOwner) =>
-            KnownHexDefenseBonusFor(actor, _map, hex, defendingOwner);
-
-        public static float KnownHexDefenseBonusFor(PlayerSetupData actor, HexMap map, HexCoord hex,
-            PlayerSetupData defendingOwner) =>
-            HexDefenseBonus(actor, map, hex, defendingOwner, anyOwner: false);
-
-        // The site's own defence whoever holds it: a Base's structural Defense counts for any owner.
-        public static float KnownHexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex) =>
-            HexDefenseBonus(actor, map, hex, null, anyOwner: true);
-
-        private static float HexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex,
-            PlayerSetupData defendingOwner, bool anyOwner)
-        {
-            float bonus = 0f;
-            if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
-                bonus += terrain.defenseModifier;
-
-            if (actor == null)
-                return bonus;
-
-            bool Defends(PlayerSetupData owner) => anyOwner || defendingOwner != null && owner == defendingOwner;
-            if (VisionSystem.IsVisible(actor, hex))
-            {
-                BuildingData live = BuildingRegistry.FindAt(hex);
-                if (live != null && live.IsBase && Defends(live.Owner))
-                    bonus += live.Defense;
-                return bonus;
-            }
-
-            KnownBuilding? remembered = KnownBuildingAt(actor, hex);
-            if (remembered.HasValue && remembered.Value.IsBase && Defends(remembered.Value.Owner))
-                bonus += remembered.Value.Defense;
-            return bonus;
-        }
-
-        // THE one AI rule for "what does this ground mover's arrival on `hex` set off, as far as
-        // this player knows" — the knowledge-side mirror of the gameplay arrival rules:
-        //   * a known enemy/neutral army on the hex fights a mover that is visible
-        //     (BattleInitiator.CanInitiateContact on entry, GameTurnController's contested sweep
-        //     for a visible hero), and a FULLY hidden mover walks past it with nothing happening;
-        //   * a known undefended foreign structure is captured/destroyed by a visible mover
-        //     (BuildingRegistry.CaptureOrDestroyIfUndefended), and a fully hidden mover walks past.
-        // "Fully hidden" is the mover's OWN stealth state (StealthSystem.IsArmyFullyHidden — the
-        // same definition the gameplay rules use) — never whether an enemy has detected it: the
-        // owner of a hidden army does not know that (stealth design).
-        // A Hex Event is deliberately not part of this: every AI move resolves its own event choice
-        // by authority (AiTurnController.MoveArmyRoutine → IssueMoveOrder allowAiEventExplore), so
-        // a Transit move always skips and keeps its stealth / movement, exactly like a human Skip.
-        // Every AI "may this mover step onto hex X" check must derive from this — the execution
-        // gate, Recon step/vantage safety, the route blockers and the snapshot's scout block set.
-        public readonly struct GroundArrival
-        {
-            public readonly bool KnownArmy;
-            public readonly bool UndefendedStructure;
-            public readonly bool MoverFullyHidden;
-
-            public GroundArrival(bool knownArmy, bool undefendedStructure, bool moverFullyHidden)
-            {
-                KnownArmy = knownArmy;
-                UndefendedStructure = undefendedStructure;
-                MoverFullyHidden = moverFullyHidden;
-            }
-
-            public bool Contact => KnownArmy && !MoverFullyHidden;
-            public bool Takeover => UndefendedStructure && !MoverFullyHidden;
-            // Arrival sets off a fight or a takeover — something only a Combat/Capture authority
-            // may deliberately seek.
-            public bool HasOutcome => Contact || Takeover;
-        }
-
-        public static GroundArrival KnownGroundArrival(PlayerSetupData actor, HexCoord hex, bool moverFullyHidden)
-            => new GroundArrival(KnownEnemySightingAt(actor, hex).HasValue,
-                KnownUndefendedForeignStructureAt(actor, hex), moverFullyHidden);
-
-        public static GroundArrival KnownGroundArrival(PlayerSetupData actor, ArmyData mover, HexCoord hex)
-            => KnownGroundArrival(actor, hex, StealthSystem.IsArmyFullyHidden(mover));
-
-        // A hidden army that drops stealth while standing still is a resident reveal
-        // (StealthSystem.ExitStealth -> ResidentRevealed): the same arrival rule, applied to its
-        // OWN hex. A known army sharing that hex fights it there, instead of the action the reveal
-        // was meant for (playtest 2026-10-22, Ysolde T17/T19: two Hooded scouts revealed beside
-        // Sand Fin at (-5,1) to sabotage (-6,1) and were wiped on (-5,1)).
-        public static bool KnownResidentRevealContact(PlayerSetupData actor, ArmyData mover)
-            => mover != null && StealthSystem.IsArmyFullyHidden(mover)
-               && KnownGroundArrival(actor, mover.Hex, moverFullyHidden: false).KnownArmy;
-
-        // FIX-07 (2026-09-22) — is the building on `hex` KNOWN to be foreign and KNOWN to be
-        // standing there with nobody to defend it? This is the one knowledge-side mirror of the
-        // authoritative gameplay rule (BuildingRegistry.CaptureOrDestroyIfUndefended: a foreign
-        // building with no engageable resident of its own owner changes hands / is destroyed the
-        // moment someone else arrives). It exists so an army that is ALREADY walking onto such a
-        // hex as part of an accepted Recon/Raid/ActiveDefence plan is not blocked from simply
-        // occupying it — never so anything goes looking for structures.
-        //
-        // "Known" is the whole point, so the two cases are kept apart honestly:
-        //   * hex VISIBLE now — we are looking at it, so the live building and the live residents
-        //     ARE the observation;
-        //   * hex FOGGED — a remembered building is required (a building only ever enters this
-        //     memory from a hex this player genuinely saw, and the same observation reconciled
-        //     that hex's army sightings), and we must remember NO army standing there. Unknown
-        //     defence is never treated as "undefended": no remembered building, or a remembered
-        //     enemy/neutral sighting on the hex, or a known guarded Hex Event on it, all answer
-        //     false, so nobody is ever waved into a blind walk-in.
-        public static bool KnownUndefendedForeignStructureAt(PlayerSetupData actor, HexCoord hex)
-        {
-            if (actor == null)
-                return false;
-            // A known active guarded event on the hex is a fight waiting to happen, not an empty
-            // structure — and its guard is not an army this memory records as a sighting.
-            if (KnownEventGuardStrengthAt(actor, hex).HasValue)
-                return false;
-
-            if (VisionSystem.IsVisible(actor, hex))
-            {
-                BuildingData live = BuildingRegistry.FindAt(hex);
-                if (live == null || live.Owner == null || live.Owner == actor)
-                    return false;
-                foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
-                    if (resident != null && resident.Owner == live.Owner
-                        && BattleInitiator.IsEngageable(resident, actor))
-                        return false;
-                return true;
-            }
-
-            KnownBuilding? remembered = KnownBuildingAt(actor, hex);
-            if (!remembered.HasValue || remembered.Value.Owner == null
-                || remembered.Value.Owner == actor)
-                return false;
-            return !KnownEnemySightingAt(actor, hex).HasValue;
-        }
-
-        // Every building this player has ever observed anywhere on the map, as last seen —
-        // RaidWeakerArmyTask's own FindTarget/HasAnythingToRaid/FindCaptureStepDestination replace
-        // their old live BuildingRegistry.AllBuildings() scan with this (2026-08-24 fix, section
-        // 3.2) so an enemy building's true current owner is never known further than this player's
-        // own last look at that specific hex.
-        public static IEnumerable<KnownBuilding> AllKnownBuildings(PlayerSetupData actor)
-        {
-            if (!KnownBuildings.TryGetValue(actor, out Dictionary<HexCoord, BuildingSighting> buildings))
-                yield break;
-            foreach (BuildingSighting sighting in buildings.Values)
-                yield return new KnownBuilding(sighting.Hex, sighting.Owner,
-                    sighting.IsStartingCitadel, sighting.FacilityAbilities,
-                    sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
-                    sighting.Defense, sighting.SeenTurn, sighting.ExplosionStructures);
         }
     }
 }
