@@ -83,9 +83,7 @@ canonical-seams table below.
   lifecycle margins on the TaskScore scale — lives in `Foundation/AiConfigV2.TaskScore.cs`.
   Every mission proposal carries its `TaskScore` (`MissionProposal.Score`; null only for a
   value restored from a durable intent) and is logged once per turn in one format
-  (`AiFrameLog.TaskScores` → `[AI][V2][TaskScore] … | benefit (…) | cost (…) | risk | opportunity`),
-  which `Tools/TaskScoreDashboard` aggregates per family next to a what-if report computed by
-  the real converters (Unity: AI → TaskScore → Calibration Report).
+  (`AiFrameLog.TaskScores` → `[AI][V2][TaskScore] … | benefit (…) | cost (…) | risk | opportunity`).
 * **One price table.** `Evaluation/ActionPrice` prices everything an action spends in
   AP-equivalents: 1 AP = 1 AP-equivalent for every use (card play, Challenge, activation now
   or on a later turn of a march); 1 H/E/M/T unit = `actionPriceResourceAp` x scarcity

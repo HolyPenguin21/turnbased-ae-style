@@ -31,7 +31,7 @@
 .DS_Store
 *.swp
 
-# Python cache (Tools/TaskScoreDashboard and any other repo-local script)
+# Python cache (any repo-local script)
 __pycache__/
 *.pyc
 
