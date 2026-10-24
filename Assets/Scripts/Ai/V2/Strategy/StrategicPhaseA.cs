@@ -117,12 +117,12 @@ namespace Game.Ai.V2
                 : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root);
         }
 
-        // Card arbitration: one action per round, at most maxDemandFulfillmentActionsPerTurn per
-        // call. Each round compares the best jointly feasible chain with the best arbitrated
-        // infrastructure step; the winner acts and the next round re-judges both on the new world.
+        // Card arbitration: one action per round, at most maxPhaseAActionsPerPass per call. Each
+        // round compares the best jointly feasible chain with the best arbitrated infrastructure
+        // step; the winner acts and the next round re-judges both on the new world.
         private static void RunCardArbitration(PhaseAPass pass)
         {
-            while (pass.ChainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
+            while (pass.ChainAttempts < AiConfigV2.maxPhaseAActionsPerPass)
             {
                 pass.CloseSourceDemandsAlreadyInPlay();
                 List<DemandState> active = pass.ActiveMaterializationStates();

@@ -13,8 +13,13 @@
         //              AP/resources on proactive preparation + hand cycling. No radar slice.
         //  Both play cards ONLY through V2 CardPlayExecutor (the single authoritative V2 path).
         // =======================================================================================
-        // Phase A — hard safety bound on demand-fulfilment card plays per AI turn.
-        public const int maxDemandFulfillmentActionsPerTurn = 3;
+        // Phase A — runaway-loop safety bound on card-arbitration actions in ONE FulfillDemands
+        // call (Main pass, each re-admission, a reaction round, the cold residual each get their
+        // own). Not a turn budget: what a turn may spend is bounded by AP and H/E/M/T, and the
+        // turn-scoped tempo caps live in StrategicTempoBudget (owner decision 2026-10-24). The
+        // infrastructure pre-pass and zero-Radar residual are outside it: each demand is tried
+        // there at most once per call.
+        public const int maxPhaseAActionsPerPass = 3;
 
         // Card-candidate scoring, shared by Phase A + Phase B.
         //   AP / H/E/M/T price = ActionPrice (the ONE price table) x cardScorePerApEquivalent
@@ -389,8 +394,9 @@
         public const float stratResidualResourcePreservationMax = 2.0f;
         // review-r3 — how many scored chains per demand TopForDemand hands the Phase A injective
         // assignment. >= 2 so a demand with a cheap fallback can yield its scarce card to another
-        // demand; the assignment cost is (phaseATopK+1)^activeDemandCount, activeDemandCount <=
-        // maxDemandFulfillmentActionsPerTurn.
+        // demand; the assignment cost is (phaseATopK+1)^activeDemandCount, and the active demand
+        // count of a round is NOT bounded by maxPhaseAActionsPerPass (that bounds actions, not
+        // demands).
         public const int phaseATopK = 3;
         public const float baselineReadinessHandBodyMinPower = 4f;  // a hand Unit/Hero at/above this AiPower counts as prepared standing force
         public const float baselineReadinessHandBodyActorWeight = 0.5f; // how much a hand-ready body counts toward the combat-actor gap vs a deployed one
