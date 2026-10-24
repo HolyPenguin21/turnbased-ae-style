@@ -109,7 +109,7 @@ namespace Game.Map
             if (!map.TryGetTerrainAt(coord, out TerrainTypeEntry entry))
                 return;
 
-            ResourceYields yields = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(coord));
+            ResourceYields yields = HexResourceBonusRegistry.EffectiveYield(entry, coord);
             if (yields.HasAnyYield)
                 SpawnIconsAt(coord, yields);
         }

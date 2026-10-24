@@ -113,7 +113,7 @@ namespace Game.EditorTests
                 { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
             UnitData victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
             var skills = new List<string> { UnitAbilities.CriticalDamage };
-            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, 2, new[]
+            BattleRules.AppendHitEffectAbilities(skills, attacker, victim, 2, new[]
                 { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
             CollectionAssert.AreEquivalent(new[] { UnitAbilities.CriticalDamage,
                 UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher,
@@ -130,7 +130,7 @@ namespace Game.EditorTests
                 { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
             UnitData victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
             var skills = new List<string> { UnitAbilities.CeramicArmor };
-            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, damage, new[] { UnitAbilities.ShockAttack, UnitAbilities.Splash });
+            BattleRules.AppendHitEffectAbilities(skills, attacker, victim, damage, new[] { UnitAbilities.ShockAttack, UnitAbilities.Splash });
             CollectionAssert.AreEqual(new[] { UnitAbilities.CeramicArmor }, skills);
         }
 
@@ -141,10 +141,10 @@ namespace Game.EditorTests
                 { UnitAbilities.ShockAttack, UnitAbilities.Splash, UnitAbilities.Scorcher });
             UnitData victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
             var skills = new List<string>();
-            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, 1, new[] { UnitAbilities.ShockAttack });
+            BattleRules.AppendHitEffectAbilities(skills, attacker, victim, 1, new[] { UnitAbilities.ShockAttack });
             CollectionAssert.AreEquivalent(new[] { UnitAbilities.ShockAttack, UnitAbilities.Berserk }, skills);
             skills.Clear();
-            BattleResolutionRules.AppendHitEffectAbilities(skills, attacker, victim, 2);
+            BattleRules.AppendHitEffectAbilities(skills, attacker, victim, 2);
             CollectionAssert.AreEqual(new[] { UnitAbilities.Berserk }, skills);
         }
 

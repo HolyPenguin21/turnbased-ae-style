@@ -349,7 +349,7 @@ namespace Game.Ai.V2
             unavailable.Remove(host.ArmyId);
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
                 KnownOpposition.OnHex(snap, a.Target.Hex);
-            AttackPreparationAssessment readiness = AttackPreparationReadiness.Assess(host,
+            AttackPreparationAssessment readiness = AttackPreparationPolicy.AssessReadiness(host,
                 snap.Self.AttackPeak, KnownOpposition.OnHex(snap, a.Target.Hex),
                 hexBonus);
             GroundCombatAssemblyPlan step = GroundCombatAssemblyPlanner.PlanPreparationAssembly(

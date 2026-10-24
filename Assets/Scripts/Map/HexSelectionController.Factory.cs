@@ -262,8 +262,7 @@ namespace Game.Map
             ResourceType resourceType = (ResourceType)resourceIndex;
             if (map == null || !map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain))
                 return false;
-            int effectiveYield = HexResourceCalculator.GetEffectiveYield(
-                terrain, HexResourceBonusRegistry.GetBonus(hex)).Get(resourceType);
+            int effectiveYield = HexResourceBonusRegistry.EffectiveYield(terrain, hex).Get(resourceType);
             int ownerArmyCollectors = ArmyRegistry.AllAt(hex)
                 .Where(army => army != null && army.Owner == owner && army.Members != null)
                 .Sum(army => army.Members.Count(member => member != null

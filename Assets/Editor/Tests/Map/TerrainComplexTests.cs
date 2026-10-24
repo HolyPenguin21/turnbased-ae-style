@@ -153,7 +153,7 @@ namespace Game.EditorTests
         [Test] public void ImpassableTerrainProducesNoResourcesEvenWithBonus()
         {
             _lake.resourceYields = new ResourceYields { energy = 5 };
-            Assert.That(HexResourceCalculator.GetEffectiveYield(_lake, new ResourceYields { human = 3 }).HasAnyYield, Is.False);
+            Assert.That(HexResourceBonusRegistry.EffectiveYield(_lake, new ResourceYields { human = 3 }).HasAnyYield, Is.False);
         }
         [Test] public void GroundPathDetoursButAirPathRemainsFlat()
         {

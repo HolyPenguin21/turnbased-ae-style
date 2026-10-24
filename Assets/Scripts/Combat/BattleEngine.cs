@@ -92,7 +92,7 @@ namespace Game.Combat
 
     public sealed class BattleAttackApplication
     {
-        public BattleResolutionRules.GroundAttackOutcome Outcome;
+        public BattleRules.GroundAttackOutcome Outcome;
         public int Damage;
         public bool DefenderDied;
         public bool Shocked;
@@ -511,7 +511,7 @@ namespace Game.Combat
             ArmyData defenderArmy = _state.OwningArmy(defender);
             int terrain = 0;
             int construction = 0;
-            int formation = BattleProtectionRules.GetGuardedDefenseBonus(
+            int formation = BattleRules.GetGuardedDefenseBonus(
                 _state.Grid, defender, _state.Defender);
 
             if (defenderArmy != null && defenderArmy == _state.Defender
@@ -575,7 +575,7 @@ namespace Game.Combat
         public bool TrySwapDeployment(int fromRow, int fromCol, int toRow, int toCol,
             int frontRow, int backRow)
         {
-            if (!BattlePlacementRules.CanSwap(_state.Grid, fromRow, fromCol, toRow, toCol,
+            if (!BattleRules.CanSwap(_state.Grid, fromRow, fromCol, toRow, toCol,
                 frontRow, backRow))
                 return false;
             _state.Grid.Swap(fromRow, fromCol, toRow, toCol);
@@ -592,7 +592,7 @@ namespace Game.Combat
             UnitData attackerHero = null, UnitData defenderHero = null, bool completeAttack = true)
         {
             ApplyFateState(attackerHero, defenderHero, roll);
-            BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
+            BattleRules.GroundAttackOutcome outcome = BattleRules.ResolveGroundAttack(
                 roll.AttackerTokens, roll.DefenderTokens, attacker, defender, magnitudes, roll.AttackerModifier, roll.DefenderModifier);
             // No grid and no rounds here (air strikes / AA fire): Bodyguard, Counterattack and Drill
             // are tactical-grid skills and never apply; Ionic is already in outcome.Damage.
@@ -623,7 +623,7 @@ namespace Game.Combat
             bool isCounterattack = false)
         {
             ApplyFateState(attackerHero, defenderHero, roll);
-            BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
+            BattleRules.GroundAttackOutcome outcome = BattleRules.ResolveGroundAttack(
                 roll.AttackerTokens, roll.DefenderTokens, attacker, defender, _magnitudes, roll.AttackerModifier, roll.DefenderModifier);
 
             UnitData victim = defender;
@@ -645,11 +645,11 @@ namespace Game.Combat
             application.ShockTriggered |= !isCounterattack && !application.DefenderDied
                 && _state.OwningArmy(victim) != _state.RetreatingArmy
                 && BattleSimulationKernel.SuppressesTurn(application.Damage, attacker.Abilities)
-                && BattleProtectionRules.CanCounterattack(_state.Grid, victim, attacker,
+                && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
                     victim.HitPointsCurrent, 0, _reactions);
             if (!isCounterattack && !application.DefenderDied
                 && _state.OwningArmy(victim) != _state.RetreatingArmy
-                && BattleProtectionRules.CanCounterattack(_state.Grid, victim, attacker,
+                && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
                     victim.HitPointsCurrent, application.Damage, _reactions))
             {
                 _reactions.CountersUsed.Add(victim);
@@ -665,7 +665,7 @@ namespace Game.Combat
         // The Bodyguard that would take a hit `attacker` lands on `defender` right now (null: none).
         // The attack popup asks the same question before the roll so its projection matches.
         public UnitData FindInterceptingBodyguard(UnitData attacker, UnitData defender) =>
-            BattleProtectionRules.FindBodyguard(_state.Grid, defender, attacker,
+            BattleRules.FindBodyguard(_state.Grid, defender, attacker,
                 u => u.HitPointsCurrent, _reactions);
 
         public BattleAttackApplication ApplyGroundAttack(UnitData attacker, UnitData defender, int damage)
@@ -790,7 +790,7 @@ namespace Game.Combat
             ArmyData hunterArmy)
         {
             ApplyFateState(hunterArmy?.Commander, hero, roll);
-            CaptureKillOutcome outcome = BattleResolutionRules.ResolveCaptureKill(
+            CaptureKillOutcome outcome = BattleRules.ResolveCaptureKill(
                 roll.AttackerTokens, roll.DefenderTokens, roll.AttackerModifier, roll.DefenderModifier);
             return ApplyCaptureKillOutcome(state, outcome, hero, heroArmy, hunterArmy);
         }
@@ -1161,7 +1161,7 @@ namespace Game.Combat
             bool pendingTurn = _state.TurnOrder != null
                 && _state.TurnOrder.IndexOf(victim) > _state.TurnIndex;
             bool wouldCounter = !isCounterattack && _state.OwningArmy(victim) != _state.RetreatingArmy
-                && BattleProtectionRules.CanCounterattack(_state.Grid, victim, attacker,
+                && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
                     victim.HitPointsCurrent - damage, 0, _reactions);
             if (survives && (pendingTurn || wouldCounter)
                 && BattleSimulationKernel.SuppressesTurn(damage, attacker.Abilities))

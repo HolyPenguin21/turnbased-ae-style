@@ -82,7 +82,7 @@ namespace Game.UI
             if (_inventory != null)
                 foreach (var card in _inventory.Cards)
                     if (!ReferenceEquals(card, _excluded)) _cards.Add(card);
-            _scrollOffset = UIListUtility.OffsetToReveal(_scrollOffset, _cards.IndexOf(_revealOnRefresh), MaxVisible);
+            _scrollOffset = UIUtility.OffsetToReveal(_scrollOffset, _cards.IndexOf(_revealOnRefresh), MaxVisible);
             _revealOnRefresh = null;
             _scrollOffset = Mathf.Clamp(_scrollOffset, 0, Mathf.Max(0, _cards.Count - MaxVisible));
             Relayout();
@@ -185,7 +185,7 @@ namespace Game.UI
         {
             CancelDrags();
             foreach (var card in _visible) card.gameObject.SetActive(false);
-            UIListUtility.DestroyAndClear(_visible);
+            UIUtility.DestroyAndClear(_visible);
             if (scrollUpButton != null)
                 scrollUpButton.interactable = _scrollOffset > 0;
             if (scrollDownButton != null)

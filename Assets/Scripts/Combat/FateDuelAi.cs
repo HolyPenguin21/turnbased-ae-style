@@ -97,7 +97,7 @@ namespace Game.Combat
             if (fateAvailable <= 0)
                 return false;
             bool[] ownTokens = isDefender ? defenderTokens : attackerTokens;
-            if (ownTokens == null || !HasMiss(ownTokens))
+            if (ownTokens == null || !ChallengeResolver.HasMiss(ownTokens))
                 return false;
 
             var result = new ChallengeResult(attackerTokens, defenderTokens, attackerModifier, defenderModifier);
@@ -203,16 +203,6 @@ namespace Game.Combat
             foreach (bool hit in tokens)
                 if (!hit) misses++;
             return misses;
-        }
-
-        private static bool HasMiss(bool[] tokens)
-        {
-            if (tokens == null)
-                return false;
-            foreach (bool hit in tokens)
-                if (!hit)
-                    return true;
-            return false;
         }
     }
 }

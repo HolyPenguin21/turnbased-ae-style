@@ -314,7 +314,7 @@ namespace Game.UI
             // Deferred Destroy must not leave old entries participating in this frame's layout.
             foreach (ArmyButtonUI button in _buttons)
                 if (button != null) button.gameObject.SetActive(false);
-            UIListUtility.DestroyAndClear(_buttons);
+            UIUtility.DestroyAndClear(_buttons);
             foreach (GameObject slot in _slots)
                 if (slot != null)
                 {

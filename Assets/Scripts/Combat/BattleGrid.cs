@@ -131,7 +131,7 @@ namespace Game.Combat
             foreach (UnitData member in army.Members)
             {
                 if (army.SavedArrangement.TryGetValue(member, out var slot)
-                    && BattlePlacementRules.CanPlace(member, slot.row, slot.col, frontRow, backRow)
+                    && BattleRules.CanPlace(member, slot.row, slot.col, frontRow, backRow)
                     && grid.Get(slot.row, slot.col) == null)
                     grid.Set(slot.row, slot.col, member);
                 else
@@ -168,7 +168,7 @@ namespace Game.Combat
                     grid.Set(backRow, backCol++, member);
                 // Beyond the two deployment rows there is nowhere left on this grid. Hero slots
                 // are never borrowed from the Front row; an invalid oversized roster stays
-                // visibly incomplete rather than violating BattlePlacementRules.
+                // visibly incomplete rather than violating BattleRules.
             }
         }
     }

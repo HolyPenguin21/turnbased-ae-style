@@ -219,8 +219,8 @@ namespace Game.Ai.V2
             {
                 if (!pm.ExecutionHex.Equals(pm.FocusHex))
                 {
-                    if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex,
-                            ctx.TurnNumber, ScoutMoverSelector.ArrivesHiddenLive(
+                    if (ctx != null && ScoutRiskModel.StepBlocked(player, pm.ExecutionHex,
+                            ScoutMoverSelector.ArrivesHiddenLive(
                                 StealthSystem.IsArmyFullyHidden(mover), pm.StealthApReserved)))
                         return MissionValidity.StaleTargetInvalidated;
                     return MissionValidity.Valid;

@@ -889,7 +889,7 @@ namespace Game.UI
             }
         }
 
-        private void ClearGrid() => UIListUtility.DestroyAndClear(_cards);
+        private void ClearGrid() => UIUtility.DestroyAndClear(_cards);
 
         private void FitGridContent(int slots)
         {

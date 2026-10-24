@@ -73,7 +73,7 @@ namespace Game.EditorTests
             int actions = 0;
             for (int i = 0; i < 3; i++)
             {
-                UIButtonEventUtility.ResetRuntimeListeners(button);
+                UIUtility.ResetRuntimeListeners(button);
                 button.onClick.AddListener(() => actions++);
                 button.onClick.Invoke();
             }

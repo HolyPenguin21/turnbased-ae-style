@@ -267,7 +267,7 @@ namespace Game.UI
             if (UIFocusUtility.IsGameplayInputBlocked) return;
             if (!IsDragging || _ghost == null)
                 return;
-            UIDragUtility.ApplyScreenDelta(_ghost, eventData, _rootCanvas);
+            UIUtility.ApplyScreenDelta(_ghost, eventData, _rootCanvas);
         }
 
         public void OnEndDrag(PointerEventData eventData)

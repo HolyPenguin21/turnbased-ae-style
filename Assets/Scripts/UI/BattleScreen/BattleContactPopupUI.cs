@@ -190,7 +190,7 @@ namespace Game.UI
             if (delayButton != null)
             {
                 delayButton.gameObject.SetActive(true);
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(delayButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(delayButton);
                 delayButton.onClick.AddListener(() => { Hide(); onDelay?.Invoke(); });
             }
         }
@@ -229,7 +229,7 @@ namespace Game.UI
             if (button == null)
                 return;
             button.gameObject.SetActive(true);
-            UIButtonEventUtility.ResetRuntimeListeners(button);
+            UIUtility.ResetRuntimeListeners(button);
             button.onClick.AddListener(() => { Hide(); onFight?.Invoke(fastResolve); });
         }
 

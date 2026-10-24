@@ -49,7 +49,7 @@ namespace Game.EditorTests
         {
             var go = New("runtime-button"); go.SetActive(false); var button = go.AddComponent<Button>();
             SceneUIAudioBinder.BindCreatedRoot(button); SceneUIAudioBinder.BindCreatedRoot(button);
-            UIButtonEventUtility.ResetRuntimeListeners(button);
+            UIUtility.ResetRuntimeListeners(button);
             int actions = 0; button.onClick.AddListener(() => { actions++; go.SetActive(false); });
             go.SetActive(true); UI.Stop(); button.onClick.Invoke();
             Assert.AreEqual(1, actions); Assert.IsTrue(UI.isPlaying);

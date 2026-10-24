@@ -901,12 +901,11 @@ namespace Game.Ai
             bool knowledgeChanged = false;
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
-                ResourceType? dominant = Game.Map.HexResourceProfile.DominantResourceType(hex);
+                ResourceType? dominant = HexResourceBonusRegistry.DominantResourceType(hex);
                 if (dominant.HasValue && _map != null
                     && _map.TryGetTerrainAt(hex, out var terrain))
                 {
-                    ResourceYields observed = HexResourceCalculator.GetEffectiveYield(
-                        terrain, HexResourceBonusRegistry.GetBonus(hex));
+                    ResourceYields observed = HexResourceBonusRegistry.EffectiveYield(terrain, hex);
                     var nextResource = new KnownResourceHex(hex, dominant.Value, observed);
                     if (!resources.TryGetValue(hex, out KnownResourceHex previousResource)
                         || !SameResourceHex(previousResource, nextResource))

@@ -43,7 +43,7 @@ namespace Game.UI
                 label.text = action.Label ?? string.Empty;
             if (button != null)
             {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(button);
+                Game.UI.UIUtility.ResetRuntimeListeners(button);
                 Action onClick = action.OnClick;
                 button.onClick.AddListener(() => onClick?.Invoke());
             }

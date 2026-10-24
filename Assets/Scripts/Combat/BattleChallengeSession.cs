@@ -151,7 +151,7 @@ namespace Game.Combat
         private int ScoreCaptureKillTactic(bool defenderSide, int a, int d)
         {
             var oldOutcome = ResolveCaptureKillOutcome();
-            var next = BattleResolutionRules.ResolveCaptureKill(AttackerTokens, DefenderTokens, a, d);
+            var next = BattleRules.ResolveCaptureKill(AttackerTokens, DefenderTokens, a, d);
             if (next == oldOutcome) return 0;
             if (defenderSide) return next == CaptureKillOutcome.Escaped ? 100 : 0;
             return next == CaptureKillOutcome.Captured ? 100
@@ -173,7 +173,7 @@ namespace Game.Combat
 
         private int ProjectDamage(int a, int d, UnitData interceptor, out UnitData victim)
         {
-            var outcome = BattleResolutionRules.ResolveGroundAttack(AttackerTokens, DefenderTokens,
+            var outcome = BattleRules.ResolveGroundAttack(AttackerTokens, DefenderTokens,
                 _attacker, _defender, _magnitudes, a, d);
             victim = outcome.Damage > 0 && interceptor != null ? interceptor : _defender;
             return victim == interceptor && interceptor != null
@@ -250,14 +250,14 @@ namespace Game.Combat
             _fateOrder.Report(spent);
         }
 
-        public BattleResolutionRules.GroundAttackOutcome ResolveGroundOutcome() =>
-            BattleResolutionRules.ResolveGroundAttack(
+        public BattleRules.GroundAttackOutcome ResolveGroundOutcome() =>
+            BattleRules.ResolveGroundAttack(
                 AttackerTokens ?? Array.Empty<bool>(),
                 DefenderTokens ?? Array.Empty<bool>(),
                 _attacker, _defender, _magnitudes, AttackerModifier, DefenderModifier);
 
         public CaptureKillOutcome ResolveCaptureKillOutcome() =>
-            BattleResolutionRules.ResolveCaptureKill(
+            BattleRules.ResolveCaptureKill(
                 AttackerTokens ?? Array.Empty<bool>(),
                 DefenderTokens ?? Array.Empty<bool>(), AttackerModifier, DefenderModifier);
 

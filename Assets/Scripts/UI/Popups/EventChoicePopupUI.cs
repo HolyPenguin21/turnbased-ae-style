@@ -65,12 +65,12 @@ namespace Game.UI
 
             if (exploreButton != null)
             {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(exploreButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(exploreButton);
                 exploreButton.onClick.AddListener(() => { Hide(); onExplore?.Invoke(); });
             }
             if (skipButton != null)
             {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(skipButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(skipButton);
                 skipButton.onClick.AddListener(() => { Hide(); onSkip?.Invoke(); });
             }
 

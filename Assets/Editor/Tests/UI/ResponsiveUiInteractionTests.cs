@@ -50,7 +50,7 @@ public class ResponsiveUiInteractionTests
             position = new Vector2(400f, 300f),
             delta = new Vector2(20f * scaleX, 10f * scaleY)
         };
-        UIDragUtility.ApplyScreenDelta(card, data, canvas);
+        UIUtility.ApplyScreenDelta(card, data, canvas);
         Assert.That(card.anchoredPosition.x, Is.EqualTo(27f).Within(.001f));
         Assert.That(card.anchoredPosition.y, Is.EqualTo(19f).Within(.001f));
     }

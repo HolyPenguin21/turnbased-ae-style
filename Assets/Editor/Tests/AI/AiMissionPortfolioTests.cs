@@ -397,7 +397,7 @@ namespace Game.EditorTests
             foreach (MissionProposal m in missions)
                 if (m != null)
                     m.EffectiveValue = m.BaseValue * RadarValueScale.For(f.Radar, m);
-            AttackPreparationPriority.Apply(missions);
+            AttackPreparationPolicy.ApplyPriority(missions);
             AiV2Trace.CorrelateDemandsToMissions(Array.Empty<AxisDemand>(), missions);
             return missions;
         }
@@ -485,7 +485,7 @@ namespace Game.EditorTests
             {
                 "RefreshReconLanePressures(", "ReconMissionPlanner.Propose(", "AggressionMissionLayer.Propose(",
                 "EconomyMissionPlanner.Propose(", "DevelopmentMissionPlanner.Propose(", "NextMissionAttemptId()",
-                "RadarValueScale.For(", "AttackPreparationPriority.Apply(", "AiFrameLog.TaskScores(",
+                "RadarValueScale.For(", "AttackPreparationPolicy.ApplyPriority(", "AiFrameLog.TaskScores(",
                 "CorrelateDemandsToMissions(",
             };
             int last = -1;
@@ -510,7 +510,7 @@ namespace Game.EditorTests
                 System.IO.SearchOption.AllDirectories).First();
             var banned = new System.Text.RegularExpressions.Regex(
                 "ReconMissionPlanner|AggressionMissionLayer|EconomyMissionPlanner|DevelopmentMissionPlanner"
-                + "|AttackPreparationPriority|LifecycleReturnPolicy|MarkProtectedThisTurn"
+                + "|ApplyPriority|LifecycleReturnPolicy|MarkProtectedThisTurn"
                 + "|RefreshReconLanePressures|" + @"\.EffectiveValue\s*=[^=]");
             var offenders = System.IO.Directory.GetFiles(dir, "*.cs", System.IO.SearchOption.AllDirectories)
                 .SelectMany(f => System.IO.File.ReadLines(f).Select((l, i) => (f, n: i + 1, l)))

@@ -116,7 +116,7 @@ namespace Game.Ai.V2
         //   CanServeStealth — the durable role-level answer (continuity claim): hidden, able to
         //     enter stealth, or carrying a stealth level at all.
         // And one arrival rule: ArrivesHidden — will this mover stand FULLY hidden on the hex it
-        // reaches for `target` (what ScoutExecutionSafety asks of a vantage)?
+        // reaches for `target` (what ScoutRiskModel asks of a vantage)?
         public static bool StealthReadyThisTurn(ArmySnapshot a) =>
             a != null && (a.IsHidden || (a.CanEnterStealth && !a.HasActivatedThisTurn));
 

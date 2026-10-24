@@ -164,7 +164,7 @@ namespace Game.Ai.V2
             // The march gate is power AND coverage: GroundCombatFeasibility.Clears stays the one
             // owner of coverage, so a host above the power bar is only satisfied when it also
             // damages every known defender (an unobserved site has none and is vacuously covered).
-            AttackPreparationAssessment readiness = AttackPreparationReadiness.Assess(
+            AttackPreparationAssessment readiness = AttackPreparationPolicy.AssessReadiness(
                 host, snap.Self.AttackPeak, opposition, hexBonus);
             bool coverageGap = readiness.PowerReady && !readiness.CombatFeasible;
             if (readiness.CapabilityReady)

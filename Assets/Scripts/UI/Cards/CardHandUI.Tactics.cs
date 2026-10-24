@@ -122,7 +122,7 @@ namespace Game.UI
             {
                 RebuildTacticCards();
                 int index = returned == null ? -1 : _tacticCards.FindIndex(c => ReferenceEquals(c.Data, returned));
-                _tacticScrollOffset = UIListUtility.OffsetToReveal(_tacticScrollOffset, index, MaxVisible);
+                _tacticScrollOffset = UIUtility.OffsetToReveal(_tacticScrollOffset, index, MaxVisible);
                 Relayout(animated: false);
             }
             else foreach (var card in _tacticCards) BindTacticInteraction(card);
@@ -145,7 +145,7 @@ namespace Game.UI
             StopTacticFlip();
             CancelTacticDrags();
             foreach (var card in _tacticCards) card.gameObject.SetActive(false);
-            UIListUtility.DestroyAndClear(_tacticCards);
+            UIUtility.DestroyAndClear(_tacticCards);
             if (_tacticSource != null && cardPrefab != null && handContainer != null)
                 foreach (var data in _tacticSource.Cards)
                 {

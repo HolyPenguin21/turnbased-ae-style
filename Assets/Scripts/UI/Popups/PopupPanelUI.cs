@@ -96,7 +96,7 @@ namespace Game.UI
             if (confirmButton == null)
                 return;
             confirmButton.gameObject.SetActive(visible);
-            Game.UI.UIButtonEventUtility.ResetRuntimeListeners(confirmButton);
+            Game.UI.UIUtility.ResetRuntimeListeners(confirmButton);
             if (onClick != null)
                 confirmButton.onClick.AddListener(() => onClick());
         }

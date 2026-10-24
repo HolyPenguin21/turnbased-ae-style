@@ -114,7 +114,7 @@ namespace Game.UI
             if (_isPresentingAttack) return;
             foreach (BattleGridCellUI oldCell in _cells)
                 if (oldCell != null) oldCell.gameObject.SetActive(false);
-            UIListUtility.DestroyAndClear(_cells);
+            UIUtility.DestroyAndClear(_cells);
             if (gridContainer == null || gridCellPrefab == null || _grid == null)
                 return;
 

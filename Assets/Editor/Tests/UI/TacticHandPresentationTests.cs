@@ -163,7 +163,7 @@ namespace Game.EditorTests
             int originalOffset = 1;
             int offsetWhileSlotted = 0;
             int returnedIndex = visibleCount;
-            int restored = UIListUtility.OffsetToReveal(offsetWhileSlotted, returnedIndex, visibleCount);
+            int restored = UIUtility.OffsetToReveal(offsetWhileSlotted, returnedIndex, visibleCount);
             Assert.That(returnedIndex, Is.InRange(restored, restored + visibleCount - 1));
             Assert.AreEqual(originalOffset, restored);
         }

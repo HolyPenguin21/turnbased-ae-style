@@ -602,7 +602,7 @@ namespace Game.Turns
             if (endTurnButton != null)
             {
                 endTurnButton.interactable = false;
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(endTurnButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(endTurnButton);
                 endTurnButton.onClick.AddListener(OnEndTurnClicked);
             }
             TurnNumber = 0;
@@ -1269,7 +1269,7 @@ namespace Game.Turns
             if (aiObserverPauseButton == null)
                 return;
 
-            Game.UI.UIButtonEventUtility.ResetRuntimeListeners(aiObserverPauseButton);
+            Game.UI.UIUtility.ResetRuntimeListeners(aiObserverPauseButton);
             aiObserverPauseButton.onClick.AddListener(OnAiObserverPauseClicked);
             aiObserverPauseButton.gameObject.SetActive(_aiObserverMatch);
             RefreshAiObserverPauseButton();

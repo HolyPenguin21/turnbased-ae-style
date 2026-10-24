@@ -805,7 +805,7 @@ namespace Game.Ai.V2
         public ISet<HexCoord> VisibleArrivalBlockedHexes;
 
         // Spec §19 — the single actor-state-aware "may this scout be routed onto/through `h`" test,
-        // the frozen-snapshot form of ScoutExecutionSafety.StepBlocked. A stealth-capable mover
+        // the frozen-snapshot form of ScoutRiskModel.StepBlocked. A stealth-capable mover
         // ignores arrival outcomes; every mover still respects the true hard blocks.
         public bool IsBlockedForScout(HexCoord h, bool stealthCapable) =>
             (ScoutHardBlockedHexes != null && ScoutHardBlockedHexes.Contains(h))
