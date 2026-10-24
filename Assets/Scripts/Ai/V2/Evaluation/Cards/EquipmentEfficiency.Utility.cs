@@ -686,7 +686,7 @@ namespace Game.Ai.V2
                                 else Finish(h, chance);
                             }
                             if (BattleSimulationKernel.TriggersCounterattack(hurt.Abilities, false, hurt.HitPoints,
-                                distance == 1, false, damage, enemy.Abilities))
+                                distance == 1, damage, enemy.Abilities))
                                 HostStrike(hurt, afterEnemy, p, Continue);
                             else Continue(hurt, afterEnemy, p, false);
                         }

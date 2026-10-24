@@ -589,7 +589,7 @@ namespace Game.Combat
             ArmyData holdingArmy = null)
         {
             var suppressed = new HashSet<UnitData>();
-            // One call is one round: Bodyguard/Counterattack are spent once per round.
+            // One call is one round: Bodyguard is spent once per round.
             var reactions = new BattleReactionState();
             if (healHeroesAtStart)
                 foreach (UnitData hero in grid.AllUnits().Where(u => u.IsHero).ToList())
@@ -628,9 +628,8 @@ namespace Game.Combat
                     // turn, through the same attack path (never intercepted, never answered).
                     if (!explosion && hp[actor] > 0 && !suppressVictim && BattleRules.CanCounterattack(grid, victim, actor,
                             hp.TryGetValue(victim, out float victimHp) ? victimHp : 0f,
-                            Mathf.RoundToInt(damage), reactions))
+                            Mathf.RoundToInt(damage)))
                     {
-                        reactions.CountersUsed.Add(victim);
                         ApplySimAttack(grid, hp, victim, actor, null, true, magnitudes,
                             battleDefender, battleDefenderDefenseBonus, rng, fateByArmy, simulatedAttack,
                             simulatedDefense, ownArmy, enemyArmy, reactions, damageDealtByUnit,
@@ -1140,7 +1139,7 @@ namespace Game.Combat
                 || !grid.TryFindPosition(actor, out int actorRow, out int actorCol))
                 return passAction;
 
-            // reactions: the live round's spent Bodyguard/Counterattack (BattleEngine.Reactions).
+            // reactions: the live round's spent Bodyguard (BattleEngine.Reactions).
             if (BattleTargetSelector.TryChooseAttackTarget(grid, actor, actorRow, actorCol, magnitudes,
                 turnOrder, turnIndex, out AiAction attackAction, battleDefender, battleDefenderDefenseBonus,
                 reactions))

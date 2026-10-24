@@ -7,19 +7,16 @@ using Game.Units;
 namespace Game.Combat
 {
     /// <summary>
-    /// Once-per-round reactions already spent this round (UnitAbilities.Bodyguard /
-    /// UnitAbilities.Counterattack). BattleEngine owns the live one and clears it at round start;
-    /// a shadow-grid projection keeps its own per simulated round.
+    /// Once-per-round Bodyguard reactions already spent this round. BattleEngine owns the live
+    /// one and clears it at round start; a shadow-grid projection keeps its own per simulated round.
     /// </summary>
     public sealed class BattleReactionState
     {
         public readonly HashSet<UnitData> BodyguardsUsed = new HashSet<UnitData>();
-        public readonly HashSet<UnitData> CountersUsed = new HashSet<UnitData>();
 
         public void Clear()
         {
             BodyguardsUsed.Clear();
-            CountersUsed.Clear();
         }
     }
 
@@ -146,7 +143,7 @@ namespace Game.Combat
         // `attacker` now. "Within 1 cell" is the same square range BattleGrid.IsInRange uses for
         // a Range-1 attack.
         public static bool CanCounterattack(BattleGrid grid, UnitData victim, UnitData attacker,
-            float victimHp, int primaryDamage, BattleReactionState reactions)
+            float victimHp, int primaryDamage)
         {
             if (grid == null || victim == null || attacker == null || victim.Owner == attacker.Owner
                 || victim.IsPrisoner
@@ -155,7 +152,6 @@ namespace Game.Combat
                 return false;
             return BattleSimulationKernel.TriggersCounterattack(victim.Abilities, victim.IsHero, victimHp,
                 BattleGrid.IsInRange(vr, vc, ar, ac, 1),
-                reactions != null && reactions.CountersUsed.Contains(victim),
                 primaryDamage, attacker.Abilities);
         }
 

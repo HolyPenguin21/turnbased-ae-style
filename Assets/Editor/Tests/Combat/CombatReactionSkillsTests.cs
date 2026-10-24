@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Game.Cards;
 using Game.Combat;
 using Game.Map;
@@ -273,7 +274,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void Counterattack_AnswersAnAdjacentAttackerOncePerRound()
+        public void Counterattack_AnswersEveryAdjacentPrimaryAttack()
         {
             UnitData victim = Body(Own, abilities: new[] { UnitAbilities.Counterattack });
             UnitData attacker = Body(Foe), shooter = Body(Foe);
@@ -286,14 +287,95 @@ namespace Game.EditorTests
                 "two cells away");
             Assert.That(engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(1)).Counterattacker,
                 Is.SameAs(victim), "diagonal neighbour is within 1 cell");
-            Assert.That(engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(1)).Counterattacker, Is.Null,
-                "once per round");
+            Assert.That(engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(1)).Counterattacker,
+                Is.SameAs(victim), "another attack in the same round must also be answered");
 
             UnitData answerTarget = Body(Own, abilities: new[] { UnitAbilities.Counterattack });
             engine.State.Attacker.Members.Add(answerTarget);
             engine.State.Grid.Set(3, 2, answerTarget);
             Assert.That(engine.ResolveAndApplyGroundAttack(attacker, answerTarget, Roll(1), isCounterattack: true)
                 .Counterattacker, Is.Null, "a counterattack is never answered");
+        }
+
+        [TestCase(UnitAbilities.Splash, false)]
+        [TestCase(UnitAbilities.Splash, true)]
+        [TestCase(UnitAbilities.Scorcher, false)]
+        [TestCase(UnitAbilities.Scorcher, true)]
+        public void Collateral_RepeatsOnEveryAttackInTheSameRound(string skill, bool counterattack)
+        {
+            UnitData attacker = Body(Own, hp: 20, abilities: new[] { skill });
+            UnitData target = Body(Foe, hp: 20), neighbour = Body(Foe, hp: 20);
+            neighbour.TypeTags.Add(UnitTypeTag.Bio);
+            BattleEngine engine = Engine(Army(Own, attacker), Army(Foe, target, neighbour),
+                (attacker, 2, 1), (target, 1, 1), (neighbour, 1, 2));
+            engine.StartRound();
+            int round = engine.State.Round;
+
+            for (int hit = 1; hit <= 2; hit++)
+            {
+                CollectionAssert.Contains(engine.PreviewGroundHitEffects(attacker, target, 4, counterattack), skill);
+                BattleAttackApplication result = engine.ResolveAndApplyGroundAttack(attacker, target,
+                    Roll(4), isCounterattack: counterattack);
+                Assert.That(result.SecondaryHits.Count, Is.EqualTo(1));
+                Assert.That(result.SecondaryHits[0].Victim, Is.SameAs(neighbour));
+                Assert.That(result.SecondaryHits[0].Skill, Is.EqualTo(skill));
+                Assert.That(result.SecondaryHits[0].Damage, Is.EqualTo(2));
+                Assert.That(neighbour.HitPointsCurrent, Is.EqualTo(20 - 2 * hit));
+                Assert.That(engine.State.Round, Is.EqualTo(round));
+            }
+        }
+
+        [Test]
+        public void Counterattack_WithSplashAnswersTwoDifferentAttackersInTheSameRound()
+        {
+            UnitData carrier = Body(Own, hp: 20, abilities: new[]
+                { UnitAbilities.Counterattack, UnitAbilities.Splash });
+            UnitData first = Body(Foe, hp: 20, abilities: new[] { UnitAbilities.Counterattack });
+            UnitData second = Body(Foe, hp: 20, abilities: new[] { UnitAbilities.Counterattack });
+            BattleEngine engine = Engine(Army(Own, carrier), Army(Foe, first, second),
+                (carrier, 3, 1), (first, 2, 1), (second, 2, 2));
+            engine.StartRound();
+            int round = engine.State.Round;
+
+            foreach (UnitData attacker in new[] { first, second })
+            {
+                BattleAttackApplication attack = engine.ResolveAndApplyGroundAttack(attacker, carrier, Roll(1));
+                Assert.That(attack.Counterattacker, Is.SameAs(carrier));
+                CollectionAssert.Contains(engine.PreviewGroundHitEffects(carrier, attacker, 4,
+                    isCounterattack: true), UnitAbilities.Splash);
+                BattleAttackApplication answer = engine.ResolveAndApplyGroundAttack(carrier, attacker,
+                    Roll(4), isCounterattack: true);
+                Assert.That(answer.Counterattacker, Is.Null, "a counterattack must never start a reaction loop");
+                Assert.That(answer.SecondaryHits.Count, Is.EqualTo(1));
+                Assert.That(answer.SecondaryHits[0].Victim, Is.SameAs(attacker == first ? second : first));
+                Assert.That(engine.State.Round, Is.EqualTo(round));
+            }
+            Assert.That(first.HitPointsCurrent, Is.EqualTo(14));
+            Assert.That(second.HitPointsCurrent, Is.EqualTo(14));
+        }
+
+        [Test]
+        public void ShadowRound_CounterattackAnswersEveryAttacker()
+        {
+            UnitData carrier = Body(Own, attack: 4, defense: 0, hp: 100,
+                abilities: new[] { UnitAbilities.Counterattack });
+            UnitData first = Body(Foe, defense: 0, hp: 100), second = Body(Foe, defense: 0, hp: 100);
+            var grid = new BattleGrid();
+            grid.Set(3, 1, carrier); grid.Set(2, 1, first); grid.Set(2, 2, second);
+            var hp = new Dictionary<UnitData, float> { [carrier] = 100f, [first] = 100f, [second] = 100f };
+            var dealt = new Dictionary<UnitData, float>();
+            float expectedAnswer = BattleCombatOdds.Evaluate(carrier, first, 0,
+                AbilityMagnitudes.Default, 100f).ExpectedDamage;
+
+            typeof(BattleAi).GetMethod("RunOneRound", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { grid, hp, new List<UnitData> { first, second },
+                    AbilityMagnitudes.Default, dealt, false, null, 0, null, null, null, null,
+                    null, null, null, false, null });
+
+            Assert.That(expectedAnswer, Is.GreaterThan(0f));
+            Assert.That(hp[first], Is.EqualTo(100f - expectedAnswer).Within(.0001f));
+            Assert.That(hp[second], Is.EqualTo(100f - expectedAnswer).Within(.0001f));
+            Assert.That(dealt[carrier], Is.EqualTo(2f * expectedAnswer).Within(.0001f));
         }
 
         [Test]
@@ -357,12 +439,11 @@ namespace Game.EditorTests
                 null, 0, out BattleAi.AiAction action), Is.True);
             Assert.That(action.Target, Is.SameAs(plain));
 
-            var spent = new BattleReactionState();
-            spent.CountersUsed.Add(plain);
-            spent.CountersUsed.Add(counter);
+            var reactions = new BattleReactionState();
             Assert.That(BattleTargetSelector.TryChooseAttackTarget(grid, actor, 2, 2, AbilityMagnitudes.Default,
-                null, 0, out BattleAi.AiAction tie, reactions: spent), Is.True,
-                "with the answer spent both are plain targets");
+                null, 0, out BattleAi.AiAction repeated, reactions: reactions), Is.True);
+            Assert.That(repeated.Target, Is.SameAs(plain),
+                "the counterattack risk remains on repeated target selection in the same round");
         }
 
         private static WorthIt.DefenderProfile P(float attack, float defense, float hp, params string[] abilities) =>

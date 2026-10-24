@@ -302,7 +302,7 @@ namespace Game.Combat
         public event Action<UnitData> UnitDrilled;
 
         public BattleState State => _state;
-        // This round's spent Bodyguard/Counterattack reactions (cleared by StartRound).
+        // This round's spent Bodyguard reactions (cleared by StartRound).
         public BattleReactionState Reactions => _reactions;
 
         public BattleEngine(BattleState state, AbilityMagnitudes magnitudes, System.Random random = null)
@@ -646,13 +646,12 @@ namespace Game.Combat
                 && _state.OwningArmy(victim) != _state.RetreatingArmy
                 && BattleSimulationKernel.SuppressesTurn(application.Damage, attacker.Abilities)
                 && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
-                    victim.HitPointsCurrent, 0, _reactions);
+                    victim.HitPointsCurrent, 0);
             if (!isCounterattack && !application.DefenderDied
                 && _state.OwningArmy(victim) != _state.RetreatingArmy
                 && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
-                    victim.HitPointsCurrent, application.Damage, _reactions))
+                    victim.HitPointsCurrent, application.Damage))
             {
-                _reactions.CountersUsed.Add(victim);
                 application.Counterattacker = victim;
             }
             // All modifiers, collateral and the counterattack decision used the armed state.
@@ -1162,7 +1161,7 @@ namespace Game.Combat
                 && _state.TurnOrder.IndexOf(victim) > _state.TurnIndex;
             bool wouldCounter = !isCounterattack && _state.OwningArmy(victim) != _state.RetreatingArmy
                 && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
-                    victim.HitPointsCurrent - damage, 0, _reactions);
+                    victim.HitPointsCurrent - damage, 0);
             if (survives && (pendingTurn || wouldCounter)
                 && BattleSimulationKernel.SuppressesTurn(damage, attacker.Abilities))
                 effects.Add(UnitAbilities.ShockAttack);
