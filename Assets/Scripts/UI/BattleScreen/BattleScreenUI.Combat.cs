@@ -48,7 +48,7 @@ namespace Game.UI
             if (ExplosionAttack.TargetLimit(attacker.Abilities) > 0)
             {
                 if (!isCounterattack) _battleEngine?.CommitGroundAttack(attacker);
-                StartCoroutine(RunExplosionAttack(attacker));
+                _explosionAttackRoutine = StartCoroutine(RunExplosionAttack(attacker));
                 return;
             }
 
@@ -92,14 +92,25 @@ namespace Game.UI
 
         private IEnumerator RunExplosionAttack(UnitData attacker)
         {
+            int generation = _attackPresentationGeneration;
+            _isPresentingAttack = true;
+            if (passButton != null) passButton.interactable = false;
             var explosion = new ExplosionAttack(attacker, _battleEngine.State.BattleHex,
                 AviationCombatPresenter.HeadlessRng, _battleEngine.State.Attacker, _battleEngine.State.Defender);
-            yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelectionController,
-                _battleEngine, _fastResolve, _tacticsCritical, (target, application) =>
-                {
-                    foreach (var removal in application.Removals) ShowUnitRemovalThought(removal);
-                    RefreshGrid();
-                }, map);
+            try
+            {
+                yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelectionController,
+                    _battleEngine, _fastResolve, _tacticsCritical, (target, application) =>
+                    {
+                        foreach (var removal in application.Removals) ShowUnitRemovalThought(removal);
+                    }, map, (target, application) => PresentExplosionHit(attacker, application));
+            }
+            finally
+            {
+                if (generation == _attackPresentationGeneration)
+                { _isPresentingAttack = false; _explosionAttackRoutine = null; DestroyTrailLayer(); }
+            }
+            if (generation != _attackPresentationGeneration) yield break;
             RefreshGrid();
             if (!CheckBattleEnd()) EndTurn();
         }
@@ -137,8 +148,6 @@ namespace Game.UI
                 secondary.Add(hit);
             }
 
-            RefreshGrid();
-
             // A surviving Counterattack carrier answers before the acting unit's turn ends; the
             // answer resolves through this same method and then ends that same turn.
             void Continue()
@@ -154,17 +163,12 @@ namespace Game.UI
                 EndTurn();
             }
 
-            if (secondary.Count > 0)
+            StartAttackPresentation(attacker, application, () =>
             {
-                ShowSecondaryResultsThen(attacker, secondary, () =>
-                {
-                    RefreshGrid();
-                    Continue();
-                });
-                return;
-            }
-
-            Continue();
+                if (secondary.Count > 0)
+                    ShowSecondaryResultsThen(attacker, secondary, () => { RefreshGrid(); Continue(); });
+                else Continue();
+            });
         }
 
         private void ShowUnitRemovalThought(BattleUnitRemoval removal)
@@ -271,6 +275,7 @@ namespace Game.UI
         // waited forever on an invisible "Capture/Kill resolved." popup (playtest 2026-10-15).
         public void BeginCaptureKillEncounter(ArmyData hunterArmy, ArmyData targetArmy, Action onClosed)
         {
+            CancelAttackPresentation();
             if (attackPopup == null || hunterArmy == null || targetArmy == null)
             {
                 onClosed?.Invoke();
