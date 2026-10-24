@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using Game.Ai;
+using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
@@ -35,6 +36,25 @@ namespace Game.EditorTests
         {
             Assert.That(Body(range: 1).SameContent(Body(range: 3)), Is.False, "range decides counter-fire");
             Assert.That(Body(fate: 0).SameContent(Body(fate: 2)), Is.False);
+        }
+
+        // WithState (forecast states sharing the owned lists) must stay the constructor called with
+        // the profile's own fields: every field, including ones added later, compared by content.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void WithState_IsTheConstructorWithNewHpAttackDefense(bool hero)
+        {
+            var source = new WorthIt.DefenderProfile(2f, true, new[] { UnitTypeTag.Bio }, 3f, 6f, 2,
+                new[] { UnitAbilities.Berserk }, 8f, isGroundCombatant: false, isHero: hero, fateMax: 4,
+                isSummoned: true, range: 2, consumption: null, singleUseUnit: true);
+            var built = new WorthIt.DefenderProfile(5f, source.HasCeramicArmor, source.TypeTags, 7f, 1f,
+                source.Initiative, source.Abilities, source.MaxHitPoints, source.IsGroundCombatant, source.IsHero,
+                source.FateMax, source.IsSummoned, source.Range, source.Consumption, source.SingleUseUnit);
+            var derived = source.WithState(1f, 7f, 5f);
+            // NUnit compares the owned lists element by element.
+            foreach (var field in typeof(WorthIt.DefenderProfile).GetFields())
+                Assert.That(field.GetValue(derived), Is.EqualTo(field.GetValue(built)), field.Name);
+            Assert.That(derived.SameContent(built), Is.True);
         }
 
         [Test]

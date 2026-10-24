@@ -422,15 +422,18 @@ namespace Game.Ai.V2
             }
             bool stateful = ctx.BeforeConsumption != null || ctx.AfterConsumption != null || consumption != null;
             float sum = 0f;
-            // Splash / Scorcher read a target's battle neighbours by profile IDENTITY, and a
-            // consumption may rewrite the ability list: only the plain series folds equal bodies.
-            if (!stateful && !abilities.Contains(UnitAbilities.Splash) && !abilities.Contains(UnitAbilities.Scorcher))
+            // Splash / Scorcher read a target's battle neighbours by profile IDENTITY: equal bodies
+            // fold only while the host carries neither, armed or spent (a consumption may rewrite
+            // the ability list). Without them a series reads its target by content alone.
+            bool Secondary(IReadOnlyCollection<string> list) =>
+                list.Contains(UnitAbilities.Splash) || list.Contains(UnitAbilities.Scorcher);
+            if (!Secondary(abilities) && (consumption == null || !Secondary(consumption.ApplyAbilities(abilities))))
             {
                 for (int i = 0; i < ground.Distinct.Count; i++)
                 {
                     var t = ground.Distinct[i];
-                    sum += ground.Counts[i] * (t.Consumption != null
-                        ? ConsumableContactSeries(s, abilities, null, ctx, t, survivorValue)
+                    sum += ground.Counts[i] * (stateful || t.Consumption != null
+                        ? ConsumableContactSeries(s, abilities, consumption, ctx, t, survivorValue)
                         : ContactSeries(s, abilities, ctx, t, survivorValue));
                 }
             }
@@ -605,10 +608,31 @@ namespace Game.Ai.V2
                 abilities.ToList(), s.HitPoints, range: s.Range, consumption: consumption);
             var spent = WorthIt.AfterAttack(armed);
             var mags = AbilityMagnitudes.Default;
+            // Every state below is derived from armed / spent / the target and shares their owned
+            // lists, so (lists, HP, Attack, Defense) identifies a profile: its after-attack state
+            // is computed once per call, not once per branch of the outcome tree.
+            var afterAttack = new Dictionary<(object, object, float, float, float, float), WorthIt.DefenderProfile>();
+            WorthIt.DefenderProfile AfterAttack(WorthIt.DefenderProfile p)
+            {
+                if (p.Consumption == null && !p.SingleUseUnit)
+                    return p;
+                var key = ((object)p.Abilities, (object)p.Consumption, p.HitPoints, p.Attack, p.Defense, p.MaxHitPoints);
+                if (!afterAttack.TryGetValue(key, out WorthIt.DefenderProfile known))
+                    afterAttack[key] = known = WorthIt.AfterAttack(p);
+                return known;
+            }
+            // Splash / Scorcher share of a strike: it reads the struck enemy's Defense, tags and
+            // abilities (not its HP) and the observed target's neighbours - once per distinct strike.
+            var secondary = new Dictionary<(int, object, float, object, object), float>();
+            float Secondary(int attack, IReadOnlyList<string> hostAbilities, WorthIt.DefenderProfile enemy)
+            {
+                var key = (attack, (object)hostAbilities, enemy.Defense, (object)enemy.TypeTags, (object)enemy.Abilities);
+                if (!secondary.TryGetValue(key, out float known))
+                    secondary[key] = known = SecondaryFraction(attack, hostAbilities, ctx, enemy, target);
+                return known;
+            }
             WorthIt.DefenderProfile State(WorthIt.DefenderProfile p, float hp, float attack, float defense) =>
-                new WorthIt.DefenderProfile(defense, p.HasCeramicArmor, p.TypeTags, attack, hp,
-                    p.Initiative, p.Abilities, p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax,
-                    p.IsSummoned, p.Range, p.Consumption, p.SingleUseUnit);
+                p.WithState(hp, attack, defense);
             WorthIt.DefenderProfile Hit(WorthIt.DefenderProfile p, int damage)
             {
                 int attack = Mathf.RoundToInt(p.Attack), defense = Mathf.RoundToInt(p.Defense);
@@ -619,105 +643,141 @@ namespace Game.Ai.V2
             {
                 var mass = new Dictionary<(int Hp, int Attack, int Defense, bool Spent, bool Refilled), double>
                 { [(Mathf.RoundToInt(armed.HitPoints), s.Attack, s.Defense, false, false)] = 1d };
-                double total = 0d;
+                var next = new Dictionary<(int Hp, int Attack, int Defense, bool Spent, bool Refilled), double>();
+                // One contact is linear in the state's probability and the same in every contact:
+                // each host state's step (damage dealt, next states) is walked once at unit weight
+                // and scaled for every contact that reaches the state again.
+                var steps = new Dictionary<(int Hp, int Attack, int Defense, bool Spent, bool Refilled),
+                    (double Dealt, KeyValuePair<(int Hp, int Attack, int Defense, bool Spent, bool Refilled), double>[] Next)>();
+                var into = new Dictionary<(int Hp, int Attack, int Defense, bool Spent, bool Refilled), double>();
+                double total = 0d, series = 0d;
                 int targetHp = Mathf.Max(1, Mathf.CeilToInt(target.HitPoints));
+                void Finish(WorthIt.DefenderProfile host, double weight)
+                {
+                    if (host.HitPoints <= 0 || weight <= 0d) return;
+                    int hp = Mathf.RoundToInt(host.HitPoints);
+                    bool refill = consumption?.HpSpentExcess > 0 && host.Consumption?.HpSpentExcess == 0;
+                    if (host.Abilities.Contains(UnitAbilities.Regeneration))
+                    {
+                        refill |= hp < host.MaxHitPoints;
+                        hp = Mathf.Min(Mathf.RoundToInt(host.MaxHitPoints), hp + 1);
+                    }
+                    var key = (hp, Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(host.Defense),
+                        consumption != null && host.Consumption == null, refill);
+                    into.TryGetValue(key, out double prior); into[key] = prior + weight;
+                }
+                // What follows a host strike (no delegates: the tree is walked per outcome).
+                void Then(StrikeThen then, WorthIt.DefenderProfile host, WorthIt.DefenderProfile enemy,
+                    double weight, bool shock)
+                {
+                    if (then == StrikeThen.Finish || then == StrikeThen.EnemyAnswers && shock) Finish(host, weight);
+                    else if (then == StrikeThen.EnemyAnswers) EnemyStrike(host, enemy, weight, false);
+                    else HostStrike(host, enemy, weight, StrikeThen.Finish);
+                }
+                void HostStrike(WorthIt.DefenderProfile host, WorthIt.DefenderProfile enemy, double weight,
+                    StrikeThen then)
+                {
+                    if (host.HitPoints <= 0 || enemy.HitPoints <= 0 || host.Range < distance)
+                    { Then(then, host, enemy, weight, false); return; }
+                    int limit = Mathf.Max(1, Mathf.CeilToInt(enemy.HitPoints));
+                    double[] outcomes = BattleSimulationKernel.SharedExchangeDamageDistribution(
+                        Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(enemy.Defense), host.Abilities,
+                        enemy.TypeTags, enemy.Abilities, limit);
+                    total += weight * Secondary(Mathf.RoundToInt(host.Attack), host.Abilities, enemy);
+                    var after = AfterAttack(host);
+                    for (int damage = 0; damage < outcomes.Length; damage++)
+                    {
+                        double p = weight * outcomes[damage];
+                        if (p <= 0d) continue;
+                        total += p * damage / targetHp;
+                        Then(then, after, Hit(enemy, damage), p,
+                            BattleSimulationKernel.SuppressesTurn(damage, host.Abilities));
+                    }
+                }
+                void EnemyStrike(WorthIt.DefenderProfile host, WorthIt.DefenderProfile enemy, double weight,
+                    bool hostStillHasTurn)
+                {
+                    if (host.HitPoints <= 0 || enemy.HitPoints <= 0
+                        || enemy.Range >= 0 && enemy.Range < distance)
+                    {
+                        if (hostStillHasTurn) HostStrike(host, enemy, weight, StrikeThen.Finish);
+                        else Finish(host, weight);
+                        return;
+                    }
+                    int limit = Mathf.Max(1, Mathf.CeilToInt(host.HitPoints));
+                    double[] outcomes = BattleSimulationKernel.SharedExchangeDamageDistribution(
+                        Mathf.RoundToInt(enemy.Attack), Mathf.RoundToInt(host.Defense), enemy.Abilities,
+                        host.TypeTags, host.Abilities, limit);
+                    var afterEnemy = AfterAttack(enemy);
+                    for (int damage = 0; damage < outcomes.Length; damage++)
+                    {
+                        double p = weight * outcomes[damage];
+                        if (p <= 0d) continue;
+                        var hurt = Hit(host, damage);
+                        bool shock = BattleSimulationKernel.SuppressesTurn(damage, enemy.Abilities);
+                        // The host's own turn (if it still has one and was not Shock-stopped) follows
+                        // the counterattack, whose own Shock does not cancel it.
+                        StrikeThen rest = hostStillHasTurn && !shock ? StrikeThen.HostStrikes : StrikeThen.Finish;
+                        if (BattleSimulationKernel.TriggersCounterattack(hurt.Abilities, false, hurt.HitPoints,
+                            distance == 1, damage, enemy.Abilities))
+                            HostStrike(hurt, afterEnemy, p, rest);
+                        else Then(rest, hurt, afterEnemy, p, false);
+                    }
+                }
                 for (int contact = 0; contact < AiConfigV2.equipContactCount; contact++)
                 {
-                    var next = new Dictionary<(int Hp, int Attack, int Defense, bool Spent, bool Refilled), double>();
-                    void Finish(WorthIt.DefenderProfile host, double weight)
-                    {
-                        if (host.HitPoints <= 0 || weight <= 0d) return;
-                        int hp = Mathf.RoundToInt(host.HitPoints);
-                        bool refill = consumption?.HpSpentExcess > 0 && host.Consumption?.HpSpentExcess == 0;
-                        if (host.Abilities.Contains(UnitAbilities.Regeneration))
-                        {
-                            refill |= hp < host.MaxHitPoints;
-                            hp = Mathf.Min(Mathf.RoundToInt(host.MaxHitPoints), hp + 1);
-                        }
-                        var key = (hp, Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(host.Defense),
-                            consumption != null && host.Consumption == null, refill);
-                        next.TryGetValue(key, out double prior); next[key] = prior + weight;
-                    }
-                    void HostStrike(WorthIt.DefenderProfile host, WorthIt.DefenderProfile enemy, double weight,
-                        System.Action<WorthIt.DefenderProfile, WorthIt.DefenderProfile, double, bool> then)
-                    {
-                        if (host.HitPoints <= 0 || enemy.HitPoints <= 0 || host.Range < distance)
-                        { then(host, enemy, weight, false); return; }
-                        int limit = Mathf.Max(1, Mathf.CeilToInt(enemy.HitPoints));
-                        double[] outcomes = BattleSimulationKernel.SharedExchangeDamageDistribution(
-                            Mathf.RoundToInt(host.Attack), Mathf.RoundToInt(enemy.Defense), host.Abilities,
-                            enemy.TypeTags, enemy.Abilities, limit);
-                        total += weight * SecondaryFraction(Mathf.RoundToInt(host.Attack), host.Abilities, ctx, enemy, target);
-                        var after = WorthIt.AfterAttack(host);
-                        for (int damage = 0; damage < outcomes.Length; damage++)
-                        {
-                            double p = weight * outcomes[damage];
-                            if (p <= 0d) continue;
-                            total += p * damage / targetHp;
-                            then(after, Hit(enemy, damage), p,
-                                BattleSimulationKernel.SuppressesTurn(damage, host.Abilities));
-                        }
-                    }
-                    void EnemyStrike(WorthIt.DefenderProfile host, WorthIt.DefenderProfile enemy, double weight,
-                        bool hostStillHasTurn)
-                    {
-                        if (host.HitPoints <= 0 || enemy.HitPoints <= 0
-                            || enemy.Range >= 0 && enemy.Range < distance)
-                        {
-                            if (hostStillHasTurn) HostStrike(host, enemy, weight, (h, e, p, shock) => Finish(h, p));
-                            else Finish(host, weight);
-                            return;
-                        }
-                        int limit = Mathf.Max(1, Mathf.CeilToInt(host.HitPoints));
-                        double[] outcomes = BattleSimulationKernel.SharedExchangeDamageDistribution(
-                            Mathf.RoundToInt(enemy.Attack), Mathf.RoundToInt(host.Defense), enemy.Abilities,
-                            host.TypeTags, host.Abilities, limit);
-                        var afterEnemy = WorthIt.AfterAttack(enemy);
-                        for (int damage = 0; damage < outcomes.Length; damage++)
-                        {
-                            double p = weight * outcomes[damage];
-                            if (p <= 0d) continue;
-                            var hurt = Hit(host, damage);
-                            bool shock = BattleSimulationKernel.SuppressesTurn(damage, enemy.Abilities);
-                            void Continue(WorthIt.DefenderProfile h, WorthIt.DefenderProfile e, double chance, bool ignored)
-                            {
-                                if (hostStillHasTurn && !shock)
-                                    HostStrike(h, e, chance, (a, b, w, stop) => Finish(a, w));
-                                else Finish(h, chance);
-                            }
-                            if (BattleSimulationKernel.TriggersCounterattack(hurt.Abilities, false, hurt.HitPoints,
-                                distance == 1, damage, enemy.Abilities))
-                                HostStrike(hurt, afterEnemy, p, Continue);
-                            else Continue(hurt, afterEnemy, p, false);
-                        }
-                    }
+                    next.Clear();
                     foreach (var entry in mass)
                     {
                         var k = entry.Key;
-                        var basis = k.Spent ? spent : armed;
-                        if (k.Refilled && basis.Consumption?.HpSpentExcess > 0)
-                            basis = new WorthIt.DefenderProfile(basis.Defense, basis.HasCeramicArmor, basis.TypeTags,
-                                basis.Attack, basis.HitPoints, basis.Initiative, basis.Abilities, basis.MaxHitPoints,
-                                range: basis.Range, consumption: basis.Consumption.AfterHpRefill());
-                        var host = State(basis, k.Hp, k.Attack, k.Defense);
-                        int hIni = host.Initiative + ctx.HostCommanderInitiative;
-                        int eIni = target.Initiative + ctx.EnemyCommanderInitiative;
-                        double first = hIni > eIni ? 1d : hIni == eIni ? 0.5d : 0d;
-                        if (first > 0d) HostStrike(host, target, entry.Value * first, (h, e, p, shock) =>
+                        if (!steps.TryGetValue(k, out var step))
                         {
-                            if (shock) Finish(h, p); else EnemyStrike(h, e, p, false);
-                        });
-                        if (first < 1d) EnemyStrike(host, target, entry.Value * (1d - first), true);
+                            var basis = k.Spent ? spent : armed;
+                            if (k.Refilled && basis.Consumption?.HpSpentExcess > 0)
+                                basis = new WorthIt.DefenderProfile(basis.Defense, basis.HasCeramicArmor, basis.TypeTags,
+                                    basis.Attack, basis.HitPoints, basis.Initiative, basis.Abilities, basis.MaxHitPoints,
+                                    range: basis.Range, consumption: basis.Consumption.AfterHpRefill());
+                            var host = State(basis, k.Hp, k.Attack, k.Defense);
+                            int hIni = host.Initiative + ctx.HostCommanderInitiative;
+                            int eIni = target.Initiative + ctx.EnemyCommanderInitiative;
+                            double first = hIni > eIni ? 1d : hIni == eIni ? 0.5d : 0d;
+                            total = 0d;
+                            into.Clear();
+                            if (first > 0d) HostStrike(host, target, first, StrikeThen.EnemyAnswers);
+                            if (first < 1d) EnemyStrike(host, target, 1d - first, true);
+                            steps[k] = step = (total, into.ToArray());
+                        }
+                        series += entry.Value * step.Dealt;
+                        foreach (var to in step.Next)
+                        {
+                            next.TryGetValue(to.Key, out double prior);
+                            next[to.Key] = prior + entry.Value * to.Value;
+                        }
                     }
-                    mass = next;
+                    (mass, next) = (next, mass);
                 }
-                return (float)(total + mass.Values.Sum() * survivorValue
+                return (float)(series + mass.Values.Sum() * survivorValue
                     / (AiConfigV2.equipCombatCardScale * AiConfigV2.equipCombatBodyScale));
             }
             if (ctx.KnownDistance.HasValue) return Series(ctx.KnownDistance.Value);
-            return AiConfigV2.equipDistanceShare1 * Series(1) + AiConfigV2.equipDistanceShare2 * Series(2)
-                + AiConfigV2.equipDistanceShare3 * Series(3) + AiConfigV2.equipDistanceShare4 * Series(4);
+            // A distance reaches the series only through who can strike whom (each state's Range,
+            // armed and spent) and adjacency (Counterattack): equal reach, equal series.
+            var spentTarget = WorthIt.AfterAttack(target);
+            int Reach(int d) => (armed.Range >= d ? 1 : 0) | (spent.Range >= d ? 2 : 0)
+                | (target.Range < 0 || target.Range >= d ? 4 : 0)
+                | (spentTarget.Range < 0 || spentTarget.Range >= d ? 8 : 0) | (d == 1 ? 16 : 0);
+            int r1 = Reach(1), r2 = Reach(2), r3 = Reach(3), r4 = Reach(4);
+            float v1 = Series(1);
+            float v2 = r2 == r1 ? v1 : Series(2);
+            float v3 = r3 == r2 ? v2 : Series(3);
+            float v4 = r4 == r3 ? v3 : r4 == r2 ? v2 : Series(4);
+            return AiConfigV2.equipDistanceShare1 * v1 + AiConfigV2.equipDistanceShare2 * v2
+                + AiConfigV2.equipDistanceShare3 * v3 + AiConfigV2.equipDistanceShare4 * v4;
         }
+
+        // What a ConsumableContactSeries host strike continues with: nothing more this contact, the
+        // enemy's answer unless the strike Shock-stopped it, or the host's own (second) strike.
+        private enum StrikeThen { Finish, EnemyAnswers, HostStrikes }
 
         private static float SecondaryFraction(int attack, IReadOnlyCollection<string> abilities,
             EfficiencyContext ctx, WorthIt.DefenderProfile t, WorthIt.DefenderProfile? referenceTarget = null)

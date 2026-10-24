@@ -1465,6 +1465,31 @@ namespace Game.Combat
                     : System.Array.Empty<string>())).ToArray());
             }
 
+            // The same body in another combat state: exactly the constructor called with this
+            // profile's own fields and new HP / Attack / Defense, but sharing the lists this
+            // profile already owns (they are frozen) - forecasts derive thousands of such states.
+            public DefenderProfile WithState(float hitPoints, float attack, float defense) =>
+                new DefenderProfile(this, hitPoints, attack, defense);
+
+            private DefenderProfile(DefenderProfile p, float hitPoints, float attack, float defense)
+            {
+                SingleUseUnit = p.SingleUseUnit;
+                Consumption = p.Consumption;
+                Range = p.Range;
+                IsGroundCombatant = p.IsGroundCombatant;
+                IsSummoned = p.IsSummoned;
+                IsHero = p.IsHero;
+                FateMax = p.FateMax;
+                Defense = p.IsHero ? p.FateMax : defense;
+                HasCeramicArmor = p.HasCeramicArmor;
+                TypeTags = p.TypeTags ?? System.Array.AsReadOnly(System.Array.Empty<UnitTypeTag>());
+                Attack = attack;
+                HitPoints = hitPoints;
+                MaxHitPoints = p.MaxHitPoints > 0f ? p.MaxHitPoints : hitPoints;
+                Initiative = p.Initiative;
+                Abilities = p.Abilities ?? System.Array.AsReadOnly(System.Array.Empty<string>());
+            }
+
             // Exactly the default struct equality (every field by its own Equals; the owned lists
             // therefore by identity), without ValueType.Equals' reflection and boxing - equipment
             // valuation looks a profile up in its battle on every Splash/Scorcher evaluation.
