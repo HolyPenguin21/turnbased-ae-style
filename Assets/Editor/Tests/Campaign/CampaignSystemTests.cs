@@ -29,6 +29,46 @@ public sealed class CampaignSystemTests
     private static string Properties(CampaignState s) => string.Join("|", s.Regions.OrderBy(r => r.RegionId)
         .Select(r => $"{r.RegionId}:{r.Biome}:{r.Specialization}:{r.Richness}"));
 
+    [TestCase(Faction.IronConcord)]
+    [TestCase(Faction.Ashen)]
+    [TestCase(Faction.Vessels)]
+    public void NewCampaignStartsWithHumanAndKeepsFirstRoundOrderAfterReload(Faction human)
+    {
+        foreach (int seed in new[] { 0, 37, -1, int.MinValue, int.MaxValue })
+        {
+            var state = new CampaignMapGenerator().Generate(seed, human);
+            Assert.AreEqual(1, state.RoundNumber);
+            Assert.AreEqual(0, state.CurrentTurnIndex);
+            Assert.AreEqual(human, state.CurrentFaction);
+            CollectionAssert.AreEquivalent(DeckRules.PlayableFactions, state.TurnOrder);
+            var store = new CampaignStore(directory); store.Save(state);
+            var controller = new CampaignController(store.Load(out _), store);
+            Assert.IsFalse(controller.IsAiTurn);
+            CollectionAssert.AreEqual(state.TurnOrder, controller.View.TurnOrder);
+            for (int i = 0; i < state.TurnOrder.Count; i++)
+            {
+                Assert.AreEqual(1, controller.View.RoundNumber);
+                Assert.AreEqual(state.TurnOrder[i], controller.View.CurrentFaction);
+                controller.EndTurn();
+                controller = new CampaignController(store.Load(out _), store);
+            }
+            Assert.AreEqual(2, controller.View.RoundNumber);
+        }
+    }
+
+    [Test] public void LaterCampaignRoundsCanStillStartWithAnyFaction()
+    {
+        var controller = Controller(Planet());
+        var starters = new HashSet<Faction>();
+        for (int round = 0; round < 12; round++)
+        {
+            int turns = controller.View.TurnOrder.Count;
+            for (int i = 0; i < turns; i++) controller.EndTurn();
+            starters.Add(controller.View.CurrentFaction);
+        }
+        CollectionAssert.AreEquivalent(DeckRules.PlayableFactions, starters);
+    }
+
     [Test] public void RegionPropertiesAreSeededDiverseAndIndependentOfOwnership()
     {
         var s = new CampaignMapGenerator().Generate(37, Faction.Ashen);
@@ -608,4 +648,5 @@ public sealed class CampaignSystemTests
     }
 }
 #endif
+
 
