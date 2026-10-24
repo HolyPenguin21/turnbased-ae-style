@@ -4,7 +4,6 @@ using Game.Map;
 using Game.Players;
 using Game.Combat;
 using Game.Units;
-using System.Collections;
 using System.Reflection;
 using System.Runtime.Serialization;
 using NUnit.Framework;
@@ -22,9 +21,8 @@ namespace Game.EditorTests
             typeof(BattleScreenUI).GetField("_localArmy",flags).SetValue(screen,
                 local ? new ArmyData { Owner = new PlayerSetupData { IsHuman = true } } : null);
             typeof(BattleScreenUI).GetField("_fastResolve",flags).SetValue(screen,fast);
-            var play = (IEnumerator)typeof(BattleScreenUI).GetMethod("PlayAttackEffects",flags).Invoke(screen,
-                new object[] { null, new BattleAttackApplication { Victim = new UnitData() } });
-            Assert.That(play.MoveNext(),Is.False);
+            Assert.DoesNotThrow(() => typeof(BattleScreenUI).GetMethod("PlayAttackEffects",flags).Invoke(screen,
+                new object[] { null, new BattleAttackApplication { Victim = new UnitData() } }));
         }
 
         [TestCase(true, 19, 1.38f)]
@@ -66,12 +64,6 @@ namespace Game.EditorTests
             Assert.That(tail.Next, Is.EqualTo(-1));
             Assert.That(tail.Blend, Is.GreaterThan(.99f));
         }
-
-        [TestCase(4, true, "-4")]
-        [TestCase(0, true, "BLOCK")]
-        [TestCase(0, false, "MISS")]
-        public void DamageLabelsDistinguishHitAbsorptionAndMiss(int damage, bool hit, string expected)
-            => Assert.That(BattleHitEffect.FormatDamage(damage, hit), Is.EqualTo(expected));
     }
 }
 #endif

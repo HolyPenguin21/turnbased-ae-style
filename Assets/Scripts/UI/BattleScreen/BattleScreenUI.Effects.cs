@@ -11,12 +11,12 @@ namespace Game.UI
 {
     public partial class BattleScreenUI
     {
+        // Locks result acknowledgements and the sequence of Explosion challenges, never playback.
         private bool _isPresentingAttack;
-        private Coroutine _attackPresentationRoutine, _explosionAttackRoutine;
-        private RectTransform _attackEffectsRoot, _attackNumbersRoot;
+        private Coroutine _explosionAttackRoutine;
         private int _attackPresentationGeneration;
-        private readonly Dictionary<(UnitData Unit, string Sprite), float> _combatEffectStarts =
-            new Dictionary<(UnitData Unit, string Sprite), float>();
+        private readonly List<(RectTransform Layer, float ExpiresAt)> _attackEffectLayers =
+            new List<(RectTransform Layer, float ExpiresAt)>();
 
         private BattleGridCellUI FindUnitCell(UnitData unit)
         {
@@ -24,125 +24,108 @@ namespace Game.UI
             foreach (var cell in _cells) if (cell != null && cell.Unit == unit) return cell;
             return null;
         }
-        private void RestoreCombatEffects(BattleGridCellUI cell, UnitData unit)
-        {
-            foreach (var pair in _combatEffectStarts)
-                if (pair.Key.Unit == unit && Time.unscaledTime - pair.Value < BattleHealEffect.Duration)
-                    BattleHealEffect.Show(cell.transform, pair.Value, pair.Key.Sprite);
-        }
-        private void ShowCombatEffect(UnitData unit, string sprite)
-        {
-            var cell = FindUnitCell(unit);
-            if (cell == null) return;
-            float started = Time.unscaledTime;
-            _combatEffectStarts[(unit,sprite)] = started;
-            BattleHealEffect.Show(cell.transform, started, sprite);
-        }
-        private void ShowIncomingHit(UnitData victim, int damage, bool wasHit, bool berserk)
-        {
-            var cell = FindUnitCell(victim);
-            if (cell == null) return;
-            cell.RefreshCombatStats();
-            BattleHitEffect.Show(cell.RectTransform, damage, wasHit, _attackNumbersRoot);
-            if (berserk) ShowCombatEffect(victim, BattleHealEffect.DrillSpritePath);
-        }
+
         private void StartAttackPresentation(UnitData attacker, BattleAttackApplication application, Action onDone)
         {
-            if (!HasInteractiveParticipant)
-            { RefreshGrid(); onDone?.Invoke(); return; }
-            _attackPresentationRoutine = StartCoroutine(PresentAttackThen(attacker, application, onDone));
-        }
-        private IEnumerator PresentAttackThen(UnitData attacker, BattleAttackApplication application, Action onDone)
-        {
-            int generation = _attackPresentationGeneration;
-            _isPresentingAttack = true;
-            if (passButton != null) passButton.interactable = false;
-            try { yield return PlayAttackEffects(attacker, application); }
-            finally
-            {
-                if (generation == _attackPresentationGeneration)
-                { _isPresentingAttack = false; _attackPresentationRoutine = null; DestroyTrailLayer(); }
-            }
-            if (generation != _attackPresentationGeneration) yield break;
+            PlayAttackEffects(attacker, application);
             RefreshGrid();
             onDone?.Invoke();
         }
-        private IEnumerator PlayAttackEffects(UnitData attacker, BattleAttackApplication application)
+
+        private void PlayAttackEffects(UnitData attacker, BattleAttackApplication application)
         {
-            if (!HasInteractiveParticipant || application == null || FindUnitCell(application.Victim) == null)
-                yield break;
-            // Model damage/removal already happened. Keep the original cells as visual victims.
-            var parent = gridContainer != null ? gridContainer.parent as RectTransform : null;
-            if (application.SecondaryHits.Count > 0 && parent != null)
+            if (!HasInteractiveParticipant || application == null) return;
+            if (application.SecondaryHits.Count == 0 && !application.BerserkTriggered
+                && application.InterceptedBy == null && !application.ShockTriggered) return;
+            var parent = gridContainer != null ? gridContainer.parent as RectTransform : transform as RectTransform;
+            if (parent == null) return;
+
+            var go = new GameObject("BattleSkillEffects", typeof(RectTransform), typeof(LayoutElement));
+            var layer = (RectTransform)go.transform;
+            BattleDamageFlipbook.Stretch(layer, parent);
+            go.GetComponent<LayoutElement>().ignoreLayout = true;
+            float duration = 0f;
+            var anchors = new Dictionary<UnitData, RectTransform>();
+
+            // Grid refresh destroys its cards on the same frame. Copy only their rectangles,
+            // in normalized layer coordinates, so even lethal hits keep playing and resize with
+            // the canvas. Nothing here retains a live card or delays the next combat action.
+            RectTransform Anchor(UnitData unit)
             {
-                var go = new GameObject("BattleHitEffects",typeof(RectTransform),typeof(LayoutElement));
-                _attackEffectsRoot = (RectTransform)go.transform;
-                BattleDamageFlipbook.Stretch(_attackEffectsRoot,parent);
-                go.GetComponent<LayoutElement>().ignoreLayout = true;
-                var numbers = new GameObject("IncomingDamageLabels",typeof(RectTransform),typeof(LayoutElement));
-                _attackNumbersRoot = (RectTransform)numbers.transform;
-                BattleDamageFlipbook.Stretch(_attackNumbersRoot,_attackEffectsRoot);
-                numbers.GetComponent<LayoutElement>().ignoreLayout = true;
+                if (unit == null) return null;
+                if (anchors.TryGetValue(unit, out var existing)) return existing;
+                var cell = FindUnitCell(unit);
+                if (cell == null || cell.RectTransform == null) return null;
+                var card = cell.RectTransform;
+                var anchor = (RectTransform)new GameObject("EffectCard", typeof(RectTransform)).transform;
+                anchor.SetParent(layer, false);
+                anchor.anchorMin = Rect.PointToNormalized(layer.rect,
+                    layer.InverseTransformPoint(card.TransformPoint(card.rect.min)));
+                anchor.anchorMax = Rect.PointToNormalized(layer.rect,
+                    layer.InverseTransformPoint(card.TransformPoint(card.rect.max)));
+                anchor.offsetMin = anchor.offsetMax = Vector2.zero;
+                anchors.Add(unit, anchor);
+                return anchor;
             }
-            ShowIncomingHit(application.Victim,application.Damage,application.Outcome.WasHit,application.BerserkTriggered);
-            if (application.InterceptedBy != null) ShowCombatEffect(application.InterceptedBy,BattleHealEffect.BodyguardSpritePath);
-            if (application.ShockTriggered) ShowCombatEffect(attacker,BattleHealEffect.ShockSpritePath);
-            float beforeSecondary = 0f;
-            if (application.SecondaryHits.Count > 0)
+            void Overlay(UnitData unit, string sprite)
             {
-                yield return new WaitForSecondsRealtime(.15f);
-                var source = FindUnitCell(application.Victim);
-                if (_attackEffectsRoot != null && source != null)
-                {
-                    bool splashSourcePulse = true;
-                    foreach (var hit in application.SecondaryHits)
-                    {
-                        var target = FindUnitCell(hit.Victim);
-                        if (target == null) continue;
-                        bool fire = hit.Skill == UnitAbilities.Scorcher;
-                        BattleDamageFlipbook.Show(_attackEffectsRoot,source.RectTransform,target.RectTransform,
-                            fire,fire || splashSourcePulse);
-                        if (!fire) splashSourcePulse = false;
-                    }
-                    _attackNumbersRoot.SetAsLastSibling();
-                }
-                yield return new WaitForSecondsRealtime(BattleSkillFlipbook.Arrival);
-                beforeSecondary = .15f + BattleSkillFlipbook.Arrival;
-                foreach (var hit in application.SecondaryHits)
-                    ShowIncomingHit(hit.Victim,hit.Damage,true,hit.BerserkTriggered);
+                var anchor = Anchor(unit);
+                if (anchor == null) return;
+                BattleHealEffect.Show(anchor, Time.unscaledTime, sprite);
+                duration = Mathf.Max(duration, BattleHealEffect.Duration);
             }
-            bool removedOverlay = application.DefenderDied
-                && (application.InterceptedBy != null || application.BerserkTriggered);
-            removedOverlay |= application.ShockTriggered && attacker != null && attacker.HitPointsCurrent <= 0;
-            float hold = removedOverlay ? Mathf.Max(BattleHitEffect.Duration,BattleHealEffect.Duration-beforeSecondary)
-                : BattleHitEffect.Duration;
+
+            if (application.BerserkTriggered) Overlay(application.Victim, BattleHealEffect.DrillSpritePath);
+            if (application.InterceptedBy != null) Overlay(application.InterceptedBy, BattleHealEffect.BodyguardSpritePath);
+            if (application.ShockTriggered) Overlay(attacker, BattleHealEffect.ShockSpritePath);
+            var source = application.SecondaryHits.Count > 0 ? Anchor(application.Victim) : null;
+            bool splashSourcePulse = true;
             foreach (var hit in application.SecondaryHits)
-                if (hit.Died && hit.BerserkTriggered) hold = Mathf.Max(hold,BattleHealEffect.Duration);
-            yield return new WaitForSecondsRealtime(hold);
-            DestroyTrailLayer();
+            {
+                var target = Anchor(hit.Victim);
+                if (source != null && target != null)
+                {
+                    bool fire = hit.Skill == UnitAbilities.Scorcher;
+                    BattleDamageFlipbook.Show(layer, source, target, fire, fire || splashSourcePulse);
+                    if (!fire) splashSourcePulse = false;
+                    duration = Mathf.Max(duration, BattleSkillFlipbook.Duration(fire));
+                }
+                if (hit.BerserkTriggered) Overlay(hit.Victim, BattleHealEffect.DrillSpritePath);
+            }
+            if (duration > 0f) _attackEffectLayers.Add((layer, Time.unscaledTime + duration));
+            else { go.SetActive(false); Destroy(go); }
         }
+
         private IEnumerator PresentExplosionHit(UnitData attacker, BattleAttackApplication application)
         {
-            yield return PlayAttackEffects(attacker,application);
+            PlayAttackEffects(attacker, application);
             _isPresentingAttack = false;
             RefreshGrid();
             _isPresentingAttack = true;
+            yield break;
         }
-        private void DestroyTrailLayer()
+
+        private void RetireFinishedAttackEffects()
         {
-            if (_attackEffectsRoot != null)
-            { _attackEffectsRoot.gameObject.SetActive(false); Destroy(_attackEffectsRoot.gameObject); }
-            _attackEffectsRoot = _attackNumbersRoot = null;
+            for (int i = _attackEffectLayers.Count - 1; i >= 0; i--)
+            {
+                var effect = _attackEffectLayers[i];
+                if (effect.Layer != null && Time.unscaledTime < effect.ExpiresAt) continue;
+                if (effect.Layer != null)
+                { effect.Layer.gameObject.SetActive(false); Destroy(effect.Layer.gameObject); }
+                _attackEffectLayers.RemoveAt(i);
+            }
         }
         private void CancelAttackPresentation()
         {
             _attackPresentationGeneration++;
-            if (_attackPresentationRoutine != null) StopCoroutine(_attackPresentationRoutine);
             if (_explosionAttackRoutine != null) StopCoroutine(_explosionAttackRoutine);
-            _attackPresentationRoutine = _explosionAttackRoutine = null;
+            _explosionAttackRoutine = null;
             _isPresentingAttack = false;
-            _combatEffectStarts.Clear();
-            DestroyTrailLayer();
+            foreach (var effect in _attackEffectLayers)
+                if (effect.Layer != null)
+                { effect.Layer.gameObject.SetActive(false); Destroy(effect.Layer.gameObject); }
+            _attackEffectLayers.Clear();
         }
         private void OnDisable() => CancelAttackPresentation();
     }

@@ -306,6 +306,7 @@ namespace Game.UI
 
         private void Update()
         {
+            RetireFinishedAttackEffects();
             if (_idleTimer < 0f || _idleNudgeShown)
                 return;
             if (_isPresentingAttack || !HasInteractiveParticipant || !IsHumanAction(_currentActingUnit)
