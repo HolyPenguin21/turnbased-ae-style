@@ -139,6 +139,54 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ValidationDoesNotDestroyTheLiveMaterial()
+        {
+            var owned = graphic.material;
+            typeof(MainMenuAtmosphereGraphic).GetMethod("OnValidate", Private).Invoke(graphic, null);
+            Assert.That(owned != null, Is.True, "OnValidate may run outside a safe native-object lifecycle callback.");
+            Assert.That(graphic.material, Is.SameAs(owned));
+        }
+
+        [Test]
+        public void MeshGenerationDoesNotCreateOrPublishMaterials()
+        {
+            Object.DestroyImmediate(graphic.material);
+            int dirtyCalls = 0;
+            graphic.RegisterDirtyMaterialCallback(() => dirtyCalls++);
+            Assert.That(Vertices(), Is.Zero, "A missing material must be prepared before the canvas rebuild.");
+            Assert.That(dirtyCalls, Is.Zero, "OnPopulateMesh must not enqueue another graphic rebuild.");
+            Canvas.ForceUpdateCanvases();
+            Assert.That(Vertices(), Is.GreaterThan(0), "The pre-render preparation must restore the material.");
+        }
+
+        [Test]
+        public void DisableReleasesMaterialBeforeScriptDomainReload()
+        {
+            var owned = graphic.material;
+            graphic.enabled = false;
+            Assert.That(owned == null, Is.True, "OnDisable must release transient native objects before private fields are lost to domain reload.");
+            Canvas.ForceUpdateCanvases();
+            Assert.That(typeof(MainMenuAtmosphereGraphic).GetField("ownedMaterial", Private).GetValue(graphic), Is.Null);
+            graphic.enabled = true;
+            Assert.That(Vertices(), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void GraphicAlphaAlsoFadesTheFlyingScrap()
+        {
+            Set(graphic, "elapsed", 7d);
+            graphic.color = new Color(1, 1, 1, 0);
+            using (var vh = new VertexHelper())
+            {
+                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private).Invoke(graphic, new object[] { vh });
+                Assert.That(vh.currentVertCount, Is.GreaterThan(0));
+                var vertex = UIVertex.simpleVert;
+                for (int i = 0; i < vh.currentVertCount; i++)
+                { vh.PopulateUIVertex(ref vertex, i); Assert.That(vertex.color.a, Is.Zero); }
+            }
+        }
+
+        [Test]
         public void DestroyingTheGraphicReleasesItsOwnedMaterial()
         {
             var owned = graphic.material;

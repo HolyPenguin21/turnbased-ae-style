@@ -32,7 +32,10 @@ namespace Game.UI
             raycastTarget = false;
             base.OnEnable();
             if (canvas != null) canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1;
-            showing = CanShow() && EnsureMaterial();
+            // This runs before uGUI's graphic rebuild, including editor-only repaints.
+            Canvas.preWillRenderCanvases -= PrepareForRender;
+            Canvas.preWillRenderCanvases += PrepareForRender;
+            PrepareForRender();
             SetAllDirty();
         }
 
@@ -40,16 +43,20 @@ namespace Game.UI
         private bool CanShow() => mainMenuPanel != null && collectionWindow != null
             && mainMenuPanel.activeInHierarchy && !collectionWindow.activeInHierarchy;
 
+        private bool AssetsReady() => dustAtlas != null && architectureMask != null && atmosphereShader != null
+            && atmosphereShader.isSupported && dustAtlas.width == dustAtlas.height
+            && dustAtlas.height >= 4 && dustAtlas.height % 4 == 0;
+
         private bool EnsureMaterial()
         {
-            if (dustAtlas == null || architectureMask == null || atmosphereShader == null
-                || !atmosphereShader.isSupported || dustAtlas.width != dustAtlas.height
-                || dustAtlas.height < 4 || dustAtlas.height % 4 != 0) return false;
+            if (!AssetsReady()) return false;
+            if (ownedMaterial != null && ownedMaterial.shader != atmosphereShader) ReleaseMaterial();
             if (ownedMaterial == null)
             {
                 ownedMaterial = new Material(atmosphereShader)
                 { name = "Main menu atmosphere (instance)", hideFlags = HideFlags.HideAndDontSave };
                 material = ownedMaterial;
+                SetVerticesDirty();
             }
             if (ownedMaterial.GetTexture(OcclusionId) != architectureMask)
                 ownedMaterial.SetTexture(OcclusionId, architectureMask);
@@ -59,18 +66,13 @@ namespace Game.UI
         protected override void Start()
         {
             base.Start();
-            if (mainMenuPanel == null || collectionWindow == null || !EnsureMaterial())
+            if (mainMenuPanel == null || collectionWindow == null || !AssetsReady())
                 Debug.LogWarning("Main menu atmosphere: install the supplied image pack into Assets/Textures/MainMenu/ (including .meta files). Effects remain hidden until all assets are available.", this);
         }
 
         private void LateUpdate()
         {
-            bool visible = CanShow() && intensity > 0f && EnsureMaterial();
-            if (visible != showing)
-            {
-                showing = visible;
-                SetAllDirty();
-            }
+            PrepareForRender();
             // Hidden windows neither rebuild geometry nor advance the wind clock. On return,
             // resume the existing state, without creating objects or a large elapsed-time jump.
             if (!showing) return;
@@ -78,10 +80,23 @@ namespace Game.UI
             SetVerticesDirty();
         }
 
+        private void PrepareForRender()
+        {
+            if (!isActiveAndEnabled || CanvasUpdateRegistry.IsRebuildingGraphics()) return;
+            bool visible = CanShow() && intensity > 0f && EnsureMaterial();
+            if (visible != showing)
+            {
+                showing = visible;
+                SetAllDirty();
+            }
+        }
+
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
-            if (!CanShow() || !EnsureMaterial() || intensity <= 0f) return;
+            // Mesh generation is read-only: assigning a material here would enqueue a rebuild
+            // while CanvasUpdateRegistry is already rebuilding graphics.
+            if (!CanShow() || !AssetsReady() || ownedMaterial == null || intensity <= 0f) return;
             Rect rect = rectTransform.rect;
             if (rect.width <= 0 || rect.height <= 0) return;
             for (int layer = 0; layer < MainMenuWindMotion.LayerCount; layer++)
@@ -102,7 +117,7 @@ namespace Game.UI
             float left = Mathf.Max(0, sample.X - halfWidth), right = Mathf.Min(1, sample.X + halfWidth);
             float top = Mathf.Max(0, sample.Y - halfHeight), bottom = Mathf.Min(1, sample.Y + halfHeight);
             if (sample.Tile != 3 && (right <= left || bottom <= top)) return;
-            Color tint = sample.Tile == 3 ? new Color(.23f, .17f, .133f, 1f) : color;
+            Color tint = sample.Tile == 3 ? new Color(.23f, .17f, .133f, color.a) : color;
             tint.a *= Mathf.Clamp01(sample.Alpha * intensity);
             int first = vh.currentVertCount;
             if (sample.Tile == 3)
@@ -150,8 +165,19 @@ namespace Game.UI
             vh.AddVert(vertex);
         }
 
+        protected override void OnDisable()
+        {
+            Canvas.preWillRenderCanvases -= PrepareForRender;
+            base.OnDisable();
+            // OnDisable precedes assembly/domain reload. OnDestroy alone would leave a
+            // HideAndDontSave native material alive after its managed owner was reset.
+            ReleaseMaterial();
+            showing = false;
+        }
+
         protected override void OnDestroy()
         {
+            Canvas.preWillRenderCanvases -= PrepareForRender;
             ReleaseMaterial();
             base.OnDestroy();
         }
@@ -167,7 +193,8 @@ namespace Game.UI
 #if UNITY_EDITOR
         protected override void OnValidate()
         {
-            ReleaseMaterial();
+            // Do not create/destroy native objects in OnValidate. Shader/mask changes are
+            // picked up safely by PrepareForRender, even when the editor is not playing.
             raycastTarget = false;
             base.OnValidate();
         }
