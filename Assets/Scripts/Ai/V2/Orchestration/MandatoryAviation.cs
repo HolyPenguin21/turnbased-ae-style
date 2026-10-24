@@ -1,19 +1,28 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
+using Game.HexGrid;
 using Game.Map;
+using Game.Players;
 
 namespace Game.Ai.V2
 {
     public enum MandatoryAviationKind { None, Rebase, Recovery }
 
     // ===========================================================================================
-    //  Which airborne obligation the operational loop settles next, and the per-kind facts the
-    //  shared step protocol needs. A multi-turn rebase is resumed before a recovery unless the
-    //  recovery actor has the lower army id; both lists come from their existing owners
+    //  Mandatory aviation obligations of the operational loop.
+    //  ORDER — which airborne obligation is settled next, and the per-kind facts the shared step
+    //  protocol needs. A multi-turn rebase is resumed before a recovery unless the recovery actor
+    //  has the lower army id; both lists come from their existing owners
     //  (AviationRebasePlanner.FindMandatoryContinuations,
     //  ReconAirExecutor.FindMandatoryRecoveryActors; both already exclude stalled wings). This
-    //  type only orders their heads and names the kinds. Pure: no world access.
+    //  only orders their heads and names the kinds. Pure: no world access.
+    //  STEP — adapter from the selected obligation to its existing executor. It owns no policy and
+    //  no state: planning and physics stay in AviationRebasePlanner / ReconAirExecutor, and the
+    //  shared post-step protocol stays in the pipeline. `actionChanged` reports whether the
+    //  executor changed the world (rebase: the wing moved; recovery: the actor step mutated).
     // ===========================================================================================
-    internal static class MandatoryAviationOrder
+    internal static class MandatoryAviation
     {
         internal static bool RebaseFirst(int? firstRebaseId, int? firstRecoveryId) =>
             firstRebaseId.HasValue
@@ -50,5 +59,30 @@ namespace Game.Ai.V2
             kind == MandatoryAviationKind.Rebase
                 ? $"aviation rebase #{actorId} could not take a safe step - deferred to next turn, missions continue"
                 : $"recovery #{actorId} made no progress - deferred to next turn, missions continue";
+    
+
+        internal static IEnumerator Execute(MandatoryAviationKind kind, ArmyData actor,
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
+            Action<bool> actionChanged)
+        {
+            if (kind == MandatoryAviationKind.Rebase)
+            {
+                // Route safety and destination validity are live-rechecked inside the executor.
+                yield return AviationRebaseExecutor.ExecuteContinuation(
+                    player, root, ctx, actor, actionChanged);
+            }
+            else if (kind == MandatoryAviationKind.Recovery)
+            {
+                HexCoord? focus =
+                    ReconPatrolStateRegistry.TryGet(player, actor.Id, out ReconPatrolState state)
+                        ? state.StrategicAnchor : (HexCoord?)null;
+                var result = new AirReconExecutionResult();
+                yield return ReconAirExecutor.RunActorStep(player, root, ctx, snapshot, actor,
+                    result, root.ActionPoints, focus, perMissionResult: null,
+                    control: new ReconAirExecutor.ActorStepControl());
+                actionChanged?.Invoke(result.Mutated);
+            }
+        }
+    
     }
 }

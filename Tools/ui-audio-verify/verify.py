@@ -12,7 +12,7 @@ class AudioIntegration(unittest.TestCase):
  def test_resets_owned_by_audio_utility(self):
   bad=[]
   for p in (ROOT/'Assets/Scripts').rglob('*.cs'):
-   if '.onClick.RemoveAllListeners()' in p.read_text() and p.name!='UIButtonEventUtility.cs':bad.append(str(p.relative_to(ROOT)))
+   if '.onClick.RemoveAllListeners()' in p.read_text() and p.name!='UIUtility.cs':bad.append(str(p.relative_to(ROOT)))
   self.assertEqual([],bad)
  def test_runtime_created_ui_is_registered(self):
   paths=list((ROOT/'Assets/Scripts/UI').rglob('*.cs'))+[ROOT/'Assets/Scripts/Setup/GameSetupController.cs']

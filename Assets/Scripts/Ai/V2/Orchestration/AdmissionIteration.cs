@@ -62,16 +62,16 @@ namespace Game.Ai.V2
             _runner.Run(ReadmissionCause.TerminalForce, StrategicInvalidationReason.None, null);
 
         // A mandatory aviation obligation as a work step. Execution stays with the existing
-        // owners (MandatoryAviationStep). No ledger, Settle or observer boundary: the obligation
+        // owners (MandatoryAviation). No ledger, Settle or observer boundary: the obligation
         // was paid when the sortie launched.
         private IEnumerator RunMandatoryAviationStep(MandatoryAviationKind kind, ArmyData actor,
             TurnLoopView view, AdmissionIterationOutcome outcome)
         {
-            string label = MandatoryAviationOrder.Label(kind);
+            string label = MandatoryAviation.Label(kind);
             WorldAnalysis.StepObservationStamp beforeAviation =
                 WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
             bool actionChanged = false;
-            yield return MandatoryAviationStep.Execute(kind, actor, _player, _root, _ctx,
+            yield return MandatoryAviation.Execute(kind, actor, _player, _root, _ctx,
                 _frame.Snapshot, v => actionChanged = v);
             _frame.ObserveSettled(beforeAviation, null);
             // The step is counted by TurnLoop when this iteration returns; its number is
@@ -80,7 +80,7 @@ namespace Game.Ai.V2
             ReservationInvariants.CheckBoundary(_player, _root, _ctx,
                 $"step {stepNumber} {label} #{actor.Id}");
             var triggers = new StepTriggerSink();
-            yield return StepTriggerSequence.Run(MandatoryAviationOrder.TriggerPairs(kind), _session, _frame, _runner, triggers);
+            yield return StepTriggerSequence.Run(MandatoryAviation.TriggerPairs(kind), _session, _frame, _runner, triggers);
             StepTriggerOutcome stepTriggers = triggers.Outcome;
             bool progress = stepTriggers.Progressed(actionChanged);
             outcome.SettledStep(progress);
@@ -93,7 +93,7 @@ namespace Game.Ai.V2
             // mission's admission with it.
             if (AviationObligations.RecordSettledStep(_player, _ctx, actor.Id, progress))
                 AiDebugLog.Write("[AI][V2][Loop] "
-                    + MandatoryAviationOrder.StallMessage(kind, actor.Id));
+                    + MandatoryAviation.StallMessage(kind, actor.Id));
         }
 
 
@@ -164,7 +164,7 @@ namespace Game.Ai.V2
             // must return. Both are already paid (no card was played while one was pending,
             // see AviationObligations), so they are chosen here, not funded. Exactly one
             // action is executed, observed and re-admitted per iteration.
-            (MandatoryAviationKind Kind, ArmyData Actor) mandatory = MandatoryAviationOrder.Next(
+            (MandatoryAviationKind Kind, ArmyData Actor) mandatory = MandatoryAviation.Next(
                 AviationRebasePlanner.FindMandatoryContinuations(_player, _ctx.TurnNumber),
                 ReconAirExecutor.FindMandatoryRecoveryActors(_player, _ctx));
             OperationalWorkKind work = OperationalWorkSelection.Select(
