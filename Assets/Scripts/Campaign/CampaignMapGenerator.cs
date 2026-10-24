@@ -46,6 +46,9 @@ namespace Game.Campaign
                         Seed = seed, BackgroundId = BackgroundForSeed(seed), HumanFaction = human, Regions = regions, Phase = CampaignPhase.AwaitingFactionAction };
                     state.Factions = DeckRules.PlayableFactions.Select(f => new CampaignFactionState { Faction = f }).ToList();
                     CampaignRules.SetRoundOrder(state);
+                    // Only the opening round starts with the player; later rounds keep their random order.
+                    state.TurnOrder.Remove(human);
+                    state.TurnOrder.Insert(0, human);
                     return state;
                 }
                 catch (InvalidDataException ex) { last = ex; }
@@ -244,4 +247,5 @@ namespace Game.Campaign
         private static readonly string[] Names = { "Dust Scar Basin", "Red Hollow", "Iron Mesa", "Ashfall Reach", "Salt Crown", "Broken Horizon", "Cinder Vale", "Silent Crater", "Rust Expanse", "Glass Wastes", "Pale Ridge", "Deadwater", "Black Dunes", "Copper Rift", "Storm Shelf", "Scorched Delta", "Bone Plateau", "Ember Coast", "Dry Meridian", "Wreck Fields", "Shattered Plain", "Grey Frontier", "Deep Scar", "Last Oasis" };
     }
 }
+
 
