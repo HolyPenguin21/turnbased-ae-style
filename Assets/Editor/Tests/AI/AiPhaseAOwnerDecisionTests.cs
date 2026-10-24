@@ -4,6 +4,7 @@ using Game.Ai.V2;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -37,6 +38,28 @@ namespace Game.EditorTests
             army.MarkActivated();
             budget.ReleaseSpentDeliveryFollowups(id => id == army.Id ? army : null);
             Assert.That(budget.ReservedFollowup(), Is.Zero, "its activation took the promised step");
+        }
+
+        private UnitData Body(int move) => new UnitData { Owner = _player, Name = "body", MoveMax = move,
+            MoveCurrent = move, HitPointsMax = 6, HitPointsCurrent = 6, ActivationApCost = 1 };
+
+        [Test]
+        public void DeliveryFollowup_SurvivesASlowerBodyJoining_EndsWhenAMemberSteps()
+        {
+            var budget = PhaseAApBudget.Create(null);
+            ArmyData army = Army();
+            UnitData fast = Body(4);
+            army.Members.Add(fast);
+            budget.ReserveDeliveryFollowup(army, 2f);
+
+            army.Members.Add(Body(2));
+            budget.ReleaseSpentDeliveryFollowups(id => id == army.Id ? army : null);
+            Assert.That(budget.ReservedFollowup(), Is.EqualTo(2f),
+                "a slower body lowers the army's movement, but no step was taken");
+
+            fast.MoveCurrent = 3;
+            budget.ReleaseSpentDeliveryFollowups(id => id == army.Id ? army : null);
+            Assert.That(budget.ReservedFollowup(), Is.Zero, "a member of the promise spent movement: the army stepped");
         }
 
         [Test]

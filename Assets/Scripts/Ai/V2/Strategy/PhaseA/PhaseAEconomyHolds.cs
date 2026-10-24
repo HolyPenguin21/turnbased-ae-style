@@ -54,9 +54,12 @@ namespace Game.Ai.V2
                 protectedActiveExtractions.Count > 0 || protectedActiveBases.Count > 0;
         }
 
-        // Only an Active build is protected — owner decision 2026-10-24: a Suspended build gives
-        // up its resource hold and card claim while it is suspended (ResolveActive never hands
-        // Phase A a Suspended build either; this filter states the rule instead of relying on it).
+        // Only an Active build is protected — owner decision 2026-10-24. Every Phase A entry runs
+        // on a freshly resolved intent set, and ResolveActive resumes a TRANSIENT suspension
+        // (PoolExhausted / CapabilityUnavailable) before it — that is how audit B11 keeps such a
+        // build's hold. A build still Suspended here is a lasting one (EconomyLoan, Siege): it gives
+        // up its resource hold and card claim while suspended. ResolveActive does not hand those
+        // to Phase A either; this filter states the rule instead of relying on it.
         private static List<MissionIntent> ProtectedActiveBuilds(PhaseAPass pass, EconomyTaskKind kind) =>
             (pass.ActiveIntents?
                 .Where(i => EconomyContinuity.IsLiveEconomyBuild(i) && i.Status == IntentStatus.Active

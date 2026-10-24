@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Map;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -30,13 +31,15 @@ namespace Game.Ai.V2
         private readonly Dictionary<int, Followup> _followup = new Dictionary<int, Followup>();
 
         // Refit: recomputed from the live operation on every entry. Delivery: kept until the army
-        // steps — the activation flag and movement it had when the promise was made tell when.
+        // steps — its activation flag and its members' own movement when the promise was made tell
+        // when. Per member, not the army minimum: a slower body joining later lowers the army's
+        // movement without any step being taken.
         private struct Followup
         {
             public float Ap;
             public bool Refit;
             public bool ActivatedAtPromise;
-            public int MovementAtPromise;
+            public List<(UnitData unit, int move)> MovesAtPromise;
         }
 
         private PhaseAApBudget(PlayerRoot root) => _root = root;
@@ -52,27 +55,30 @@ namespace Game.Ai.V2
         public float UnreservedBalance() => Balance() - ReservedFollowup();
 
         // A delivered capability's follow-up step on its recipient army. Several deliveries into
-        // one army serve its one next activation, so the larger promise stands, never the sum.
+        // one army serve its one next activation, so the larger promise stands, never the sum. A
+        // promise is only ever made right after a delivery, before the army can have moved, so
+        // the step markers are taken afresh each time.
         internal void ReserveDeliveryFollowup(ArmyData army, float ap)
         {
             if (army == null || ap <= 0f)
                 return;
+            bool refit = false;
             if (_followup.TryGetValue(army.Id, out Followup prior))
             {
-                prior.Ap = Mathf.Max(prior.Ap, ap);
-                _followup[army.Id] = prior;
-                return;
+                ap = Mathf.Max(prior.Ap, ap);
+                refit = prior.Refit;
             }
             _followup[army.Id] = new Followup
             {
                 Ap = ap,
+                Refit = refit,
                 ActivatedAtPromise = army.HasActivatedThisTurn,
-                MovementAtPromise = army.CurrentMovement,
+                MovesAtPromise = army.Members.Where(m => m != null).Select(m => (m, m.MoveCurrent)).ToList(),
             };
         }
 
-        // A delivery promise ends when its army is gone, has activated since the promise, or has
-        // spent movement since (it took the step the AP was kept for).
+        // A delivery promise ends when its army is gone, has activated since the promise, or one of
+        // the members it had then has spent movement since (the army took the step the AP was for).
         internal void ReleaseSpentDeliveryFollowups(System.Func<int, ArmyData> armyById)
         {
             foreach (KeyValuePair<int, Followup> entry in _followup.Where(kv => !kv.Value.Refit).ToList())
@@ -80,7 +86,7 @@ namespace Game.Ai.V2
                 ArmyData army = armyById(entry.Key);
                 if (army == null
                     || (!entry.Value.ActivatedAtPromise && army.HasActivatedThisTurn)
-                    || army.CurrentMovement < entry.Value.MovementAtPromise)
+                    || entry.Value.MovesAtPromise.Any(m => army.Members.Contains(m.unit) && m.unit.MoveCurrent < m.move))
                     _followup.Remove(entry.Key);
             }
         }
