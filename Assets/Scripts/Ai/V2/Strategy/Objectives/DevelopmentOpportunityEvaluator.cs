@@ -228,13 +228,19 @@ namespace Game.Ai.V2
                 if (!source.ProducesEquipment || source.CardDef?.equipment == null
                     || !warmed.Add(source.CardDef))
                     continue;
-                if (pacer != null)
-                    yield return pacer.Checkpoint();
-                using (new RecipientEvaluationMemo(store))
-                using (targets.Enter())
-                    EquipmentOpportunities(source.Mode, source.FacilityHex, source.CardDef,
-                        source.SuccessChance, source, snap, inv, player, root, hand, out _,
-                        futureAttachment: true);
+                // One recipient per checkpoint: a single card against every recipient is itself
+                // several frames of work (2026-10-24 profile: 32 verdicts, 534 ms in one frame).
+                // The recipient list is taken once per card; nothing mutates the world in between.
+                foreach (var (card, unit, _) in Recipients(hand.Hand, player).ToList())
+                {
+                    if (pacer != null)
+                        yield return pacer.Checkpoint();
+                    using (new RecipientEvaluationMemo(store))
+                    using (targets.Enter())
+                        EvaluateRecipient(source.CardDef, (object)unit ?? card, card, unit, memoised: true,
+                            futureAttachment: true, ignoreApForMeasurement: false, generatedPreview: null,
+                            root, snap, inv, hand.Hand);
+                }
             }
         }
 
@@ -1265,54 +1271,9 @@ namespace Game.Ai.V2
                 productionScale = DevelopmentDiversity.RepeatFactor(player, snap?.TurnNumber ?? 0,
                     equipment, out productionNote);
 
-            RecipientVerdict Evaluate(object recipient, CardData card, UnitData unit)
-            {
-                if (memoised && RecipientEvaluationMemo.TryGet(equipment, recipient, futureAttachment,
-                    out RecipientVerdict cached))
-                    return cached;
-                using var __miss = new Game.Core.ProfileScope("AI/Dev.RecipientVerdict");
-                string why;
-                bool legal = unit != null
-                    ? futureAttachment || ignoreApForMeasurement
-                        ? EquipmentSystem.CanAttachPreview(equipment, unit, out why)
-                        : EquipmentSystem.CanAttach(generatedPreview, unit, root, out why)
-                    : futureAttachment || ignoreApForMeasurement
-                        ? EquipmentSystem.CanAttachPreview(equipment, card, out why)
-                        : EquipmentSystem.CanAttach(generatedPreview, card, root, out why);
-                RecipientVerdict verdict;
-                if (!legal)
-                    verdict = new RecipientVerdict(false, why, default, null, false, false);
-                else
-                {
-                    EquipmentUpgradeValuation.EquipmentDelta gain = unit != null
-                        ? EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, unit, snap, inv)
-                        : EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, card, snap, inv);
-                    string purpose;
-                    using (new Game.Core.ProfileScope("AI/Dev.PurposeLabel"))
-                        purpose = EquipmentUpgradeValuation.EquipmentPurposeLabel(snap, card, unit);
-                    DevelopmentOpportunity probe = MakeProbe(equipment, card, unit, gain, powerUnit);
-                    // Delta already includes mission-scoped penetration and effect usefulness.
-                    // Utility is required even for in-advance investment; surplus alone cannot admit it.
-                    bool noNeed = EquipmentUpgradeValuation.EquipmentUpgradeValue(probe) <= 0f;
-                    // A real card in hand is the pending stage. Reuse it before manufacturing more
-                    // for its useful recipient slot; ordinary hand attachment enumeration stays live.
-                    bool covers = false;
-                    if (!noNeed && futureAttachment)
-                    {
-                        // Boxed slot is the memo key; recipient identity separates CardData from UnitData.
-                        object slot = equipment.attachmentSlot;
-                        if (!memoised || !RecipientEvaluationMemo.TryGetPending(recipient, slot, out covers))
-                        {
-                            using (new Game.Core.ProfileScope("AI/Dev.PendingCovers"))
-                                covers = PendingEquipmentInHandCovers(probe, cardsInHand, snap, inv);
-                            if (memoised) RecipientEvaluationMemo.StorePending(recipient, slot, covers);
-                        }
-                    }
-                    verdict = new RecipientVerdict(true, null, gain, purpose, noNeed, covers);
-                }
-                if (memoised) RecipientEvaluationMemo.Store(equipment, recipient, futureAttachment, verdict);
-                return verdict;
-            }
+            RecipientVerdict Evaluate(object recipient, CardData card, UnitData unit) =>
+                EvaluateRecipient(equipment, recipient, card, unit, memoised, futureAttachment,
+                    ignoreApForMeasurement, generatedPreview, root, snap, inv, cardsInHand);
 
             void Consider(RecipientVerdict v, DevRecipientKind kind, CardData card, UnitData unit,
                 int? armyId, string label)
@@ -1335,23 +1296,18 @@ namespace Game.Ai.V2
                 });
             }
 
-            foreach (CardData c in cardsInHand)
+            foreach (var (c, u, army) in Recipients(cardsInHand, player))
             {
-                if (c?.Definition == null) continue;
-                if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
-                handChecked++;
-                RecipientVerdict v = Evaluate(c, c, null);
-                if (!v.Legal)
-                { lastReject = v.Why; lastNoNeed = null; continue; }
-                Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
-            }
-
-            foreach (ArmyData army in OwnWorld.Of(player).Armies)
-            {
-                if (army == null || army.IsPrison) continue;
-                foreach (UnitData u in army.Members)
+                if (c != null)
                 {
-                    if (u == null || u.IsPrisoner) continue;
+                    handChecked++;
+                    RecipientVerdict v = Evaluate(c, c, null);
+                    if (!v.Legal)
+                    { lastReject = v.Why; lastNoNeed = null; continue; }
+                    Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
+                }
+                else
+                {
                     mapChecked++;
                     RecipientVerdict v = Evaluate(u, null, u);
                     if (!v.Legal)
@@ -1369,6 +1325,81 @@ namespace Game.Ai.V2
                 diag = $"hand {handChecked}, map {mapChecked}, no-need {noNeed}"
                     + (lastReject != null ? $", last reject \"{lastReject}\"" : "");
             return result;
+        }
+
+        // Every recipient EquipmentOpportunities prices, in its order: unit/hero cards in hand
+        // (card set), then the living members of own non-prison armies (unit and army set).
+        private static IEnumerable<(CardData Card, UnitData Unit, ArmyData Army)> Recipients(
+            IReadOnlyList<CardData> cardsInHand, PlayerSetupData player)
+        {
+            foreach (CardData c in cardsInHand)
+            {
+                if (c?.Definition == null) continue;
+                if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
+                yield return (c, null, null);
+            }
+            foreach (ArmyData army in OwnWorld.Of(player).Armies)
+            {
+                if (army == null || army.IsPrison) continue;
+                foreach (UnitData u in army.Members)
+                    if (u != null && !u.IsPrisoner)
+                        yield return (null, u, army);
+            }
+        }
+
+        // One (equipment, recipient) verdict: legality, signed delta, purpose label, need and the
+        // pending-hand check. Memoised in the current RecipientEvaluationMemo when `memoised`.
+        private static RecipientVerdict EvaluateRecipient(CardDefinition equipment, object recipient,
+            CardData card, UnitData unit, bool memoised, bool futureAttachment, bool ignoreApForMeasurement,
+            CardData generatedPreview, PlayerRoot root, WorldSnapshot snap, CapabilityInventory inv,
+            IReadOnlyList<CardData> cardsInHand)
+        {
+            if (memoised && RecipientEvaluationMemo.TryGet(equipment, recipient, futureAttachment,
+                out RecipientVerdict cached))
+                return cached;
+            using var __miss = new Game.Core.ProfileScope("AI/Dev.RecipientVerdict");
+            string why;
+            bool legal = unit != null
+                ? futureAttachment || ignoreApForMeasurement
+                    ? EquipmentSystem.CanAttachPreview(equipment, unit, out why)
+                    : EquipmentSystem.CanAttach(generatedPreview, unit, root, out why)
+                : futureAttachment || ignoreApForMeasurement
+                    ? EquipmentSystem.CanAttachPreview(equipment, card, out why)
+                    : EquipmentSystem.CanAttach(generatedPreview, card, root, out why);
+            RecipientVerdict verdict;
+            if (!legal)
+                verdict = new RecipientVerdict(false, why, default, null, false, false);
+            else
+            {
+                EquipmentUpgradeValuation.EquipmentDelta gain = unit != null
+                    ? EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, unit, snap, inv)
+                    : EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, card, snap, inv);
+                string purpose;
+                using (new Game.Core.ProfileScope("AI/Dev.PurposeLabel"))
+                    purpose = EquipmentUpgradeValuation.EquipmentPurposeLabel(snap, card, unit);
+                DevelopmentOpportunity probe = MakeProbe(equipment, card, unit, gain,
+                    AiConfigV2.combatPowerPerBodyEstimate);
+                // Delta already includes mission-scoped penetration and effect usefulness.
+                // Utility is required even for in-advance investment; surplus alone cannot admit it.
+                bool noNeed = EquipmentUpgradeValuation.EquipmentUpgradeValue(probe) <= 0f;
+                // A real card in hand is the pending stage. Reuse it before manufacturing more
+                // for its useful recipient slot; ordinary hand attachment enumeration stays live.
+                bool covers = false;
+                if (!noNeed && futureAttachment)
+                {
+                    // Boxed slot is the memo key; recipient identity separates CardData from UnitData.
+                    object slot = equipment.attachmentSlot;
+                    if (!memoised || !RecipientEvaluationMemo.TryGetPending(recipient, slot, out covers))
+                    {
+                        using (new Game.Core.ProfileScope("AI/Dev.PendingCovers"))
+                            covers = PendingEquipmentInHandCovers(probe, cardsInHand, snap, inv);
+                        if (memoised) RecipientEvaluationMemo.StorePending(recipient, slot, covers);
+                    }
+                }
+                verdict = new RecipientVerdict(true, null, gain, purpose, noNeed, covers);
+            }
+            if (memoised) RecipientEvaluationMemo.Store(equipment, recipient, futureAttachment, verdict);
+            return verdict;
         }
 
         // The slice of a candidate that PendingEquipmentCovers and the need check read.
