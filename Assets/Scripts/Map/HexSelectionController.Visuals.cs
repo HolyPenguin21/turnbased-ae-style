@@ -462,14 +462,14 @@ namespace Game.Map
             // marker represents that container, exactly as it represents ground cards — even when
             // the garrison itself is empty (nothing ever staged there), so it still needs a slot in
             // armiesHere below to get laid out and shown at all.
-            var airfieldOwners = new HashSet<PlayerSetupData>(ArmyRegistry.AllAt(hex)
-                .FindAll(a => a.IsAirfield && a.Members.Count > 0).ConvertAll(a => a.Owner));
+            var airfieldOwners = new HashSet<PlayerSetupData>(VisibleForLayout(ArmyRegistry.AllAt(hex)
+                .FindAll(a => a.IsAirfield && a.Members.Count > 0), hex).ConvertAll(a => a.Owner));
             foreach (PlayerSetupData owner in airfieldOwners)
             {
-                if (armiesHere.Exists(a => a.Owner == owner))
+                if (VisibleForLayout(armiesHere, hex).Exists(a => a.Owner == owner))
                     continue;
                 ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, owner);
-                if (garrison != null)
+                if (garrison != null && !armiesHere.Contains(garrison))
                     armiesHere.Add(garrison);
             }
 
@@ -480,7 +480,8 @@ namespace Game.Map
             // silently reveals "someone is on this hex" (project owner's own report, кейс 4).
             // The per-marker visibility test further down already hides that army's own marker;
             // this keeps the REST of the hex laid out as if it weren't there at all.
-            List<PlayerSetupData> distinctOwners = DistinctOwners(VisibleForLayout(armiesHere, hex));
+            List<ArmyData> visibleArmies = VisibleForLayout(armiesHere, hex);
+            List<PlayerSetupData> distinctOwners = DistinctOwners(visibleArmies);
 
             // An army that just dropped to zero members (its last unit dragged out, see
             // CardHandUI/ArmyViewerModalUI's own RestackArmiesOn calls) drops out of armiesHere
@@ -508,10 +509,10 @@ namespace Game.Map
             // arbitrary one. An army that's mid-move stays visible regardless (it's the thing the
             // player is watching travel), even if it isn't the representative one.
             var representativeForOwner = new Dictionary<PlayerSetupData, ArmyData>();
-            foreach (ArmyData army in armiesHere)
+            foreach (ArmyData army in visibleArmies)
                 if (!representativeForOwner.ContainsKey(army.Owner))
                     representativeForOwner[army.Owner] = army;
-            if (_selectedArmy != null && armiesHere.Contains(_selectedArmy.Data))
+            if (_selectedArmy != null && visibleArmies.Contains(_selectedArmy.Data))
                 representativeForOwner[_selectedArmy.Data.Owner] = _selectedArmy.Data;
 
             // Airfields have no independent marker (see airfieldOwners above, computed early
@@ -520,7 +521,7 @@ namespace Game.Map
             // exactly as it represents ground cards.
             foreach (PlayerSetupData owner in airfieldOwners)
             {
-                ArmyData garrison = armiesHere.Find(a => a.Owner == owner && a.IsGarrison);
+                ArmyData garrison = visibleArmies.Find(a => a.Owner == owner && a.IsGarrison);
                 if (garrison != null)
                     representativeForOwner[owner] = garrison;
             }
@@ -538,7 +539,9 @@ namespace Game.Map
                 // player's army would — same "remembered once seen" exception the resource row
                 // already gets (see VisionSystem.HasEverSeenByCurrentViewer, MapResourceDisplay).
                 bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral && VisionSystem.HasEverSeenByCurrentViewer(hex);
-                bool visible = (representativeForOwner[army.Owner] == army || controller.IsMoving)
+                bool visible = visibleArmies.Contains(army)
+                    && ((representativeForOwner.TryGetValue(army.Owner, out ArmyData representative)
+                            && representative == army) || controller.IsMoving)
                     && (army.Owner == VisionSystem.CurrentViewer || CurrentViewerCanRenderLiveHex(hex)
                         || everSeenNeutral)
                     // An enemy army every member of which is hidden from the current viewer
@@ -744,7 +747,7 @@ namespace Game.Map
                 bool visibleEnemy = hexVisible && !StealthSystem.ArmyFullyHiddenFrom(army, viewer);
                 bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral
                     && VisionSystem.HasEverSeenByCurrentViewer(hex);
-                if (own || visibleEnemy || everSeenNeutral)
+                if (own || visibleEnemy || (everSeenNeutral && !StealthSystem.ArmyFullyHiddenFrom(army, viewer)))
                     result.Add(army);
             }
             return result;

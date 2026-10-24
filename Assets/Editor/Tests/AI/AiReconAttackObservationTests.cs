@@ -116,6 +116,32 @@ namespace Game.EditorTests
                 "after the need ends the same cell reverts to ordinary exploration");
         }
 
+        [Test]
+        public void StaleTargetCanRequestObservationBeforeAnAttackIntentExists()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            var store = new MissionIntentState();
+            var recon = new MissionIntent
+            {
+                Kind = MissionKind.Scout, Status = IntentStatus.Active, PreferredMoverArmyId = 10,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = Site },
+            };
+            recon.IntentKey = MissionIntentKey.For(recon); store.Put(recon);
+            snap.Intents = store;
+            snap.Self.AttackPeak = 100f;
+            snap.Self.Armies = new[] { new ArmySnapshot
+            {
+                ArmyId = 81, Owner = snap.Observer, Hex = default, IsStructuralRaidActor = true,
+                EffectiveArmyPower = 100f, MemberCount = 1, MaxMovement = 3, CurrentMovement = 3,
+                Members = new[] { new Game.Combat.WorthIt.DefenderProfile(10f, false, attack: 20f, hitPoints: 20f) },
+            } };
+            Assert.That(AttackObjectiveEvaluator.ObservationNeeds(snap).ToArray(), Is.EqualTo(new[] { Site }));
+            ReconIntelSnapshotRegistry.Clear();
+            ReconIntelSnapshotRegistry.Capture(snap.Observer, snap.TurnNumber, snap.KnowledgeVersion,
+                new Dictionary<HexCoord, int> { { Site, snap.TurnNumber } });
+            Assert.That(AttackObjectiveEvaluator.ObservationNeeds(snap), Is.Empty);
+        }
+
         private static WorldSnapshot Scenario(out ArmySnapshot scout)
         {
             var player = new PlayerSetupData { Nickname = "Recon audit", ColorIndex = 1 };

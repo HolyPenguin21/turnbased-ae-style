@@ -24,9 +24,11 @@ namespace Game.Ai.V2
     {
         internal static float Facility(CardData card, int stageAp, ResourceCost stageCost,
             WorldSnapshot snap, CapabilityInventory inv, AiHandData hand,
-            System.Func<ResourceType, float> spendableResource, PlayerSetupData player) =>
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
+            float? witnessedUsefulApDemand = null) =>
             StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Facility, card, snap, inv, hand,
-                bestEquipmentUpgrade: 0f, actualApCost: stageAp, actualResourceCost: stageCost,
+                bestEquipmentUpgrade: 0f, witnessedUsefulApDemand: witnessedUsefulApDemand,
+                actualApCost: stageAp, actualResourceCost: stageCost,
                 spendableResource: spendableResource, player: player).NetScore;
 
         // The stand-alone CapacityUnlock step: opening one Facility slot of a full Base so a confirmed
@@ -47,7 +49,8 @@ namespace Game.Ai.V2
 
         internal static float HandOperator(CardData card, int ordinal, HexCoord hex,
             ResearchProductionMode mode, ArmyData garrison, WorldSnapshot snap, CapabilityInventory inv,
-            System.Func<ResourceType, float> spendableResource, PlayerSetupData player)
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
+            float? witnessedUsefulApDemand = null)
         {
             if (card?.Definition == null || garrison == null)
                 return float.NegativeInfinity;
@@ -59,12 +62,14 @@ namespace Game.Ai.V2
                 new PlacementOption(hex, DeploymentKind.Garrison, garrison), abilities);
             return StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits, inv,
                 card.Definition.moveMax, hasCompetingHeroDemand: false, snap,
+                witnessedUsefulApDemand: witnessedUsefulApDemand,
                 spendableResource: spendableResource, player: player).NetScore;
         }
 
         internal static float GeneratedOperator(GenerationStep source, HexCoord hex,
             ResearchProductionMode mode, ArmyData garrison, WorldSnapshot snap, CapabilityInventory inv,
-            System.Func<ResourceType, float> spendableResource, PlayerSetupData player)
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
+            float? witnessedUsefulApDemand = null)
         {
             if (source?.CardDef == null || garrison == null)
                 return float.NegativeInfinity;
@@ -76,6 +81,7 @@ namespace Game.Ai.V2
                 new PlacementOption(hex, DeploymentKind.Garrison, garrison), abilities);
             float chain = StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits, inv,
                 source.CardDef.moveMax, hasCompetingHeroDemand: false, snap,
+                witnessedUsefulApDemand: witnessedUsefulApDemand,
                 spendableResource: spendableResource, player: player).NetScore;
             // The minted card is deployed by a later action that pays its own activation AP.
             float deferredDeployAp = CardCostRules.PlayAp(

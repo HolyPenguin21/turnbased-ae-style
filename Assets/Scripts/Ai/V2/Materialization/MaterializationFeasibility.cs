@@ -41,7 +41,8 @@ namespace Game.Ai.V2
         internal static List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> FilterForDemand(
             IReadOnlyList<MaterializationPlan> raw, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, AxisDemand demand, PhaseAApBudget apBudget, float reservedFollowupAp,
-            WorldSnapshot snapshot = null)
+            WorldSnapshot snapshot = null, ActorCommitments commitments = null,
+            System.Action<MaterializationPlan> resourceBlocked = null)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
             float axisBudget = apBudget.DiscreteAdmissionBudget();
@@ -58,7 +59,7 @@ namespace Game.Ai.V2
                 AddIfFeasibleA(sink, p, demand, baseDef, stealthSurcharge,
                     reservedFollowupAp - (demand.AttackLocalRefit && p.AttackRefitPrimaryId.HasValue
                         ? apBudget.ActorFollowup(p.AttackRefitPrimaryId.Value) : 0f),
-                    axisBudget, eps, root, hand, player, ctx, snapshot);
+                    axisBudget, eps, root, hand, player, ctx, snapshot, commitments, resourceBlocked);
             }
             return sink;
         }
@@ -68,7 +69,8 @@ namespace Game.Ai.V2
         // canonical delivery policy as FilterForDemand and never scores or selects a plan.
         internal static MaterializationDeliveryAvailability AssessOperationalDelivery(
             IReadOnlyList<MaterializationPlan> raw, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, AxisDemand demand, WorldSnapshot snapshot = null)
+            AiHandData hand, AiTurnContext ctx, AxisDemand demand, WorldSnapshot snapshot = null,
+            ActorCommitments commitments = null)
         {
             int rawCount = 0;
             int preflightCount = 0;
@@ -83,7 +85,7 @@ namespace Game.Ai.V2
                 preflightCount++;
                 if (plan.Kind == MaterializationChainKind.GenerateAttachUpgrade
                     || MaterializationDeliveryPolicy.CanDeliverDemandOperationally(
-                        plan, demand, snapshot, player, ctx))
+                        plan, demand, snapshot, player, ctx, commitments))
                     operationalCount++;
             }
             return new MaterializationDeliveryAvailability(
@@ -95,7 +97,7 @@ namespace Game.Ai.V2
         internal static List<MaterializationPlan> FilterSurplus(IReadOnlyList<MaterializationPlan> raw,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             MaterializationReservation reservation, WorldSnapshot snapshot = null,
-            bool ignoreApForMeasurement = false)
+            bool ignoreApForMeasurement = false, ActorCommitments commitments = null)
         {
             var sink = new List<MaterializationPlan>();
             foreach (MaterializationPlan p in raw)
@@ -108,7 +110,7 @@ namespace Game.Ai.V2
                 // capability. Otherwise it stays in hand until Phase A resolves the demand.
                 AxisDemand strategicClaim = UnresolvedClaimFor(reservation, p.FinalCapability, p.ProjectedAbilities);
                 if (strategicClaim != null
-                    && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, strategicClaim, snapshot, player, ctx))
+                    && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, strategicClaim, snapshot, player, ctx, commitments))
                     continue;
                 // A Recce hero has two legal Phase-B shapes: solo Scout or Hero joining a real
                 // formation. The latter must not evade an unresolved Scout demand merely because
@@ -166,7 +168,8 @@ namespace Game.Ai.V2
             List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> sink,
             MaterializationPlan p, AxisDemand demand, CardDefinition baseDef, int stealthSurcharge,
             float reservedFollowupAp, float axisBudget, float eps, PlayerRoot root, AiHandData hand,
-            PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snapshot = null)
+            PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snapshot = null,
+            ActorCommitments commitments = null, System.Action<MaterializationPlan> resourceBlocked = null)
         {
             bool upgrade = p != null && p.Kind == MaterializationChainKind.GenerateAttachUpgrade;
             // A global-source carrier is delivered by being in play: no post-deploy movement.
@@ -174,7 +177,7 @@ namespace Game.Ai.V2
                 || demand?.EconomyEscortArmyId.HasValue == true;
             // An upgrade creation stage has no same-turn attachment/deploy follow-up. Every
             // deploy chain keeps the canonical operational-delivery gate.
-            if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx))
+            if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx, commitments))
                 return;
 
             // A local refit (any window) is judged as the handoff it is, against the live recipient.
@@ -204,9 +207,18 @@ namespace Game.Ai.V2
             SpendAuthority authority = demand != null ? demand.SpendAuthority : default;
             if (StrategicSpendability.SpendableAp(player, root, ctx, authority)
                     - need < -eps) return;
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost,
-                    authority)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;
+            // Forecast enumeration may expose an unaffordable source, but never bypasses
+            // Development's independent investment admission for a playable/workload candidate.
+            if (resourceBlocked != null && p.Generation != null && !DevelopmentInvestmentGate.IsOpenFor(
+                    player, ctx.TurnNumber, p.Generation.GenerationResourceCost)) return;
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost, authority))
+            {
+                // All non-resource gates passed for this concrete chain; Strategy may publish
+                // its canonical total cost as evidence before any card is scored.
+                resourceBlocked?.Invoke(p);
+                return;
+            }
             sink.Add((p, followupAp, p.ExpectedTraits));
         }
 

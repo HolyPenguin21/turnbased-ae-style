@@ -677,7 +677,12 @@ namespace Game.Map
                 resolveStepAsync: aviationCombatPresenter != null
                     ? (System.Func<HexCoord, HexCoord, ArmyController.StepResolutionOutcome, System.Collections.IEnumerator>)
                         ((from, to, outcome) => aviationCombatPresenter.ResolveStep(army, to, outcome))
-                    : null);
+                    : null,
+                onSettled: () =>
+                {
+                    if (movingArmy != null && army.Controller == movingArmy && ArmyRegistry.IsRegistered(army))
+                        RestackArmiesOn(army.Hex, null);
+                });
                 // Leaving originHex can just as easily change what's left behind there (e.g. a
                 // pair collapsing back down to one army, which should re-centre).
                 RestackArmiesOn(originHex, movingArmy);

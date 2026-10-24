@@ -531,21 +531,14 @@ namespace Game.Ai.V2
         // live operation that is still going to fight there (Gather / Assault / Reinforcement).
         // Recon closes it with its own Refresh objective (ReconObjectiveEvaluator); Attack never
         // moves a scout itself.
-        // Step 7 — when this player knows no hostile Base/Citadel at all, Attack has nothing to aim
-        // at: it asks to observe the enemy citadel, whose coordinates are the cheat anchor
-        // (WorldAnalysis.TryEnemyCitadelAnchor). Its defenders stay unknown until Recon sees them;
-        // only then does it become an ordinary objective through snap.Known.Buildings.
+        // Also publishes at most one pre-operation need: a stale target that an existing free
+        // force can consider, else a never-seen sanctioned Citadel as an early search direction.
         internal static IEnumerable<HexCoord> ObservationNeeds(WorldSnapshot snap)
         {
             PlayerSetupData player = snap?.Observer;
             if (player == null)
                 yield break;
-            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings
-                ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>();
-            if (AttackForceReadiness.MobilizationOpen(snap.Self)
-                && !buildings.Any(b => IsHostileStrategicStructure(b, player))
-                && WorldAnalysis.TryEnemyCitadelAnchor(snap, out HexCoord citadel))
-                yield return citadel;
+            var emitted = new HashSet<HexCoord>();
             foreach (MissionIntent i in snap.AllIntents)
             {
                 AttackIntent a = i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
@@ -556,9 +549,37 @@ namespace Game.Ai.V2
                 // the target's own status is read here: a captured / invalidated site needs no look.
                 if ((a.Phase == AttackMissionPhase.Gather || a.Phase == AttackMissionPhase.Assault
                         || a.Phase == AttackMissionPhase.Reinforcement)
-                    && EvaluateTarget(snap, a.Target) == AttackTargetStatus.Continue)
+                    && EvaluateTarget(snap, a.Target) == AttackTargetStatus.Continue
+                    && emitted.Add(a.Target.Hex))
                     yield return a.Target.Hex;
             }
+            if (snap.Self == null) yield break;
+            var active = snap.AllIntents.Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            // A structural ground combat actor cannot be a valid solo-Recce/air Scout mover.
+            // Do not rebuild Scout claims here: their validity asks Recon -> ObservationNeeds.
+            var commitments = ActorCommitments.FromIntents(
+                active.Where(i => i.Kind != MissionKind.Scout), snap, null);
+            // Reuse Attack's existing target order, not the mission planner (Recon is itself
+            // building its objectives here). One concrete pre-operation need beyond live needs.
+            List<AttackObjective> targets = Enumerate(snap);
+            foreach (AttackObjective target in targets)
+            {
+                if (target.LocationOnly || emitted.Contains(target.Hex)
+                    || HasAssaultObservation(snap, target.Target, out _)) continue;
+                bool canConsider = (snap.Self.Armies ?? Array.Empty<ArmySnapshot>()).Any(army =>
+                    GroundCombatActorEligibility.IsStructuralActor(army)
+                    && !commitments.IsArmyClaimed(army.ArmyId)
+                    && AttackPreparationPolicy.AssessReadiness(army, snap.Self.AttackPeak,
+                        target.Opposition, target.HexDefense).Ready
+                    && AiV2Util.TravelCost(snap, army, target.Hex, terrainOnly: true) != int.MaxValue);
+                if (!canConsider) continue;
+                yield return target.Hex;
+                yield break;
+            }
+            // A sanctioned never-seen Citadel is a search direction even before mobilization,
+            // including when an intermediate hostile Base is already known. No defenders inferred.
+            AttackObjective unseen = targets.FirstOrDefault(t => t.LocationOnly && !emitted.Contains(t.Hex));
+            if (unseen != null) yield return unseen.Hex;
         }
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as

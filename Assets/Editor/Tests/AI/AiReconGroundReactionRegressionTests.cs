@@ -275,6 +275,45 @@ namespace Game.EditorTests
                 "No permanent blocked flag or cached no-path result may survive changed map data.");
         }
 
+        [Test]
+        public void FreshRefreshDoesNotReverseTowardAnUnreachableAnchor()
+        {
+            var back = new HexCoord(1, 0);
+            SetMap(new Dictionary<HexCoord, TerrainTypeEntry>
+            {
+                [default] = new TerrainTypeEntry { moveCost = 1 },
+                [back] = new TerrainTypeEntry { moveCost = 1 },
+            });
+            AiReconIntelMemory.Clear();
+            AiReconIntelMemory.ObserveCurrentVisibility(player, 12);
+            ScoutTrailRegistry.RecordStep(player, scout.Id, back, default);
+            scout.Members[0].MoveCurrent = 1;
+            var assignment = new ReconPatrolState
+            {
+                Mode = ReconMode.Refresh, StrategicAnchor = new HexCoord(2, 0),
+            };
+            Assert.That(ReconGroundStepPlanner.Pick(player, map, scout, assignment, 12, null), Is.Null);
+            Assert.That(scout.CurrentMovement, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void FreshRefreshStillTakesASafeGeometricDetour()
+        {
+            var first = new HexCoord(-1, 1);
+            var goal = new HexCoord(2, 0);
+            SetMap(new[] { default(HexCoord), first, new HexCoord(-1, 2),
+                new HexCoord(0, 2), new HexCoord(1, 1), goal }
+                .ToDictionary(h => h, h => new TerrainTypeEntry { moveCost = 1 }));
+            AiReconIntelMemory.Clear();
+            AiReconIntelMemory.ObserveCurrentVisibility(player, 12);
+            scout.Members[0].MoveCurrent = 1;
+            var assignment = new ReconPatrolState { Mode = ReconMode.Refresh, StrategicAnchor = goal };
+            var next = ReconGroundStepPlanner.Pick(player, map, scout, assignment, 12, null);
+            Assert.That(next.HasValue, Is.True);
+            Assert.That(next.Value.Hex, Is.EqualTo(first));
+            Assert.That(HexGridMath.Distance(first, goal), Is.GreaterThan(HexGridMath.Distance(scout.Hex, goal)));
+        }
+
         private void SetMap(Dictionary<HexCoord, TerrainTypeEntry> cells)
         {
             map.SetData(8, 1f, cells);

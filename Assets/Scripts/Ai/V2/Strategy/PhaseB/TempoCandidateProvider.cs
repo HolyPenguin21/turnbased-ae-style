@@ -58,6 +58,24 @@ namespace Game.Ai.V2
         {
             var list = new List<TempoCandidate>();
 
+            // Rebuild exact residual-chain evidence after every real tempo mutation, before
+            // either card lane scores. Diagnostics and enumeration order cannot affect it.
+            ResourceStarvationRegistry.BeginVerifiedPass(player);
+            foreach (AxisDemand demand in result.Reservation.UnresolvedDemands.Where(d => d != null
+                && !d.IsPersistenceDeferred && !d.StructurallyUndeliverable
+                && d.DesiredAmount > AiConfigV2.allocatorSliceEpsilon
+                && (d.RequestingAxis == DesireAxis.Aggression || d.RequestingAxis == DesireAxis.Recon)))
+                MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand, ctx,
+                    demand, PhaseAApBudget.Create(root), commitments, 0f, result.Reservation,
+                    WorldSnapshot.IntentsOf(snap).ToList(), resourceBlocked: blocked =>
+                    {
+                        foreach (ResourceType type in ResourceBundle.All)
+                            ResourceStarvationRegistry.RecordVerifiedBlock(player, type,
+                                blocked.ResCost?.Get(type) ?? 0,
+                                StrategicSpendability.SpendableAmount(player, root, ctx, type, demand.SpendAuthority),
+                                snap.Self.PerTurnIncome.Get(type), demand.Value, snap.TurnNumber);
+                    });
+
             // AI-MGR — the ONE shared Phase-B owner-witnessed AP workload for this tempo iteration,
             // from the REAL feasible candidate universe across BOTH lanes. The same scalar goes to
             // the materialization lane (RankedSurplus/ScoreSurplus) and the non-combat lane
@@ -450,7 +468,7 @@ namespace Game.Ai.V2
             {
                 AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
                 AxisDemand residual = matchedResidual != null
-                    && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual, snap, player, ctx)
+                    && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual, snap, player, ctx, commitments)
                         ? matchedResidual : null;
 
                 // Generated Unit/Hero/Equipment is a real surplus alternative even without a

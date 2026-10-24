@@ -23,7 +23,8 @@ namespace Game.Ai.V2
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             AxisDemand demand, ActorCommitments commitments, MaterializationReservation reservation,
             System.Collections.Generic.ISet<CardData> excludeCards = null,
-            System.Collections.Generic.ISet<string> excludeGenKeys = null)
+            System.Collections.Generic.ISet<string> excludeGenKeys = null,
+            bool resourceForecast = false)
         {
             if (demand.AttackLocalRefit)
                 return AttackBaseRefitPolicy.Enumerate(snap, player, hand, ctx, demand, commitments,
@@ -49,7 +50,8 @@ namespace Game.Ai.V2
             List<CardData> handList = hand.Hand.ToList();
             List<GenerationStep> genSteps = reservation != null && reservation.CanGenerateMore
                 ? GenerationSource.Enumerate(player, root, ctx, hand,
-                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards, authority: demand.SpendAuthority)
+                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards,
+                    resourceForecast: resourceForecast, authority: demand.SpendAuthority)
                 : new List<GenerationStep>();
 
             var candidates = new List<MaterializationPlan>();

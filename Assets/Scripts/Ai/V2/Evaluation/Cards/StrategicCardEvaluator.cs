@@ -371,13 +371,10 @@ namespace Game.Ai.V2
                 role, pabil, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
 
-            // ResourceGain — the SAME rule as ScoreSurplusRole: ResourceGainRoleFit is the one value
-            // of a permanent PlayerGlobal source, so ec.RoleFit/ec.GlobalRoleFit would price that
-            // fact twice; and a PlayerGlobal effect has no target hex to fit.
+            // Recurring resources use the registry's dynamic effect value once in every role.
+            // The ResourceGain core contributes only the independent commander utility.
             ec = WithoutUnavailableDevelopmentSkill(role, ec, snap, pabil, demand);
-            bd.RoleFit = role == IntendedRole.ResourceGain
-                ? roleFitCore
-                : fit * (roleFitCore + ec.RoleFit) + ec.GlobalRoleFit;
+            bd.RoleFit = fit * (roleFitCore + ec.RoleFit) + ec.GlobalRoleFit;
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind)
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
@@ -486,17 +483,8 @@ namespace Game.Ai.V2
 
             // Phase B has no target-fit multiplier, so local + PlayerGlobal (ec.Global*) simply add
             // into the same breakdown axis; the descriptor's EffectField still routes each.
-            // ResourceGain excluded from ec.GlobalRoleFit: that dynamic GlobalRecurringValue figure
-            // (yield x horizon x marginalApUtility x saturation) prices the SAME "this card produces
-            // a resource" fact that ResourceGainRoleFit's own weight already exists to express —
-            // adding both double-counts it under this one role's Total. Other roles scoring the SAME
-            // card (e.g. it loses the contest and plays as CombatBody) still get ec.GlobalRoleFit as
-            // before — this exclusion is scoped to the ResourceGain role only, not the ability.
             ec = WithoutUnavailableDevelopmentSkill(role, ec, snap, projected, null);
-            // The Support role (an ApBonus carrier's registry role) has never priced the card's
-            // PlayerGlobal value itself - ResourceGain and the other roles do; it stays at its core fit.
-            bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain || role == IntendedRole.Support
-                ? 0f : ec.RoleFit + ec.GlobalRoleFit);
+            bd.RoleFit = roleFitCore + (role == IntendedRole.Support ? 0f : ec.RoleFit) + ec.GlobalRoleFit;
             // ImmediateTempo/NextTurnPotential stay at their default (0) in Phase B: every Phase-B
             // candidate is already immediately playable, so a "now vs later" axis adds nothing
             // RoleFit/ThreatCounterValue do not already carry. They are live in Phase A's
@@ -590,10 +578,8 @@ namespace Game.Ai.V2
                     // A ResourceGain hero's Command (extra battle slots it unlocks elsewhere) is
                     // orthogonal to its recurring-resource specialty, so it is credited here. Only
                     // the COMMAND part, never combatPart: this role deliberately does not compete
-                    // on the hero's own body strength (see ResourceGainRoleFit — ForceGrowthValue
-                    // etc. are zeroed for the same reason).
-                    return ResourceGainRoleFit(ectx)
-                        + (hero ? HeroCommandMarginalValue(PlanBaseDef(plan), ectx, projectedLegalFillers,
+                    // on the hero's own body strength (ForceGrowthValue is zeroed for this role).
+                    return (hero ? HeroCommandMarginalValue(PlanBaseDef(plan), ectx, projectedLegalFillers,
                             out heroCmdDetail) : 0f);
                 case IntendedRole.CombatBody:
                 case IntendedRole.ForceGrowth:
@@ -611,27 +597,6 @@ namespace Game.Ai.V2
                 default:
                     return versatility;
             }
-        }
-
-        // AI-MGR — ResourceGain's OWN weight. Before this role existed, a PlayerGlobal
-        // recurring-resource card (ApBonus/ProduceHuman/ProduceMaterials/...) only ever won the
-        // internal per-card role contest by accident, riding CombatBody's combat/command score
-        // while the actual reason to play it sat unlabeled inside ec.GlobalRoleFit (added to
-        // EVERY role identically — StrategicEffectRegistry.Contributions treats PlayerGlobal
-        // effects as role-independent by design, and that stays true here too: this term does
-        // NOT duplicate ec.GlobalRoleFit's yield×horizon×marginalUtility×saturation math, it only
-        // gives the ResourceGain role enough of its own RoleFitCore to surface as itself in
-        // role= logging and to win the contest on a card with a weak/no combat body.
-        // "Earlier is better": expressed directly and strongly here — a fast turn-decay down to a
-        // floor — rather than relying on EffectEvaluationContext.RecurringFutureOpportunity's
-        // existing turn factor, which is deliberately WEAK (one of four blended inputs, ramped
-        // over turns 6-40) because it also has to serve cards with no early-game urgency story.
-        private static float ResourceGainRoleFit(EffectEvaluationContext ectx)
-        {
-            float earlyBias = Mathf.Lerp(1f, AiConfigV2.resourceGainEarlyTurnFloor,
-                Curves.Ramp(ectx.TurnNumber,
-                    AiConfigV2.resourceGainEarlyRampLo, AiConfigV2.resourceGainEarlyRampHi));
-            return AiConfigV2.resourceGainRoleFitBase * earlyBias;
         }
 
         // Effective moveMax of the plan's END RESULT (base + already-attached + planned equipment)
@@ -684,8 +649,7 @@ namespace Game.Ai.V2
                     break;
                 case NonCombatRole.Facility:
                     role = FacilityRole(def);
-                    // A PlayerGlobal-source Facility takes ResourceGainRoleFit below — the one
-                    // value a Hero/Unit carrier of the same effect gets.
+                    // PlayerGlobal sources get their dynamic registry effect value below.
                     // Research/Production sites earn no income, so economic insecurity adds
                     // nothing to them: their intrinsic value is the infrastructure value alone.
                     bd.RoleFit = role == IntendedRole.ResourceGain ? 0f
@@ -717,9 +681,7 @@ namespace Game.Ai.V2
             // AntiAir/AntiArmor counters, so ncEc.CapabilityGap/ncEc.ThreatResponse fold into
             // RoleFit instead.
             // ResourceGain: same single-count rule as ScoreSurplusRole / ScoreForDemand.
-            bd.RoleFit += (role == IntendedRole.ResourceGain
-                    ? ResourceGainRoleFit(ncCtx)
-                    : ncEc.RoleFit + ncEc.GlobalRoleFit)
+            bd.RoleFit += ncEc.RoleFit + ncEc.GlobalRoleFit
                 + ncEc.CapabilityGap + ncEc.GlobalCapabilityGap
                 + ncEc.ThreatResponse + ncEc.GlobalThreatResponse;
             bd.ForceGrowthValue += ncEc.ForceGrowth + ncEc.GlobalForceGrowth;
@@ -1037,7 +999,7 @@ namespace Game.Ai.V2
                                       || abilities.Contains(UnitAbilities.Assembler)))
                 roles.Add(IntendedRole.Development);
             // A PlayerGlobal recurring-resource carrier (ApBonus/ProduceHuman/ProduceMaterials/...)
-            // gets its own contestable role — see ResourceGainRoleFit.
+            // gets its own contestable role, with the registry pricing its actual effect.
             if (abilities != null && StrategicEffectRegistry.HasGlobalRecurringEffect(abilities))
                 roles.Add(IntendedRole.ResourceGain);
             // P1 ARCH — every ability/stat-derived role (AntiAir / AntiArmor / Support / MobileCombat
@@ -1318,7 +1280,9 @@ namespace Game.Ai.V2
 
             float income = Mathf.Max(block.IncomePerTurn,
                 snap.Self != null ? snap.Self.PerTurnIncome.Get(type) : 0f);
-            float horizon = Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
+            // This protects an immediately reachable hand purchase, not the whole deck's
+            // long-term demand. A distant gap must not freeze today's useful spending.
+            float horizon = Mathf.Max(1f, AiConfigV2.economyHandPaydownHorizonTurns);
             float attainableSupply = Mathf.Max(0f, availableNow) + income * horizon;
             float attainability = Mathf.Clamp01(attainableSupply / block.Required);
             float setback = Mathf.Clamp01(

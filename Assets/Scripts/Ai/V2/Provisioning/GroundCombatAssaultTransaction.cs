@@ -258,7 +258,9 @@ namespace Game.Ai.V2
                 {
                     ArmyData donor = AiV2Util.ResolveArmy(player, group.Key);
                     List<UnitData> units = group.Select(t => t.Unit).ToList();
-                    if (donor == null || donor.Members.Count - units.Count < 1
+                    if (donor == null || units.Distinct().Count() != units.Count
+                        || donor.Members.Count - units.Count < 1
+                        || !ArmyData.RosterFits(donor.Members.Except(units).ToList(), donor.IsGarrison)
                         || donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
                         return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                             ProvisionFailure.AssemblyInfeasible(

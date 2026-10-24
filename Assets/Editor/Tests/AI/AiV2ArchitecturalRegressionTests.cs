@@ -221,6 +221,89 @@ namespace Game.EditorTests
             Assert.That(AiArmyRoles.IsGroundCombatBody(ownCombat), Is.True);
         }
 
+        [Test]
+        public void ExactResourceEvidenceIsReplacedWhenTheDemandDisappears()
+        {
+            var player = new PlayerSetupData();
+            ResourceStarvationRegistry.BeginVerifiedPass(player);
+            ResourceStarvationRegistry.RecordVerifiedBlock(player, ResourceType.Human, 2f, 1f, 1f, 8f, 4);
+            Assert.That(ResourceStarvationRegistry.TryGetCurrentBlock(player, ResourceType.Human, 4, out _), Is.True);
+            float pressure = ResourceStarvationRegistry.Pressure(player, ResourceType.Human);
+            ResourceStarvationRegistry.BeginVerifiedPass(player);
+            Assert.That(ResourceStarvationRegistry.TryGetCurrentBlock(player, ResourceType.Human, 4, out _), Is.False);
+            Assert.That(ResourceStarvationRegistry.Pressure(player, ResourceType.Human), Is.EqualTo(pressure),
+                "replacing exact evidence must not erase the bounded economic pressure history");
+        }
+
+        [TestCase(false, false, false, true)]
+        [TestCase(true, false, false, false)]
+        [TestCase(false, true, false, false)]
+        [TestCase(false, false, true, false)]
+        public void ProjectedEconomyBuilderUsesTheSameCandidateContract(
+            bool combatFist, bool operatorDuty, bool claimed, bool allowed)
+        {
+            var player = new PlayerSetupData();
+            var source = new ArmySnapshot { ArmyId = 19, Owner = player };
+            var projected = new ArmySnapshot
+            {
+                ArmyId = 19, Owner = player, HasHero = true, IsMobileEconomyBuilder = true,
+                IsStructuralRaidActor = combatFist, EffectiveArmyPower = 40f,
+                OperatorDutyBlocksDeparture = operatorDuty,
+            };
+            var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot
+                { Armies = new[] { source }, FieldStrikePotential = 100f } };
+            var commitments = new ActorCommitments();
+            if (claimed) commitments.Claim(19);
+            var routes = new[] { new EconomyBuilderRouteSnapshot { ArmyId = 19, IsOnTarget = false } };
+            Assert.That(System.Linq.Enumerable.Any(EconomyBuilderSelection.EconomyBuilderCandidates(snap,
+                new HexCoord(2, 0), routes, System.Array.Empty<MissionIntent>(), commitments,
+                projected, 100f)), Is.EqualTo(allowed));
+        }
+
+        [Test]
+        public void ResourceGainFacilityUsesActualWorkloadAndCountsItsEffectOnce()
+        {
+            var def = new CardDefinition
+            {
+                cardType = CardType.Facility,
+                grantedAbilities = new List<string> { UnitAbilities.ApBonus },
+            };
+            var snap = new WorldSnapshot { TurnNumber = 3, Self = new SelfSnapshot
+            {
+                ActionPoints = 12, ApEconomy = new ApActionEconomySnapshot { BaseActionPoints = 12 },
+            } };
+            var card = new CardData(def);
+            var low = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Facility, card,
+                snap, null, null, 0f, witnessedUsefulApDemand: 0f);
+            var high = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Facility, card,
+                snap, null, null, 0f, witnessedUsefulApDemand: 30f);
+            var effect = StrategicEffectRegistry.Contributions(IntendedRole.ResourceGain,
+                def.grantedAbilities, def.moveMax, new EffectEvaluationContext(snap, 30f));
+            Assert.That(high.Breakdown.RoleFit, Is.EqualTo(effect.GlobalRoleFit).Within(0.0001f));
+            Assert.That(high.Breakdown.RoleFit, Is.GreaterThan(low.Breakdown.RoleFit));
+        }
+
+        [TestCase(2f, 7.3f, 0.492857f)]
+        [TestCase(8f, 12f, 0.140625f)]
+        [TestCase(2f, 5f, 0f)]
+        public void ResourcePreservationProtectsNearPurchaseWithoutFreezingRemoteOrLowValueNeeds(
+            float required, float value, float expectedPremium)
+        {
+            var player = new PlayerSetupData();
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 4,
+                Self = new SelfSnapshot { Stockpile = new ResourceBundle { Human = 1f },
+                    PerTurnIncome = new ResourceBundle { Human = 1f } } };
+            var cost = new ResourceCost(human: 1);
+            float ordinaryPrice = StrategicCardEvaluator.StrategicResourceCostValue(cost, snap);
+            ResourceStarvationRegistry.RecordVerifiedBlock(player, ResourceType.Human,
+                required, 1f, 1f, value, 4);
+            float protectedPrice = StrategicCardEvaluator.StrategicResourceCostValue(cost, snap, player: player);
+            Assert.That(protectedPrice - ordinaryPrice, Is.EqualTo(expectedPremium).Within(0.0001f));
+            ResourceStarvationRegistry.BeginVerifiedPass(player);
+            Assert.That(StrategicCardEvaluator.StrategicResourceCostValue(cost, snap, player: player),
+                Is.EqualTo(ordinaryPrice).Within(0.0001f), "a vanished need must release its opportunity cost");
+        }
+
         private static ReconObjective Recon(float value) => new ReconObjective
         {
             Kind = ReconObjectiveKind.Explore, FocusHex = new HexCoord(1, 1), BaseValue = value,

@@ -225,8 +225,7 @@ namespace Game.Ai.V2
                 // not a fake 999-turn Refresh target.
                 float stale = intelAge < 0 ? 0f
                     : ReconIntelSnapshotRegistry.Staleness(intelAge);
-                information = stale + AiConfigV2.scoutStepRefreshFreshNeighborWeight
-                    * Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
+                information = stale;
             }
 
             ReconSector stepSector = ReconDirectionModel.Sector(army.Hex, h);
@@ -238,6 +237,22 @@ namespace Game.Ai.V2
                 h, assignment.StrategicAnchor);
             float anchorProgress = Mathf.Max(0,
                 anchorDistanceBefore - anchorDistanceAfter);
+            if (assignment.Mode == ReconMode.Refresh)
+            {
+                // A real safe route is a decreasing potential, even on a geometric detour.
+                // Geometric progress can regenerate on every other leg of a fresh ABAB loop.
+                bool Block(HexCoord cell) => !map.CanEnter(cell, army)
+                    || (map.TryGetTerrainAt(cell, out var entry) && entry != null
+                        && Math.Max(1, entry.moveCost) > army.MaxMovement)
+                    || ScoutRiskModel.StepBlocked(player, cell, hidden)
+                    || (hidden && ScoutRiskModel.DetectorRiskLive(player, cell) >= 1f);
+                var before = HexPathfinder.FindPath(map, army.Hex, assignment.StrategicAnchor,
+                    blockHex: Block);
+                var after = HexPathfinder.FindPath(map, h, assignment.StrategicAnchor,
+                    blockHex: Block);
+                anchorProgress = before != null && after != null
+                    ? Mathf.Max(0, before.TotalCost - after.TotalCost) : 0f;
+            }
             float trailFactor = TrailFactor(player, army.Id, h, visited, assignment.Mode);
             float safetyFactor = Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectorRisk);
 
@@ -329,12 +344,9 @@ namespace Game.Ai.V2
                     local = AiReconIntelMemory.TryGetIntelAge(player, h, turn, out int age)
                         ? ReconIntelSnapshotRegistry.Staleness(age)
                         : 0f;
-                // T09 — the forecast honours the same re-entry rule as the step it ranks, fed the
-                // same information figure TryScoreImmediate gives it (Refresh adds the fresh-
-                // neighbour term there).
-                float ruleInformation = assignment.Mode == ReconMode.Explore ? local
-                    : local + AiConfigV2.scoutStepRefreshFreshNeighborWeight
-                        * Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
+                // The forecast uses the same real observation age as the immediate step.
+                // Unvisited ground that is already freshly observed is not Refresh information.
+                float ruleInformation = local;
                 if (ReentryBlocked(player, army, assignment, turn, h, ruleInformation, detectorRisk,
                         out _))
                     continue;

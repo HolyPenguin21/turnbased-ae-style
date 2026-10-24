@@ -130,6 +130,7 @@ namespace Game.Ai.V2
                 // round; with no materialization demand left it simply has no card rival.
                 if (active.Count == 0)
                 {
+                    PhaseACandidateRound.Build(pass, active);
                     PhaseAInfrastructureLane.Bid? onlyInfra = PhaseAInfrastructureLane.BestArbitrated(pass);
                     if (onlyInfra.HasValue)
                     {
@@ -218,14 +219,6 @@ namespace Game.Ai.V2
                     + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(pass.ApBudget.Balance())}, "
                     + $"discrete {F(pass.ApBudget.DiscreteAdmissionBudget())}, "
                     + $"followup reserved {F(reserved)}); {diag}");
-
-                // §17 — an unfulfilled Aggression/Recon capability demand plus an empty
-                // resource stock is a starvation signal for that resource (own state only).
-                if (!d.AttackLocalRefit
-                    && (d.RequestingAxis == DesireAxis.Aggression || d.RequestingAxis == DesireAxis.Recon))
-                    foreach (ResourceType rt in ResourceBundle.All)
-                        if (pass.Root.GetResource(rt) <= 0f)
-                            ResourceStarvationRegistry.RecordBlock(pass.Player, rt);
             }
         }
 

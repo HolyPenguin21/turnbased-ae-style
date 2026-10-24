@@ -54,6 +54,7 @@ namespace Game.Map
         private Coroutine _settling;
         private Coroutine _movement;
         private System.Action _onComplete;
+        private System.Action _onSettled;
         private System.Action<HexCoord> _onCancelled;
 
         private const float LayoutDuration = 0.18f;
@@ -118,6 +119,7 @@ namespace Game.Map
             HexCoord finalHex = _currentHex;
             var cancelled = _onCancelled;
             _onComplete = null;
+            _onSettled = null;
             _onCancelled = null;
             IsMoving = false;
             var settling = _settling;
@@ -142,7 +144,9 @@ namespace Game.Map
         {
             if (!IsMoving) return;
             var completed = _onComplete;
+            var settled = _onSettled;
             _onComplete = null;
+            _onSettled = null;
             _onCancelled = null;
             _settling = null;
             _movement = null;
@@ -161,6 +165,9 @@ namespace Game.Map
                     _arrivalLayoutPosition = null;
                     SetLayoutPosition(position, true);
                 }
+                // Arrival needs CurrentHex while moving; resting visuals must be reconciled
+                // only after that transient exception and the deferred layout have settled.
+                settled?.Invoke();
             }
         }
 
@@ -274,7 +281,7 @@ namespace Game.Map
             System.Action<HexCoord, HexCoord> onStepStarted = null,
             System.Action<HexCoord, HexCoord> onStepCompleted = null,
             System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync = null,
-            System.Func<bool> beforeFirstStep = null)
+            System.Func<bool> beforeFirstStep = null, System.Action onSettled = null)
         {
             if (map == null || path == null || path.Count < 2 || resolveOffset == null || Data == null || Data.Members.Count == 0)
             {
@@ -283,6 +290,7 @@ namespace Game.Map
             }
 
             _onComplete = onComplete;
+            _onSettled = onSettled;
             IsMoving = true;
             _currentHex = Data.Hex;
             _layoutTransition = false;

@@ -138,12 +138,13 @@ namespace Game.Ai.V2
         internal static InfraProposal Propose(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             PhaseAApBudget apBudget, MaterializationReservation reservation = null,
-            IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null)
+            IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null,
+            float? witnessedUsefulApDemand = null)
         {
             if (demand == null || ctx == null || root == null || player == null)
                 return new InfraProposal(false, 0f, "missing args");
             InfraCandidate cand = BuildCandidate(snap, player, root, hand, ctx, demand, apBudget,
-                reservation, activeIntents, commitments);
+                reservation, activeIntents, commitments, witnessedUsefulApDemand);
             if (cand == null)
                 return new InfraProposal(false, 0f,
                     $"{demand.Capability}: no legal authoritative build available now");
@@ -155,19 +156,20 @@ namespace Game.Ai.V2
         private static InfraCandidate BuildCandidate(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             PhaseAApBudget apBudget, MaterializationReservation reservation,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments) =>
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+            float? witnessedUsefulApDemand) =>
             demand.Capability == CapabilityKind.EconomicInfrastructure
                 ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand, activeIntents, commitments)
                 : demand.Capability == CapabilityKind.EconomicExpansionBase
                     ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand, apBudget,
                         reservation, activeIntents, commitments)
                 : demand.Capability == CapabilityKind.DevelopmentInfrastructure
-                    ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand, activeIntents)
+                    ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand, activeIntents, witnessedUsefulApDemand)
                     : demand.Capability == CapabilityKind.DevelopmentOperator
                         ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx,
-                            demand, reservation)
+                            demand, reservation, witnessedUsefulApDemand)
                         : demand.Capability == CapabilityKind.GlobalResourceFacility
-                            ? BuildGlobalResourceFacilityCandidate(snap, player, root, hand, ctx, demand)
+                            ? BuildGlobalResourceFacilityCandidate(snap, player, root, hand, ctx, demand, witnessedUsefulApDemand)
                             : null;
 
         // The budget admission BEFORE any gameplay mutation (spec §1): null = admitted.
@@ -203,13 +205,14 @@ namespace Game.Ai.V2
         public static InfraFulfillResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             PhaseAApBudget apBudget, MaterializationReservation reservation = null,
-            IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null)
+            IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null,
+            float? witnessedUsefulApDemand = null)
         {
             if (demand == null || ctx == null || root == null || player == null)
                 return InfraFulfillResult.No("missing args");
 
             InfraCandidate cand = BuildCandidate(snap, player, root, hand, ctx, demand, apBudget,
-                reservation, activeIntents, commitments);
+                reservation, activeIntents, commitments, witnessedUsefulApDemand);
             if (cand == null)
                 return InfraFulfillResult.No($"{demand.Capability}: no legal authoritative build available now");
             SpendAuthority authority = SpendAuthorityFor(demand);
@@ -540,7 +543,7 @@ namespace Game.Ai.V2
         // DEV — a CardType.Facility with Research/Production, into an owned Base slot.
         private static InfraCandidate BuildDevelopmentCandidate(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            IReadOnlyList<MissionIntent> activeIntents)
+            IReadOnlyList<MissionIntent> activeIntents, float? witnessedUsefulApDemand)
         {
             if (hand?.Hand == null)
                 return null;
@@ -595,7 +598,8 @@ namespace Game.Ai.V2
                         continue;
                     }
                     float score = DevelopmentPreparationScorer.Facility(card, stageAp, stageCost, snap, inv,
-                        hand, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+                        hand, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player,
+                        witnessedUsefulApDemand);
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                     {
                         rejected.Add($"{at}:not_worth_playing({score:0.00})");
@@ -623,11 +627,11 @@ namespace Game.Ai.V2
 
         // ECO GLOBAL SOURCE — the pinned Facility carrying a PlayerGlobal recurring effect, into an
         // owned Base slot. Worth is the SAME non-combat Facility score Phase B uses
-        // (ScoreNonCombat -> ResourceGainRoleFit); a non-positive play stays in hand. The Citadel is
+        // (ScoreNonCombat -> dynamic registry effect); a non-positive play stays in hand. The Citadel is
         // preferred (the base least likely to be lost with the facility), then coordinates.
         private static InfraCandidate BuildGlobalResourceFacilityCandidate(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            AxisDemand demand)
+            AxisDemand demand, float? witnessedUsefulApDemand)
         {
             CardData card = demand.EconomySourceCard;
             if (card?.Definition == null || hand?.Hand == null || !hand.Hand.Contains(card))
@@ -663,17 +667,22 @@ namespace Game.Ai.V2
                     + $"reason=no_legal_base_slot ({lastReject})");
                 return null;
             }
+            SpendAuthority authority = SpendAuthorityFor(demand);
+            int stageAp = card.EffectivePlayApCost + (upgradeTier?.apCost ?? 0);
+            ResourceCost stageCost = StrategicCardEvaluator.AddResourceCosts(
+                card.EffectivePlayResourceCost, upgradeTier?.cost);
             StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
                 NonCombatRole.Facility, card, snap, CapabilityInventory.Build(snap, player, null),
-                hand, bestEquipmentUpgrade: 0f);
-            // The upgrade is priced once, on the canonical AP/resource price table.
-            float upgradePrice = StrategicMaintenancePolicy.CapacityTierPrice(upgradeTier, snap);
-            float net = use.NetScore - upgradePrice;
+                hand, bestEquipmentUpgrade: 0f, witnessedUsefulApDemand: witnessedUsefulApDemand,
+                actualApCost: stageAp, actualResourceCost: stageCost,
+                spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t, authority),
+                player: player);
+            float net = use.NetScore;
             if (net <= AiConfigV2.allocatorSliceEpsilon)
             {
                 AiDebugLog.WriteDedupedWithId(demand.TraceId,
                     $"[AI][V2][Economy][GlobalSource] card={card.Definition.displayName} decision=HOLD "
-                    + $"reason=non_positive_play net={use.NetScore:0.00} upgradePrice={upgradePrice:0.00}");
+                    + $"reason=non_positive_play net={net:0.00}");
                 return null;
             }
             HexCoord hex = at.Value;
@@ -681,9 +690,8 @@ namespace Game.Ai.V2
             BaseUpgradeTier tierToBuy = upgradeTier;
             return new InfraCandidate
             {
-                ApCost = card.EffectivePlayApCost + (tierToBuy?.apCost ?? 0),
-                ResCost = StrategicCardEvaluator.AddResourceCosts(
-                    card.EffectivePlayResourceCost, tierToBuy?.cost),
+                ApCost = stageAp,
+                ResCost = stageCost,
                 DecisionScore = net,
                 TargetHex = hex,
                 Explain = $"global source Facility {card.Definition.displayName} into Base "
@@ -703,7 +711,7 @@ namespace Game.Ai.V2
         // which deployable categories the current game rules support.
         private static InfraCandidate BuildDevelopmentOperatorCandidate(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            AxisDemand demand, MaterializationReservation reservation)
+            AxisDemand demand, MaterializationReservation reservation, float? witnessedUsefulApDemand)
         {
             if (hand?.Hand == null || !demand.TargetHex.HasValue
                 || !demand.DevelopmentOperatorMode.HasValue
@@ -753,7 +761,7 @@ namespace Game.Ai.V2
 
                     float score = DevelopmentPreparationScorer.HandOperator(card, ordinal, fac.Hex, fac.Mode,
                         garrison, snap, inv,
-                        t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+                        t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player, witnessedUsefulApDemand);
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
 
@@ -804,7 +812,7 @@ namespace Game.Ai.V2
             // benefit contingent on success, the Challenge paid in full.
             float generatedScore = DevelopmentPreparationScorer.GeneratedOperator(live,
                 demand.TargetHex.Value, demand.DevelopmentOperatorMode.Value, destinationGarrison,
-                snap, inv, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+                snap, inv, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player, witnessedUsefulApDemand);
             if (generatedScore <= AiConfigV2.allocatorSliceEpsilon)
                 return null;
             return new InfraCandidate

@@ -238,9 +238,8 @@
         //     extra turn, filtering single-turn flicker between mission stages (spec §7 "persistent").
         public const int reconCapacityDeficitPersistTurns = 1;
         public const float scoutStepCoverageSectorWeight = 0.30f;  // ReconGroundStepPlanner coverageFactor: 1/(1 + this*sectorClaims + nearbyWeight*nearbyClaims)
-        public const float scoutStepCoverageNearbyWeight = 0.55f;
+        public const float scoutStepCoverageNearbyWeight = 0.70f;
         public const float scoutStepDeadEndFactor = 0.70f;         // an Explore step into a zero-frontier unvisited pocket keeps this fraction of its value
-        public const float scoutStepRefreshFreshNeighborWeight = 0.25f; // Refresh info term weight on fresh-neighbour count (Explore uses the full weight)
         public const float scoutLookaheadNearbyClaimWeight = 0.35f;     // bounded-lookahead per-hex nearby-claim discount
 
         // =======================================================================================

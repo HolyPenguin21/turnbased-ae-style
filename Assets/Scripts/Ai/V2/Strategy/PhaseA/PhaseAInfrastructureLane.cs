@@ -81,7 +81,7 @@ namespace Game.Ai.V2
             {
                 InfrastructureFulfillment.InfraProposal proposal = InfrastructureFulfillment.Propose(
                     pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, candidate.Demand, pass.ApBudget,
-                    pass.Reservation, pass.ActiveIntents, pass.Commitments);
+                    pass.Reservation, pass.ActiveIntents, pass.Commitments, pass.WitnessedUsefulApDemand);
                 if (!proposal.Admissible || proposal.Score <= AiConfigV2.allocatorSliceEpsilon)
                 {
                     candidate.Blocked = true;
@@ -131,7 +131,7 @@ namespace Game.Ai.V2
             using (new Game.Core.ProfileScope("AI/PhaseA.InfraFulfill"))
                 infra = InfrastructureFulfillment.TryFulfill(
                     pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, demand, pass.ApBudget,
-                    pass.Reservation, pass.ActiveIntents, pass.Commitments);
+                    pass.Reservation, pass.ActiveIntents, pass.Commitments, pass.WitnessedUsefulApDemand);
             V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(pass.Player, pass.Root);
             if (infra.StateChanged)
                 result.StateChanged = true;

@@ -120,7 +120,7 @@ namespace Game.Ai.V2
             foreach (MaterializationPlan mp in MaterializationFeasibility.FilterSurplus(
                 MaterializationChainEnumerator.EnumerateSurplusPlans(
                     snap, player, root, hand, ctx, inv, commitments, reservation),
-                player, root, hand, ctx, reservation, snap))
+                player, root, hand, ctx, reservation, snap, commitments: commitments))
                 options.Add((mp.ApCost, mp.ResCost));
 
             const string owner = "reaction-budget:HandFollowup";

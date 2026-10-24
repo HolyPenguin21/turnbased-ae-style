@@ -68,14 +68,15 @@ namespace Game.Ai.V2
         }
 
         internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand,
-            WorldSnapshot snapshot = null, PlayerSetupData player = null, AiTurnContext ctx = null)
-            => AssessDemandOperationally(p, demand, snapshot, player, ctx).CanDeliver;
+            WorldSnapshot snapshot = null, PlayerSetupData player = null, AiTurnContext ctx = null,
+            ActorCommitments actorCommitments = null)
+            => AssessDemandOperationally(p, demand, snapshot, player, ctx, actorCommitments).CanDeliver;
 
         // The same canonical decision as the bool facade, with a stable reason for diagnostics and
         // retry policy. No caller re-derives route, placement or escort eligibility.
         internal static DeliveryAssessment AssessDemandOperationally(MaterializationPlan p,
             AxisDemand demand, WorldSnapshot snapshot = null, PlayerSetupData player = null,
-            AiTurnContext ctx = null)
+            AiTurnContext ctx = null, ActorCommitments actorCommitments = null)
         {
             if (p == null || demand == null)
                 return DeliveryAssessment.No(DeliveryFailureReason.MissingPlanOrDemand);
@@ -205,41 +206,55 @@ namespace Game.Ai.V2
                                 DeliveryFailureReason.RecipientAlreadyHasHero,
                                 $"army#{recipient.ArmyId}");
 
-                        int heroMove = CapabilityQualityEvaluator.ProjectedMoveMax(p);
-                        int heroAp = CapabilityQualityEvaluator.ProjectedActivationApCost(p);
-                        var projected = new ArmySnapshot
-                        {
-                            ArmyId = recipient?.ArmyId ?? -1, Owner = player, Hex = p.Deploy.Hex,
-                            HasHero = true, IsMobileEconomyBuilder = true,
-                            HeroIsHomeVocation = EconomyHeroHasHomeVocation(p),
-                            // The recipient has no hero, so the played hero becomes its commander.
-                            Commander = WorthIt.SideCommander.Of(
-                                p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef),
-                            Members = recipient?.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(),
-                            NonHeroActivationApCosts = recipient?.NonHeroActivationApCosts ?? System.Array.Empty<int>(),
-                            NonHeroMoveMax = recipient?.NonHeroMoveMax ?? System.Array.Empty<int>(),
-                            NonHeroIsAviation = recipient?.NonHeroIsAviation ?? System.Array.Empty<bool>(),
-                            HeroMoveMax = heroMove, HeroActivationApCost = heroAp,
-                            MaxMovement = recipient?.MemberCount > 0 ? Mathf.Min(heroMove, recipient.MaxMovement) : heroMove,
-                            ActivationApCost = heroAp + (recipient?.NonHeroActivationApCosts?.Sum() ?? 0),
-                            MemberCount = (recipient?.MemberCount ?? 0) + 1,
-                        };
-                        projected.CurrentMovement = projected.MaxMovement;
+                        // Project through the same roster/role and operator owners as the scan.
+                        // These previews have no runtime identities and never enter a registry.
+                        AiPower.ProjectedStrategicLine line = AiPower.ProjectMaterialization(p);
+                        CardDefinition heroDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+                        UnitData hero = UnitData.CreateProjection();
+                        hero.Owner = player; hero.IsHero = true;
+                        hero.CommandRating = line.CommandRating;
+                        hero.Attack = line.Attack; hero.Defense = line.Defense;
+                        hero.Range = line.Range; hero.Initiative = line.Initiative;
+                        hero.HitPointsMax = hero.HitPointsCurrent = line.HitPoints;
+                        hero.FateMax = hero.Fate = line.Fate;
+                        hero.ActivationApCost = line.ActivationApCost;
+                        hero.MoveMax = line.MoveMax; hero.MoveCurrent = line.MoveMax;
+                        hero.Abilities.UnionWith(line.EffectiveAbilities);
+                        if (heroDef.unitTypeTags != null) hero.TypeTags.UnionWith(heroDef.unitTypeTags);
+                        ArmyData preview = ArmyData.CreateVisualSnapshot();
+                        preview.Owner = player; preview.Hex = p.Deploy.Hex;
+                        if (p.Deploy.Army != null) preview.Members.AddRange(p.Deploy.Army.Members);
+                        preview.Members.Add(hero);
+                        if (recipient?.HasActivatedThisTurn == true) preview.MarkActivated();
+                        ArmySnapshot projected = WorldAnalysis.ToArmySnapshot(preview, player, true,
+                            0, snapshot.Intents, ctx);
+                        projected.ArmyId = recipient?.ArmyId ?? -1;
+                        var activeIntents = snapshot.AllIntents.Where(i => i != null
+                            && i.Status == IntentStatus.Active).ToList();
+                        var commitments = actorCommitments ?? ActorCommitments.FromIntents(activeIntents, snapshot, null);
+                        projected.OperatorDutyBlocksDeparture = DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(
+                            player, preview, commitments, snapshot.Development != null
+                                ? snapshot.Development.PreparationSiteFor
+                                : DevelopmentOpportunityEvaluator.LivePreparationSite(player,
+                                    AiHandRegistry.Peek(player), ctx, snapshot.Intents));
+                        float fieldPotential = WorldAnalysis.FieldStrikePotential(player,
+                            OwnWorld.Of(player).Armies.Where(a => a != p.Deploy.Army).Concat(new[] { preview }),
+                            snapshot.Self.AvailablePower, activeIntents);
                         var routes = WorldAnalysis.EconomyBuilderRoutes(
                             snapshot, player, ctx, demand.TargetHex.Value, projected);
                         if (routes.Count == 0)
                             return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
                                 $"from=({projected.Hex.Q},{projected.Hex.R}) target=({demand.TargetHex.Value.Q},{demand.TargetHex.Value.R})");
 
-                        var choice = EconomyBuilderSelection.AssessEconomyArmy(snapshot,
-                            demand.TargetHex.Value, routes[0], projected,
+                        var choice = EconomyBuilderSelection.SelectEconomyBuilder(snapshot,
+                            demand.TargetHex.Value, routes, activeIntents, commitments,
+                            demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                             demand.EconomyBuildApCost,
-                            includeReturn: demand.EconomyBuildCard?.Definition?.cardType
-                                != CardType.Base);
-                        if (choice.Suitability == EconomyBuilderSelection.EconomyArmySuitability.Ineligible)
-                            return DeliveryAssessment.No(
-                                DeliveryFailureReason.InsufficientSafeEscort,
-                                choice.IneligibleReason);
+                            includeReturn: demand.EconomyBuildCard?.Definition?.cardType != CardType.Base,
+                            projectedArmy: projected, projectedFieldStrikePotential: fieldPotential);
+                        if (choice == null)
+                            return DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort,
+                                "projected_builder_rejected_by_shared_ranking");
                         return EconomyNewHeroWorthIt(p, demand, choice, snapshot.TurnNumber);
                     }
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
