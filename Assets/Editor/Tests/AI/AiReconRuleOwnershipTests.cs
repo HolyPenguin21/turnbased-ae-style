@@ -267,7 +267,8 @@ namespace Game.EditorTests
             AssertCalls(typeof(ReconGroundStepPlanner), "TryScoreImmediate", typeof(ScoutRiskModel), "DetectorRiskLive");
             AssertCalls(typeof(ReconGroundStepPlanner), "Lookahead", typeof(ScoutRiskModel), "DetectorRiskLive");
             AssertCalls(typeof(ReconReactionPolicy), "PickLowerDetectorRiskStep", typeof(ScoutRiskModel), "DetectorRiskLive");
-            AssertCalls(typeof(ReconGroundExecutor), "LegDetectionRisk", typeof(ScoutRiskModel), "DetectorRisk");
+            AssertCalls(typeof(ReconGroundExecutor), "MaybeEnterOptionalStealth", typeof(ScoutRiskModel), "StealthThreat");
+            AssertCalls(typeof(ScoutRiskModel), "MoveWarrantsStealth", typeof(ScoutRiskModel), "StealthThreat");
             Assert.That(typeof(ReconGroundStepPlanner).GetMethod("DetectorRisk", AllMethods), Is.Null);
             Assert.That(typeof(ReconReactionPolicy).GetMethod("CurrentDetectorRisk", AllMethods), Is.Null);
         }

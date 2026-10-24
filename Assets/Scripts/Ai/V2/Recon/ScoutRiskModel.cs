@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -26,12 +27,16 @@ namespace Game.Ai.V2
     //  vantage the scout must reach and stand on, pass ScoutMoverSelector.ArrivesHiddenLive, never
     //  the mission's bare stealth wish: the gate judges the scout's real hidden state.
     //
-    //  DETECTOR RISK — a hex's detection risk is scored the exact same way the frontier scan scores an Explore hex. Extracted from
-    //  ReconMissionPlanner.CurrentDetectorRisk verbatim — HONEST memory only
-    //  (WorldSnapshot.Known.EnemySightings), a "detector" is a known non-neutral force within
-    //  AiConfigV2.frontierEnemyExposureRadius that could actually roll a stealth challenge on the
-    //  hex (KnownEnemySighting.CanDetectStealthAt). Count-based, normalised by
-    //  AiConfigV2.scoutDetectionRiskNorm. Never reads TrueWorld.
+    //  DETECTOR RISK — a hex's detection risk is scored the exact same way the frontier scan
+    //  scores an Explore hex. HONEST memory only (WorldSnapshot.Known.EnemySightings or live
+    //  AiMapMemory): a "detector" is a known non-neutral force that could actually roll a stealth
+    //  challenge on the hex (KnownEnemySighting.CanDetectStealthAt: same hex, or adjacent with its
+    //  own Recce). Count-based, normalised by AiConfigV2.scoutDetectionRiskNorm. Never reads TrueWorld.
+    //
+    //  STEALTH THREAT — the ONE rule for "does hiding protect a solo scout here", shared by the
+    //  Recon executor's optional stealth and the shared mover's automatic stealth for every other
+    //  move of a solo Recce: a force that can come and engage it (IsExposed) is a full threat,
+    //  otherwise the detectors that could pierce its stealth.
     // ===========================================================================================
     public static class ScoutRiskModel
     {
@@ -47,7 +52,7 @@ namespace Game.Ai.V2
             DetectorRisk(snap?.Known?.EnemySightings, hex);
 
         // AllKnownEnemySightings excludes neutral/ownerless encounters, exactly as the old
-        // near-memory consumers did. CountDetectors owns the radius gate for live and frozen data.
+        // near-memory consumers did.
         public static float DetectorRiskLive(PlayerSetupData player, HexCoord hex) =>
             DetectorRisk(AiMapMemory.AllKnownEnemySightings(player), hex);
 
@@ -56,16 +61,15 @@ namespace Game.Ai.V2
         public static float DetectorRisk(IEnumerable<AiMapMemory.KnownEnemySighting> sightings, HexCoord hex) =>
             Mathf.Clamp01(CountDetectors(sightings, hex) / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
 
-        // Known non-neutral forces within frontierEnemyExposureRadius that could roll a stealth
-        // challenge on `hex` (KnownEnemySighting.CanDetectStealthAt) — garrisons included.
+        // Known non-neutral forces that could roll a stealth challenge on `hex`
+        // (KnownEnemySighting.CanDetectStealthAt owns the range) — garrisons included.
         public static int CountDetectors(IEnumerable<AiMapMemory.KnownEnemySighting> sightings, HexCoord hex)
         {
             if (sightings == null)
                 return 0;
-            int r = AiConfigV2.frontierEnemyExposureRadius;
             int detectors = 0;
             foreach (AiMapMemory.KnownEnemySighting s in sightings)
-                if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
+                if (s.CanDetectStealthAt(hex))
                     detectors++;
             return detectors;
         }
@@ -82,6 +86,23 @@ namespace Game.Ai.V2
                 if (!s.IsGarrison && HexGridMath.Distance(s.Hex, hex) <= r)
                     return true;
             return false;
+        }
+
+        public static float StealthThreat(IEnumerable<AiMapMemory.KnownEnemySighting> sightings, HexCoord hex) =>
+            IsExposed(sightings, hex) ? 1f : DetectorRisk(sightings, hex);
+
+        // Automatic stealth of the shared mover (AiTurnController.MoveArmyRoutine) for a solo Recce
+        // that no Recon executor moves: hide before a step out of or into a threatened hex, or into a
+        // still-cooling scout-danger zone. The Recon executor prices the same threat itself
+        // (ScoutOptionalStealthPolicy) and opts out of this one.
+        public static bool MoveWarrantsStealth(PlayerSetupData player, ArmyData army, HexCoord nextStep)
+        {
+            if (army == null)
+                return false;
+            if (AiMapMemory.IsScoutDangerous(player, nextStep))
+                return true;
+            var sightings = AiMapMemory.AllKnownEnemySightings(player).ToList();
+            return StealthThreat(sightings, army.Hex) > 0f || StealthThreat(sightings, nextStep) > 0f;
         }
     }
 }

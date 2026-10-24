@@ -170,7 +170,6 @@
         public const float scoutQualityLogRunnerUpMargin = 0.15f;   // log the runner-up when it is this close on score
 
         // ---- Optional (non-Required) Scout stealth AP decision (spec §9 / §10 / §20) -----------
-        public const float scoutOptionalStealthMinRisk = 0.15f;          // leg detection risk under this -> never enter
         public const float scoutOptionalStealthProtectionScale = 0.9f;   // protection value = risk * this (* strategic-body factor)
         public const float scoutOptionalStealthStrategicBodyFactor = 1.3f;// a hero-led scout's skin is worth more
         public const float scoutOptionalStealthBaseApOpportunity = 0.06f;// a spent AP is never entirely free late-turn

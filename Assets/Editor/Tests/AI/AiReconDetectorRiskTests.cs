@@ -53,6 +53,34 @@ namespace Game.EditorTests
             Assert.That(o.DetectionRisk, Is.Zero);
         }
 
+        // Owner's example (2026-10-24): a blind field army two hexes from a solo scout cannot see
+        // through stealth, but it can come and engage a visible scout — hiding is worth it, even
+        // when the AP would otherwise fund a card draw.
+        [Test]
+        public void BlindFieldArmyTwoHexesAway_IsAFullStealthThreat_AndOutweighsADraw()
+        {
+            var sightings = new List<AiMapMemory.KnownEnemySighting> { Sighting(new HexCoord(6, 3), recce: 0, garrison: false) };
+            Assert.That(ScoutRiskModel.DetectorRisk(sightings, Focus), Is.Zero);
+            Assert.That(ScoutRiskModel.StealthThreat(sightings, Focus), Is.EqualTo(1f));
+
+            var input = new OptionalStealthInputs
+            {
+                LegDetectionRisk = ScoutRiskModel.StealthThreat(sightings, Focus),
+                ApRemaining = 2, StealthApCost = 1,
+                DrawAvailable = true, DrawApCost = 1, DrawOpportunities = 2,
+            };
+            Assert.That(ScoutOptionalStealthPolicy.Evaluate(input).Decision, Is.EqualTo(OptionalStealthDecision.Enter));
+        }
+
+        [Test]
+        public void AdjacentGarrisonDetector_IsAPartialThreat_NoForceIsNone()
+        {
+            var garrison = new List<AiMapMemory.KnownEnemySighting> { Sighting(new HexCoord(5, 3), recce: 1, garrison: true) };
+            Assert.That(ScoutRiskModel.StealthThreat(garrison, Focus),
+                Is.EqualTo(1f / AiConfigV2.scoutDetectionRiskNorm).Within(1e-5f));
+            Assert.That(ScoutRiskModel.StealthThreat(new List<AiMapMemory.KnownEnemySighting>(), Focus), Is.Zero);
+        }
+
         private static AiMapMemory.KnownEnemySighting Sighting(HexCoord hex, int recce, bool garrison) =>
             new AiMapMemory.KnownEnemySighting(hex, Enemy, "e", 2, 4f, 4f, null,
                 recceRadius: recce, recceSpotStrength: recce, seenTurn: 11, armyId: 77,

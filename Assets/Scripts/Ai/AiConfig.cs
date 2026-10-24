@@ -11,8 +11,8 @@ namespace Game.Ai
         // How many turns an unrefreshed enemy-army sighting stays in AiMapMemory before it expires.
         public const int enemySightingMemoryTurns = 2;
 
-        // A solo Recce flees / hides when a known non-neutral sighting is within this many hexes of
-        // its current or next hex (AiScoutStealthPolicy, SafeStepPathing).
+        // A solo Recce flees when a known non-neutral sighting is within this many hexes
+        // (ReconReactionPolicy, ReconGroundStepPlanner).
         public const int scoutFleeRadius = 2;
 
         // Aggression / raid physical gates (WorthIt-backed viability, used by the V2 raid lane).
