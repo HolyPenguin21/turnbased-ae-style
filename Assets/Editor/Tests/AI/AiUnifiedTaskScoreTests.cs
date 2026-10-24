@@ -58,21 +58,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void CalibrationReport_ScoresEveryFamilyThroughTheRealConverters()
-        {
-            string json = Game.EditorTools.TaskScoreCalibrationReport.Build();
-            foreach (string name in new[] { "Extraction", "Base", "Raid near", "Raid far",
-                         "Attack enemy Base", "ActiveDefence intercept", "Recon Explore",
-                         "Recon Refresh", "Mobile collection", "Development operator walk" })
-                Assert.That(json, Does.Contain("\"name\":\"" + name + "\""), name);
-            // Raid near: reward 8 + win 0.8 x 12 + signed proximity at 3 hexes 1 - activation 3 - one turn 3.
-            Assert.That(json, Does.Contain("\"name\":\"Raid near\",\"family\":\"Military\""));
-            Assert.That(json, Does.Contain("\"value\":12.6,\"benefit\":18.6,\"cost\":6"));
-            Assert.That(json.Split('{').Length, Is.EqualTo(json.Split('}').Length),
-                "balanced JSON objects");
-        }
-
-        [Test]
         public void Describe_PrintsOneLineInTheFourCategories()
         {
             var raid = new TaskScore(raidReward: 8f, winChance: 9.6f, ownTerritoryProximity: 1.5f,

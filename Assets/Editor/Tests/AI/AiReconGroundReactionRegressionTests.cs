@@ -309,17 +309,10 @@ namespace Game.EditorTests
         // native visibility mutation is needed to represent the observed threat.
         private void RememberThreat(HexCoord hex, int armyId = 900)
         {
-            Type type = typeof(AiMapMemory).GetNestedType("EnemySighting", BindingFlags.NonPublic);
-            var record = Activator.CreateInstance(type, nonPublic: true);
-            void Put(string name, object value) => type.GetField(name).SetValue(record, value);
-            Put("ArmyId", armyId); Put("Owner", enemy); Put("Hex", hex); Put("MemberCount", 1);
-            Put("Defenders", new List<WorthIt.DefenderProfile> { WorthIt.FromLiveUnit(new UnitData
-                { Attack = 100, Defense = 100, HitPointsCurrent = 100, HitPointsMax = 100 }) });
-            IDictionary all = (IDictionary)typeof(AiMapMemory).GetField("EnemySightings",
-                BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
-            var store = all.Contains(player) ? (IDictionary)all[player]
-                : (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(int), type));
-            store[armyId] = record; all[player] = store;
+            AiMapMemory.RememberForTest(player, new AiMapMemory.KnownEnemySighting(hex, enemy, null, 1, 0f, 0f,
+                new List<WorthIt.DefenderProfile> { WorthIt.FromLiveUnit(new UnitData
+                    { Attack = 100, Defense = 100, HitPointsCurrent = 100, HitPointsMax = 100 }) },
+                armyId: armyId));
         }
 
         private static void Drain(IEnumerator routine)

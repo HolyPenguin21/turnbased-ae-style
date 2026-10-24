@@ -334,19 +334,17 @@ namespace Game.Ai
             // (raid/defence/capture — those tasks are never IsSoloRecce anyway, but the Kind check
             // keeps it explicit) and this specific move is neither a takeover nor a fight.
             //
-            // Spec item 17 (2026-08-28 P1): NO LONGER unconditional. Stealth now costs its 1 AP
-            // only when AiScoutStealthPolicy.MoveWarrantsStealth says this step carries a real
-            // detection risk (a known enemy near the scout or its next hex) or heads into a
-            // cooling scout-danger zone — a scout crossing known-safe ground stays visible and
-            // keeps the AP for another discovery move. Entry is 1 AP per unit; voluntary exit is
-            // free. The rule is the shared, layer-neutral primitive both V1 (here) and V2
-            // (ProvisioningManager / TaskExecutor) call — see AiScoutStealthPolicy's own comment.
+            // Spec item 17 (2026-08-28 P1): NO LONGER unconditional. Stealth costs its 1 AP only
+            // when ScoutRiskModel.MoveWarrantsStealth sees a threat on this step (the stealth-threat
+            // rule the Recon executor prices too) or a cooling scout-danger zone ahead — a scout
+            // crossing known-safe ground stays visible and keeps the AP. Entry is 1 AP per unit;
+            // voluntary exit is free. The Recon executor decides its own stealth and opts out.
             string exitReason = null;
             bool revealOnArrival = false;
             if (decision.AllowAutomaticStealth && !army.HasActivatedThisTurn
                 && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover && !wantsGroundCombat
                 && root != null
-                && AiScoutStealthPolicy.MoveWarrantsStealth(player, army, destination))
+                && Game.Ai.V2.ScoutRiskModel.MoveWarrantsStealth(player, army, destination))
             {
                 UnitData scout = army.Members[0];
                 // The shared StealthSystem owns both validation and the 1-AP debit. Preserve this

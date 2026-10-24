@@ -603,8 +603,10 @@ namespace Game.Ai.V2
 
             AiHandData hand = AiHandRegistry.Peek(player);
             bool drawAvailable = hand != null && hand.HasFreeSlot && hand.HasCardsLeftToDraw;
-            float knownRouteRisk = Mathf.Max(LegDetectionRisk(player, nextHex),
-                LegDetectionRisk(player, strategicAnchor));
+            var sightings = AiMapMemory.AllKnownEnemySightings(player).ToList();
+            float knownRouteRisk = Mathf.Max(ScoutRiskModel.StealthThreat(sightings, army.Hex),
+                Mathf.Max(ScoutRiskModel.StealthThreat(sightings, nextHex),
+                    ScoutRiskModel.StealthThreat(sightings, strategicAnchor)));
 
             RouteTopologyBenefits(player, army, nextHex, strategicAnchor,
                 out float routeAccess, out float routeShorten);
@@ -665,8 +667,5 @@ namespace Game.Ai.V2
                     occupiedNearby++;
             shorten = Mathf.Clamp01(occupiedNearby / 4f);
         }
-
-        private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex) =>
-            ScoutRiskModel.DetectorRisk(AiMapMemory.AllKnownEnemySightings(player), hex);
     }
 }

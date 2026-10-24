@@ -48,7 +48,7 @@ namespace Game.Ai.V2
 
     public struct OptionalStealthInputs
     {
-        public float LegDetectionRisk;      // max honest KNOWN risk before first activation
+        public float LegDetectionRisk;      // max honest KNOWN stealth threat (ScoutRiskModel.StealthThreat) of the leg
         public bool MoverAlreadyHidden;
         public bool MoverIsStrategicBody;
         public int ApRemaining;
@@ -76,7 +76,7 @@ namespace Game.Ai.V2
 
     public static class ScoutOptionalStealthPolicy
     {
-        // never reach this policy. Entering an unvisited frontier is therefore not "risk 0" merely
+        // Entering an unvisited frontier is not "risk 0" merely
         // because no detector has been discovered yet: the whole purpose of the move is to reveal
         // information we do not have. This conservative baseline is deliberately below a known
         // detector's normalised risk and still has to beat the AP/draw opportunity-cost test below.
@@ -103,11 +103,6 @@ namespace Game.Ai.V2
             if (x.StealthApCost <= 0 || slack + AiConfigV2.allocatorSliceEpsilon < x.StealthApCost)
                 return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, routeBenefit, 0f,
                     "no unclaimed AP slack for optional stealth");
-            // Spec §12 — the leg-risk floor is a THREAT-protection gate only. Stealth may still be
-            // worth entering purely for route access / shortening even with no known detector.
-            if (risk < AiConfigV2.scoutOptionalStealthMinRisk && routeBenefit < AiConfigV2.scoutOptionalStealthEnterMargin)
-                return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, routeBenefit, 0f,
-                    "leg risk below floor and no route benefit");
 
             float protection = risk * AiConfigV2.scoutOptionalStealthProtectionScale
                 * (x.MoverIsStrategicBody ? AiConfigV2.scoutOptionalStealthStrategicBodyFactor : 1f);

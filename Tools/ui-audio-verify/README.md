@@ -26,7 +26,7 @@ above both. Scene cameras retain their AudioListeners; the binder selects the
 active scene's MainCamera listener (or its sole eligible camera listener).
 
 Loaded scene roots are scanned including inactive objects. `UIButtonSound` binds
-once to Button.onClick; `UIButtonEventUtility.ResetRuntimeListeners` preserves
+once to Button.onClick; `UIUtility.ResetRuntimeListeners` preserves
 that binding when business listeners are rebuilt. Runtime UI factories call
 `SceneUIAudioBinder.BindCreatedRoot`. Future factories must do the same.
 The three choice/contact popup subscriptions play on a hidden-to-visible transition.

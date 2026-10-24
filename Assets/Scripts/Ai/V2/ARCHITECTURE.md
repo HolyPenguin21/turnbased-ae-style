@@ -83,9 +83,7 @@ canonical-seams table below.
   lifecycle margins on the TaskScore scale — lives in `Foundation/AiConfigV2.TaskScore.cs`.
   Every mission proposal carries its `TaskScore` (`MissionProposal.Score`; null only for a
   value restored from a durable intent) and is logged once per turn in one format
-  (`AiFrameLog.TaskScores` → `[AI][V2][TaskScore] … | benefit (…) | cost (…) | risk | opportunity`),
-  which `Tools/TaskScoreDashboard` aggregates per family next to a what-if report computed by
-  the real converters (Unity: AI → TaskScore → Calibration Report).
+  (`AiFrameLog.TaskScores` → `[AI][V2][TaskScore] … | benefit (…) | cost (…) | risk | opportunity`).
 * **One price table.** `Evaluation/ActionPrice` prices everything an action spends in
   AP-equivalents: 1 AP = 1 AP-equivalent for every use (card play, Challenge, activation now
   or on a later turn of a march); 1 H/E/M/T unit = `actionPriceResourceAp` x scarcity
@@ -416,7 +414,9 @@ reactivate when important contact becomes stale or blind again.
 | Recon intel staleness (ramp and "stale" threshold) | `ReconIntelSnapshotRegistry.Staleness` / `IsStaleAge` (`reconIntelStaleTurnsLo..Hi`) |
 | A Scout job needs the stealth lane (`Required` or positive `DetectionRisk`) | `ReconScoutKinds.NeedsStealth` (`ScoutMissionTarget.NeedsStealth` / `ReconObjective.NeedsStealth`) |
 | A scout can serve stealth (this turn / at all) | `ScoutMoverSelector.StealthReadyThisTurn` (Assignment eligibility, garrison extraction) / `CanServeStealth` (continuity claim, vantage choice). `StructuralCandidates` keeps its own diagnostic rule on purpose |
-| Scout exposure and stealth-detector risk | `Recon/ScoutRiskModel` (`IsExposed` / `CountDetectors` / `DetectorRisk`, snapshot or live sightings) — frontier annotation, objective scan, vantage ranking, optional-stealth leg risk |
+| Scout exposure and stealth-detector risk | `Recon/ScoutRiskModel` (`IsExposed` / `CountDetectors` / `DetectorRisk`, snapshot or live sightings) — frontier annotation, objective scan, vantage ranking |
+| May a scout step onto / stand on a hex | `ScoutRiskModel.StepBlocked` — Recon step planning, reactions, vantage checks in Provisioning and `MissionRevalidator` |
+| Does hiding protect a solo scout (one rule for every move) | `ScoutRiskModel.StealthThreat` (exposure = full threat, else detector risk): the Recon executor prices it in `ScoutOptionalStealthPolicy`; every other solo-Recce move hides through `ScoutRiskModel.MoveWarrantsStealth` in `AiTurnController.MoveArmyRoutine` |
 | A met Scout objective is only a waypoint (the durable ground role continues) | `ScoutObjectiveEvaluator.RoleContinuesAtWaypoint` — ground executor, `TaskExecutor` stale-goal path, air executor |
 | An air sortie must turn for home (endurance deadline / used-up outbound leg) | `ReconAirSortieState.OutboundCapReached` + must-recover, applied identically by `AirReconStepDirector.PlanStep` and the read-only `ReconAirReservationPrepass.ProjectScoringSortie` (mandatory recovery, capacity) |
 | Scout objective met live | `ObjectiveLiveStatus.ScoutSatisfied` — post-execution ledger, ground and air executors, `MissionRevalidator` |

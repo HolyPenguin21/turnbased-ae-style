@@ -253,7 +253,7 @@ namespace Game.Ai
                 // this a Raid on guard A walked through guard B's hex and retreated from it four
                 // turns running (Vashti T15-T18, 2026-10-02). The route's own target stays exempt
                 // (SafeRouteBlocker), so raiding that very guard is unchanged.
-                foreach (HexCoord guardHex in AiMapMemory.AllKnownEventGuardHexes(owner))
+                foreach (HexCoord guardHex in AiMapMemory.KnownEventGuardHexes(owner))
                     blocked.Add(guardHex);
                 return blocked;
             }

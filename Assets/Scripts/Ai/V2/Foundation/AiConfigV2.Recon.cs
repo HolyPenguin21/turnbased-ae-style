@@ -80,7 +80,7 @@
 
         // Frontier shape (WorldAnalysis.BuildMapKnowledge).
         public const int frontierWaveBand = 2;             // ring width past the leading edge (V1 visitRingBand kin)
-        public const int frontierEnemyExposureRadius = 3;  // a known non-neutral this close ANNOTATES a frontier hex EnemyExposure (does NOT drop it; V1 scoutFleeRadius kin)
+        public const int frontierEnemyExposureRadius = 3;  // a known non-neutral this close can engage a scout: ANNOTATES a frontier hex EnemyExposure (does NOT drop it) and is a full stealth threat (ScoutRiskModel.IsExposed / StealthThreat)
         public const float scoutDetectionRiskNorm = 2f;    // this many stealth-capable detectors near the focus -> DetectionRisk 1
         // Planner-local only: LocalAdmissionScore *= (1 - this * DetectionRisk). Keeps BaseValue /
         // the radar clean (execution risk is not intrinsic information value) while still making the
@@ -170,7 +170,6 @@
         public const float scoutQualityLogRunnerUpMargin = 0.15f;   // log the runner-up when it is this close on score
 
         // ---- Optional (non-Required) Scout stealth AP decision (spec §9 / §10 / §20) -----------
-        public const float scoutOptionalStealthMinRisk = 0.15f;          // leg detection risk under this -> never enter
         public const float scoutOptionalStealthProtectionScale = 0.9f;   // protection value = risk * this (* strategic-body factor)
         public const float scoutOptionalStealthStrategicBodyFactor = 1.3f;// a hero-led scout's skin is worth more
         public const float scoutOptionalStealthBaseApOpportunity = 0.06f;// a spent AP is never entirely free late-turn
