@@ -80,7 +80,7 @@
 
         // Frontier shape (WorldAnalysis.BuildMapKnowledge).
         public const int frontierWaveBand = 2;             // ring width past the leading edge (V1 visitRingBand kin)
-        public const int frontierEnemyExposureRadius = 3;  // a known non-neutral this close ANNOTATES a frontier hex EnemyExposure (does NOT drop it; V1 scoutFleeRadius kin)
+        public const int frontierEnemyExposureRadius = 3;  // a known non-neutral this close can engage a scout: ANNOTATES a frontier hex EnemyExposure (does NOT drop it) and is a full stealth threat (ScoutRiskModel.IsExposed / StealthThreat)
         public const float scoutDetectionRiskNorm = 2f;    // this many stealth-capable detectors near the focus -> DetectionRisk 1
         // Planner-local only: LocalAdmissionScore *= (1 - this * DetectionRisk). Keeps BaseValue /
         // the radar clean (execution risk is not intrinsic information value) while still making the
