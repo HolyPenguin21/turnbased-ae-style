@@ -1,5 +1,9 @@
 #if UNITY_INCLUDE_TESTS
+using System.Collections.Generic;
+using System.Linq;
 using Game.Ai.V2;
+using Game.Economy;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using NUnit.Framework;
@@ -15,6 +19,31 @@ namespace Game.EditorTests
 
         private static ApTurnMeasure Measure(int startAp, int endAp, float unmet) =>
             new ApTurnMeasure(startAp, endAp, unmet, 0, 0f, 0, 0f, 0);
+
+        [TestCase(0f, 2f)]
+        [TestCase(2f, 0f)]
+        public void AllocatorApDeferralPreservesThePhysicalShortfall(float tech, float missingTech)
+        {
+            var mission = new MissionProposal { Kind = MissionKind.Scout, BaseValue = 30f,
+                EffectiveValue = 30f, LocalAdmissionScore = 30f,
+                Target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(4, 0) },
+                Requirements = new MissionRequirements { ApMinimum = 6f, ApDesired = 6f, ApMaximum = 6f,
+                    TechMinimum = 2f, TechDesired = 2f, TechMaximum = 2f } };
+            mission.Axes.Value[DesireAxis.Recon] = 1f;
+            var snapshot = new WorldSnapshot { TurnNumber = 1, Self = new SelfSnapshot {
+                ActionPoints = 0, Stockpile = new ResourceBundle { Tech = tech } } };
+            var allocation = ResourceAllocator.BeginTurn(snapshot, Radar.Even(),
+                new List<MissionProposal> { mission }, new List<Commitment>(), null).Pack();
+            DeferredEntry deferred = allocation.Deferred.Single();
+            Assert.That(allocation.Funded, Is.Empty);
+            Assert.That(deferred.Reason, Is.EqualTo(DeferReason.InsufficientBudget));
+            Assert.That(deferred.Required.Ap, Is.EqualTo(6f));
+            Assert.That(deferred.Required.Tech, Is.EqualTo(2f));
+            Assert.That(deferred.Available.Tech, Is.EqualTo(tech));
+            Assert.That(deferred.Missing.Ap, Is.EqualTo(6f));
+            Assert.That(deferred.Missing.Tech, Is.EqualTo(missingTech),
+                "AP is checked first, but extra AP cannot solve a simultaneous Tech shortage");
+        }
 
         [TestCase(4, 6f, 6f)]
         [TestCase(14, 4f, 0f)]

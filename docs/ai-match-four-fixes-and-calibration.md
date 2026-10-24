@@ -234,3 +234,127 @@ Full EditMode and match reruns in Unity remain with the project owner, as reques
 Check the four log situations above and their legal alternatives, the next-turn AP
 history, bank reservation release, and optional raids using only leftover AP. No
 manual Unity run or completed match is claimed by this delivery.
+
+## Bottom-up follow-up audit of published 3438a790
+
+The audit starts from canonical deployment, equipment installation, roster transfer
+and resource admission, then follows their data back to scoring and turn history.
+It found one remaining runtime defect in F4 and one invalid native-test fixture.
+
+### A1 — AP-first deferral discarded simultaneous physical shortages
+
+**Root and owner:** `Allocation/AllocationSession.Pack` checks AP before its physical
+gate. `AddBudgetDeferred` used to fill Required/Available/Missing with AP alone.
+Thus `State/ApTurnPressure.Measure` could not distinguish a genuinely AP-only refusal
+from a mission also missing Tech or another owner's reserved resources. Filtering
+`Missing.AnyPhysical` in the consumer was insufficient because that fact had been lost
+by its producer. There is one AddBudgetDeferred and exactly two callers.
+
+Logic:
+
+```mermaid
+flowchart TD
+  A["AllocationSession.Pack"] --> B{"AP minimum affordable?"}
+  B -->|Yes| C["Existing physical admission gate"]
+  B -->|No| D["AddBudgetDeferred"]
+  C --> E["Fund or defer for physical shortage"]
+  D --> F["DeferredEntry: AP and physical facts"]
+  F --> G["ApTurnPressure.Measure"]
+  G --> H["Next-turn AP history and effect valuation"]
+```
+
+Dependencies:
+
+```mermaid
+flowchart TD
+  A["AddBudgetDeferred"] --> B["PhysicalMinimum"]
+  B --> C["MissionRequirements and repriced ProvisionRequirement floor"]
+  A --> D["PhysicalAvailableFor"]
+  D --> E["Remaining stock after locked and funded draws"]
+  D --> F["TurnResourceBook.Outstanding and SpendAuthority"]
+  A --> G["DeferredEntry.Required / Available / Missing"]
+  G --> H["State/ApTurnPressure physical-shortage exclusion"]
+```
+
+**Correction:** extend the existing AddBudgetDeferred with the current physical
+remainder and reuse PhysicalMinimum/PhysicalAvailableFor. The first rejection reason
+remains InsufficientBudget. Mission order, funding, spillover, quantities paid and
+reservation writes are unchanged. The ledger's Economy-completion exceptions and
+repriced floors are inherited from the same physical-admission owners, so later rule
+changes need no duplicate correction in State. The fix writes no new cache or bank row.
+
+**Reproduced situation, not an additional claim about the attached match:** a positive
+Scout mission requires 6 AP and 2 Tech. With AP 0 / Tech 0, the published allocator
+reported Missing.AP 6 and Missing.Tech 0; additional AP alone cannot execute it.
+It now reports Missing.Tech 2 and the existing AP-history filter excludes that mission.
+With Tech 2, the AP-only witness remains valid. Likewise, raw Energy 4 minus another
+owner's reservation 3 cannot fund a sortie costing 2: Missing.Energy is now 1 even
+when the AP gate fires first. A completing Economy build still ignores another
+build's deferred hold while respecting its completion hold, exactly as before.
+
+**Other consumers:** spillover and commitment-starvation checks use the unchanged
+Reason and recompute admission through their original methods. MissionOutcomeLedger
+records Reason, not the added vector components. The physical facts now reach the
+existing State consumer intact; no new resource priority or shortage policy is added.
+
+### A2 — zero-AP workload test lacked a deployment controller
+
+**Root:** the staged-preparation fixture creates a root, owned Barracks base, garrison
+and hand, but no HexSelectionController. CardPlayExecutor.Preflight requires that
+controller for every deployment. The positive workload case therefore stopped at
+"missing deployment controller" before testing relaxed AP admission.
+
+Logic:
+
+```mermaid
+flowchart TD
+  A["Existing staged-preparation fixture"] --> B["Canonical structural preflight"]
+  B -->|Missing controller| C["Reject before AP/resource comparison"]
+  B -->|Valid dependencies| D["Turn-end workload enumeration"]
+  D --> E{"Tech affordable?"}
+  E -->|Yes, AP 0| F["Count useful AP work"]
+  E -->|No| G["No useful feasible card workload"]
+```
+
+Dependencies:
+
+```mermaid
+flowchart TD
+  A["EndTurnCardWorkRelaxesApButPreservesPhysicalResources"] --> B["Registered player root"]
+  A --> C["Owned Barracks base and garrison"]
+  A --> D["Temporary inactive HexSelectionController"]
+  B --> E["CardPlayExecutor.Preflight"]
+  C --> E
+  D --> E
+  E --> F["Existing workload and resource feasibility owners"]
+```
+
+**Correction:** the test creates and destroys its local inactive controller and
+explicitly asserts structural preflight succeeds before measuring work. Both the
+resource-affordable and Tech-short variants now have the necessary dependency.
+No gameplay code or shared fixture lifecycle is weakened. The native tests remain
+pending execution in Unity; successful compilation is not reported as a native pass.
+
+Additional native integration coverage follows an actual registered Explore scout
+and active intent through EquipmentPurpose, EquipmentDeltaParts, recipient rejection
+and NonCombatCardPlayer enumeration, with both ordinary and AP-relaxed measurement
+paths. This supplements the earlier six private-scorer cases and checks no equipment
+installation, movement change or AP spend occurs during evaluation.
+
+### Recheck and limits
+
+* Three new managed assertions reproduced A1 on unchanged published runtime.
+* After the fix, the affected/adjacent ten-fixture set has 402 cases, 259 passes.
+  All 254 baseline passes from 3438a790 are preserved: zero regressions and five
+  new passes, including reserved-resource and Economy-spend-authority cases.
+* Remaining results: 142 native/reference-engine errors and the same pre-existing
+  ActiveEconomyBuildIntent assertion; this is not a fully passing Unity suite.
+* Runtime and tests compile in the same temporary managed harness/reference setup;
+  no adapter or tool change is included in the game repository.
+* The other three fixes were followed through their existing shared owners. Source
+  and destination capacity, real transaction rejection reasons, patrol purpose lookup,
+  explicit recipient-cache exclusion for measurement, canonical effect semantics,
+  next-turn history timing and match reset remain intact in the inspected paths.
+* Both calibration constants remain 4 and 3. No new runtime class or method, new
+  layer, new manager, balance adjustment or changed combat threshold is introduced
+  by this follow-up. Full EditMode and match reruns still belong to the owner.

@@ -404,19 +404,33 @@ namespace Game.EditorTests
         [Category("UnityEngine")]
         public void EndTurnCardWorkRelaxesApButPreservesPhysicalResources(bool lacksTech)
         {
-            _hand.Hand.Clear();
-            var card = new CardData(new CardDefinition { cardType = CardType.Unit,
-                authoredKey = "test.useful-work", attack = 5, defenseRating = 2, hitPoints = 5,
-                moveMax = 2, range = 2, initiative = 2, apCost = 2, activationApCost = 1,
-                requiredBuildingAbility = UnitAbilities.Barracks,
-                resourceCost = lacksTech ? new ResourceCost(tech: 99) : null });
-            _hand.AddCard(card); _snapshot.Self.Hand = _hand.Hand; _root.ActionPoints = 0;
-            var inv = CapabilityInventory.Build(_snapshot, _player, null);
-            float work = MaterializationCandidateBuilder.PhaseBWitnessedApWorkload(_snapshot, _player,
-                _root, _hand, _ctx, inv, null, new MaterializationReservation(),
-                out int usefulCards, turnEndMeasurement: true) ?? 0f;
-            Assert.That(work > 0f, Is.EqualTo(!lacksTech));
-            Assert.That(usefulCards, Is.EqualTo(lacksTech ? 0 : 1));
+            var controllerObject = new GameObject("AP workload deployment dependency");
+            controllerObject.SetActive(false);
+            try
+            {
+                _ctx.HexSelection = controllerObject.AddComponent<HexSelectionController>();
+                _hand.Hand.Clear();
+                var card = new CardData(new CardDefinition { cardType = CardType.Unit,
+                    authoredKey = "test.useful-work", attack = 5, defenseRating = 2, hitPoints = 5,
+                    moveMax = 2, range = 2, initiative = 2, apCost = 2, activationApCost = 1,
+                    requiredBuildingAbility = UnitAbilities.Barracks,
+                    resourceCost = lacksTech ? new ResourceCost(tech: 99) : null });
+                _hand.AddCard(card); _snapshot.Self.Hand = _hand.Hand; _root.ActionPoints = 0;
+                Assert.That(CardPlayExecutor.Preflight(_player, _root, _hand, _ctx,
+                    CardPlayPlan.Into(card, Site, DeploymentKind.Garrison, _garrison),
+                    out string preflightReason, resourceForecast: true), Is.True, preflightReason);
+                var inv = CapabilityInventory.Build(_snapshot, _player, null);
+                float work = MaterializationCandidateBuilder.PhaseBWitnessedApWorkload(_snapshot, _player,
+                    _root, _hand, _ctx, inv, null, new MaterializationReservation(),
+                    out int usefulCards, turnEndMeasurement: true) ?? 0f;
+                Assert.That(work > 0f, Is.EqualTo(!lacksTech));
+                Assert.That(usefulCards, Is.EqualTo(lacksTech ? 0 : 1));
+            }
+            finally
+            {
+                _ctx.HexSelection = null;
+                UnityEngine.Object.DestroyImmediate(controllerObject);
+            }
         }
         private List<DevelopmentOpportunity> Admitted() => DevelopmentOpportunityEvaluator.Enumerate(
             _snapshot, _player, _root, _hand, _ctx, null);

@@ -392,6 +392,31 @@ namespace Game.EditorTests
             Assert.That(released.Funded.Select(f => f.Mission), Has.Member(scout));
         }
 
+        [Test]
+        public void ApDeferralAlsoReportsResourcesProtectedByAnotherOwner()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 15;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            StrategicResourceReservationLedger.Upsert(player, turn,
+                new StrategicResourceReservation { Owner = "Economy:other",
+                    Reason = StrategicReservationReason.EconomyDeferredBuild,
+                    Resource = StrategicReservedResource.Energy, Amount = 3f,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn });
+            MissionProposal scout = AirScout(2f);
+            var snap = new WorldSnapshot { TurnNumber = turn, Self = new SelfSnapshot {
+                ActionPoints = 0, Stockpile = new ResourceBundle { Energy = 4f } } };
+            var held = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack().Deferred.Single();
+            Assert.That(held.Reason, Is.EqualTo(DeferReason.InsufficientBudget));
+            Assert.That(held.Missing.Energy, Is.EqualTo(1f), "only one unreserved Energy is available");
+            StrategicResourceReservationLedger.ReleaseByOwner(player, turn, "Economy:other");
+            var released = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack().Deferred.Single();
+            Assert.That(released.Reason, Is.EqualTo(DeferReason.InsufficientBudget));
+            Assert.That(released.Missing.AnyPhysical, Is.False, "now AP really is the only shortage");
+        }
+
         // A hold its own Economy mission already drew in this pack is not subtracted a second
         // time for the candidates behind it.
         [Test]
