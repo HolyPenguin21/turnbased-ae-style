@@ -105,16 +105,22 @@ namespace Game.Ai.V2
                     .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                     .ThenBy(u => u.Name)
                     .ToList();
-                var selectedFromDonor = new List<UnitData>();
+                // The hero pick above is part of this same transaction. Every later body must
+                // leave a legal roster after ALL transfers, including the departing commander.
+                var selectedFromDonor = selected.Where(t => t.DonorArmyId == donor.Id)
+                    .Select(t => t.Unit).ToList();
                 // The donor stays unchanged while its picks are tried: its floor is read once.
                 System.Func<IEnumerable<UnitData>, bool> canSpare = donor.IsGarrison
                     ? AiArmyRoles.GarrisonSpareCheck(owner, donor) : null;
                 foreach (UnitData pick in picks)
                 {
+                    if (selectedFromDonor.Contains(pick))
+                        continue;
                     if (donor.Members.Count - selectedFromDonor.Count <= 1)
                         break;
                     selectedFromDonor.Add(pick);
-                    if (canSpare != null && !canSpare(selectedFromDonor))
+                    if (!ArmyData.RosterFits(donor.Members.Except(selectedFromDonor).ToList(), donor.IsGarrison)
+                        || (canSpare != null && !canSpare(selectedFromDonor)))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         continue;

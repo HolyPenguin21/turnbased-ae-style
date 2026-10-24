@@ -104,6 +104,53 @@ namespace Game.EditorTests
             Assert.That(layout.ArmyOffsets[0], Is.EqualTo(new Vector2(0.25f, -0.25f)));
         }
 
+        [TestCase(false)] [TestCase(true)]
+        public void HiddenScoutCannotReplaceVisibleArmyOfSameOwner(bool scoutFirst)
+        {
+            var own = new PlayerSetupData { IsHuman = true };
+            var enemy = new PlayerSetupData();
+            var hex = default(Game.HexGrid.HexCoord);
+            var root = new GameObject("same-owner-visibility-regression");
+            try
+            {
+                var map = root.AddComponent<HexMap>();
+                var selection = root.AddComponent<HexSelectionController>();
+                typeof(HexSelectionController).GetField("gameConfig", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(selection, config);
+                typeof(HexSelectionController).GetField("map", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(selection, map);
+                var watcher = new ArmyData { Owner = own, Hex = hex };
+                watcher.Members.Add(new Game.Units.UnitData { Owner = own });
+                ArmyRegistry.Register(watcher);
+                var hidden = new ArmyData { Owner = enemy, Hex = hex };
+                hidden.Members.Add(new Game.Units.UnitData { Owner = enemy, IsHidden = true });
+                var visible = new ArmyData { Owner = enemy, Hex = hex };
+                visible.Members.Add(new Game.Units.UnitData { Owner = enemy });
+                foreach (var army in scoutFirst ? new[] { hidden, visible } : new[] { visible, hidden })
+                {
+                    var marker = new GameObject("marker"); marker.transform.SetParent(root.transform);
+                    var renderer = marker.AddComponent<SpriteRenderer>();
+                    var visual = marker.AddComponent<MapObjectVisual>();
+                    typeof(MapObjectVisual).GetField("innerCircle", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .SetValue(visual, renderer);
+                    army.Controller = marker.AddComponent<ArmyController>();
+                    army.Controller.SetData(army); ArmyRegistry.Register(army);
+                }
+                VisionSystem.CurrentViewer = own;
+                // Even a stale selection from a previous viewer may not select a hidden proxy.
+                typeof(HexSelectionController).GetField("_selectedArmy", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(selection, hidden.Controller);
+                selection.RestackArmiesOn(hex, null);
+                Assert.That(visible.Controller.Visual.IsVisible, Is.True);
+                Assert.That(hidden.Controller.Visual.IsVisible, Is.False);
+                visible.Members.Clear();
+                selection.RestackArmiesOn(hex, null);
+                Assert.That(visible.Controller.Visual.IsVisible, Is.False);
+                Assert.That(hidden.Controller.Visual.IsVisible, Is.False);
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         [Test]
         public void UnseenEnemyDoesNotContributeALayoutSlot()
         {

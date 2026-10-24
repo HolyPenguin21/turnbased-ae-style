@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Economy;
 using Game.Map;
 using Game.Players;
 using UnityEngine;
@@ -73,21 +74,40 @@ namespace Game.Ai.V2
         {
             bool needsWitnessedWorkload = pass.ReachableGlobalRecurringCarrier
                 || Active.Any(s => s.Demand.Capability == CapabilityKind.Hero);
-            if (!needsWitnessedWorkload)
-            {
-                pass.WitnessedUsefulApDemand = null;
-                return null;
-            }
+            ResourceStarvationRegistry.BeginVerifiedPass(pass.Player);
             var measOptions = new Dictionary<DemandState, List<(MaterializationPlan plan, float followupAp)>>();
-            foreach (DemandState state in Active)
+            // Dirty-axis readmission still competes with the other axes' live residual needs.
+            var demands = Active.Select(s => s.Demand).Concat(pass.Reservation.UnresolvedDemands
+                .Where(d => d != null && !pass.AdmittedAxes.Contains(d.RequestingAxis)
+                    && !d.IsPersistenceDeferred && !d.StructurallyUndeliverable
+                    && d.DesiredAmount > AiConfigV2.allocatorSliceEpsilon)).Distinct();
+            foreach (AxisDemand demand in demands)
             {
                 List<(MaterializationPlan plan, float followupAp)> feas;
                 using (new Game.Core.ProfileScope("AI/PhaseA.AllFeasiblePlans"))
                     feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(pass.Snap, pass.Player,
-                        pass.Root, pass.Hand, pass.Ctx, state.Demand, pass.ApBudget, pass.Commitments,
-                        pass.ApBudget.ReservedFollowup(), pass.Reservation, pass.ActiveIntents);
-                if (feas.Count > 0)
+                        pass.Root, pass.Hand, pass.Ctx, demand, pass.ApBudget, pass.Commitments,
+                        pass.ApBudget.ReservedFollowup(), pass.Reservation, pass.ActiveIntents,
+                        resourceBlocked: demand.RequestingAxis == DesireAxis.Aggression
+                            || demand.RequestingAxis == DesireAxis.Recon ? blocked =>
+                        {
+                            foreach (ResourceType type in ResourceBundle.All)
+                            {
+                                float available = StrategicSpendability.SpendableAmount(
+                                    pass.Player, pass.Root, pass.Ctx, type, demand.SpendAuthority);
+                                ResourceStarvationRegistry.RecordVerifiedBlock(pass.Player, type,
+                                    blocked.ResCost?.Get(type) ?? 0, available,
+                                    pass.Snap.Self.PerTurnIncome.Get(type), demand.Value, pass.Turn);
+                            }
+                        } : (System.Action<MaterializationPlan>)null);
+                DemandState state = Active.FirstOrDefault(s => ReferenceEquals(s.Demand, demand));
+                if (state != null && feas.Count > 0)
                     measOptions[state] = feas;
+            }
+            if (!needsWitnessedWorkload)
+            {
+                pass.WitnessedUsefulApDemand = null;
+                return null;
             }
             float legalCardApWorkload;
             using (new Game.Core.ProfileScope("AI/PhaseA.LegalApWorkload"))

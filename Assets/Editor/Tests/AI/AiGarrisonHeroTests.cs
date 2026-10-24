@@ -102,6 +102,41 @@ namespace Game.EditorTests
             new[] { new WorthIt.DefendingArmy(Enumerable.Range(0, count)
                 .Select(i => WorthIt.FromLiveUnit(Body("Enemy" + i, attack))).ToList(), default) };
 
+        [TestCase(1)] [TestCase(2)]
+        public void PreparationAccountsForHeroAndBodiesFromSameDonor(int bodyCount)
+        {
+            var donorMembers = new List<UnitData> { Hero("Donor commander", 5) };
+            donorMembers.AddRange(Enumerable.Range(0, bodyCount).Select(i => Body("Body" + i, 10)));
+            ArmyData donor = Army(Staging, donorMembers.ToArray());
+            ArmyData host = Army(Staging, Body("Host", 1));
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
+                DepartureSnapshot(), host, null, WeakOpposition(), 0f);
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            var taken = plan.Transfers.Where(t => t.DonorArmyId == donor.Id).Select(t => t.Unit).ToList();
+            Assert.That(taken.Count, Is.EqualTo(bodyCount), "the donor must retain its last body");
+            Assert.That(taken.Count(u => u.IsHero), Is.EqualTo(1));
+            Assert.That(donor.Members.Count, Is.EqualTo(bodyCount + 1), "planning must not mutate the donor");
+            Assert.That(ArmyData.RosterFits(donor.Members.Except(taken).ToList(), false), Is.True);
+        }
+
+        [Test]
+        public void GatherEqualPriceAndPowerPrefersNearSupportOverEarlierArmyId()
+        {
+            ArmyData host = Army(Staging, Hero("Host commander", 3), Body("Host body", 10));
+            UnitData farBody = Body("Far support", 10), nearBody = Body("Near support", 10);
+            farBody.ActivationApCost = nearBody.ActivationApCost = 0;
+            ArmyData far = Army(new HexCoord(11, 1), farBody);
+            ArmyData near = Army(new HexCoord(5, 1), nearBody);
+            Assert.That(far.Id, Is.LessThan(near.Id), "the old ID tie-break would nominate the distant support");
+            GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(DepartureSnapshot(),
+                WeakOpposition(), 0f, new HexCoord(5, 1), null, 0.6f,
+                pinnedHostArmyId: host.Id, minimumArmyPower: 1f);
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.SupportArmyIds, Is.EqualTo(new[] { near.Id }));
+            Assert.That(plan.GatherTurns, Is.EqualTo(1));
+            Assert.That(host.Members.Count, Is.EqualTo(2), "ranking does not perform a handoff");
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void DepartureProjection_PricesOneCommanderAndReturnsSecondaryHeroes(bool supportTagged)

@@ -137,6 +137,49 @@ namespace Game.EditorTests
         private InfraFulfillResult Fulfill(DevelopmentOpportunity op) => InfrastructureFulfillment.TryFulfill(
             _snapshot, _player, _root, _hand, _ctx, DemandFor(op), PhaseAApBudget.Create(_root));
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void GlobalSourceProposalSharesWorkloadAndPricesTheWholeStageOnce(bool unlockCapacity)
+        {
+            if (!unlockCapacity) _base.FacilitySlots[1] = null;
+            var source = new CardData(new CardDefinition
+            {
+                cardType = CardType.Facility, authoredKey = "recurring-source", apCost = 0,
+                resourceCost = new ResourceCost(human: 1),
+                grantedAbilities = new List<string> { UnitAbilities.ApBonus },
+            });
+            _hand.AddCard(source);
+            _config.baseUpgradeTiers[0].apCost = 0;
+            _config.baseUpgradeTiers[0].cost = new ResourceCost(human: 1);
+            _snapshot.Self.ActionPoints = 12;
+            _snapshot.Self.ApEconomy = new ApActionEconomySnapshot { BaseActionPoints = 12 };
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.GlobalResourceFacility, EconomySourceCard = source,
+                DesiredAmount = 1, Value = 7.3f };
+            int[] bank = Bank();
+            InfrastructureFulfillment.InfraProposal Proposal(float workload) => InfrastructureFulfillment.Propose(
+                _snapshot, _player, _root, _hand, _ctx, demand, PhaseAApBudget.Create(_root),
+                witnessedUsefulApDemand: workload);
+            var low = Proposal(0f);
+            var high = Proposal(30f);
+            Assert.That(high.Admissible, Is.True, high.Reason);
+            Assert.That(high.Score, Is.GreaterThan(low.Score), "the infrastructure entrance must receive the round's workload");
+
+            ResourceStarvationRegistry.RecordVerifiedBlock(_player, ResourceType.Human,
+                required: 6, available: 5, incomePerTurn: 0, demandValue: 7.3f, turn: _ctx.TurnNumber);
+            var protectedSource = Proposal(30f);
+            var total = new ResourceCost(human: unlockCapacity ? 2 : 1);
+            var expected = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Facility, source,
+                _snapshot, CapabilityInventory.Build(_snapshot, _player, null), _hand, 0f,
+                witnessedUsefulApDemand: 30f, actualApCost: 0, actualResourceCost: total,
+                spendableResource: t => StrategicSpendability.SpendableAmount(
+                    _player, _root, _ctx, t, demand.SpendAuthority), player: _player);
+            Assert.That(protectedSource.Score, Is.LessThan(high.Score), "an exact resource block must reach this entrance too");
+            Assert.That(protectedSource.Score, Is.EqualTo(expected.NetScore).Within(0.0001f),
+                "the source and its capacity prerequisite pay one combined bill, including preservation");
+            Assert.That(Bank(), Is.EqualTo(bank), "proposing must not reserve or spend resources");
+        }
+
         private DevelopmentOpportunity CapacityStep()
         {
             DevelopmentOpportunity step = Admitted().SingleOrDefault(

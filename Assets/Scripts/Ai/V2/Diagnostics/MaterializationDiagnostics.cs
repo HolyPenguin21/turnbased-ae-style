@@ -20,11 +20,6 @@ namespace Game.Ai.V2
             if (demand == null || hand == null)
                 return "diag unavailable";
 
-            bool strategicStarvationAxis = demand.RequestingAxis == DesireAxis.Aggression
-                || demand.RequestingAxis == DesireAxis.Recon;
-            if (strategicStarvationAxis)
-                ResourceStarvationRegistry.BeginVerifiedPass(player);
-
             int matching = 0, traitMatching = 0, placements = 0, preflight = 0;
             int opDeliver = 0, resReject = 0;
             float minDirectNeed = float.PositiveInfinity;
@@ -95,7 +90,7 @@ namespace Game.Ai.V2
                         // postGate cannot say "passes" while every candidate is discarded here.
                         MaterializationDeliveryPolicy.DeliveryAssessment delivery =
                             MaterializationDeliveryPolicy.AssessDemandOperationally(
-                                diagnosticPlan, demand, snap, player, ctx);
+                                diagnosticPlan, demand, snap, player, ctx, commitments);
                         if (!delivery.CanDeliver)
                         {
                             string k = $"{card.Definition.displayName}: {opt.Kind} "
@@ -154,21 +149,6 @@ namespace Game.Ai.V2
                     minDirectNeed = System.Math.Min(minDirectNeed,
                         p.ApCost + reservedFollowup + p.AttackRefitFollowupAp);
                 }
-
-            // §17 — starvation pressure is now evidence-based. The old StrategicManager call
-            // still loops over zero-stock resources after this method, but ResourceStarvationRegistry
-            // ignores unverified calls. Arm+consume only deficits this diagnostic actually proved.
-            if (strategicStarvationAxis)
-            {
-                foreach (KeyValuePair<ResourceType, int> block in verifiedResourceBlocks)
-                {
-                    ResourceType type = block.Key;
-                    float available = Stock(root, type);
-                    float income = snap?.Self != null ? snap.Self.PerTurnIncome.Get(type) : 0f;
-                    ResourceStarvationRegistry.RecordVerifiedBlock(player, type, block.Value,
-                        available, income, demand.Value, snap?.TurnNumber ?? 0);
-                }
-            }
 
             float axis = apBudget != null ? apBudget.Balance() : 0f;
             float discrete = apBudget != null ? apBudget.DiscreteAdmissionBudget() : axis;

@@ -58,10 +58,12 @@ namespace Game.Ai.V2
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             float buildValue, float buildApCost, bool includeReturn,
-            int? pinnedBuilderArmyId = null, bool? requiresFoundingGarrison = null)
+            int? pinnedBuilderArmyId = null, bool? requiresFoundingGarrison = null,
+            ArmySnapshot projectedArmy = null, float? projectedFieldStrikePotential = null)
         {
             var ranked = RankEconomyBuilders(snap, target, routes, activeIntents, commitments,
-                buildValue, buildApCost, includeReturn, requiresFoundingGarrison);
+                buildValue, buildApCost, includeReturn, requiresFoundingGarrison,
+                projectedArmy, projectedFieldStrikePotential);
             if (pinnedBuilderArmyId.HasValue)
                 return ranked.FirstOrDefault(x => x.Army?.ArmyId == pinnedBuilderArmyId.Value);
             // An ordinary hero whose delivered task loses money is not a usable alternative.
@@ -74,12 +76,14 @@ namespace Game.Ai.V2
         internal static IReadOnlyList<EconomyBuilderChoice> RankEconomyBuilders(WorldSnapshot snap,
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            float buildValue, float buildApCost, bool includeReturn, bool? requiresFoundingGarrison = null)
+            float buildValue, float buildApCost, bool includeReturn, bool? requiresFoundingGarrison = null,
+            ArmySnapshot projectedArmy = null, float? projectedFieldStrikePotential = null)
         {
             // Assess the EXACT candidate first: loan admission and final TaskScore must
             // price the same projected roster, outbound trip and return activations.
             // The old raw-hex penalty introduced a second incompatible delivery scorer.
-            return EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments)
+            return EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments,
+                    projectedArmy, projectedFieldStrikePotential)
                 .Select(x => AssessEconomyArmy(snap, target, x.route, x.army,
                     buildApCost, includeReturn, requiresFoundingGarrison))
                 .Where(x => x.Suitability != EconomyArmySuitability.Ineligible)
@@ -543,15 +547,17 @@ namespace Game.Ai.V2
         internal static IEnumerable<(EconomyBuilderRouteSnapshot route, ArmySnapshot army)>
             EconomyBuilderCandidates(WorldSnapshot snap, HexCoord target,
                 IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
-                IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+                IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+                ArmySnapshot projectedArmy = null, float? projectedFieldStrikePotential = null)
         {
             IReadOnlyList<EconomyBuilderRouteSnapshot> witnessed = routes
                 ?? System.Array.Empty<EconomyBuilderRouteSnapshot>();
             foreach (EconomyBuilderRouteSnapshot route in witnessed)
             {
-                ArmySnapshot army = snap?.Self?.Armies?.FirstOrDefault(
-                    a => a != null && a.ArmyId == route.ArmyId);
-                if (CandidateRejection(snap, target, route, army, activeIntents, commitments) == null)
+                ArmySnapshot army = projectedArmy?.ArmyId == route.ArmyId ? projectedArmy
+                    : snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == route.ArmyId);
+                if (CandidateRejection(snap, target, route, army, activeIntents, commitments,
+                        projectedFieldStrikePotential) == null)
                     yield return (route, !route.IsOnTarget ? army.EconomyDeparture ?? army : army);
             }
         }
@@ -561,7 +567,8 @@ namespace Game.Ai.V2
         // Provisioning's diagnostic trace (EconomyBuilderCandidateRejection).
         private static string CandidateRejection(WorldSnapshot snap, HexCoord target,
             EconomyBuilderRouteSnapshot route, ArmySnapshot army,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+            float? projectedFieldStrikePotential = null)
         {
             if (army == null)
                 return "not_in_snapshot";
@@ -590,8 +597,9 @@ namespace Game.Ai.V2
             if (!army.IsGarrison && !route.IsOnTarget
                 && (assignment == null || assignment.Kind != MissionKind.Economy)
                 && army.IsStructuralRaidActor && snap?.Self != null
-                && snap.Self.FieldStrikePotential > 0f
-                && army.EffectiveArmyPower >= AiConfigV2.economyBuilderFistShare * snap.Self.FieldStrikePotential)
+                && (projectedFieldStrikePotential ?? snap.Self.FieldStrikePotential) > 0f
+                && army.EffectiveArmyPower >= AiConfigV2.economyBuilderFistShare
+                    * (projectedFieldStrikePotential ?? snap.Self.FieldStrikePotential))
                 return "combat_fist_not_a_builder";
             if (assignment != null)
             {

@@ -326,11 +326,13 @@ namespace Game.EditorTests
             ArmyData army = Army();
             ArmyController controller = army.Controller;
             int arrivals = 0;
+            int settled = 0;
             controller.SettleThen(() => controller.MoveAlong(_map,
                 new List<HexCoord> { _origin, _first, _last }, _ => Vector3.zero,
                 onComplete: () => { arrivals++; ArmyRegistry.MoveArmy(army, controller.CurrentHex); },
                 resolveStepAsync: (_, to, outcome) => to.Equals(deathHex)
-                    ? FatalStep(army, to, outcome) : NoReaction()));
+                    ? FatalStep(army, to, outcome) : NoReaction(),
+                onSettled: () => settled++));
             var waiting = new WaitUntil(() => army.Controller == null || !army.Controller.IsMoving);
             yield return Settled(army);
             Assert.That(waiting.keepWaiting, Is.False);
@@ -338,6 +340,7 @@ namespace Game.EditorTests
             Assert.That(army.Controller, Is.Null);
             Assert.That(controller.IsMoving, Is.False); // managed terminal flag survives native destruction
             Assert.That(arrivals, Is.Zero);
+            Assert.That(settled, Is.Zero, "cancelled or destroyed movement has no settled arrival");
             ArmyRegistry.MoveArmy(army, _last); // simulate a late completion callback
             Assert.That(AiV2Util.ResolveArmy(_owner, army.Id), Is.Null);
             Assert.That(ArmyRegistry.AllAt(_origin), Has.None.EqualTo(army));
@@ -381,6 +384,7 @@ namespace Game.EditorTests
             ArmyData army = Army(count: 2);
             ArmyController controller = army.Controller;
             int arrivals = 0;
+            int settled = 0;
             IEnumerator Resolve(HexCoord from, HexCoord to, ArmyController.StepResolutionOutcome outcome)
             {
                 yield return null;
@@ -388,12 +392,25 @@ namespace Game.EditorTests
             }
             controller.SettleThen(() => controller.MoveAlong(_map,
                 new List<HexCoord> { _origin, _first, _last }, _ => Vector3.zero,
-                onComplete: () => { arrivals++; ArmyRegistry.MoveArmy(army, controller.CurrentHex); },
-                resolveStepAsync: Resolve));
+                onComplete: () =>
+                {
+                    Assert.That(controller.IsMoving, Is.True, "arrival still needs the transient CurrentHex");
+                    arrivals++;
+                    ArmyRegistry.MoveArmy(army, controller.CurrentHex);
+                },
+                resolveStepAsync: Resolve,
+                onSettled: () =>
+                {
+                    Assert.That(controller.IsMoving, Is.False, "resting visuals must leave the movement exception");
+                    Assert.That(army.Hex, Is.EqualTo(_last), "arrival has already re-keyed the registry");
+                    Assert.That(arrivals, Is.EqualTo(1));
+                    settled++;
+                }));
             yield return Settled(army);
             Assert.That(army.Hex, Is.EqualTo(_last));
             Assert.That(army.Members.Count, Is.EqualTo(1));
             Assert.That(arrivals, Is.EqualTo(1));
+            Assert.That(settled, Is.EqualTo(1));
             Assert.That(_root.ActionPoints, Is.EqualTo(20));
         }
 

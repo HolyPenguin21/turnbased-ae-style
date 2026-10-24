@@ -864,8 +864,16 @@ namespace Game.Ai.V2
                 // 2026-10-01 (user decision) — a fist at the peak has nothing left to wait for:
                 // an unobserved (location-only) target no longer holds it. It marches, observes on
                 // the way, and every pass of the march re-checks the then-known defenders.
+                ArmySnapshot readyHost = snap.Self.Armies.FirstOrDefault(x => x != null
+                    && x.ArmyId == a.PrimaryArmyId);
+                AttackPreparationAssessment ready = AttackPreparationPolicy.AssessReadiness(readyHost,
+                    snap.Self.AttackPeak, KnownOpposition.OnHex(snap, a.Target.Hex),
+                    AiMapMemory.KnownHexDefenseBonus(snap.Observer, null, a.Target.Hex));
+                string readyReason = ready.CurrentPower > ready.RequiredPower ? "power_floor"
+                    : ready.Reason == "ready_by_opportunity" ? "opportunity" : "ongoing_assault";
                 AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} decision=ASSAULT-READY "
-                    + $"(fist strictly > 80% of the current peak, coverage "
+                    + $"reason={readyReason} power={ready.CurrentPower:0.##} requiredStrictlyAbove={ready.RequiredPower:0.##} "
+                    + $"win={a.ProjectedWinChance:0.##} (coverage "
                     + $"{(locationOnly ? "unknown: target not yet observed" : a.CoversAllDefenders ? "ok" : "missing")}); "
                     + $"Gather -> Assault, released supports [{string.Join(",", a.GatherSupportArmyIds)}]");
                 a.GatherSupportArmyIds.Clear();

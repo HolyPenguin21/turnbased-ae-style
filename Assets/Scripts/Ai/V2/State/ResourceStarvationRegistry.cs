@@ -53,7 +53,7 @@ namespace Game.Ai.V2
             public readonly HashSet<ResourceType> VerifiedPending = new HashSet<ResourceType>();
             public readonly Dictionary<ResourceType, int> LastPressureHitTurn =
                 new Dictionary<ResourceType, int>();
-            // Production diagnostics enable strict evidence mode. Standalone pure tests that call
+            // Strategy feasibility passes enable strict evidence mode. Standalone pure tests that call
             // RecordBlock directly keep the original simple semantics unless they explicitly enter
             // this mode, so the existing S26 harness remains useful and backward compatible.
             public bool RequireVerifiedEvidence;
@@ -128,6 +128,7 @@ namespace Game.Ai.V2
             State s = Get(player);
             s.RequireVerifiedEvidence = true;
             s.VerifiedPending.Clear();
+            s.CurrentBlocks.Clear();
         }
 
         public static void RecordBlock(PlayerSetupData player, ResourceType type)
@@ -145,7 +146,7 @@ namespace Game.Ai.V2
 
         // Exact current-turn evidence used by StrategicCardEvaluator to price the marginal value of
         // NOT consuming stock that an unresolved AGG/RCN capability is trying to accumulate.
-        // Diagnostics remains the only producer; this registry records facts and does not score cards.
+        // Strategy publishes feasibility facts; this registry does not score cards.
         public static void RecordVerifiedBlock(PlayerSetupData player, ResourceType type, float required,
             float available, float incomePerTurn, float demandValue, int turn)
         {

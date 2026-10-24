@@ -415,7 +415,7 @@ namespace Game.Ai.V2
         // materialization chain (any placement — the effect works in any own non-Prison army).
         // Base cards stay with the FoundBase pipeline (it already prices the same effect through
         // GlobalCardEffect). The TaskScore carries the intrinsic slot only — the chain / facility
-        // play prices the card itself (StrategicCardEvaluator, ResourceGainRoleFit), exactly like
+        // play prices the card itself (StrategicCardEvaluator, dynamic registry effects), exactly like
         // a CollectorCapability demand.
         internal static IEnumerable<AxisDemand> GlobalResourceSourceDemands(WorldSnapshot s)
         {

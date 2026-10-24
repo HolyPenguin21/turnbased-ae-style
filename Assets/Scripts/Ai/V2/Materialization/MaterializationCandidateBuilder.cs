@@ -230,11 +230,12 @@ namespace Game.Ai.V2
             ActorCommitments commitments, MaterializationReservation reservation,
             System.Collections.Generic.ISet<CardData> excludeCards,
             System.Collections.Generic.ISet<string> excludeGenKeys,
-            IReadOnlyList<MissionIntent> activeIntents = null)
+            IReadOnlyList<MissionIntent> activeIntents = null, bool resourceForecast = false)
         {
             if (demand?.Capability != CapabilityKind.CardUpgrade)
                 return MaterializationChainEnumerator.EnumerateForDemand(
-                    snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
+                    snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys,
+                    resourceForecast);
 
             DevelopmentOpportunity op = demand.DevOpportunity;
             GenerationStep g = op?.Generation;
@@ -267,7 +268,7 @@ namespace Game.Ai.V2
             List<MaterializationPlan> raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, null, null, activeIntents);
             return MaterializationFeasibility.AssessOperationalDelivery(
-                raw, player, root, hand, ctx, demand, snap);
+                raw, player, root, hand, ctx, demand, snap, commitments);
         }
 
         public static List<DemandCandidate> TopForDemand(WorldSnapshot snap,
@@ -285,7 +286,7 @@ namespace Game.Ai.V2
                 snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys,
                 activeIntents);
             var candidates = MaterializationFeasibility.FilterForDemand(
-                raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap);
+                raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap, commitments);
 
             if (candidates.Count == 0) return new List<DemandCandidate>();
 
@@ -458,7 +459,7 @@ namespace Game.Ai.V2
             if (ignoreApForMeasurement)
                 raw = raw.Where(p => p.Generation == null).ToList();
             List<MaterializationPlan> candidates = MaterializationFeasibility.FilterSurplus(
-                raw, player, root, hand, ctx, reservation, snap, ignoreApForMeasurement);
+                raw, player, root, hand, ctx, reservation, snap, ignoreApForMeasurement, commitments);
             if (candidates.Count == 0) return new List<(MaterializationPlan plan, float utility)>();
 
             // `witnessedUsefulApDemand` is the SHARED Phase-B owner-witnessed AP workload
@@ -506,7 +507,7 @@ namespace Game.Ai.V2
             float DecisionScore(MaterializationPlan p)
             {
                 AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
-                float urgency = d != null && CanDeliverDemandOperationally(p, d, snap, player, ctx)
+                float urgency = d != null && CanDeliverDemandOperationally(p, d, snap, player, ctx, commitments)
                     ? DemandUrgencyPolicy.Bonus(d) : 0f;
                 return p.Score + urgency * GenerationChanceForDecision(p);
             }
@@ -521,7 +522,7 @@ namespace Game.Ai.V2
                     || !candidates.Any(other => !MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(other)
                         && other.FinalCapability == CapabilityKind.Hero
                         && DecisionScore(other) > AiConfigV2.allocatorSliceEpsilon
-                        && CanDeliverDemandOperationally(other, d, snap, player, ctx));
+                        && CanDeliverDemandOperationally(other, d, snap, player, ctx, commitments));
             }).ToList();
 
             List<(MaterializationPlan plan, float utility)> ranked = candidates
@@ -550,8 +551,9 @@ namespace Game.Ai.V2
         // ARCH-02 §16 — moved to the canonical MaterializationDeliveryPolicy. This forwarder keeps
         // the widely-used name for the builder's own gates and its external callers.
         internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand,
-            WorldSnapshot snapshot = null, PlayerSetupData player = null, AiTurnContext ctx = null)
-            => MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx);
+            WorldSnapshot snapshot = null, PlayerSetupData player = null, AiTurnContext ctx = null,
+            ActorCommitments commitments = null)
+            => MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx, commitments);
 
         // ARCH-02 §45 — route through the one owner-aware spendability seam so a bounded reaction
         // envelope (or any other explicit reservation) is respected here too, not just the legacy
@@ -586,12 +588,14 @@ namespace Game.Ai.V2
         public static List<(MaterializationPlan plan, float followupAp)> AllFeasiblePlansForDemand(
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             AxisDemand demand, PhaseAApBudget apBudget, ActorCommitments commitments, float reservedFollowupAp,
-            MaterializationReservation reservation, IReadOnlyList<MissionIntent> activeIntents = null)
+            MaterializationReservation reservation, IReadOnlyList<MissionIntent> activeIntents = null,
+            System.Action<MaterializationPlan> resourceBlocked = null)
         {
             var raw = RawForDemand(
-                snap, player, root, hand, ctx, demand, commitments, reservation, null, null, activeIntents);
+                snap, player, root, hand, ctx, demand, commitments, reservation, null, null, activeIntents,
+                resourceForecast: resourceBlocked != null);
             var candidates = MaterializationFeasibility.FilterForDemand(
-                raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap);
+                raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap, commitments, resourceBlocked);
 
             var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
             foreach (var c in candidates)
@@ -682,7 +686,7 @@ namespace Game.Ai.V2
             List<MaterializationPlan> surplusRaw = MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation);
             List<MaterializationPlan> surplus = MaterializationFeasibility.FilterSurplus(
-                surplusRaw, player, root, hand, ctx, reservation, snap);
+                surplusRaw, player, root, hand, ctx, reservation, snap, commitments: commitments);
             var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
             foreach (MaterializationPlan p in surplus)
             {

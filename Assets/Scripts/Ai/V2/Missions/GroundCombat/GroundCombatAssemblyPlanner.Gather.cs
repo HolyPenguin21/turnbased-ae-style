@@ -160,8 +160,8 @@ namespace Game.Ai.V2
             foreach (GatherSupport s in (minimumArmyPower > 0f
                 ? pool.OrderByDescending(x => x.Live.Members.Where(u => u.IsHero)
                         .Select(u => u.CommandRating).DefaultIfEmpty(0).Max())
-                    .ThenBy(x => x.SelectionCost).ThenBy(x => x.ArmyId)
-                : pool.OrderBy(x => x.SelectionCost).ThenBy(x => x.ArmyId)))
+                    .ThenBy(x => x.SelectionCost).ThenBy(x => x.Turns).ThenBy(x => x.ArmyId)
+                : pool.OrderBy(x => x.SelectionCost).ThenBy(x => x.Turns).ThenBy(x => x.ArmyId)))
             {
                 // CommandHandover returns only an exchange the armies can make on arrival.
                 HandoffPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
@@ -269,7 +269,12 @@ namespace Game.Ai.V2
                         continue;
                     float rate = (minimumArmyPower > 0f ? nextPower - power : projectedWin - win)
                         / System.Math.Max(1f, s.SelectionCost);
-                    if (pick == null || rate > pickRate)
+                    // Equal combat gain per price and equal price: prefer the support that
+                    // arrives sooner. ID is only the final deterministic tie-break.
+                    if (pick == null || rate > pickRate
+                        || (rate == pickRate && s.SelectionCost == pick.SelectionCost
+                            && (s.Turns < pick.Turns
+                                || (s.Turns == pick.Turns && s.ArmyId < pick.ArmyId))))
                     {
                         pick = s;
                         pickRoster = projected;
