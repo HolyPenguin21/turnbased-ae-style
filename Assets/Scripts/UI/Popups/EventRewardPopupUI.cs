@@ -88,7 +88,7 @@ namespace Game.UI
 
             if (okButton != null)
             {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(okButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(okButton);
                 okButton.onClick.AddListener(Acknowledge);
             }
             if (panelRoot != null)

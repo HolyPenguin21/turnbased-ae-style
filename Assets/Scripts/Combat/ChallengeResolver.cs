@@ -26,5 +26,15 @@ namespace Game.Combat
                 tokens[i] = Random.value < 0.5f;
             return tokens;
         }
+
+        public static bool HasMiss(bool[] tokens)
+        {
+            if (tokens == null)
+                return false;
+            foreach (bool hit in tokens)
+                if (!hit)
+                    return true;
+            return false;
+        }
     }
 }

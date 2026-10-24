@@ -163,7 +163,7 @@ namespace Game.Combat
                 || !grid.TryFindPosition(victim, out int vr, out int vc)
                 || !BattleGrid.IsInRange(vr, vc, ar, ac, 1))
                 return 0f;
-            int actorBonus = BattleProtectionRules.GetTotalDefenseBonus(
+            int actorBonus = BattleRules.GetTotalDefenseBonus(
                 grid, actor, battleDefender, battleDefenderDefenseBonus);
             int? victimAttack = simulatedAttack != null && simulatedAttack.TryGetValue(victim, out int a) ? a : (int?)null;
             int? actorDefense = simulatedDefense != null && simulatedDefense.TryGetValue(actor, out int d) ? d : (int?)null;
@@ -208,7 +208,7 @@ namespace Game.Combat
             {
                 float net = ExplosionAttack.ExpectedNetValue(actor, grid.AllUnits(),
                     u => hp.TryGetValue(u, out float h) ? h : 0,
-                    u => BattleProtectionRules.GetTotalDefenseBonus(grid, u, battleDefender, battleDefenderDefenseBonus));
+                    u => BattleRules.GetTotalDefenseBonus(grid, u, battleDefender, battleDefenderDefenseBonus));
                 if (net <= 0) return false;
                 bestTarget = grid.AllUnits().FirstOrDefault(u => u.Owner != actor.Owner && hp.TryGetValue(u, out float h)
                     && h > 0 && grid.TryFindPosition(u, out int r, out int c)
@@ -228,7 +228,7 @@ namespace Game.Combat
                     continue;
 
                 bool notYetActed = order != null && order.IndexOf(candidate) > currentIndex;
-                int defenderBonus = BattleProtectionRules.GetTotalDefenseBonus(
+                int defenderBonus = BattleRules.GetTotalDefenseBonus(
                     grid, candidate, battleDefender, battleDefenderDefenseBonus);
                 int? actorAttackOverride = simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int simActorAttack)
                     ? simActorAttack : (int?)null;
@@ -236,7 +236,7 @@ namespace Game.Combat
                     ? simCandidateDefense : (int?)null;
                 int? candidateAttackOverride = simulatedAttack != null && simulatedAttack.TryGetValue(candidate, out int simCandidateAttack)
                     ? simCandidateAttack : (int?)null;
-                UnitData guard = BattleProtectionRules.FindBodyguard(grid, candidate, actor,
+                UnitData guard = BattleRules.FindBodyguard(grid, candidate, actor,
                     u => hp.TryGetValue(u, out float guardHp) ? guardHp : 0f, reactions);
                 int? guardAttackOverride = guard != null && simulatedAttack != null
                     && simulatedAttack.TryGetValue(guard, out int simGuardAttack) ? simGuardAttack : (int?)null;
@@ -283,7 +283,7 @@ namespace Game.Combat
                     pool.AddRange(extra.Select(t => t.Combatant()).Where(u => !pool.Contains(u)));
                 }
                 float net = ExplosionAttack.ExpectedNetValue(actor, pool,
-                    defenseBonus: u => BattleProtectionRules.GetTotalDefenseBonus(grid, u, battleDefender, battleDefenderDefenseBonus));
+                    defenseBonus: u => BattleRules.GetTotalDefenseBonus(grid, u, battleDefender, battleDefenderDefenseBonus));
                 var victim = net > 0 ? grid.AllUnits().FirstOrDefault(u => u.Owner != actor.Owner
                     && grid.TryFindPosition(u, out int r, out int c)
                     && BattleGrid.IsInRange(actorRow, actorCol, r, c, actor.Range)) : null;
@@ -321,8 +321,8 @@ namespace Game.Combat
                 bool notYetActed = turnOrder != null && turnOrder.IndexOf(candidate) > turnIndex;
                 int defenderBonus = battleDefender != null && battleDefender.Members.Contains(candidate)
                     ? battleDefenderDefenseBonus : 0;
-                defenderBonus += BattleProtectionRules.GetGuardedDefenseBonus(grid, candidate, battleDefender);
-                UnitData guard = BattleProtectionRules.FindBodyguard(grid, candidate, actor,
+                defenderBonus += BattleRules.GetGuardedDefenseBonus(grid, candidate, battleDefender);
+                UnitData guard = BattleRules.FindBodyguard(grid, candidate, actor,
                     u => u.HitPointsCurrent, reactions);
                 float counter = ExpectedCounterDamage(grid, actor, guard ?? candidate, actor.HitPointsCurrent,
                     magnitudes, reactions, battleDefender, battleDefenderDefenseBonus);

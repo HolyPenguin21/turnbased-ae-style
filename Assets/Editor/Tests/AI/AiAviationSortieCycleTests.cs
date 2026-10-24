@@ -1594,7 +1594,7 @@ namespace Game.EditorTests
                 var all = AviationRebasePlanner.FindMandatoryContinuations(_owner, 5);
                 Assert.That(all, Is.EqualTo(wings.OrderBy(w => w.Id).ToList()));
                 Assert.That(AviationObligations.Pending(_owner, ctx), Is.True);
-                var first = MandatoryAviationOrder.Next(all,
+                var first = MandatoryAviation.Next(all,
                     ReconAirExecutor.FindMandatoryRecoveryActors(_owner, ctx));
                 Assert.That(first.Kind, Is.EqualTo(MandatoryAviationKind.Rebase));
                 Assert.That(first.Actor, Is.SameAs(all[0]));
@@ -1602,7 +1602,7 @@ namespace Game.EditorTests
                 AviationObligationStallRegistry.MarkStalled(_owner, 5, all[0].Id);
                 var rest = AviationRebasePlanner.FindMandatoryContinuations(_owner, 5);
                 Assert.That(rest, Is.EqualTo(new[] { all[1] }));
-                Assert.That(MandatoryAviationOrder.Next(rest, new List<ArmyData>()).Actor, Is.SameAs(all[1]));
+                Assert.That(MandatoryAviation.Next(rest, new List<ArmyData>()).Actor, Is.SameAs(all[1]));
 
                 AviationObligationStallRegistry.MarkStalled(_owner, 5, all[1].Id);
                 Assert.That(AviationObligations.Pending(_owner, ctx), Is.False,

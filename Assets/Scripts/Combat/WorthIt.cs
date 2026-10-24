@@ -622,7 +622,7 @@ namespace Game.Combat
 
         // UnitAbilities.Bodyguard on a roster: positions do not exist, so — the same
         // approximation Splash makes for its neighbours — any living unspent guard of the hit side
-        // counts as adjacent. The most HP wins, the lowest index on a tie (BattleProtectionRules).
+        // counts as adjacent. The most HP wins, the lowest index on a tie (BattleRules).
         private static int FindRosterBodyguard(List<BattleUnit> side, int targetIndex, bool sideIsAttacker,
             HashSet<(bool isAttacker, int index)> used)
         {
@@ -1114,7 +1114,7 @@ namespace Game.Combat
             }
             if (targets.Count == 0)
                 return new BattleEstimate(1f, 1f, 0f);
-            int hunterPool = BattleResolutionRules.CaptureKillHunterPool(bodyCount);
+            int hunterPool = BattleRules.CaptureKillHunterPool(bodyCount);
             int hunterFate = attackerCommander.Present ? attackerCommander.Fate : 0;
             int seed = unchecked(hunterPool * 397 + hunterFate);
             foreach (var target in targets)

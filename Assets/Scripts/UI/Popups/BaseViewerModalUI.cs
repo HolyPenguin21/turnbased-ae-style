@@ -151,7 +151,7 @@ namespace Game.UI
             }
         }
 
-        private void ClearGrid() => UIListUtility.DestroyAndClear(_cards);
+        private void ClearGrid() => UIUtility.DestroyAndClear(_cards);
 
         public void ShowBaseSummary()
         {

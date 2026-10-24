@@ -75,7 +75,7 @@ namespace Game.EditorTests
         public void PreparationAndForcePolicyAgreeAtTheStrictBoundary(float power, bool ready)
         {
             ArmySnapshot host = Actor(7, Home, power);
-            AttackPreparationAssessment assessment = AttackPreparationReadiness.Assess(host,
+            AttackPreparationAssessment assessment = AttackPreparationPolicy.AssessReadiness(host,
                 100f, EmptySite(), 0f);
             Assert.That(assessment.Ready, Is.EqualTo(ready));
             Assert.That(assessment.PowerReady, Is.EqualTo(AttackForceReadiness.ForceReady(power, 100f)));
@@ -95,7 +95,7 @@ namespace Game.EditorTests
                 : new WorthIt.DefenderProfile(0f, false, null, 1f, 1f, 1);
             ArmySnapshot host = Actor(7, Home, power: 30f);
             host.Members = new[] { body, body, body };
-            AttackPreparationAssessment result = AttackPreparationReadiness.Assess(host, 100f,
+            AttackPreparationAssessment result = AttackPreparationPolicy.AssessReadiness(host, 100f,
                 DefendedSite(), 0f);
             Assert.That(AttackForceReadiness.ForceReady(30f, 100f), Is.False, "30 is below the 80 floor");
             Assert.That(result.PowerReady, Is.EqualTo(strongHost), $"win {result.ProjectedWinChance:0.00}");
@@ -132,9 +132,9 @@ namespace Game.EditorTests
         public void PreparationRereadsDynamicPeakWithoutKeepingAnOldReadyResult()
         {
             ArmySnapshot host = Actor(7, Home);
-            Assert.That(AttackPreparationReadiness.Assess(host, 100f, EmptySite(), 0f).Ready, Is.True);
-            Assert.That(AttackPreparationReadiness.Assess(host, 110f, EmptySite(), 0f).Ready, Is.False);
-            Assert.That(AttackPreparationReadiness.Assess(host, 90f, EmptySite(), 0f).Ready, Is.True);
+            Assert.That(AttackPreparationPolicy.AssessReadiness(host, 100f, EmptySite(), 0f).Ready, Is.True);
+            Assert.That(AttackPreparationPolicy.AssessReadiness(host, 110f, EmptySite(), 0f).Ready, Is.False);
+            Assert.That(AttackPreparationPolicy.AssessReadiness(host, 90f, EmptySite(), 0f).Ready, Is.True);
         }
 
         // 2026-10-16 (user decision, test behavior removed) — coverage is required again and the
@@ -148,7 +148,7 @@ namespace Game.EditorTests
             // No attack tokens at all cannot wound the defender (1 die vs 2 still does, 12.5%).
             var body = new WorthIt.DefenderProfile(4f, false, null, canDamage ? 8f : 0f, 12f, 3);
             host.Members = new[] { body, body, body };
-            AttackPreparationAssessment result = AttackPreparationReadiness.Assess(host, 100f,
+            AttackPreparationAssessment result = AttackPreparationPolicy.AssessReadiness(host, 100f,
                 DefendedSite(), 0f);
             Assert.That(result.PowerReady, Is.True);
             Assert.That(result.CoversAllDefenders, Is.EqualTo(canDamage));

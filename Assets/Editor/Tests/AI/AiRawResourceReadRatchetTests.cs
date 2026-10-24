@@ -64,7 +64,7 @@ namespace Game.EditorTests
             // Moved, not new: the physical-stock digest and AP shared by the Development / Economy keys.
             ["Orchestration/StrategicAdmissionFingerprints.cs"] = 2,
             // Moved, not new: physical AP before the executor's step (was inline in RunTurn).
-            ["Orchestration/MandatoryAviationStep.cs"] = 1,
+            ["Orchestration/MandatoryAviation.cs"] = 1,
             // T01: the preparation step's physical turn-AP-left read, as every provisioning lane.
             ["Provisioning/AttackProvisioner.cs"] = 1,
             ["Provisioning/GroundCombatAssaultTransaction.cs"] = 1,

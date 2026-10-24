@@ -1046,7 +1046,7 @@ namespace Game.Ai.V2
             ArmySnapshot primary = a.PrimaryArmyId.HasValue
                 ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value)
                 : null;
-            return AttackPreparationReadiness.Assess(primary, snap.Self.AttackPeak,
+            return AttackPreparationPolicy.AssessReadiness(primary, snap.Self.AttackPeak,
                 KnownOpposition.OnHex(snap, a.Target.Hex),
                 AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex)).Reason;
         }
@@ -1063,7 +1063,7 @@ namespace Game.Ai.V2
             float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
-            AttackPreparationAssessment readiness = AttackPreparationReadiness.Assess(
+            AttackPreparationAssessment readiness = AttackPreparationPolicy.AssessReadiness(
                 primary, snap.Self.AttackPeak, opposition, hexBonus);
             bool clears = a.AssaultStarted
                 ? readiness.HostAvailable && readiness.StructuralActor && readiness.CombatFeasible

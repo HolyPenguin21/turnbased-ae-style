@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using UnityEngine;
 
@@ -8,7 +9,24 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  SCOUT RISK MODEL  (Strategy V2 build-order step 6b — shared "how exposed is a scout here")
     // ===========================================================================================
-    //  is scored the exact same way the frontier scan scores an Explore hex. Extracted from
+    //  STEP SAFETY — the ONE Recon rule for "may a scout step onto / stand on this hex". Every
+    //  per-step Recon choice (ReconGroundStepPlanner, ReconReactionPolicy) and every live vantage
+    //  check (ProvisioningManager, MissionRevalidator) asks StepBlocked, so a Recon choice can never
+    //  be one the execution gate (AiTurnController.MoveArmyRoutine) then rejects — the class of bug
+    //  that strands a scout re-picking the same refused hex every turn.
+    //  A hex is BLOCKED for a scout when:
+    //    * it lies in an active scout-danger cooldown zone (a recently fled-from area), or
+    //    * arriving there would set something off — AiMapMemory.KnownGroundArrival, the single
+    //      AI arrival rule the execution gate itself uses: a known army fights a visible scout,
+    //      a known undefended foreign structure is taken over by it. A FULLY hidden scout sets
+    //      neither off and may share the hex (stealth design). A scout never seeks either.
+    //  Hex Events are not blocks: a Transit scout always Skips them and keeps stealth/movement.
+    //  `moverFullyHidden` is the mover's own stealth state as it will move (a planned stealth
+    //  entry counts: callers pass requiresStealth for a mission that enters stealth first). For a
+    //  vantage the scout must reach and stand on, pass ScoutMoverSelector.ArrivesHiddenLive, never
+    //  the mission's bare stealth wish: the gate judges the scout's real hidden state.
+    //
+    //  DETECTOR RISK — a hex's detection risk is scored the exact same way the frontier scan scores an Explore hex. Extracted from
     //  ReconMissionPlanner.CurrentDetectorRisk verbatim — HONEST memory only
     //  (WorldSnapshot.Known.EnemySightings), a "detector" is a known non-neutral force within
     //  AiConfigV2.frontierEnemyExposureRadius that could actually roll a stealth challenge on the
@@ -17,6 +35,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public static class ScoutRiskModel
     {
+        public static bool StepBlocked(PlayerSetupData player, HexCoord hex, bool moverFullyHidden)
+            => AiMapMemory.GroundTerrainBlocked(hex)
+               || AiMapMemory.IsScoutDangerous(player, hex)
+               || AiMapMemory.KnownGroundArrival(player, hex, moverFullyHidden).HasOutcome;
+
+        public static bool StepBlocked(PlayerSetupData player, ArmyData mover, HexCoord hex)
+            => StepBlocked(player, hex, StealthSystem.IsArmyFullyHidden(mover));
+
         public static float DetectorRisk(WorldSnapshot snap, HexCoord hex) =>
             DetectorRisk(snap?.Known?.EnemySightings, hex);
 

@@ -335,7 +335,7 @@ namespace Game.Ai.V2
             // owner decides the executable first step for every Recon action shape.
             next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, next.Value);
             if (!next.HasValue || (reaction.Action == ReconReactionAction.Flee
-                && ScoutExecutionSafety.StepBlocked(player, army, next.Value)))
+                && ScoutRiskModel.StepBlocked(player, army, next.Value)))
             {
                 control.StopReason = ExecutionStopReason.NoSafeStep;
                 yield break;

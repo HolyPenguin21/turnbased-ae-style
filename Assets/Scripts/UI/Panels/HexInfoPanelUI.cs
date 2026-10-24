@@ -278,7 +278,7 @@ namespace Game.UI
         private void BindFixed(Item item)
         {
             Button button = FixedButton(item.FixedIndex);
-            UIButtonEventUtility.ResetRuntimeListeners(button);
+            UIUtility.ResetRuntimeListeners(button);
             button.interactable = true;
             Action onClick = _clicks[item.FixedIndex];
             button.onClick.AddListener(() => onClick?.Invoke());

@@ -460,7 +460,7 @@ namespace Game.UI
             if (!_dragAllowed)
                 return;
 
-            UIDragUtility.ApplyScreenDelta(rectTransform, eventData, _canvas);
+            UIUtility.ApplyScreenDelta(rectTransform, eventData, _canvas);
             // Live reorder preview — the rest of the hand shifts to make room right now,
             // instead of only snapping into place once the card is dropped. CardHandUI itself
             // decides whether this position still counts as "over the hand" (see

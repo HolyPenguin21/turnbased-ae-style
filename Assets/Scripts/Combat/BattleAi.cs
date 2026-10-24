@@ -196,7 +196,7 @@ namespace Game.Combat
         private static void SetDeploymentUnit(BattleGrid grid, UnitData unit, int row, int col,
             int frontRow, int backRow)
         {
-            if (BattlePlacementRules.CanPlace(unit, row, col, frontRow, backRow))
+            if (BattleRules.CanPlace(unit, row, col, frontRow, backRow))
                 grid.Set(row, col, unit);
         }
 
@@ -626,7 +626,7 @@ namespace Game.Combat
 
                     // UnitAbilities.Counterattack — a surviving victim answers before the next
                     // turn, through the same attack path (never intercepted, never answered).
-                    if (!explosion && hp[actor] > 0 && !suppressVictim && BattleProtectionRules.CanCounterattack(grid, victim, actor,
+                    if (!explosion && hp[actor] > 0 && !suppressVictim && BattleRules.CanCounterattack(grid, victim, actor,
                             hp.TryGetValue(victim, out float victimHp) ? victimHp : 0f,
                             Mathf.RoundToInt(damage), reactions))
                     {
@@ -726,7 +726,7 @@ namespace Game.Combat
                     victim = guard;
                 }
                 damage = expectedDamage ?? BattleCombatOdds.Evaluate(actor, target,
-                    BattleProtectionRules.GetTotalDefenseBonus(grid, target, battleDefender, battleDefenderDefenseBonus),
+                    BattleRules.GetTotalDefenseBonus(grid, target, battleDefender, battleDefenderDefenseBonus),
                     magnitudes, hp.TryGetValue(target, out float targetHp) ? targetHp : 0f,
                     simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int simAtk) ? simAtk : (int?)null,
                     simulatedDefense != null && simulatedDefense.TryGetValue(target, out int simDef) ? simDef : (int?)null)
@@ -806,7 +806,7 @@ namespace Game.Combat
                 float damage;
                 if (rng == null)
                     damage = probability * BattleCombatOdds.Evaluate(shot, victim,
-                        BattleProtectionRules.GetTotalDefenseBonus(grid, victim, battleDefender, defenderBonus),
+                        BattleRules.GetTotalDefenseBonus(grid, victim, battleDefender, defenderBonus),
                         magnitudes, hp[victim], ExplosionAttack.AttackTokens,
                         defenses != null && defenses.TryGetValue(victim, out int d) ? d : (int?)null).ExpectedDamage;
                 else
@@ -876,7 +876,7 @@ namespace Game.Combat
 
         private static UnitData FindSimBodyguard(BattleGrid grid, Dictionary<UnitData, float> hp,
             UnitData target, UnitData attacker, BattleReactionState reactions) =>
-            BattleProtectionRules.FindBodyguard(grid, target, attacker,
+            BattleRules.FindBodyguard(grid, target, attacker,
                 u => hp.TryGetValue(u, out float guardHp) ? guardHp : 0f, reactions);
 
         private static int SimulatedAttackOf(UnitData unit, Dictionary<UnitData, int> simulatedAttack) =>
@@ -962,7 +962,7 @@ namespace Game.Combat
                 ? simAtk : actor.Attack);
             int defensePool = simulatedDefense != null && simulatedDefense.TryGetValue(target, out int simDef)
                 ? simDef : (target.IsHero ? Mathf.Max(0, target.FateMax) : target.Defense);
-            defensePool += BattleProtectionRules.GetTotalDefenseBonus(
+            defensePool += BattleRules.GetTotalDefenseBonus(
                 grid, target, battleDefender, battleDefenderDefenseBonus);
 
             ArmyData actorArmy = FindSimulationArmy(actor, ownArmy, enemyArmy);

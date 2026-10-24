@@ -4,7 +4,7 @@
     <Compile Include="UnityStubs.cs;Program.cs" />
     <Compile Include="../../Assets/Scripts/Tools/HexTileMeshGenerator.cs" />
     <Compile Include="../../Assets/Scripts/Tools/HexMapGenerator.cs" />
-    <Compile Include="../../Assets/Scripts/Economy/ResourceType.cs;../../Assets/Scripts/Economy/ResourceYields.cs;../../Assets/Scripts/Economy/HexResourceCalculator.cs" />
+    <Compile Include="../../Assets/Scripts/Economy/ResourceType.cs;../../Assets/Scripts/Economy/ResourceYields.cs" />
     <Compile Include="../../Assets/Editor/Tests/Map/TerrainComplexTests.cs" />
     <Compile Include="../../Assets/Editor/Tests/Map/MatchResourcePlacementTests.cs;../../Assets/Scripts/Setup/MatchResourcePlacement.cs;../../Assets/Scripts/Setup/CitadelSetupController.NeutralPlacement.cs;../../Assets/Scripts/Map/HexResourceBonusRegistry.cs" />
     <Compile Include="../../Assets/Scripts/HexGrid/HexCoord.cs;../../Assets/Scripts/HexGrid/HexGridMath.cs;../../Assets/Scripts/HexGrid/HexPath.cs;../../Assets/Scripts/HexGrid/HexPathfinder.cs" />

@@ -29,7 +29,7 @@ namespace Game.Ai.V2
     //  Order, unchanged: refresh the Recon lane pressures from the current snapshot (Missions must
     //  consume current pressures, never trigger Strategy / Desire recomputation) -> Recon,
     //  Aggression, Economy, Development proposals -> AttemptId -> EffectiveValue = BaseValue x
-    //  RadarValueScale -> AttackPreparationPriority -> task-score log -> demand correlation.
+    //  RadarValueScale -> AttackPreparationPolicy.ApplyPriority -> task-score log -> demand correlation.
     //
     //  The Aggression operational facts are NOT refreshed here: the decision frame refreshes them
     //  (StrategyLayer.RefreshAggressionOperationalFacts) in the same step that refreshes the
@@ -64,7 +64,7 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
                 if (m != null)
                     m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
-            AttackPreparationPriority.Apply(missions);
+            AttackPreparationPolicy.ApplyPriority(missions);
             AiFrameLog.TaskScores(snapshot?.Observer, snapshot?.TurnNumber ?? 0, missions);
 
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);

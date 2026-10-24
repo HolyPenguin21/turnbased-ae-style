@@ -73,7 +73,7 @@ namespace Game.UI
 
         private void SpawnSlots(int count)
         {
-            UIListUtility.DestroyAndClear(_tokenSlots);
+            UIUtility.DestroyAndClear(_tokenSlots);
 
             if (tokenContainer == null || tokenSlotPrefab == null)
                 return;

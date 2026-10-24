@@ -107,14 +107,14 @@ namespace Game.Cards
         // re-run through ApplyAbilityModifiers against the carrier (its own tags/CeramicArmor),
         // and the carrier becomes the victim for Berserk/Shock/Splash/Counterattack. Several
         // eligible carriers: the one with the most current HP. A hero never guards, and a
-        // counterattack is never intercepted. See BattleProtectionRules.FindBodyguard.
+        // counterattack is never intercepted. See BattleRules.FindBodyguard.
         public const string Bodyguard = "Bodyguard";
 
         // Once per round, a carrier that survives a primary Ground Combat attack made from within
         // 1 cell (square range, diagonals included) immediately attacks the attacker back — an
         // ordinary Challenge with tokens, Fate and every attacker-side skill, except that it is
         // never countered or intercepted itself. A ShockAttack hit, a hero carrier or a retreating
-        // army cancels it. See BattleProtectionRules.CanCounterattack.
+        // army cancels it. See BattleRules.CanCounterattack.
         public const string Counterattack = "Counterattack";
 
         // At the start of every combat round each carrier on the grid (usually a hero) gives

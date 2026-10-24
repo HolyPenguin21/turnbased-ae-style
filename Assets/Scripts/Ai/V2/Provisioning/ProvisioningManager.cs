@@ -348,8 +348,7 @@ namespace Game.Ai.V2
                     if (HexGridMath.Distance(executionHex, focus) > exec.Army.EffectiveVisionRadius)
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
-                    if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                            arrivesHidden))
+                    if (ScoutRiskModel.StepBlocked(player, executionHex, arrivesHidden))
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
                 }
@@ -372,7 +371,7 @@ namespace Game.Ai.V2
             // (the exact same coordinate-based primitive BuildCandidates already used to admit this
             // candidate — see ReconAssignmentPlanner.BuildCandidates' garrison-extraction branch).
             HexCoord fromHex = exec.RequiresGarrisonExtraction ? garrisonArmy.Hex : army.Hex;
-            // ScoutExecutionSafety admits a vantage on a foreign structure that
+            // ScoutRiskModel admits a vantage on a foreign structure that
             // knowledge says nobody is holding, so this preflight must ask the same question or
             // it would strand exactly the vantage the selector just approved.
             bool hasSafeApproach = exec.RequiresGarrisonExtraction

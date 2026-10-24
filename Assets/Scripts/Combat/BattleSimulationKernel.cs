@@ -96,7 +96,7 @@ namespace Game.Combat
             defense = Mathf.Max(0, defense);
             int cap = Mathf.Max(0, hpCap);
             var profile = ChallengeResult.ModifierProfile.Of(attackerAbilities, defenderTags, defenderAbilities);
-            bool secondaryCeramic = secondary && HasAbility(secondaryAbilities, UnitAbilities.CeramicArmor);
+            bool secondaryCeramic = secondary && ChallengeResult.HasAbility(secondaryAbilities, UnitAbilities.CeramicArmor);
             var key = (attack, defense, cap, profile.Bits | (secondary ? 32 : 0) | (secondaryCeramic ? 64 : 0));
             if (s_exchanges.TryGetValue(key, out ExchangeEntry known))
                 return known;
@@ -162,7 +162,7 @@ namespace Game.Combat
                 defenderAbilities, ref attackerFate, ref defenderFate, defenderHp,
                 magnitudes, rng, defenderIsRetreating, isCaptureKill: false);
 
-            BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
+            BattleRules.GroundAttackOutcome outcome = BattleRules.ResolveGroundAttack(
                 attackTokens, defenseTokens, attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
             return new BattleSimExchangeOutcome(outcome.Damage, outcome.Damage > 0,
                 outcome.AttackerSuccesses, outcome.DefenderSuccesses);
@@ -178,7 +178,7 @@ namespace Game.Combat
             ResolveFateDuel(hunterTokens, heroTokens, null, null, null,
                 ref hunterFate, ref heroFate, int.MaxValue, AbilityMagnitudes.Default,
                 rng, defenderIsRetreating: false, isCaptureKill: true);
-            return BattleResolutionRules.ResolveCaptureKill(hunterTokens, heroTokens);
+            return BattleRules.ResolveCaptureKill(hunterTokens, heroTokens);
         }
 
         private static void ResolveFateDuel(bool[] attackTokens, bool[] defenseTokens,
@@ -218,14 +218,14 @@ namespace Game.Combat
         public static void ApplyBerserkIfHit(bool hit, IEnumerable<string> defenderAbilities,
             ref int attack, ref int defense, AbilityMagnitudes magnitudes)
         {
-            if (!hit || !HasAbility(defenderAbilities, UnitAbilities.Berserk))
+            if (!hit || !ChallengeResult.HasAbility(defenderAbilities, UnitAbilities.Berserk))
                 return;
             attack += magnitudes.BerserkAttackGain;
             defense = Mathf.Max(1, defense - magnitudes.BerserkDefenseLoss);
         }
 
         public static bool SuppressesTurn(int damage, IEnumerable<string> attackerAbilities) =>
-            damage > 0 && HasAbility(attackerAbilities, UnitAbilities.ShockAttack);
+            damage > 0 && ChallengeResult.HasAbility(attackerAbilities, UnitAbilities.ShockAttack);
 
         // UnitAbilities.Bodyguard — the intercepted hit keeps its rolled tokens (raw = attacker
         // successes - defender successes) and is re-run through the canonical modifier chain
@@ -243,7 +243,7 @@ namespace Game.Combat
             float victimHpAfter, bool attackerWithinOne, bool alreadyUsed, int primaryDamage,
             IEnumerable<string> attackerAbilities) =>
             victimHpAfter > 0f && !victimIsHero && attackerWithinOne && !alreadyUsed
-            && HasAbility(victimAbilities, UnitAbilities.Counterattack)
+            && ChallengeResult.HasAbility(victimAbilities, UnitAbilities.Counterattack)
             && !SuppressesTurn(primaryDamage, attackerAbilities);
 
         // UnitAbilities.Drill — which of `candidateCount` side members this round's `carriers`
@@ -303,7 +303,7 @@ namespace Game.Combat
 
         public static int SecondaryDamage(int primaryDamage, IEnumerable<string> defenderAbilities,
             AbilityMagnitudes magnitudes) =>
-            SecondaryDamage(primaryDamage, HasAbility(defenderAbilities, UnitAbilities.CeramicArmor), magnitudes);
+            SecondaryDamage(primaryDamage, ChallengeResult.HasAbility(defenderAbilities, UnitAbilities.CeramicArmor), magnitudes);
 
         private static int SecondaryDamage(int primaryDamage, bool defenderCeramic, AbilityMagnitudes magnitudes)
         {
@@ -366,22 +366,5 @@ namespace Game.Combat
 
         public static float HealedHitPoints(float current, float maximum)
             => current > 0f ? Mathf.Min(maximum, current + 1f) : current;
-
-        private static bool HasAbility(IEnumerable<string> abilities, string ability)
-        {
-            if (abilities == null)
-                return false;
-            if (abilities is IReadOnlyList<string> list)
-            {
-                for (int i = 0; i < list.Count; i++)
-                    if (list[i] == ability)
-                        return true;
-                return false;
-            }
-            foreach (string value in abilities)
-                if (value == ability)
-                    return true;
-            return false;
-        }
     }
 }

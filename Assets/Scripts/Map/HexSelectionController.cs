@@ -748,7 +748,7 @@ namespace Game.Map
             // The bonus (if any) belongs permanently to the hex itself — stamped once when a
             // citadel was placed there (see HexResourceBonusRegistry), independent of whatever
             // building currently stands on it.
-            ResourceYields effectiveYields = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(coord));
+            ResourceYields effectiveYields = HexResourceBonusRegistry.EffectiveYield(entry, coord);
             if (infoPanel != null)
             {
                 bool isOwn = owner != null && owner == turnController?.CurrentPlayer;

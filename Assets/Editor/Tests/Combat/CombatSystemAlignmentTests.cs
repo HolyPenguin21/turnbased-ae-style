@@ -76,9 +76,9 @@ namespace Game.EditorTests
         {
             var hero = new UnitData { IsHero = true };
 
-            Assert.That(BattlePlacementRules.CanPlace(hero, BattleGrid.AttackerBackRow, 2,
+            Assert.That(BattleRules.CanPlace(hero, BattleGrid.AttackerBackRow, 2,
                 BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow), Is.True);
-            Assert.That(BattlePlacementRules.CanPlace(hero, BattleGrid.AttackerFrontRow, 2,
+            Assert.That(BattleRules.CanPlace(hero, BattleGrid.AttackerFrontRow, 2,
                 BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow), Is.False);
         }
 
@@ -273,11 +273,11 @@ namespace Game.EditorTests
             grid.Set(BattleGrid.DefenderBackRow, 2, target);
             grid.Set(BattleGrid.DefenderFrontRow, 1, guard);
 
-            Assert.That(BattleProtectionRules.GetGuardedDefenseBonus(grid, target, defenderArmy),
-                Is.EqualTo(BattleProtectionRules.GuardedDefenseBonus));
+            Assert.That(BattleRules.GetGuardedDefenseBonus(grid, target, defenderArmy),
+                Is.EqualTo(BattleRules.GuardedDefenseBonus));
 
             grid.Set(BattleGrid.DefenderFrontRow, 1, null);
-            Assert.That(BattleProtectionRules.GetGuardedDefenseBonus(grid, target, defenderArmy), Is.Zero);
+            Assert.That(BattleRules.GetGuardedDefenseBonus(grid, target, defenderArmy), Is.Zero);
         }
 
         [Test]
@@ -289,7 +289,7 @@ namespace Game.EditorTests
             float open = BattleCombatOdds.Evaluate(attacker, defender, 0,
                 AbilityMagnitudes.Default, defender.HitPointsCurrent).ExpectedDamage;
             float guarded = BattleCombatOdds.Evaluate(attacker, defender,
-                BattleProtectionRules.GuardedDefenseBonus, AbilityMagnitudes.Default,
+                BattleRules.GuardedDefenseBonus, AbilityMagnitudes.Default,
                 defender.HitPointsCurrent).ExpectedDamage;
 
             Assert.That(guarded, Is.LessThan(open));
@@ -298,7 +298,7 @@ namespace Game.EditorTests
         [Test]
         public void CaptureKill_TieMeansKilled()
         {
-            Assert.That(BattleResolutionRules.ResolveCaptureKill(
+            Assert.That(BattleRules.ResolveCaptureKill(
                 new[] { true, false }, new[] { true, false }), Is.EqualTo(CaptureKillOutcome.Killed));
         }
 
@@ -520,7 +520,7 @@ namespace Game.EditorTests
             grid.Set(BattleGrid.DefenderBackRow, 2, target);
             grid.Set(BattleGrid.DefenderFrontRow, 2, guard);
 
-            int combined = BattleProtectionRules.GetTotalDefenseBonus(
+            int combined = BattleRules.GetTotalDefenseBonus(
                 grid, target, defenderArmy, defenderHexBonus: 2);
 
             Assert.That(combined, Is.EqualTo(3));
@@ -595,8 +595,8 @@ namespace Game.EditorTests
             grid.Set(BattleGrid.AttackerBackRow, 2, hero);
             grid.Set(BattleGrid.AttackerFrontRow, 2, guard);
 
-            Assert.That(BattleProtectionRules.GetGuardedDefenseBonus(grid, hero, battleDefender: null),
-                Is.EqualTo(BattleProtectionRules.GuardedDefenseBonus));
+            Assert.That(BattleRules.GetGuardedDefenseBonus(grid, hero, battleDefender: null),
+                Is.EqualTo(BattleRules.GuardedDefenseBonus));
         }
 
         [Test]

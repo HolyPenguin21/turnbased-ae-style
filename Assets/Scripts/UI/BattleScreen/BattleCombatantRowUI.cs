@@ -98,7 +98,7 @@ namespace Game.UI
                 fateRoot.SetActive(sideHero != null);
             RefreshFate();
 
-            UIListUtility.DestroyAndClear(_tokenSlots);
+            UIUtility.DestroyAndClear(_tokenSlots);
             _lastTokens = null;
             if (successText != null)
                 successText.text = string.Empty;
@@ -210,7 +210,7 @@ namespace Game.UI
                 fateRoot.SetActive(false);
             if (spendButton != null)
                 spendButton.interactable = false;
-            UIListUtility.DestroyAndClear(_tokenSlots);
+            UIUtility.DestroyAndClear(_tokenSlots);
             _lastTokens = null;
             if (successText != null)
                 successText.text = string.Empty;
@@ -226,7 +226,7 @@ namespace Game.UI
         {
             ClearFatePreview();
             count = Mathf.Max(0, count);
-            UIListUtility.DestroyAndClear(_tokenSlots);
+            UIUtility.DestroyAndClear(_tokenSlots);
             if (tokenContainer != null && tokenSlotPrefab != null)
             {
                 for (int i = 0; i < count; i++)
@@ -333,7 +333,7 @@ namespace Game.UI
         {
             foreach (TokenSlotUI slot in _fatePreviewSlots)
                 if (slot != null) slot.gameObject.SetActive(false);
-            UIListUtility.DestroyAndClear(_fatePreviewSlots);
+            UIUtility.DestroyAndClear(_fatePreviewSlots);
         }
 
         public void SetSuccessModifier(int modifier)
@@ -356,7 +356,7 @@ namespace Game.UI
             var toAnimate = new List<int>();
             if (tokenContainer != null && tokenSlotPrefab != null && _tokenSlots.Count != tokens.Length)
             {
-                UIListUtility.DestroyAndClear(_tokenSlots);
+                UIUtility.DestroyAndClear(_tokenSlots);
                 for (int i = 0; i < tokens.Length; i++)
                 {
                     TokenSlotUI slot = Instantiate(tokenSlotPrefab, tokenContainer);

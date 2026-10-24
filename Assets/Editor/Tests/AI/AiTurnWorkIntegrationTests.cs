@@ -264,7 +264,7 @@ namespace Game.EditorTests
             string iteration = admission.Substring(iterationAt);
 
             // mandatory aviation: no ledger, no SettleStep, no observer boundary
-            InOrder(mandatory, "mandatory aviation", "CaptureStepObservation(", "MandatoryAviationStep.Execute(",
+            InOrder(mandatory, "mandatory aviation", "CaptureStepObservation(", "MandatoryAviation.Execute(",
                 "_frame.ObserveSettled(", "CheckBoundary(", "StepTriggerSequence.Run(", "outcome.SettledStep(",
                 "AviationObligations.RecordSettledStep(");
             foreach (string absent in new[] { "RecordExecution(", "SettleStep(", "WaitAtObserverActionBoundary" })
@@ -281,7 +281,7 @@ namespace Game.EditorTests
             InOrder(iteration, "iteration start", "_frame.Checkpoint()", "ReadmissionCause.DeferredFlush",
                 "_frame.PrepareAdmission()", "MissionPortfolio.Build(", "DeferReturnsBeforeTempo(", "_passParking.Filter(",
                 "BindFunding(", "ResourceAllocator.BeginTurn(", "new ProvisioningSession(", ".Pack()",
-                "MandatoryAviationOrder.Next(", "OperationalWorkSelection.Select(");
+                "MandatoryAviation.Next(", "OperationalWorkSelection.Select(");
 
             // a Phase B round
             InOrder(Code("TempoRound.cs"), "tempo round", "PrepareTempoOwnership(", "CaptureStepObservation(",

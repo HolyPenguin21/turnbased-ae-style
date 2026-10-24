@@ -23,7 +23,7 @@ namespace Game.EditorTests
         public void AStalledObligationLeavesTheFundedMissionsSelectable()
         {
             // FindMandatory* drop a stalled wing, so the loop sees Kind None again.
-            var next = MandatoryAviationOrder.Next(new List<ArmyData>(), new List<ArmyData>());
+            var next = MandatoryAviation.Next(new List<ArmyData>(), new List<ArmyData>());
             Assert.AreEqual(OperationalWorkKind.Mission, OperationalWorkSelection.Select(next.Kind, 1));
         }
 

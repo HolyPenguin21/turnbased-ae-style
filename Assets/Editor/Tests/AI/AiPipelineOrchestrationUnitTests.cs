@@ -16,7 +16,7 @@ namespace Game.EditorTests
         [TestCase(9, 7, false)]
         public void RebaseIsResumedBeforeRecoveryUnlessRecoveryHasTheLowerId(
             int? rebaseId, int? recoveryId, bool expectedRebaseFirst) =>
-            Assert.AreEqual(expectedRebaseFirst, MandatoryAviationOrder.RebaseFirst(rebaseId, recoveryId));
+            Assert.AreEqual(expectedRebaseFirst, MandatoryAviation.RebaseFirst(rebaseId, recoveryId));
 
         [Test]
         public void NoPendingReasonsDirtyNothing()

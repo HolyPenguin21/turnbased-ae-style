@@ -75,7 +75,7 @@ namespace Game.UI
             });
             if (editDecksButton != null)
             {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(editDecksButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(editDecksButton);
                 editDecksButton.onClick.AddListener(() =>
                 {
                     var menu = UnityEngine.Object.FindAnyObjectByType<MainMenuController>();
@@ -149,7 +149,7 @@ namespace Game.UI
 
             if (removeButton != null)
             {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(removeButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(removeButton);
                 removeButton.onClick.AddListener(() => onRemoveRequested?.Invoke(this));
             }
         }

@@ -160,7 +160,7 @@ namespace Game.Ai.V2
                 if (!map.CanEnter(h, army))
                     continue;
                 // The one Recon step rule, for the scout as it is now (a flee never enters stealth).
-                if (ScoutExecutionSafety.StepBlocked(player, army, h))
+                if (ScoutRiskModel.StepBlocked(player, army, h))
                     continue;
 
                 HexCoord? step = SafeStepPathing.FindNextSafeStep(map, army, h);
@@ -357,7 +357,7 @@ namespace Game.Ai.V2
                     continue;
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > army.CurrentMovement
-                    || ScoutExecutionSafety.StepBlocked(player, army, h))
+                    || ScoutRiskModel.StepBlocked(player, army, h))
                     continue;
 
                 float risk = ScoutRiskModel.DetectorRiskLive(player, h);
@@ -365,7 +365,7 @@ namespace Game.Ai.V2
                     continue;
                 // EvadeDetector does not own capture: the same default noncapturing safe-route
                 // rule must witness the direct adjacent step before it becomes a reaction.
-                // Otherwise VantageBlockedNow can admit an undefended visible foreign building
+                // Otherwise ScoutRiskModel.StepBlocked can admit an undefended visible foreign building
                 // for a non-required-stealth mission, only for execution to reject the move.
                 if (SafeStepPathing.FindNextSafeStep(map, army, h) == null)
                     continue;

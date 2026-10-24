@@ -119,7 +119,7 @@ namespace Game.Setup
             if (confirmButton != null)
             {
                 confirmButton.interactable = false;
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(confirmButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(confirmButton);
                 confirmButton.onClick.AddListener(OnConfirmClicked);
             }
 

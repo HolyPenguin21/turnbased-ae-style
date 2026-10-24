@@ -85,8 +85,8 @@ namespace Game.EditorTests
         {
             Assert.AreEqual(2, StepTriggerSequence.StandardPairs);
             Assert.AreEqual(1, StepTriggerSequence.RebasePairs);
-            Assert.AreEqual(1, MandatoryAviationOrder.TriggerPairs(MandatoryAviationKind.Rebase));
-            Assert.AreEqual(2, MandatoryAviationOrder.TriggerPairs(MandatoryAviationKind.Recovery));
+            Assert.AreEqual(1, MandatoryAviation.TriggerPairs(MandatoryAviationKind.Rebase));
+            Assert.AreEqual(2, MandatoryAviation.TriggerPairs(MandatoryAviationKind.Recovery));
             Assert.AreEqual(2, StepTriggerSequence.StandardPairs, "mission step and management round");
         }
 

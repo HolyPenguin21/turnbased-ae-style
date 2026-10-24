@@ -167,7 +167,7 @@ namespace Game.UI
             if (repairButton != null)
             {
                 repairButton.gameObject.SetActive(false);
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(repairButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(repairButton);
                 if (unit != null)
                     repairButton.onClick.AddListener(() => _modal.RepairUnit(unit));
             }
@@ -177,7 +177,7 @@ namespace Game.UI
             if (stealthButton != null)
             {
                 stealthButton.gameObject.SetActive(false);
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(stealthButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(stealthButton);
                 if (unit != null)
                     stealthButton.onClick.AddListener(() =>
                     {
@@ -594,7 +594,7 @@ namespace Game.UI
             // the card would visually follow the pointer anyway despite never having "begun".
             if (!IsDragging)
                 return;
-            UIDragUtility.ApplyScreenDelta(rectTransform, eventData, _canvas);
+            UIUtility.ApplyScreenDelta(rectTransform, eventData, _canvas);
             _modal?.PreviewReorder(this, eventData.position);
         }
 

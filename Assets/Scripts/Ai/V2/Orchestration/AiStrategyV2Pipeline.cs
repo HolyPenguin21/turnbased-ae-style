@@ -316,7 +316,7 @@ namespace Game.Ai.V2
                     WorldAnalysis.StepObservationStamp beforeRecall =
                         WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     bool recallChanged = false;
-                    yield return MandatoryAviationStep.Execute(MandatoryAviationKind.Recovery, wing,
+                    yield return MandatoryAviation.Execute(MandatoryAviationKind.Recovery, wing,
                         player, root, ctx, frame.Snapshot, v => recallChanged = v);
                     frame.ObserveSettled(beforeRecall, null);
                     AviationObligations.RecordSettledStep(player, ctx, wing.Id, recallChanged);

@@ -157,7 +157,7 @@ namespace Game.Setup
             RefreshButtons();
         }
 
-        private void ClearRows() => UIListUtility.DestroyAndClear(_rows);
+        private void ClearRows() => UIUtility.DestroyAndClear(_rows);
 
         private void RefreshButtons()
         {

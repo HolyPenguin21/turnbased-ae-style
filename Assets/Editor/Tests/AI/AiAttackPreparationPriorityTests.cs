@@ -23,7 +23,7 @@ namespace Game.EditorTests
         {
             MissionProposal prep = Prep(15f), fresh = Raid(27f), weak = Raid(10f), started = Raid(30f, durable: true);
             var scout = new MissionProposal { Kind = MissionKind.Scout, EffectiveValue = 40f };
-            int n = AttackPreparationPriority.Apply(new List<MissionProposal> { prep, fresh, weak, started, scout });
+            int n = AttackPreparationPolicy.ApplyPriority(new List<MissionProposal> { prep, fresh, weak, started, scout });
 
             Assert.That(n, Is.EqualTo(1));
             Assert.That(fresh.EffectiveValue, Is.LessThan(prep.EffectiveValue));
@@ -37,7 +37,7 @@ namespace Game.EditorTests
         public void ALivePreparationStep_DoesNotSinkTheRaids()
         {
             MissionProposal liveStep = Prep(0f, durable: true), fresh = Raid(27f);
-            Assert.That(AttackPreparationPriority.Apply(new List<MissionProposal> { liveStep, fresh }), Is.Zero);
+            Assert.That(AttackPreparationPolicy.ApplyPriority(new List<MissionProposal> { liveStep, fresh }), Is.Zero);
             Assert.That(fresh.EffectiveValue, Is.EqualTo(27f));
         }
     }

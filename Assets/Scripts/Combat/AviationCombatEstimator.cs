@@ -16,7 +16,7 @@ namespace Game.Combat
     // Shape — the real air strike, not a ground battle: each aircraft attacks once per strike turn,
     // one uniformly-random still-alive defender, with no return fire. Mechanics — the real one:
     // every attack is ONE armed exchange of the shared BattleSimulationKernel.ResolveExchange
-    // (the same tokens, Fate duel and BattleResolutionRules.ResolveGroundAttack the real
+    // (the same tokens, Fate duel and BattleRules.ResolveGroundAttack the real
     // BattleEngine.ResolveStandaloneAttack applies), the aircraft's attack pool against the
     // target's Defense — a hero's FateMax, already folded into DefenderProfile.Defense — with the
     // target hero's own current Fate, or its army commander's current Fate for a body target.

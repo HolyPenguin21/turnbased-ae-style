@@ -171,7 +171,7 @@ namespace Game.Ai.V2
                     foreach (HexCoord h in HexGridMath.HexesInRange(a, radius))
                     {
                         if (!counted.Add(h) || !map.CanEnter(h)
-                            || ScoutExecutionSafety.StepBlocked(player, h, moverFullyHidden: false))
+                            || ScoutRiskModel.StepBlocked(player, h, moverFullyHidden: false))
                             continue;
                         inRing++;
                         if (!VisionSystem.IsVisited(player, h) && !AiMapMemory.IsScoutDangerous(player, h))
@@ -200,7 +200,7 @@ namespace Game.Ai.V2
             // The one Recon step rule — the same arrival rule the execution gate applies, so a
             // step chosen here is never one the gate refuses (danger zone, a known army a visible
             // scout would fight, a known undefended structure it would take over).
-            if (ScoutExecutionSafety.StepBlocked(player, h, hidden))
+            if (ScoutRiskModel.StepBlocked(player, h, hidden))
                 return false;
 
             float detectorRisk = ScoutRiskModel.DetectorRiskLive(player, h);
@@ -313,7 +313,7 @@ namespace Game.Ai.V2
                 if (seen.Contains(h) || !map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain))
                     continue;
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
-                if (cost > movementLeft || ScoutExecutionSafety.StepBlocked(player, h, hidden))
+                if (cost > movementLeft || ScoutRiskModel.StepBlocked(player, h, hidden))
                     continue;
                 float detectorRisk = ScoutRiskModel.DetectorRiskLive(player, h);
                 if (hidden && detectorRisk >= 1f)

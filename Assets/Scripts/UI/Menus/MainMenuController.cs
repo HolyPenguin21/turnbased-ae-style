@@ -119,12 +119,12 @@ namespace Game.UI
             for (int i = 0; i < campaignFactionButtons.Length && i < factions.Length; i++)
             {
                 var chosen = factions[i];
-                UIButtonEventUtility.ResetRuntimeListeners(campaignFactionButtons[i]);
+                UIUtility.ResetRuntimeListeners(campaignFactionButtons[i]);
                 campaignFactionButtons[i].onClick.AddListener(() => ConfirmCampaign(chosen));
             }
             foreach (var cancel in new[] { campaignCancelButton, campaignOverwriteCancelButton })
-            { if (cancel == null) continue; UIButtonEventUtility.ResetRuntimeListeners(cancel); cancel.onClick.AddListener(CloseCampaignSetup); }
-            UIButtonEventUtility.ResetRuntimeListeners(campaignOverwriteReplaceButton);
+            { if (cancel == null) continue; UIUtility.ResetRuntimeListeners(cancel); cancel.onClick.AddListener(CloseCampaignSetup); }
+            UIUtility.ResetRuntimeListeners(campaignOverwriteReplaceButton);
             campaignOverwriteReplaceButton.onClick.AddListener(() => StartCampaign(campaignPendingFaction));
         }
         private void ConfirmCampaign(Game.Players.Faction human)

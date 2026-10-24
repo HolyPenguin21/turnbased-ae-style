@@ -102,7 +102,7 @@ namespace Game.UI
             if (rollButton != null)
             {
                 rollButton.gameObject.SetActive(true);
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(rollButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(rollButton);
                 rollButton.onClick.AddListener(RollAll);
             }
 
@@ -191,7 +191,7 @@ namespace Game.UI
             if (continueButton != null)
             {
                 continueButton.gameObject.SetActive(true);
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(continueButton);
+                Game.UI.UIUtility.ResetRuntimeListeners(continueButton);
                 continueButton.onClick.AddListener(() => Finish(resolution.Order));
             }
 
@@ -215,7 +215,7 @@ namespace Game.UI
 
         private void ClearRows()
         {
-            UIListUtility.DestroyAndClear(_rows);
+            UIUtility.DestroyAndClear(_rows);
             _rowByPlayer.Clear();
         }
     }

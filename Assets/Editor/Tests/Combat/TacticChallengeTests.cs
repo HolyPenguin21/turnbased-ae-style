@@ -147,7 +147,7 @@ namespace Game.EditorTests
             Assert.That(s.ResolveCaptureKillOutcome(), Is.EqualTo(CaptureKillOutcome.Killed));
             s.TryNextFateTurn(out _); s.TryPlayTactic(true, card);
             var roll = s.ToRollResult();
-            Assert.That(BattleResolutionRules.ResolveCaptureKill(roll.AttackerTokens, roll.DefenderTokens,
+            Assert.That(BattleRules.ResolveCaptureKill(roll.AttackerTokens, roll.DefenderTokens,
                 roll.AttackerModifier, roll.DefenderModifier), Is.EqualTo(CaptureKillOutcome.Escaped));
         }
 

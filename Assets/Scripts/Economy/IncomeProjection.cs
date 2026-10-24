@@ -87,8 +87,7 @@ namespace Game.Economy
             {
                 if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry entry))
                     continue;
-                ResourceYields hexYield = HexResourceCalculator.GetEffectiveYield(
-                    entry, HexResourceBonusRegistry.GetBonus(hex));
+                ResourceYields hexYield = HexResourceBonusRegistry.EffectiveYield(entry, hex);
                 if (!hexYield.HasAnyYield)
                     continue;
 

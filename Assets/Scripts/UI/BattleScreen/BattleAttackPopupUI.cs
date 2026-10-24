@@ -429,7 +429,7 @@ namespace Game.UI
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
             UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
             int hunterUnits = hunterArmy?.Members.FindAll(m => !m.IsHero).Count ?? 0;
-            _hunterTokenPool = BattleResolutionRules.CaptureKillHunterPool(hunterUnits);
+            _hunterTokenPool = BattleRules.CaptureKillHunterPool(hunterUnits);
             _onCaptureKillResolved = onResolved;
 
             // The manual: "the target hero receives a tokens pool equal to his fate" — his FULL
@@ -604,7 +604,7 @@ namespace Game.UI
             if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || _rpHero == null || _rpHero.Fate <= 0)
                 return;
 
-            bool hasMiss = HasMiss(_rpTokens);
+            bool hasMiss = ChallengeResolver.HasMiss(_rpTokens);
             if (!hasMiss && !CanSpendResearchProductionFate())
                 return; // nothing Fate can do
 
@@ -1191,16 +1191,6 @@ namespace Game.UI
             _defenderFateRemaining = _challengeSession.DefenderFateRemaining;
         }
 
-        private static bool HasMiss(bool[] tokens)
-        {
-            if (tokens == null)
-                return false;
-            foreach (bool hit in tokens)
-                if (!hit)
-                    return true;
-            return false;
-        }
-
         // Rerolls the first still-missed die found (no per-die selection UI — matches the
         // reference's single Spend button, not a click-a-die-to-target interaction).
         // rerolledIndex (out): which slot actually got rerolled, so the caller can force THAT
@@ -1233,7 +1223,7 @@ namespace Game.UI
             if (acceptButton != null)
                 acceptButton.interactable = false;
 
-            BattleResolutionRules.GroundAttackOutcome outcome = _challengeSession != null
+            BattleRules.GroundAttackOutcome outcome = _challengeSession != null
                 ? _challengeSession.ResolveGroundOutcome()
                 : default;
             bool wasHit = outcome.WasHit;
@@ -1252,7 +1242,7 @@ namespace Game.UI
                 appliedAbilities.Add(UnitAbilities.Bodyguard);
             }
 
-            BattleResolutionRules.AppendHitEffectAbilities(appliedAbilities, _attacker, victim,
+            BattleRules.AppendHitEffectAbilities(appliedAbilities, _attacker, victim,
                 damage, _groundHitEffects?.Invoke(victim, damage));
 
             // Presentation only: BattleEngine applies HP/Berserk/removal after the player

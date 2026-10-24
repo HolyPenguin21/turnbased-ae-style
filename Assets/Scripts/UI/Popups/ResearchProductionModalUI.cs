@@ -272,7 +272,7 @@ namespace Game.UI
             RefreshPageButtons();
         }
 
-        private void ClearGrid() => UIListUtility.DestroyAndClear(_cardViews);
+        private void ClearGrid() => UIUtility.DestroyAndClear(_cardViews);
 
         private void RefreshPageButtons()
         {

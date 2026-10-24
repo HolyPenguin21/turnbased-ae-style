@@ -168,7 +168,7 @@ namespace Game.Combat
             return true;
         }
 
-        private static bool HasAbility(IEnumerable<string> abilities, string wanted)
+        internal static bool HasAbility(IEnumerable<string> abilities, string wanted)
         {
             if (abilities == null)
                 return false;

@@ -165,7 +165,7 @@ namespace Game.EditorTests
             Assert.That(reaction.Action, Is.EqualTo(ReconReactionAction.Flee));
             HexCoord? step = SafeStepPathing.FindNextSafeStep(map, scout, reaction.TargetHex.Value);
             Assert.That(step, Is.EqualTo(detour));
-            Assert.That(ScoutExecutionSafety.StepBlocked(player, scout, step.Value), Is.False);
+            Assert.That(ScoutRiskModel.StepBlocked(player, scout, step.Value), Is.False);
         }
 
         [Test]

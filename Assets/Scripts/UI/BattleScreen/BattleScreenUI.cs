@@ -490,7 +490,7 @@ namespace Game.UI
                     passButton.gameObject.SetActive(false);
                 if (roundText != null)
                     roundText.text = string.Empty;
-                UIListUtility.DestroyAndClear(_queueIcons);
+                UIUtility.DestroyAndClear(_queueIcons);
                 // Same panel the round loop fills later: the local army's first slot.
                 ShowUnitDetail(_localArmy != null && _localArmy.Members.Count > 0 ? _localArmy.Members[0] : null);
                 if (IsAutomatedSide(_attacker) || IsAutomatedSide(_defender))
@@ -713,7 +713,7 @@ namespace Game.UI
             // Destroy is deferred. Retire old entries before a synchronous layout rebuild.
             foreach (BattleTurnOrderIconUI oldIcon in _queueIcons)
                 if (oldIcon != null) oldIcon.gameObject.SetActive(false);
-            UIListUtility.DestroyAndClear(_queueIcons);
+            UIUtility.DestroyAndClear(_queueIcons);
             if (turnQueueContainer != null && turnQueueIconPrefab != null && _turnOrder != null)
                 for (int i = 0; i < _turnOrder.Count; i++)
                 {
@@ -866,8 +866,8 @@ namespace Game.UI
             roundStartPopup?.Hide();
             attackPopup?.Hide();
             outcomePopup?.Hide();
-            UIListUtility.DestroyAndClear(_cells);
-            UIListUtility.DestroyAndClear(_queueIcons);
+            UIUtility.DestroyAndClear(_cells);
+            UIUtility.DestroyAndClear(_queueIcons);
             _turnOrder = null;
             _retreatingArmy = null;
             if (_battleEngine != null)
