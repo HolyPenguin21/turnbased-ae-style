@@ -62,13 +62,15 @@ namespace Game.Combat
         public readonly int Damage;
         public readonly bool Died;
         public readonly string Skill;
+        public readonly bool BerserkTriggered;
 
-        public BattleSecondaryHit(UnitData victim, int damage, bool died, string skill)
+        public BattleSecondaryHit(UnitData victim, int damage, bool died, string skill, bool berserkTriggered = false)
         {
             Victim = victim;
             Damage = damage;
             Died = died;
             Skill = skill;
+            BerserkTriggered = berserkTriggered;
         }
     }
 
@@ -94,6 +96,8 @@ namespace Game.Combat
         public int Damage;
         public bool DefenderDied;
         public bool Shocked;
+        public bool BerserkTriggered;
+        public bool ShockTriggered;
         // The unit the hit actually landed on — the original target, or the Bodyguard that
         // intercepted it (then also InterceptedBy). DefenderDied/Shocked describe this unit.
         public UnitData Victim;
@@ -603,6 +607,7 @@ namespace Game.Combat
 
             if (outcome.Damage > 0)
             {
+                application.BerserkTriggered = defender.HasAbility(UnitAbilities.Berserk);
                 defender.HitPointsCurrent = Mathf.Max(0, defender.HitPointsCurrent - outcome.Damage);
                 ChallengeResult.ApplyBerserkOnHit(defender, magnitudes);
             }
@@ -637,6 +642,11 @@ namespace Game.Combat
             BattleAttackApplication application = ApplyGroundAttack(attacker, victim, damage);
             application.Outcome = outcome;
             application.InterceptedBy = guard;
+            application.ShockTriggered |= !isCounterattack && !application.DefenderDied
+                && _state.OwningArmy(victim) != _state.RetreatingArmy
+                && BattleSimulationKernel.SuppressesTurn(application.Damage, attacker.Abilities)
+                && BattleProtectionRules.CanCounterattack(_state.Grid, victim, attacker,
+                    victim.HitPointsCurrent, 0, _reactions);
             if (!isCounterattack && !application.DefenderDied
                 && _state.OwningArmy(victim) != _state.RetreatingArmy
                 && BattleProtectionRules.CanCounterattack(_state.Grid, victim, attacker,
@@ -666,6 +676,7 @@ namespace Game.Combat
 
             if (application.Damage > 0)
             {
+                application.BerserkTriggered = defender.HasAbility(UnitAbilities.Berserk);
                 defender.HitPointsCurrent = Mathf.Max(0, defender.HitPointsCurrent - application.Damage);
                 ChallengeResult.ApplyBerserkOnHit(defender, _magnitudes);
             }
@@ -680,6 +691,7 @@ namespace Game.Combat
             else if (BattleSimulationKernel.SuppressesTurn(application.Damage, attacker.Abilities))
             {
                 application.Shocked = SkipPendingTurn(defender);
+                application.ShockTriggered = application.Shocked;
             }
 
             return application;
@@ -1217,6 +1229,7 @@ namespace Game.Combat
             int damage = BattleSimulationKernel.SecondaryDamage(
                 primaryDamage, victim.Abilities, _magnitudes);
 
+            bool berserkTriggered = damage > 0 && victim.HasAbility(UnitAbilities.Berserk);
             if (damage > 0)
             {
                 victim.HitPointsCurrent = Mathf.Max(0, victim.HitPointsCurrent - damage);
@@ -1224,7 +1237,7 @@ namespace Game.Combat
             }
 
             bool died = victim.HitPointsCurrent <= 0;
-            application.SecondaryHits.Add(new BattleSecondaryHit(victim, damage, died, skill));
+            application.SecondaryHits.Add(new BattleSecondaryHit(victim, damage, died, skill, berserkTriggered));
             if (died)
                 application.Removals.Add(RemoveUnit(victim, victim.Owner != attacker.Owner));
         }

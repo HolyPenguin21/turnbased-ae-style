@@ -12,6 +12,8 @@ namespace Game.UI
         public const float Duration = 2f;
         public const string HealSpritePath = "UI/Effects/HealCross";
         public const string DrillSpritePath = "UI/Effects/DrillFist";
+        public const string BodyguardSpritePath = "UI/Effects/BodyguardShield";
+        public const string ShockSpritePath = "UI/Effects/ShockImpulse";
         private const float VisibleAlpha = 0.8f;
         private const float InitialScale = 0.7f;
         private const float RiseFraction = 0.1f;
@@ -35,7 +37,11 @@ namespace Game.UI
             if (!_sprites.TryGetValue(spritePath, out Sprite sprite) || sprite == null)
                 _sprites[spritePath] = sprite = GameAssetCatalog.Load<Sprite>(spritePath);
             if (sprite == null) return;
-            var go = new GameObject(spritePath == HealSpritePath ? "Heal" : "Drill",
+            string effectName = spritePath == HealSpritePath ? "Heal" : spritePath == DrillSpritePath ? "Drill"
+                : spritePath.Substring(spritePath.LastIndexOf('/') + 1);
+            var previous = card.Find(effectName);
+            if (previous != null) { previous.gameObject.SetActive(false); Destroy(previous.gameObject); }
+            var go = new GameObject(effectName,
                 typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(BattleHealEffect));
             var rect = (RectTransform)go.transform;
             rect.SetParent(card, false);

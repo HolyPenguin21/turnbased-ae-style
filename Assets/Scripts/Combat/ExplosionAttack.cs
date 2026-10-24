@@ -248,7 +248,10 @@ namespace Game.Combat
                     target.Army.RefreshTransport();
                 }
                 else if (BattleSimulationKernel.SuppressesTurn(application.Damage, Actor.Abilities))
-                    battle?.SkipPendingTurn(target.Unit);
+                {
+                    application.Shocked = battle?.SkipPendingTurn(target.Unit) ?? false;
+                    application.ShockTriggered = application.Shocked;
+                }
             }
             else if (target.Facility != null)
             {

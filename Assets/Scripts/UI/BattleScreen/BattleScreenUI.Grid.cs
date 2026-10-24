@@ -111,6 +111,7 @@ namespace Game.UI
 
         private void RefreshGrid()
         {
+            if (_isPresentingAttack) return;
             foreach (BattleGridCellUI oldCell in _cells)
                 if (oldCell != null) oldCell.gameObject.SetActive(false);
             UIListUtility.DestroyAndClear(_cells);
@@ -150,6 +151,7 @@ namespace Game.UI
                     if (unit != null && _drillEffectStarts.TryGetValue(unit, out float drillStarted)
                         && Time.unscaledTime - drillStarted < BattleHealEffect.Duration)
                         BattleHealEffect.Show(cell.transform, drillStarted, BattleHealEffect.DrillSpritePath);
+                    if (unit != null) RestoreCombatEffects(cell, unit);
                     _cells.Add(cell);
                 }
         }
@@ -164,7 +166,7 @@ namespace Game.UI
         // click during Fate spending shouldn't start ANOTHER attack with the same still-current
         // unit); roundStartPopup/battleContactPopup are the other two sub-popups that can show
         // while _currentActingUnit is left stale from before them.
-        private bool AnyBattlePopupShowing =>
+        private bool AnyBattlePopupShowing => _isPresentingAttack ||
             (attackPopup != null && attackPopup.IsShowing)
             || (outcomePopup != null && outcomePopup.IsShowing)
             || (roundStartPopup != null && roundStartPopup.IsShowing)
