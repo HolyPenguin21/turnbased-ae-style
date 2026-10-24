@@ -151,7 +151,6 @@ namespace Game.UI
                     if (unit != null && _drillEffectStarts.TryGetValue(unit, out float drillStarted)
                         && Time.unscaledTime - drillStarted < BattleHealEffect.Duration)
                         BattleHealEffect.Show(cell.transform, drillStarted, BattleHealEffect.DrillSpritePath);
-                    if (unit != null) RestoreCombatEffects(cell, unit);
                     _cells.Add(cell);
                 }
         }

@@ -541,9 +541,8 @@ namespace Game.Combat
             internal readonly List<(bool isAttacker, int index)> Order;
             internal readonly HashSet<(bool isAttacker, int index)> Acted = new HashSet<(bool, int)>();
             internal readonly HashSet<(bool isAttacker, int index)> Suppressed = new HashSet<(bool, int)>();
-            // Per round: Bodyguard / Counterattack reactions spent, Drill bonuses handed out.
+            // Per round: Bodyguard reactions spent, Drill bonuses handed out.
             internal readonly HashSet<(bool isAttacker, int index)> BodyguardsUsed = new HashSet<(bool, int)>();
-            internal readonly HashSet<(bool isAttacker, int index)> CountersUsed = new HashSet<(bool, int)>();
             internal readonly List<(bool isAttacker, int index)> Drilled = new List<(bool, int)>();
             internal readonly List<int> LivingTargets;
             internal readonly List<int> SecondaryTargets;
@@ -567,7 +566,7 @@ namespace Game.Combat
             {
                 _attackers = attackers; _defenders = defenders;
                 Order.Clear(); Acted.Clear(); Suppressed.Clear();
-                BodyguardsUsed.Clear(); CountersUsed.Clear(); Drilled.Clear();
+                BodyguardsUsed.Clear(); Drilled.Clear();
                 LivingTargets.Clear(); SecondaryTargets.Clear();
             }
         }
@@ -781,7 +780,6 @@ namespace Game.Combat
                 for (int i = 0; i < defenders.Count; i++)
                     if (defenders[i].IsHero) ApplyHealing(defenders, i, rng);
                 scratch.BodyguardsUsed.Clear();
-                scratch.CountersUsed.Clear();
                 if (attackersDrill) ApplyRosterDrill(attackers, true, scratch.Drilled, magnitudes);
                 if (defendersDrill) ApplyRosterDrill(defenders, false, scratch.Drilled, magnitudes);
                 order.Clear();
@@ -889,12 +887,10 @@ namespace Game.Combat
                     if (anyCounter && ownList[turn.index].Hp > 0f)
                     {
                         BattleUnit victim = enemyList[targetIndex];
-                        var victimTurn = (!turn.isAttacker, targetIndex);
                         if (BattleSimulationKernel.TriggersCounterattack(victim.Abilities, victim.IsHero,
-                                victim.Hp, actor.Range <= 1, scratch.CountersUsed.Contains(victimTurn),
+                                victim.Hp, actor.Range <= 1,
                                 exchange.Damage, actor.Abilities))
                         {
-                            scratch.CountersUsed.Add(victimTurn);
                             BattleUnit answered = ownList[turn.index];
                             BattleSimExchangeOutcome answer = turn.isAttacker
                                 ? ResolveExchange(victim, answered, ref defenderFate, ref attackerFate, rng, magnitudes)

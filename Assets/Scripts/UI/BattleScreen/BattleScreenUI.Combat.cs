@@ -108,7 +108,7 @@ namespace Game.UI
             finally
             {
                 if (generation == _attackPresentationGeneration)
-                { _isPresentingAttack = false; _explosionAttackRoutine = null; DestroyTrailLayer(); }
+                { _isPresentingAttack = false; _explosionAttackRoutine = null; }
             }
             if (generation != _attackPresentationGeneration) yield break;
             RefreshGrid();
@@ -163,12 +163,20 @@ namespace Game.UI
                 EndTurn();
             }
 
-            StartAttackPresentation(attacker, application, () =>
+            int generation = _attackPresentationGeneration;
+            _isPresentingAttack = true;
+            if (passButton != null) passButton.interactable = false;
+            void FinishResults()
             {
-                if (secondary.Count > 0)
-                    ShowSecondaryResultsThen(attacker, secondary, () => { RefreshGrid(); Continue(); });
-                else Continue();
-            });
+                if (generation != _attackPresentationGeneration) return;
+                _isPresentingAttack = false;
+                StartAttackPresentation(attacker, application, Continue);
+            }
+            // Acknowledge every result first, then start effects and advance synchronously.
+            // Keep the original cells until their effect rectangles have been captured.
+            if (secondary.Count > 0)
+                ShowSecondaryResultsThen(attacker, secondary, FinishResults);
+            else FinishResults();
         }
 
         private void ShowUnitRemovalThought(BattleUnitRemoval removal)
@@ -184,8 +192,10 @@ namespace Game.UI
         private void ShowSecondaryResultsThen(UnitData attacker, List<BattleSecondaryHit> hits, Action onDone)
         {
             int index = 0;
+            int generation = _attackPresentationGeneration;
             void ShowNext()
             {
+                if (generation != _attackPresentationGeneration) return;
                 if (attackPopup == null || index >= hits.Count)
                 {
                     onDone();

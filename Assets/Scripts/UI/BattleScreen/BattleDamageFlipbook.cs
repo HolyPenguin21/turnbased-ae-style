@@ -110,7 +110,7 @@ namespace Game.UI
             {
                 float distance = delta.magnitude;
                 Vector2 axis = distance > .1f ? delta / distance : Vector2.right;
-                float size = Mathf.Max(width, distance / .6f);
+                float size = Mathf.Max(width, distance / .6f) * .85f;
                 Vector2 up = new Vector2(-axis.y, axis.x);
                 Vector2 origin = source - axis * (size * .25f) - up * (size * .44f);
                 // Only the first neighbour owns the original blast. Further meshes carry its fan.

@@ -110,7 +110,7 @@ namespace Game.Cards
         // counterattack is never intercepted. See BattleRules.FindBodyguard.
         public const string Bodyguard = "Bodyguard";
 
-        // Once per round, a carrier that survives a primary Ground Combat attack made from within
+        // Whenever a carrier survives a primary Ground Combat attack made from within
         // 1 cell (square range, diagonals included) immediately attacks the attacker back — an
         // ordinary Challenge with tokens, Fate and every attacker-side skill, except that it is
         // never countered or intercepted itself. A ShockAttack hit, a hero carrier or a retreating
