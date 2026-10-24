@@ -322,7 +322,7 @@ namespace Game.EditorTests
                 PreferredMoverArmyId = 31,
             };
             sweep.IntentKey = MissionIntentKey.For(sweep);
-            System.Reflection.MethodInfo method = typeof(StrategicPhaseA).GetMethod(
+            System.Reflection.MethodInfo method = typeof(PhaseACandidateRound).GetMethod(
                 "CommittedNonCardApDemand",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
