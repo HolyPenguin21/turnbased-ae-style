@@ -718,7 +718,7 @@ namespace Game.Ai.V2
         // delivery (Capability.EconomicInfrastructure/EconomicExpansionBase — see the direct-army
         // path in ProvisioningManager.ProvisionEconomy). Either way, the transaction-local capability
         // lease ends at this handoff; Continuity immediately becomes the sole owner of the actor and
-        // exact build objective — StrategicPhaseA's protectedActiveEconomyBuild then protects the
+        // exact build objective — Phase A's PhaseAEconomyHolds.ProtectActiveBuilds then protects the
         // full H/E/M/T vector every following turn regardless of remaining travel distance, so
         // InfrastructureFulfillment's own one-turn horizon only ever has to cover the turn BEFORE
         // this intent exists.

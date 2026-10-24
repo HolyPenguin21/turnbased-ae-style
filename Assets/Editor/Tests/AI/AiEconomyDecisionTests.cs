@@ -3415,7 +3415,7 @@ namespace Game.EditorTests
 
         // AI economy commitment/recovery audit (2026-09-15) — superseded by the durable-intent
         // handoff. ShouldReserveDeferredEconomyResources now runs ONLY on the turn before a durable
-        // Economy intent exists (StrategicPhaseA.protectedActiveEconomyBuild short-circuits it to
+        // Economy intent exists (PhaseAEconomyHolds.HoldPreIntentBuild short-circuits it to
         // empty otherwise), so it applies a one-turn commitment horizon instead of protecting an
         // arbitrarily distant route. The "protect a genuinely multi-turn delivery across turns"
         // guarantee this test used to encode now lives in ProvisioningManager.ProvisionEconomy's
@@ -3481,8 +3481,8 @@ namespace Game.EditorTests
         // AI economy commitment/recovery audit (2026-09-15) — the other half of the split: once
         // Provisioning commits an ALREADY-EXISTING builder to a delivery it cannot finish this turn,
         // BeginEconomyDelivery must accept the direct (non-Hero) capability and create the same kind
-        // of durable intent the Hero-materialization path creates, so StrategicPhaseA's
-        // protectedActiveEconomyBuild takes over full protection from the next turn on.
+        // of durable intent the Hero-materialization path creates, so Phase A's
+        // PhaseAEconomyHolds.ProtectActiveBuilds takes over full protection from the next turn on.
         [Test]
         public void EconomyDirectAssignment_BecomesDurableIntentWhenNotCompletingThisTurn()
         {
