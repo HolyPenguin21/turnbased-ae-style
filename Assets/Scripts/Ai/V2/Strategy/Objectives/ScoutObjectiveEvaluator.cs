@@ -91,7 +91,7 @@ namespace Game.Ai.V2
         }
 
         // An Attack observation need (Recon audit B2) is looked at from a vantage, so only the hard
-        // gates apply: a real map hex outside every scout-danger zone. The visible-arrival block
+        // gates apply: a real map hex a ground scout can enter. The visible-arrival block
         // (the site's own defenders / takeover) is exactly what the vantage avoids.
         public static bool IsAttackObservationFocusRunnable(WorldSnapshot snap, HexCoord focus)
         {

@@ -146,22 +146,22 @@ namespace Game.EditorTests
             var owner = new PlayerSetupData();
             var pairs = Enumerable.Range(0, 40)
                 .Select(_ => (_all[rng.Next(_all.Count)], _all[rng.Next(_all.Count)])).ToList();
-            var zones = new List<(HexCoord Center, int Until)>();
+            // Known enemy armies block a Standard route and expire after enemySightingMemoryTurns.
+            var enemy = new PlayerSetupData();
+            var sightings = new List<(HexCoord Hex, int Seen)>();
+            int nextArmyId = 1;
             for (int turn = 1; turn <= 8; turn++)
             {
                 AiMapMemory.OnTurnStarted(owner, turn);
-                zones.RemoveAll(z => turn > z.Until);
+                sightings.RemoveAll(x => turn - x.Seen > Game.Ai.AiConfig.enemySightingMemoryTurns);
                 for (int k = 0; k < 2; k++)
                 {
-                    HexCoord center = _all[rng.Next(_all.Count)];
-                    int until = turn + rng.Next(3);
-                    AiMapMemory.MarkScoutDanger(owner, center, radius: 0, avoidUntilTurn: until);
-                    // a repeated center only ever extends its zone (MarkScoutDanger)
-                    int previous = zones.Where(z => z.Center.Equals(center)).Select(z => z.Until).DefaultIfEmpty(0).Max();
-                    zones.RemoveAll(z => z.Center.Equals(center));
-                    zones.Add((center, Mathf.Max(until, previous)));
+                    HexCoord hex = _all[rng.Next(_all.Count)];
+                    AiMapMemory.RememberForTest(owner, new AiMapMemory.KnownEnemySighting(hex, enemy, "enemy",
+                        1, 1f, 1f, null, seenTurn: turn, armyId: nextArmyId++));
+                    sightings.Add((hex, turn));
                 }
-                var blocked = new HashSet<HexCoord>(zones.Select(z => z.Center));
+                var blocked = new HashSet<HexCoord>(sightings.Select(x => x.Hex));
                 foreach ((HexCoord from, HexCoord to) in pairs)
                 {
                     HexPath fresh = HexPathfinder.FindPath(_map, from, to,

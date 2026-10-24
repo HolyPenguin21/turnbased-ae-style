@@ -336,7 +336,7 @@ namespace Game.Ai
             //
             // Spec item 17 (2026-08-28 P1): NO LONGER unconditional. Stealth costs its 1 AP only
             // when ScoutRiskModel.MoveWarrantsStealth sees a threat on this step (the stealth-threat
-            // rule the Recon executor prices too) or a cooling scout-danger zone ahead — a scout
+            // rule the Recon executor prices too) — a scout
             // crossing known-safe ground stays visible and keeps the AP. Entry is 1 AP per unit;
             // voluntary exit is free. The Recon executor decides its own stealth and opts out.
             string exitReason = null;

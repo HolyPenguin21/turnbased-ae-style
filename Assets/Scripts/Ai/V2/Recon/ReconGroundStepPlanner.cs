@@ -174,7 +174,7 @@ namespace Game.Ai.V2
                             || ScoutRiskModel.StepBlocked(player, h, moverFullyHidden: false))
                             continue;
                         inRing++;
-                        if (!VisionSystem.IsVisited(player, h) && !AiMapMemory.IsScoutDangerous(player, h))
+                        if (!VisionSystem.IsVisited(player, h))
                             unexplored++;
                     }
                 float localGap = inRing > 0 ? Mathf.Clamp01((float)unexplored / inRing) : 0f;
@@ -432,9 +432,7 @@ namespace Game.Ai.V2
         {
             int count = 0;
             foreach (HexCoord n in HexGridMath.Neighbors(center))
-                if (map.CanEnter(n)
-                    && !VisionSystem.IsVisited(player, n)
-                    && !AiMapMemory.IsScoutDangerous(player, n))
+                if (map.CanEnter(n) && !VisionSystem.IsVisited(player, n))
                     count++;
             return count;
         }

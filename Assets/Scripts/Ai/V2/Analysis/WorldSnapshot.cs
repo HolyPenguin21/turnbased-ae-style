@@ -756,9 +756,9 @@ namespace Game.Ai.V2
         public int VisibleHexes;
         public float UnknownFrac;          // 1 - visited/total — every dark hex, reachable or not
 
-        // Real frontier (build-order step 4). A frontier hex is unvisited, on-map, "safe" (not in
-        // a scout-danger zone, not within AiConfigV2.frontierEnemyAvoidRadius of a known
-        // non-neutral sighting, no known neutral standing on it) and adjacent to REACHABLE visited
+        // Real frontier (build-order step 4). A frontier hex is unvisited, on-map, "safe" (not
+        // within AiConfigV2.frontierEnemyAvoidRadius of a known non-neutral sighting, no known
+        // neutral standing on it) and adjacent to REACHABLE visited
         // ground — visited+on-map+safe hexes flood-connected to at least one own base. Each entry
         // carries the two facts the Recon planner would otherwise re-scan the map for.
         public IReadOnlyList<FrontierHexSnapshot> Frontier;
@@ -791,7 +791,7 @@ namespace Game.Ai.V2
         }
 
         // The subset of AllHexes a ground scout must never be routed ONTO regardless of stealth:
-        // an active scout-danger cooldown (off-map is implicit). Enemy PROXIMITY is deliberately
+        // terrain no ground army can enter (off-map is implicit). Enemy PROXIMITY is deliberately
         // NOT here (it only annotates). Spec §19 — arrival outcomes are NO LONGER folded in here:
         // that block is actor-state-aware (a fully-hidden scout can pass) and lives in
         // VisibleArrivalBlockedHexes below. Use IsBlockedForScout to combine the two correctly.
@@ -830,8 +830,8 @@ namespace Game.Ai.V2
 
     // One frontier hex plus what the Recon planner needs to value it, computed once in the scan.
     // A frontier hex is NEVER dropped for enemy proximity — that is an annotation here, not a
-    // filter (only HardBlocked reasons — a neutral on the hex, an active scout-danger zone, off
-    // the map — keep a hex out of the frontier).
+    // filter (only HardBlocked reasons — a neutral on the hex, impassable terrain, off the map —
+    // keep a hex out of the frontier).
     public struct FrontierHexSnapshot
     {
         public HexCoord Hex;

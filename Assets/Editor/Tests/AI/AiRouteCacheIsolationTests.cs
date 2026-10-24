@@ -26,7 +26,7 @@ namespace Game.EditorTests
             long a0 = AiMapMemory.RouteMemoryVersionFor(a);
             long b0 = AiMapMemory.RouteMemoryVersionFor(b);
 
-            AiMapMemory.MarkScoutDanger(a, new HexCoord(3, -2), radius: 2, avoidUntilTurn: 5);
+            AiMapMemory.RememberForTest(a, Sighting(new HexCoord(3, -2)));
 
             Assert.That(AiMapMemory.RouteMemoryVersionFor(a), Is.Not.EqualTo(a0));
             Assert.That(AiMapMemory.RouteMemoryVersionFor(b), Is.EqualTo(b0),
@@ -37,7 +37,7 @@ namespace Game.EditorTests
         public void ClearInvalidatesAReusedPlayersOldRouteRevision()
         {
             var player = new PlayerSetupData();
-            AiMapMemory.MarkScoutDanger(player, new HexCoord(1, 1), radius: 1, avoidUntilTurn: 3);
+            AiMapMemory.RememberForTest(player, Sighting(new HexCoord(1, 1)));
             long beforeClear = AiMapMemory.RouteMemoryVersionFor(player);
 
             AiMapMemory.Clear();
@@ -50,7 +50,7 @@ namespace Game.EditorTests
         public void ClearInvalidatesAReusedPlayersStrategicSnapshotRevision()
         {
             var player = new PlayerSetupData();
-            AiMapMemory.MarkScoutDanger(player, new HexCoord(1, 1), radius: 1, avoidUntilTurn: 3);
+            AiMapMemory.RememberForTest(player, Sighting(new HexCoord(1, 1)));
             int beforeClear = AiMapMemory.KnowledgeVersionFor(player);
 
             AiMapMemory.Clear();
@@ -58,6 +58,15 @@ namespace Game.EditorTests
             Assert.That(AiMapMemory.KnowledgeVersionFor(player), Is.GreaterThan(beforeClear),
                 "A previous session's strategic snapshot must not be reused after memory clears.");
         }
+
+        private static AiMapMemory.KnownEnemySighting Sighting(HexCoord hex) =>
+            new AiMapMemory.KnownEnemySighting(hex, new PlayerSetupData(), "enemy", 1, 1f, 1f, null, armyId: 1);
+
+        // A remembered foreign building with nobody on it: a takeover for a Standard mover, crossed by
+        // Combat and Attack movers.
+        private static void RememberEmptyForeignBuilding(PlayerSetupData observer, HexCoord hex) =>
+            AiMapMemory.RememberBuildingForTest(observer,
+                new AiMapMemory.KnownBuilding(hex, new PlayerSetupData(), false, null));
 
         // ---- 2026-10-08: route profiles are part of the cache key (needs a real HexMap) --------------
 
@@ -85,16 +94,16 @@ namespace Game.EditorTests
             HexMap map = LineMap(6);
             try
             {
-                // a scout-danger zone on the straight corridor: a scout detours, a fist does not care
-                AiMapMemory.MarkScoutDanger(owner, new HexCoord(3, 0), radius: 0, avoidUntilTurn: 99);
+                // an empty foreign building on the straight corridor: a scout detours, a fist does not care
+                RememberEmptyForeignBuilding(owner, new HexCoord(3, 0));
                 int standardFirst = SafeStepPathing.FindSafePathCost(map, owner, from, to, 3, SafeRouteProfile.Standard);
                 int attack = SafeStepPathing.FindSafePathCost(map, owner, from, to, 3, SafeRouteProfile.Attack);
                 int combat = SafeStepPathing.FindSafePathCost(map, owner, from, to, 3, SafeRouteProfile.Combat);
                 Assert.That(attack, Is.EqualTo(6));
-                Assert.That(combat, Is.EqualTo(6), "a scout danger zone is not a fist's blocker");
-                Assert.That(standardFirst, Is.GreaterThan(attack), "the Standard route goes around the zone");
+                Assert.That(combat, Is.EqualTo(6), "an empty foreign building is not a fist's blocker");
+                Assert.That(standardFirst, Is.GreaterThan(attack), "the Standard route goes around the building");
                 // reversed order on a fresh cache state gives the same three answers
-                AiMapMemory.MarkScoutDanger(owner, new HexCoord(5, 1), radius: 0, avoidUntilTurn: 99);
+                RememberEmptyForeignBuilding(owner, new HexCoord(5, 1));
                 Assert.That(SafeStepPathing.FindSafePathCost(map, owner, from, to, 3, SafeRouteProfile.Attack), Is.EqualTo(attack));
                 Assert.That(SafeStepPathing.FindSafePathCost(map, owner, from, to, 3, SafeRouteProfile.Combat), Is.EqualTo(combat));
                 Assert.That(SafeStepPathing.FindSafePathCost(map, owner, from, to, 3, SafeRouteProfile.Standard), Is.EqualTo(standardFirst));
