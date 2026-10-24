@@ -133,11 +133,9 @@ namespace Game.Ai.V2
             List<AxisDemand> regenerated = _frame.GenerateDemands(dirtyAxes);
             List<AxisDemand> dirtyDemands = regenerated;
             _frame.ReplaceDemandFamilies(dirtyAxes, regenerated);
-            // Economy deferred-hold reconciliation now lives entirely inside
-            // StrategicPhaseA (economyAxisAuthoritative) — a single canonical writer
-            // instead of this call duplicating the same existence check right before it.
-            // dirtyAxes.Contains(Economy) is the exact "was Economy actually re-evaluated
-            // this round" signal Phase A needs to tell "Economy resolved" apart from
+            // Phase A is told exactly which axes were re-evaluated (admittedAxes = dirtyAxes):
+            // it rewrites only their residuals, and drops the Economy hold or rebuilds the
+            // build-card claims only when Economy is among them — "Economy resolved" versus
             // "Economy wasn't part of this dirty-axis subset".
             yield return _frame.Checkpoint();
             WorldAnalysis.StepObservationStamp beforeCapabilities =
@@ -146,7 +144,7 @@ namespace Game.Ai.V2
                 _frame.Snapshot, _player, _root, _hand, _ctx, _apBudget, dirtyDemands,
                 _frame.Commitments, _frame.IntentState, _frame.Intents, _frame.Recon,
                 _phases.Carried,
-                economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: _radar,
+                admittedAxes: dirtyAxes, radar: _radar,
                 deferFreshZeroRadar: true);
             _phases.PhaseA.Accumulate(followup);
             ReservationInvariants.CheckBoundary(_player, _root, _ctx,

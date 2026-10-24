@@ -34,7 +34,8 @@ namespace Game.EditorTests
                 StrategicPhaseResult result = StrategicPhaseA.FulfillDemands(snap, player, root,
                     hand, new AiTurnContext { TurnNumber = 24 }, PhaseAApBudget.Create(root),
                     new[] { demand }, new ActorCommitments(), MissionIntentRegistry.GetOrCreate(player),
-                    new[] { intent }, economyAxisAuthoritative: authoritative);
+                    new[] { intent }, admittedAxes: authoritative ? DesireAxes.All
+                        : DesireAxes.All.Where(a => a != DesireAxis.Economy).ToArray());
                 Assert.That(result.StateChanged, Is.EqualTo(authoritative),
                     "intent-only cancellation must trigger the caller's ownership/demand refresh");
                 Assert.That(MissionIntentRegistry.GetOrCreate(player).All.Contains(intent),

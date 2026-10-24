@@ -14,9 +14,11 @@ namespace Game.Ai.V2
     //  holds of other owners are applied at each chain's guard (StrategicSpendability /
     //  TurnResourceBook) under that chain's own SpendAuthority.
     //
-    //  The one piece of state it owns: AP promised to capabilities Phase A already delivered this
-    //  pass (their follow-up step). Later Phase A chains must leave it; the allocator, which funds
-    //  those follow-ups, never reads it.
+    //  The one piece of state it owns: AP promised to capabilities Phase A already delivered
+    //  (their follow-up step), one promise per army — an army has ONE next activation. Later Phase
+    //  A chains must leave it; the allocator, which funds those follow-ups, never reads it. The
+    //  budget is shared by every Phase A entry of the turn, so a promise lives only until its army
+    //  has stepped (ReleaseSpentDeliveryFollowups) or, for a local refit, is recomputed on entry.
     //
     //  Radar model #1a — the radar does not slice AP per axis. It scales OBJECTIVE VALUE
     //  (EffectiveValue), not the AP a card chain may draw. AP ONLY: Human / Energy / Materials /
@@ -25,8 +27,17 @@ namespace Game.Ai.V2
     public sealed class PhaseAApBudget
     {
         private readonly PlayerRoot _root;
-        private float _followupReserved;
-        private readonly Dictionary<int, float> _actorFollowup = new Dictionary<int, float>();
+        private readonly Dictionary<int, Followup> _followup = new Dictionary<int, Followup>();
+
+        // Refit: recomputed from the live operation on every entry. Delivery: kept until the army
+        // steps — the activation flag and movement it had when the promise was made tell when.
+        private struct Followup
+        {
+            public float Ap;
+            public bool Refit;
+            public bool ActivatedAtPromise;
+            public int MovementAtPromise;
+        }
 
         private PhaseAApBudget(PlayerRoot root) => _root = root;
 
@@ -34,25 +45,53 @@ namespace Game.Ai.V2
 
         // The player's live AP.
         public float Balance() => _root != null ? Mathf.Max(0f, _root.ActionPoints) : 0f;
-        public float ReservedFollowup() => Mathf.Max(0f, _followupReserved + _actorFollowup.Values.Sum());
+        public float ReservedFollowup() => Mathf.Max(0f, _followup.Values.Sum(f => f.Ap));
 
         // Live AP left after follow-up AP already promised to delivered capabilities. Not clamped:
         // a negative room must still reject a zero-cost admission check (cost > room).
         public float UnreservedBalance() => Balance() - ReservedFollowup();
 
-        public void ReserveFollowup(float ap)
+        // A delivered capability's follow-up step on its recipient army. Several deliveries into
+        // one army serve its one next activation, so the larger promise stands, never the sum.
+        internal void ReserveDeliveryFollowup(ArmyData army, float ap)
         {
-            if (ap > 0f)
-                _followupReserved += ap;
+            if (army == null || ap <= 0f)
+                return;
+            if (_followup.TryGetValue(army.Id, out Followup prior))
+            {
+                prior.Ap = Mathf.Max(prior.Ap, ap);
+                _followup[army.Id] = prior;
+                return;
+            }
+            _followup[army.Id] = new Followup
+            {
+                Ap = ap,
+                ActivatedAtPromise = army.HasActivatedThisTurn,
+                MovementAtPromise = army.CurrentMovement,
+            };
+        }
+
+        // A delivery promise ends when its army is gone, has activated since the promise, or has
+        // spent movement since (it took the step the AP was kept for).
+        internal void ReleaseSpentDeliveryFollowups(System.Func<int, ArmyData> armyById)
+        {
+            foreach (KeyValuePair<int, Followup> entry in _followup.Where(kv => !kv.Value.Refit).ToList())
+            {
+                ArmyData army = armyById(entry.Key);
+                if (army == null
+                    || (!entry.Value.ActivatedAtPromise && army.HasActivatedThisTurn)
+                    || army.CurrentMovement < entry.Value.MovementAtPromise)
+                    _followup.Remove(entry.Key);
+            }
         }
 
         // Several local refits serve one next activation, so replace its promise, never sum it.
-        internal float ActorFollowup(int id) => _actorFollowup.TryGetValue(id, out float ap) ? ap : 0f;
-        internal IEnumerable<int> ActorFollowupIds => _actorFollowup.Keys;
+        internal float ActorFollowup(int id) => _followup.TryGetValue(id, out Followup f) ? f.Ap : 0f;
+        internal IEnumerable<int> ActorFollowupIds => _followup.Where(kv => kv.Value.Refit).Select(kv => kv.Key);
         internal void ReserveActorFollowup(int id, float ap)
         {
-            if (ap > 0f) _actorFollowup[id] = ap;
-            else _actorFollowup.Remove(id);
+            if (ap > 0f) _followup[id] = new Followup { Ap = ap, Refit = true };
+            else _followup.Remove(id);
         }
 
         // Admission budget for a discrete Phase A chain: the whole live AP.

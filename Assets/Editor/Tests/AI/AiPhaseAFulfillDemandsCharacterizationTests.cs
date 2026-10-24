@@ -12,10 +12,11 @@ using NUnit.Framework;
 namespace Game.EditorTests
 {
     // Characterization of StrategicPhaseA.FulfillDemands, written before splitting the method into
-    // stages (2026-10-24). Each test pins what the pass does TODAY on a small world with an empty
-    // hand: which demands are deferred, held, built, carried as residual, and what the carried
-    // reservation and AP budget look like afterwards. Tests marked "current behaviour" pin a
-    // finding the owner has not ruled on yet; change them together with that decision.
+    // stages (2026-10-24), then updated with the owner's decisions of the same day (an entry
+    // rewrites only its admitted axes' residuals and Economy claims; only Active builds are
+    // protected). Each test pins what the pass does on a small world with an empty hand: which
+    // demands are deferred, held, built, carried as residual, and what the carried reservation
+    // and AP budget look like afterwards.
     // PlayerRoot.Create needs the native engine, so these run in Unity only.
     public class AiPhaseAFulfillDemandsCharacterizationTests
     {
@@ -50,12 +51,15 @@ namespace Game.EditorTests
 
         private StrategicPhaseResult Run(int turn, PhaseAApBudget budget, AxisDemand[] demands,
             MissionIntent[] active = null, MaterializationReservation carried = null,
-            bool authoritative = true, Radar radar = null, bool deferCold = false) =>
+            DesireAxis[] axes = null, Radar radar = null, bool deferCold = false) =>
             StrategicPhaseA.FulfillDemands(Snap(turn), _player, _root, _hand,
                 new AiTurnContext { TurnNumber = turn }, budget, demands, new ActorCommitments(),
                 MissionIntentRegistry.GetOrCreate(_player), active,
-                new System.Collections.Generic.List<ReconObjective>(), carried, authoritative, radar,
+                new System.Collections.Generic.List<ReconObjective>(), carried, axes, radar,
                 deferCold);
+
+        private static readonly DesireAxis[] AllButEconomy =
+            DesireAxes.All.Where(a => a != DesireAxis.Economy).ToArray();
 
         private static Radar RadarOf(DesireAxis axis, float weight)
         {
@@ -117,21 +121,29 @@ namespace Game.EditorTests
             Assert.That(Held(10, StrategicReservedResource.Materials), Is.EqualTo(3f));
 
             Run(10, PhaseAApBudget.Create(_root), System.Array.Empty<AxisDemand>(),
-                authoritative: authoritative);
+                axes: authoritative ? null : AllButEconomy);
 
             Assert.That(Held(10, StrategicReservedResource.Materials), Is.EqualTo(authoritative ? 0f : 3f));
         }
 
         [Test]
-        public void NoDemands_KeepsAnEarlierEntrysResidual_CurrentBehaviour()
+        public void NoDemands_DropsTheAdmittedAxesResiduals()
         {
-            // Current behaviour (finding: the early return skips the residual rewrite every other
-            // exit performs, so a satisfied need from an earlier entry stays a residual claim).
             var carried = new MaterializationReservation();
             carried.UnresolvedDemands.Add(Scout(new HexCoord(1, 1)));
             StrategicPhaseResult r = Run(10, PhaseAApBudget.Create(_root), System.Array.Empty<AxisDemand>(),
                 carried: carried);
-            Assert.That(r.Reservation.UnresolvedDemands, Has.Count.EqualTo(1));
+            Assert.That(r.Reservation.UnresolvedDemands, Is.Empty, "an admitted axis with no demand has no residual");
+        }
+
+        [Test]
+        public void NoDemands_KeepsResidualsOfAxesNotAdmitted()
+        {
+            var carried = new MaterializationReservation();
+            carried.UnresolvedDemands.Add(Scout(new HexCoord(1, 1)));
+            StrategicPhaseResult r = Run(10, PhaseAApBudget.Create(_root), System.Array.Empty<AxisDemand>(),
+                carried: carried, axes: new[] { DesireAxis.Aggression });
+            Assert.That(r.Reservation.UnresolvedDemands.Single().Capability, Is.EqualTo(CapabilityKind.ScoutCapability));
         }
 
         [Test]
@@ -163,7 +175,7 @@ namespace Game.EditorTests
                 Extraction(new HexCoord(3, -5), mine), 25, 12);
 
             StrategicPhaseResult r = Run(12, PhaseAApBudget.Create(_root), System.Array.Empty<AxisDemand>(),
-                new[] { intent }, authoritative: authoritative);
+                new[] { intent }, axes: authoritative ? null : AllButEconomy);
 
             Assert.That(r.StateChanged, Is.False);
             Assert.That(r.Reservation.ClaimedEconomyBuildCards, Does.Contain(mine));
@@ -242,10 +254,8 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void Reentry_KeepsBuildCardClaimsButRewritesTheResidualPool_CurrentBehaviour()
+        public void Reentry_RewritesOnlyItsAxesResiduals_AndKeepsEconomyClaims()
         {
-            // Current behaviour (finding: a dirty-axis re-entry replaces the whole residual pool,
-            // so the other axes' residuals from the first entry are gone).
             CardData mine = Card(CardType.Facility);
             PhaseAApBudget budget = PhaseAApBudget.Create(_root);
             StrategicPhaseResult first = Run(16, budget, new[] { Extraction(new HexCoord(2, -1), mine),
@@ -253,12 +263,47 @@ namespace Game.EditorTests
             Assert.That(first.Reservation.UnresolvedDemands, Has.Count.EqualTo(2));
 
             StrategicPhaseResult second = Run(16, budget, new[] { Field(new HexCoord(6, 4)) },
-                carried: first.Reservation, authoritative: false, deferCold: true);
+                carried: first.Reservation, axes: new[] { DesireAxis.Aggression }, deferCold: true);
 
             Assert.That(second.Reservation, Is.SameAs(first.Reservation));
-            Assert.That(second.Reservation.UnresolvedDemands.Select(d => d.Capability),
-                Is.EqualTo(new[] { CapabilityKind.FieldCombatPower }));
-            Assert.That(second.Reservation.ClaimedEconomyBuildCards, Does.Contain(mine));
+            Assert.That(second.Reservation.UnresolvedDemands.Select(d => d.Capability), Is.EqualTo(new[]
+            {
+                CapabilityKind.EconomicInfrastructure, CapabilityKind.ScoutCapability,
+                CapabilityKind.FieldCombatPower,
+            }));
+            Assert.That(second.Reservation.ClaimedEconomyBuildCards, Does.Contain(mine),
+                "an entry that did not re-evaluate Economy keeps its claims");
+        }
+
+        [Test]
+        public void EconomyReentry_ReleasesTheCardOfASiteEconomyDropped()
+        {
+            CardData mine = Card(CardType.Facility);
+            PhaseAApBudget budget = PhaseAApBudget.Create(_root);
+            StrategicPhaseResult first = Run(16, budget, new[] { Extraction(new HexCoord(2, -1), mine) });
+            Assert.That(first.Reservation.ClaimedEconomyBuildCards, Does.Contain(mine));
+
+            StrategicPhaseResult second = Run(16, budget, System.Array.Empty<AxisDemand>(),
+                carried: first.Reservation, axes: new[] { DesireAxis.Economy });
+
+            Assert.That(second.Reservation.ClaimedEconomyBuildCards, Is.Empty);
+            Assert.That(second.Reservation.UnresolvedDemands, Is.Empty);
+        }
+
+        [Test]
+        public void SuspendedBuild_IsNotProtected()
+        {
+            CardData mine = Card(CardType.Facility);
+            MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(_player,
+                Extraction(new HexCoord(3, -5), mine), 25, 12);
+            intent.Status = IntentStatus.Suspended;
+
+            StrategicPhaseResult r = Run(12, PhaseAApBudget.Create(_root), System.Array.Empty<AxisDemand>(),
+                new[] { intent });
+
+            Assert.That(r.Reservation.ClaimedEconomyBuildCards, Has.No.Member(mine));
+            Assert.That(intent.LastProtectedTurn, Is.Not.EqualTo(12));
+            Assert.That(Held(12, StrategicReservedResource.Materials), Is.Zero);
         }
 
         [Test]

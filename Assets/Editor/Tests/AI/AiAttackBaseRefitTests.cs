@@ -168,12 +168,14 @@ namespace Game.EditorTests
         public void RepeatedRefits_ReplaceOneActorsFollowupPromise()
         {
             var budget = PhaseAApBudget.Create(null);
-            budget.ReserveFollowup(2);
-            budget.ReserveActorFollowup(7, 3);
-            budget.ReserveActorFollowup(7, 4);
+            var delivered = new ArmyData { Owner = player, Hex = Base };
+            int refit = delivered.Id + 1000;
+            budget.ReserveDeliveryFollowup(delivered, 2);
+            budget.ReserveActorFollowup(refit, 3);
+            budget.ReserveActorFollowup(refit, 4);
             Assert.That(budget.ReservedFollowup(), Is.EqualTo(6));
-            Assert.That(budget.ActorFollowup(7), Is.EqualTo(4));
-            budget.ReserveActorFollowup(7, 0);
+            Assert.That(budget.ActorFollowup(refit), Is.EqualTo(4));
+            budget.ReserveActorFollowup(refit, 0);
             Assert.That(budget.ReservedFollowup(), Is.EqualTo(2));
         }
 

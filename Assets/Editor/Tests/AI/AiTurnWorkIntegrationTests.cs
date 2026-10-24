@@ -291,7 +291,7 @@ namespace Game.EditorTests
             // the cold residual
             InOrder(Code("ColdResidual.cs"), "cold residual", "PrepareColdResidual(", "GenerateDemands(",
                 "CaptureStepObservation(", "StrategicManager.FulfillDemands(", "PhaseA.Accumulate(",
-                "UnresolvedDemands.AddRange(", "AcceptChangedCold(", "WaitAtObserverActionBoundary()", "sink.Changed = true");
+                "AcceptChangedCold(", "WaitAtObserverActionBoundary()", "sink.Changed = true");
 
             // re-admission
             InOrder(Code("StrategicReadmissionRunner.cs"), "re-admission", "_readmission.Decide(",

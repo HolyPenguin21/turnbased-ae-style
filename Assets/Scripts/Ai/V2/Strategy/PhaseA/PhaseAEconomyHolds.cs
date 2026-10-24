@@ -25,6 +25,12 @@ namespace Game.Ai.V2
         // resources and idle clock.
         internal static void ProtectActiveBuilds(PhaseAPass pass)
         {
+            // Build-card claims follow the same rule as the residuals and the hold: an entry that
+            // re-evaluated Economy rebuilds them from the live builds and its own demands (owner
+            // decision 2026-10-24), so a site Economy dropped no longer locks its card; any other
+            // entry keeps what an earlier entry claimed.
+            if (pass.EconomyAxisAuthoritative)
+                pass.Reservation.ClaimedEconomyBuildCards.Clear();
             List<MissionIntent> protectedActiveExtractions = ProtectedActiveBuilds(pass, EconomyTaskKind.BuildExtraction);
             List<MissionIntent> protectedActiveBases = ProtectedActiveBuilds(pass, EconomyTaskKind.FoundBase);
             ReleaseUnprofitableBuilds(pass, protectedActiveBases, protectedActiveExtractions);
@@ -48,13 +54,14 @@ namespace Game.Ai.V2
                 protectedActiveExtractions.Count > 0 || protectedActiveBases.Count > 0;
         }
 
+        // Only an Active build is protected — owner decision 2026-10-24: a Suspended build gives
+        // up its resource hold and card claim while it is suspended (ResolveActive never hands
+        // Phase A a Suspended build either; this filter states the rule instead of relying on it).
         private static List<MissionIntent> ProtectedActiveBuilds(PhaseAPass pass, EconomyTaskKind kind) =>
             (pass.ActiveIntents?
-                .Where(i => EconomyContinuity.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
-                // a transiently suspended build keeps its hold, but the retarget slot goes to an
-                // Active one (CanReplaceCommittedBase only switches an Active commitment)
-                .OrderByDescending(i => i.Status == IntentStatus.Active)
-                .ThenByDescending(i => i.Funding)
+                .Where(i => EconomyContinuity.IsLiveEconomyBuild(i) && i.Status == IntentStatus.Active
+                    && i.Economy.Kind == kind)
+                .OrderByDescending(i => i.Funding)
                 .ThenByDescending(i => i.Economy.BuildValue)
                 .ThenBy(i => i.CreatedTurn)
                 .ThenBy(i => i.IntentKey)

@@ -32,8 +32,10 @@ namespace Game.Ai.V2
         public readonly MissionIntentState IntentState;
         public readonly IReadOnlyList<ReconObjective> ReconObjectives;
         public readonly Radar Radar;
-        // See StrategicPhaseA.FulfillDemands: an absent Economy demand means "resolved" only then.
-        public readonly bool EconomyAxisAuthoritative;
+        // The axes this entry re-evaluated (StrategicPhaseA.FulfillDemands `admittedAxes`). For
+        // them an absent demand means "resolved"; any other axis was not looked at, so its
+        // residuals, build-card claims and Economy hold are left as an earlier entry set them.
+        public readonly HashSet<DesireAxis> AdmittedAxes;
         public readonly bool DeferFreshZeroRadar;
         public readonly StrategicPhaseResult Result;
 
@@ -63,7 +65,8 @@ namespace Game.Ai.V2
             AiTurnContext ctx, PhaseAApBudget apBudget, IReadOnlyList<AxisDemand> demands,
             ActorCommitments commitments, MissionIntentState intentState,
             IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<ReconObjective> reconObjectives,
-            bool economyAxisAuthoritative, Radar radar, bool deferFreshZeroRadar, StrategicPhaseResult result)
+            IReadOnlyCollection<DesireAxis> admittedAxes, Radar radar, bool deferFreshZeroRadar,
+            StrategicPhaseResult result)
         {
             Snap = snap;
             Player = player;
@@ -76,13 +79,14 @@ namespace Game.Ai.V2
             IntentState = intentState;
             ActiveIntents = activeIntents;
             ReconObjectives = reconObjectives;
-            EconomyAxisAuthoritative = economyAxisAuthoritative;
+            AdmittedAxes = new HashSet<DesireAxis>(admittedAxes ?? DesireAxes.All);
             Radar = radar ?? Radar.Even();
             DeferFreshZeroRadar = deferFreshZeroRadar;
             Result = result;
         }
 
         public int Turn => Ctx.TurnNumber;
+        public bool EconomyAxisAuthoritative => AdmittedAxes.Contains(DesireAxis.Economy);
         public MaterializationReservation Reservation => Result.Reservation;
 
         public void RefreshKnowledge() =>
@@ -200,20 +204,24 @@ namespace Game.Ai.V2
             return promotedAny;
         }
 
-        // The early exit (nothing to admit now): only deferred cold work is carried, and only then
-        // is the residual pool rewritten.
-        public void PublishColdResiduals()
+        // The residual pool is shared by every entry of the turn (the carried reservation). An
+        // entry rewrites only the residuals of the axes it re-evaluated — owner decision
+        // 2026-10-24: a dirty-axis re-admission must not erase another axis' unmet need, and an
+        // admitted axis with no demand left has no residual.
+        private void DropOwnResiduals() =>
+            Reservation.UnresolvedDemands.RemoveAll(d => d == null || AdmittedAxes.Contains(d.RequestingAxis));
+
+        // The early exit (nothing to admit now): only deferred cold work is carried.
+        public void PublishEarlyResiduals()
         {
-            if (ColdStates.Count == 0)
-                return;
-            Reservation.UnresolvedDemands.Clear();
+            DropOwnResiduals();
             foreach (DemandState cold in ColdStates)
                 Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
         }
 
         public void PublishResiduals()
         {
-            Reservation.UnresolvedDemands.Clear();
+            DropOwnResiduals();
             // A residual Phase A has structurally no way to deliver keeps no claim on hand cards
             // (AxisDemand.StructurallyUndeliverable): judged on the end-of-pass world, one read
             // per residual, AP/resource shortfalls excluded (that is timing, the claim stays).

@@ -24,14 +24,12 @@ namespace Game.Ai.V2
         // (generator claims, build-card claims, residual demands), `apBudget` (follow-up AP
         // promises), the reservation ledger, the turn's tempo budget and `intentState`.
         //
-        // economyAxisAuthoritative — true when `demands` reflects Economy's COMPLETE current view
-        // (the Main pass, a reaction round's fresh DemandLayer.Generate, or an orchestration
-        // reconciliation that actually re-evaluated Economy this round). False when `demands` is a
-        // dirty-axis SUBSET that deliberately excludes Economy because Economy itself was not
-        // re-evaluated this call (StrategicReadmissionRunner.Run) — there, an absent
-        // Economy demand means "not looked at", not "resolved", and must never be read as license
-        // to drop the deferred-build hold. Defaults to true: the Main pass and a reaction round
-        // rely on it.
+        // admittedAxes — the axes whose demands this call re-evaluated: every axis for the Main
+        // pass and a reaction round (null = all), the dirty axes for a re-admission, the cold axes
+        // for the cold residual. `demands` holds only those axes' demands. For an admitted axis an
+        // absent demand means "resolved"; for any other axis it means "not looked at". The entry
+        // rewrites the residual demands of its admitted axes only, and only an entry that admits
+        // Economy may drop the deferred-build hold or rebuild the build-card claims.
         // deferFreshZeroRadar — early admissions leave fresh zero-Radar work to the late residual
         // entry (see ShouldDeferFreshZeroRadarDemand).
         // `intentState` - the owner's durable intent store: Phase A transactions record their
@@ -42,7 +40,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
-            bool economyAxisAuthoritative = true, Radar radar = null,
+            IReadOnlyCollection<DesireAxis> admittedAxes = null, Radar radar = null,
             bool deferFreshZeroRadar = false)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Strategic.FulfillDemands");
@@ -55,9 +53,9 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || apBudget == null || ctx == null)
                 return result;
             var pass = new PhaseAPass(snap, player, root, hand, ctx, apBudget, demands, commitments,
-                intentState, activeIntents, reconObjectives, economyAxisAuthoritative, radar,
+                intentState, activeIntents, reconObjectives, admittedAxes, radar,
                 deferFreshZeroRadar, result);
-            RefreshActorFollowups(pass);
+            RefreshFollowups(pass);
             // A new turn constructs a fresh MaterializationReservation. Restore the exact
             // pending Hero even when the current dirty-demand subset omits Development.
             InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, intentState, hand,
@@ -75,7 +73,7 @@ namespace Game.Ai.V2
             if (pass.NothingToAdmit)
             {
                 PhaseAEconomyHolds.ClearPreIntentHoldIfResolved(pass);
-                pass.PublishColdResiduals();
+                pass.PublishEarlyResiduals();
                 return result;
             }
             PhaseAEconomyHolds.HoldPreIntentBuild(pass);
@@ -95,19 +93,28 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // Local refits promise one real next activation. Reentry after movement, a phase
-        // change or base loss must not keep an obsolete actor promise alongside the live bank.
-        private static void RefreshActorFollowups(PhaseAPass pass)
+        // The follow-up AP promises carried by the turn's shared budget, re-judged on entry.
+        // Local refits promise one real next activation: reentry after movement, a phase change
+        // or base loss must not keep an obsolete actor promise alongside the live bank. A plain
+        // delivery's promise ends once its army has taken the step (owner decision 2026-10-24).
+        private static void RefreshFollowups(PhaseAPass pass)
         {
             foreach (int id in pass.ApBudget.ActorFollowupIds.ToArray())
-            {
-                var primary = OwnWorld.Of(pass.Player).Army(id);
-                var attack = primary == null ? null
-                    : AttackBaseRefitPolicy.Resolve(
-                        pass.IntentState?.All, pass.Player, id, primary.Hex, pass.Turn);
-                pass.ApBudget.ReserveActorFollowup(id, primary == null || attack == null ? 0f
-                    : AttackBaseRefitPolicy.FollowupAp(pass.Player, primary, attack, primary.Members, pass.Ctx, pass.Root));
-            }
+                pass.ApBudget.ReserveActorFollowup(id, RefitFollowupAp(
+                    pass.Player, pass.IntentState, pass.Ctx, pass.Root, id));
+            pass.ApBudget.ReleaseSpentDeliveryFollowups(id => OwnWorld.Of(pass.Player).Army(id));
+        }
+
+        // The ONE local-refit promise rule, on entry and at delivery: the primary's next activation
+        // while its Attack operation still owns it; nothing when the army or the operation is gone.
+        internal static float RefitFollowupAp(PlayerSetupData player, MissionIntentState intentState,
+            AiTurnContext ctx, PlayerRoot root, int primaryId)
+        {
+            ArmyData primary = OwnWorld.Of(player).Army(primaryId);
+            AttackIntent attack = primary == null ? null
+                : AttackBaseRefitPolicy.Resolve(intentState?.All, player, primaryId, primary.Hex, ctx.TurnNumber);
+            return primary == null || attack == null ? 0f
+                : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root);
         }
 
         // Card arbitration: one action per round, at most maxDemandFulfillmentActionsPerTurn per
@@ -322,24 +329,20 @@ namespace Game.Ai.V2
                 pass.Ctx, pass.Snap, plan, chosenDemand, round.Inventory, afterInv, armyIdsBefore,
                 out float delivered, beforeSnap: snapBeforeDelivery);
 
-            if (operationallyDelivered
-                && (MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand)
-                    || chosenDemand.EconomyEscortArmyId.HasValue)
-                && chosenDemand.EconomyPreferredBuilderArmyId.HasValue)
-                pass.Commitments?.Claim(chosenDemand.EconomyPreferredBuilderArmyId.Value);
+            if (operationallyDelivered)
+                CapabilityDeliveryEvaluator.ClaimEconomyBuilder(pass.Commitments, chosenDemand);
 
             if (operationallyDelivered)
             {
                 if (chosenDemand.AttackLocalRefit)
                 {
-                    var primary = OwnWorld.Of(pass.Player).Army(plan.AttackRefitPrimaryId.Value);
-                    var attack = AttackBaseRefitPolicy.Resolve(
-                        pass.IntentState?.All, pass.Player, primary.Id, primary.Hex, pass.Turn);
-                    pass.ApBudget.ReserveActorFollowup(primary.Id,
-                        AttackBaseRefitPolicy.FollowupAp(pass.Player, primary, attack, primary.Members, pass.Ctx, pass.Root));
+                    if (plan.AttackRefitPrimaryId.HasValue)
+                        pass.ApBudget.ReserveActorFollowup(plan.AttackRefitPrimaryId.Value, RefitFollowupAp(
+                            pass.Player, pass.IntentState, pass.Ctx, pass.Root, plan.AttackRefitPrimaryId.Value));
                 }
                 else
-                    pass.ApBudget.ReserveFollowup(selected.FollowupAp);
+                    pass.ApBudget.ReserveDeliveryFollowup(
+                        DeliveryRecipient(pass, plan, chosenDemand, armyIdsBefore), selected.FollowupAp);
                 selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                 result.CapabilityDeliveries++;
             }
@@ -356,6 +359,17 @@ namespace Game.Ai.V2
                 + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
                 + $"delivered {F(delivered)}, followup {(operationallyDelivered ? F(selected.FollowupAp) : "0")}ap reserved"
                 + $", {plan.StableKey})");
+        }
+
+        // The army whose next step a delivered chain's follow-up AP is kept for: the operational
+        // recipient the delivery lease names (the receiving army, or the army the play created).
+        private static ArmyData DeliveryRecipient(PhaseAPass pass, MaterializationPlan plan,
+            AxisDemand demand, HashSet<int> armyIdsBefore)
+        {
+            IReadOnlyList<int> recipients = CapabilityDeliveryEvaluator.OperationalLeaseArmyIds(
+                armyIdsBefore, pass.Snap, plan, demand);
+            int? id = recipients.Count > 0 ? recipients[0] : plan.Deploy.Army?.Id;
+            return id.HasValue ? OwnWorld.Of(pass.Player).Army(id.Value) : null;
         }
 
         // Strategy owns the admission policy, not Orchestration or the executor.

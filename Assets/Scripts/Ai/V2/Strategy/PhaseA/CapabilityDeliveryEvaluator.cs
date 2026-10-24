@@ -159,6 +159,19 @@ namespace Game.Ai.V2
             }
         }
 
+        // After an operational delivery, Phase A and Phase B alike: an Economy build prerequisite
+        // hands the build to the builder FinalizeOperationalDelivery chose, so that army is claimed
+        // in the same pass, before ownership refreshes. Only a hero builds, and a Base builder
+        // needs its defender at once — so a delivered builder Hero and a delivered builder escort
+        // both name the builder (owner rule 2026-10-24).
+        internal static void ClaimEconomyBuilder(ActorCommitments commitments, AxisDemand demand)
+        {
+            if (demand == null || !demand.EconomyPreferredBuilderArmyId.HasValue)
+                return;
+            if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand) || demand.EconomyEscortArmyId.HasValue)
+                commitments?.Claim(demand.EconomyPreferredBuilderArmyId.Value);
+        }
+
         // §3 — the ONE post-delivery finalization path shared by Phase A, Phase B and (through
         // those two) the bounded StrategicReactionPass. It owns delivered-capability measurement
         // and the Housekeeping capability lease for every army created/modified to satisfy a live
