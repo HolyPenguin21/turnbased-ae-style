@@ -366,7 +366,7 @@ namespace Game.EditorTests
                 var g = new BattleGrid(); g.Set(1, 1, actor); g.Set(2, 1, victim);
                 var shadow = pool.HasValue ? new Dictionary<UnitData, int> { [actor] = pool.Value } : null;
                 return (float)counter.Invoke(null, new object[] { g, actor, victim, 10f, AbilityMagnitudes.Default,
-                    null, null, 0, null, shadow });
+                    null, 0, null, shadow });
             }
             var plain = Body(AttachmentSlotTests.Host(hero: true));
             var armed = Body(AttachmentSlotTests.Host(hero: true), HeroItem());

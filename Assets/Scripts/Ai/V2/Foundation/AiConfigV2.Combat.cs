@@ -33,7 +33,7 @@ namespace Game.Ai.V2
         public const float powerBumpRegeneration = 0.10f;       // Regeneration — end-of-turn self heal
         public const float powerBumpBerserk = 0.08f;            // Berserk — +Attack / -Defense per hit taken
         public const float powerBumpBodyguard = 0.10f;          // Bodyguard — takes one hit per round for an adjacent ally
-        public const float powerBumpCounterattack = 0.12f;      // Counterattack — one free answer per round to a melee attacker
+        public const float powerBumpCounterattack = 0.12f;      // Counterattack — a free answer to each eligible melee attack
         public const float powerBumpDrill = 0.10f;              // Drill — +Attack to the side's best fighter each round
 
         // Composition quality maps [0..1] onto a multiplier of (compoFloor .. 1). A single unit or

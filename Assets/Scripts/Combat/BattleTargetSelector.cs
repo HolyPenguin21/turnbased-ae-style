@@ -150,15 +150,14 @@ namespace Game.Combat
         }
 
         // UnitAbilities.Counterattack — expected damage `victim`'s answer would deal `actor`
-        // (0 when it cannot answer: no skill, a hero, already spent this round, or not within 1
+        // (0 when it cannot answer: no skill, a hero, or not within 1
         // cell). The answer is an ordinary exchange, so the actor defends with its own bonuses.
         private static float ExpectedCounterDamage(BattleGrid grid, UnitData actor, UnitData victim,
-            float actorHp, AbilityMagnitudes magnitudes, BattleReactionState reactions,
+            float actorHp, AbilityMagnitudes magnitudes,
             ArmyData battleDefender, int battleDefenderDefenseBonus,
             Dictionary<UnitData, int> simulatedAttack = null, Dictionary<UnitData, int> simulatedDefense = null)
         {
             if (victim == null || victim.IsHero || !victim.HasAbility(UnitAbilities.Counterattack)
-                || (reactions != null && reactions.CountersUsed.Contains(victim))
                 || !grid.TryFindPosition(actor, out int ar, out int ac)
                 || !grid.TryFindPosition(victim, out int vr, out int vc)
                 || !BattleGrid.IsInRange(vr, vc, ar, ac, 1))
@@ -241,7 +240,7 @@ namespace Game.Combat
                 int? guardAttackOverride = guard != null && simulatedAttack != null
                     && simulatedAttack.TryGetValue(guard, out int simGuardAttack) ? simGuardAttack : (int?)null;
                 float counter = ExpectedCounterDamage(grid, actor, guard ?? candidate, actorHp, magnitudes,
-                    reactions, battleDefender, battleDefenderDefenseBonus, simulatedAttack, simulatedDefense);
+                    battleDefender, battleDefenderDefenseBonus, simulatedAttack, simulatedDefense);
                 if (!TryScoreTarget(actor, candidate, candidateHp, magnitudes, notYetActed,
                     out float score, out float damage, out _, defenderBonus,
                     actorAttackOverride, candidateDefenseOverride, candidateAttackOverride,
@@ -325,7 +324,7 @@ namespace Game.Combat
                 UnitData guard = BattleRules.FindBodyguard(grid, candidate, actor,
                     u => u.HitPointsCurrent, reactions);
                 float counter = ExpectedCounterDamage(grid, actor, guard ?? candidate, actor.HitPointsCurrent,
-                    magnitudes, reactions, battleDefender, battleDefenderDefenseBonus);
+                    magnitudes, battleDefender, battleDefenderDefenseBonus);
                 TryScoreTarget(actor, candidate, candidate.HitPointsCurrent, magnitudes, notYetActed,
                     out float score, out float damage, out AiThoughtCategory reason, defenderBonus,
                     interceptor: guard, interceptorHp: guard?.HitPointsCurrent ?? 0,

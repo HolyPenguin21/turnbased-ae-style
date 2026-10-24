@@ -237,12 +237,12 @@ namespace Game.Combat
                 guardTags, guardAbilities, magnitudes);
 
         // UnitAbilities.Counterattack — geometry-free half of the trigger (the "within 1 cell"
-        // test is the caller's, it owns the positions). A surviving non-hero carrier answers once
-        // per round unless a ShockAttack hit (positive damage) knocked it out of the round.
+        // test is the caller's, it owns the positions). A surviving non-hero carrier answers every
+        // eligible primary attack unless that hit deals positive ShockAttack damage.
         public static bool TriggersCounterattack(IEnumerable<string> victimAbilities, bool victimIsHero,
-            float victimHpAfter, bool attackerWithinOne, bool alreadyUsed, int primaryDamage,
+            float victimHpAfter, bool attackerWithinOne, int primaryDamage,
             IEnumerable<string> attackerAbilities) =>
-            victimHpAfter > 0f && !victimIsHero && attackerWithinOne && !alreadyUsed
+            victimHpAfter > 0f && !victimIsHero && attackerWithinOne
             && ChallengeResult.HasAbility(victimAbilities, UnitAbilities.Counterattack)
             && !SuppressesTurn(primaryDamage, attackerAbilities);
 
