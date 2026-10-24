@@ -56,21 +56,15 @@ namespace Game.Ai.V2
             yield return _frame.Checkpoint();
             if (coldDemands.Count > 0)
             {
-                // Phase A owns one carried Reservation object. Its per-call residual
-                // rewrite must not erase still-unfulfilled positive-axis telemetry.
-                List<AxisDemand> warmResidual = _phases.Carried
-                    .UnresolvedDemands.Where(d => d != null
-                        && RadarValueScale.For(_radar, d.RequestingAxis) > 0f).ToList();
                 WorldAnalysis.StepObservationStamp beforeCold =
                     WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
                 StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
                     _frame.Snapshot, _player, _root, _hand, _ctx, _apBudget, coldDemands,
                     _frame.Commitments, _frame.IntentState, _frame.Intents, _frame.Recon,
                     _phases.Carried,
-                    economyAxisAuthoritative: _coldAxes.Contains(DesireAxis.Economy),
-                    radar: _radar);
+                    admittedAxes: _coldAxes, radar: _radar);
+                // Phase A rewrites only the cold axes' residuals; the warm axes' unmet need stays.
                 _phases.PhaseA.Accumulate(coldPass);
-                _phases.PhaseA.Reservation.UnresolvedDemands.AddRange(warmResidual);
                 AiDebugLog.Write($"[AI][V2][Loop] cold Radar residual - demands={coldDemands.Count} "
                     + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                 if (coldPass.StateChanged)

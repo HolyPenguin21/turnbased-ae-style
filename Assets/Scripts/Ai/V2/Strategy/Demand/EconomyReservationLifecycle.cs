@@ -24,12 +24,12 @@ namespace Game.Ai.V2
         // A selected infrastructure demand already has a valuable legal site and a
         // snapshot-witnessed builder route. This is the FIRST-SIGHT gate only, called from
         // StrategicPhaseA exclusively when no durable Economy intent exists yet for ANY target this
-        // turn (protectedActiveEconomyBuild == null short-circuits it otherwise), so it never fires
+        // turn (an active build short-circuits it otherwise, PhaseAEconomyHolds.HoldPreIntentBuild), so it never fires
         // on a continuing multi-turn delivery. Once Provisioning binds a builder that cannot finish
         // this turn, it hands the delivery to Continuity
         // (EconomyContinuity.BeginEconomyDelivery, called from
         // ProvisioningManager.ProvisionEconomy's direct-army path), and from the NEXT turn on
-        // StrategicPhaseA's protectedActiveEconomyBuild protects the full H/E/M/T vector regardless
+        // PhaseAEconomyHolds.ProtectActiveBuilds protects the full H/E/M/T vector regardless
         // of remaining travel. Only WHILE that durable identity does not exist yet — the turn a
         // distant candidate is first scored — does this one-turn commitment horizon apply, so a
         // merely-discovered distant site does not freeze resources other axes could still spend for

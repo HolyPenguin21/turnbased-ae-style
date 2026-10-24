@@ -138,7 +138,7 @@ namespace Game.Ai.V2
                 AiAllocatorStateRegistry.GetOrCreate(player), outcome, turn);
         }
 
-        // StrategicPhaseA's ProtectActiveEconomyBuild reserves this intent's physical resources
+        // PhaseAEconomyHolds.ProtectActiveEconomyBuild reserves this intent's physical resources
         // and claims its card every cycle it is still committed — a real per-turn touch of the
         // intent's lifecycle, just one that has nothing to execute yet (builder already at/near
         // target, simply waiting for H/E/M/T to accumulate). Without this call that touch is

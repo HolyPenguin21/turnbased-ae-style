@@ -9,102 +9,29 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    public sealed class StrategicPhaseResult
-    {
-        public bool StateChanged;
-        public int CardsPlayed;
-        public int CardsDrawn;
-
-        // Production telemetry (Step 8B/8C — spec §12). Attempts/successes for each chain stage,
-        // kept separate so a Generate → Attach → Deploy chain reads as one materialization with
-        // one generated card and one equipment assignment. Scoring is untouched.
-        public int MaterializationAttempts;
-        public int MaterializationsSucceeded;
-        public int GeneratedCardAttempts;
-        public int GeneratedCardsSucceeded;
-        public int EquipmentAssignmentAttempts;
-        public int EquipmentAssignmentsSucceeded;
-        public int InfrastructureAttempts;
-        public int InfrastructureBuilt;
-        // Stand-alone Base levels bought by Development CapacityUnlock: a settled admission baseline taken
-        // after such a step no longer describes the world its Facility demand must be judged on.
-        public int CapacityUnlocks;
-        public int CapabilityDeliveries;   // operational capability actually delivered to a demand
-
-        public MaterializationReservation Reservation;
-
-        // One executed materialization chain, Phase A or Phase B alike: the per-stage
-        // attempt/success telemetry, the generation attempt charged to the reservation and to the
-        // turn's tempo budget, and the world change it made.
-        internal void RecordMaterialization(PlayerSetupData player, int turn, MaterializationPlan plan,
-            MaterializationResult play)
-        {
-            MaterializationAttempts++;
-            if (play.Deployed) MaterializationsSucceeded++;
-            if (play.GenerationAttempted)
-            {
-                GeneratedCardAttempts++;
-                if (play.Generated) GeneratedCardsSucceeded++;
-                Reservation.RecordGenerationAttempt(plan.Generation, play);
-                StrategicTempoBudget.RecordGenerationAttempt(player, turn);
-            }
-            if (plan.UsesEquipment)
-            {
-                EquipmentAssignmentAttempts++;
-                if (play.Attached) EquipmentAssignmentsSucceeded++;
-            }
-            if (play.StateChanged)
-                StateChanged = true;
-        }
-
-        // Multiple bounded local admissions in one turn report through one phase aggregate.
-        // The shared ledgers/budgets remain the authorities; this only combines telemetry and
-        // carries the newest reservation forward.
-        public void Accumulate(StrategicPhaseResult other)
-        {
-            if (other == null) return;
-            StateChanged |= other.StateChanged;
-            CardsPlayed += other.CardsPlayed;
-            CardsDrawn += other.CardsDrawn;
-            MaterializationAttempts += other.MaterializationAttempts;
-            MaterializationsSucceeded += other.MaterializationsSucceeded;
-            GeneratedCardAttempts += other.GeneratedCardAttempts;
-            GeneratedCardsSucceeded += other.GeneratedCardsSucceeded;
-            EquipmentAssignmentAttempts += other.EquipmentAssignmentAttempts;
-            EquipmentAssignmentsSucceeded += other.EquipmentAssignmentsSucceeded;
-            InfrastructureAttempts += other.InfrastructureAttempts;
-            InfrastructureBuilt += other.InfrastructureBuilt;
-            CapacityUnlocks += other.CapacityUnlocks;
-            CapabilityDeliveries += other.CapabilityDeliveries;
-            if (other.Reservation != null)
-                Reservation = other.Reservation;
-        }
-    }
-
-    // Phase-A working state for one capability demand.
-    internal sealed class DemandState
-    {
-        public AxisDemand Demand;
-        public float Remaining;
-        public int Ordinal;
-        public bool Blocked;
-    }
-
     // ARCH-02 §8 — Strategic Phase A: the demand-driven card-play pass that runs BEFORE mission
     // planning. It orchestrates only; the algorithms it drives live in their own owners —
     // MaterializationCandidateBuilder (candidate chains), MaterializationPortfolioSolver (jointly
     // feasible set), MaterializationExecutor (play), CapabilityDeliveryEvaluator (delivered amount
     // + lease), InfrastructureFulfillment (build lane). Spends from the live AP pool
-    // (PhaseAApBudget). Body is unchanged from the former StrategicManager.FulfillDemands.
+    // (PhaseAApBudget). One call is one PhaseAPass, run as stages (PhaseA/): Economy holds
+    // (PhaseAEconomyHolds), infrastructure batches (PhaseAInfrastructureLane), card rounds
+    // (PhaseACandidateRound, executed here), residual demands (PhaseAPass.PublishResiduals).
     public static class StrategicPhaseA
     {
-        // economyAxisAuthoritative — true when `demands` reflects Economy's COMPLETE current view
-        // (the Main pass, a reaction round's fresh DemandLayer.Generate, or an orchestration
-        // reconciliation that actually re-evaluated Economy this round). False when `demands` is a
-        // dirty-axis SUBSET that deliberately excludes Economy because Economy itself was not
-        // re-evaluated this call (StrategicReadmissionRunner.Run) — there, an absent
-        // Economy demand means "not looked at", not "resolved", and must never be read as license
-        // to drop the deferred-build hold. Defaults to true: both full-list callers rely on it.
+        // Re-entrant within a turn: the Main pass, every strategic re-admission, a reaction round
+        // and the cold residual call it. What carries between entries is `carriedReservation`
+        // (generator claims, build-card claims, residual demands), `apBudget` (follow-up AP
+        // promises), the reservation ledger, the turn's tempo budget and `intentState`.
+        //
+        // admittedAxes — the axes whose demands this call re-evaluated: every axis for the Main
+        // pass and a reaction round (null = all), the dirty axes for a re-admission, the cold axes
+        // for the cold residual. `demands` holds only those axes' demands. For an admitted axis an
+        // absent demand means "resolved"; for any other axis it means "not looked at". The entry
+        // rewrites the residual demands of its admitted axes only, and only an entry that admits
+        // Economy may drop the deferred-build hold or rebuild the build-card claims.
+        // deferFreshZeroRadar — early admissions leave fresh zero-Radar work to the late residual
+        // entry (see ShouldDeferFreshZeroRadarDemand).
         // `intentState` - the owner's durable intent store: Phase A transactions record their
         // generated operators and delivery failures in it.
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
@@ -113,7 +40,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
-            bool economyAxisAuthoritative = true, Radar radar = null,
+            IReadOnlyCollection<DesireAxis> admittedAxes = null, Radar radar = null,
             bool deferFreshZeroRadar = false)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Strategic.FulfillDemands");
@@ -125,884 +52,38 @@ namespace Game.Ai.V2
             };
             if (player == null || root == null || hand == null || apBudget == null || ctx == null)
                 return result;
-            // Local refits promise one real next activation. Reentry after movement, a phase
-            // change or base loss must not keep an obsolete actor promise alongside the live bank.
-            foreach (int id in apBudget.ActorFollowupIds.ToArray())
-            {
-                var primary = OwnWorld.Of(player).Army(id);
-                var attack = primary == null ? null
-                    : AttackBaseRefitPolicy.Resolve(
-                        intentState?.All, player, id, primary.Hex, ctx.TurnNumber);
-                apBudget.ReserveActorFollowup(id, primary == null || attack == null ? 0f
-                    : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
-            }
-            demands ??= System.Array.Empty<AxisDemand>();
-            radar ??= Radar.Even();
+            var pass = new PhaseAPass(snap, player, root, hand, ctx, apBudget, demands, commitments,
+                intentState, activeIntents, reconObjectives, admittedAxes, radar,
+                deferFreshZeroRadar, result);
+            RefreshFollowups(pass);
             // A new turn constructs a fresh MaterializationReservation. Restore the exact
             // pending Hero even when the current dirty-demand subset omits Development.
             InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, intentState, hand,
                 ctx.TurnNumber, result.Reservation, ctx);
-            // Early admissions defer NEW zero-priority work, but never delay a durable
-            // Economy build or a consumer-linked Raid reinforcement. Late residual admission
-            // uses this same owner with deferFreshZeroRadar=false.
 
-            // A target-specific Economy build may deliberately emit no repeated demand once
-            // Continuity owns its builder. That active intent outranks every fresh build for its
-            // own deferred-resource hold and must be protected before any early return.
-            //
-            // Protection is one independent slot PER EconomyTaskKind: a BuildExtraction's
-            // BuildValue is structurally an order of magnitude higher than a FoundBase's
-            // (extraction apCost~1 vs a Base's ~28), so the two kinds are not comparable on raw
-            // BuildValue and must not compete for one slot. Within a kind, every ACTIVE Economy
-            // intent is a real, independent obligation (Continuity supports several concurrent
-            // BuildExtraction/FoundBase deliveries, each keyed by its own target hex — see
-            // MissionIntentKey.For and EconomyContinuity.BeginEconomyDelivery), and
-            // StrategicResourceReservationLedger is per-owner, so each keeps its own reserved
-            // resources and idle clock.
-            List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => (activeIntents?
-                .Where(i => EconomyContinuity.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
-                // a transiently suspended build keeps its hold, but the retarget slot goes to an
-                // Active one (CanReplaceCommittedBase only switches an Active commitment)
-                .OrderByDescending(i => i.Status == IntentStatus.Active)
-                .ThenByDescending(i => i.Funding)
-                .ThenByDescending(i => i.Economy.BuildValue)
-                .ThenBy(i => i.CreatedTurn)
-                .ThenBy(i => i.IntentKey)
-                ?? Enumerable.Empty<MissionIntent>()).ToList();
-            List<MissionIntent> protectedActiveExtractions = ProtectedActiveBuilds(EconomyTaskKind.BuildExtraction);
-            List<MissionIntent> protectedActiveBases = ProtectedActiveBuilds(EconomyTaskKind.FoundBase);
-            // Revalue live builds before renewing holds or paying the next action. An absent
-            // demand in a partial/blocked view is not evidence of economic failure.
-            if (economyAxisAuthoritative)
-            {
-                foreach (MissionIntent build in protectedActiveBases.Concat(protectedActiveExtractions).ToList())
-                {
-                    if (build.Economy.Kind == EconomyTaskKind.FoundBase
-                        && (build.Economy.BuildCard == null || !hand.Hand.Contains(build.Economy.BuildCard)))
-                        continue;
-                    var committed = new[] { build };
-                    List<AxisDemand> sameSite = demands.Where(d => d != null
-                        && (d.Capability == CapabilityKind.EconomicExpansionBase
-                            || d.Capability == CapabilityKind.EconomicInfrastructure)
-                        && EconomyContinuity.HasEconomyBuildCommitment(committed, d)).ToList();
-                    if (sameSite.Count == 0
-                        || !EconomyContinuity.TryReleaseUnprofitableBuild(intentState, player,
-                            build, sameSite.OrderByDescending(d => d.Value).First(), ctx.TurnNumber))
-                        continue;
-                    protectedActiveBases.Remove(build);
-                    protectedActiveExtractions.Remove(build);
-                    demands = demands.Where(d => !sameSite.Contains(d)).ToList();
-                    // Intent/lease changes invalidate ownership and demand views even when no
-                    // card was played and no army moved in this pass.
-                    result.StateChanged = true;
-                }
-            }
-            if (result.StateChanged)
-            {
-                activeIntents = intentState.All.Where(i => i != null
-                    && i.Status == IntentStatus.Active).ToList();
-                commitments = ActorCommitments.FromIntents(activeIntents, snap, reconObjectives);
-            }
-            // The FoundBase retarget/hysteresis switch below still evaluates against exactly one
-            // (the highest-ranked) active Base commitment — deliberately unchanged scope: retargeting
-            // several concurrent Base builds against each other's hysteresis margin is a separate,
-            // unconfirmed need. Any OTHER concurrently active Base still gets its own resources
-            // protected further below, just without retarget eligibility this turn.
-            MissionIntent protectedActiveBase = protectedActiveBases.FirstOrDefault();
-
-            void ProtectActiveEconomyBuild(MissionIntent active)
-            {
-                EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
-                    player, ctx.TurnNumber, active);
-                if (active.Economy.BuildCard != null)
-                    result.Reservation.ClaimedEconomyBuildCards.Add(active.Economy.BuildCard);
-                // This hold IS the intent's real activity this cycle even when nothing is
-                // executable yet (waiting on H/E/M/T to accumulate) — tell Continuity so it does
-                // not silently age through ReconcileAfterTurn's idle-stall path (IntentReapedIdle)
-                // for legitimately waiting on its own reserved resources. See MarkProtectedThisTurn.
-                MissionContinuityLayer.MarkProtectedThisTurn(player, active.IntentKey, ctx.TurnNumber);
-                AiDebugLog.WriteDeduped(active.IntentKey.ToString(),
-                    $"[AI][V2]   strat.A economy hold - protected active "
-                    + $"{active.Economy.Kind} "
-                    + $"@({active.Economy.TargetHex.Q},{active.Economy.TargetHex.R}) before card arbitration");
-            }
-
-            foreach (MissionIntent extraction in protectedActiveExtractions)
-                ProtectActiveEconomyBuild(extraction);
-
-            if (protectedActiveBase != null)
-            {
-                // Exception, scoped to FoundBase only (unchanged behaviour from before the split,
-                // just evaluated against Base's own slot instead of a shared one): per the project
-                // owner's own call, a Base site must keep reacting to newly-known hexes even after
-                // commitment, not just while still staged (DemandLayer.Economy.AddBaseCandidates
-                // already does this for an uncommitted candidate — see
-                // economyBaseSwitchHysteresisThreshold). Only safe to release while the founding
-                // card is still physically in hand (nothing irreversible spent yet) and only for a
-                // fresh candidate that clears the SAME hysteresis margin — one threshold, one rule,
-                // now applied at both stages instead of just the first.
-                AxisDemand supersedingBaseSite = null;
-                if (protectedActiveBase.Economy.BuildCard != null
-                    && hand.Hand.Contains(protectedActiveBase.Economy.BuildCard)
-                    && economyAxisAuthoritative)
-                {
-                    supersedingBaseSite = demands
-                        .Where(d => DemandLayer.CanReplaceCommittedBase(protectedActiveBase, d))
-                        .OrderByDescending(d => d.Value)
-                        .FirstOrDefault();
-                }
-                if (supersedingBaseSite != null
-                    && EconomyContinuity.TryRetargetCommittedBase(player,
-                        protectedActiveBase, supersedingBaseSite, ctx.TurnNumber))
-                {
-                    // Continuity has atomically rekeyed the same intent/actor and released
-                    // the old reservation owner; protect the NEW exact build before any cards.
-                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold - switched Base "
-                        + $"to ({supersedingBaseSite.TargetHex.Value.Q},"
-                        + $"{supersedingBaseSite.TargetHex.Value.R}) net={supersedingBaseSite.Value:0.##}");
-                    ProtectActiveEconomyBuild(protectedActiveBase);
-                }
-                else
-                {
-                    if (supersedingBaseSite != null)
-                        demands = demands.Where(d => !object.ReferenceEquals(d, supersedingBaseSite))
-                            .ToList(); // failed transition cannot leak a rival executable demand
-                    ProtectActiveEconomyBuild(protectedActiveBase);
-                }
-            }
-            // Any OTHER concurrently active Base commitment beyond the one retarget-eligible slot
-            // above still owns real reserved resources and must not be left unprotected.
-            foreach (MissionIntent otherBase in protectedActiveBases.Skip(1))
-                ProtectActiveEconomyBuild(otherBase);
-            bool anyProtectedActiveEconomyBuild =
-                protectedActiveExtractions.Count > 0 || protectedActiveBases.Count > 0;
-
-            foreach (AxisDemand economyDemand in demands.Where(d => d != null
-                         && d.RequestingAxis == DesireAxis.Economy
-                         && d.EconomyBuildCard != null))
-                result.Reservation.ClaimedEconomyBuildCards.Add(economyDemand.EconomyBuildCard);
-
-            // AI-MGR — the NON-card half of the owner-witnessed AP workload the recurring-AP effect
-            // (ApBonus) is priced against: AP that COMMITTED work will consume this turn — a durable
-            // mission's claimed mover that has not activated yet, plus WITNESSED recon-air sorties
-            // (ReconAssignmentPlanner.MeasureAirCapacity, the canonical air-capacity owner). Idle
-            // unattached armies are deliberately NOT counted — a formation is not proof of a useful
-            // operation. The card half is added per scoring pass below from the real candidate set.
-            float committedNonCardAp = CommittedNonCardApDemand(
-                snap, player, root, ctx, activeIntents, reconObjectives);
-            float? witnessedUsefulApDemand = null;
-
-            // AI-MGR — the witnessed AP-workload measurement pass only matters when a PlayerGlobal
-            // recurring-resource effect (ApBonus today) could actually be SCORED this turn: a carrier
-            // reachable through hand OR deck (a Challenge could still mint it). Descriptor-driven via
-            // the registry — NOT a hardcoded UnitAbilities.ApBonus scan — so a generated / future
-            // recurring mechanic is covered with no edit here. Recomputed nowhere; carrier set is
-            // turn-stable.
-            bool reachableGlobalRecurringCarrier = StrategicEffectRegistry.AnyGlobalRecurringCarrier(
-                (snap?.Self?.Hand ?? System.Array.Empty<CardData>()).Select(c => c?.Definition)
-                    .Concat(snap?.Self?.Deck ?? System.Array.Empty<CardDefinition>()));
-
+            PhaseAEconomyHolds.ProtectActiveBuilds(pass);
+            PhaseAEconomyHolds.ClaimDemandBuildCards(pass);
+            PhaseACandidateRound.MeasurePassWorkload(pass);
             // One shared per-turn generation budget: a reaction-round Phase A must
             // not reset the Challenge count a main-pass generation already spent.
-            if (ctx != null)
-                result.Reservation.GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber);
-
+            result.Reservation.GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber);
             AiDebugLog.WriteDeduped("hand", $"[AI][V2]   strat.A - {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
-            var allStates = demands.Select((d, i) => new DemandState
-                {
-                    Demand = d,
-                    Remaining = d != null ? Mathf.Max(0f, d.DesiredAmount) : 0f,
-                    Ordinal = i,
-                })
-                .Where(s => s.Demand != null && s.Remaining > 0f)
-                .ToList();
-
-            // Persistence-gate reconciliation (spec "Bootstrap & No-Alternative-Work Escape") —
-            // a demand an axis marked IsPersistenceDeferred is a REAL runnable opportunity with a
-            // deliverable capability gap, but its capacity deficit has not persisted long enough to
-            // auto-play. It must not compete in the normal arbitration pool from the start (that
-            // would defeat the point of persistence), so it is held out of `states` here and only
-            // reconsidered once every other demand this pass is satisfied, blocked, or infeasible —
-            // see TryPromotePersistenceDeferred below.
-            var coldStates = deferFreshZeroRadar
-                ? allStates.Where(s => ShouldDeferFreshZeroRadarDemand(
-                    radar, s.Demand, activeIntents)).ToList()
-                : new List<DemandState>();
-            var states = allStates.Where(s => !s.Demand.IsPersistenceDeferred
-                && !coldStates.Contains(s)).ToList();
-            var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred
-                && !coldStates.Contains(s)).ToList();
-            if (coldStates.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A radar - defer {coldStates.Count} fresh zero-priority demand(s) until operational/tempo admission finishes");
-            if (states.Count == 0 && deferredStates.Count == 0)
+            pass.Partition();
+            if (pass.NothingToAdmit)
             {
-                if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
-                    EconomyReservationLifecycle.ClearDeferredEconomyResources(player, ctx.TurnNumber);
-                if (coldStates.Count > 0)
-                {
-                    result.Reservation.UnresolvedDemands.Clear();
-                    foreach (DemandState cold in coldStates)
-                        result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
-                }
+                PhaseAEconomyHolds.ClearPreIntentHoldIfResolved(pass);
+                pass.PublishEarlyResiduals();
                 return result;
             }
-
-            // --- Infrastructure pre-pass. DEF/ECO/DEV EconomicInfrastructure / DevelopmentInfra
-            //     demands are fulfilled by BuildingPlayExecutor through the authoritative gameplay
-            //     API, NOT the Unit/Hero materialization chain below. The requesting axis labels
-            //     value/telemetry; AP comes from the shared pool. Economy builds are handled here
-            //     once, then blocked so the generic loop does not emit a spurious "no feasible chain"
-            //     for a capability it can't match. A positive-Radar Development step is not run here:
-            //     it competes in the loop below on its card score (arbitratedInfrastructure).
-            // Establish the existing single Economy hold BEFORE infrastructure can spend it.
-            var economyBuildObligations = anyProtectedActiveEconomyBuild
-                ? new List<AxisDemand>()
-                : allStates.Where(s => !coldStates.Contains(s)
-                        && (!s.Demand.IsPersistenceDeferred
-                            || InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(s.Demand) != null))
-                    .Select(s => s.Demand)
-                    .Where(d => EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(snap, d))
-                    .Where(d => PendingPrerequisiteHoldIsLive(snap, player, root, hand, ctx, d,
-                        commitments, result.Reservation, activeIntents))
-                    .ToList();
-            AxisDemand protectedEconomyBuild = economyBuildObligations
-                .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
-                .ThenByDescending(d => d.Value)
-                .ThenByDescending(d => DemandLayer.EconomyBuildKind(d) == EconomyTaskKind.FoundBase ? 1 : 0)
-                .ThenByDescending(d => d.EconomySiteValue)
-                .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
-                .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
-                .FirstOrDefault();
-            if (protectedEconomyBuild != null)
-            {
-                // The single pre-intent Economy hold. No durable Economy build exists here
-                // (economyBuildObligations is empty whenever one does), so every deferred row is an
-                // earlier pass's demand hold; a re-admission pass that now protects a different
-                // site replaces it instead of stacking a second hold for the same build card.
-                EconomyReservationLifecycle.RetainDeferredEconomyOwner(player, ctx.TurnNumber,
-                    InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild)
-                        ?? InfrastructureFulfillment.EconomyReservationOwner(protectedEconomyBuild));
-                if (InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild) != null)
-                    EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForPendingHero(
-                        player, ctx.TurnNumber, protectedEconomyBuild);
-                else
-                    EconomyReservationLifecycle.ReserveDeferredEconomyResources(
-                        snap, player, ctx.TurnNumber, protectedEconomyBuild);
-                AiDebugLog.Write($"[AI][V2]   strat.A economy hold - protected "
-                    + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
-                    + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
-            }
-            else if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
-            {
-                // No obligation survived selection — but only clear when this call actually had
-                // Economy's authoritative view. A dirty-axis subset that never included Economy
-                // (economyAxisAuthoritative == false) says nothing about whether Economy's build
-                // target still exists; the hold must be left exactly as it was.
-                EconomyReservationLifecycle.ClearDeferredEconomyResources(
-                    player, ctx.TurnNumber);
-            }
-
-            // Zero-weight uncommitted infrastructure is a residual: it runs only after card
-            // arbitration, on the AP and resources the cards left. Active committed Economy builds
-            // keep their original early admission and resource/card protection.
-            var zeroRadarInfrastructure = states
-                .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
-                    && !IsCommittedEconomyBuild(activeIntents, state.Demand)
-                    && RadarValueScale.For(radar, state.Demand.RequestingAxis) <= 0f)
-                .ToList();
-            var residualInfrastructure = zeroRadarInfrastructure;
-            foreach (DemandState deferred in residualInfrastructure)
-                deferred.Blocked = true;
-            if (zeroRadarInfrastructure.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A infra - deferred {zeroRadarInfrastructure.Count} zero-Radar requests until after card arbitration");
-            // A Development facility / operator step is an ordinary card action with a positive
-            // Radar weight: it is NOT a late sink. Each pass of the loop below ranks its intrinsic
-            // card score x its own Radar scale against the best materialization chain, so the
-            // better of the two acts first and the other is re-judged on the refreshed world.
-            // An Economy global-source Facility is the same kind of plain card play (no builder,
-            // no hold): playtest 2026-10-18 Thane spent its only Energy on Intel Center (net 2.7)
-            // ahead of a threatened Citadel's garrison chain, so it competes here too.
-            var arbitratedInfrastructure = states
-                .Where(state => CompetesInCardArbitration(state.Demand)
-                    && !zeroRadarInfrastructure.Contains(state))
-                .ToHashSet();
-            if (arbitratedInfrastructure.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A infra - {arbitratedInfrastructure.Count} Development/global-source request(s) compete in card arbitration");
-
-            // A global-source demand (AxisDemand.EconomySourceCard) is about the card being in
-            // play, not about who played it: a carrier Hero that another demand already fielded
-            // (leading an army, delivering a build) or a Facility already placed closes it.
-            void CloseSourceDemandsAlreadyInPlay()
-            {
-                foreach (DemandState s in allStates)
-                {
-                    CardData source = s.Demand.EconomySourceCard;
-                    if (source == null || s.Remaining <= 0f || hand.Hand.Contains(source))
-                        continue;
-                    s.Remaining = 0f;
-                    AiDebugLog.Write($"[AI][V2]   strat.A - {s.Demand}: source card already left the "
-                        + "hand through another play; global-source demand closed");
-                }
-            }
-
-            // The SAME infrastructure executor handles early and residual batches.
-            void FulfillInfrastructure(IEnumerable<DemandState> pending)
-            {
-                CloseSourceDemandsAlreadyInPlay();
-                foreach (DemandState istate in pending
-                    .OrderByDescending(s => IsCommittedEconomyBuild(activeIntents, s.Demand))
-                    .ThenByDescending(s => s.Demand.Value * RadarValueScale.For(radar, s.Demand.RequestingAxis)))
-                {
-                    if (istate.Remaining <= 0f)
-                        continue;
-                    istate.Blocked = true;
-                    result.InfrastructureAttempts++;
-                    // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
-                    // checks the shared AP pool and live affordability, and
-                    // only then runs the authoritative build. A shortfall => nothing spent, not built.
-                    // §2.4 — independent controlled-state snapshot around the op (building count,
-                    // filled facility slots, army movement, resources), NOT derived from the op's own
-                    // result. A failed build that changed any of these is a rollback leak.
-                    V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
-                    InfraFulfillResult infra;
-                    using (new Game.Core.ProfileScope("AI/PhaseA.InfraFulfill"))
-                        infra = InfrastructureFulfillment.TryFulfill(
-                            snap, player, root, hand, ctx, istate.Demand, apBudget,
-                            result.Reservation, activeIntents, commitments);
-                    V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
-                    if (infra.StateChanged)
-                        result.StateChanged = true;
-                    // A failed BUILD must roll back. A paid Challenge (win or loss) is an
-                    // intentional partial action and must NOT be diagnosed as a build leak.
-                    // A paid stand-alone Base level is its own successful operation (separate invariant);
-                    // every other non-built outcome must still have rolled back cleanly.
-                    if (infra.CapacityUnlocked)
-                        AiV2Trace.CheckCapacityUnlock(istate.Demand.TraceId, infraBefore, infraAfter);
-                    else if (!infra.GenerationAttempted)
-                        AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
-                            infra.StateChanged, infraBefore, infraAfter);
-                    // A compensated failure can still publish newer knowledge/version stamps.
-                    // Refresh reads without inventing a resource debit or a completed project.
-                    if (!infra.Built && !infra.GenerationAttempted && infra.StateVersionAfter >= 0)
-                    {
-                        snap = WorldAnalysis.RefreshStrategicKnowledge(snap, player, root, hand, ctx);
-                        result.StateChanged = true;
-                    }
-                    if (infra.GenerationAttempted)
-                    {
-                        result.GeneratedCardAttempts++;
-                        if (infra.Generated)
-                        {
-                            result.GeneratedCardsSucceeded++;
-                            // A successful Challenge can exhaust AP before placement. Keep
-                            // the exact physical Hero and its destination in durable State.
-                            if (infra.GeneratedOperatorCard != null
-                                && istate.Demand.TargetHex.HasValue
-                                && istate.Demand.DevelopmentOperatorMode.HasValue)
-                                intentState?
-                                    .Development.RememberGeneratedDevelopmentOperator(
-                                        infra.GeneratedOperatorCard, istate.Demand.TargetHex.Value,
-                                        istate.Demand.DevelopmentOperatorMode.Value, ctx.TurnNumber);
-                        }
-                        result.Reservation.RecordGenerationAttempt(infra.Generation, null);
-                        StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
-                    }
-                    // A partial state-changing action (a paid Base capacity upgrade whose Facility
-                    // placement then failed) is debited like a Challenge: its AP is really spent.
-                    if (infra.Built || infra.CapacityUnlocked || infra.GenerationAttempted
-                        || (infra.StateChanged && infra.ApSpent > 0f))
-                    {
-                        // §2.3 — the physical AP drop must match what the transaction reports.
-                        AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
-                            infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent);
-                        if (infra.Built)
-                        {
-                            istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
-                            result.CardsPlayed += 1 + infra.AdditionalCardsConsumed;
-                            result.InfrastructureBuilt++;
-                            if (istate.Demand.Capability == CapabilityKind.DevelopmentInfrastructure)
-                                DevelopmentOutcomeTelemetry.RecordFacilityBuilt(player, ctx.TurnNumber);
-                            result.CapabilityDeliveries++;
-                        }
-                        // The unlock closes ITS demand only: the later placement is a new request, judged on the
-                        // refreshed world (typed Infrastructure|Capability re-admission), never a counted
-                        // card play or facility build.
-                        if (infra.CapacityUnlocked)
-                        {
-                            istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
-                            result.CapacityUnlocks++;
-                        }
-                        AiDebugLog.Write($"[AI][V2]   strat.A infra - {istate.Demand}: "
-                            + $"{(infra.Built ? "built" : infra.CapacityUnlocked ? "capacity unlocked" : infra.GenerationAttempted ? "operator Challenge" : "partial (not built)")} {infra.Detail} "
-                            + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
-                        if (infra.StateChanged)
-                        {
-                            snap = WorldAnalysis.RefreshStrategicKnowledge(
-                                snap, player, root, hand, ctx);
-                            // A minted card is protected immediately. A consumed card or a
-                            // newly invalid factory loses protection in this same pass.
-                            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player,
-                                intentState, hand, ctx.TurnNumber, result.Reservation, ctx);
-                        }
-                        if (infra.Built && istate.Demand.RequestingAxis == DesireAxis.Economy
-                            && infra.BuilderArmyId.HasValue)
-                            EconomyContinuity.BeginEconomyBuilderRecovery(
-                                player, snap, istate.Demand, infra.BuilderArmyId.Value,
-                                ctx.TurnNumber);
-                    }
-                    else
-                    {
-                        AiDebugLog.WriteDedupedWithId(istate.Demand.TraceId,
-                            $"[AI][V2]   strat.A infra - {istate.Demand}: not built ({infra.Detail})");
-                    }
-                }
-            }
-
-            FulfillInfrastructure(states.Where(state =>
-                InfrastructureFulfillment.Handles(state.Demand.Capability)
-                && !residualInfrastructure.Contains(state)
-                && !arbitratedInfrastructure.Contains(state)));
-
-            // The best admissible infrastructure step right now, as (state, intrinsic card score).
-            // A step that cannot act in this pass (no legal build, AP pool, reserved or live
-            // resources) is closed exactly as the single-shot build lane closed it; nothing is
-            // reserved or mutated by looking.
-            (DemandState state, float score)? BestArbitratedInfrastructure()
-            {
-                (DemandState state, float score)? best = null;
-                float bestWeighted = float.NegativeInfinity;
-                foreach (DemandState candidate in arbitratedInfrastructure
-                    .Where(s => !s.Blocked && s.Remaining > 0f)
-                    .OrderBy(s => s.Ordinal).ToList())
-                {
-                    InfrastructureFulfillment.InfraProposal proposal = InfrastructureFulfillment.Propose(
-                        snap, player, root, hand, ctx, candidate.Demand, apBudget,
-                        result.Reservation, activeIntents, commitments);
-                    if (!proposal.Admissible || proposal.Score <= AiConfigV2.allocatorSliceEpsilon)
-                    {
-                        candidate.Blocked = true;
-                        AiDebugLog.WriteDedupedWithId(candidate.Demand.TraceId,
-                            $"[AI][V2]   strat.A infra - {candidate.Demand}: not built ({proposal.Reason})");
-                        continue;
-                    }
-                    float weighted = MaterializationPortfolioSolver.InfrastructureArbitrationScore(
-                        proposal.Score, candidate.Demand.RequestingAxis, radar);
-                    if (weighted > bestWeighted)
-                    {
-                        bestWeighted = weighted;
-                        best = (candidate, proposal.Score);
-                    }
-                }
-                return best;
-            }
-
+            PhaseAEconomyHolds.HoldPreIntentBuild(pass);
+            PhaseAInfrastructureLane.Classify(pass);
+            PhaseAInfrastructureLane.FulfillPrePass(pass);
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
             // builder + jointly-feasible Phase-A portfolio below as every materialization demand.
-
-            int chainAttempts = 0;
-            while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
-            {
-                CloseSourceDemandsAlreadyInPlay();
-                List<DemandState> active = states.Where(s => !s.Blocked && s.Remaining > 0f
-                    && !arbitratedInfrastructure.Contains(s)).ToList();
-                // Infrastructure competing in the same arbitration is judged on the live world each
-                // pass; with no materialization demand left it simply has no card rival.
-                if (active.Count == 0)
-                {
-                    var onlyInfra = BestArbitratedInfrastructure();
-                    if (onlyInfra.HasValue)
-                    {
-                        chainAttempts++;
-                        FulfillInfrastructure(new[] { onlyInfra.Value.state });
-                        continue;
-                    }
-                    if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand, activeIntents))
-                        continue;
-                    break;
-                }
-
-                CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-
-                // AI-MGR — MEASUREMENT PASS (two-pass within the round). Assemble the owner-witnessed
-                // AP workload the recurring-AP effect is priced against from the SAME feasible
-                // candidate set the scoring pass below uses, BEFORE any AP-dependent scoring — so a
-                // good ApBonus carrier is never dropped by fallback-scored Top-K pruning before it is
-                // priced against the real workload. Feasibility-based ONLY, never DecisionScore /
-                // Worthwhile (that would be circular: AP utility -> card score -> workload -> AP
-                // utility). Recomputed every round because an executed chain changes hand / AP /
-                // generation / physical state.
-                //
-                // Only worth doing when something this round actually READS it: a reachable
-                // PlayerGlobal recurring-resource carrier (GlobalRecurringValue) or a Hero demand
-                // (Command 6-vs-7 filler count). Otherwise leave witnessedUsefulApDemand null -> the
-                // evaluator uses the discounted structural fallback, exactly as before.
-                bool needsWitnessedWorkload = reachableGlobalRecurringCarrier
-                    || active.Any(s => s.Demand.Capability == CapabilityKind.Hero);
-
-                List<(MaterializationPlan plan, float followupAp)> fillerUniverse = null;
-                if (needsWitnessedWorkload)
-                {
-                    var measOptions = new Dictionary<DemandState, List<(MaterializationPlan plan, float followupAp)>>();
-                    foreach (DemandState state in active)
-                    {
-                        List<(MaterializationPlan plan, float followupAp)> feas;
-                        using (new Game.Core.ProfileScope("AI/PhaseA.AllFeasiblePlans"))
-                            feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand,
-                                ctx, state.Demand, apBudget, commitments,
-                                apBudget.ReservedFollowup(), result.Reservation, activeIntents);
-                        if (feas.Count > 0)
-                            measOptions[state] = feas;
-                    }
-                    int genRemaining = Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
-                        - result.Reservation.GenerationAttemptsUsed);
-                    float legalCardApWorkload;
-                    using (new Game.Core.ProfileScope("AI/PhaseA.LegalApWorkload"))
-                        legalCardApWorkload = MaterializationPortfolioSolver.EstimateLegalApWorkload(
-                            measOptions, root, player, ctx, hand, genRemaining);
-                    witnessedUsefulApDemand = committedNonCardAp + legalCardApWorkload;
-
-                    // Cross-demand filler universe for the hero Command 6-vs-7 valuation: every
-                    // feasible body across ALL active demands this round (one per physical consumption
-                    // signature), so a Hero demand's candidate can see the Unit plans a
-                    // FieldCombatPower demand would put in the same recipient.
-                    fillerUniverse = measOptions.Values.SelectMany(v => v).ToList();
-                }
-                else
-                {
-                    witnessedUsefulApDemand = null;
-                }
-
-                // TOP-K worthwhile chains per active demand (each carries its
-                // own opportunity-adjusted DecisionScore), then a bounded max-total injective
-                // assignment: exactly one collision-free chain per demand (or none), so no hand
-                // card / generation source is ever double-counted as available capacity, and the
-                // globally best total is chosen (not a greedy per-demand pick).
-                var options = new Dictionary<DemandState, List<DemandCandidate>>();
-                foreach (DemandState state in active)
-                {
-                    bool competingHeroDemand = state.Demand.Capability == CapabilityKind.ScoutCapability
-                        && active.Any(other => !ReferenceEquals(other, state)
-                            && other.Remaining > AiConfigV2.allocatorSliceEpsilon
-                            && other.Demand.Capability == CapabilityKind.Hero);
-                    List<DemandCandidate> top;
-                    using (new Game.Core.ProfileScope("AI/PhaseA.TopForDemand"))
-                        top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand, ctx, state.Demand,
-                            apBudget, commitments, apBudget.ReservedFollowup(),
-                            result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK,
-                            witnessedUsefulApDemand: witnessedUsefulApDemand,
-                            fillerUniverse: fillerUniverse, activeIntents: activeIntents);
-                    if (top.Count > 0)
-                    {
-                        options[state] = top;
-                    }
-                    // A new-hero alternative (IsEconomyNewHeroAlternative) is never a delivery
-                    // block: its chains are refused by price against the ready hero, and the
-                    // project itself stays with that hero — it must not be suppressed here.
-                    else if (IsBoundedBasePrerequisiteDemand(state.Demand))
-                    {
-                        MaterializationDeliveryAvailability availability =
-                            MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
-                                snap, player, root, hand, ctx, state.Demand, commitments,
-                                result.Reservation, activeIntents);
-                        if (availability.ConfirmedBlocked)
-                        {
-                            bool suppressed = intentState != null && intentState
-                                .Economy.RecordBaseExpansionDeliveryFailure(ctx.TurnNumber,
-                                    state.Demand.EconomyBuildCard, state.Demand.TargetHex);
-                            AiDebugLog.Write($"[AI][V2]   strat.A economy delivery-block - "
-                                + $"target=({state.Demand.TargetHex.Value.Q},"
-                                + $"{state.Demand.TargetHex.Value.R}) "
-                                + $"raw={availability.RawCandidates} "
-                                + $"preflight={availability.PreflightCandidates} "
-                                + $"opDeliver={availability.OperationalCandidates} "
-                                + $"decision={(suppressed ? "reconsider-project" : "keep-continuity")}");
-                            if (suppressed)
-                            {
-                                state.Remaining = 0f;
-                                result.Reservation.ClaimedEconomyBuildCards.Remove(
-                                    state.Demand.EconomyBuildCard);
-                                // Only THIS project's pending hold — other active builds were
-                                // protected earlier in this pass and stay protected.
-                                string suppressedOwner = state.Demand.EconomyHeroBuildOwner;
-                                if (suppressedOwner != null)
-                                    EconomyReservationLifecycle.ClearDeferredEconomyResources(
-                                        player, ctx.TurnNumber, suppressedOwner);
-                            }
-                        }
-                    }
-                }
-
-                Dictionary<DemandState, DemandCandidate> assigned;
-                using (new Game.Core.ProfileScope("AI/PhaseA.BestAssignment"))
-                    assigned = options.Count > 0
-                        ? MaterializationPortfolioSolver.BestInjectiveAssignment(options, root, player, ctx, hand,
-                            Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
-                                        - result.Reservation.GenerationAttemptsUsed), radar)
-                        : new Dictionary<DemandState, DemandCandidate>();
-
-                var feasible = assigned.Select(kv => new PhaseACandidate(kv.Key, kv.Value)).ToList();
-                // One chain runs per pass, so the pick must be legal against the live recipient
-                // now; a chain that only fits after a portfolio hero lands waits for the next pass.
-                int portfolioSize = feasible.Count;
-                feasible = feasible.Where(c => ProjectedPhysicalState.FitsLiveNow(c.Plan)).ToList();
-                if (portfolioSize > 0 && feasible.Count < portfolioSize)
-                    AiDebugLog.Write($"[AI][V2]   strat.A order - {portfolioSize - feasible.Count} of "
-                        + $"{portfolioSize} portfolio chains wait for a capacity-raising chain to land first");
-
-                // ONE comparison of weighted scores: the best jointly feasible materialization
-                // chain (DecisionScore x Radar scale) against the best admissible Development
-                // infrastructure step (intrinsic card score x the same Radar scale). No lane has a
-                // hard priority; the winner acts and the next pass re-judges both on the new world.
-                var infraBid = BestArbitratedInfrastructure();
-                if (infraBid.HasValue)
-                {
-                    float infraWeighted = MaterializationPortfolioSolver.InfrastructureArbitrationScore(
-                        infraBid.Value.score, infraBid.Value.state.Demand.RequestingAxis, radar);
-                    float bestCard = feasible.Count == 0 ? float.NegativeInfinity
-                        : feasible.Max(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar));
-                    if (infraWeighted > bestCard)
-                    {
-                        AiDebugLog.Write($"[AI][V2]   strat.A arbitration - {infraBid.Value.state.Demand} "
-                            + $"wins {F(infraWeighted)} over best chain {(feasible.Count == 0 ? "none" : F(bestCard))}");
-                        chainAttempts++;
-                        FulfillInfrastructure(new[] { infraBid.Value.state });
-                        continue;
-                    }
-                }
-
-                if (feasible.Count == 0)
-                {
-                    foreach (DemandState state in active)
-                    {
-                        AxisDemand d = state.Demand;
-                        float reserved = apBudget.ReservedFollowup();
-                        if (options.TryGetValue(state, out var topOpts) && topOpts.Count > 0)
-                        {
-                            DemandCandidate b = topOpts[0];
-                            AiDebugLog.Write($"[AI][V2]   strat.A hold - {d}: best chain {b.Plan.StableKey} "
-                                + $"play {F(b.PlayScore)} hold {F(b.HoldValue)} decision {F(b.DecisionScore)} "
-                                + $"idle={F(b.Plan.UseBreakdown?.IdleBonus ?? 0f)} age={b.Plan.UseBreakdown?.IdleAgeTurns ?? 0} "
-                                + "not worth playing over holding the card / lost to contention; keep in hand");
-                            continue;
-                        }
-                        string diag;
-                        using (new Game.Core.ProfileScope("AI/PhaseA.ExplainNoChain"))
-                            diag = MaterializationDiagnostics.ExplainNoChain(
-                                snap, player, root, hand, ctx, d, apBudget, commitments, reserved);
-                        // The preparation host's witness reads this verdict (one truth) — only a
-                        // structural one: no chain shape at all, or shapes that pass the play
-                        // preflight yet cannot deliver into this host. An AP/resource shortfall of
-                        // this pass is timing and marks nothing.
-                        // The same structural verdict releases the demand's claim on hand cards.
-                        {
-                            MaterializationDeliveryAvailability availability;
-                            using (new Game.Core.ProfileScope("AI/PhaseA.DeliveryAvailability"))
-                                availability = MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
-                                    snap, player, root, hand, ctx, d, commitments, result.Reservation,
-                                    activeIntents);
-                            bool structural = availability.StructurallyUndeliverable;
-                            d.StructurallyUndeliverable = structural;
-                            if (structural && d.AttackFistIsPreparationHost && d.AttackFistArmyId.HasValue)
-                                PreparationDeliveryMemory.MarkNoChain(player, d.AttackFistArmyId.Value,
-                                    ctx.TurnNumber, hand.Hand.Select(c => StrikeRoster.CardKey(c?.Definition)));
-                        }
-                        AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   strat.A - {d}: no feasible useful chain "
-                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(apBudget.Balance())}, "
-                            + $"discrete {F(apBudget.DiscreteAdmissionBudget())}, "
-                            + $"followup reserved {F(reserved)}); {diag}");
-
-                        // §17 — an unfulfilled Aggression/Recon capability demand plus an empty
-                        // resource stock is a starvation signal for that resource (own state only).
-                        if (!d.AttackLocalRefit
-                            && (d.RequestingAxis == DesireAxis.Aggression || d.RequestingAxis == DesireAxis.Recon))
-                            foreach (ResourceType rt in ResourceBundle.All)
-                                if (root.GetResource(rt) <= 0f)
-                                    ResourceStarvationRegistry.RecordBlock(player, rt);
-                    }
-                    // No currently-active demand has any feasible chain this round — the AI is about
-                    // to give up on real strategic work for this pass. Before it does, give any
-                    // persistence-deferred demand its no-alternative-work chance (spec Rule 2).
-                    if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand, activeIntents))
-                        continue;
-                    break;
-                }
-
-                // The evaluator's opportunity-adjusted DecisionScore is the FINAL arbiter. The
-                // `feasible` set is already a JOINTLY feasible collision-free assignment
-                // (BestInjectiveAssignment models the shared generation attempt + AP + H/E/M/T
-                // pools), so there is no hidden hardcoded capability-priority layer deciding that a
-                // Hero chain "protects" resources from a higher-DecisionScore Field chain. Only
-                // deterministic tie-breakers follow the score.
-                PhaseACandidate selected = feasible
-                    .OrderByDescending(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar))
-                    .ThenByDescending(c => c.State.Demand.Value)
-                    .ThenBy(c => (int)c.State.Demand.RequestingAxis)
-                    .ThenBy(c => c.Plan.StableKey, System.StringComparer.Ordinal)
-                    .ThenBy(c => c.State.Ordinal)
-                    .First();
-
-                AxisDemand chosenDemand = selected.State.Demand;
-                MaterializationPlan plan = selected.Plan;
-                var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
-                    .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
-                int chainApBefore = root.ActionPoints;
-
-                if (plan.Kind == MaterializationChainKind.GenerateAttachUpgrade)
-                {
-                    DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
-                        snap, player, root, hand, ctx, chosenDemand, plan, apBudget);
-                    int upgradeApAfter = root.ActionPoints;
-                    chainAttempts++;
-                    result.MaterializationAttempts++;
-
-                    if (up.ApSpent > 0f)
-                        AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                            chainApBefore - upgradeApAfter, up.ApSpent);
-
-                    if (up.Executed)
-                    {
-                        result.GeneratedCardAttempts++;
-                        var attempted = new MaterializationResult
-                        {
-                            StateChanged = up.StateChanged,
-                            GenerationAttempted = true,
-                            Generated = up.ChallengeWon,
-                            ApSpent = up.ApSpent,
-                            AttemptedGenerationUseKey = plan.Generation?.UseKey,
-                        };
-                        result.Reservation.RecordGenerationAttempt(plan.Generation, attempted);
-                        StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
-                        if (up.ChallengeWon) result.GeneratedCardsSucceeded++;
-                        // Creation is complete; the capability is delivered by the hand-card lane.
-                        selected.State.Blocked = true;
-                    }
-                    else
-                        selected.State.Blocked = true;
-
-                    if (up.StateChanged)
-                    {
-                        result.StateChanged = true;
-                        snap = WorldAnalysis.RefreshStrategicKnowledge(
-                            snap, player, root, hand, ctx);
-                    }
-                    DevelopmentOutcomeTelemetry.RecordUpgrade(player, ctx.TurnNumber,
-                        up.Executed, up.ChallengeWon);
-                    AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} - "
-                        + $"{plan.DevelopmentUpgrade?.Mode} '{plan.DevelopmentUpgrade?.Card?.displayName}' "
-                        + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
-                        + $"p={F(plan.DevelopmentUpgrade?.SuccessChance ?? 0f)} "
-                        + $"gain={F(plan.DevelopmentUpgrade?.ExpectedGain ?? 0f)} "
-                        + $"policy={plan.DevelopmentUpgrade?.Explain} "
-                        + $":: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
-                    continue;
-                }
-
-                WorldSnapshot snapBeforeDelivery = snap;
-                MaterializationResult play;
-                using (new Game.Core.ProfileScope("AI/PhaseA.Execute"))
-                    play = MaterializationExecutor.Execute(
-                        snap, player, root, hand, ctx, plan, commitments,
-                        chosenDemand.SpendAuthority);
-                int chainApAfter = root.ActionPoints;
-                chainAttempts++;
-
-                // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
-                // from the plan shape + MaterializationResult; no scoring change.
-                result.RecordMaterialization(player, ctx.TurnNumber, plan, play);
-
-                // §2.3 — the physical AP drop must match the chain's reported ApSpent.
-                AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                    chainApBefore - chainApAfter, play.ApSpent);
-
-                if (!play.Deployed)
-                {
-                    if (play.CardDeployed) result.CardsPlayed++;
-                    AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
-                        + $"chain did not deploy ({play.FailReason}); gen={(play.Generated ? 1 : 0)} "
-                        + $"att={(play.Attached ? 1 : 0)}");
-                    // ARCH-02 §35 — a stale-placement failure means "replan me", not "block me":
-                    // refresh so the next TopForDemand enumerates against the current world, and
-                    // leave the demand active. The loop is still bounded by chainAttempts.
-                    if (play.StateChanged || play.PlacementStale)
-                        snap = WorldAnalysis.RefreshStrategicKnowledge(
-                            snap, player, root, hand, ctx);
-                    if (!play.StateChanged && !play.PlacementStale && plan.Generation == null)
-                        selected.State.Blocked = true;
-                    continue;
-                }
-
-                snap = WorldAnalysis.RefreshStrategicKnowledge(
-                    snap, player, root, hand, ctx);
-                CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
-                bool operationallyDelivered = CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx, snap, plan,
-                    chosenDemand, inv, afterInv, armyIdsBefore, out float delivered, beforeSnap: snapBeforeDelivery);
-
-                if (operationallyDelivered
-                    && (MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand)
-                        || chosenDemand.EconomyEscortArmyId.HasValue)
-                    && chosenDemand.EconomyPreferredBuilderArmyId.HasValue)
-                    commitments?.Claim(chosenDemand.EconomyPreferredBuilderArmyId.Value);
-
-                if (operationallyDelivered)
-                {
-                    if (chosenDemand.AttackLocalRefit)
-                    {
-                        var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
-                        var attack = AttackBaseRefitPolicy.Resolve(
-                            intentState?.All, player, primary.Id, primary.Hex, ctx.TurnNumber);
-                        apBudget.ReserveActorFollowup(primary.Id,
-                            AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
-                    }
-                    else
-                        apBudget.ReserveFollowup(selected.FollowupAp);
-                    selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
-                    result.CapabilityDeliveries++;
-                }
-                else
-                {
-                    selected.State.Blocked = true;
-                    AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: deployment changed state but delivered "
-                        + $"0 operational {chosenDemand.Capability}; reserve/potential only, residual unchanged");
-                }
-                result.CardsPlayed++;
-
-                AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
-                    + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
-                    + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
-                    + $"delivered {F(delivered)}, followup {(operationallyDelivered ? F(selected.FollowupAp) : "0")}ap reserved"
-                    + $", {plan.StableKey})");
-            }
-
-            // Recheck real AP and protected resources before zero-weight residual infrastructure.
-            FulfillInfrastructure(residualInfrastructure);
-
-            result.Reservation.UnresolvedDemands.Clear();
-            // A residual Phase A has structurally no way to deliver keeps no claim on hand cards
-            // (AxisDemand.StructurallyUndeliverable): judged on the end-of-pass world, one read
-            // per residual, AP/resource shortfalls excluded (that is timing, the claim stays).
-            foreach (DemandState state in states.Where(s => s.Remaining > 0f && !s.Demand.AttackLocalRefit))
-            {
-                if (!state.Demand.StructurallyUndeliverable)
-                {
-                    MaterializationDeliveryAvailability availability =
-                        MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
-                            snap, player, root, hand, ctx, state.Demand, commitments, result.Reservation,
-                            activeIntents);
-                    state.Demand.StructurallyUndeliverable = availability.StructurallyUndeliverable;
-                }
-                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
-            }
-            // Deferred demands never promoted this pass (no runnable window to try them, or no
-            // deliverable candidate — AC7) are still real unmet strategic need; carry them into the
-            // same residual pool the reaction pass / Phase B read, so a later chance this turn is not
-            // treated as if the need never existed.
-            foreach (DemandState state in deferredStates.Where(s => s.Remaining > 0f && !s.Demand.AttackLocalRefit))
-                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
-            foreach (DemandState cold in coldStates.Where(s => s.Remaining > 0f && !s.Demand.AttackLocalRefit))
-                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
+            RunCardArbitration(pass);
+            PhaseAInfrastructureLane.FulfillResidual(pass);
+            pass.PublishResiduals();
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.A - {result.CardsPlayed} chain(s), budget now " + apBudget.DebugLine());
@@ -1010,6 +91,285 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2] strat.A - residual demands "
                     + string.Join(" | ", result.Reservation.UnresolvedDemands.Select(d => d.ToString())));
             return result;
+        }
+
+        // The follow-up AP promises carried by the turn's shared budget, re-judged on entry.
+        // Local refits promise one real next activation: reentry after movement, a phase change
+        // or base loss must not keep an obsolete actor promise alongside the live bank. A plain
+        // delivery's promise ends once its army has taken the step (owner decision 2026-10-24).
+        private static void RefreshFollowups(PhaseAPass pass)
+        {
+            foreach (int id in pass.ApBudget.ActorFollowupIds.ToArray())
+                pass.ApBudget.ReserveActorFollowup(id, RefitFollowupAp(
+                    pass.Player, pass.IntentState, pass.Ctx, pass.Root, id));
+            pass.ApBudget.ReleaseSpentDeliveryFollowups(id => OwnWorld.Of(pass.Player).Army(id));
+        }
+
+        // The ONE local-refit promise rule, on entry and at delivery: the primary's next activation
+        // while its Attack operation still owns it; nothing when the army or the operation is gone.
+        internal static float RefitFollowupAp(PlayerSetupData player, MissionIntentState intentState,
+            AiTurnContext ctx, PlayerRoot root, int primaryId)
+        {
+            ArmyData primary = OwnWorld.Of(player).Army(primaryId);
+            AttackIntent attack = primary == null ? null
+                : AttackBaseRefitPolicy.Resolve(intentState?.All, player, primaryId, primary.Hex, ctx.TurnNumber);
+            return primary == null || attack == null ? 0f
+                : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root);
+        }
+
+        // Card arbitration: one action per round, at most maxPhaseAActionsPerPass per call. Each
+        // round compares the best jointly feasible chain with the best arbitrated infrastructure
+        // step; the winner acts and the next round re-judges both on the new world.
+        private static void RunCardArbitration(PhaseAPass pass)
+        {
+            while (pass.ChainAttempts < AiConfigV2.maxPhaseAActionsPerPass)
+            {
+                pass.CloseSourceDemandsAlreadyInPlay();
+                List<DemandState> active = pass.ActiveMaterializationStates();
+                // Infrastructure competing in the same arbitration is judged on the live world each
+                // round; with no materialization demand left it simply has no card rival.
+                if (active.Count == 0)
+                {
+                    PhaseAInfrastructureLane.Bid? onlyInfra = PhaseAInfrastructureLane.BestArbitrated(pass);
+                    if (onlyInfra.HasValue)
+                    {
+                        pass.ChainAttempts++;
+                        PhaseAInfrastructureLane.Fulfill(pass, new[] { onlyInfra.Value.State });
+                        continue;
+                    }
+                    if (pass.TryPromotePersistenceDeferred())
+                        continue;
+                    break;
+                }
+
+                PhaseACandidateRound round = PhaseACandidateRound.Build(pass, active);
+
+                // ONE comparison of weighted scores: the best jointly feasible materialization
+                // chain (DecisionScore x Radar scale) against the best admissible Development
+                // infrastructure step (intrinsic card score x the same Radar scale). No lane has a
+                // hard priority; the winner acts and the next round re-judges both on the new world.
+                PhaseAInfrastructureLane.Bid? infraBid = PhaseAInfrastructureLane.BestArbitrated(pass);
+                if (infraBid.HasValue)
+                {
+                    float bestCard = round.BestCardScore(pass.Radar);
+                    if (infraBid.Value.Weighted > bestCard)
+                    {
+                        AiDebugLog.Write($"[AI][V2]   strat.A arbitration - {infraBid.Value.State.Demand} "
+                            + $"wins {F(infraBid.Value.Weighted)} over best chain {(round.Feasible.Count == 0 ? "none" : F(bestCard))}");
+                        pass.ChainAttempts++;
+                        PhaseAInfrastructureLane.Fulfill(pass, new[] { infraBid.Value.State });
+                        continue;
+                    }
+                }
+
+                if (round.Feasible.Count == 0)
+                {
+                    ReportNoFeasibleChain(pass, round);
+                    // No currently-active demand has any feasible chain this round — the AI is about
+                    // to give up on real strategic work for this pass. Before it does, give any
+                    // persistence-deferred demand its no-alternative-work chance (spec Rule 2).
+                    if (pass.TryPromotePersistenceDeferred())
+                        continue;
+                    break;
+                }
+
+                ExecuteSelected(pass, round, round.Select(pass.Radar));
+            }
+        }
+
+        private static void ReportNoFeasibleChain(PhaseAPass pass, PhaseACandidateRound round)
+        {
+            foreach (DemandState state in round.Active)
+            {
+                AxisDemand d = state.Demand;
+                float reserved = pass.ApBudget.ReservedFollowup();
+                if (round.Options.TryGetValue(state, out var topOpts) && topOpts.Count > 0)
+                {
+                    DemandCandidate b = topOpts[0];
+                    AiDebugLog.Write($"[AI][V2]   strat.A hold - {d}: best chain {b.Plan.StableKey} "
+                        + $"play {F(b.PlayScore)} hold {F(b.HoldValue)} decision {F(b.DecisionScore)} "
+                        + $"idle={F(b.Plan.UseBreakdown?.IdleBonus ?? 0f)} age={b.Plan.UseBreakdown?.IdleAgeTurns ?? 0} "
+                        + "not worth playing over holding the card / lost to contention; keep in hand");
+                    continue;
+                }
+                string diag;
+                using (new Game.Core.ProfileScope("AI/PhaseA.ExplainNoChain"))
+                    diag = MaterializationDiagnostics.ExplainNoChain(
+                        pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, d, pass.ApBudget,
+                        pass.Commitments, reserved);
+                // The preparation host's witness reads this verdict (one truth) — only a
+                // structural one: no chain shape at all, or shapes that pass the play
+                // preflight yet cannot deliver into this host. An AP/resource shortfall of
+                // this round is timing and marks nothing.
+                // The same structural verdict releases the demand's claim on hand cards.
+                {
+                    MaterializationDeliveryAvailability availability;
+                    using (new Game.Core.ProfileScope("AI/PhaseA.DeliveryAvailability"))
+                        availability = MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
+                            pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, d, pass.Commitments,
+                            pass.Reservation, pass.ActiveIntents);
+                    bool structural = availability.StructurallyUndeliverable;
+                    d.StructurallyUndeliverable = structural;
+                    if (structural && d.AttackFistIsPreparationHost && d.AttackFistArmyId.HasValue)
+                        PreparationDeliveryMemory.MarkNoChain(pass.Player, d.AttackFistArmyId.Value,
+                            pass.Turn, pass.Hand.Hand.Select(c => StrikeRoster.CardKey(c?.Definition)));
+                }
+                AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   strat.A - {d}: no feasible useful chain "
+                    + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(pass.ApBudget.Balance())}, "
+                    + $"discrete {F(pass.ApBudget.DiscreteAdmissionBudget())}, "
+                    + $"followup reserved {F(reserved)}); {diag}");
+
+                // §17 — an unfulfilled Aggression/Recon capability demand plus an empty
+                // resource stock is a starvation signal for that resource (own state only).
+                if (!d.AttackLocalRefit
+                    && (d.RequestingAxis == DesireAxis.Aggression || d.RequestingAxis == DesireAxis.Recon))
+                    foreach (ResourceType rt in ResourceBundle.All)
+                        if (pass.Root.GetResource(rt) <= 0f)
+                            ResourceStarvationRegistry.RecordBlock(pass.Player, rt);
+            }
+        }
+
+        private static void ExecuteSelected(PhaseAPass pass, PhaseACandidateRound round, PhaseACandidate selected)
+        {
+            var armyIdsBefore = new HashSet<int>(pass.Snap.Self?.Armies?
+                .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
+            int chainApBefore = pass.Root.ActionPoints;
+            if (selected.Plan.Kind == MaterializationChainKind.GenerateAttachUpgrade)
+                ExecuteDevelopmentUpgrade(pass, selected, chainApBefore);
+            else
+                ExecuteMaterialization(pass, round, selected, armyIdsBefore, chainApBefore);
+        }
+
+        private static void ExecuteDevelopmentUpgrade(PhaseAPass pass, PhaseACandidate selected, int chainApBefore)
+        {
+            StrategicPhaseResult result = pass.Result;
+            AxisDemand chosenDemand = selected.State.Demand;
+            MaterializationPlan plan = selected.Plan;
+            DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
+                pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, chosenDemand, plan, pass.ApBudget);
+            int upgradeApAfter = pass.Root.ActionPoints;
+            pass.ChainAttempts++;
+            result.MaterializationAttempts++;
+
+            if (up.ApSpent > 0f)
+                AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
+                    chainApBefore - upgradeApAfter, up.ApSpent);
+
+            if (up.Executed)
+                result.RecordGenerationAttempt(pass.Player, pass.Turn, plan.Generation,
+                    new MaterializationResult
+                    {
+                        StateChanged = up.StateChanged,
+                        GenerationAttempted = true,
+                        Generated = up.ChallengeWon,
+                        ApSpent = up.ApSpent,
+                        AttemptedGenerationUseKey = plan.Generation?.UseKey,
+                    }, up.ChallengeWon);
+            // Executed or not, the upgrade demand is done for this pass: creation is complete and
+            // the capability is delivered by the hand-card lane.
+            selected.State.Blocked = true;
+
+            if (up.StateChanged)
+            {
+                result.StateChanged = true;
+                pass.RefreshKnowledge();
+            }
+            DevelopmentOutcomeTelemetry.RecordUpgrade(pass.Player, pass.Turn, up.Executed, up.ChallengeWon);
+            AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} - "
+                + $"{plan.DevelopmentUpgrade?.Mode} '{plan.DevelopmentUpgrade?.Card?.displayName}' "
+                + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
+                + $"p={F(plan.DevelopmentUpgrade?.SuccessChance ?? 0f)} "
+                + $"gain={F(plan.DevelopmentUpgrade?.ExpectedGain ?? 0f)} "
+                + $"policy={plan.DevelopmentUpgrade?.Explain} "
+                + $":: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
+        }
+
+        private static void ExecuteMaterialization(PhaseAPass pass, PhaseACandidateRound round,
+            PhaseACandidate selected, HashSet<int> armyIdsBefore, int chainApBefore)
+        {
+            StrategicPhaseResult result = pass.Result;
+            AxisDemand chosenDemand = selected.State.Demand;
+            MaterializationPlan plan = selected.Plan;
+            WorldSnapshot snapBeforeDelivery = pass.Snap;
+            MaterializationResult play;
+            using (new Game.Core.ProfileScope("AI/PhaseA.Execute"))
+                play = MaterializationExecutor.Execute(
+                    pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, plan, pass.Commitments,
+                    chosenDemand.SpendAuthority);
+            int chainApAfter = pass.Root.ActionPoints;
+            pass.ChainAttempts++;
+
+            // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
+            // from the plan shape + MaterializationResult; no scoring change.
+            result.RecordMaterialization(pass.Player, pass.Turn, plan, play);
+
+            // §2.3 — the physical AP drop must match the chain's reported ApSpent.
+            AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
+                chainApBefore - chainApAfter, play.ApSpent);
+
+            if (!play.Deployed)
+            {
+                if (play.CardDeployed) result.CardsPlayed++;
+                AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
+                    + $"chain did not deploy ({play.FailReason}); gen={(play.Generated ? 1 : 0)} "
+                    + $"att={(play.Attached ? 1 : 0)}");
+                // ARCH-02 §35 — a stale-placement failure means "replan me", not "block me":
+                // refresh so the next TopForDemand enumerates against the current world, and
+                // leave the demand active. The loop is still bounded by ChainAttempts.
+                if (play.StateChanged || play.PlacementStale)
+                    pass.RefreshKnowledge();
+                if (!play.StateChanged && !play.PlacementStale && plan.Generation == null)
+                    selected.State.Blocked = true;
+                return;
+            }
+
+            pass.RefreshKnowledge();
+            CapabilityInventory afterInv = CapabilityInventory.Build(pass.Snap, pass.Player, pass.Commitments);
+            bool operationallyDelivered = CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(pass.Player,
+                pass.Ctx, pass.Snap, plan, chosenDemand, round.Inventory, afterInv, armyIdsBefore,
+                out float delivered, beforeSnap: snapBeforeDelivery);
+
+            if (operationallyDelivered)
+                CapabilityDeliveryEvaluator.ClaimEconomyBuilder(pass.Commitments, chosenDemand);
+
+            if (operationallyDelivered)
+            {
+                if (chosenDemand.AttackLocalRefit)
+                {
+                    if (plan.AttackRefitPrimaryId.HasValue)
+                        pass.ApBudget.ReserveActorFollowup(plan.AttackRefitPrimaryId.Value, RefitFollowupAp(
+                            pass.Player, pass.IntentState, pass.Ctx, pass.Root, plan.AttackRefitPrimaryId.Value));
+                }
+                else
+                    pass.ApBudget.ReserveDeliveryFollowup(
+                        DeliveryRecipient(pass, plan, chosenDemand, armyIdsBefore), selected.FollowupAp);
+                selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
+                result.CapabilityDeliveries++;
+            }
+            else
+            {
+                selected.State.Blocked = true;
+                AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: deployment changed state but delivered "
+                    + $"0 operational {chosenDemand.Capability}; reserve/potential only, residual unchanged");
+            }
+            result.CardsPlayed++;
+
+            AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
+                + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
+                + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
+                + $"delivered {F(delivered)}, followup {(operationallyDelivered ? F(selected.FollowupAp) : "0")}ap reserved"
+                + $", {plan.StableKey})");
+        }
+
+        // The army whose next step a delivered chain's follow-up AP is kept for: the operational
+        // recipient the delivery lease names (the receiving army, or the army the play created).
+        private static ArmyData DeliveryRecipient(PhaseAPass pass, MaterializationPlan plan,
+            AxisDemand demand, HashSet<int> armyIdsBefore)
+        {
+            IReadOnlyList<int> recipients = CapabilityDeliveryEvaluator.OperationalLeaseArmyIds(
+                armyIdsBefore, pass.Snap, plan, demand);
+            int? id = recipients.Count > 0 ? recipients[0] : plan.Deploy.Army?.Id;
+            return id.HasValue ? OwnWorld.Of(pass.Player).Army(id.Value) : null;
         }
 
         // Strategy owns the admission policy, not Orchestration or the executor.
@@ -1028,7 +388,7 @@ namespace Game.Ai.V2
                 || !IsCommittedEconomyBuild(activeIntents, demand);
         }
 
-        private static bool IsCommittedEconomyBuild(
+        internal static bool IsCommittedEconomyBuild(
             IReadOnlyList<MissionIntent> activeIntents, AxisDemand demand)
         {
             return EconomyContinuity.HasEconomyBuildCommitment(activeIntents, demand);
@@ -1041,26 +401,6 @@ namespace Game.Ai.V2
         // stop exactly the plays that free a hand slot and draw the missing Hero/escort
         // (playtest 2026-10-18, Halden T8-T9: 3 Energy held, hand 10/10, nothing played or drawn).
         // Re-evaluated every pass, so the hold returns the pass a deliverable card appears.
-        private static bool PendingPrerequisiteHoldIsLive(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            ActorCommitments commitments, MaterializationReservation reservation,
-            IReadOnlyList<MissionIntent> activeIntents)
-        {
-            if (!HoldsForPendingPrerequisite(demand))
-                return true;
-            MaterializationDeliveryAvailability availability =
-                MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
-                    snap, player, root, hand, ctx, demand, commitments, reservation, activeIntents);
-            bool live = PendingPrerequisiteHoldIsLive(demand, availability);
-            if (!live)
-                AiDebugLog.Write($"[AI][V2]   strat.A economy hold - skip pending "
-                    + $"{demand.Capability} @({demand.TargetHex?.Q},{demand.TargetHex?.R}): "
-                    + $"prerequisite structurally undeliverable raw={availability.RawCandidates} "
-                    + $"preflight={availability.PreflightCandidates} "
-                    + $"opDeliver={availability.OperationalCandidates}");
-            return live;
-        }
-
         internal static bool PendingPrerequisiteHoldIsLive(AxisDemand demand,
             MaterializationDeliveryAvailability availability) =>
             !HoldsForPendingPrerequisite(demand) || !availability.StructurallyUndeliverable;
@@ -1074,7 +414,7 @@ namespace Game.Ai.V2
 
         // The same rule that makes ShouldReserveDeferredEconomyResources hold for a demand with
         // no ready builder/route: an accepted build's Hero/escort prerequisite.
-        private static bool HoldsForPendingPrerequisite(AxisDemand demand) =>
+        internal static bool HoldsForPendingPrerequisite(AxisDemand demand) =>
             demand != null && !demand.IsEconomyNewHeroAlternative
             && InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(demand) != null;
 
@@ -1085,155 +425,6 @@ namespace Game.Ai.V2
         internal static bool IsBoundedBasePrerequisiteDemand(AxisDemand demand) =>
             HoldsForPendingPrerequisite(demand)
             && demand.EconomyBuildCard?.Definition?.cardType == CardType.Base;
-
-        private static AxisDemand CloneResidualDemand(DemandState state)
-        {
-            AxisDemand d = state.Demand;
-            return new AxisDemand
-            {
-                StructurallyUndeliverable = d.StructurallyUndeliverable,
-                TraceId = d.TraceId,
-                RequestingAxis = d.RequestingAxis,
-                Value = d.Value,
-                WorldTaskScore = d.WorldTaskScore,
-                TargetHex = d.TargetHex,
-                Capability = d.Capability,
-                DesiredAmount = Mathf.Max(0f, state.Remaining),
-                RequiredTraits = d.RequiredTraits,
-                PreferredTraits = d.PreferredTraits,
-                MinimumFollowupAp = d.MinimumFollowupAp,
-                ScoutContext = d.ScoutContext,
-                DevOpportunity = d.DevOpportunity,
-                DevelopmentOperatorMode = d.DevelopmentOperatorMode,
-                EconomyResourceType = d.EconomyResourceType,
-                EconomyBuildCard = d.EconomyBuildCard,
-                EconomyBuildResourceCost = d.EconomyBuildResourceCost,
-                EconomyBuildApCost = d.EconomyBuildApCost,
-                EconomyExpectedIncomeGain = d.EconomyExpectedIncomeGain,
-                EconomySiteValue = d.EconomySiteValue,
-                EconomyTravelCost = d.EconomyTravelCost,
-                EconomyHeroOpportunityCost = d.EconomyHeroOpportunityCost,
-                EconomyAssignmentApCost = d.EconomyAssignmentApCost,
-                EconomyPaybackTurns = d.EconomyPaybackTurns,
-                EconomySourceCard = d.EconomySourceCard,
-                EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
-                EconomyReadyDeliveryCost = d.EconomyReadyDeliveryCost,
-                EconomyReadyBuilderIsSupport = d.EconomyReadyBuilderIsSupport,
-                EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
-                EconomyEscortArmyId = d.EconomyEscortArmyId,
-                EconomyBuilderRoutes = d.EconomyBuilderRoutes,
-                RequiredCapabilityPower = d.RequiredCapabilityPower,
-                AttackFistArmyId = d.AttackFistArmyId,
-                AttackFistIsPreparationHost = d.AttackFistIsPreparationHost,
-                AttackObjectiveHex = d.AttackObjectiveHex,
-                AttackLocalRefit = d.AttackLocalRefit,
-                AttackCoverageGap = d.AttackCoverageGap,
-                AttackCoverageTargetHex = d.AttackCoverageTargetHex,
-                DeliveryShape = d.DeliveryShape,
-                ConsumerIntentKey = d.ConsumerIntentKey,
-                Explain = d.Explain,
-                IsPersistenceDeferred = d.IsPersistenceDeferred,
-            };
-        }
-
-        // AI-MGR — the NON-card half of the owner-witnessed AP workload (see FulfillDemands). Only
-        // DEMONSTRATED obligations count: a durable mission's claimed mover that has not activated
-        // this turn (activation AP, floored at 1), plus the WITNESSED recon-air sortie count from the
-        // canonical air-capacity owner (ReconAssignmentPlanner.MeasureAirCapacity). Idle unattached
-        // armies and "actionable formation" heuristics are deliberately excluded — a formation is not
-        // proof of a useful AP operation. Development is 0 here: DemandLayer emits its axis demand
-        // precisely when there is NO operator base, so it is not a runnable AP action.
-        private static float CommittedNonCardApDemand(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<ReconObjective> reconObjectives)
-        {
-            float ap = 0f;
-            IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies;
-            if (activeIntents != null && armies != null)
-            {
-                var countedMovers = new HashSet<int>();
-                foreach (MissionIntent intent in activeIntents)
-                {
-                    if (intent?.PreferredMoverArmyId == null) continue;
-                    int moverId = intent.PreferredMoverArmyId.Value;
-                    if (!countedMovers.Add(moverId)) continue;
-                    ArmySnapshot army = null;
-                    foreach (ArmySnapshot a in armies)
-                        if (a != null && a.ArmyId == moverId) { army = a; break; }
-                    if (army == null || army.HasActivatedThisTurn) continue;
-                    // Recon audit B7 — an air mover (AirSweep wing) is priced once, through the air
-                    // witness below; counting it here as well double-reserved its activation.
-                    if (army.IsAir) continue;
-                    ap += Mathf.Max(1f, army.ActivationApCost);
-                }
-            }
-
-            (int airborne, int spare) = ReconAssignmentPlanner.MeasureAirCapacity(
-                ctx, player, root, snap, reconObjectives);
-            ap += (Mathf.Max(0, airborne) + Mathf.Max(0, spare)) * AiConfigV2.apAirSortieApProxy;
-            return ap;
-        }
-
-        // Persistence-gate reconciliation (spec "Bootstrap & No-Alternative-Work Escape", Rule 2).
-        // Called only at a point where the normal per-turn arbitration loop is about to give up —
-        // every currently active (non-deferred) demand is satisfied, blocked, or has no feasible
-        // chain this round. That is exactly "no other actionable work exists to prefer instead" in
-        // Phase A's own frame, so any persistence-deferred demand gets one real shot: if it has a
-        // legal/affordable/operationally-deliverable candidate RIGHT NOW (the same TopForDemand
-        // query every other demand uses — never a phantom fulfillment, AC7), it is moved into the
-        // normal `states` pool and competes there through the ordinary candidate scoring (AC10);
-        // otherwise it is left deferred and the caller proceeds to Phase B as usual (AC7/AC8).
-        // Every deferred demand is tried once per call so several axes can each get a fair chance
-        // in the same reconciliation window; promotion never re-derives runnable-opportunity or
-        // capacity facts — those were already established once by the emitting axis (DemandLayer).
-        private static bool TryPromotePersistenceDeferred(List<DemandState> states,
-            List<DemandState> deferredStates, WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget, ActorCommitments commitments,
-            MaterializationReservation reservation, float? witnessedUsefulApDemand,
-            IReadOnlyList<MissionIntent> activeIntents)
-        {
-            if (deferredStates.Count == 0)
-                return false;
-
-            bool promotedAny = false;
-            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-            foreach (DemandState ds in deferredStates.ToList())
-            {
-                // §6/§7 — Demand already measures its persistence-gate deficit against EXISTING
-                // FEASIBLE capacity only (desired - existing feasible), never against future mission
-                // funding (AxisDemand no longer even carries ExistingUsableCapacityAtEmission — the
-                // pre-ledger/post-ledger composite that lived here, FundedActionableNow, is removed
-                // entirely per the architecture rule against a third concept combining CAPABILITY and
-                // FUNDING). So the only question left for the reconciliation window is the generic
-                // one every other demand answers the same way: is there a legal/affordable/
-                // deliverable candidate for it RIGHT NOW (AC7) — never a phantom fulfillment.
-                List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
-                    ctx, ds.Demand, apBudget, commitments, apBudget.ReservedFollowup(),
-                    reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK,
-                    witnessedUsefulApDemand: witnessedUsefulApDemand, activeIntents: activeIntents);
-                if (top.Count == 0)
-                {
-                    // Stays a VALID, UNRESOLVED, temporarily-unfulfillable demand — must remain in
-                    // deferredStates (not removed) so it still reaches Reservation.UnresolvedDemands
-                    // below. Removing it here would silently turn "no candidate right now" into
-                    // "no demand ever existed", losing the residual for Phase B and next turn's log.
-                    AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile - {ds.Demand}: "
-                        + "decision=DEFER reason=no_deliverable_candidate; stays deferred, Phase B proceeds");
-                    continue;
-                }
-                AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile - {ds.Demand}: "
-                    + $"decision=PROMOTE previousGate=persistence reason=no_alternative_actionable_work "
-                    + $"deliverableCandidates={top.Count} best={top[0].Plan.StableKey}");
-                // A promoted demand IS now an ordinary actionable demand — clear the flag on the
-                // SAME AxisDemand instance so residual reporting / Phase B's UnresolvedClaimFor
-                // cannot tell it apart from a demand that was never persistence-gated at all.
-                ds.Demand.IsPersistenceDeferred = false;
-                deferredStates.Remove(ds);
-                states.Add(ds);
-                promotedAny = true;
-            }
-            return promotedAny;
-        }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }

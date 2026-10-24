@@ -424,8 +424,8 @@ namespace Game.Ai.V2
             {
                 // This hero cannot finish the build this turn, so it is a multi-turn delivery
                 // starting or continuing. Give Continuity a durable identity for it (mirrors the
-                // Hero-materialization path in CapabilityDeliveryEvaluator) so StrategicPhaseA's
-                // protectedActiveEconomyBuild protects the full H/E/M/T vector every later turn
+                // Hero-materialization path in CapabilityDeliveryEvaluator) so Phase A's
+                // PhaseAEconomyHolds.ProtectActiveBuilds protects the full H/E/M/T vector every later turn
                 // regardless of remaining travel — rather than
                 // EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources' one-turn horizon
                 // protecting unconditionally on every turn of the walk and freezing resources too

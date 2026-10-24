@@ -56,7 +56,7 @@ namespace Game.Ai.V2
             // Generation stays bounded by the turn-scoped generation budget, which Phase A DOES
             // debit.
             StrategicTempoBudget budget = StrategicTempoBudget.For(player, ctx.TurnNumber);
-            int maxActions = AiConfigV2.maxDemandFulfillmentActionsPerTurn;
+            int maxActions = AiConfigV2.maxPhaseAActionsPerPass;
             if (maxActions <= 0)
                 return null;
             int genRemaining = AiConfigV2.maxGenerationActionsPerTurn - budget.GenerationAttemptsUsed;

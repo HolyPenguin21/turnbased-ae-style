@@ -151,6 +151,8 @@ namespace Game.Ai.V2
         public int GenerationAttemptsUsed;
 
         public bool CanGenerateMore => GenerationAttemptsUsed < AiConfigV2.maxGenerationActionsPerTurn;
+        public int GenerationAttemptsLeft =>
+            Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn - GenerationAttemptsUsed);
 
         public bool ClaimsEconomyBuildCard(CardData card) => card != null
             && (ClaimedEconomyBuildCards.Contains(card)

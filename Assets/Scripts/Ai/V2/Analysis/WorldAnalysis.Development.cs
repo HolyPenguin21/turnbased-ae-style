@@ -240,7 +240,7 @@ namespace Game.Ai.V2
 
         // H/E/M/T an ACTIVE Economy build intent is already committed to but that the turn-scoped
         // reservation ledger does not hold yet: at turn start the ledger is empty and Phase A
-        // re-writes each build's hold only later (StrategicPhaseA.ProtectActiveEconomyBuild).
+        // re-writes each build's hold only later (PhaseAEconomyHolds.ProtectActiveEconomyBuild).
         // Resources Economy is deliberately saving are absorbed, not surplus. Whatever the ledger
         // already reserves under the two Economy reasons is subtracted first, so a mid-turn
         // snapshot never counts the same build twice.

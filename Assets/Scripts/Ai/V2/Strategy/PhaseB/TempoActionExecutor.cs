@@ -67,9 +67,7 @@ namespace Game.Ai.V2
                 beforeSnap: beforeSnap);
             if (operationalResidual)
             {
-                if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(residual)
-                    && residual.EconomyPreferredBuilderArmyId.HasValue)
-                    commitments?.Claim(residual.EconomyPreferredBuilderArmyId.Value);
+                CapabilityDeliveryEvaluator.ClaimEconomyBuilder(commitments, residual);
                 residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
                 if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
                     result.Reservation.UnresolvedDemands.Remove(residual);
