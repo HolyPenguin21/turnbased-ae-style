@@ -1685,9 +1685,10 @@ namespace Game.EditorTests
             map.SetData(4, 1f, terrain);
             try
             {
-                AiMapMemory.MarkScoutDanger(snap.Observer, new HexCoord(1, 0), 0, 99);
+                AiMapMemory.RememberBuildingForTest(snap.Observer, new AiMapMemory.KnownBuilding(
+                    new HexCoord(1, 0), new PlayerSetupData(), false, null));
                 Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, home), Is.EqualTo(2),
-                    "Combat transit ignores scout danger but packs 2-MP steps into a 3-MP turn");
+                    "Combat transit crosses an empty foreign building but packs 2-MP steps into a 3-MP turn");
                 terrain[new HexCoord(2, 0)].moveCost = 4;
                 map.SetData(4, 1f, terrain);
                 Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, home), Is.EqualTo(int.MaxValue));

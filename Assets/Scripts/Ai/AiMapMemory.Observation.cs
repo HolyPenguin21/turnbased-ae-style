@@ -26,6 +26,12 @@ namespace Game.Ai
             BumpRouteAndKnowledge(player);
         }
 
+        internal static void RememberBuildingForTest(PlayerSetupData player, KnownBuilding building)
+        {
+            StoreFor(KnownBuildings, player)[building.Hex] = building;
+            BumpRouteAndKnowledge(player);
+        }
+
         internal static void ForgetSightingsForTest(PlayerSetupData player)
         {
             EnemySightings.Remove(player);

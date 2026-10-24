@@ -15,14 +15,14 @@ namespace Game.Ai
     // person. "Видимость с памятью": stale knowledge is never auto-expired, only overwritten by a
     // fresh observation of that SAME hex — with narrow exceptions: a roaming player-owned army
     // sighting expires after AiConfig.enemySightingMemoryTurns (neutrals and garrisons never do),
-    // a destroyed army is forgotten by its witnesses, the claimant of an event and a player
-    // watching it learn of its consumption at once, and scout danger zones end at AvoidUntilTurn.
+    // a destroyed army is forgotten by its witnesses, and the claimant of an event and a player
+    // watching it learn of its consumption at once.
     //
     // This is the one sanctioned source of concrete foreign positions and rosters for the AI:
     // Strategy V2 (WorldAnalysis, Recon, Aggression, SafeStepPathing route blockers) reads it,
     // never live ArmyData of other players.
     //
-    // Files: AiMapMemory.cs — stores, revisions, subscriptions, turn lifecycle, scout danger zones;
+    // Files: AiMapMemory.cs — stores, revisions, subscriptions, turn lifecycle;
     // .Records.cs — the public read-only records; .Observation.cs — every write from vision and
     // events; .Queries.cs — every read.
     public static partial class AiMapMemory
@@ -64,19 +64,6 @@ namespace Game.Ai
         // ObserveBuilding).
         private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> RefutedStartingCitadels =
             new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
-
-        // A recorded scout retreat zone around a threat's hex — deliberately OUTLIVES the sighting
-        // that triggered it (enemySightingMemoryTurns is only 2 turns). One zone per center; any of
-        // this player's scouts is turned away from it until AvoidUntilTurn.
-        private class ScoutDangerZone
-        {
-            public HexCoord Center;
-            public int Radius;
-            public int AvoidUntilTurn;
-        }
-
-        private static readonly Dictionary<PlayerSetupData, List<ScoutDangerZone>> ScoutDangerZones =
-            new Dictionary<PlayerSetupData, List<ScoutDangerZone>>();
 
         private static bool _subscribed;
         private static HexMap _map;
@@ -343,7 +330,6 @@ namespace Game.Ai
             KnownEventCompleted.Clear();
             KnownBuildings.Clear();
             RefutedStartingCitadels.Clear();
-            ScoutDangerZones.Clear();
             KnowledgeVersions.Clear();
             RouteMemoryVersions.Clear();
             _currentTurn = 0;
@@ -354,7 +340,7 @@ namespace Game.Ai
         // Called at the top of AiTurnController.RunTurn, before the turn reads memory: stamps
         // _currentTurn for every record written from now on and expires `actor`'s own roaming
         // player-owned army sightings last (re)observed more than AiConfig.enemySightingMemoryTurns
-        // turns ago, plus its expired scout danger zones. Scoped to `actor` alone — every other
+        // turns ago. Scoped to `actor` alone — every other
         // player's memory is swept the same way at the top of its own turn.
         public static void OnTurnStarted(PlayerSetupData actor, int turnNumber)
         {
@@ -383,55 +369,6 @@ namespace Game.Ai
                 if (stale.Count > 0)
                     BumpRouteAndKnowledge(actor);
             }
-
-            if (ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
-                && zones.RemoveAll(z => turnNumber > z.AvoidUntilTurn) > 0)
-                BumpRouteAndKnowledge(actor);
-        }
-
-        // ---- Scout danger zones ----
-
-        // `center` is the triggering threat's own hex (not the fleeing scout's). A center already
-        // marked just takes the new radius and extends its AvoidUntilTurn.
-        public static void MarkScoutDanger(PlayerSetupData actor, HexCoord center, int radius, int avoidUntilTurn)
-        {
-            if (actor == null)
-                return;
-            if (!ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
-                ScoutDangerZones[actor] = zones = new List<ScoutDangerZone>();
-
-            ScoutDangerZone existing = zones.Find(z => z.Center.Equals(center));
-            if (existing != null)
-            {
-                existing.Radius = radius;
-                if (avoidUntilTurn > existing.AvoidUntilTurn)
-                    existing.AvoidUntilTurn = avoidUntilTurn;
-            }
-            else
-                zones.Add(new ScoutDangerZone { Center = center, Radius = radius, AvoidUntilTurn = avoidUntilTurn });
-            BumpRouteAndKnowledge(actor);
-        }
-
-        public static bool IsScoutDangerous(PlayerSetupData actor, HexCoord hex)
-        {
-            if (actor == null || !ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
-                return false;
-            // Plain loop: called per hex by SafeStepPathing's blocker snapshot, so a capturing
-            // lambda or a boxed enumerator would multiply by map size.
-            for (int i = 0; i < zones.Count; i++)
-                if (HexGridMath.Distance(zones[i].Center, hex) <= zones[i].Radius)
-                    return true;
-            return false;
-        }
-
-        // Every zone as a cheap (center, radius) pair — SafeStepPathing's blocker snapshot expands
-        // just these instead of asking IsScoutDangerous for every hex of the map.
-        public static IEnumerable<(HexCoord Center, int Radius)> ScoutDangerZoneRanges(PlayerSetupData actor)
-        {
-            if (actor == null || !ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
-                yield break;
-            foreach (ScoutDangerZone zone in zones)
-                yield return (zone.Center, zone.Radius);
         }
     }
 }

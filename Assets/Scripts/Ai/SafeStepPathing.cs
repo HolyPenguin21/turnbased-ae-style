@@ -12,12 +12,11 @@ namespace Game.Ai
     // retain HexPathfinder's destination-specific straightness tie break; cost-only fields
     // below are used only where Economy needs a minimum cost, never a route/threat witness.
     // Which remembered obstacles a ground route treats as blocked.
-    //   Standard — every remembered foreign army and building plus scout-danger zones (scouts,
-    //              economy, development: nothing there may set anything off).
+    //   Standard — every remembered foreign army and building (scouts, economy, development:
+    //              nothing there may set anything off).
     //   Combat   — Attack / Raid / ActiveDefence movers (project owner, 2026-10-02): only a hex
     //              holding a known ARMY blocks. A foreign building with nobody on it is simply
-    //              crossed (arrival takes it over / destroys it by the game rule) and a scout-danger
-    //              zone is a scout concern, not a fist's.
+    //              crossed (arrival takes it over / destroys it by the game rule).
     //   Attack   — the OFFENSIVE army's geometric route (2026-10-08): terrain alone decides. A hex
     //              whose entry costs more than the mover's MaxMovement is impassable; anything else
     //              (buildings, guards, remembered armies) is a CONTACT to be judged by the fight
@@ -230,7 +229,7 @@ namespace Game.Ai
         // — never a parallel list: a hex is crossed only if arriving there sets nothing off for
         // this kind of mover. Candidates are every hex this observer remembers holding an army or
         // a foreign building (memory only, never live BuildingRegistry: a hidden ownership change
-        // cannot silently alter route policy), plus active scout-danger zones for every mover.
+        // cannot silently alter route policy).
         // The route's explicit destination remains separately exempt in SafeRouteBlocker; the
         // mission's permission to fight/capture THAT endpoint is the execution gate's check.
         private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner, bool moverFullyHidden,
@@ -255,10 +254,7 @@ namespace Game.Ai
                 // (SafeRouteBlocker), so raiding that very guard is unchanged.
                 foreach (HexCoord guardHex in AiMapMemory.KnownEventGuardHexes(owner))
                     blocked.Add(guardHex);
-                return blocked;
             }
-            foreach ((HexCoord center, int radius) in AiMapMemory.ScoutDangerZoneRanges(owner))
-                foreach (HexCoord hex in HexGridMath.HexesInRange(center, radius)) blocked.Add(hex);
             return blocked;
         }
         private static PlayerRouteCache EnsureCacheState(HexMap map, PlayerSetupData owner)

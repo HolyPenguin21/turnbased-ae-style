@@ -15,12 +15,11 @@ namespace Game.Ai.V2
     //  check (ProvisioningManager, MissionRevalidator) asks StepBlocked, so a Recon choice can never
     //  be one the execution gate (AiTurnController.MoveArmyRoutine) then rejects — the class of bug
     //  that strands a scout re-picking the same refused hex every turn.
-    //  A hex is BLOCKED for a scout when:
-    //    * it lies in an active scout-danger cooldown zone (a recently fled-from area), or
-    //    * arriving there would set something off — AiMapMemory.KnownGroundArrival, the single
-    //      AI arrival rule the execution gate itself uses: a known army fights a visible scout,
-    //      a known undefended foreign structure is taken over by it. A FULLY hidden scout sets
-    //      neither off and may share the hex (stealth design). A scout never seeks either.
+    //  A hex is BLOCKED for a scout when its terrain cannot be entered, or when arriving there
+    //  would set something off — AiMapMemory.KnownGroundArrival, the single AI arrival rule the
+    //  execution gate itself uses: a known army fights a visible scout, a known undefended
+    //  foreign structure is taken over by it. A FULLY hidden scout sets neither off and may share
+    //  the hex (stealth design). A scout never seeks either.
     //  Hex Events are not blocks: a Transit scout always Skips them and keeps stealth/movement.
     //  `moverFullyHidden` is the mover's own stealth state as it will move (a planned stealth
     //  entry counts: callers pass requiresStealth for a mission that enters stealth first). For a
@@ -42,7 +41,6 @@ namespace Game.Ai.V2
     {
         public static bool StepBlocked(PlayerSetupData player, HexCoord hex, bool moverFullyHidden)
             => AiMapMemory.GroundTerrainBlocked(hex)
-               || AiMapMemory.IsScoutDangerous(player, hex)
                || AiMapMemory.KnownGroundArrival(player, hex, moverFullyHidden).HasOutcome;
 
         public static bool StepBlocked(PlayerSetupData player, ArmyData mover, HexCoord hex)
@@ -92,15 +90,13 @@ namespace Game.Ai.V2
             IsExposed(sightings, hex) ? 1f : DetectorRisk(sightings, hex);
 
         // Automatic stealth of the shared mover (AiTurnController.MoveArmyRoutine) for a solo Recce
-        // that no Recon executor moves: hide before a step out of or into a threatened hex, or into a
-        // still-cooling scout-danger zone. The Recon executor prices the same threat itself
+        // that no Recon executor moves: hide before a step out of or into a threatened hex. The
+        // Recon executor prices the same threat itself
         // (ScoutOptionalStealthPolicy) and opts out of this one.
         public static bool MoveWarrantsStealth(PlayerSetupData player, ArmyData army, HexCoord nextStep)
         {
             if (army == null)
                 return false;
-            if (AiMapMemory.IsScoutDangerous(player, nextStep))
-                return true;
             var sightings = AiMapMemory.AllKnownEnemySightings(player).ToList();
             return StealthThreat(sightings, army.Hex) > 0f || StealthThreat(sightings, nextStep) > 0f;
         }

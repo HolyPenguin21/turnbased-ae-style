@@ -299,8 +299,7 @@ namespace Game.Ai.V2
             // take over) are NOT a universal hard block. They are actor-state-aware (a fully-hidden
             // scout passes) and exported separately as VisibleArrivalBlockedHexes. HardBlocked is
             // only what blocks EVERY scout.
-            bool HardBlocked(HexCoord h) =>
-                !map.CanEnter(h) || AiMapMemory.IsScoutDangerous(player, h);
+            bool HardBlocked(HexCoord h) => !map.CanEnter(h);
             bool VisibleArrivalBlocked(HexCoord h) => visibleArrivalBlocked.Contains(h);
             // Exposure and detection are ScoutRiskModel's one rule (a garrison detects but cannot
             // engage — audit F1).
