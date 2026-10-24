@@ -1233,7 +1233,7 @@ namespace Game.Ai.V2
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag,
             CardData attachmentCard = null, bool futureAttachment = false,
-            IReadOnlyList<CardData> forecastHand = null)
+            IReadOnlyList<CardData> forecastHand = null, bool ignoreApForMeasurement = false)
         {
             var result = new List<DevelopmentOpportunity>();
             IReadOnlyList<CardData> cardsInHand = hand?.Hand;
@@ -1252,7 +1252,7 @@ namespace Game.Ai.V2
             // Memoised only for the standard (no explicit attachment card) call.
             // Nested Fate look-ahead suppresses recursive genomes: its verdicts live in the
             // memo's separate forecast dictionaries, never in the ordinary recipient cache.
-            bool memoised = attachmentCard == null;
+            bool memoised = attachmentCard == null && !ignoreApForMeasurement;
 
             // Production context of a real generation source (READY, and its materialization
             // re-enumeration), applied BEFORE the gain is priced so the task score, the card EV and
@@ -1273,10 +1273,10 @@ namespace Game.Ai.V2
                 using var __miss = new Game.Core.ProfileScope("AI/Dev.RecipientVerdict");
                 string why;
                 bool legal = unit != null
-                    ? futureAttachment
+                    ? futureAttachment || ignoreApForMeasurement
                         ? EquipmentSystem.CanAttachPreview(equipment, unit, out why)
                         : EquipmentSystem.CanAttach(generatedPreview, unit, root, out why)
-                    : futureAttachment
+                    : futureAttachment || ignoreApForMeasurement
                         ? EquipmentSystem.CanAttachPreview(equipment, card, out why)
                         : EquipmentSystem.CanAttach(generatedPreview, card, root, out why);
                 RecipientVerdict verdict;

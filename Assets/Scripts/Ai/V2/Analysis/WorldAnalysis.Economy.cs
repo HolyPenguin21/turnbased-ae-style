@@ -439,7 +439,15 @@ namespace Game.Ai.V2
             bool collectorActionable = collectorSites.Any(site =>
                 standings[site.ResourceType].UsefulMarginalIncomeGain(site.MarginalIncomeGain)
                     > AiConfigV2.allocatorSliceEpsilon);
-            eco.HasActionableOpportunity = extractionActionable || baseActionable
+            // A held global income carrier is a structural Economy opportunity too. Exact
+            // placement, affordability and card choice remain with Materialization.
+            bool globalSourceActionable = (snap.Self.Hand ?? System.Array.Empty<CardData>())
+                .Any(c => c?.Definition != null && !c.Definition.isAviation
+                    && (c.Definition.cardType == CardType.Unit || c.Definition.cardType == CardType.Hero
+                        || c.Definition.cardType == CardType.Facility)
+                    && StrategicEffectRegistry.HasGlobalRecurringEffect(
+                        MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment, c.Mutator)));
+            eco.HasActionableOpportunity = globalSourceActionable || extractionActionable || baseActionable
                 || collectorActionable || mobileCollection.Count > 0;
 
             return eco;

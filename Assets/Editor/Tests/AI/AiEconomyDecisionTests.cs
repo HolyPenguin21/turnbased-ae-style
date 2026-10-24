@@ -15,6 +15,46 @@ namespace Game.EditorTests
 {
     public class AiEconomyDecisionTests
     {
+        [TestCase(CardType.Unit, false, true)]
+        [TestCase(CardType.Hero, false, true)]
+        [TestCase(CardType.Facility, false, true)]
+        [TestCase(CardType.Equipment, false, false)]
+        [TestCase(CardType.Unit, true, false)]
+        [Category("UnityEngine")]
+        public void HeldGlobalIncomeCarrierMakesEconomyStructurallyActionable(CardType kind, bool aviation, bool actionable)
+        {
+            var player = new PlayerSetupData();
+            var card = new CardData(new CardDefinition { cardType = kind, isAviation = aviation,
+                grantedAbilities = new List<string> { UnitAbilities.ProduceHuman } });
+            var snapshot = new WorldSnapshot { Observer = player, TurnNumber = 1,
+                Self = new SelfSnapshot { Armies = System.Array.Empty<ArmySnapshot>(),
+                    Hand = new[] { card }, Deck = System.Array.Empty<CardDefinition>() } };
+            var method = typeof(WorldAnalysis).GetMethod("BuildEconomy",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            var economy = (EconomyStanding)method.Invoke(null, new object[] {
+                player, null, new Game.Ai.AiTurnContext { TurnNumber = 1 }, snapshot });
+            Assert.That(economy.HasActionableOpportunity, Is.EqualTo(actionable));
+        }
+
+        [Test, Category("UnityEngine")]
+        public void GarrisonExtractionPreservesSourceCapacityAndValidatesFirstMember()
+        {
+            var player = new PlayerSetupData();
+            var garrison = new ArmyData { Owner = player, IsGarrison = true };
+            var miller = new UnitData { Owner = player, Name = "Miller", IsHero = true, CommandRating = 8 };
+            var rusty = new UnitData { Owner = player, Name = "Rusty", IsHero = true, CommandRating = 3 };
+            garrison.Members.Add(miller); garrison.Members.Add(rusty);
+            for (int i = 0; i < 6; i++) garrison.Members.Add(new UnitData { Owner = player });
+            Assert.That(Game.Ai.AiArmyRoles.EconomyHeroCandidates(player, garrison).Contains(miller), Is.False);
+            garrison.Members.Clear(); garrison.Members.Add(miller); garrison.Members.Add(rusty);
+            rusty.CommandRating = 0;
+            var candidate = ProvisioningManager.ResolveGarrisonExtractionCandidate(player, garrison,
+                null, null, null, 10f, exactEconomyHeroId: rusty.RuntimeId);
+            Assert.That(candidate.Tier, Is.EqualTo(ProvisioningManager.GarrisonExtractionTier.None));
+            Assert.That(candidate.Reason, Is.Not.Null.And.Not.Empty);
+            Assert.That(garrison.Members.Count, Is.EqualTo(2), "preview must never transfer members");
+        }
+
         [Test]
         public void CommittedExtraction_UnprofitableRevaluationSurvivesAMissingBuilderRoute()
         {

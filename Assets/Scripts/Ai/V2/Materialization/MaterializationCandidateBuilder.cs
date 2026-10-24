@@ -449,12 +449,14 @@ namespace Game.Ai.V2
         public static List<(MaterializationPlan plan, float utility)> RankedSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation,
-            float? witnessedUsefulApDemand = null)
+            float? witnessedUsefulApDemand = null, bool ignoreApForMeasurement = false)
         {
             List<MaterializationPlan> raw = MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation);
+            if (ignoreApForMeasurement)
+                raw = raw.Where(p => p.Generation == null).ToList();
             List<MaterializationPlan> candidates = MaterializationFeasibility.FilterSurplus(
-                raw, player, root, hand, ctx, reservation, snap);
+                raw, player, root, hand, ctx, reservation, snap, ignoreApForMeasurement);
             if (candidates.Count == 0) return new List<(MaterializationPlan plan, float utility)>();
 
             // `witnessedUsefulApDemand` is the SHARED Phase-B owner-witnessed AP workload
@@ -527,7 +529,7 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.plan.StableKey, System.StringComparer.Ordinal)
                 .ToList();
             MaterializationPlan bestPlan = ranked[0].plan;
-            if (bestPlan.UseBreakdown != null)
+            if (!ignoreApForMeasurement && bestPlan.UseBreakdown != null)
                 AiDebugLog.Write($"[AI][V2]   strat.eval B - {bestPlan.StableKey} role={bestPlan.UseRole} "
                     + $"net {bestPlan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"decision {ranked[0].utility.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
@@ -636,8 +638,35 @@ namespace Game.Ai.V2
         // PlayerGlobal recurring-resource carrier is reachable through hand or deck.
         internal static float? PhaseBWitnessedApWorkload(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, CapabilityInventory inv,
-            ActorCommitments commitments, MaterializationReservation reservation)
+            ActorCommitments commitments, MaterializationReservation reservation,
+            out int usefulHandCards, bool turnEndMeasurement = false)
         {
+            usefulHandCards = 0;
+            if (turnEndMeasurement)
+            {
+                // Reuse the two canonical candidate/scoring lanes. Only the current AP
+                // ceiling is relaxed: owned cards, claims, resources and placement still apply.
+                if (StrategicTempoBudget.For(player, ctx.TurnNumber).TotalCapHit)
+                    return 0f;
+                var useful = RankedSurplus(snap, player, root, hand, ctx, inv, commitments,
+                        reservation, ignoreApForMeasurement: true)
+                    .Where(x => x.utility > AiConfigV2.tempoMinSpendUtility
+                        && !(reservation?.ClaimsEconomyBuildCard(x.plan.BaseCardInHand) ?? false)
+                        && !(reservation?.ClaimsEconomyBuildCard(x.plan.EquipmentInHand) ?? false))
+                    .Select(x => (plan: x.plan, followupAp: 0f)).ToList();
+                List<NonCombatCardPlayer.NonCombatPlay> usefulNonCombat = NonCombatCardPlayer.EnumeratePlays(
+                        snap, player, root, hand, ctx, new List<string>(), reservation,
+                        ignoreApForMeasurement: true)
+                    .Where(p => p.Generation == null && p.Score > AiConfigV2.tempoMinSpendUtility
+                        && StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost))
+                    .ToList();
+                usefulHandCards = useful.Where(x => x.plan.ApCost > 0f)
+                    .SelectMany(x => new[] { x.plan.BaseCardInHand, x.plan.EquipmentInHand })
+                    .Concat(usefulNonCombat.Where(p => p.ApCost > 0f).Select(p => p.Card))
+                    .Where(c => c != null).Distinct().Count();
+                return MaterializationPortfolioSolver.EstimatePhaseBWorkload(useful, usefulNonCombat,
+                    root, player, ctx, hand, 0);
+            }
             System.Collections.Generic.IEnumerable<CardDefinition> handDeckDefs =
                 (snap?.Self?.Hand ?? System.Array.Empty<CardData>()).Select(c => c?.Definition)
                     .Concat(snap?.Self?.Deck ?? System.Array.Empty<CardDefinition>());

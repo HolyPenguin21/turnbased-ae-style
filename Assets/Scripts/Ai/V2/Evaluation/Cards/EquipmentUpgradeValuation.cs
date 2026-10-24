@@ -198,7 +198,11 @@ namespace Game.Ai.V2
                     || After(EquipmentStat.ActivationApCost) > before[EquipmentStat.ActivationApCost]
                     || hostAbilities?.Any(a => !predicted.Abilities.Contains(a)) == true)
                 || purpose?.Kind == MissionKind.Scout
-                && (AbilityParams.GetBestRecceRadius(predicted.Abilities) < AbilityParams.GetBestRecceRadius(hostAbilities)
+                && ((purpose.Scout != null && (ReconScoutKinds.IsExplore(purpose.Scout.Kind)
+                            || ReconScoutKinds.IsRefresh(purpose.Scout.Kind))
+                        && (After(EquipmentStat.MoveMax) < before[EquipmentStat.MoveMax]
+                            || After(EquipmentStat.ActivationApCost) > before[EquipmentStat.ActivationApCost]))
+                    || AbilityParams.GetBestRecceRadius(predicted.Abilities) < AbilityParams.GetBestRecceRadius(hostAbilities)
                     || AbilityParams.GetBestRecceSpotStrength(predicted.Abilities) < AbilityParams.GetBestRecceSpotStrength(hostAbilities)
                     || purpose.Scout?.RequiresStealth == true && !AbilityParams.AbilitiesHaveAnyStealth(predicted.Abilities)))
                 return new EquipmentDelta(-1.5f, 0f, "reject=assignment-capability-loss");

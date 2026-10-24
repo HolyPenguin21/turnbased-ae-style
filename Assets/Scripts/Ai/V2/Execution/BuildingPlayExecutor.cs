@@ -57,7 +57,8 @@ namespace Game.Ai.V2
         }
 
         public static bool CanPlaceFacilityAt(PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
-            CardData card, HexCoord baseHex, out string reason, bool requireCardInHand = true)
+            CardData card, HexCoord baseHex, out string reason, bool requireCardInHand = true,
+            bool requireCurrentAp = true)
         {
             reason = null;
             if (player == null || hand == null || card?.Definition == null)
@@ -65,7 +66,7 @@ namespace Game.Ai.V2
             if (requireCardInHand && !hand.Hand.Contains(card))
             { reason = "card not in hand"; return false; }
             return InfrastructureActions.CanPlaceFacility(card.Definition, baseHex, player,
-                card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason);
+                card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason, requireCurrentAp);
         }
 
         // -------------------------------------------------------------------- Base ----

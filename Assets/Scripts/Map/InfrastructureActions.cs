@@ -295,7 +295,7 @@ namespace Game.Map
         }
 
         public static bool CanPlaceFacility(CardDefinition definition, HexCoord baseHex, PlayerSetupData owner,
-            int apCost, ResourceCost resourceCost, out string reason)
+            int apCost, ResourceCost resourceCost, out string reason, bool requireCurrentAp = true)
         {
             reason = null;
             if (definition == null || definition.cardType != CardType.Facility || owner == null)
@@ -305,7 +305,7 @@ namespace Game.Map
             BuildingData building = BuildingRegistry.FindAt(baseHex);
             if (building == null || building.Owner != owner || !building.IsBase)
             { reason = "Facilities require one of your bases on this hex."; return false; }
-            if (apCost < 0 || !root.CanSpendActionPoints(apCost))
+            if (apCost < 0 || (requireCurrentAp && !root.CanSpendActionPoints(apCost)))
             { reason = apCost < 0 ? "This card has an invalid AP cost." : $"Need {apCost} AP to build here."; return false; }
             if (resourceCost != null && !resourceCost.CanAfford(root))
             { reason = "Not enough resources."; return false; }

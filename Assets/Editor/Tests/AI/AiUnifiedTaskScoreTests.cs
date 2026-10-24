@@ -409,19 +409,19 @@ namespace Game.EditorTests
         {
             // Task 1 acceptance matrix: Extraction +1 resource, no deficit -> 5 (unchanged).
             Assert.That(TaskScoreEvaluator.EconomicHexBenefit(1f, 0f), Is.EqualTo(5f).Within(0.0001f));
-            // Extraction +1 resource, maximum deficit -> 8 (5 physical + 3 deficit, was 17).
-            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(1f, 1f), Is.EqualTo(8f).Within(0.0001f));
-            Assert.That(AiConfigV2.taskScoreEconomicDeficitBonusMax, Is.EqualTo(3f).Within(0.0001f));
+            // Extraction +1 resource, maximum deficit -> 9 (5 physical + 4 deficit).
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(1f, 1f), Is.EqualTo(9f).Within(0.0001f));
+            Assert.That(AiConfigV2.taskScoreEconomicDeficitBonusMax, Is.EqualTo(4f).Within(0.0001f));
             // Zero gain, maximum deficit -> 0 (deficit never creates value without marginal income).
             Assert.That(TaskScoreEvaluator.EconomicHexBenefit(0f, 1f), Is.EqualTo(0f));
-            // Several deficit resources at once still never exceed the single shared 3-point cap.
+            // Several deficit resources at once still never exceed the single shared 4-point cap.
             var multiResource = new List<(float Gain, float Priority)>
             {
                 (1f, 1f), (2f, 1f), (0.5f, 1f),
             };
             float multi = TaskScoreEvaluator.EconomicHexBenefit(multiResource);
             float multiPhysical = TaskScoreEvaluator.EconomicHexBenefit(3.5f, 0f);
-            Assert.That(multi - multiPhysical, Is.LessThanOrEqualTo(3f + 0.0001f));
+            Assert.That(multi - multiPhysical, Is.LessThanOrEqualTo(4f + 0.0001f));
         }
 
         [Test]

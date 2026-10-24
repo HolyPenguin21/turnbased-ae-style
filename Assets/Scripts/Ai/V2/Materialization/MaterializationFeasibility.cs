@@ -94,7 +94,8 @@ namespace Game.Ai.V2
         // unresolved strategic claim on its base card, hand-slot-feasible, reserves still OK.
         internal static List<MaterializationPlan> FilterSurplus(IReadOnlyList<MaterializationPlan> raw,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            MaterializationReservation reservation, WorldSnapshot snapshot = null)
+            MaterializationReservation reservation, WorldSnapshot snapshot = null,
+            bool ignoreApForMeasurement = false)
         {
             var sink = new List<MaterializationPlan>();
             foreach (MaterializationPlan p in raw)
@@ -120,7 +121,9 @@ namespace Game.Ai.V2
                     continue;
                 if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot)
                     continue;
-                if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, p, player))
+                if (!(ignoreApForMeasurement
+                    ? StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost)
+                    : StrategicSpendability.ReservesOkAfterChain(root, ctx, p, player)))
                     continue;
                 sink.Add(p);
             }

@@ -17,6 +17,35 @@ namespace Game.EditorTests
     {
         private static readonly string[] None = new string[0];
 
+        [TestCase(ScoutTargetKind.Explore, false, true)]
+        [TestCase(ScoutTargetKind.Refresh, true, true)]
+        [TestCase(ScoutTargetKind.Explore, true, true)]
+        [TestCase(ScoutTargetKind.Hunt, false, false)]
+        [TestCase(ScoutTargetKind.CaptureStructure, false, false)]
+        [TestCase(ScoutTargetKind.AirSweep, false, false)]
+        public void ScoutAssignmentProtectsPatrolMobility(ScoutTargetKind kind, bool activationCost, bool rejects)
+        {
+            var before = EquipmentSystem.DefinitionStats(new CardDefinition {
+                attack = 3, defenseRating = 1, hitPoints = 4, range = 2,
+                moveMax = 2, initiative = 1, activationApCost = 1 });
+            var grant = new EquipmentGrant();
+            grant.statChanges.Add(new EquipmentStatChange {
+                stat = activationCost ? EquipmentStat.ActivationApCost : EquipmentStat.MoveMax,
+                amount = activationCost ? 1 : -1 });
+            var purpose = new MissionIntent { Kind = MissionKind.Scout,
+                Objective = new ScoutIntent { Kind = kind } };
+            var method = typeof(EquipmentUpgradeValuation).GetMethod("ScoreEquipmentDelta",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var parameters = method.GetParameters();
+            var args = new object[parameters.Length];
+            for (int i = 0; i < args.Length; i++)
+                args[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : null;
+            args[0] = grant; args[1] = before; args[2] = None; args[3] = false;
+            args[System.Array.FindIndex(parameters, p => p.Name == "purpose")] = purpose;
+            var result = (EquipmentUpgradeValuation.EquipmentDelta)method.Invoke(null, args);
+            Assert.That(result.Detail?.Contains("reject=assignment-capability-loss") == true, Is.EqualTo(rejects));
+        }
+
         private static EfficiencyStats S(int a, int d, int hp, int r, int move = 3, int ini = 1, int ap = 1, int fate = 0) =>
             new EfficiencyStats(a, d, hp, r, move, ini, ap, fate);
 

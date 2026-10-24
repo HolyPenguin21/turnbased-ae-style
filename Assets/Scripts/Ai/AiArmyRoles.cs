@@ -576,6 +576,7 @@ namespace Game.Ai
             return garrison.Members
                 .Where(u => u != null && u.IsHero
                     && (requiredRole == null || u.HasAbility(requiredRole))
+                    && garrison.CanLeaveWithoutOvercrowding(u)
                     && CanSpareGarrisonMember(player, garrison, u)
                     && (requiredRole != null || !FacilityNeedsHero(player, garrison, u,
                         preparationSite, new[] { u })));

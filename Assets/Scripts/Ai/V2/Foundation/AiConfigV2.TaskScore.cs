@@ -18,7 +18,7 @@
         // Resource income a site adds: min(cap, gain x weight) + shortage bonus.
         public const float taskScoreEconomicPhysicalBenefitMax = 10f;
         public const float taskScoreEconomicPhysicalBenefitWeight = 5f;   // shape: points per unit of income
-        public const float taskScoreEconomicDeficitBonusMax = 3f;
+        public const float taskScoreEconomicDeficitBonusMax = 4f;
         public const float taskScoreEconomicDeficitFullGain = 1f;         // shape: income that earns the full bonus
         // How fast the build pays its resources back.
         public const float taskScorePaybackMax = 8f;

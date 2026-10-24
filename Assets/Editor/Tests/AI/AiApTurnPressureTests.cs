@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using Game.Ai.V2;
+using Game.Map;
 using Game.Players;
 using NUnit.Framework;
 
@@ -14,6 +15,49 @@ namespace Game.EditorTests
 
         private static ApTurnMeasure Measure(int startAp, int endAp, float unmet) =>
             new ApTurnMeasure(startAp, endAp, unmet, 0, 0f, 0, 0f, 0);
+
+        [TestCase(4, 6f, 6f)]
+        [TestCase(14, 4f, 0f)]
+        [TestCase(0, 4f, 4f)]
+        [Category("UnityEngine")]
+        public void CardDemandRequiresUsefulWorkThatRemainingApCannotCover(int endAp, float workload, float unmet)
+        {
+            var root = PlayerRoot.Create(Us, "AP demand test");
+            try
+            {
+                root.ActionPoints = endAp;
+                var m = ApTurnPressure.Measure(Us, root, null, null, 18, null, workload, 1);
+                Assert.That(m.CardsUnmet, Is.EqualTo(unmet));
+                Assert.That(m.Demand, Is.EqualTo(18 - endAp + unmet));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root.gameObject); }
+        }
+
+        [Test, Category("UnityEngine")]
+        public void IdleApAndNoUsefulWitnessDoNotCreateUnmetDemand()
+        {
+            var m = ApTurnPressure.Measure(Us, null, null, null, 14, null);
+            Assert.That(m.Unmet, Is.Zero);
+        }
+
+        [Test, Category("UnityEngine")]
+        public void DeferredDemandCountsOnlyActualApScarcityAndDoesNotSumAlternatives()
+        {
+            var mission = new MissionProposal { BaseValue = 10,
+                Requirements = new MissionRequirements { ApDesired = 9 } };
+            var deferred = new[] {
+                new DeferredEntry { Mission = mission, Reason = DeferReason.InsufficientBudget,
+                    Required = new ResourceVector(6), Missing = new ResourceVector(6) },
+                new DeferredEntry { Mission = mission, Reason = DeferReason.InsufficientBudget,
+                    Required = new ResourceVector(8), Missing = new ResourceVector(8) },
+                new DeferredEntry { Mission = mission, Reason = DeferReason.LowValuePerAp,
+                    Required = new ResourceVector(20), Missing = new ResourceVector(20) },
+                new DeferredEntry { Mission = mission, Reason = DeferReason.InsufficientBudget,
+                    Required = new ResourceVector(30), Missing = new ResourceVector(30, 0, 0, 0, 1) } };
+            var m = ApTurnPressure.Measure(Us, null, null, null, 0, deferred);
+            Assert.That(m.MissionsUnmet, Is.EqualTo(8));
+            Assert.That(m.MissionsDeferred, Is.EqualTo(2));
+        }
 
         [Test]
         public void Demand_IsSpentPlusUnmet_AndPressureIsItOverTheAp()
