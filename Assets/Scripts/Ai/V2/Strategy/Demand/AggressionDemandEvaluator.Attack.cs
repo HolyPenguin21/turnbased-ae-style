@@ -244,6 +244,7 @@ namespace Game.Ai.V2
                 RequiredCapabilityPower = deficit,
                 AttackFistArmyId = hostId,
                 AttackFistIsPreparationHost = true,
+                AttackObjectiveHex = ai.Target.Hex,
                 AttackCoverageGap = coverageGap,
                 AttackCoverageTargetHex = coverageGap ? ai.Target.Hex : (HexCoord?)null,
                 RequiredTraits = TraitPreference.None,
@@ -265,7 +266,8 @@ namespace Game.Ai.V2
         // stands off an own Base (no card lands there) or no card strengthens it: a positive
         // Reserve alone is no delivery. Which chain actually runs stays Materialization's choice.
         internal static string PreparationHostCardSource(WorldSnapshot snap, ArmyData host,
-            IReadOnlyList<StrikeRosterSlot> targetRoster = null, HexCoord? coverageTarget = null)
+            IReadOnlyList<StrikeRosterSlot> targetRoster = null, HexCoord? coverageTarget = null,
+            HexCoord? taskTarget = null)
         {
             if (snap?.Self == null || host == null || snap.Self.BaseHexes == null
                 || !snap.Self.BaseHexes.Contains(host.Hex))
@@ -295,17 +297,23 @@ namespace Game.Ai.V2
                     coverageTarget.Value) > 0;
             bool ExactlyMissing(Game.Cards.CardDefinition d) =>
                 missing != null && missing.Any(m => !m.IsHero && m.Key == StrikeRoster.CardKey(d));
+            HexCoord? destination = taskTarget ?? coverageTarget;
+            var routeAdmissible = destination.HasValue ? GroundCombatReinforcement.PreserveTaskRoute(
+                snap.Map, host, destination.Value, SafeRouteProfile.Attack) : null;
             bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null, Game.Cards.CardDefinition mutator = null) =>
                 d != null && !d.isAviation
                 && MaterializationChainMatching.MatchesCapabilityDef(d, CapabilityKind.FieldCombatPower)
                 && MaterializationChainMatching.AbilitiesSatisfyCapability(
                     MaterializationChainMatching.EffectiveAbilities(d, equipped, mutator), d.cardType,
                     CapabilityKind.FieldCombatPower, recceMayFight: true)
-                && (host.CanFitAdditionalCard(d)
-                    || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d)
+                && ((host.CanFitAdditionalCard(d)
+                        || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d))
+                    && MaterializationDeliveryPolicy.CardPreservesAttackTaskRoute(snap, host, d,
+                        AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment), destination)
                     // A full host on its Base still takes the card by the local refit's exchange.
                     || AttackBaseRefitPolicy.ExchangeRaisesRecipient(host, d,
-                        AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment), snap.Observer))
+                        AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment), snap.Observer,
+                        rosterAdmissible: routeAdmissible))
                 && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
                     AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment))
                 && (coverageGap

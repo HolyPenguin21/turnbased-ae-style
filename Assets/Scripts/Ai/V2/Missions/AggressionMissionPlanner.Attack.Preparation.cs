@@ -186,7 +186,8 @@ namespace Game.Ai.V2
             // ATK-F02 — a container is created or reused only for a concrete source: a same-hex
             // member or a card that would strengthen it (never a bare positive Reserve).
             string cardSource = seed.Feasible || host == null ? null
-                : AggressionDemandEvaluator.PreparationHostCardSource(snap, host);
+                : AggressionDemandEvaluator.PreparationHostCardSource(snap, host,
+                    taskTarget: objective.Target.Hex);
             if (!seed.Feasible && cardSource == null)
             {
                 AiDebugLog.WriteDeduped(logKey,

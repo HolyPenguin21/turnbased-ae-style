@@ -134,6 +134,14 @@ namespace Game.Ai.V2
                 return res;
             }
 
+            if (!plan.AttackRefitPrimaryId.HasValue && plan.Deploy.Army != null
+                && !MaterializationDeliveryPolicy.CardPreservesAttackTaskRoute(snap, plan.Deploy.Army,
+                    plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef, AiPower.ProjectMaterialization(plan)))
+            {
+                res.PlacementStale = true;
+                res.FailReason = "card placement loses the active Attack route before payment";
+                return res;
+            }
             if (plan.AttackRefitPrimaryId.HasValue
                 && (snap == null || snap.TurnNumber != ctx.TurnNumber
                     || !AttackBaseRefitPolicy.Validate(plan, snap, player, WorldSnapshot.IntentsOf(snap),

@@ -285,6 +285,10 @@ namespace Game.Ai.V2
                             return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
                         if (!StrengthensArmy(p.Deploy.Army.Members, card, AiPower.ProjectMaterialization(p)))
                             return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
+                        if (!CardPreservesAttackTaskRoute(snapshot, p.Deploy.Army, card,
+                                AiPower.ProjectMaterialization(p), demand.AttackObjectiveHex))
+                            return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                                "reinforcement_loses_attack_route");
                         // The host already clears the power bar and lacks target coverage: power
                         // alone is no delivery — the body must let it damage more known defenders.
                         if (demand.AttackCoverageGap && demand.AttackCoverageTargetHex.HasValue
@@ -380,6 +384,20 @@ namespace Game.Ai.V2
 
         // Army-level: is this already-existing army an operational instance of `demand`'s capability
         // (used to lease armies that satisfied a live strategic demand to Housekeeping).
+        // The same task route as troop handoffs, including Transport in the complete projected
+        // roster. A card is not useful preparation when adding it strands an executable attack.
+        internal static bool CardPreservesAttackTaskRoute(WorldSnapshot snap, ArmyData host,
+            CardDefinition card, AiPower.ProjectedStrategicLine line, HexCoord? target = null)
+        {
+            if (host == null || card == null || card.isAviation) return true;
+            target = target ?? snap?.AllIntents?.FirstOrDefault(i => i?.Status == IntentStatus.Active
+                && i.Attack?.PrimaryArmyId == host.Id)?.Attack?.Target.Hex;
+            var admissible = target.HasValue ? GroundCombatReinforcement.PreserveTaskRoute(snap?.Map,
+                host, target.Value, SafeRouteProfile.Attack) : null;
+            return admissible == null || admissible(ArmyData.ProjectAdd(host.Members,
+                AttackBaseRefitPolicy.Project(card, line, line.ActivationApCost, host.Owner), host.IsGarrison));
+        }
+
         // The one "does this card strengthen that exact army" answer: the army's power with the
         // card's projected line added, against its power now. A pinned Attack fist's delivery and
         // the preparation host's card witness (AggressionDemandEvaluator.PreparationHostCardSource)
@@ -466,6 +484,15 @@ namespace Game.Ai.V2
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             foreach (MissionIntent i in intents)
             {
+                // This exact preparation asks for power inside its OWN claimed host. It is not
+                // an independent support delivery; any other operation's claim still blocks it.
+                if (demand.DeliveryShape != CapabilityDeliveryShape.IndependentFieldArmy
+                    && demand.AttackFistIsPreparationHost && demand.AttackFistArmyId == armyId
+                    && demand.ConsumerMissionKind == MissionKind.Attack
+                    && demand.ConsumerIntentKey.HasValue && demand.ConsumerIntentKey.Value.Equals(i.IntentKey)
+                    && i.Attack?.Preparation == true && i.Attack.PrimaryArmyId == armyId
+                    && i.Attack.Phase == AttackMissionPhase.Gather && !i.Attack.AssaultStarted)
+                    continue;
                 if (i.PreferredMoverArmyId == armyId)
                     return true;
                 if (i.Raid != null && (i.Raid.PrimaryArmyId == armyId || i.Raid.SupportArmyId == armyId))
