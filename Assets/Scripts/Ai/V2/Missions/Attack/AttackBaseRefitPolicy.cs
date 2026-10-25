@@ -246,7 +246,7 @@ namespace Game.Ai.V2
             Project(plan.BaseCardInHand?.Definition, AiPower.ProjectMaterialization(plan),
                 CapabilityQualityEvaluator.ProjectedActivationApCost(plan), owner);
 
-        private static UnitData Project(CardDefinition def, AiPower.ProjectedStrategicLine line,
+        internal static UnitData Project(CardDefinition def, AiPower.ProjectedStrategicLine line,
             int activationApCost, PlayerSetupData owner)
         {
             var u = UnitData.CreateProjection();
@@ -292,7 +292,10 @@ namespace Game.Ai.V2
             float bonus = refit.TargetHex.HasValue
                 ? AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap?.Map, refit.TargetHex.Value) : 0f;
             return GroundCombatReinforcement.PlanAttackHandoff(primary, support, opposition, bonus,
-                requireChargeNow, out _, capacityIsProgress: true);
+                requireChargeNow, out _, capacityIsProgress: true,
+                rosterAdmissible: refit.TargetHex.HasValue
+                    ? GroundCombatReinforcement.PreserveTaskRoute(snap?.Map, primary,
+                        refit.TargetHex.Value, SafeRouteProfile.Attack) : null);
         }
 
         // What a window may not lose: an assault keeps force, movement and coverage (it marches
@@ -324,7 +327,8 @@ namespace Game.Ai.V2
         // card, landed beside the full recipient, be exchanged into it and raise its power? The
         // same projection and handoff rule the refit chain later runs.
         internal static bool ExchangeRaisesRecipient(ArmyData primary, CardDefinition def,
-            AiPower.ProjectedStrategicLine line, PlayerSetupData player)
+            AiPower.ProjectedStrategicLine line, PlayerSetupData player,
+            Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             if (primary == null || def == null || def.isAviation || player == null)
                 return false;
@@ -334,7 +338,7 @@ namespace Game.Ai.V2
             var support = ProjectedSupport(primary, Project(def, line, Math.Max(0, def.activationApCost), player),
                 player, null);
             HandoffPlan h = GroundCombatReinforcement.PlanHandoff(primary, support, null, 0f, out _,
-                requireChargeNow: false);
+                requireChargeNow: false, rosterAdmissible: rosterAdmissible);
             return h != null && AiPower.EffectiveArmyPower(FinalRoster(primary, h))
                 > AiPower.EffectiveArmyPower(primary.Members);
         }
