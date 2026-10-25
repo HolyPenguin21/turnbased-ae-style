@@ -20,7 +20,8 @@ namespace Game.Ai.V2
         // container ArmyActions.CreateArmyWithMember is about to create on that hex (Id -1).
         internal static GroundCombatAssemblyPlan PlanPreparationAssembly(WorldSnapshot snap,
             ArmyData host, ISet<int> excludeArmyIds, IReadOnlyList<WorthIt.DefendingArmy> opposition,
-            float defenderHexDefenseBonus)
+            float defenderHexDefenseBonus,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             if (host?.Owner == null || snap?.Self?.Armies == null || host.IsGarrison || host.IsPrison
                 || host.IsAirfield || host.IsAirArmy)
@@ -28,14 +29,15 @@ namespace Game.Ai.V2
             return AssembleSameHex(snap, host.Owner, host,
                 opposition ?? System.Array.Empty<WorthIt.DefendingArmy>(), excludeArmyIds,
                 GroundCombatAdmissionPolicy.AttackWinChanceGate, defenderHexDefenseBonus, 0f,
-                preparation: true);
+                preparation: true, rosterAdmissible: rosterAdmissible);
         }
 
         private static GroundCombatAssemblyPlan AssembleSameHex(WorldSnapshot snap,
             PlayerSetupData owner, ArmyData host, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ISet<int> excludeArmyIds, float minWinChance, float defenderHexDefenseBonus,
             float minimumArmyPower, bool preparation, bool? requireCoverage = null,
-            bool preserveDepartureRoster = false, bool requireReadyThisTurn = true)
+            bool preserveDepartureRoster = false, bool requireReadyThisTurn = true,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             float hostPower = AiPower.EffectiveArmyPower(host.Members);
             var projectedUnits = new List<UnitData>(host.Members);
@@ -52,10 +54,15 @@ namespace Game.Ai.V2
             // Attack threshold, so a hero that raises the capacity is progress even though a hero
             // adds no power of its own. A lone-hero army may hand its hero over (preparation only).
             bool garrisonHeroTaken = false;
+            bool CarrierHelps(IEnumerable<UnitData> roster) =>
+                opposition != null && opposition.Any(d => d.BuildingDefenseBonus > 0f)
+                && !Game.Combat.DisruptionRules.HasCarrier(roster.Select(WorthIt.FromLiveUnit));
+            bool disruptionAdded = false;
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {
                 (ArmyData heroDonor, UnitData hero) = GroundCombatDonorPolicy.PickAttachableHero(owner, host,
-                    excludeArmyIds, opposition, defenderHexDefenseBonus, preparation, requireReadyThisTurn);
+                    excludeArmyIds, opposition, defenderHexDefenseBonus, preparation, requireReadyThisTurn,
+                    rosterAdmissible);
                 if (hero != null)
                 {
                     var withHero = new List<UnitData>(projectedUnits) { hero };
@@ -102,7 +109,10 @@ namespace Game.Ai.V2
                         && donor.Members.Count > 1
                         && donor.CanLeaveWithoutOvercrowding(u)
                         && (!requireReadyThisTurn || !host.HasActivatedThisTurn || u.ActivationApCost <= 0))
-                    .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
+                    // A first passive carrier removes a known site defence even when its own
+                    // power is low. Reserve its slot before the ordinary damage-ranked bodies.
+                    .OrderByDescending(u => CarrierHelps(projectedUnits) && Game.Combat.DisruptionRules.IsCarrier(u))
+                    .ThenByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                     .ThenBy(u => u.Name)
                     .ToList();
                 // The hero pick above is part of this same transaction. Every later body must
@@ -126,6 +136,11 @@ namespace Game.Ai.V2
                         continue;
                     }
                     var withPick = new List<UnitData>(projectedUnits) { pick };
+                    if (rosterAdmissible != null && !rosterAdmissible(withPick))
+                    {
+                        selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
+                        continue; // A stronger slow pick must not hide a usable fast alternative.
+                    }
                     if (!ArmyData.RosterFits(withPick, host.IsGarrison)
                         && (preparation || preserveDepartureRoster
                             || !HasDepartureRoom(snap, host, withPick, requireReadyThisTurn)))
@@ -133,13 +148,16 @@ namespace Game.Ai.V2
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         break;
                     }
-                    if (preparation && AiPower.EffectiveArmyPower(withPick)
+                    bool addsDisruption = CarrierHelps(projectedUnits)
+                        && Game.Combat.DisruptionRules.IsCarrier(pick);
+                    if (preparation && !addsDisruption && AiPower.EffectiveArmyPower(withPick)
                             <= AiPower.EffectiveArmyPower(projectedUnits))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         continue;
                     }
 
+                    disruptionAdded |= addsDisruption;
                     projectedUnits.Add(pick);
                     projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
                     selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
@@ -159,7 +177,7 @@ namespace Game.Ai.V2
                 bool capacityRaised = ArmyData.ComputeCapacity(projectedUnits, host.IsGarrison)
                     > ArmyData.ComputeCapacity(host.Members, host.IsGarrison);
                 if (selected.Count == 0
-                    || (AiPower.EffectiveArmyPower(projectedUnits) <= hostPower && !capacityRaised))
+                    || (AiPower.EffectiveArmyPower(projectedUnits) <= hostPower && !capacityRaised && !disruptionAdded))
                     return GroundCombatAssemblyPlan.Infeasible(
                         $"preparation host #{host.Id}: no legal same-hex body raises its power "
                         + "and no hero raises its capacity");

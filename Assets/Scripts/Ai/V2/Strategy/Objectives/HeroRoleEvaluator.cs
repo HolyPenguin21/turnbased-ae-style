@@ -121,10 +121,12 @@ namespace Game.Ai.V2
             public readonly int BodySlots;
             // The bodies that fill those slots — the roster the win chance was judged on.
             public readonly IReadOnlyList<WorthIt.DefenderProfile> Roster;
+            public readonly WorthIt.SideCommander Commander;
 
             public CommandProjection(float winChance, int bodySlots,
-                IReadOnlyList<WorthIt.DefenderProfile> roster)
+                IReadOnlyList<WorthIt.DefenderProfile> roster, WorthIt.SideCommander commander = default)
             {
+                Commander = commander;
                 WinChance = winChance;
                 BodySlots = bodySlots;
                 Roster = roster ?? Array.Empty<WorthIt.DefenderProfile>();
@@ -147,7 +149,7 @@ namespace Game.Ai.V2
             float win = opposition == null || opposition.Count == 0
                 ? 1f
                 : WorthIt.EstimateSequential(roster, commander, opposition, defenderHexDefenseBonus).WinChance;
-            return new CommandProjection(win, slots, roster);
+            return new CommandProjection(win, slots, roster, commander);
         }
 
         // The best LEGAL commander among a live army's heroes for a known fight (null: no hero).

@@ -64,6 +64,8 @@ namespace Game.Ai.V2
     {
         public bool Feasible;
         public string Reason;
+        // Complete post-handoff armies, including moved/depleted donors, for departure policy.
+        public readonly Dictionary<int, ArmySnapshot> DepartureArmies = new Dictionary<int, ArmySnapshot>();
         public int HostArmyId;
         public HexCoord HostHex;
         // Planned supports, critical path first (longest walk to the host).

@@ -179,6 +179,20 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            // Provisioning pins the transaction, but movement/rosters may have changed since.
+            // Prove the COMPLETE batch before creating a container or transferring its first body.
+            var preserveRoute = GroundCombatReinforcement.PreserveTaskRoute(ctx?.Map ?? snapshot?.Map,
+                host, target.Target.Hex, SafeRouteProfile.Attack);
+            if (preserveRoute != null && assembly != null
+                && !preserveRoute(host.Members.Concat(assembly.Transfers
+                    .Where(t => t != null).Select(t => t.Unit)).ToList()))
+            {
+                result.StopForReplan(ExecutionStopReason.MoveRejected);
+                AiDebugLog.Write($"{corr} REJECTED Assemble into #{host.Id}: final roster loses target route; "
+                    + "nothing transferred, no AP spent");
+                return true;
+            }
+
             if (host == null)
             {
                 FactionCardCatalog catalog = ctx?.StartingDeckCatalog?.GetCatalog(player.Faction);
@@ -414,6 +428,16 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            if (next.Value.Equals(targetHex) && !fightsContact
+                && AttackMarchPolicy.WaitForDisruption(snapshot,
+                    WorldAnalysis.ToArmySnapshot(army, player, true, 0, snapshot?.Intents, ctx),
+                    targetHex, out string disruptionWhy))
+            {
+                result.StopForReplan(ExecutionStopReason.NoSafeStep);
+                result.TacticalBlockReason = disruptionWhy;
+                AiDebugLog.Write($"[AI][V2][Attack][Disruption] #{army.Id} HOLD {disruptionWhy}; no payment or movement");
+                yield break;
+            }
             HexCoord before = army.Hex;
             // A side strike may fight but must NEVER take a structure: only the terminal step into
             // the Attack's own target carries capture authority (§26/§27). The eligibility gate has
@@ -546,7 +570,9 @@ namespace Game.Ai.V2
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
                 KnownOpposition.OnHex(snapshot, target.Target.Hex),
                 AiMapMemory.KnownHexDefenseBonus(snapshot?.Observer, ctx.Map, target.Target.Hex),
-                capacityIsProgress: target.CommanderLeg);
+                capacityIsProgress: target.CommanderLeg,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(ctx.Map, primary,
+                    target.Target.Hex, SafeRouteProfile.Attack));
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - attack "
                 + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "

@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // Refresh — stale previously-observed information;
     // AirSweep — aviation-only observation pass toward the strategic sweep anchor.
     // ===========================================================================================
-    public enum ReconObjectiveKind { Explore = 0, Refresh = 1, AirSweep = 3, CaptureStructure = 4, Hunt = 5 }
+    public enum ReconObjectiveKind { Explore = 0, Refresh = 1, AirSweep = 3, CaptureStructure = 4, Hunt = 5, DisruptStructure = 6 }
 
     public sealed class ReconObjective
     {
@@ -42,7 +42,7 @@ namespace Game.Ai.V2
                 // become a new intent every time the concentration moves.
                 if (Kind == ReconObjectiveKind.AirSweep)
                     return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
-                if (Kind == ReconObjectiveKind.Hunt)
+                if (Kind == ReconObjectiveKind.Hunt || Kind == ReconObjectiveKind.DisruptStructure)
                     return MissionIntentKey.ForScoutTarget(ToTarget());
                 ScoutTargetKind sub = Kind == ReconObjectiveKind.Refresh
                     ? ScoutTargetKind.Refresh
@@ -54,6 +54,8 @@ namespace Game.Ai.V2
         public bool NeedsStealth => ReconScoutKinds.NeedsStealth(Stealth, DetectionRisk);
 
         // A one-shot local action (capture / hunt): never a Recon lane, never a scout to buy.
+        public bool IsDisruption => Kind == ReconObjectiveKind.DisruptStructure;
+
         public bool IsLocalStrike => Kind == ReconObjectiveKind.CaptureStructure || Kind == ReconObjectiveKind.Hunt;
 
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
@@ -61,6 +63,7 @@ namespace Game.Ai.V2
             FocusHex = FocusHex,
             Kind = Kind == ReconObjectiveKind.CaptureStructure ? ScoutTargetKind.CaptureStructure
                 : Kind == ReconObjectiveKind.Hunt ? ScoutTargetKind.Hunt
+                : Kind == ReconObjectiveKind.DisruptStructure ? ScoutTargetKind.DisruptStructure
                 : Kind == ReconObjectiveKind.AirSweep ? ScoutTargetKind.AirSweep
                 : Kind == ReconObjectiveKind.Refresh ? ScoutTargetKind.Refresh : ScoutTargetKind.Explore,
             Stealth = Stealth,
@@ -132,6 +135,11 @@ namespace Game.Ai.V2
                 }
             }
             list.AddRange(refresh);
+            foreach (var building in snap.Known?.Buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+            {
+                ReconObjective disruption = DisruptAt(snap, building.Hex);
+                if (disruption != null) list.Add(disruption);
+            }
 
             ReconObjective sweep = AirSweepOf(snap);
             if (sweep != null)
@@ -168,9 +176,44 @@ namespace Game.Ai.V2
             return list;
         }
 
-        // A visible enemy scouting force an own solo Recce beats and reaches this turn (Analysis'
-        // ReconHuntOpportunities). Killing it denies the enemy its eyes and its saboteur; it is worth
-        // most beside our own ground (OwnTerritoryProximity), where it scouts or razes our sites.
+        // A durable operation, or a nearby battle-ready fist, is a concrete support customer.
+        // No enemy registry is read and no new strategic axis is introduced.
+        internal static bool AssaultNeedsDisruption(WorldSnapshot snap, HexCoord hex)
+        {
+            if (snap?.Observer == null || snap.Known?.Buildings == null) return false;
+            var site = snap.Known.Buildings.FirstOrDefault(b => b.Hex.Equals(hex));
+            if (site.Owner == null || site.Owner == snap.Observer || site.Owner.IsNeutral
+                || (!site.IsBase && !site.IsStartingCitadel) || site.Defense <= 0) return false;
+            if ((snap.AllIntents ?? System.Array.Empty<MissionIntent>()).Any(i => i?.Status == IntentStatus.Active && i.Attack != null
+                && i.Attack.Target.Hex.Equals(hex)
+                && (i.Attack.Phase == AttackMissionPhase.Assault || i.Attack.Phase == AttackMissionPhase.Gather
+                    || i.Attack.Phase == AttackMissionPhase.Reinforcement))) return true;
+            // A nearby field fist may need the carrier BEFORE its assault clears the defence gate.
+            return (snap.Self?.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(a => a != null
+                && !a.IsAir && !a.IsPrison && !a.IsGarrison && !a.IsSoloRecce && a.MemberCount > 1
+                && a.IsStructuralRaidActor && AttackForceReadiness.ForceReady(a.EffectiveArmyPower, snap.Self.AttackPeak)
+                && a.MaxMovement > 0
+                && HexGridMath.Distance(a.Hex, hex) <= 2 * a.MaxMovement);
+        }
+
+        internal static ReconObjective DisruptAt(WorldSnapshot snap, HexCoord hex,
+            int? preferredMoverArmyId = null)
+        {
+            if (!AssaultNeedsDisruption(snap, hex)) return null;
+            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.DisruptStructure,
+                FocusHex = hex, Stealth = StealthRequirement.Required };
+            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, target, preferredMoverArmyId);
+            if (!cost.MoverKnown) return null;
+            TaskScore score = new TaskScore(
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(1f),
+                cardPrice: TaskScoreEvaluator.Price(cost.ActivationApNow),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
+                    TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex)));
+            return new ReconObjective { Kind = ReconObjectiveKind.DisruptStructure, FocusHex = hex,
+                Stealth = StealthRequirement.Required, TaskScore = score, BaseValue = score.Value,
+                StrategicRelevance = 1f };
+        }
+
         internal static ReconObjective HuntAt(WorldSnapshot snap, HexCoord hex)
         {
             if (snap?.Self?.ReconHuntOpportunities?.Any(x => x.Hex.Equals(hex)) != true) return null;
@@ -320,6 +363,7 @@ namespace Game.Ai.V2
             {
                 case ScoutTargetKind.CaptureStructure: return CaptureAt(snap, si.FocusHex);
                 case ScoutTargetKind.Hunt: return HuntAt(snap, si.FocusHex);
+                case ScoutTargetKind.DisruptStructure: return DisruptAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.Explore: return ExploreAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.Refresh: return RefreshAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.AirSweep: return AirSweepOf(snap, preferredMoverArmyId);

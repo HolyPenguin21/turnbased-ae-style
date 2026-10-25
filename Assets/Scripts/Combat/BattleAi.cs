@@ -346,6 +346,8 @@ namespace Game.Combat
             // Army-level advantage hint retained for callers/narration. Movement no longer
             // needs this hint to override a separate exposure veto.
             public bool FavorableForAdvance;
+            public float TwoRoundMargin;
+            public float ThreeRoundMargin;
         }
 
         // Margin of HP-loss-fraction disadvantage the AI must be projected to suffer before it
@@ -395,7 +397,9 @@ namespace Game.Combat
             BattleDebugLog.Write($"[RetreatDiag] army \"{aiArmy?.Name}\" (hp={ownHp}) vs \"{enemyArmy?.Name}\" (hp={enemyHp}): " +
                 $"2-round margin={twoRoundMargin:F3} 3-round margin={threeRoundMargin:F3} " +
                 $"-> shouldRetreat={shouldRetreat} favorableForAdvance={favorableForAdvance}");
-            return new RetreatAssessment { ShouldRetreat = shouldRetreat, IsCitadelDefense = false, FavorableForAdvance = favorableForAdvance };
+            return new RetreatAssessment { ShouldRetreat = shouldRetreat, IsCitadelDefense = false,
+                FavorableForAdvance = favorableForAdvance, TwoRoundMargin = twoRoundMargin,
+                ThreeRoundMargin = threeRoundMargin };
         }
 
         // Positive = we're projected to come out worse off (feeds the retreat check); negative =

@@ -676,6 +676,7 @@ MonoBehaviour:
     grantedAbilities:
     - r1s4
     - Stealth4
+    - Disruption
     resourceYield:
       human: 0
       energy: 0

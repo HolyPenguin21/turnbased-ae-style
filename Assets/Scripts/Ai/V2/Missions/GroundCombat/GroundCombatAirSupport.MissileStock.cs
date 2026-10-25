@@ -43,12 +43,87 @@ namespace Game.Ai.V2
                             / (float)Mathf.Max(1, AiConfigV2.reconIntelStaleTurnsHi))), s.ArmyId)).ToList();
         }
 
+        // Air-only union: an independent preparation strike shares the existing AirSupport
+        // operation identity and lifecycle, without inventing a threatened own asset. Ground
+        // defence and its objective reader remain unchanged. One target hex gets one air request.
+        internal static List<ActiveDefenceObjective> AirSupportObjectives(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> intents = null)
+        {
+            var result = ActiveDefenceObjectiveEvaluator.Enumerate(snap);
+            var covered = new HashSet<HexCoord>(result.Select(o => o.Target.LastKnownHex));
+            foreach (MissionIntent intent in intents ?? WorldSnapshot.IntentsOf(snap).ToList())
+                if (intent?.Status == IntentStatus.Active)
+                {
+                    if (intent.Attack?.AirSupportArmyId.HasValue == true) covered.Add(intent.Attack.Target.Hex);
+                    if (intent.Raid?.AirSupportArmyId.HasValue == true) covered.Add(intent.Raid.LastKnownHex);
+                }
+            foreach (CombatAirSupportRequest request in MissileStockTargets(snap))
+                if (covered.Add(request.Target)) result.Add(PreparationStrikeObjective(snap, request));
+            return result;
+        }
+
+        private static ActiveDefenceObjective PreparationStrikeObjective(WorldSnapshot snap,
+            CombatAirSupportRequest request)
+        {
+            var sighting = snap.Known.AirSightings.First(s => s.ArmyId == request.StockEnemyArmyId);
+            return new ActiveDefenceObjective { TaskScore = request.Score,
+                Target = new ActiveDefenceMissionTarget { Phase = ActiveDefencePhase.AirSupport,
+                    InterceptPurpose = ActiveDefenceInterceptPurpose.PreparationStrike,
+                    EnemyArmyId = request.StockEnemyArmyId.Value, LastKnownHex = request.Target,
+                    LastObservedTurn = sighting.SeenTurn, Confidence = 1f } };
+        }
+
+        internal static ActiveDefenceObjective AirSupportObjective(WorldSnapshot snap, int enemyId,
+            ActiveDefenceInterceptPurpose purpose)
+        {
+            if (purpose != ActiveDefenceInterceptPurpose.PreparationStrike)
+                return ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, enemyId);
+            foreach (CombatAirSupportRequest request in MissileStockTargets(snap))
+                if (request.StockEnemyArmyId == enemyId) return PreparationStrikeObjective(snap, request);
+            return null;
+        }
+
+        internal static AirStrikePolicy AirSupportPolicy(ActiveDefenceMissionTarget target) =>
+            target.InterceptPurpose == ActiveDefenceInterceptPurpose.PreparationStrike
+                ? new AirStrikePolicy(AirStrikePolicyKind.Standard, target.EnemyArmyId)
+                : AirStrikePolicy.DefenceSupport(target.EnemyArmyId);
+
+        internal static CombatAirSupportRequest AirSupportRequest(ActiveDefenceMissionTarget target,
+            TaskScore score = default, HexCoord? currentHex = null) => new CombatAirSupportRequest(target.IntentKey(),
+                currentHex ?? target.LastKnownHex, AirSupportPolicy(target), score,
+                target.InterceptPurpose == ActiveDefenceInterceptPurpose.PreparationStrike
+                    ? (int?)target.EnemyArmyId : null);
+
+        // Re-read only our own roster and canonical observed knowledge at the action boundary.
+        // Earlier actions may have reduced the blast value or moved friendly collateral onto it.
+        internal static bool PreparationStrikeUsefulLive(PlayerSetupData player, AiTurnContext ctx,
+            ActiveDefenceMissionTarget target, ArmyData source)
+        {
+            if (target.InterceptPurpose != ActiveDefenceInterceptPurpose.PreparationStrike) return true;
+            if (player == null || ctx?.Map == null || source == null) return false;
+            var snap = new WorldSnapshot { Observer = player, Map = ctx.Map, TurnNumber = ctx.TurnNumber,
+                Self = new SelfSnapshot { Armies = OwnWorld.Of(player).Armies
+                    .Select(a => WorldAnalysis.ToArmySnapshot(a, player, true, 0, null, ctx)).ToList() },
+                Known = WorldAnalysis.BuildKnown(player, null) };
+            var request = AirSupportRequest(target);
+            if (!MissileStockTargets(snap).Any(r => r.StockEnemyArmyId == target.EnemyArmyId
+                    && r.Target.Equals(target.LastKnownHex))) return false;
+            return AviationRules.IsAirfield(source)
+                ? StoredSupportGroup(snap, source, target.LastKnownHex, request.Policy, out _, request).Count > 0
+                : ProjectService(snap, player, ctx.Map, source.Members, source.Hex, request, source).HasValue;
+        }
+
         // Resolve eligibility per army before the uniform ten-target draw. A protected hero
         // neither takes damage nor dilutes the pool; all other known occupants can be hit.
         internal static float MissileStockValue(WorldSnapshot snap, IReadOnlyList<UnitData> aircraft,
             HexCoord hex, int? wingId = null)
         {
             if (!IsStockMissileGroup(aircraft)) return float.NegativeInfinity;
+            // The optional preparation strike never knowingly sacrifices any owned Base.
+            // Net collateral pricing still decides ordinary friendly bodies/facilities elsewhere.
+            if ((snap?.Known?.Buildings ?? Array.Empty<AiMapMemory.KnownBuilding>()).Any(b =>
+                    b.Hex.Equals(hex) && b.Owner == snap.Observer && (b.IsBase || b.IsStartingCitadel)))
+                return float.NegativeInfinity;
             var pool = new List<AviationCombatEstimator.ExplosionCollateral>();
             foreach (var enemy in KnownAirTargets(snap, hex, AirStrikePolicy.Standard))
             {

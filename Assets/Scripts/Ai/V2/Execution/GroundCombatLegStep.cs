@@ -264,6 +264,7 @@ namespace Game.Ai.V2
             HexCoord targetHex, HexCoord landingHex, AirStrikePolicy policy, string label,
             string flyReason)
         {
+            bool expendable = AiAirSortiePlanner.IsExpendableWing(wing.Members);
             AirSortie sortie = AirSortieRegistry.ForArmy(player, wing);
             bool starting = sortie == null;
             bool reconHandoff = sortie?.Kind == AirSortieKind.Recon
@@ -364,7 +365,10 @@ namespace Game.Ai.V2
                 if (moved == null || !AviationRules.IsValidAirArmy(moved))
                 {
                     AirSortieRegistry.Remove(player, sortie);
-                    result.StopReason = ExecutionStopReason.MoverLost;
+                    // A confirmed single-use strike completed its assignment by consuming the
+                    // actor. Preserve the real strike receipt instead of reporting actor loss.
+                    result.ReachedGoal = attacked && expendable;
+                    result.StopReason = result.ReachedGoal ? ExecutionStopReason.ReachedGoal : ExecutionStopReason.MoverLost;
                     yield break;
                 }
                 wing = moved;
@@ -381,6 +385,13 @@ namespace Game.Ai.V2
                         ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
                     yield break;
                 }
+            }
+            if (!AviationRules.IsValidAirArmy(wing))
+            {
+                AirSortieRegistry.Remove(player, sortie);
+                result.ReachedGoal = attacked && expendable;
+                result.StopReason = result.ReachedGoal ? ExecutionStopReason.ReachedGoal : ExecutionStopReason.MoverLost;
+                yield break;
             }
             // Over the target: keep striking on later turns, or end the series and go home.
             bool targetsRemain = AviationCombatPresenter.FindAirStrikeTargetsAt(wing.Hex, player,

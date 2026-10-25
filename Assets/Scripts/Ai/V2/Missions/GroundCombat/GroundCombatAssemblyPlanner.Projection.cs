@@ -195,7 +195,8 @@ namespace Game.Ai.V2
                     new HeroRoleEvaluator.CommandProjection(plan.ProjectedWinChance,
                         System.Math.Max(0, ArmyData.ComputeCapacity(roster, false)
                             - roster.Count(u => u != null && u.IsHero)),
-                        roster.Where(u => u != null && u.IsGroundCombatant).Select(WorthIt.FromLiveUnit).ToList()),
+                        roster.Where(u => u != null && u.IsGroundCombatant).Select(WorthIt.FromLiveUnit).ToList(),
+                        WorthIt.SideCommander.Of(roster)),
                     plan.Commander?.RuntimeId ?? 0, preferRapid: true);
             return HeroRoleEvaluator.CompareCandidates(Command(a, ar), Command(b, br)) < 0;
         }

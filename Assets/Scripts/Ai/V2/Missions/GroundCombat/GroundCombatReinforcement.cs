@@ -41,37 +41,36 @@ namespace Game.Ai.V2
         // (CommandHandover)? A convoy that cannot help is never provisioned.
         internal static bool ImprovesOdds(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            out string why, bool allowCommandHandover = false)
+            out string why, bool allowCommandHandover = false,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
-            if (allowCommandHandover && CommandHandover(primary, support, opposition,
-                    defenderHexDefenseBonus, null) != null)
-            {
-                why = null;
-                return true;
-            }
-            List<UnitData> sparable = SparableSupportBodies(support);
-            List<WorthIt.DefenderProfile> primaryBodies = primary.Members
-                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
-                .Select(WorthIt.FromLiveUnit)
-                .ToList();
-            List<WorthIt.DefenderProfile> supportBodies = sparable
-                .Select(WorthIt.FromLiveUnit)
-                .ToList();
-            int capacity = ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison);
-            return GroundCombatAssemblyPlanner.TryProjectReinforcement(
-                primaryBodies, supportBodies, capacity, primary.Members.Count,
-                // Body-only profiles: the roster form also carries secondary healing heroes.
-                WorthIt.SideCommander.Of(primary.Members), opposition, out _, out why,
-                defenderHexDefenseBonus);
+            opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
+            HandoffPlan plan = PlanHandoff(primary, support,
+                allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out why,
+                requireChargeNow: false, rosterAdmissible: rosterAdmissible);
+            if (plan == null) return false;
+            if (allowCommandHandover && plan.Promote != null) return true;
+            var before = primary.Members.Where(AiArmyRoles.IsGroundBattleBody)
+                .Select(WorthIt.FromLiveUnit).ToList();
+            var afterRoster = FinalRoster(primary, plan);
+            var after = afterRoster.Where(AiArmyRoles.IsGroundBattleBody)
+                .Select(WorthIt.FromLiveUnit).ToList();
+            bool improves = WorthIt.EstimateSequential(after, WorthIt.SideCommander.Of(afterRoster),
+                    opposition, defenderHexDefenseBonus).WinChance
+                > WorthIt.EstimateSequential(before, WorthIt.SideCommander.Of(primary.Members),
+                    opposition, defenderHexDefenseBonus).WinChance + 0.001f;
+            if (!improves) why = "projected legal handoff does not improve win chance";
+            return improves;
         }
 
         // The Attack lane needs power delivered into the actual primary, not a new shell
         // elsewhere on the map or a Monte-Carlo win change that can be zero at saturation.
         internal static bool ImprovesAttackForce(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, out string why,
-            bool requireChargeNow = false, bool capacityIsProgress = false) =>
+            bool requireChargeNow = false, bool capacityIsProgress = false,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null) =>
             PlanAttackHandoff(primary, support, opposition, hexBonus, requireChargeNow, out why,
-                capacityIsProgress) != null;
+                capacityIsProgress, rosterAdmissible) != null;
 
         // ATK-F04 — THE Attack handoff, one read-only plan for the gather projection
         // (SupportImprovesPrimary), Continuity's support drop, Provisioning's leg check and the
@@ -87,7 +86,8 @@ namespace Game.Ai.V2
         // its larger Command is the progress, as for the same-hex capacity hero of a preparation.
         internal static HandoffPlan PlanAttackHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, bool requireChargeNow,
-            out string why, bool capacityIsProgress = false)
+            out string why, bool capacityIsProgress = false,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             why = "";
@@ -115,7 +115,7 @@ namespace Game.Ai.V2
             }
 
             HandoffPlan first = PlanHandoff(primary, support, opposition, hexBonus,
-                out string firstWhy, requireChargeNow: requireChargeNow);
+                out string firstWhy, requireChargeNow: requireChargeNow, rosterAdmissible: rosterAdmissible);
             string commandJudged = null;
             if (first != null)
             {
@@ -131,7 +131,7 @@ namespace Game.Ai.V2
                 commandJudged = judged;
             }
             HandoffPlan bodies = PlanHandoff(primary, support, null, 0f, out string bodiesWhy,
-                requireChargeNow: requireChargeNow);
+                requireChargeNow: requireChargeNow, rosterAdmissible: rosterAdmissible);
             string bodiesJudged = null;
             if (bodies != null)
             {
@@ -169,7 +169,8 @@ namespace Game.Ai.V2
         // the handoff — one answer for all four.
         internal static HandoffPlan CommandHandover(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool requireChargeNow = false)
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool requireChargeNow = false,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             if (primary == null || support == null || primary.IsGarrison)
                 return null;
@@ -222,43 +223,44 @@ namespace Game.Ai.V2
                             defenderHexDefenseBonus, prospects) != hero)
                         continue;
 
-                    var incoming = new List<UnitData> { hero };
-                    var displaced = new List<UnitData>(returning);
-                    if (heroFor != null)
-                        displaced.Add(heroFor);
-                    var led = new List<UnitData> { hero };
-                    led.AddRange(retained.Where(u => u != heroFor));
-                    int room = System.Math.Max(0, ArmyData.ComputeCapacity(led, false) - led.Count);
-                    var fresh = new Queue<UnitData>(donorBodies);
-                    while (room > 0 && fresh.Count > 0)
+                    foreach (var selectedBodies in BodyAlternatives(donorBodies, rosterAdmissible != null))
                     {
-                        incoming.Add(fresh.Dequeue());
-                        room--;
-                    }
-                    var weakest = new Queue<UnitData>(WeakestBodies(retained.Where(u => u != heroFor)));
-                    while (fresh.Count > 0 && weakest.Count > 0
-                        && GroundCombatDonorPolicy.UnitCombatValue(fresh.Peek())
-                            > GroundCombatDonorPolicy.UnitCombatValue(weakest.Peek()))
-                    {
-                        incoming.Add(fresh.Dequeue());
-                        displaced.Add(weakest.Dequeue());
-                    }
+                        var incoming = new List<UnitData> { hero };
+                        var displaced = new List<UnitData>(returning);
+                        if (heroFor != null)
+                            displaced.Add(heroFor);
+                        var led = new List<UnitData> { hero };
+                        led.AddRange(retained.Where(u => u != heroFor));
+                        int room = System.Math.Max(0, ArmyData.ComputeCapacity(led, false) - led.Count);
+                        var fresh = new Queue<UnitData>(selectedBodies);
+                        while (room > 0 && fresh.Count > 0)
+                        {
+                            incoming.Add(fresh.Dequeue());
+                            room--;
+                        }
+                        var weakest = new Queue<UnitData>(WeakestBodies(retained.Where(u => u != heroFor)));
+                        while (fresh.Count > 0 && weakest.Count > 0
+                            && GroundCombatDonorPolicy.UnitCombatValue(fresh.Peek())
+                                > GroundCombatDonorPolicy.UnitCombatValue(weakest.Peek()))
+                        {
+                            incoming.Add(fresh.Dequeue());
+                            displaced.Add(weakest.Dequeue());
+                        }
 
-                    // Without its hero the support must still hold what it keeps and receives; a
-                    // support that cannot does not give this hero away.
-                    if (!SupportStaysLegal(support, incoming, displaced))
-                        continue;
-                    var final = new[] { hero }.Concat(primary.Members.Except(displaced))
-                        .Concat(incoming.Where(u => u != hero)).ToList();
-                    var withOldHeroes = final.Concat(returning).ToList();
-                    if (ArmyData.ComputeCurrentMovement(final) < ArmyData.ComputeCurrentMovement(withOldHeroes)
-                        || ArmyData.ComputeMaxMovement(final) < ArmyData.ComputeMaxMovement(withOldHeroes)
-                        || !ArmyActions.CanExchangeMembers(incoming, support, primary, hero,
-                            displaced, out _, requireChargeNow))
-                        continue;
-                    return new HandoffPlan(incoming, displaced, hero, $"hero {hero.Name} took command"
-                        + (heroFor != null ? $" in exchange for {heroFor.Name}" : "")
-                        + $"; {incoming.Count - 1} body(ies) in, {displaced.Count} out");
+                        // Without its hero the support must still hold what it keeps and receives; a
+                        // support that cannot does not give this hero away.
+                        if (!SupportStaysLegal(support, incoming, displaced))
+                            continue;
+                        var final = new[] { hero }.Concat(primary.Members.Except(displaced))
+                            .Concat(incoming.Where(u => u != hero)).ToList();
+                        if (rosterAdmissible != null && !rosterAdmissible(final)
+                            || !ArmyActions.CanExchangeMembers(incoming, support, primary, hero,
+                                displaced, out _, requireChargeNow))
+                            continue;
+                        return new HandoffPlan(incoming, displaced, hero, $"hero {hero.Name} took command"
+                            + (heroFor != null ? $" in exchange for {heroFor.Name}" : "")
+                            + $"; {incoming.Count - 1} body(ies) in, {displaced.Count} out");
+                    }
                 }
             }
             return null;
@@ -271,7 +273,8 @@ namespace Game.Ai.V2
         // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
         internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
-            out string why, bool requireChargeNow = true)
+            out string why, bool requireChargeNow = true,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             why = "";
             if (primary == null || support == null)
@@ -281,7 +284,7 @@ namespace Game.Ai.V2
             }
             // CommandHandover returns only an exchange the armies can make (same legality check).
             HandoffPlan command = commandOpposition == null ? null : CommandHandover(primary, support,
-                commandOpposition, commandHexBonus, null, requireChargeNow);
+                commandOpposition, commandHexBonus, null, requireChargeNow, rosterAdmissible);
             if (command != null)
                 return command;
 
@@ -295,11 +298,18 @@ namespace Game.Ai.V2
                 ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison) - primary.Members.Count);
             if (freeSlots > 0)
             {
-                List<UnitData> batch = sparable.Take(freeSlots).ToList();
-                if (ArmyActions.CanExchangeMembers(batch, support, primary, null, null, out string fWhy,
-                        requireChargeNow))
-                    return new HandoffPlan(batch, null, null, $"transferred {batch.Count} into free slot(s)");
-                why += $"atomic transfer rejected: {fWhy}";
+                foreach (var batch in BodyAlternatives(sparable, rosterAdmissible != null, freeSlots)
+                    .Where(b => b.Count > 0 && b.Count <= freeSlots))
+                {
+                    var candidate = new HandoffPlan(batch, null, null,
+                        $"transferred {batch.Count} into free slot(s)");
+                    if (rosterAdmissible != null && !rosterAdmissible(FinalRoster(primary, candidate)))
+                    { why = "handoff destroys the current task route"; continue; }
+                    if (ArmyActions.CanExchangeMembers(batch, support, primary, null, null, out string fWhy,
+                            requireChargeNow))
+                        return candidate;
+                    why = $"atomic transfer rejected: {fWhy}";
+                }
                 return null;
             }
 
@@ -307,25 +317,69 @@ namespace Game.Ai.V2
             // body the support can spare (a straight exchange needs no free slot on either side).
             // An exchange is the SupportReturn trigger: the displaced unit only exists in the
             // support now, so the whole support army walks itself home afterward.
-            UnitData weakest = WeakestBodies(primary.Members).FirstOrDefault();
-            if (weakest == null)
-            {
-                why += "primary is full and has no swappable non-hero body";
-                return null;
-            }
+            foreach (UnitData weakest in WeakestBodies(primary.Members))
             foreach (UnitData fresh in sparable)
             {
                 if (GroundCombatDonorPolicy.UnitCombatValue(fresh)
                     <= GroundCombatDonorPolicy.UnitCombatValue(weakest))
                     continue;
+                var candidate = new HandoffPlan(new[] { fresh }, new[] { weakest }, null,
+                    $"swapped {weakest.Name} out for {fresh.Name}");
+                if (rosterAdmissible != null && !rosterAdmissible(FinalRoster(primary, candidate)))
+                { why = "handoff destroys the current task route; "; continue; }
                 if (ArmyActions.CanExchangeMembers(new[] { fresh }, support, primary, null,
                         new[] { weakest }, out string sWhy, requireChargeNow))
-                    return new HandoffPlan(new[] { fresh }, new[] { weakest }, null,
-                        $"swapped {weakest.Name} out for {fresh.Name}");
+                    return candidate;
                 why += $"swap rejected: {sWhy}; ";
             }
             why += "primary is full and no support body improves on its weakest member";
             return null;
+        }
+
+        // Mission owners supply their current destination and routing profile. Slower rosters
+        // remain useful whenever they can still do that task; static or already-unreachable tasks
+        // impose no new movement veto. Current MP is deliberately not a next-turn capability.
+        internal static System.Func<IReadOnlyList<UnitData>, bool> PreserveTaskRoute(HexMap map,
+            ArmyData primary, HexCoord destination, SafeRouteProfile profile)
+        {
+            if (map == null || primary == null || primary.Hex.Equals(destination)
+                || SafeStepPathing.FindSafePathCost(map, primary.Owner, primary.Hex, destination,
+                    primary.MaxMovement, profile) == int.MaxValue)
+                return null;
+            return roster => SafeStepPathing.FindSafePathCost(map, primary.Owner, primary.Hex,
+                destination, ArmyData.ComputeMaxMovement(roster), profile) != int.MaxValue;
+        }
+
+        internal static List<UnitData> FinalRoster(ArmyData primary, HandoffPlan plan)
+        {
+            var roster = primary.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
+            if (plan.Promote != null)
+            {
+                roster.Remove(plan.Promote);
+                roster.Insert(0, plan.Promote);
+            }
+            return roster;
+        }
+
+        // Strongest complete batches first, then legal alternatives. No subset work is needed
+        // without a task constraint. This also allows a fast escort beside an inadmissible tank.
+        private static IEnumerable<List<UnitData>> BodyAlternatives(List<UnitData> bodies,
+            bool alternatives, int maxCount = int.MaxValue)
+        {
+            int limit = System.Math.Min(bodies.Count, maxCount);
+            if (!alternatives) { yield return bodies.Take(limit).ToList(); yield break; }
+            IEnumerable<List<UnitData>> Choose(int start, int left, List<UnitData> selected)
+            {
+                if (left == 0) { yield return new List<UnitData>(selected); yield break; }
+                for (int i = start; i <= bodies.Count - left; i++)
+                {
+                    selected.Add(bodies[i]);
+                    foreach (var batch in Choose(i + 1, left - 1, selected)) yield return batch;
+                    selected.RemoveAt(selected.Count - 1);
+                }
+            }
+            for (int count = limit; count >= 0; count--)
+                foreach (var batch in Choose(0, count, new List<UnitData>())) yield return batch;
         }
 
         // The AP the handoff itself charges: every newcomer to an army that already acted this

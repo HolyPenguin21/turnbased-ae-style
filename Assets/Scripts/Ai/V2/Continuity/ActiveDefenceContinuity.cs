@@ -224,7 +224,7 @@ namespace Game.Ai.V2
             if (flying)
                 defence.AirSupportSortieSeen = true;
             ActiveDefenceObjective objective =
-                ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
+                GroundCombatAirSupport.AirSupportObjective(snap, defence.EnemyArmyId, defence.InterceptPurpose);
             string end = !defence.AirSupportArmyId.HasValue ? "no_wing"
                 : !wingValid ? (GroundCombatAirSupport.WingLanded(player, defence.AirSupportArmyId)
                     ? "series_over" : "wing_lost")

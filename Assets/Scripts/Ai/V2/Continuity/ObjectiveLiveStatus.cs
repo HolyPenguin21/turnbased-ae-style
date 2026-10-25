@@ -38,6 +38,10 @@ namespace Game.Ai.V2
         {
             switch (kind)
             {
+                case ScoutTargetKind.DisruptStructure:
+                    if (!OwnWorld.Of(player).IsVisible(focus)) return false;
+                    BuildingData disruptedSite = OwnWorld.Of(player).VisibleBuildingAt(focus);
+                    return disruptedSite == null || disruptedSite.Owner == player;
                 case ScoutTargetKind.CaptureStructure:
                     if (!OwnWorld.Of(player).IsVisible(focus)) return false;
                     BuildingData building = OwnWorld.Of(player).VisibleBuildingAt(focus);

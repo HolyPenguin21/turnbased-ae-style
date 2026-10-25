@@ -130,12 +130,16 @@ namespace Game.Ai.V2
                 .Where(i => i?.Status == IntentStatus.Active
                     && i.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport)
                 .Select(i => i.ActiveDefence.EnemyArmyId));
-            foreach (ActiveDefenceObjective o in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
+            foreach (ActiveDefenceObjective o in GroundCombatAirSupport.AirSupportObjectives(snap, activeIntents))
                 if (!supported.Contains(o.Target.EnemyArmyId)
+                    && (o.Target.InterceptPurpose != ActiveDefenceInterceptPurpose.PreparationStrike
+                        || !targets.Any(t => t.Target.Equals(o.Target.LastKnownHex)))
                     && KnownOpposition.OfEnemyArmy(snap, o.Target.EnemyArmyId) != null)
-                    targets.Add(new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(
-                        ActiveDefencePhase.AirSupport, o.Target.EnemyArmyId, null, null), o.Target.LastKnownHex,
-                        AirStrikePolicy.DefenceSupport(o.Target.EnemyArmyId), o.TaskScore));
+                {
+                    ActiveDefenceMissionTarget target = o.Target;
+                    target.Phase = ActiveDefencePhase.AirSupport;
+                    targets.Add(GroundCombatAirSupport.AirSupportRequest(target, o.TaskScore));
+                }
             return targets.GroupBy(t => t.Key).Select(g => g.First())
                 .OrderByDescending(t => t.Score.Value).ThenBy(t => t.Key.ToString()).ToList();
         }

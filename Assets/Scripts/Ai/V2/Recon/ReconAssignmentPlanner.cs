@@ -126,6 +126,12 @@ namespace Game.Ai.V2
         {
             if (mover == null)
                 return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.ActorMissing);
+            if (ReconScoutKinds.IsDisruption(target.Kind)
+                && (!Game.Combat.DisruptionRules.HasCarrier(mover.MembersWithHeroes)
+                    || !ScoutMoverSelector.StealthReadyThisTurn(mover)))
+                return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoRoute);
+            if (ReconScoutKinds.IsDisruption(target.Kind) && mover.Hex.Equals(target.FocusHex))
+                return ReconAssignmentCandidateResult.Ok;
             if (ReconScoutKinds.IsLocalStrike(target.Kind))
             {
                 ArmyData actor = AiV2Util.ResolveArmy(player, mover.ArmyId);
@@ -149,6 +155,21 @@ namespace Game.Ai.V2
                 if (SafeStepPathing.FindNextSafeStep(ctx.Map, live, v.ExecutionHex) != null)
                     return ReconAssignmentCandidateResult.Ok;
             return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoReachableVantage);
+        }
+
+        // A final assault may wait only for an already-owned delivery that can finish NOW.
+        // The proof uses the same hidden arrival and honest route/detector rules as delivery.
+        internal static bool CanDeliverDisruptionThisTurn(WorldSnapshot snap, ArmySnapshot mover, HexCoord target)
+        {
+            if (!ScoutMoverSelector.IsGroundScout(mover)
+                || !Game.Combat.DisruptionRules.HasCarrier(mover.MembersWithHeroes)
+                || !ScoutMoverSelector.StealthReadyThisTurn(mover)
+                || snap?.MapKnowledge?.IsBlockedForScout(target, stealthCapable: true) == true) return false;
+            if (mover.Hex.Equals(target)) return true;
+            HexPath path = AiV2Util.TravelRoute(snap, mover, target, arrivesHidden: true);
+            return path != null && path.TotalCost <= mover.CurrentMovement
+                && path.Hexes.Skip(1).All(h => snap?.MapKnowledge?.IsBlockedForScout(h, stealthCapable: true) != true
+                    && ScoutRiskModel.DetectorRisk(snap, h) < 1f);
         }
 
         // Thin bool convenience over EvaluateCandidate — kept because most callers only need the
@@ -302,10 +323,13 @@ namespace Game.Ai.V2
                     {
                         ArmyData liveMover = AiV2Util.ResolveArmy(player, mover.ArmyId);
                         if (liveMover == null
-                            || SafeStepPathing.FindNextSafeStep(ctx.Map, liveMover, target.FocusHex) == null)
+                            || (!liveMover.Hex.Equals(target.FocusHex)
+                                && SafeStepPathing.FindNextSafeStep(ctx.Map, liveMover, target.FocusHex) == null))
                             continue;
                     }
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
+                    if (ReconScoutKinds.IsDisruption(target.Kind) && mover.Hex.Equals(target.FocusHex))
+                    { pc.RequiredAp -= pc.EffActivationAp; pc.EffActivationAp = 0; }
                     if (pc.Distance == int.MaxValue) continue;
                     list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
@@ -589,7 +613,7 @@ namespace Game.Ai.V2
                     else if (claimed?.IsSoloRecce == true
                         && !(alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>()).Any(pm =>
                             pm != null && pm.MoverArmyId == claimedId
-                            && pm.Mission.Target is ScoutMissionTarget t && ReconScoutKinds.IsLocalStrike(t.Kind)))
+                            && pm.Mission.Target is ScoutMissionTarget t && !ReconScoutKinds.UsesPatrolLane(t.Kind)))
                         claimedGroundActors++;
                 }
             }
@@ -653,7 +677,7 @@ namespace Game.Ai.V2
             List<HexCoord> fixedGroundFoci = (alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>())
                 .Where(pm => pm != null && pm.Kind == MissionKind.Scout
                     && pm.ExecutorKind == ScoutExecutorKind.Ground
-                    && pm.Mission.Target is ScoutMissionTarget t && !ReconScoutKinds.IsLocalStrike(t.Kind))
+                    && pm.Mission.Target is ScoutMissionTarget t && ReconScoutKinds.UsesPatrolLane(t.Kind))
                 .Select(pm => pm.FocusHex).ToList();
             ReconAssignmentResult solved = AssignFromCandidates(
                 open, cands, airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
@@ -666,7 +690,7 @@ namespace Game.Ai.V2
                 if (!solved.Assigned.TryGetValue(key, out ScoutExecutionCandidate chosen))
                     continue;
                 if (chosen.ExecutorKind == ScoutExecutorKind.Ground
-                    && !ReconScoutKinds.IsLocalStrike(((ScoutMissionTarget)fe.Mission.Target).Kind)
+                    && ReconScoutKinds.UsesPatrolLane(((ScoutMissionTarget)fe.Mission.Target).Kind)
                     && !usedGround.Contains(chosen.ActorKey))
                 {
                     if (newGroundBudget <= 0)
@@ -815,7 +839,7 @@ namespace Game.Ai.V2
                     continue;
 
                 bool isAir = cand.ExecutorKind != ScoutExecutorKind.Ground;
-                bool localCapture = ReconScoutKinds.IsLocalStrike(((ScoutMissionTarget)open[i].Mission.Target).Kind);
+                bool localCapture = !ReconScoutKinds.UsesPatrolLane(((ScoutMissionTarget)open[i].Mission.Target).Kind);
                 if (isAir && usedAirActors + 1 > airActorCap)
                     continue;
                 if (!isAir && !localCapture && usedGroundActors + 1 > groundActorCap)
@@ -839,7 +863,7 @@ namespace Game.Ai.V2
                         if (other.ExecutorKind != ScoutExecutorKind.Ground)
                             continue;
                         ScoutMissionTarget otherTarget = (ScoutMissionTarget)open[j].Mission.Target;
-                        if (ReconScoutKinds.IsLocalStrike(otherTarget.Kind)) continue;
+                        if (!ReconScoutKinds.UsesPatrolLane(otherTarget.Kind)) continue;
                         if (HexGridMath.Distance(target.FocusHex, otherTarget.FocusHex)
                             < AiConfigV2.scoutTargetMinSeparation)
                         {
@@ -1037,7 +1061,7 @@ namespace Game.Ai.V2
             if (activeIntents != null && commitments != null)
                 foreach (MissionIntent i in activeIntents)
                 {
-                    if (i?.Scout == null || i.PreferredMoverArmyId == null
+                    if (i?.Scout == null || !ReconScoutKinds.UsesPatrolLane(i.Scout.Kind) || i.PreferredMoverArmyId == null
                         || !commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value) || i.Scout.RequiresStealth)
                         continue;
                     laneTarget[i.PreferredMoverArmyId.Value] = new ScoutMissionTarget

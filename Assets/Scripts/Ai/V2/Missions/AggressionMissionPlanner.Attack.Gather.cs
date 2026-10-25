@@ -26,7 +26,10 @@ namespace Game.Ai.V2
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 donorValues: donorValues,
-                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
+                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
+                departureVeto: candidate => AttackMarchPolicy.CanStart(snap, objective.Target,
+                    new GroundCombatAssemblyPlan { Feasible = true, BaseArmyId = candidate.HostArmyId },
+                    intentState, out string why, candidate.DepartureArmies) ? null : why);
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",

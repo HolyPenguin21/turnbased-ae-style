@@ -158,6 +158,8 @@ namespace Game.Ai.V2
             {
                 if (!IsGroundScout(a))
                     continue;
+                if (ReconScoutKinds.IsDisruption(target.Kind)
+                    && !Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes)) continue;
                 if (ReconScoutKinds.IsCapture(target.Kind))
                 {
                     if (snap.Self?.ReconCaptureOpportunities?.Any(x => x.ArmyId == a.ArmyId
@@ -169,7 +171,8 @@ namespace Game.Ai.V2
                     if (snap.Self?.ReconHuntOpportunities?.Any(x => x.ArmyId == a.ArmyId
                         && x.Hex.Equals(target.FocusHex)) != true) continue;
                 }
-                else if (a.CurrentMovement <= 0 || trimmedThisTurn.Contains(a.ArmyId))
+                else if ((a.CurrentMovement <= 0 && !(ReconScoutKinds.IsDisruption(target.Kind)
+                    && a.Hex.Equals(target.FocusHex))) || trimmedThisTurn.Contains(a.ArmyId))
                     continue;
                 if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))
                     continue;
@@ -197,6 +200,8 @@ namespace Game.Ai.V2
             {
                 if (!IsGroundScout(a))
                     continue;
+                if (ReconScoutKinds.IsDisruption(target.Kind)
+                    && !Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes)) continue;
                 if (needStealth && !(a.IsHidden || a.StealthLevel > 0))
                     continue;
                 yield return a;
@@ -220,7 +225,7 @@ namespace Game.Ai.V2
         {
             var result = new List<ArmySnapshot>();
             if (snap?.Self?.Armies == null || player == null
-                || ReconScoutKinds.IsAirSweep(target.Kind))
+                || ReconScoutKinds.IsAirSweep(target.Kind) || ReconScoutKinds.IsDisruption(target.Kind))
                 return result;
 
             bool needStealth = target.Stealth == StealthRequirement.Required;

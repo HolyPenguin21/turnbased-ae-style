@@ -498,6 +498,10 @@ namespace Game.EditorTests
                     "the tactical defender must not receive another owner's Base defense");
 
                 foreignBase.Owner = defender.Owner;
+                Assert.That(engine.GetDefenseBreakdown(defender, map: null).ConstructionBonus, Is.Zero,
+                    "an encounter keeps the building defence captured when it started");
+                engine = new BattleEngine(new BattleState(state.BattleHex, state.Attacker,
+                    state.Defender, state.Grid, state.BattleSeed), AbilityMagnitudes.Default);
                 BattleDefenseBreakdown owned = engine.GetDefenseBreakdown(defender, map: null);
                 Assert.That(owned.ConstructionBonus, Is.EqualTo(4));
             }

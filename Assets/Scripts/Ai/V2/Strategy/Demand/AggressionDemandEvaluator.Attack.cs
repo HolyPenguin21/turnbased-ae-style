@@ -191,7 +191,8 @@ namespace Game.Ai.V2
                 GroundCombatGatherPlan free = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                     hexBonus, ai.Target.Hex, claimed, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     hostId, donors, requireMovementNow: false, minimumArmyPower: required,
-                    allowPartial: true);
+                    allowPartial: true,
+                    departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, ai.Target, candidate));
                 if (free.Feasible && free.SupportArmyIds.Count > 0)
                 {
                     diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}existing_army_can_join_host "
@@ -200,7 +201,8 @@ namespace Game.Ai.V2
                 }
                 GroundCombatGatherPlan contended = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                     hexBonus, ai.Target.Hex, new HashSet<int>(), GroundCombatAdmissionPolicy.AttackWinChanceGate,
-                    hostId, null, requireMovementNow: false, minimumArmyPower: required, allowPartial: true);
+                    hostId, null, requireMovementNow: false, minimumArmyPower: required, allowPartial: true,
+                    departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, ai.Target, candidate));
                 // Contention only when the busy armies would really complete the fist; a partial
                 // lift held elsewhere does not excuse a measured shortage.
                 if (contended.Feasible && contended.ReachesThreshold && contended.SupportArmyIds.Count > 0)
@@ -212,7 +214,9 @@ namespace Game.Ai.V2
             }
             ArmyData live = snap.Observer == null ? null : OwnWorld.Of(snap.Observer).Army(hostId);
             if (live != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(snap, live, claimed,
-                    opposition, hexBonus).Feasible)
+                    opposition, hexBonus,
+                    rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, live,
+                        ai.Target.Hex, SafeRouteProfile.Attack)).Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}same_hex_assembly_pending");
                 return null;
@@ -426,7 +430,8 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
                 requireMovementNow: false,
-                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
+                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
+                departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, objective.Target, candidate));
             if (gather.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "

@@ -283,8 +283,12 @@ namespace Game.Ai.V2
             if (a == null || a.IsPrison || a.MemberCount <= 0)
                 return false;
 
+            if (intent.Scout != null && ReconScoutKinds.IsDisruption(intent.Scout.Kind)
+                && !Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes)) return false;
+
             if (a.IsAir)
                 return intent.Scout != null
+                    && !ReconScoutKinds.IsDisruption(intent.Scout.Kind)
                     && intent.Scout.Kind != ScoutTargetKind.Explore
                     && !ReconScoutKinds.IsLocalStrike(intent.Scout.Kind)
                     && requirement != StealthRequirement.Required;

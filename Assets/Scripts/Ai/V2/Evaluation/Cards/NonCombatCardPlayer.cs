@@ -522,8 +522,8 @@ namespace Game.Ai.V2
             return service;
         }
 
-        // Executable support plus honest missile-preparation witnesses. Formation still reads
-        // only CombatSupportTargets; a reserve witness never owns or launches an attack.
+        // Executable support, including independent useful missile-preparation strikes.
+        // Every witness has the existing AirSupport proposal/provisioning/flight lifecycle.
         // Inventory is filtered at production/deployment, not rebase (self must not hide demand).
         internal static List<CombatAirSupportRequest> KnownStrikeTargets(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -534,7 +534,7 @@ namespace Game.Ai.V2
             ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
             return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,
                 AviationRebasePlanner.CombatSupportTargets(snap, intents), commitments)
-                .Concat(GroundCombatAirSupport.MissileStockTargets(snap)).ToList();
+                .ToList();
         }
 
         // The not-yet-deployed aircraft as the sortie planners see it. It carries the card's

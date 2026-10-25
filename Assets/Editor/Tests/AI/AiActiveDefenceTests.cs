@@ -623,6 +623,25 @@ namespace Game.EditorTests
             finally { UnityEngine.Object.DestroyImmediate(go); }
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void HoldChance_UsesProjectedConvoyLocationInsteadOfItsOriginalBase(bool departs)
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot donor = DefenceActor(owner, 17, departs ? Secondary : Home, 50f, 50f, 50f);
+            WorldSnapshot snap = AssetWorld(donor);
+            ArmySnapshot relocated = DefenceActor(owner, 17, departs ? Home : Secondary, 50f, 50f, 50f);
+            var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget {
+                ProtectedAssetKind = AssetKind.Base, ProtectedAssetHex = Secondary } };
+            var threat = snap.Threat.Contacts[0].Army;
+            var opposition = new[] { new WorthIt.DefendingArmy(threat.Members, threat.Commander) };
+            float hold = ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, null, null,
+                opposition, projectedArmies: new Dictionary<int, ArmySnapshot> { [17] = relocated });
+            if (departs) Assert.That(hold, Is.Zero, "a convoy no longer defends the base it left");
+            else Assert.That(hold, Is.GreaterThan(.99f), "a projected arriving resident defends its new hex");
+            Assert.That(donor.Hex, Is.EqualTo(departs ? Secondary : Home), "projection must not mutate live facts");
+        }
+
         [TestCase(10f)]
         [TestCase(-3f)]
         public void HoldChance_UsesFrozenFullHexDefenceExactlyOnce(float bonus)

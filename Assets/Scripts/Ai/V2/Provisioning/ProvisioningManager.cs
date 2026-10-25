@@ -309,7 +309,8 @@ namespace Game.Ai.V2
                 army = AiV2Util.ResolveArmy(player, moverArmyId);
                 if (!AiV2Util.IsLiveOwnArmy(army, player)
                     || !AiArmyRoles.IsSoloRecce(army) || (army.CurrentMovement <= 0
-                        && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(target.FocusHex))))
+                        && !((ReconScoutKinds.IsCapture(target.Kind) || ReconScoutKinds.IsDisruption(target.Kind))
+                            && army.Hex.Equals(target.FocusHex))))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
             }
@@ -332,6 +333,14 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         ReconScoutKinds.IsHunt(target.Kind) ? "hunt target no longer beatable/reachable"
                             : "local capture no longer safe/empty"));
+            }
+            else if (ReconScoutKinds.IsDisruption(target.Kind))
+            {
+                if (!Game.Combat.DisruptionRules.HasCarrier(army) || !arrivesHidden
+                    || !executionHex.Equals(focus)
+                    || !ReconObjectiveEvaluator.AssaultNeedsDisruption(session.Snapshot, focus))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        "Disruption delivery lost carrier, stealth or assault target"));
             }
             else if (refresh)
             {
@@ -378,7 +387,8 @@ namespace Game.Ai.V2
                 ? SafeStepPathing.FindSafePath(ctx.Map, player, fromHex, executionHex,
                     plannedExtractUnit.MoveMax) != null
                 : SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex) != null;
-            if (!hasSafeApproach && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(focus)))
+            if (!hasSafeApproach && !((ReconScoutKinds.IsCapture(target.Kind) || ReconScoutKinds.IsDisruption(target.Kind))
+                && army.Hex.Equals(focus)))
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({fromHex.Q},{fromHex.R}) toward ({executionHex.Q},{executionHex.R})"));
 
@@ -443,7 +453,8 @@ namespace Game.Ai.V2
             // were never told to expect.
             if (!AiV2Util.IsLiveOwnArmy(army, player)
                 || !AiArmyRoles.IsSoloRecce(army) || (army.CurrentMovement <= 0
-                        && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(target.FocusHex))))
+                        && !((ReconScoutKinds.IsCapture(target.Kind) || ReconScoutKinds.IsDisruption(target.Kind))
+                            && army.Hex.Equals(target.FocusHex))))
                 return FailAfterRecce(ProvisionFailure.MoverContended(
                     $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
 

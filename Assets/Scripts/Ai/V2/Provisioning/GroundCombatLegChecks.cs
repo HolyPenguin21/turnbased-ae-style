@@ -104,7 +104,8 @@ namespace Game.Ai.V2
             StableMissionKey key, float eps, ArmyData primary, int supportArmyId,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             string lane, out bool atRendezvous, bool allowCommandHandover = false,
-            bool capacityIsProgress = false, HexCoord? meetingHex = null)
+            bool capacityIsProgress = false, HexCoord? meetingHex = null,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             atRendezvous = false;
             ArmyData support = AiV2Util.ResolveArmy(player, supportArmyId);
@@ -134,9 +135,10 @@ namespace Game.Ai.V2
             string improveWhy;
             bool improves = lane == "attack"
                 ? GroundCombatReinforcement.ImprovesAttackForce(primary, support, opposition,
-                    defenderHexDefenseBonus, out improveWhy, capacityIsProgress: capacityIsProgress)
+                    defenderHexDefenseBonus, out improveWhy, capacityIsProgress: capacityIsProgress,
+                    rosterAdmissible: rosterAdmissible)
                 : GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
-                    defenderHexDefenseBonus, out improveWhy, allowCommandHandover);
+                    defenderHexDefenseBonus, out improveWhy, allowCommandHandover, rosterAdmissible);
             if (!improves)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
@@ -167,9 +169,11 @@ namespace Game.Ai.V2
                 string planWhy;
                 plan = lane == "attack"
                     ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, opposition,
-                        defenderHexDefenseBonus, requireChargeNow: true, out planWhy, capacityIsProgress)
+                        defenderHexDefenseBonus, requireChargeNow: true, out planWhy, capacityIsProgress,
+                        rosterAdmissible)
                     : GroundCombatReinforcement.PlanHandoff(primary, support,
-                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out planWhy);
+                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out planWhy,
+                        rosterAdmissible: rosterAdmissible);
                 if (plan == null)
                     return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.NoExecutableStep(

@@ -66,7 +66,7 @@ namespace Game.Ai.V2
         // A resident capture is a reveal/contact action, not a movement activation. The live
         // admission and last revalidation must ask the same cost owner as snapshot planning.
         internal static int PendingActivationApFor(ArmyData mover, ScoutTargetKind kind, HexCoord focus) =>
-            ReconScoutKinds.IsCapture(kind) && mover.Hex.Equals(focus)
+            (ReconScoutKinds.IsCapture(kind) || ReconScoutKinds.IsDisruption(kind)) && mover.Hex.Equals(focus)
                 ? 0 : mover.PendingActivationApCost;
 
         internal static ScoutPairCost CapturePairCost(WorldSnapshot snap, ArmySnapshot mover, HexCoord hex)
@@ -256,6 +256,8 @@ namespace Game.Ai.V2
                 ScoutPairCost pair = ReconScoutKinds.IsCapture(target.Kind)
                     ? CapturePairCost(snap, mover, executionHex)
                     : PairCost(snap, mover, executionHex, stealthRequired);
+                if (ReconScoutKinds.IsDisruption(target.Kind) && mover.Hex.Equals(target.FocusHex))
+                { pair.RequiredAp -= pair.EffActivationAp; pair.EffActivationAp = 0; }
                 if (pair.Distance == int.MaxValue) continue;
                 candidates.Add(new PlannedGroundCost(mover, pair, executionHex));
             }

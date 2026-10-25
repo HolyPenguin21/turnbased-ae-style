@@ -45,7 +45,7 @@ namespace Game.Ai.V2
                     if (!defendingArmy.Units.Any(p => p.IsGroundCombatant))
                         continue;
                     float bonus = System.Math.Max(0f,
-                        defendingArmy.DefenseBonus(defenderHexDefenseBonus));
+                        defendingArmy.DefenseBonus(defenderHexDefenseBonus, attackers, attackerCommander));
                     foreach (WorthIt.DefenderProfile profile in defendingArmy.Units)
                         defenderPower += AiPower.SkilledCombatValue(profile, bonus);
                 }
@@ -58,7 +58,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            cover = WorthIt.CanDamageAll(attackers, opposition, defenderHexDefenseBonus);
+            cover = WorthIt.CanDamageAll(attackers, opposition, defenderHexDefenseBonus,
+                attackerCommander: attackerCommander);
             win = defenders.Count == 0
                 ? 1f
                 : WorthIt.EstimateSequential(attackers, attackerCommander, opposition,

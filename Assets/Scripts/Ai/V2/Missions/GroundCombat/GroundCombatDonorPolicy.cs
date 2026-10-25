@@ -41,7 +41,8 @@ namespace Game.Ai.V2
         internal static (ArmyData donor, UnitData hero) PickAttachableHero(PlayerSetupData owner,
             ArmyData host, ISet<int> excludeArmyIds,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            bool preparation = false, bool requireReadyThisTurn = true)
+            bool preparation = false, bool requireReadyThisTurn = true,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             var candidates = new List<(ArmyData donor, UnitData hero)>();
             foreach (ArmyData donor in OwnWorld.Of(owner).Armies)
@@ -66,6 +67,9 @@ namespace Game.Ai.V2
                     if (AiArmyRoles.IsFacilityOperator(owner, donor.Hex, h))
                         continue;
                     if (requireReadyThisTurn && host.HasActivatedThisTurn && h.ActivationApCost > 0)
+                        continue;
+                    if (rosterAdmissible != null
+                        && !rosterAdmissible(new List<UnitData>(host.Members) { h }))
                         continue;
                     candidates.Add((donor, h));
                 }

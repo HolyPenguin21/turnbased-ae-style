@@ -41,7 +41,8 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ISet<int> excludeArmyIds, float winChanceGate,
             int? pinnedHostArmyId = null, IReadOnlyDictionary<int, float> donorValues = null,
-            bool requireMovementNow = true, float minimumArmyPower = 0f, bool allowPartial = false)
+            bool requireMovementNow = true, float minimumArmyPower = 0f, bool allowPartial = false,
+            System.Func<GroundCombatGatherPlan, string> departureVeto = null)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatGatherPlan.Infeasible("no own-force snapshot");
@@ -77,6 +78,9 @@ namespace Game.Ai.V2
                     targetHex, hostSnap, free.Concat(bought).Where(s => s.ArmyId != hostSnap.ArmyId).ToList(),
                     winChanceGate, donorValues, minimumArmyPower,
                     allowPartial && pinnedHostArmyId.HasValue);
+                string departureReason = p.Feasible ? departureVeto?.Invoke(p) : null;
+                if (departureReason != null)
+                { p.Feasible = false; p.Reason = departureReason; }
                 if (!p.Feasible)
                 {
                     refusals.Add(p.Reason);
@@ -165,7 +169,9 @@ namespace Game.Ai.V2
             {
                 // CommandHandover returns only an exchange the armies can make on arrival.
                 HandoffPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
-                    opposition, defenderHexDefenseBonus, null);
+                    opposition, defenderHexDefenseBonus, null,
+                    rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, host,
+                        targetHex, Game.Ai.SafeRouteProfile.Attack));
                 if (handover == null)
                     continue;
                 List<UnitData> handed = host.Members.Except(handover.Displaced)
@@ -228,7 +234,7 @@ namespace Game.Ai.V2
             float power = AiPower.EffectiveArmyPower(roster);
             bool clears = coverageOk
                 && AttackForceReadiness.ClearsFloor(power, minimumArmyPower, win, opposition);
-            int uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus);
+            int uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus, attackerCommander: commander);
             var chosen = new List<GatherSupport>();
             // Strike force step 5 — gather to the PEAK, not to the bare gate: below the gate any
             // improving support is taken (best win gain per AP first); past it a support is worth
@@ -243,15 +249,28 @@ namespace Game.Ai.V2
                 float pickWin = 0f, pickRate = 0f;
                 foreach (GatherSupport s in pool)
                 {
-                    if (chosen.Contains(s) || s == heroDonor
-                        || !TryProjectReinforcement(bodies, s.Bodies, capacity, memberCount,
-                            commander, opposition, out List<WorthIt.DefenderProfile> projected, out _,
-                            out float projectedWin, out List<int> incomingIdx, out int displacedIdx,
-                            defenderHexDefenseBonus, requireWinGain: minimumArmyPower <= 0f))
-                        continue;
-                    var candidate = new List<UnitData>(roster);
-                    if (displacedIdx >= 0) candidate.Remove(bodyUnits[displacedIdx]);
-                    foreach (int i in incomingIdx) candidate.Add(s.Units[i]);
+                    if (chosen.Contains(s) || s == heroDonor) continue;
+                    ArmyData gathered = ArmyData.CreateVisualSnapshot();
+                    gathered.Owner = host.Owner;
+                    gathered.Hex = host.Hex;
+                    if (lead != null) gathered.Members.Add(lead);
+                    gathered.Members.AddRange(roster.Where(u => u != lead));
+                    var taskRoute = GroundCombatReinforcement.PreserveTaskRoute(snap.Map, host,
+                        targetHex, Game.Ai.SafeRouteProfile.Attack);
+                    // Ask the same live-unit handoff solver as execution. It can select a fast
+                    // escort instead of discarding a donor whose strongest tank blocks the route.
+                    HandoffPlan handoff = GroundCombatReinforcement.PlanHandoff(gathered, s.Live,
+                        null, 0f, out _, requireChargeNow: false, rosterAdmissible: taskRoute);
+                    if (handoff == null) continue;
+                    var candidate = GroundCombatReinforcement.FinalRoster(gathered, handoff);
+                    List<WorthIt.DefenderProfile> projected = candidate
+                        .Where(AiArmyRoles.IsGroundBattleBody).Select(WorthIt.FromLiveUnit).ToList();
+                    float projectedWin = WorthIt.EstimateSequential(projected, commander, opposition,
+                        defenderHexDefenseBonus).WinChance;
+                    if (minimumArmyPower <= 0f && projectedWin <= win + .001f) continue;
+                    List<int> incomingIdx = handoff.Incoming.Select(u => s.Units.IndexOf(u)).ToList();
+                    int displacedIdx = handoff.Displaced.Count == 0 ? -1 : bodyUnits.IndexOf(handoff.Displaced[0]);
+                    if (incomingIdx.Any(i => i < 0)) continue;
                     float nextPower = AiPower.EffectiveArmyPower(candidate);
                     if (minimumArmyPower > 0f && nextPower <= power)
                         continue;
@@ -262,7 +281,7 @@ namespace Game.Ai.V2
                     if (minimumArmyPower > 0f && uncovered > 0
                         && AttackForceReadiness.ClearsFloor(power, minimumArmyPower, win, opposition)
                         && WorthIt.UncoveredDefenderCount(projected, opposition,
-                            defenderHexDefenseBonus) >= uncovered)
+                            defenderHexDefenseBonus, attackerCommander: commander) >= uncovered)
                         continue;
                     if (minimumArmyPower <= 0f && clears
                         && projectedWin - win < AiConfigV2.attackGatherMinWinGain)
@@ -324,7 +343,7 @@ namespace Game.Ai.V2
                 win = pickWin;
                 chosen.Add(pick);
                 power = AiPower.EffectiveArmyPower(roster);
-                uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus);
+                uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus, attackerCommander: commander);
                 coverageOk = GroundCombatFeasibility.Clears(bodies, commander, opposition,
                     winChanceGate, defenderHexDefenseBonus, out win, out cover);
                 clears = coverageOk
@@ -334,6 +353,10 @@ namespace Game.Ai.V2
             if (heroDonor != null && !chosen.Contains(heroDonor))
                 chosen.Add(heroDonor);
 
+            var routeAdmissible = GroundCombatReinforcement.PreserveTaskRoute(snap.Map, host,
+                targetHex, Game.Ai.SafeRouteProfile.Attack);
+            if (routeAdmissible != null && !routeAdmissible(roster))
+                return GroundCombatGatherPlan.Infeasible($"gather host #{host.Id}: final roster loses the task route");
             int assembledMove = ArmyData.ComputeMaxMovement(roster);
             int assaultEta = AiV2Util.CeilDiv(HexGridMath.Distance(host.Hex, targetHex),
                 System.Math.Max(AiConfigV2.etaFallbackMoveBudget, assembledMove));
@@ -363,6 +386,20 @@ namespace Game.Ai.V2
                 .Sum(s => s.Snapshot.ActivationApCost));
             foreach (GatherSupport s in chosen.OrderByDescending(s => s.Turns).ThenBy(s => s.ArmyId))
                 plan.SupportArmyIds.Add(s.ArmyId);
+            var finalRosters = new Dictionary<int, List<UnitData>> { [host.Id] = ledRoster.Where(roster.Contains).Concat(roster.Except(ledRoster)).ToList() };
+            foreach (GatherSupport support in chosen)
+                finalRosters[support.ArmyId] = support.Live.Members.Except(support.Incoming)
+                    .Concat(support.Displaced).ToList();
+            foreach (var entry in finalRosters)
+            {
+                ArmyData projected = ArmyData.CreateVisualSnapshot();
+                projected.Owner = host.Owner;
+                projected.Hex = host.Hex; // every convoy is at the rendezvous after its handoff
+                projected.Members.AddRange(entry.Value);
+                ArmySnapshot final = WorldAnalysis.ToArmySnapshot(projected, host.Owner, true, 0, snap.Intents, null);
+                final.ArmyId = entry.Key;
+                plan.DepartureArmies[entry.Key] = final;
+            }
             return plan;
         }
 

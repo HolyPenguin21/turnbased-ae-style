@@ -162,6 +162,7 @@ namespace Game.Combat
                         hash = AccumulateAbilityHash(hash, ability);
                 if (p.Consumption != null) hash = AccumulateAbilityHash(hash, p.Consumption.Key);
                 if (p.SingleUseUnit) hash = hash * 31 + 19019;
+                if (!p.CanDisruptBuilding) hash = hash * 31 + 19021;
                 return hash;
             }
         }
@@ -242,6 +243,7 @@ namespace Game.Combat
                     DefenderProfile a = SupportHeroes[i], b = other.SupportHeroes[i];
                     if (a.HitPoints != b.HitPoints || a.MaxHitPoints != b.MaxHitPoints
                         || a.Defense != b.Defense || a.FateMax != b.FateMax || a.Initiative != b.Initiative
+                        || a.CanDisruptBuilding != b.CanDisruptBuilding
                         || !a.Abilities.SequenceEqual(b.Abilities) || !a.TypeTags.SequenceEqual(b.TypeTags)) return false;
                 }
                 return true;
@@ -250,10 +252,11 @@ namespace Game.Combat
             public override int GetHashCode() => unchecked((Present ? 1 : 0) * 397 ^ Initiative * 31 ^ Fate);
         }
 
-        // A hero whose passive skill acts in battle although heroes never take a turn: Heal and
-        // Drill. Such heroes stay in the simulated roster (SideCommander.SupportHeroes).
+        // Passive heroes (Heal, Drill, Disruption) stay in the simulated roster even though
+        // heroes never take a combat turn (SideCommander.SupportHeroes).
         private static bool IsSupportHero(IEnumerable<string> abilities) =>
-            abilities != null && abilities.Any(a => a == UnitAbilities.Heal || a == UnitAbilities.Drill);
+            abilities != null && abilities.Any(a => a == UnitAbilities.Heal || a == UnitAbilities.Drill
+                || a == UnitAbilities.Disruption);
 
         // One armed exchange as the real battle resolves it: both pools rolled, then the Fate duel
         // (FateDuelOrder — defender first, sides alternate while anyone spends; each
@@ -289,6 +292,7 @@ namespace Game.Combat
         private struct BattleUnit
         {
             public bool SingleUseUnit;
+            public bool CanDisruptBuilding;
             public EquipmentConsumption Consumption;
             public float Attack;
             public float Defense;
@@ -373,6 +377,7 @@ namespace Game.Combat
                 Range = p.Range,
                 Consumption = p.Consumption,
                 SingleUseUnit = p.SingleUseUnit,
+                CanDisruptBuilding = p.CanDisruptBuilding && p.HitPoints > 0f,
             };
         }
 
@@ -402,6 +407,7 @@ namespace Game.Combat
                     Range = m.Range,
                     Consumption = EquipmentSystem.Consumption(m),
                     SingleUseUnit = ExplosionAttack.IsSingleUseUnit(m),
+                    CanDisruptBuilding = !m.IsAviation && !m.IsPrisoner,
                 });
             return list;
         }
@@ -938,7 +944,8 @@ namespace Game.Combat
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList(),
                 unit.HitPointsMax, unit.IsGroundCombatant, unit.IsHero, unit.FateMax, unit.IsSummoned,
-                unit.Range, EquipmentSystem.Consumption(unit), ExplosionAttack.IsSingleUseUnit(unit));
+                unit.Range, EquipmentSystem.Consumption(unit), ExplosionAttack.IsSingleUseUnit(unit),
+                canDisruptBuilding: !unit.IsAviation && !unit.IsPrisoner);
 
         // Asset-free counterpart of EquipmentSystem.ConsumeAfterAttack for forecasts.
         public static DefenderProfile AfterAttack(DefenderProfile p)
@@ -946,7 +953,7 @@ namespace Game.Combat
             if (p.SingleUseUnit)
                 return new DefenderProfile(p.Defense, p.HasCeramicArmor, p.TypeTags, p.Attack, 0f,
                     p.Initiative, p.Abilities, p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax,
-                    p.IsSummoned, p.Range, p.Consumption, true);
+                    p.IsSummoned, p.Range, p.Consumption, true, p.CanDisruptBuilding);
             EquipmentConsumption c = p.Consumption;
             if (c == null) return p;
             var abilities = c.ApplyAbilities(p.Abilities);
@@ -956,7 +963,7 @@ namespace Game.Combat
                 p.Attack + c.Delta(EquipmentStat.Attack), hp,
                 p.Initiative + c.Delta(EquipmentStat.Initiative), abilities, maxHp,
                 p.IsGroundCombatant, p.IsHero, p.FateMax + c.Delta(EquipmentStat.Fate),
-                p.IsSummoned, p.Range + c.Delta(EquipmentStat.Range));
+                p.IsSummoned, p.Range + c.Delta(EquipmentStat.Range), canDisruptBuilding: p.CanDisruptBuilding);
         }
 
         // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
@@ -1075,17 +1082,26 @@ namespace Game.Combat
             // legacy caller contract and falls back to EstimateSequential's shared hex bonus.
             public readonly float? DefenseBonusOverride;
             public readonly int? ArmyId;
+            // The structural component of the total bonus, still present after known resident
+            // Disruption. Kept separate so a projected incoming carrier removes only this part.
+            public readonly float BuildingDefenseBonus;
 
             public DefendingArmy(IReadOnlyCollection<DefenderProfile> units, SideCommander commander,
-                float? defenseBonusOverride = null, int? armyId = null)
+                float? defenseBonusOverride = null, int? armyId = null, float buildingDefenseBonus = 0f)
             {
                 Units = units ?? System.Array.Empty<DefenderProfile>();
                 Commander = commander;
                 DefenseBonusOverride = defenseBonusOverride;
                 ArmyId = armyId;
+                BuildingDefenseBonus = buildingDefenseBonus;
             }
 
             public float DefenseBonus(float fallback) => DefenseBonusOverride ?? fallback;
+            public float DefenseBonus(float fallback, IReadOnlyCollection<DefenderProfile> attackers,
+                SideCommander attackerCommander = default) =>
+                DefenseBonus(fallback) - (DisruptionRules.HasCarrier(attackers)
+                    || DisruptionRules.HasCarrier(attackerCommander.SupportHeroes)
+                    ? Mathf.Max(0f, BuildingDefenseBonus) : 0f);
         }
 
         // Hero-only contacts have no tactical actors, but their Capture/Kill challenge is not a
@@ -1174,14 +1190,14 @@ namespace Game.Combat
         {
             var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
                 .Select(a => new DefendingArmy(WithBattleSummons(a.Units), a.Commander,
-                    a.DefenseBonusOverride, a.ArmyId))
+                    a.DefenseBonusOverride, a.ArmyId, a.BuildingDefenseBonus))
                 .Where(a => a.Units.Any(p => p.IsGroundCombatant))
                 .ToList();
             if (armies.Count <= 1)
                 return armies.Count == 0
                     ? new BattleEstimate(1f, 1f, 0f)
                     : Estimate(attackerUnits, armies[0].Units,
-                        armies[0].DefenseBonus(hexDefenseBonus), attackerCommander,
+                        armies[0].DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander), attackerCommander,
                         armies[0].Commander, magnitudes);
 
             attackerUnits = WithBattleSummons(attackerUnits);
@@ -1192,7 +1208,7 @@ namespace Game.Combat
             // Strongest defender first, judged against the fresh attacker (stable for equal odds).
             List<DefendingArmy> order = armies
                 .Select((a, i) => (a, i, win: Estimate(attackerUnits, a.Units,
-                    a.DefenseBonus(hexDefenseBonus),
+                    a.DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander),
                     attackerCommander, a.Commander, magnitudes).WinChance))
                 .OrderBy(x => x.win).ThenBy(x => x.i)
                 .Select(x => x.a)
@@ -1219,6 +1235,7 @@ namespace Game.Combat
                     {
                         AppendKey(buf, order[i].Commander);
                         AppendKey(buf, defenderTemplates[i]);
+                        buf.Add(System.BitConverter.SingleToInt32Bits(order[i].BuildingDefenseBonus));
                     }
                 },
                 () => SimulateSequential(baseline, order, defenderTemplates, seed, attackerCommander, m));
@@ -1251,6 +1268,16 @@ namespace Game.Combat
                     int refreshedAttackerFate = ai == 0 ? attackerCommander.Fate
                         : commanderIndex >= 0 ? attackers[commanderIndex].HeroFate : 0;
                     defenders.Clear(); defenders.AddRange(defenderTemplates[ai]);
+                    // Recheck surviving sources between encounters, then freeze this fight's
+                    // bonus even if its carrier dies in the first exchange.
+                    if (a.BuildingDefenseBonus > 0f && attackers.Any(u => u.Hp > 0f
+                        && !u.IsSummoned && u.CanDisruptBuilding && u.HasAbility(UnitAbilities.Disruption)))
+                        for (int di = 0; di < defenders.Count; di++)
+                        {
+                            BattleUnit d = defenders[di];
+                            d.Defense -= a.BuildingDefenseBonus;
+                            defenders[di] = d;
+                        }
                     result = SimulateOneBattle(attackers, defenders, rng,
                         refreshedAttackerFate, a.Commander.Fate, magnitudes, scratch);
                     if (result <= 0)
@@ -1412,6 +1439,9 @@ namespace Game.Combat
         public readonly struct DefenderProfile : System.IEquatable<DefenderProfile>
         {
             public readonly bool SingleUseUnit;
+            // Abstract/card profiles default to ground. Live snapshots explicitly exclude
+            // aircraft and prisoners, preserving that eligibility across forecasts and caches.
+            public readonly bool CanDisruptBuilding;
             public readonly EquipmentConsumption Consumption;
             public readonly float Defense;
             public readonly bool HasCeramicArmor;
@@ -1442,9 +1472,11 @@ namespace Game.Combat
                 float attack = 0f, float hitPoints = 0f, int initiative = 0,
                 IReadOnlyList<string> abilities = null, float maxHitPoints = 0f,
                 bool isGroundCombatant = true, bool isHero = false, int fateMax = 0, bool isSummoned = false,
-                int range = -1, EquipmentConsumption consumption = null, bool singleUseUnit = false)
+                int range = -1, EquipmentConsumption consumption = null, bool singleUseUnit = false,
+                bool canDisruptBuilding = true)
             {
                 SingleUseUnit = singleUseUnit;
+                CanDisruptBuilding = canDisruptBuilding;
                 Consumption = consumption;
                 Range = range;
                 IsGroundCombatant = isGroundCombatant;
@@ -1474,6 +1506,7 @@ namespace Game.Combat
             private DefenderProfile(DefenderProfile p, float hitPoints, float attack, float defense)
             {
                 SingleUseUnit = p.SingleUseUnit;
+                CanDisruptBuilding = p.CanDisruptBuilding;
                 Consumption = p.Consumption;
                 Range = p.Range;
                 IsGroundCombatant = p.IsGroundCombatant;
@@ -1500,7 +1533,8 @@ namespace Game.Combat
                 && Initiative == other.Initiative && Equals(Abilities, other.Abilities)
                 && IsGroundCombatant == other.IsGroundCombatant && IsHero == other.IsHero
                 && FateMax == other.FateMax && IsSummoned == other.IsSummoned && Range == other.Range
-                && Consumption?.Key == other.Consumption?.Key && SingleUseUnit == other.SingleUseUnit;
+                && Consumption?.Key == other.Consumption?.Key && SingleUseUnit == other.SingleUseUnit
+                && CanDisruptBuilding == other.CanDisruptBuilding;
 
             // The same observed body, lists compared by content: the rule of every AI change
             // detector (remembered sightings, snapshot actors). A profile rebuilt from an unchanged
@@ -1513,6 +1547,7 @@ namespace Game.Combat
                 && IsGroundCombatant == o.IsGroundCombatant && IsHero == o.IsHero
                 && FateMax == o.FateMax && IsSummoned == o.IsSummoned && Range == o.Range
                 && Consumption?.Key == o.Consumption?.Key && SingleUseUnit == o.SingleUseUnit
+                && CanDisruptBuilding == o.CanDisruptBuilding
                 && (TypeTags ?? System.Array.Empty<UnitTypeTag>())
                     .SequenceEqual(o.TypeTags ?? System.Array.Empty<UnitTypeTag>())
                 && (Abilities ?? System.Array.Empty<string>())
@@ -1644,8 +1679,8 @@ namespace Game.Combat
         // coverable — nothing to fail to cover.
         public static bool CanDamageAll(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyList<DefendingArmy> opposition, float fallbackDefenseBonus = 0f,
-            AbilityMagnitudes? magnitudes = null) =>
-            UncoveredDefenderCount(attackerUnits, opposition, fallbackDefenseBonus, magnitudes) == 0;
+            AbilityMagnitudes? magnitudes = null, SideCommander attackerCommander = default) =>
+            UncoveredDefenderCount(attackerUnits, opposition, fallbackDefenseBonus, magnitudes, attackerCommander) == 0;
 
         // How many known defending combatants no unit of `attackerUnits` can damage — the same
         // coverage rule as CanDamageAll, counted, so a planner can tell whether a candidate
@@ -1653,7 +1688,7 @@ namespace Game.Combat
         // power-only supports for six turns while one defender stayed uncovered).
         public static int UncoveredDefenderCount(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyList<DefendingArmy> opposition, float fallbackDefenseBonus = 0f,
-            AbilityMagnitudes? magnitudes = null)
+            AbilityMagnitudes? magnitudes = null, SideCommander attackerCommander = default)
         {
             if (opposition == null || opposition.Count == 0)
                 return 0;
@@ -1661,7 +1696,7 @@ namespace Game.Combat
             int uncovered = 0;
             foreach (DefendingArmy army in opposition)
             {
-                float extra = army.DefenseBonus(fallbackDefenseBonus);
+                float extra = army.DefenseBonus(fallbackDefenseBonus, attackerUnits, attackerCommander);
                 foreach (DefenderProfile defender in CombatantsOf(army.Units))
                     if (!attackers.Any(attacker => CanDamage(attacker, defender, extra, magnitudes)))
                         uncovered++;

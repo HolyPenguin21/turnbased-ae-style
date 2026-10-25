@@ -39,6 +39,10 @@ MonoBehaviour:
     description: Raises the movement maximum of the slowest Infantry
   - tag: Repair
     description: Enables paid repair for all own units on this hex
+  - tag: Disruption
+    description: While on a hostile Base or Citadel hex, or arriving in an attacking
+      army, suppresses its positive building DEF bonus for the whole encounter.
+      Terrain, formation and unit DEF are unchanged. Does not reveal the carrier.
   - tag: Airfield
     description: Provides a mobile airfield
   - tag: SingleUse
