@@ -286,7 +286,9 @@ namespace Game.Ai.V2
             // ---- the atomic handoff transaction ------------------------------------------
             result.ReinforcementHandoffAttempted = true;
             bool handoffOk = GroundCombatReinforcementTransaction.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
-                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
+                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(ctx.Map, primary,
+                    pm.RaidLastKnownHex, SafeRouteProfile.Combat));
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} - raid "
                 + $"reinforcement handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "

@@ -146,7 +146,7 @@ namespace Game.Ai.V2
                 {
                     if (!d.IsGroundCombatant)
                         continue;
-                    float extra = army.DefenseBonus(hexBonus);
+                    float extra = army.DefenseBonus(hexBonus, pool.Attackers);
                     if (pool.Attackers.Any(a => a.IsGroundCombatant && WorthIt.CanDamage(a, d, extra)))
                         continue;
                     reason = $"no_known_pool_unit_damages_defender(A{d.Attack:0.#}/D{d.Defense:0.#}"
@@ -417,7 +417,9 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander,
             float hexBonus, HexCoord hex, int? armyId)
         {
-            var fight = new List<WorthIt.DefendingArmy> { new WorthIt.DefendingArmy(defenders, commander, hexBonus) };
+            var fight = new List<WorthIt.DefendingArmy> { new WorthIt.DefendingArmy(defenders, commander, hexBonus,
+                buildingDefenseBonus: AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, snap.Map, hex,
+                    armyId.HasValue ? snap.Known?.SightingOf(armyId.Value)?.Owner : null)) };
             if (armyId.HasValue)
                 KnownOpposition.AddCoOccupants(snap, hex, armyId.Value, fight);
             else
@@ -472,7 +474,7 @@ namespace Game.Ai.V2
                 HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
                     opposition, hexBonus);
                 float asmWin = assembly.WinChance;
-                bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus);
+                bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus, attackerCommander: assembly.Commander);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
                 int eta = AiV2Util.CeilDiv(minDist, moverBudget);
                 float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
@@ -522,7 +524,7 @@ namespace Game.Ai.V2
                     HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
                         opposition, hexBonus);
                     float asmWin = assembly.WinChance;
-                    bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus);
+                    bool cover = WorthIt.CanDamageAll(assembly.Roster, opposition, hexBonus, attackerCommander: assembly.Commander);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
                     int eta = AiV2Util.CeilDiv(minDist, moverBudget);
                     float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,

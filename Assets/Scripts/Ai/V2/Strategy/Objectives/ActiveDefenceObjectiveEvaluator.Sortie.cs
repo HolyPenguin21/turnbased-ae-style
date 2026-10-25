@@ -101,7 +101,7 @@ namespace Game.Ai.V2
             win = 0; covers = false;
             if (opposition == null || opposition.Count == 0) return false;
             float enemyPower = opposition.Sum(a => AiPower.EffectiveArmyPowerFromProfiles(
-                a.Units.ToList(), Math.Max(0, a.DefenseBonus(0))));
+                a.Units.ToList(), Math.Max(0, a.DefenseBonus(0, members))));
             return AiPower.EffectiveArmyPowerFromProfiles(members) > enemyPower
                 && GroundCombatFeasibility.Clears(members, default, opposition,
                     GroundCombatAdmissionPolicy.FreshStartWinChanceGate, 0, out win, out covers);

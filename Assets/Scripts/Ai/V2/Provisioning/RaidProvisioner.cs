@@ -282,7 +282,9 @@ namespace Game.Ai.V2
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition,
                 KnownOpposition.RaidDefenceBonus(session.Snapshot, target.Target), "raid",
-                out bool atRendezvous);
+                out bool atRendezvous, rosterAdmissible:
+                    GroundCombatReinforcement.PreserveTaskRoute(ctx.Map, primary,
+                        target.LastKnownHex, SafeRouteProfile.Combat));
             if (!check.Ok)
                 return check.Failure;
             ArmyData support = check.Mover;

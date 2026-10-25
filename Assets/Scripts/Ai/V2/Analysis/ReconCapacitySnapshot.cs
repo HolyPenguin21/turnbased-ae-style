@@ -111,7 +111,7 @@ namespace Game.Ai.V2
             if (activeIntents != null && commitments != null)
                 foreach (MissionIntent i in activeIntents)
                 {
-                    if (i?.Scout == null || i.PreferredMoverArmyId == null
+                    if (i?.Scout == null || !ReconScoutKinds.UsesPatrolLane(i.Scout.Kind) || i.PreferredMoverArmyId == null
                         || !commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value)
                         || i.Scout.RequiresStealth)
                         continue;

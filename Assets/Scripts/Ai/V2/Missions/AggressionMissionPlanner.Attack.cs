@@ -280,6 +280,21 @@ namespace Game.Ai.V2
                         assaultWhy[incumbent.IntentKey] = "attack_assault_target_unreachable_this_pass";
                     continue;
                 }
+                if (intermediate == null && !local.IsLocalFight
+                    && distance <= (GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, plan)
+                        ?? actor.CurrentMovement)
+                    && AttackMarchPolicy.WaitForDisruption(snap, actor, assaultObjective.Hex,
+                        out string disruptionWhy, plan))
+                {
+                    if (incumbent != null)
+                    {
+                        assaultWhy[incumbent.IntentKey] = disruptionWhy;
+                        incumbent.LastProtectedTurn = snap.TurnNumber;
+                    }
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#disruption-wait",
+                        $"[AI][V2][Attack][Disruption] HOLD {disruptionWhy} target={objective.Target.DiagnosticLabel}");
+                    continue;
+                }
                 int eta = AiV2Util.CeilDiv(distance,
                     Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
                 int? projectedAp = GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan);
@@ -780,7 +795,10 @@ namespace Game.Ai.V2
             float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, a.Target.Hex);
             List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                 snap, a.PrimaryArmyId.Value, opposition, committed, hexBonus,
-                allowCommandHandover: true);
+                allowCommandHandover: true,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                    AiV2Util.ResolveArmy(snap.Observer, primary.ArmyId), a.Target.Hex,
+                    SafeRouteProfile.Attack));
             if (candidates.Count == 0)
             {
                 if (deferredThisPass != null)

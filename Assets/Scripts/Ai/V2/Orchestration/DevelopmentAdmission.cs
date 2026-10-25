@@ -497,11 +497,12 @@ namespace Game.Ai.V2
                     .OrderBy(x => x, System.StringComparer.Ordinal));
             return $"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
                 + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/"
-                + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}/singleUnit={d.SingleUseUnit}";
+                + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}/singleUnit={d.SingleUseUnit}/disruptEligible={d.CanDisruptBuilding}";
         }
 
         private static string CommanderFingerprint(Game.Combat.WorthIt.SideCommander commander)
-            => $"/cmd:{commander.Present}:{commander.Initiative}:{commander.Fate}";
+            => $"/cmd:{commander.Present}:{commander.Initiative}:{commander.Fate}:"
+                + DefenderFingerprint(commander.SupportHeroes);
     }
 
     // Exact text rows of DefenderProfiles for the "did anything change" keys. A profile owns

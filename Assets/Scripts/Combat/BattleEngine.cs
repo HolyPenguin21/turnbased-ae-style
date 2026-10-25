@@ -310,7 +310,13 @@ namespace Game.Combat
             _state = state ?? throw new ArgumentNullException(nameof(state));
             _magnitudes = magnitudes;
             _random = random ?? new System.Random(state.BattleSeed);
-            AiDebugLog.Write($"[BATTLE] ({state.BattleHex.Q},{state.BattleHex.R}) start: attacker "
+            BattleDebugLog.Write($"[Encounter] seed={state.BattleSeed} hex=({state.BattleHex.Q},{state.BattleHex.R}) "
+                + $"attacker={state.Attacker?.Id} defender={state.Defender?.Id} "
+                + $"buildingDefense={state.DefenderBuildingDefenseBonus} "
+                + $"attackerRoster={DescribeSides(state.Attacker)} defenderRoster={DescribeSides(state.Defender)}");
+            AiDebugLog.Write($"[BATTLE] seed={state.BattleSeed} attackerId={state.Attacker?.Id} "
+                + $"defenderId={state.Defender?.Id} buildingDefense={state.DefenderBuildingDefenseBonus} "
+                + $"({state.BattleHex.Q},{state.BattleHex.R}) start: attacker "
                 + $"{DescribeSides(state.Attacker)} vs defender {DescribeSides(state.Defender)}");
             if (state.Grid != null && BattleInitiator.IsCombatCapable(state.Attacker) && BattleInitiator.IsCombatCapable(state.Defender))
                 EncounterStarted?.Invoke(state);
@@ -320,7 +326,9 @@ namespace Game.Combat
         // start-of-battle composition the AI estimate is compared against.
         private static string DescribeSides(ArmyData army) => army == null ? "none"
             : DescribeForLog(army) + " {" + string.Join("; ", System.Linq.Enumerable.Select(army.Members,
-                m => m == null ? "?" : $"{m.Name} a{m.Attack} d{m.Defense} hp{m.HitPointsCurrent}/{m.HitPointsMax}")) + "}";
+                m => m == null ? "?" : $"{m.Name}#{m.RuntimeId} a{m.Attack} d{m.Defense} hp{m.HitPointsCurrent}/{m.HitPointsMax}"
+                    + $" range={m.Range} initiative={m.Initiative} fate={m.Fate}/{m.FateMax}"
+                    + $" skills=[{string.Join(",", m.Abilities.OrderBy(a => a))}]")) + "}";
 
         public void StartRound()
         {
@@ -469,11 +477,7 @@ namespace Game.Combat
                 out Game.Terrain.TerrainTypeEntry terrain) && terrain != null)
                 bonus += terrain.defenseModifier;
 
-            BuildingData building = BuildingRegistry.FindAt(_state.BattleHex);
-            if (building != null && building.IsBase
-                && _state.Defender?.Owner != null
-                && building.Owner == _state.Defender.Owner)
-                bonus += building.Defense;
+            bonus += _state.DefenderBuildingDefenseBonus;
             return bonus;
         }
 
@@ -492,8 +496,17 @@ namespace Game.Combat
             BuildingData building = army != null ? BuildingRegistry.FindAt(army.Hex) : null;
             bool defendingOwnCitadel = building != null && army != null
                 && building.Owner == army.Owner && building.IsStartingCitadel;
-            return BattleAi.AssessRetreat(_state.Grid, army, enemyArmy, defendingOwnCitadel,
-                _magnitudes, _state.Defender, GetDefenderHexDefenseBonus(map));
+            BattleAi.RetreatAssessment assessment = BattleAi.AssessRetreat(_state.Grid, army, enemyArmy,
+                defendingOwnCitadel, _magnitudes, _state.Defender, GetDefenderHexDefenseBonus(map));
+            string diagnostic = $"[EncounterRetreat] seed={_state.BattleSeed} round={_state.Round} "
+                + $"hex=({_state.BattleHex.Q},{_state.BattleHex.R}) army={army?.Id} enemy={enemyArmy?.Id} "
+                + $"buildingDefense={_state.DefenderBuildingDefenseBonus} "
+                + $"twoRoundMargin={assessment.TwoRoundMargin:F3} threeRoundMargin={assessment.ThreeRoundMargin:F3} "
+                + $"citadelDefense={assessment.IsCitadelDefense} shouldRetreat={assessment.ShouldRetreat} "
+                + $"own={DescribeSides(army)} enemy={DescribeSides(enemyArmy)}";
+            BattleDebugLog.Write(diagnostic);
+            AiDebugLog.Write(diagnostic);
+            return assessment;
         }
 
         public BattleAi.AiAction ChooseAiAction(UnitData actor,
@@ -521,10 +534,7 @@ namespace Game.Combat
                     && terrainEntry != null)
                     terrain = terrainEntry.defenseModifier;
 
-                BuildingData building = BuildingRegistry.FindAt(_state.BattleHex);
-                if (building != null && building.IsBase
-                    && building.Owner == defenderArmy.Owner)
-                    construction = building.Defense;
+                construction = _state.DefenderBuildingDefenseBonus;
             }
 
             return new BattleDefenseBreakdown(terrain, construction, formation);

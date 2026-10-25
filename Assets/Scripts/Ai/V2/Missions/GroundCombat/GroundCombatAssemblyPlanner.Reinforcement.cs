@@ -24,7 +24,8 @@ namespace Game.Ai.V2
         // true)), so a support whose hero would take command qualifies exactly as execution admits it.
         public static List<int> ReinforcementSupportCandidates(WorldSnapshot snap, int primaryArmyId,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> excludeArmyIds,
-            float defenderHexDefenseBonus = 0f, bool allowCommandHandover = false)
+            float defenderHexDefenseBonus = 0f, bool allowCommandHandover = false,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             var ids = new List<int>();
             if (snap?.Self?.Armies == null)
@@ -37,7 +38,7 @@ namespace Game.Ai.V2
             excluded.Add(primaryArmyId);
             foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
                 if (SupportImprovesPrimary(primary, candidate, opposition, defenderHexDefenseBonus,
-                        allowCommandHandover))
+                        allowCommandHandover, rosterAdmissible))
                     ids.Add(candidate.ArmyId);
             return ids;
         }
@@ -50,31 +51,36 @@ namespace Game.Ai.V2
         // support that no longer helps.
         internal static bool SupportImprovesPrimary(ArmySnapshot primary, ArmySnapshot candidate,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus = 0f,
-            bool allowCommandHandover = false)
+            bool allowCommandHandover = false,
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
         {
             if (primary == null || candidate == null)
                 return false;
+            ArmyData host = LiveArmy(primary);
+            ArmyData donor = LiveArmy(candidate);
+            if (host != null && donor != null)
+                return allowCommandHandover
+                    ? GroundCombatReinforcement.PlanAttackHandoff(host, donor, opposition,
+                        defenderHexDefenseBonus, requireChargeNow: false, out _,
+                        rosterAdmissible: rosterAdmissible) != null
+                    : GroundCombatReinforcement.ImprovesOdds(host, donor, opposition,
+                        defenderHexDefenseBonus, out _, rosterAdmissible: rosterAdmissible);
+            // A route predicate needs complete live UnitData, including the commander and its
+            // movement effects. A profile-only fallback cannot prove that contract.
+            if (rosterAdmissible != null) return false;
             if (allowCommandHandover)
             {
-                ArmyData host = LiveArmy(primary);
-                ArmyData donor = LiveArmy(candidate);
                 var opponents = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
-                if (host == null || donor == null)
-                {
-                    List<WorthIt.DefenderProfile> before = NonAviationProfiles(primary);
-                    List<WorthIt.DefenderProfile> sparableProfiles = NonAviationProfiles(candidate);
-                    return TryProjectReinforcement(before, sparableProfiles, primary.Capacity,
-                        primary.MemberCount, primary.Commander, opponents, out var projected,
-                        out _, out _, out _, out _, defenderHexDefenseBonus,
-                        requireWinGain: false)
-                        && AiPower.EffectiveArmyPowerFromProfiles(projected)
-                            > AiPower.EffectiveArmyPowerFromProfiles(before);
-                }
-                // ATK-F04 — the live armies get the one Attack handoff plan Provisioning and
-                // Execution run, projected for the arrival turn (no charge from today's AP).
-                return GroundCombatReinforcement.PlanAttackHandoff(host, donor, opponents,
-                    defenderHexDefenseBonus, requireChargeNow: false, out _) != null;
+                List<WorthIt.DefenderProfile> before = NonAviationProfiles(primary);
+                List<WorthIt.DefenderProfile> sparableProfiles = NonAviationProfiles(candidate);
+                return TryProjectReinforcement(before, sparableProfiles, primary.Capacity,
+                    primary.MemberCount, primary.Commander, opponents, out var projected,
+                    out _, out _, out _, out _, defenderHexDefenseBonus,
+                    requireWinGain: false)
+                    && AiPower.EffectiveArmyPowerFromProfiles(projected)
+                        > AiPower.EffectiveArmyPowerFromProfiles(before);
             }
+
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
             // Mirror the live donor rule (GroundCombatReinforcement.SparableSupportBodies): every
             // body may go, the support may be emptied.

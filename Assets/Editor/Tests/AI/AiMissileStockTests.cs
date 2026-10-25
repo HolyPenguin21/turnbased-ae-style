@@ -84,10 +84,48 @@ namespace Game.EditorTests
         public void EqualLargeArmiesWantReadyMissileBeforeAnyAssaultOrThreat()
         {
             var snap = Snapshot(Sighting(Infantry(10)));
-            Assert.That(AviationRebasePlanner.CombatSupportTargets(snap, Array.Empty<MissionIntent>()), Is.Empty);
+            var executable = AviationRebasePlanner.CombatSupportTargets(snap, Array.Empty<MissionIntent>());
+            Assert.That(executable, Has.Count.EqualTo(1));
+            Assert.That(executable.Single().IsStockPreparation, Is.True);
+            Assert.That(executable.Single().Key, Is.EqualTo(MissionIntentKey.ForActiveDefenceAirSupport(42)));
             var requests = NonCombatCardPlayer.KnownStrikeTargets(snap, owner, null, null, Array.Empty<ReconObjective>());
             Assert.That(requests, Has.Count.EqualTo(1), "A known large army must justify preparation before Assault");
             Assert.That(requests.Single().Target, Is.EqualTo(target));
+        }
+
+        [Test]
+        public void PreparationStrikeIsAirOnlyAndUsesTheExistingEnemyOperationIdentity()
+        {
+            var snap = Snapshot(Sighting(Infantry(10)), Sighting(Infantry(10), 43));
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty);
+            var objective = GroundCombatAirSupport.AirSupportObjectives(snap).Single();
+            Assert.That(objective.Target.InterceptPurpose, Is.EqualTo(ActiveDefenceInterceptPurpose.PreparationStrike));
+            Assert.That(objective.Target.PrimaryArmyId, Is.Null);
+            Assert.That(objective.Target.EnemyEta, Is.Null);
+            Assert.That(objective.Target.ProtectedAssetValue, Is.Zero);
+            Assert.That(objective.Target.IntentKey(), Is.EqualTo(MissionIntentKey.ForActiveDefenceAirSupport(42)));
+            Assert.That((int)ActiveDefenceInterceptPurpose.StrategicDefence, Is.Zero);
+            Assert.That((int)ActiveDefenceInterceptPurpose.ImmediateOpportunity, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void PreparationDoesNotDuplicateAnExistingAttackSupportAssignment()
+        {
+            var snap = Snapshot(Sighting(Infantry(10)));
+            var held = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                Attack = new AttackIntent { Target = new AttackTarget { Hex = target }, AirSupportArmyId = 9 } };
+            Assert.That(GroundCombatAirSupport.AirSupportObjectives(snap, new[] { held }), Is.Empty);
+            Assert.That(AviationRebasePlanner.CombatSupportTargets(snap, new[] { held }), Is.Empty);
+        }
+
+        [Test]
+        public void PreparationNeverSacrificesAnOwnedSecondaryBase()
+        {
+            var snap = Snapshot(Sighting(Infantry(100)));
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(target, owner, false,
+                Array.Empty<string>(), isBase: true) };
+            Assert.That(GroundCombatAirSupport.MissileStockValue(snap, Aircraft(), target), Is.NegativeInfinity);
+            Assert.That(Gaps(snap), Is.Empty);
         }
 
         private List<UnitData> Aircraft() => NonCombatCardPlayer.ProjectedAircraft(missile, owner);
@@ -354,6 +392,183 @@ namespace Game.EditorTests
                 UnityEngine.Object.DestroyImmediate(mapObject);
                 UnityEngine.Object.DestroyImmediate(Root.gameObject);
             }
+        }
+
+        private static List<MissionProposal> AirProposals(WorldSnapshot snap, IReadOnlyList<MissionIntent> intents = null)
+        {
+            var proposals = new List<MissionProposal>();
+            typeof(AggressionMissionLayer).GetMethod("AppendActiveDefenceAirSupport",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null,
+                new object[] { snap, intents ?? Array.Empty<MissionIntent>(), new HashSet<int>(), proposals, null });
+            return proposals;
+        }
+
+        private void Observe(ArmyData army)
+        {
+            var visible = (Dictionary<PlayerSetupData, HashSet<HexCoord>>)typeof(VisionSystem).GetField("Visible",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).GetValue(null);
+            visible[owner] = new HashSet<HexCoord> { army.Hex };
+            AiMapMemory.OnTurnStarted(owner, 10);
+            AiMapMemory.RefreshVisibleForTest(owner);
+        }
+
+        private ArmyData EnemyArmy(int bodies = 10)
+        {
+            var army = new ArmyData { Owner = enemy, Hex = target, Name = "known missile target" };
+            for (int i = 0; i < bodies; ++i)
+            {
+                var unit = AttachmentSlotTests.Body(Read("Assets/Cards/IronConcord/CardCatalog_IronConcord.asset",
+                    "concord.card.light-infantry"));
+                unit.Owner = enemy; army.Members.Add(unit);
+            }
+            ArmyRegistry.Register(army);
+            Observe(army);
+            return army;
+        }
+
+        private WorldSnapshot LiveMissileWorld(EngineWorld world)
+        {
+            var snap = Snapshot();
+            snap.Map = world.Map;
+            snap.Known = WorldAnalysis.BuildKnown(owner, Array.Empty<HexCoord>());
+            snap.Self.Armies = OwnWorld.Of(owner).Armies
+                .Select(a => WorldAnalysis.ToArmySnapshot(a, owner, true, 0, null, world.Context)).ToList();
+            return snap;
+        }
+
+        [Test, Category("UnityEngine")]
+        public void StoredMissileGetsFundedProvisionedAndClaimedOnceBeforeAnyAssault()
+        {
+            using var world = new EngineWorld(owner);
+            var field = world.Airfield(owner, 0); field.Members.Add(Aircraft()[0]);
+            EnemyArmy();
+            var snap = LiveMissileWorld(world);
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty);
+            var proposal = AirProposals(snap).Single();
+            var target = (ActiveDefenceMissionTarget)proposal.Target;
+            Assert.That(target.InterceptPurpose, Is.EqualTo(ActiveDefenceInterceptPurpose.PreparationStrike));
+            Assert.That(proposal.PreferredMoverArmyId, Is.EqualTo(field.Id));
+            var funded = ResourceAllocator.BeginTurn(snap, Radar.Even(), new List<MissionProposal> { proposal },
+                new List<Commitment>(), owner).Pack().Funded.Single();
+            Assert.That(funded.Tentative.Ap, Is.GreaterThanOrEqualTo(1));
+            Assert.That(funded.PhysicalDraw.Energy, Is.GreaterThanOrEqualTo(1));
+            using var session = new ProvisioningSession(snap);
+            var provision = ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded);
+            Assert.That(provision.Success, Is.True, provision.Failure.Detail);
+            Assert.That(provision.Provisioned.AircraftRuntimeIds, Is.EqualTo(new[] { field.Members.Single().RuntimeId }));
+            session.RegisterSuccess(provision.Provisioned.Key, provision.Provisioned);
+            session.RegisterSuccess(provision.Provisioned.Key, provision.Provisioned);
+            Assert.That(session.ApClaimed, Is.EqualTo(provision.Provisioned.ClaimedAp));
+            Assert.That(session.EnergyClaimed, Is.EqualTo(provision.Provisioned.ClaimedEnergy));
+            Assert.That(ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded).Success, Is.False);
+            Assert.That(Gaps(snap), Is.Empty, "physical inventory also covers production, once");
+            var formed = new ExecutionResult();
+            var wing = GroundCombatLegStep.MaterializeSupportWing(owner, world.Context, provision.Provisioned, formed, field);
+            Assert.That(wing.Members.Count, Is.EqualTo(1));
+            Assert.That(field.Members, Is.Empty);
+            Assert.That(formed.ActualActorArmyId, Is.EqualTo(wing.Id));
+            Assert.That(AirSortieRegistry.For(owner), Is.Empty, "formation is followed by the funded executor flight");
+        }
+
+        [Test, Category("UnityEngine")]
+        public void PreparationRechecksBlastValueAndOtherOwnersEnergyHoldBeforePayment()
+        {
+            using var world = new EngineWorld(owner);
+            var field = world.Airfield(owner, 0); field.Members.Add(Aircraft()[0]);
+            ArmyData enemyArmy = EnemyArmy();
+            var snap = LiveMissileWorld(world);
+            var proposal = AirProposals(snap).Single();
+            var funded = new FundedEntry { Mission = proposal, Tentative = new ResourceVector(20),
+                PhysicalDraw = new ResourceVector(0, 0, 20, 0, 0) };
+            using var session = new ProvisioningSession(snap);
+            int ap = world.Root.ActionPoints;
+            StrategicResourceReservationLedger.BeginTurn(owner, 10);
+            StrategicResourceReservationLedger.Upsert(owner, 10, new StrategicResourceReservation {
+                Owner = "other-operation", Resource = StrategicReservedResource.Energy,
+                Amount = world.Root.GetResource(ResourceType.Energy), Reason = StrategicReservationReason.StrategicReactionPass,
+                ExpirationStage = StrategicReservationExpiry.EndOfTurn });
+            Assert.That(ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded).Success, Is.False);
+            StrategicResourceReservationLedger.ClearAll();
+            enemyArmy.Members.RemoveRange(2, enemyArmy.Members.Count - 2);
+            Observe(enemyArmy);
+            Assert.That(ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded).Success, Is.False,
+                "the old funded snapshot cannot justify a now-useless missile");
+            Assert.That(world.Root.ActionPoints, Is.EqualTo(ap));
+            Assert.That(field.Members.Count, Is.EqualTo(1));
+            Assert.That(AirSortieRegistry.For(owner), Is.Empty);
+        }
+
+        [Test, Category("UnityEngine")]
+        public void PreparationKeepsItsWingWithoutAThreatAndARealConsumedStrikeCompletes()
+        {
+            using var world = new EngineWorld(owner);
+            var actorObject = new UnityEngine.GameObject("preparation-missile-wing");
+            var presenterObject = new UnityEngine.GameObject("preparation-missile-presenter");
+            try
+            {
+                world.Airfield(owner, 0);
+                ArmyData enemyArmy = EnemyArmy();
+                var wing = new ArmyData { Owner = owner, Hex = target, IsAirArmy = true };
+                wing.Members.Add(Aircraft()[0]); ArmyRegistry.Register(wing);
+                wing.Controller = actorObject.AddComponent<ArmyController>();
+                var presenter = presenterObject.AddComponent<AviationCombatPresenter>();
+                typeof(HexSelectionController).GetField("aviationCombatPresenter", System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic).SetValue(world.Context.HexSelection, presenter);
+                var snap = LiveMissileWorld(world);
+                var proposal = AirProposals(snap).Single();
+                var funded = ResourceAllocator.BeginTurn(snap, Radar.Even(), new List<MissionProposal> { proposal },
+                    new List<Commitment>(), owner).Pack().Funded.Single();
+                using var session = new ProvisioningSession(snap);
+                var provision = ActiveDefenceProvisioner.Provision(owner, world.Root, world.Context, session, funded);
+                Assert.That(provision.Success, Is.True, provision.Failure.Detail);
+                var t = provision.Provisioned.ActiveDefenceTarget;
+                var intent = new MissionIntent { Kind = MissionKind.ActiveDefence, Status = IntentStatus.Active,
+                    IntentKey = t.IntentKey(), PreferredMoverArmyId = wing.Id,
+                    ActiveDefence = new ActiveDefenceIntent { Phase = ActiveDefencePhase.AirSupport,
+                        InterceptPurpose = t.InterceptPurpose, EnemyArmyId = enemyArmy.Id, LastKnownHex = target,
+                        AirSupportArmyId = wing.Id, AirSupportBoundTurn = 10, AirSupportLandingHex = t.AirSupportLandingHex } };
+                var state = MissionIntentRegistry.GetOrCreate(owner); state.Put(intent); snap.Intents = state;
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Does.Contain(intent));
+                Assert.That(ActorCommitments.FromIntents(new[] { intent }, snap, null).IsArmyClaimed(wing.Id), Is.True);
+                int ap = world.Root.ActionPoints, energy = world.Root.GetResource(ResourceType.Energy);
+                float hp = enemyArmy.Members.Sum(u => u.HitPointsCurrent);
+                var execution = new ExecutionResult();
+                AviationCombatPresenter.HeadlessRng = new Random(7);
+                Drain(ActiveDefenceExecutor.RunActiveDefence(owner, world.Root, world.Context,
+                    provision.Provisioned, execution, ap));
+                Assert.That(execution.AirSupportStrikeSucceeded, Is.True);
+                Assert.That(execution.ReachedGoal, Is.True, "a confirmed consumed missile completed its assignment");
+                Assert.That(execution.StopReason, Is.EqualTo(ExecutionStopReason.ReachedGoal));
+                Assert.That(enemyArmy.Members.Sum(u => u.HitPointsCurrent), Is.LessThan(hp));
+                Assert.That(world.Root.ActionPoints, Is.EqualTo(ap - provision.Provisioned.ClaimedAp));
+                Assert.That(world.Root.GetResource(ResourceType.Energy), Is.EqualTo(energy - provision.Provisioned.ClaimedEnergy));
+                Observe(enemyArmy);
+                snap = LiveMissileWorld(world); snap.Intents = state;
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+                Assert.That(state.All, Is.Empty);
+                Assert.That(ActorCommitments.FromIntents(state.All, snap, null).IsArmyClaimed(wing.Id), Is.False);
+                Assert.That(AirSortieRegistry.For(owner), Is.Empty);
+                Assert.That(AirProposals(snap), Is.Empty, "the consumed actor cannot launch a duplicate strike");
+            }
+            finally
+            {
+                AviationCombatPresenter.HeadlessRng = new Random();
+                UnityEngine.Object.DestroyImmediate(presenterObject);
+                UnityEngine.Object.DestroyImmediate(actorObject);
+            }
+        }
+
+        private static void Drain(System.Collections.IEnumerator routine)
+        {
+            var stack = new Stack<System.Collections.IEnumerator>(); stack.Push(routine);
+            int remaining = 10000;
+            while (stack.Count > 0 && remaining-- > 0)
+            {
+                var top = stack.Peek();
+                if (!top.MoveNext()) { stack.Pop(); continue; }
+                if (top.Current is System.Collections.IEnumerator nested) stack.Push(nested);
+            }
+            Assert.That(remaining, Is.GreaterThan(0), "headless strike coroutine must terminate");
         }
 
         [Test, Category("UnityEngine")]

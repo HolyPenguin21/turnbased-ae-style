@@ -129,7 +129,7 @@ namespace Game.Ai.V2
             // Geometric route to the main target: terrain alone (SafeRouteProfile.Attack). A hex
             // that costs more than MaxMovement to enter is impassable; a short current MP is only
             // waiting. Contacts are judged below, they do not make the route "not exist".
-            HexPath route = RouteOf(snap, player, army.Hex, mainHex, maxMovement, SafeRouteProfile.Attack);
+            HexPath route = RouteOf(snap, player, army.Hex, mainHex, currentMovement, maxMovement, SafeRouteProfile.Attack);
             if (route?.Hexes == null || route.Hexes.Count < 2)
                 return AttackLocalAction.Continue("main_unreachable_terrain");
 
@@ -194,7 +194,7 @@ namespace Game.Ai.V2
             {
                 // The straight path is spoiled by a contact we will not fight: reachability is that
                 // of the route that goes around it (Combat profile blocks every remembered army).
-                int around = RouteOf(snap, player, army.Hex, mainHex, maxMovement,
+                int around = RouteOf(snap, player, army.Hex, mainHex, currentMovement, maxMovement,
                     SafeRouteProfile.Combat)?.TotalCost ?? int.MaxValue;
                 reachableNow = around != int.MaxValue && around <= currentMovement;
             }
@@ -291,7 +291,7 @@ namespace Game.Ai.V2
                     continue;
                 // Real route cost to the contact (the contact hex itself is the exempt endpoint),
                 // against the movement left: more than that is a multi-day chase.
-                int contactCost = RouteOf(snap, player, army.Hex, s.Hex, maxMovement,
+                int contactCost = RouteOf(snap, player, army.Hex, s.Hex, currentMovement, maxMovement,
                     SafeRouteProfile.Combat)?.TotalCost ?? int.MaxValue;
                 if (contactCost == int.MaxValue || contactCost > currentMovement)
                     continue;
@@ -406,6 +406,7 @@ namespace Game.Ai.V2
                 foreach (WorthIt.DefendingArmy army in opposition)
                 {
                     hash = hash * 31 + CommanderFingerprint(army.Commander);
+                    hash = hash * 31 + (int)System.Math.Round(army.BuildingDefenseBonus * 100f);
                     // The defender's own terrain + structure bonus on the hex it stands on now:
                     // the same roster leaving (or entering) a fortification is a different fight.
                     hash = hash * 31 + (army.DefenseBonusOverride.HasValue
@@ -452,6 +453,7 @@ namespace Game.Ai.V2
                         + p.Initiative * 10007 + (p.HasCeramicArmor ? 7 : 0) + (p.IsHero ? 13 : 0)
                         + p.FateMax * 10009 + p.Range * 10037
                         + (p.IsGroundCombatant ? 19 : 0) + (p.IsSummoned ? 23 : 0)
+                        + (p.CanDisruptBuilding ? 29 : 0)
                         + (p.Abilities?.Count ?? 0) * 100003;
                     if (p.TypeTags != null)
                         foreach (var tag in p.TypeTags)
@@ -523,10 +525,11 @@ namespace Game.Ai.V2
         // fixtures; the live Scan always supplies one) falls back to a straight line, one cost
         // point per hex, exactly as AiV2Util.TravelRoute and AttackIntermediateBasePolicy.Route do.
         private static HexPath RouteOf(WorldSnapshot snap, PlayerSetupData player, HexCoord from,
-            HexCoord to, int maxMovement, SafeRouteProfile profile) =>
+            HexCoord to, int currentMovement, int maxMovement, SafeRouteProfile profile) =>
             snap.Map == null
                 ? AiV2Util.StraightLine(from, to)
-                : SafeStepPathing.FindSafePath(snap.Map, player, from, to, maxMovement, profile);
+                : SafeStepPathing.FindSafePathByTurns(snap.Map, player, from, to,
+                    currentMovement, maxMovement, profile);
 
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }

@@ -48,11 +48,12 @@ namespace Game.Ai.V2
 
         // The same departure decision for nomination, admission and the capability view.
         internal static bool CanStart(WorldSnapshot snap, AttackTargetRef target,
-            GroundCombatAssemblyPlan plan, IMissionIntentView intents, out string reason)
+            GroundCombatAssemblyPlan plan, IMissionIntentView intents, out string reason,
+            IReadOnlyDictionary<int, ArmySnapshot> departureOverride = null)
         {
             reason = null;
             if (plan?.Feasible != true) { reason = "plan_infeasible"; return false; }
-            var projected = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
+            var projected = departureOverride ?? GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
             ArmySnapshot actor = projected.TryGetValue(plan.BaseArmyId, out ArmySnapshot changed)
                 ? changed : snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == plan.BaseArmyId);
             if (actor == null) { reason = "actor_unavailable"; return false; }
@@ -72,6 +73,53 @@ namespace Game.Ai.V2
             if (AttackRetreatWitness.Blocks(intents, snap, target, actor, out string why, out _))
             { reason = "waiting_for_changed_odds:" + why; return false; }
             return true;
+        }
+
+        // Preparation and continuity may gather before target observation is complete. They still
+        // owe every home the same final-departure defence proof as the fresh assault.
+        internal static string GatherDepartureReason(WorldSnapshot snap, AttackTargetRef target,
+            GroundCombatGatherPlan plan)
+        {
+            if (plan?.Feasible != true) return "plan_infeasible";
+            ArmySnapshot actor = plan.DepartureArmies.TryGetValue(plan.HostArmyId, out var projected)
+                ? projected : snap.Self.Armies.FirstOrDefault(a => a?.ArmyId == plan.HostArmyId);
+            AttackMarchAssessment home = Assess(snap, target, actor, plan.DepartureArmies);
+            return home.Verdict == AttackMarchVerdict.DefendHome ? "home_needs_the_army:" + home.Reason : null;
+        }
+
+        // Only an already-owned, hidden, activation-paid carrier that can finish for zero AP may delay the
+        // terminal step. No speculative wait for production or for a distant scout.
+        internal static bool WaitForDisruption(WorldSnapshot snap, ArmySnapshot actor, HexCoord target,
+            out string reason, GroundCombatAssemblyPlan plan = null)
+        {
+            reason = null;
+            if (snap?.Observer == null || actor == null
+                || AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, snap.Map, target,
+                    (snap.Known?.Buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                        .Where(b => b.Hex.Equals(target)).Select(b => b.Owner).FirstOrDefault()) <= 0f)
+                return false;
+            ArmySnapshot departing = actor;
+            if (plan != null)
+            {
+                var projected = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
+                if (projected.TryGetValue(actor.ArmyId, out ArmySnapshot assembled)) departing = assembled;
+            }
+            if (DisruptionRules.HasCarrier(departing.MembersWithHeroes)
+                || DisruptionRules.HasCarrier(departing.Members)
+                || DisruptionRules.HasCarrier(departing.Commander.SupportHeroes)) return false;
+            foreach (MissionIntent intent in snap.AllIntents)
+            {
+                if (intent?.Status != IntentStatus.Active || intent.Scout?.Kind != ScoutTargetKind.DisruptStructure
+                    || !intent.Scout.FocusHex.Equals(target) || !intent.PreferredMoverArmyId.HasValue) continue;
+                ArmySnapshot carrier = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.ArmyId == intent.PreferredMoverArmyId.Value);
+                if (carrier == null || carrier.Hex.Equals(target) || !carrier.IsHidden
+                    || (!carrier.HasActivatedThisTurn && carrier.ActivationApCost > 0)
+                    || !ReconAssignmentPlanner.CanDeliverDisruptionThisTurn(snap, carrier, target)) continue;
+                reason = $"awaiting_disruption_delivery:#{carrier.ArmyId}";
+                return true;
+            }
+            return false;
         }
 
         internal static AttackMarchAssessment Assess(WorldSnapshot snap, AttackTargetRef target,
@@ -143,10 +191,7 @@ namespace Game.Ai.V2
                 int eta = t.EnemyEta.Value;
                 // The same imminence ActiveDefence answers (threat_not_imminent beyond it): a
                 // distant contact does not call a march home.
-                if (eta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta
-                    || (!army.Hex.Equals(t.Asset.Hex)
-                        && !ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snap, army,
-                            t.Asset.Hex, eta, out _, fastestByTurns: true)))
+                if (eta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
                     continue;
                 if (struckNow.HasValue && t.Contact.Position.HasValue
                     && t.Contact.Position.Value.Equals(struckNow.Value))
@@ -160,9 +205,21 @@ namespace Game.Ai.V2
                 if (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, null, null, enemy,
                         without, projectedArmies) >= AiConfigV2.activeDefenceHoldWinChance)
                     continue;
-                if (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, t.Asset.Hex,
-                        new[] { army }, enemy, projectedArmies: projectedArmies) < AiConfigV2.activeDefenceHoldWinChance)
-                    continue;
+                // Several individually spareable donors can together remove a base's defence.
+                // A projected departure that breaks an existing hold is forbidden even when the
+                // assembled host is too far away to return and repair its own proposed damage.
+                bool departureBreaksHold = projectedArmies?.Count > 0
+                    && ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, null, null,
+                        enemy) >= AiConfigV2.activeDefenceHoldWinChance;
+                if (!departureBreaksHold)
+                {
+                    if (!army.Hex.Equals(t.Asset.Hex)
+                        && !ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snap, army,
+                            t.Asset.Hex, eta, out _, fastestByTurns: true)) continue;
+                    if (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, t.Asset.Hex,
+                            new[] { army }, enemy, projectedArmies: projectedArmies)
+                            < AiConfigV2.activeDefenceHoldWinChance) continue;
+                }
                 bool citadel = t.Asset.Kind == AssetKind.Citadel;
                 if (best == null || (citadel && !bestCitadel) || (citadel == bestCitadel && eta < enemyEta))
                 {

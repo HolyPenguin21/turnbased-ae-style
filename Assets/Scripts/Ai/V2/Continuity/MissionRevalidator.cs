@@ -212,6 +212,12 @@ namespace Game.Ai.V2
             if (ReconScoutKinds.IsAirSweep(pm.ScoutKind))
                 return MissionValidity.Valid;
 
+            if (ReconScoutKinds.IsDisruption(pm.ScoutKind))
+                return Game.Combat.DisruptionRules.HasCarrier(mover)
+                    && ScoutMoverSelector.ArrivesHiddenLive(
+                        StealthSystem.IsArmyFullyHidden(mover), pm.StealthApReserved)
+                    && pm.ExecutionHex.Equals(pm.FocusHex)
+                    ? MissionValidity.Valid : MissionValidity.StaleTargetInvalidated;
             if (ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
                 return ReconReactionPolicy.CanStrikeLocalTarget(player, ctx?.Map, mover, pm.ScoutKind, pm.FocusHex)
                     ? MissionValidity.Valid : MissionValidity.StaleTargetInvalidated;

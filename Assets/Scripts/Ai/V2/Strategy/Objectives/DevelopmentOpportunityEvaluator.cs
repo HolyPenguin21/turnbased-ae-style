@@ -273,7 +273,7 @@ namespace Game.Ai.V2
             bool facilityReady, bool facilityOfModeExists, IReadOnlyList<CardDefinition> deck,
             PlayerSetupData player, AiHandData hand,
             AiTurnContext ctx, out List<CardData> facilityCards, out BaseUpgradeTier capacityTier,
-            bool ignoreSiteContest = false)
+            bool ignoreSiteContest = false, IEnumerable<ArmyData> projectedArmies = null)
         {
             facilityCards = new List<CardData>();
             capacityTier = null;
@@ -288,7 +288,7 @@ namespace Game.Ai.V2
             // Current recipients must have a free slot; future deck cards have no occupied slot.
             List<CardDefinition> outputs = offered.Select(ctx.ResearchProductionCatalog.ResolveResult)
                 .Where(d => d != null && !string.IsNullOrWhiteSpace(d.authoredKey)).Distinct().ToList();
-            List<UnitData> units = OwnWorld.Of(player).Armies.Where(a => a != null && !a.IsPrison)
+            List<UnitData> units = (projectedArmies ?? OwnWorld.Of(player).Armies).Where(a => a != null && !a.IsPrison)
                 .SelectMany(a => a.Members).Where(u => u != null && !u.IsPrisoner && !u.IsSummoned).ToList();
             if (!outputs.Any(output => output.cardType == CardType.Unit || output.cardType == CardType.Hero
                 || output.cardType == CardType.Equipment
@@ -333,22 +333,24 @@ namespace Game.Ai.V2
         // pass, so the choice never outlives its reason; AP/resource shortage never enters.
         internal static HexCoord? SelectedPreparationSite(ResearchProductionMode mode, WorldSnapshot snap,
             PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
-            IReadOnlyList<MissionIntent> activeIntents) =>
+            IReadOnlyList<MissionIntent> activeIntents, ArmyData projectedArmy = null,
+            ArmyData replacedArmy = null) =>
             SelectedPreparationSite(mode, player, hand, ctx, activeIntents, snap?.Self?.Deck,
-                snap?.Self?.BaseHexes);
+                snap?.Self?.BaseHexes, projectedArmy, replacedArmy);
 
         // The same rule read from the LIVE world (hand, deck, registries, standing intents): the one
         // answer for Provisioning and Execution re-checks, never a stale snapshot.
         // `intents` - the player's durable intents, supplied by the live caller.
         internal static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
-            PlayerSetupData player, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents)
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents,
+            ArmyData projectedArmy = null, ArmyData replacedArmy = null)
         {
             if (player == null) return null;
             return SelectedPreparationSite(mode, player, hand, ctx,
                 intents?.All.Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                 hand?.RemainingDeck,
                 OwnWorld.Of(player).Buildings.Where(b => b.IsBase)
-                    .Select(b => b.Hex).ToList());
+                    .Select(b => b.Hex).ToList(), projectedArmy, replacedArmy);
         }
 
         // Live duty test shared by every layer that moves an operator-bearing field army: the army
@@ -376,11 +378,20 @@ namespace Game.Ai.V2
         private static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
             PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<CardDefinition> deck,
-            IEnumerable<HexCoord> baseHexes)
+            IEnumerable<HexCoord> baseHexes, ArmyData projectedArmy = null, ArmyData replacedArmy = null)
         {
             if (baseHexes == null || player == null
                 || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
                 return null;
+            // Read the same roster universe before and after materialization. Replacing the
+            // recipient prevents a removed/moved operator from surviving in the live registry
+            // projection; operators in every other own container still staff their sites.
+            var armies = OwnWorld.Of(player).Armies
+                .Where(a => a != null && a != replacedArmy && a != projectedArmy).ToList();
+            if (projectedArmy != null) armies.Add(projectedArmy);
+            bool HasActor(HexCoord hex) => armies.Any(a => a.Owner == player && !a.IsPrison
+                && a.Hex.Equals(hex) && a.Members.Any(u => u != null && u.IsHero
+                    && !u.IsPrisoner && u.HasAbility(ResearchProductionSystem.RoleAbility(mode))));
             bool facilityOfModeExists = OwnWorld.Of(player).Buildings.Any(b => b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)));
             // `needsUnlock` — every slot is taken: the site first needs the paid CapacityUnlock step.
             bool Viable(HexCoord hex, out bool needsUnlock)
@@ -390,7 +401,7 @@ namespace Game.Ai.V2
                 if (b == null || b.Owner != player
                     || b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
                     || StructuralPreparationBlock(mode, hex, false, facilityOfModeExists, deck, player,
-                        hand, ctx, out _, out BaseUpgradeTier tier) != null)
+                        hand, ctx, out _, out BaseUpgradeTier tier, projectedArmies: armies) != null)
                     return false;
                 needsUnlock = tier != null;
                 return true;
@@ -405,7 +416,7 @@ namespace Game.Ai.V2
                     UnitData hero = i.Development.Hero;
                     if (hero != null && hero.Owner == player && hero.IsHero && !hero.IsPrisoner
                         && hero.HasAbility(role)
-                        && OwnWorld.Of(player).Armies.Any(a => a != null && !a.IsPrison
+                        && armies.Any(a => a.Owner == player && !a.IsPrison
                             && a.Members.Contains(hero))
                         && Viable(i.Development.FacilityHex, out _))
                         return i.Development.FacilityHex;
@@ -424,7 +435,7 @@ namespace Game.Ai.V2
                     continue;
                 if (!needsUnlock)
                     freeSlotElsewhere = true;
-                if (ResearchProductionSystem.FindActor(player, hex, mode) == null)
+                if (!HasActor(hex))
                     continue;
                 if (!staffed.HasValue || (staffedNeedsUnlock && !needsUnlock))
                 {

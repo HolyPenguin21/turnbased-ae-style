@@ -233,10 +233,10 @@ namespace Game.Ai.V2
                             && i.Status == IntentStatus.Active).ToList();
                         var commitments = actorCommitments ?? ActorCommitments.FromIntents(activeIntents, snapshot, null);
                         projected.OperatorDutyBlocksDeparture = DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(
-                            player, preview, commitments, snapshot.Development != null
-                                ? snapshot.Development.PreparationSiteFor
-                                : DevelopmentOpportunityEvaluator.LivePreparationSite(player,
-                                    AiHandRegistry.Peek(player), ctx, snapshot.Intents));
+                            player, preview, commitments, mode =>
+                                DevelopmentOpportunityEvaluator.SelectedPreparationSite(mode, snapshot,
+                                    player, AiHandRegistry.Peek(player), ctx, activeIntents,
+                                    projectedArmy: preview, replacedArmy: p.Deploy.Army));
                         float fieldPotential = WorldAnalysis.FieldStrikePotential(player,
                             OwnWorld.Of(player).Armies.Where(a => a != p.Deploy.Army).Concat(new[] { preview }),
                             snapshot.Self.AvailablePower, activeIntents);

@@ -20,6 +20,14 @@ namespace Game.Ai.V2
                 return;
             }
             MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
+            if (ReconScoutKinds.IsDisruption(o.ReconFacts().ScoutKind)
+                && e.FinalHex.Equals(o.ReconFacts().FocusHex)
+                && e.StopReason == ExecutionStopReason.OutOfMovement)
+            {
+                // Stationary passive support is productive service, as a collector holding a site.
+                o.MadeProgress = true;
+                o.Disposition = MissionStepDisposition.Progress;
+            }
         }
         internal static bool TryContinueScoutWaypoint(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
@@ -260,6 +268,13 @@ namespace Game.Ai.V2
                 return;
             }
 
+            if (ReconScoutKinds.IsDisruption(s.Kind) && intent.PreferredMoverArmyId.HasValue
+                && snap.Self.Armies.Any(a => a != null && a.ArmyId == intent.PreferredMoverArmyId.Value
+                    && a.Hex.Equals(s.FocusHex) && Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes)))
+            {
+                intent.StallTurns = 0;
+                intent.LastProgressTurn = snap.TurnNumber;
+            }
             ResumeTransientSuspension(intent);
 
             if (intent.Funding == CommitmentTier.Soft && underSiege)
@@ -359,6 +374,7 @@ namespace Game.Ai.V2
             // AirSweep is an aviation operation even when its wing has landed back into storage.
             var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null
                 && !ReconScoutKinds.IsLocalStrike(i.Scout.Kind)
+                && !ReconScoutKinds.IsDisruption(i.Scout.Kind)
                 && !ReconScoutKinds.IsAirSweep(i.Scout.Kind)
                 && (!i.PreferredMoverArmyId.HasValue || !airActorIds.Contains(i.PreferredMoverArmyId.Value)))
                 .ToList();
@@ -366,7 +382,7 @@ namespace Game.Ai.V2
                 return;
 
             var runnable = reconObjectives
-                .Where(o => o != null && !o.IsLocalStrike && o.BaseValue > 0f)
+                .Where(o => o != null && !o.IsLocalStrike && !o.IsDisruption && o.BaseValue > 0f)
                 .OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.IntentKey)
                 .ToList();
@@ -448,7 +464,7 @@ namespace Game.Ai.V2
                 if (d < spacedDist && Spaced(h)) { spacedDist = d; spacedPick = h; }
             }
 
-            if (ReconScoutKinds.IsLocalStrike(s.Kind)) return false;
+            if (ReconScoutKinds.IsLocalStrike(s.Kind) || ReconScoutKinds.IsDisruption(s.Kind)) return false;
             if (ReconScoutKinds.IsRefresh(s.Kind))
             {
                 foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))

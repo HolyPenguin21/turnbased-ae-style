@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Combat;
 using Game.Aviation;
 using Game.HexGrid;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -107,7 +108,7 @@ namespace Game.Ai.V2
                 ? RaidRecoveryProjection.None(currentWin,
                     "field comparison suppressed by fixed recovery base")
                 : ProjectField(snap, primary, intents, opposition, hexBonus, unavailableArmyIds, currentWin,
-                    safeRouteCost);
+                    safeRouteCost, destination: raid.LastKnownHex);
             RaidRecoveryProjection air = fixedBase.HasValue
                 ? RaidRecoveryProjection.None(currentWin,
                     "air comparison suppressed by fixed recovery base")
@@ -325,16 +326,21 @@ namespace Game.Ai.V2
             float hexBonus = KnownOpposition.RaidDefenceBonus(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, hexBonus, out _);
             return ProjectField(snap, primary, intents, opposition, hexBonus, null, currentWin,
-                null, supportArmyId);
+                null, supportArmyId, raid.LastKnownHex);
         }
 
         private static RaidRecoveryProjection ProjectField(WorldSnapshot snap, ArmySnapshot primary,
             IEnumerable<MissionIntent> intents, IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> unavailableArmyIds,
             float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost,
-            int? fixedSupportArmyId = null)
+            int? fixedSupportArmyId = null, HexCoord? destination = null)
         {
+            ArmyData livePrimary = AiV2Util.ResolveArmy(snap.Observer, primary.ArmyId);
+            var rosterAdmissible = destination.HasValue
+                ? GroundCombatReinforcement.PreserveTaskRoute(snap.Map, livePrimary,
+                    destination.Value, SafeRouteProfile.Combat) : null;
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primary.ArmyId, opposition, unavailableArmyIds, hexBonus);
+                snap, primary.ArmyId, opposition, unavailableArmyIds, hexBonus,
+                rosterAdmissible: rosterAdmissible);
             if (fixedSupportArmyId.HasValue)
                 ids = ids.Where(x => x == fixedSupportArmyId.Value).ToList();
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
@@ -349,12 +355,23 @@ namespace Game.Ai.V2
                     .OrderByDescending(m => m.FullCombatValue)
                     .ThenBy(m => m.UnitIndex)
                     .Select(m => m.CurrentProfile).ToList();
-                if (!GroundCombatAssemblyPlanner.TryProjectReinforcement(CombatRoster(primary),
+                List<WorthIt.DefenderProfile> projected;
+                WorthIt.SideCommander commander = primary.Commander;
+                ArmyData liveSupport = AiV2Util.ResolveArmy(snap.Observer, id);
+                if (livePrimary != null && liveSupport != null)
+                {
+                    HandoffPlan handoff = GroundCombatReinforcement.PlanHandoff(livePrimary, liveSupport,
+                        null, hexBonus, out _, requireChargeNow: false, rosterAdmissible: rosterAdmissible);
+                    if (handoff == null) continue;
+                    var roster = GroundCombatReinforcement.FinalRoster(livePrimary, handoff);
+                    projected = roster.Where(AiArmyRoles.IsGroundBattleBody).Select(WorthIt.FromLiveUnit).ToList();
+                    commander = WorthIt.SideCommander.Of(roster);
+                }
+                else if (!GroundCombatAssemblyPlanner.TryProjectReinforcement(CombatRoster(primary),
                         supportBodies, primary.Capacity, primary.MemberCount, primary.Commander, opposition,
-                        out List<WorthIt.DefenderProfile> projected, out _,
-                        defenderHexDefenseBonus: hexBonus))
+                        out projected, out _, defenderHexDefenseBonus: hexBonus))
                     continue;
-                bool clears = GroundCombatFeasibility.Clears(projected, primary.Commander, opposition,
+                bool clears = GroundCombatFeasibility.Clears(projected, commander, opposition,
                     AiConfigV2.raidMinViableWinChance, hexBonus, out float after, out _);
                 if (!clears) continue;
                 int routeDistance = RouteCost(support.Hex, primary.Hex, support.MaxMovement, safeRouteCost,

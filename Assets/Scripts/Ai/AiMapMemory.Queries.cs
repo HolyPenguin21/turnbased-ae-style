@@ -146,29 +146,51 @@ namespace Game.Ai
         public static float KnownHexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex) =>
             HexDefenseBonus(actor, map, hex, null, anyOwner: true);
 
+        public static float KnownBuildingDefenseBonusFor(PlayerSetupData actor, HexCoord hex,
+            PlayerSetupData defendingOwner) => KnownBuildingDefenseBonusFor(actor, _map, hex, defendingOwner);
+
+        public static float KnownBuildingDefenseBonusFor(PlayerSetupData actor, HexMap map, HexCoord hex,
+            PlayerSetupData defendingOwner) => BuildingDefenseBonus(actor, hex, defendingOwner, false);
+
         private static float HexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex,
             PlayerSetupData defendingOwner, bool anyOwner)
         {
-            float bonus = 0f;
+            float terrainBonus = 0f;
             if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
-                bonus += terrain.defenseModifier;
+                terrainBonus = terrain.defenseModifier;
+            return terrainBonus + BuildingDefenseBonus(actor, hex, defendingOwner, anyOwner);
+        }
 
-            if (actor == null)
-                return bonus;
-
-            bool Defends(PlayerSetupData owner) => anyOwner || defendingOwner != null && owner == defendingOwner;
+        private static float BuildingDefenseBonus(PlayerSetupData actor, HexCoord hex,
+            PlayerSetupData defendingOwner, bool anyOwner)
+        {
+            if (actor == null) return 0f;
+            PlayerSetupData owner;
+            float defense;
             if (VisionSystem.IsVisible(actor, hex))
             {
                 BuildingData live = BuildingRegistry.FindAt(hex);
-                if (live != null && live.IsBase && Defends(live.Owner))
-                    bonus += live.Defense;
-                return bonus;
+                if (live == null || !live.IsBase) return 0f;
+                owner = live.Owner;
+                defense = live.Defense;
             }
-
-            KnownBuilding? remembered = KnownBuildingAt(actor, hex);
-            if (remembered.HasValue && remembered.Value.IsBase && Defends(remembered.Value.Owner))
-                bonus += remembered.Value.Defense;
-            return bonus;
+            else
+            {
+                KnownBuilding? remembered = KnownBuildingAt(actor, hex);
+                if (!remembered.HasValue || !remembered.Value.IsBase) return 0f;
+                owner = remembered.Value.Owner;
+                defense = remembered.Value.Defense;
+            }
+            if (!anyOwner && (defendingOwner == null || owner != defendingOwner)) return 0f;
+            // Own carriers are known even in stealth. Never inspect hidden foreign members:
+            // visible/remembered foreign contacts remain observation-owned knowledge.
+            if (defense > 0f && (owner != actor && ArmyRegistry.AllAt(hex)
+                .Any(a => a.Owner == actor && DisruptionRules.HasCarrier(a))
+                || AllKnownEnemySightings(actor).Concat(AllKnownNeutralSightings(actor))
+                    .Any(s => s.Hex.Equals(hex) && !s.IsAir && s.Owner != owner
+                        && (DisruptionRules.HasCarrier(s.Defenders)
+                            || DisruptionRules.HasCarrier(s.Commander.SupportHeroes))))) return 0f;
+            return defense;
         }
 
         public static GroundArrival KnownGroundArrival(PlayerSetupData actor, HexCoord hex, bool moverFullyHidden)

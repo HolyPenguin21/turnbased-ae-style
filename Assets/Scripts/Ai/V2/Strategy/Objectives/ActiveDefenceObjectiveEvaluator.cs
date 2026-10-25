@@ -29,7 +29,8 @@ namespace Game.Ai.V2
     // ImmediateOpportunity is one fight the defender can START in the very own turn it is admitted
     // (a weak field army the strategic threat model does not list): it never pursues over turns,
     // regroups, withdraws, raises demand or calls air support.
-    public enum ActiveDefenceInterceptPurpose { StrategicDefence = 0, ImmediateOpportunity = 1 }
+    // PreparationStrike is air-only: an independently useful known missile target, with no own asset threat.
+    public enum ActiveDefenceInterceptPurpose { StrategicDefence = 0, ImmediateOpportunity = 1, PreparationStrike = 2 }
 
     public struct ActiveDefenceMissionTarget : IMissionTarget
     {
@@ -718,6 +719,10 @@ namespace Game.Ai.V2
                 ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Where(b => b.Hex.Equals(hex) && (b.IsBase || b.IsStartingCitadel) && b.Owner == snap.Observer)
                 .Select(b => b.Defense).FirstOrDefault();
+            float buildingBonus = asset?.BuildingDefenseBonus ?? (snap.Known?.Buildings
+                ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                .Where(b => b.Hex.Equals(hex) && (b.IsBase || b.IsStartingCitadel) && b.Owner == snap.Observer)
+                .Select(b => UnityEngine.Mathf.Max(0f, b.Defense)).FirstOrDefault();
             var seen = new HashSet<int>();
             var defenders = new List<WorthIt.DefendingArmy>();
             void Add(ArmySnapshot a)
@@ -727,12 +732,18 @@ namespace Game.Ai.V2
                 if (a == null || a.IsAir || a.IsPrison || a.Members == null || a.Members.Count == 0
                     || !seen.Add(a.ArmyId))
                     return;
-                defenders.Add(new WorthIt.DefendingArmy(a.Members, a.Commander, bonus));
+                defenders.Add(new WorthIt.DefendingArmy(a.Members, a.Commander, bonus, a.ArmyId,
+                    buildingBonus));
             }
-            foreach (ArmySnapshot a in snap.Self.Armies)
-                if (a != null && a.Hex.Equals(hex)
-                    && (a.IsGarrison || committed == null || !committed.Contains(a.ArmyId)))
-                    Add(a);
+            foreach (ArmySnapshot original in snap.Self.Armies)
+            {
+                ArmySnapshot resident = original;
+                if (resident != null && projectedArmies != null
+                    && projectedArmies.TryGetValue(resident.ArmyId, out ArmySnapshot projected)) resident = projected;
+                if (resident != null && resident.Hex.Equals(hex)
+                    && (resident.IsGarrison || committed == null || !committed.Contains(resident.ArmyId)))
+                    Add(resident);
+            }
             if (regroupHex.HasValue && regroupHex.Value.Equals(hex) && gatherable != null)
                 foreach (ArmySnapshot a in gatherable)
                     Add(a);

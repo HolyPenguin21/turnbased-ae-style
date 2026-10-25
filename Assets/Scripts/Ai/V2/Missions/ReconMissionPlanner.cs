@@ -221,6 +221,8 @@ namespace Game.Ai.V2
             }
             else if (o.Kind == ReconObjectiveKind.CaptureStructure)
                 explain = $"CaptureStructure @{o.FocusHex.Q},{o.FocusHex.R} task {F(o.BaseValue)} LAS {F(admission)}";
+            else if (o.Kind == ReconObjectiveKind.DisruptStructure)
+                explain = $"DisruptStructure @{o.FocusHex.Q},{o.FocusHex.R} task {F(o.BaseValue)} LAS {F(admission)}";
             else if (o.Kind == ReconObjectiveKind.Hunt)
                 explain = $"Hunt @{o.FocusHex.Q},{o.FocusHex.R} task {F(o.BaseValue)} LAS {F(admission)}";
             else if (airSweep)
@@ -254,6 +256,11 @@ namespace Game.Ai.V2
             // For a fresh mission Estimate selects a concrete cheapest viable ground actor before
             // funding. Carry that actor as a non-binding preference so admission can reason about
             // the exact envelope it is financing; Assignment remains authoritative.
+            if (ReconScoutKinds.IsDisruption(c.Target.Kind) && c.IsIncumbent
+                && c.PreferredMover.HasValue && snap.Self.Armies.Any(a => a != null
+                    && a.ArmyId == c.PreferredMover.Value && a.Hex.Equals(c.Target.FocusHex)
+                    && Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes)))
+                { airWitness = false; return null; } // deployed source holds its lease without buying movement
             ScoutExecutionCandidate? air = ReconScoutKinds.IsAirSweep(c.Target.Kind)
                 ? ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, c.Target, c.PreferredMover, excluded) : null;
             airWitness = air.HasValue;
@@ -387,7 +394,7 @@ namespace Game.Ai.V2
             activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
                 && i.Kind == MissionKind.Scout && i.Scout != null && i.PreferredMoverArmyId == armyId
                 && i.Funding < CommitmentTier.Hard
-                && !ReconScoutKinds.IsLocalStrike(i.Scout.Kind) && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
+                && ReconScoutKinds.UsesPatrolLane(i.Scout.Kind))
             is MissionIntent role
             && !(activeIntents.Any(o => o != null && o.Status == IntentStatus.Active
                 && !ReferenceEquals(o, role) && o.PreferredMoverArmyId == armyId))

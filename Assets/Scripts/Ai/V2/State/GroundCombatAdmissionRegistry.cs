@@ -162,12 +162,14 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition;
             float hexBonus = 0f;
             bool allowCommandHandover = false;
+            Game.HexGrid.HexCoord destination;
             if (proposal.Target is RaidMissionTarget raid)
             {
                 if (raid.Phase != RaidMissionPhase.Reinforcement || raid.SupportArmyId.HasValue
                     || !raid.PrimaryArmyId.HasValue)
                     return;
                 primaryArmyId = raid.PrimaryArmyId.Value;
+                destination = raid.LastKnownHex;
                 opposition = KnownOpposition.ForRaid(snap, raid.Target);
                 hexBonus = KnownOpposition.RaidDefenceBonus(snap, raid.Target);
             }
@@ -177,6 +179,7 @@ namespace Game.Ai.V2
                     || !attack.PrimaryArmyId.HasValue)
                     return;
                 primaryArmyId = attack.PrimaryArmyId.Value;
+                destination = attack.Target.Hex;
                 opposition = KnownOpposition.OnHex(snap, attack.Target.Hex);
                 hexBonus = attack.DefenderHexDefenseBonus;
                 allowCommandHandover = true;
@@ -187,7 +190,10 @@ namespace Game.Ai.V2
             }
 
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primaryArmyId, opposition, unavailableArmyIds, hexBonus, allowCommandHandover);
+                snap, primaryArmyId, opposition, unavailableArmyIds, hexBonus, allowCommandHandover,
+                GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                    AiV2Util.ResolveArmy(snap.Observer, primaryArmyId), destination,
+                    allowCommandHandover ? SafeRouteProfile.Attack : SafeRouteProfile.Combat));
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));

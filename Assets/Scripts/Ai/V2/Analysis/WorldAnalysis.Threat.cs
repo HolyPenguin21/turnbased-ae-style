@@ -70,7 +70,9 @@ namespace Game.Ai.V2
                     .Where(a => a != null && a.Hex.Equals(b.Hex) && !a.IsPrison && !a.IsAir
                         && !a.IsAirfield && a.MemberCount > 0)
                     .OrderBy(a => a.ArmyId)
-                    .Select(a => new WorthIt.DefendingArmy(a.Members, a.Commander))
+                    .Select(a => new WorthIt.DefendingArmy(a.Members, a.Commander,
+                        AiMapMemory.KnownHexDefenseBonusFor(player, snap.Map, b.Hex, player), a.ArmyId,
+                        AiMapMemory.KnownBuildingDefenseBonusFor(player, snap.Map, b.Hex, player)))
                     .ToList();
 
                 AssetKind kind = ClassifyBuildingAsset(b);
@@ -83,7 +85,8 @@ namespace Game.Ai.V2
                 {
                     Hex = b.Hex,
                     Kind = kind,
-                    HexDefenseBonus = WorthIt.HexDefenseBonus(b.Hex, snap.Map),
+                    HexDefenseBonus = AiMapMemory.KnownHexDefenseBonusFor(player, snap.Map, b.Hex, player),
+                    BuildingDefenseBonus = AiMapMemory.KnownBuildingDefenseBonusFor(player, snap.Map, b.Hex, player),
                     Opposition = opposition,
                     Value = BuildingAssetValue(kind, b, snap, totalIncome),
                 });
@@ -125,7 +128,7 @@ namespace Game.Ai.V2
                     // Historical contacts remain conservative because they may have moved.
                     if (c.Knowledge == ContactKnowledge.Exact && !approachCost.HasValue) continue;
                     bool canDamage = WorthIt.CanDamageAll(c.Army.Members,
-                        WorthIt.UnitsOf(asset.Opposition), asset.HexDefenseBonus);
+                        asset.Opposition, asset.HexDefenseBonus, attackerCommander: c.Army.Commander);
                     float winChance = WorthIt.EstimateSequential(c.Army.Members, c.Army.Commander,
                         asset.Opposition, asset.HexDefenseBonus).WinChance;
 

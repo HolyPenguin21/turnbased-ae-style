@@ -132,6 +132,12 @@ namespace Game.Ai.V2
                     return "Intent(AirSweep)";
                 if (SubKind == (int)ScoutTargetKind.Explore)
                     return $"Intent(Explore {Q},{R})";
+                if (SubKind == (int)ScoutTargetKind.Hunt)
+                    return $"Intent(Hunt {Q},{R})";
+                if (SubKind == (int)ScoutTargetKind.DisruptStructure)
+                    return $"Intent(DisruptStructure {Q},{R})";
+                if (SubKind == (int)ScoutTargetKind.CaptureStructure)
+                    return $"Intent(CaptureStructure {Q},{R})";
                 return $"Intent(Unknown Scout subtype {SubKind})";
             }
             if (Kind == MissionKind.Raid)

@@ -77,7 +77,7 @@ namespace Game.Ai.V2
     // simply seeing the anchor. The numeric identities remain Explore=0, Refresh=2, AirSweep=3.
     // Hunt (2026-10-22) — a solo Recce strikes a visible enemy scouting force it still reaches this
     // turn (ReconReactionPolicy.CanHuntAt); a one-shot local action like CaptureStructure.
-    public enum ScoutTargetKind { Explore = 0, Refresh = 2, AirSweep = 3, CaptureStructure = 4, Hunt = 5 }
+    public enum ScoutTargetKind { Explore = 0, Refresh = 2, AirSweep = 3, CaptureStructure = 4, Hunt = 5, DisruptStructure = 6 }
 
     // How hidden the mover must be by the time it reaches the risky leg. None -> any scout.
     // Required -> the mover must be hidden OR able to enter stealth first (a visible scout is not a

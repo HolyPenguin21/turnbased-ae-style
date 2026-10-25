@@ -318,6 +318,8 @@ MonoBehaviour:
     abbreviation: 
   - ability: Repair
     abbreviation: 
+  - ability: Disruption
+    abbreviation: DIS
   - ability: Airfield
     abbreviation: 
   - ability: SingleUse

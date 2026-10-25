@@ -259,7 +259,9 @@ namespace Game.Ai.V2
             }
             GroundCombatAssemblyPlan assembly = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
                 snap, planned, excluded, KnownOpposition.OnHex(snap, target.Target.Hex),
-                target.DefenderHexDefenseBonus);
+                target.DefenderHexDefenseBonus,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, planned,
+                    target.Target.Hex, SafeRouteProfile.Attack));
             if (!assembly.Feasible)
                 assembly = null;
             if (target.PreparationStep == AttackPreparationStep.Assemble && assembly == null)
@@ -523,7 +525,9 @@ namespace Game.Ai.V2
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,
                 "attack", out bool atRendezvous, allowCommandHandover: true,
-                capacityIsProgress: target.CommanderLeg, meetingHex: target.RendezvousHex);
+                capacityIsProgress: target.CommanderLeg, meetingHex: target.RendezvousHex,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(ctx.Map, primary,
+                    target.Target.Hex, SafeRouteProfile.Attack));
             if (!check.Ok)
                 return check.Failure;
 

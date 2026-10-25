@@ -48,8 +48,9 @@ namespace Game.Ai.V2
         }
 
         internal static float CompleteStepScore(float immediate, float lookahead,
-            float heading, float movementEfficiency, float homeFactor) =>
-            (immediate + Mathf.Max(0f, lookahead) * Mathf.Max(0f, 1f + heading + movementEfficiency))
+            float heading, float movementEfficiency, float homeFactor, bool requireImmediatePurpose = false) =>
+            requireImmediatePurpose && immediate <= AiConfigV2.allocatorSliceEpsilon ? 0f
+            : (immediate + Mathf.Max(0f, lookahead) * Mathf.Max(0f, 1f + heading + movementEfficiency))
                 * homeFactor;
 
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
@@ -82,7 +83,8 @@ namespace Game.Ai.V2
                 // Direction and cheap movement improve witnessed useful continuation; they never
                 // create useful work on their own.
                 float score = CompleteStepScore(baseChoice.Score, lookahead, headingQuality,
-                    movementQuality, assignment.Mode == ReconMode.Explore ? home.FactorOf(h) : 1f);
+                    movementQuality, assignment.Mode == ReconMode.Explore ? home.FactorOf(h) : 1f,
+                    requireImmediatePurpose: assignment.Mode == ReconMode.Refresh);
                 if (score <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 choices.Add(new StepChoice(baseChoice.Hex, score, baseChoice.FreshNeighbors,
