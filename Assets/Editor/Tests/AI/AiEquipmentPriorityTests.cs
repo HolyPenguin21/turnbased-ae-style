@@ -180,7 +180,7 @@ namespace Game.EditorTests
         public void RecipientVerdictKeyChangesWhenTheTurnStartInvestmentWindowIsObserved()
         {
             var snap = Snap(); snap.Development = new DevelopmentReadiness {
-                InvestmentSurplusByType = new Game.Economy.ResourceBundle {
+                InvestmentSurplusByType = new ResourceBundle {
                     Human = 100, Energy = 100, Materials = 100, Tech = 100 } };
             for (int turn = 1; turn < AiConfigV2.devInvestmentSurplusTurns; turn++)
             { snap.TurnNumber = turn; DevelopmentInvestmentGate.Observe(player, snap); }

@@ -115,7 +115,7 @@ namespace Game.EditorTests
         {
             var snap = Snapshot(Sighting(Infantry(10)));
             var held = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
-                Attack = new AttackIntent { Target = new AttackTarget { Hex = target }, AirSupportArmyId = 9 } };
+                Objective = new AttackIntent { Target = AttackTargetRef.For(target, enemy, AttackTargetKind.Base), AirSupportArmyId = 9 } };
             Assert.That(GroundCombatAirSupport.AirSupportObjectives(snap, new[] { held }), Is.Empty);
             Assert.That(AviationRebasePlanner.CombatSupportTargets(snap, new[] { held }), Is.Empty);
         }
@@ -126,7 +126,7 @@ namespace Game.EditorTests
             var snap = Snapshot(Sighting(Infantry(100)));
             snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(target, owner, false,
                 Array.Empty<string>(), isBase: true) };
-            Assert.That(GroundCombatAirSupport.MissileStockValue(snap, Aircraft(), target), Is.NegativeInfinity);
+            Assert.That(GroundCombatAirSupport.MissileStockValue(snap, Aircraft(), target), Is.EqualTo(float.NegativeInfinity));
             Assert.That(Gaps(snap), Is.Empty);
         }
 
@@ -734,7 +734,7 @@ namespace Game.EditorTests
                 var t = provision.Provisioned.ActiveDefenceTarget;
                 var intent = new MissionIntent { Kind = MissionKind.ActiveDefence, Status = IntentStatus.Active,
                     IntentKey = t.IntentKey(), PreferredMoverArmyId = wing.Id,
-                    ActiveDefence = new ActiveDefenceIntent { Phase = ActiveDefencePhase.AirSupport,
+                    Objective = new ActiveDefenceIntent { Phase = ActiveDefencePhase.AirSupport,
                         InterceptPurpose = t.InterceptPurpose, EnemyArmyId = enemyArmy.Id, LastKnownHex = target,
                         AirSupportArmyId = wing.Id, AirSupportBoundTurn = 10, AirSupportLandingHex = t.AirSupportLandingHex } };
                 var state = MissionIntentRegistry.GetOrCreate(owner); state.Put(intent); snap.Intents = state;
