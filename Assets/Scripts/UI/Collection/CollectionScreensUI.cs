@@ -73,6 +73,33 @@ namespace Game.UI
         private readonly Dictionary<string, int> used = new Dictionary<string, int>();
         private readonly List<string> deckNames = new List<string>();
         private static CollectionScreensUI active;
+        private GridLayoutGroup cardGrid;
+        private Vector2 authoredCellSize;
+        private float lastGridWidth = -1f;
+
+        private void LateUpdate()
+        {
+            if (open) FitCardGrid();
+        }
+
+        private void FitCardGrid()
+        {
+            if (gridContent == null) return;
+            if (cardGrid == null)
+            {
+                cardGrid = gridContent.GetComponent<GridLayoutGroup>();
+                if (cardGrid == null) return;
+                authoredCellSize = cellPrefab != null ? ((RectTransform)cellPrefab.transform).rect.size : cardGrid.cellSize;
+            }
+            float width = gridContent.rect.width;
+            if (width <= 0f || Mathf.Abs(width - lastGridWidth) < .01f || authoredCellSize.x <= 0f) return;
+            lastGridWidth = width;
+            int columns = Mathf.Max(1, cardGrid.constraintCount);
+            float cellWidth = Mathf.Max(1f, (width - cardGrid.padding.horizontal -
+                (columns - 1) * cardGrid.spacing.x) / columns);
+            // Scale the visual as a whole inside this proportional layout cell, including fonts.
+            cardGrid.cellSize = authoredCellSize * (cellWidth / authoredCellSize.x);
+        }
 
         public void Configure(GameConfig gameConfig) { config = gameConfig; }
         // startFaction/startDeckId preselect a deck (Edit Deck from game setup); otherwise the
@@ -167,6 +194,7 @@ namespace Game.UI
         }
         private void RefreshCards(bool resetScroll)
         {
+            FitCardGrid();
             visible.Clear();
             var cards = collection.Rules.Cards(faction).Where(c =>
                 (ownership == 0 || (ownership == 1 ? collection.Owned(c.authoredKey) > 0 : collection.Owned(c.authoredKey) == 0))

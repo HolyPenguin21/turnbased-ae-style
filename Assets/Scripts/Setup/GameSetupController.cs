@@ -30,6 +30,20 @@ namespace Game.Setup
 
         private GameSetupModel _model;
         private readonly List<PlayerRowUI> _rows = new List<PlayerRowUI>();
+        private bool revealNewestPlayer;
+
+        private void LateUpdate()
+        {
+            if (!revealNewestPlayer) return;
+            revealNewestPlayer = false;
+            var scroll = playerListContainer != null ? playerListContainer.GetComponentInParent<ScrollRect>() : null;
+            if (scroll == null || scroll.content == null) return;
+            // The new row's preferred height is applied after Instantiate/Bind. Reveal it
+            // only once the content has its new extent, rather than scroll using the old size.
+            LayoutRebuilder.ForceRebuildLayoutImmediate(scroll.content);
+            scroll.StopMovement();
+            scroll.verticalNormalizedPosition = 0f;
+        }
 
         // This component lives on the setup panel itself, so Update() only ever runs while
         // that panel is the active one — no extra "is this screen showing" guard needed
@@ -62,6 +76,9 @@ namespace Game.Setup
 
             PopulateMapDropdowns();
             RefreshButtons();
+            revealNewestPlayer = false;
+            var scroll = playerListContainer != null ? playerListContainer.GetComponentInParent<ScrollRect>() : null;
+            if (scroll != null) { scroll.StopMovement(); scroll.verticalNormalizedPosition = 1f; }
         }
 
         public void OnAddPlayerClicked() => AddPlayerRow();
@@ -144,6 +161,7 @@ namespace Game.Setup
 
             _rows.Add(row);
             RefreshButtons();
+            revealNewestPlayer = true;
         }
 
         private void OnRemoveRowClicked(PlayerRowUI row)
@@ -153,11 +171,17 @@ namespace Game.Setup
 
             _model.RemovePlayer(row.Data);
             _rows.Remove(row);
+            row.gameObject.SetActive(false);
             Destroy(row.gameObject);
             RefreshButtons();
         }
 
-        private void ClearRows() => UIUtility.DestroyAndClear(_rows);
+        private void ClearRows()
+        {
+            // Destroy is deferred; inactive old rows must not contribute to this frame's layout.
+            foreach (var row in _rows) if (row != null) row.gameObject.SetActive(false);
+            UIUtility.DestroyAndClear(_rows);
+        }
 
         private void RefreshButtons()
         {

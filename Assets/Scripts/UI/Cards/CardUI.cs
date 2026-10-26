@@ -65,6 +65,7 @@ namespace Game.UI
         // GameConfig reference on every single card, or kept as this component's own
         // [SerializeField] — the hand is the one place these are tuned, all together.
         private float _restingScale = 0.9f;
+        private float _handLayoutScale = 1f;
         private float _hoverScale = 1f;
         private float _hoverLift;
         private float _animDuration = 0.12f;
@@ -126,6 +127,7 @@ namespace Game.UI
             equipmentArtToggle?.Revert();
             mutatorArtToggle?.Revert();
             _hand = hand;
+            _handLayoutScale = hand != null ? hand.HandLayoutScale : 1f;
             Data = data;
             _restingScale = restingScale;
             _hoverScale = hoverScale;
@@ -156,7 +158,7 @@ namespace Game.UI
 
             RefreshEquipmentToggle();
 
-            rectTransform.localScale = Vector3.one * _restingScale;
+            rectTransform.localScale = Vector3.one * (_restingScale * _handLayoutScale);
         }
 
         public void ConfigureTacticInteraction(CardData data, System.Action onClick,
@@ -187,6 +189,7 @@ namespace Game.UI
 
         public void SetTacticHome(Vector2 position, float scale)
         {
+            _handLayoutScale = 1f;
             _restingScale = _hoverScale = scale;
             SetHome(position, animated: false);
         }
@@ -450,7 +453,7 @@ namespace Game.UI
             // Eases from whatever scale it was at (hover or resting) to full carried size,
             // instead of snapping there instantly — the hard cut used to read as a jarring
             // shrink right as the pick-up happened.
-            AnimateScaleTo(DragScale, _animDuration);
+            AnimateScaleTo(DragScale * _handLayoutScale, _animDuration);
         }
 
         public void OnDrag(PointerEventData eventData)
@@ -482,7 +485,7 @@ namespace Game.UI
             _dragHoverValid = valid;
             if (!IsDragging)
                 return;
-            AnimateScaleTo(valid ? DragScale * (1f - _dragHoverShrink) : DragScale, _animDuration);
+            AnimateScaleTo((valid ? DragScale * (1f - _dragHoverShrink) : DragScale) * _handLayoutScale, _animDuration);
         }
 
         public void OnEndDrag(PointerEventData eventData)
@@ -552,10 +555,18 @@ namespace Game.UI
             Retarget(animated: false);
         }
 
+        internal void SetHandLayoutScale(float scale)
+        {
+            _handLayoutScale = scale;
+            if (IsDragging)
+                AnimateScaleTo((_dragHoverValid ? 1f - _dragHoverShrink : 1f) * scale, 0f);
+            else Retarget(animated: false);
+        }
+
         private void Retarget(bool animated)
         {
-            Vector2 targetPos = _homePosition + (_isHovered ? new Vector2(0f, _hoverLift) : Vector2.zero);
-            float targetScale = _isHovered ? _hoverScale : _restingScale;
+            Vector2 targetPos = _homePosition + (_isHovered ? new Vector2(0f, _hoverLift * _handLayoutScale) : Vector2.zero);
+            float targetScale = (_isHovered ? _hoverScale : _restingScale) * _handLayoutScale;
             BeginTween(targetPos, targetScale, tweenPos: true, animated ? _animDuration : 0f);
         }
 
