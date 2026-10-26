@@ -666,7 +666,7 @@ namespace Game.Ai.V2
                 : funded.Mission.Target is ActiveDefenceMissionTarget defence
                     ? AirSupportPolicy(defence) : AirStrikePolicy.Standard;
             CombatAirSupportRequest? supportRequest = funded.Mission.Target is ActiveDefenceMissionTarget airTarget
-                ? AirSupportRequest(airTarget, funded.Mission.Score, targetHex) : (CombatAirSupportRequest?)null;
+                ? AirSupportRequest(airTarget, funded.Mission.Score.GetValueOrDefault(), targetHex) : (CombatAirSupportRequest?)null;
             if (w.Active?.Kind == AirSortieKind.Recon
                 && (targetPolicy.Kind != AirStrikePolicyKind.DefenceSupport
                     || !HasImmediateDefenceService(session.Snapshot, wing, targetPolicy.ExactTargetArmyId)))

@@ -1601,9 +1601,10 @@ namespace Game.Ai.V2
                     return e.BaseFit * ctx.MobileRepairService;
                 case StrategicEffectContext.BuildingDisruption:
                     if (DisruptionRules.HasCarrier(ctx.DestArmyMembers)) return 0f;
+                    var observer = ctx.Snap?.Observer;
                     float structureDefense = (ctx.Snap?.Known?.Buildings
                         ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
-                        .Where(b => b.IsBase && b.Owner != null && b.Owner != ctx.Snap.Observer)
+                        .Where(b => b.IsBase && b.Owner != null && b.Owner != observer)
                         .Select(b => Mathf.Max(0f, b.Defense)).DefaultIfEmpty(0f).Max();
                     return e.BaseFit * magP * structureDefense;
                 case StrategicEffectContext.ExpectedSustain:

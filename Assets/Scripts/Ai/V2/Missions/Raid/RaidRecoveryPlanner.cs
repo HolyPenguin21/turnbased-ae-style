@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Combat;
 using Game.Aviation;
 using Game.HexGrid;
+using Game.Map;
 using Game.Units;
 using UnityEngine;
 
