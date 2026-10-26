@@ -221,7 +221,7 @@ namespace Game.UI
                 int slot = i - _tacticScrollOffset;
                 bool visible = _showingTactics && !ShowingDebugHand && slot >= 0 && slot < MaxVisible;
                 _tacticCards[i].gameObject.SetActive(visible);
-                if (visible) _tacticCards[i].SetHome(new Vector2(SlotX(slot), 0f), animated);
+                if (visible) _tacticCards[i].SetHome(HandSlotPosition(slot), animated);
             }
         }
 
@@ -240,7 +240,7 @@ namespace Game.UI
         private void ResetFlipCards(List<CardUI> cards, int offset)
         {
             for (int i = 0; i < cards.Count; i++)
-                cards[i].ResetHandPose(new Vector2(SlotX(i - offset), 0f));
+                cards[i].ResetHandPose(HandSlotPosition(i - offset));
         }
 
         private void StartTacticFlip(bool tactics)

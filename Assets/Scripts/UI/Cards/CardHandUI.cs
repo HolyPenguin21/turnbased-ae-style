@@ -250,7 +250,7 @@ namespace Game.UI
                 rt.anchorMin = rt.anchorMax = new Vector2(SlotAnchorX(i), 0.5f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
                 rt.sizeDelta = slotVisualSize;
-                rt.anchoredPosition = Vector2.zero;
+                rt.anchoredPosition = new Vector2(0f, HandGeometry.CenterOffsetY);
                 rt.localScale = Vector3.one * HandLayoutScale;
                 slotRects[i] = rt;
                 // Inserted at the front, in order — every card is added to handContainer AFTER
@@ -597,7 +597,7 @@ namespace Game.UI
                 CardUI card = Instantiate(cardPrefab, handContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
                 card.Setup(this, hand.Hand[i], restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
-                card.SetHome(new Vector2(SlotX(i), 0f), animated: false);
+                card.SetHome(HandSlotPosition(i), animated: false);
                 card.transform.SetAsLastSibling();
                 card.gameObject.SetActive(ShowingDebugHand);
                 _debugCards.Add(card);
@@ -825,6 +825,7 @@ namespace Game.UI
 
         private bool IsWithinDragBand(float localY)
         {
+            localY -= HandGeometry.CenterOffsetY;
             float maxY = (cardSize.y * 0.5f + hoverLift + dragBandBuffer) * HandLayoutScale;
             float minY = -(cardSize.y * 0.5f + dragBandBuffer) * HandLayoutScale;
             return localY >= minY && localY <= maxY;
@@ -1328,7 +1329,7 @@ namespace Game.UI
                 if (_cards[i].gameObject.activeSelf != isVisible)
                     _cards[i].gameObject.SetActive(isVisible);
                 if (isVisible)
-                    _cards[i].SetHome(new Vector2(SlotX(visibleIndex), 0f), animated);
+                    _cards[i].SetHome(HandSlotPosition(visibleIndex), animated);
             }
             UpdateScrollButtons();
             RefreshHandCountText();
