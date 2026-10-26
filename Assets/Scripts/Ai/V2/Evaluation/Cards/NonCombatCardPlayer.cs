@@ -168,14 +168,19 @@ namespace Game.Ai.V2
             var player = snap?.Observer;
             var root = PlayerRootRegistry.FindFor(player);
             hand = hand ?? AiHandRegistry.Peek(player);
-            if (player == null || root == null || snap.Map == null || hand == null || !hand.HasFreeSlot
-                || (reservation?.GenerationAttemptsUsed ?? StrategicTempoBudget.GenerationUsed(player, snap.TurnNumber))
-                    >= AiConfigV2.maxGenerationActionsPerTurn)
+            if (player == null || root == null || snap.Map == null || hand == null || !hand.HasFreeSlot)
                 return false;
-            // Forecasts outside actual card selection do not own the turn's exact retry set.
-            // Once any attempt has happened, its absence cannot prove an untried alternative.
-            // Keep reserve value until the real selection supplies its carried reservation.
-            if (reservation == null && StrategicTempoBudget.GenerationUsed(player, snap.TurnNumber) > 0)
+            // Missile manufacture is a Phase-B action. A later cold Phase-A residual may
+            // still price equipment after this shared tempo allowance has been exhausted.
+            var tempo = StrategicTempoBudget.For(player, snap.TurnNumber);
+            if (tempo.TotalCapHit) return false;
+            // Forecasts and reaction probes may know the count without the exact retry set.
+            // Each real attempt records one distinct source key. An incomplete projection cannot
+            // prove an untried alternative: keep reserve value until the carried history is known.
+            int attempts = System.Math.Max(reservation?.GenerationAttemptsUsed ?? 0,
+                tempo.GenerationAttemptsUsed);
+            if (attempts >= AiConfigV2.maxGenerationActionsPerTurn
+                || attempts > (reservation?.TriedGeneratorCards.Count ?? 0))
                 return false;
             var ctx = new AiTurnContext { Map = snap.Map, TurnNumber = snap.TurnNumber };
             foreach (GenerationStep source in snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
