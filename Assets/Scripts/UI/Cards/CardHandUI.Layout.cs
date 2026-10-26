@@ -10,7 +10,7 @@ namespace Game.UI
         private Vector2 lastLayoutSize = new Vector2(-1f, -1f);
         private Vector3 lastLayoutWorldScale;
         private RectTransform[] slotRects;
-        private float[] scrollButtonDesignY;
+        private Vector2[] scrollButtonDesignPosition;
         private RectTransform separatorLayer;
         private float[] separatorDesignY;
         private float PreferredSlotStep => cardSize.x * (1f - overlapFraction) + cardSpacing;
@@ -26,9 +26,6 @@ namespace Game.UI
             }
         }
         internal float HandLayoutScale => HandGeometry.Scale;
-
-        private float SlotAnchorX(float slot) => .5f +
-            (slot - (MaxVisible - 1) * .5f) * PreferredSlotStep / Mathf.Max(.01f, referenceHandSize.x);
 
         private Vector2 HandSlotPosition(int index) => new Vector2(SlotX(index), HandGeometry.CenterOffsetY);
 
@@ -48,28 +45,41 @@ namespace Game.UI
         private void FitScrollButtons(float scale)
         {
             var buttons = new[] { scrollLeftButton, scrollRightButton };
-            if (scrollButtonDesignY == null)
+            if (scrollButtonDesignPosition == null)
             {
-                scrollButtonDesignY = new float[buttons.Length];
-                // The hand fills this fraction of CardHandPanel in the authored scene.
-                float handHeightFraction = handContainer.anchorMax.y - handContainer.anchorMin.y;
-                float panelHeight = handHeightFraction > 0f ? referenceHandSize.y / handHeightFraction : referenceHandSize.y;
+                scrollButtonDesignPosition = new Vector2[buttons.Length];
+                // These buttons are siblings of the hand. Capture their authored offsets
+                // once, before replacing the independently stretching canvas anchors.
+                Vector2 span = handContainer.anchorMax - handContainer.anchorMin;
+                Vector2 panelSize = new Vector2(
+                    span.x > 0f ? referenceHandSize.x / span.x : referenceHandSize.x,
+                    span.y > 0f ? referenceHandSize.y / span.y : referenceHandSize.y);
+                Vector2 handCentre = Vector2.Scale((handContainer.anchorMin + handContainer.anchorMax) * .5f, panelSize)
+                    + handContainer.anchoredPosition
+                    + Vector2.Scale(Vector2.one * .5f - handContainer.pivot, handContainer.sizeDelta);
                 for (int i = 0; i < buttons.Length; i++)
                 {
                     if (buttons[i] == null) continue;
                     var rect = (RectTransform)buttons[i].transform;
-                    scrollButtonDesignY[i] = rect.anchoredPosition.y +
-                        Mathf.Lerp(rect.anchorMin.y, rect.anchorMax.y, rect.pivot.y) * panelHeight;
-                    rect.anchorMin = new Vector2(rect.anchorMin.x, 0f);
-                    rect.anchorMax = new Vector2(rect.anchorMax.x, 0f);
+                    Vector2 anchor = new Vector2(
+                        Mathf.Lerp(rect.anchorMin.x, rect.anchorMax.x, rect.pivot.x),
+                        Mathf.Lerp(rect.anchorMin.y, rect.anchorMax.y, rect.pivot.y));
+                    Vector2 position = rect.anchoredPosition + Vector2.Scale(anchor, panelSize);
+                    scrollButtonDesignPosition[i] = new Vector2(position.x - handCentre.x, position.y);
+                    rect.anchorMin = rect.anchorMax = new Vector2(.5f, 0f);
                 }
             }
             for (int i = 0; i < buttons.Length; i++)
             {
                 if (buttons[i] == null) continue;
                 var rect = (RectTransform)buttons[i].transform;
+                var parent = rect.parent as RectTransform;
+                if (parent == null) continue;
+                float centreX = parent.InverseTransformPoint(handContainer.TransformPoint(handContainer.rect.center)).x
+                    - parent.rect.center.x;
                 rect.localScale = Vector3.one * scale;
-                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, scrollButtonDesignY[i] * scale);
+                rect.anchoredPosition = new Vector2(centreX + scrollButtonDesignPosition[i].x * scale,
+                    scrollButtonDesignPosition[i].y * scale);
             }
         }
 
@@ -104,10 +114,12 @@ namespace Game.UI
                     _debugCards[i].SetHome(HandSlotPosition(i), animated: false);
                 }
             if (slotRects != null)
-                foreach (var slot in slotRects) if (slot != null)
+                for (int i = 0; i < slotRects.Length; i++)
                 {
+                    var slot = slotRects[i];
+                    if (slot == null) continue;
                     slot.localScale = Vector3.one * scale;
-                    slot.anchoredPosition = new Vector2(0f, HandGeometry.CenterOffsetY);
+                    slot.anchoredPosition = HandSlotPosition(i);
                 }
             if (cardSeparators != null)
                 for (int i = 0; i < cardSeparators.Length; i++)
@@ -116,7 +128,7 @@ namespace Game.UI
                     if (separator == null) continue;
                     separator.localScale = Vector3.one * scale;
                     if (separatorDesignY != null && i < separatorDesignY.Length)
-                        separator.anchoredPosition = new Vector2(0f, HandGeometry.DecorationOffsetY(separatorDesignY[i]));
+                        separator.anchoredPosition = new Vector2(HandGeometry.SlotX(i + .5f), HandGeometry.DecorationOffsetY(separatorDesignY[i]));
                 }
             Relayout(animated: false);
         }

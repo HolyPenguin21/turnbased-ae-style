@@ -163,6 +163,56 @@ public sealed class RuntimeResponsiveUiTests
         Assert.That(Call(hand, "IsWithinDragBand", -135f), Is.EqualTo(true), "Band must follow the moved card centre");
     }
 
+    [TestCase(1280f, 224.52f)]
+    [TestCase(1800f, 160f)]
+    [TestCase(802f, 358f)]
+    public void WideHandKeepsCardsSlotsPinsAndArrowsOnOneHorizontalScale(float firstWidth, float firstHeight)
+    {
+        var root = Rect("Hand"); root.sizeDelta = new Vector2(firstWidth, firstHeight);
+        root.gameObject.SetActive(false);
+        var hand = root.gameObject.AddComponent<CardHandUI>();
+        var area = Rect("Cards", root);
+        area.anchorMin = new Vector2(.171f, 0f); area.anchorMax = new Vector2(.829125f, .785454f);
+        area.pivot = new Vector2(.5f, 0f); area.sizeDelta = Vector2.zero;
+        Set(hand, "handContainer", area); Set(hand, "overlapFraction", 0f);
+        var left = Rect("Left", root); var right = Rect("Right", root);
+        left.anchorMin = left.anchorMax = new Vector2(.1775f, .31668058f);
+        right.anchorMin = right.anchorMax = new Vector2(.8225f, .31668058f);
+        left.sizeDelta = right.sizeDelta = new Vector2(32f, 97f);
+        Set(hand, "scrollLeftButton", left.gameObject.AddComponent<Button>());
+        Set(hand, "scrollRightButton", right.gameObject.AddComponent<Button>());
+        var separator = Rect("Pin", area);
+        separator.anchorMin = separator.anchorMax = new Vector2(.5f, 0f);
+        separator.anchoredPosition = new Vector2(0f, 21.1f);
+        Set(hand, "cardSeparators", new[] { separator });
+        Call(hand, "CreateSlotBackgrounds"); Call(hand, "CreateSeparatorLayer");
+        var cards = Get<List<CardUI>>(hand, "_cards");
+        for (int i = 0; i < 2; i++)
+        {
+            var rect = Rect("Card", area); rect.sizeDelta = new Vector2(106f, 155f);
+            var card = rect.gameObject.AddComponent<CardUI>();
+            card.Setup(hand, new CardData(new CardDefinition { cardType = CardType.Unit }), 1f, 1.3f, 20f, .1f, .5f);
+            cards.Add(card);
+        }
+        foreach (var size in new[] { new Vector2(firstWidth, firstHeight), new Vector2(1800f, 160f),
+            new Vector2(802f, 358f), new Vector2(1280f, 224.52f) })
+        {
+            root.sizeDelta = size; Call(hand, "RefreshHandLayout");
+            var first = (RectTransform)cards[0].transform; var second = (RectTransform)cards[1].transform;
+            float scale = first.localScale.x;
+            Assert.That((second.anchoredPosition.x - first.anchoredPosition.x - 106f * scale) / scale,
+                Is.EqualTo(3f).Within(.01f), "Visible gap must scale with the card");
+            var slots = Get<RectTransform[]>(hand, "slotRects");
+            Assert.That(area.InverseTransformPoint(slots[0].position).x,
+                Is.EqualTo(area.InverseTransformPoint(first.position).x).Within(.01f));
+            Assert.That(area.InverseTransformPoint(separator.position).x,
+                Is.EqualTo((first.anchoredPosition.x + second.anchoredPosition.x) / 2f).Within(.01f));
+            Assert.That(area.InverseTransformPoint(left.position).x / scale, Is.EqualTo(-412.88f).Within(.02f));
+            Assert.That(area.InverseTransformPoint(right.position).x / scale, Is.EqualTo(412.72f).Within(.02f));
+            Assert.That(Call(hand, "SlotX", 1), Is.EqualTo(second.anchoredPosition.x));
+        }
+    }
+
     [Test]
     public void SameAspectCanvasScaleChangeCancelsAnExistingHandDrag()
     {
