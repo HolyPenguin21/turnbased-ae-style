@@ -282,6 +282,7 @@ namespace Game.Ai.V2
             IReadOnlyList<(MaterializationPlan plan, float followupAp)> fillerUniverse = null,
             IReadOnlyList<MissionIntent> activeIntents = null)
         {
+            using var equipmentTargets = new EquipmentUpgradeValuation.EquipmentTargetMemo(reservation);
             var raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys,
                 activeIntents);
@@ -454,6 +455,7 @@ namespace Game.Ai.V2
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation,
             float? witnessedUsefulApDemand = null, bool ignoreApForMeasurement = false)
         {
+            using var equipmentTargets = new EquipmentUpgradeValuation.EquipmentTargetMemo(reservation);
             List<MaterializationPlan> raw = MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation);
             if (ignoreApForMeasurement)
