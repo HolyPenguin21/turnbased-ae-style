@@ -371,6 +371,9 @@ namespace Game.EditorTests
         [TestCase("closed_window", false)]
         [TestCase("retry_state_unknown", false)]
         [TestCase("tried_with_alternative", true)]
+        [TestCase("partial_retry_history", false)]
+        [TestCase("tempo_cap", false)]
+        [TestCase("stale_reservation_quota", false)]
         [Category("UnityEngine")]
         public void EquipmentCompetitionRequiresARealUncoveredExecutableMissileProduction(string scenario, bool expected)
         {
@@ -401,6 +404,17 @@ namespace Game.EditorTests
             if (scenario == "no_operator") ArmyRegistry.Unregister(operatorArmy);
             var reservation = new MaterializationReservation();
             if (scenario == "quota") reservation.GenerationAttemptsUsed = AiConfigV2.maxGenerationActionsPerTurn;
+            if (scenario == "tempo_cap") StrategicTempoBudget.For(owner, snap.TurnNumber).TotalTempoActionsUsed = AiConfigV2.maxEndOfTurnTempoActionsPerTurn;
+            if (scenario == "stale_reservation_quota") {
+                for (int i = 0; i < AiConfigV2.maxGenerationActionsPerTurn; i++) {
+                    StrategicTempoBudget.RecordGenerationAttempt(owner, snap.TurnNumber);
+                    reservation.TriedGeneratorCards.Add("used-" + i);
+                }
+            }
+            if (scenario == "partial_retry_history") {
+                StrategicTempoBudget.RecordGenerationAttempt(owner, snap.TurnNumber);
+                reservation.GenerationAttemptsUsed = 1; // reaction probe: count known, exact tried set unavailable
+            }
             if (scenario == "tried_source" || scenario == "tried_with_alternative") {
                 reservation.TriedGeneratorCards.Add(source.CardKey); reservation.GenerationAttemptsUsed = 1;
             }
@@ -456,7 +470,9 @@ namespace Game.EditorTests
             equipment.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 20 });
             var hand = AiHandRegistry.GetOrCreate(owner, null, 0);
             var handHost = new CardData(hostDef); hand.Hand.Add(handHost); snap.Self.Hand = hand.Hand;
-            var deployment = new MaterializationPlan { BaseCardInHand = handHost, EquipmentInHand = new CardData(equipment),
+            var deployment = new MaterializationPlan { Kind = MaterializationChainKind.AttachDeploy,
+                FinalCapability = CapabilityKind.FieldCombatPower, ProjectedAbilities = Array.Empty<string>(),
+                BaseCardInHand = handHost, EquipmentInHand = new CardData(equipment),
                 Deploy = new PlacementOption(army.Hex, DeploymentKind.NewArmy, null) };
             string budgetKey = DevelopmentAdmission.RecipientVerdictKey(snap, Array.Empty<MissionIntent>(), owner, hand);
             world.Root.ActionPoints--;
@@ -466,13 +482,20 @@ namespace Game.EditorTests
             float liveBaseline = EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, host, snap).Total;
             float handBaseline = EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total;
             float deployBaseline = EquipmentUpgradeValuation.EquipmentUpgradeValue(deployment, snap);
+            Assert.That(deployment.UsesEquipment, Is.True, "the fixture must exercise the attachment path in both card scorers");
+            Assert.That(deployBaseline, Is.GreaterThan(0));
             Assert.That(liveBaseline, Is.GreaterThan(0)); Assert.That(handBaseline, Is.GreaterThan(0));
             var demand = new AxisDemand { Capability = CapabilityKind.FieldCombatPower,
                 RequestingAxis = DesireAxis.Aggression, DesiredAmount = 1 };
             float demandedBaseline = StrategicCardEvaluator.ScoreForDemand(deployment, demand, deployment.ExpectedTraits,
                 new CapabilityInventory(), hostDef.moveMax, false, snap).NetScore;
+            float residualBaseline = StrategicCardEvaluator.ScoreSurplus(deployment, new CapabilityInventory(),
+                false, false, hand, deployment.ProjectedAbilities, snap, deliveredDemand: demand).NetScore;
             snap.Development.ForecastSources = new[] { source };
             Assert.That(NonCombatCardPlayer.HasExecutableMissileProduction(snap), Is.True);
+            Assert.That(StrategicCardEvaluator.ScoreSurplus(deployment, new CapabilityInventory(),
+                false, false, hand, deployment.ProjectedAbilities, snap, deliveredDemand: demand).NetScore,
+                Is.EqualTo(residualBaseline).Within(.001f), "Phase B delivers the same required incoming capability as Phase A");
             Assert.That(StrategicCardEvaluator.ScoreForDemand(deployment, demand, deployment.ExpectedTraits,
                 new CapabilityInventory(), hostDef.moveMax, false, snap).NetScore,
                 Is.EqualTo(demandedBaseline).Within(.001f), "a requested incoming unit is needed before it has an army identity");
@@ -483,6 +506,35 @@ namespace Game.EditorTests
                 Is.EqualTo(handBaseline * m).Within(.001f));
             Assert.That(EquipmentUpgradeValuation.EquipmentUpgradeValue(deployment, snap),
                 Is.EqualTo(deployBaseline * m).Within(.001f));
+            // Exercise the real residual path as well as the scorer: the unresolved garrison
+            // claim is validated in FilterSurplus and must survive into equipment valuation.
+            var garrison = new ArmyData { Owner = owner, IsGarrison = true, Hex = default };
+            ArmyRegistry.Register(garrison);
+            BuildingRegistry.FindAt(default).Abilities.Add(UnitAbilities.Barracks);
+            hostDef.requiredBuildingAbility = UnitAbilities.Barracks;
+            hand.Hand.Add(deployment.EquipmentInHand);
+            snap.Self.BaseHexes = new[] { default(HexCoord) };
+            snap.Self.Armies = ArmyRegistry.AllForOwner(owner)
+                .Select(a => WorldAnalysis.ToArmySnapshot(a, owner, true, 0, null, world.Context)).ToList();
+            var heldBase = new AxisDemand { Capability = CapabilityKind.FieldCombatPower,
+                RequestingAxis = DesireAxis.Aggression, DesiredAmount = 1, TargetHex = default(HexCoord),
+                ConsumerPurpose = CapabilityConsumerPurpose.HeldBaseGarrison,
+                DeliveryShape = CapabilityDeliveryShape.Garrison };
+            var residual = new MaterializationReservation(); residual.UnresolvedDemands.Add(heldBase);
+            MaterializationPlan ResidualEquipment() => MaterializationCandidateBuilder.RankedSurplus(snap,
+                owner, world.Root, hand, world.Context, new CapabilityInventory(), null, residual)
+                .Select(p => p.plan).Single(p => p.Kind == MaterializationChainKind.AttachDeploy
+                    && p.Deploy.Army == garrison && ReferenceEquals(p.EquipmentInHand, deployment.EquipmentInHand));
+            snap.Development.ForecastSources = Array.Empty<GenerationStep>();
+            float heldBaseBaseline = ResidualEquipment().Score;
+            snap.Development.ForecastSources = new[] { source };
+            var delivered = ResidualEquipment();
+            Assert.That(delivered.Score, Is.EqualTo(heldBaseBaseline).Within(.001f),
+                "an operationally delivered mandatory garrison claim remains required in Phase B");
+            Assert.That(StrategicCardEvaluator.ScoreSurplus(delivered, new CapabilityInventory(), false, false,
+                hand, delivered.ProjectedAbilities, snap).NetScore, Is.LessThan(delivered.Score),
+                "without the claim the same incoming copy would be discounted as optional reserve");
+
             var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
                 PreferredMoverArmyId = army.Id, Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore } };
             intent.IntentKey = MissionIntentKey.For(intent); MissionIntentRegistry.GetOrCreate(owner).Put(intent);
@@ -500,6 +552,9 @@ namespace Game.EditorTests
                 Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total,
                     Is.EqualTo(handBaseline).Within(.001f), "a failed sole source is no competing alternative");
             StrategicTempoBudget.RecordGenerationAttempt(owner, snap.TurnNumber);
+            using (new EquipmentUpgradeValuation.EquipmentTargetMemo(new MaterializationReservation { GenerationAttemptsUsed = 1 }))
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total,
+                    Is.EqualTo(handBaseline).Within(.001f), "a reaction count without retry keys is not a proved missile alternative");
             Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total,
                 Is.EqualTo(handBaseline).Within(.001f), "unreserved forecast cannot assume the used source is untried");
             StrategicTempoBudget.ClearAll();

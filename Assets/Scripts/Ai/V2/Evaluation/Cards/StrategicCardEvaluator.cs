@@ -426,7 +426,8 @@ namespace Game.Ai.V2
         public static StrategicCardUseCandidate ScoreSurplus(MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected, WorldSnapshot snap,
             float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
+            AxisDemand deliveredDemand = null)
         {
             CardDefinition def = PlanBaseDef(plan);
             BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv, hand?.Hand);
@@ -437,7 +438,7 @@ namespace Game.Ai.V2
             foreach (IntendedRole role in roles)
                 scored.Add(ScoreSurplusRole(plan, role, inv, recce, hero, hand, projected, snap,
                     baseline, versatility, witnessedUsefulApDemand, projectedLegalFillers,
-                    spendableResource, player));
+                    spendableResource, player, deliveredDemand));
 
             scored.Sort((a, b) =>
             {
@@ -464,7 +465,8 @@ namespace Game.Ai.V2
             CapabilityInventory inv, bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
             WorldSnapshot snap, BaselineForceReadiness baseline, float versatility,
             float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
+            AxisDemand deliveredDemand = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
@@ -473,7 +475,8 @@ namespace Game.Ai.V2
             // here. It is a second explicit descriptor contribution (EffectField.ImmediateTempo on
             // the ApBonus row) and arrives below via ec.ImmediateTempo, counted exactly once and
             // identically in Phase A. The evaluator no longer knows RecurringResource is special.
-            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv) : 0f;
+            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv,
+                requiredRecipient: deliveredDemand != null && deliveredDemand.Capability != CapabilityKind.CardUpgrade) : 0f;
 
             // Built before RoleFitCore — see ScoreForDemand's comment on the same ordering.
             var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);

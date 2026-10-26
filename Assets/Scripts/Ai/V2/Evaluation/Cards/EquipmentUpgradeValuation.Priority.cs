@@ -50,10 +50,29 @@ namespace Game.Ai.V2
             if (snap?.Observer == null || roster == null || roster.Count == 0) return selected;
             var intents = WorldSnapshot.IntentsOf(snap).Where(i => i?.Status == IntentStatus.Active).ToList();
             var candidates = new List<RosterRecipient>();
+            var prepared = new HashSet<object>();
+            if (operation == null)
+            {
+                // Preparation and the global peak share physical copies, including hand cards.
+                // Otherwise a remote garrison can consume a second quota beside the pinned prep.
+                var context = EquipmentTargetMemo.Priority(snap);
+                foreach (MissionIntent intent in intents.Where(i => i.Attack?.Preparation == true))
+                {
+                    if (!context.Preparation.TryGetValue(intent, out var recipients))
+                        context.Preparation[intent] = recipients = SelectRosterRecipients(snap, intent.Attack.TargetRoster, intent);
+                    prepared.UnionWith(recipients);
+                }
+            }
+            ArmySnapshot host = operation?.Attack?.PrimaryArmyId is int hostId
+                ? snap.Self?.Armies?.FirstOrDefault(a => a.ArmyId == hostId) : null;
+            HexCoord? preparationHex = operation?.Attack == null ? null
+                : AttackPreparationPolicy.KeptStagingBase(snap, operation.Attack, host) ?? host?.Hex;
             foreach (ArmyData army in OwnWorld.Of(snap.Observer).Armies)
             {
                 MissionIntent assignedOperation = intents.FirstOrDefault(i => OwnsArmy(i, army));
-                if (army.IsPrison || army.IsAirfield || army.IsAirArmy
+                if (army.IsPrison || army.IsAirfield || army.IsAirArmy || AiArmyRoles.IsSoloRecce(army)
+                    || operation != null && army.IsGarrison
+                        && (!preparationHex.HasValue || !army.Hex.Equals(preparationHex.Value))
                     || operation != null && intents.Any(i => i != operation && OwnsArmy(i, army))
                     || operation == null && assignedOperation != null && assignedOperation.GroundCombat == null) continue;
                 foreach (UnitData unit in army.Members)
@@ -68,7 +87,7 @@ namespace Game.Ai.V2
                     candidates.Add(new RosterRecipient { Identity = unit, Key = StrikeRoster.UnitKey(unit),
                         Hero = unit.IsHero, Power = unit.IsHero ? unit.CommandRating : AiPower.UnitPower(unit),
                         Rank = operation?.Attack?.PrimaryArmyId == army.Id || operation == null && assigned ? 0
-                            : assigned ? 1 : army.IsGarrison ? 3 : 2,
+                            : assigned || prepared.Contains(unit) ? 1 : army.IsGarrison ? 3 : 2,
                         Id = unit.RuntimeId });
                 }
             }
@@ -79,7 +98,7 @@ namespace Game.Ai.V2
                 candidates.Add(new RosterRecipient { Identity = card, Key = StrikeRoster.CardKey(def),
                     Hero = def.cardType == CardType.Hero, Power = def.cardType == CardType.Hero
                         ? EquipmentSystem.Project(card).Stats[EquipmentStat.CommandRating] : AiPower.ToPowerUnit(card).BasePower,
-                    Rank = 4, Id = card.RuntimeId });
+                    Rank = prepared.Contains(card) ? 1 : 4, Id = card.RuntimeId });
             }
             foreach (var group in roster.GroupBy(r => (r.Key, r.IsHero)))
                 foreach (var candidate in candidates.Where(c => c.Key == group.Key.Key && c.Hero == group.Key.IsHero)
@@ -135,13 +154,15 @@ namespace Game.Ai.V2
 
         // Raw dependencies only: no path search, simulation, spending or actor mutation.
         internal static string RecipientPriorityFacts(WorldSnapshot snap) =>
-            "generation=" + (EquipmentTargetMemo.Reservation is MaterializationReservation reservation
+            "tempo=" + StrategicTempoBudget.For(snap?.Observer, snap?.TurnNumber ?? 0).TotalTempoActionsUsed
+            + ":" + StrategicTempoBudget.GenerationUsed(snap?.Observer, snap?.TurnNumber ?? 0)
+            + "|generation=" + (EquipmentTargetMemo.Reservation is MaterializationReservation reservation
                 ? reservation.GenerationAttemptsUsed + ":" + string.Join(",", reservation.TriedGeneratorCards.OrderBy(k => k, StringComparer.Ordinal))
                 : StrategicTempoBudget.GenerationUsed(snap?.Observer, snap?.TurnNumber ?? 0) + ":unreserved")
             + "|window=" + DevelopmentInvestmentGate.OpenMask(snap?.Observer, snap?.TurnNumber ?? 0)
             + "|" + string.Join("|",
             WorldSnapshot.IntentsOf(snap).Where(i => i != null).OrderBy(i => i.IntentKey).Select(i =>
-                $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}:{i.Attack?.PrimaryArmyId}:{i.Attack?.Preparation}:"
+                $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}:{i.Attack?.PrimaryArmyId}:{i.Attack?.Preparation}:{i.Attack?.StagingHex}:"
                 + string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i).OrderBy(id => id)) + ":"
                 + string.Join(",", i.Attack?.TargetRoster?.Select(r => $"{r.Key}/{r.IsHero}") ?? Array.Empty<string>())))
             + "|defence=" + string.Join(";", (snap?.Threat?.Threats ?? Array.Empty<AssetThreatSnapshot>())

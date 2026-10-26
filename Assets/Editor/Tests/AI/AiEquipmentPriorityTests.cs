@@ -69,6 +69,54 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void UnavailableSoloScoutDoesNotConsumePreparationOrPeakCopy()
+        {
+            var hostBody = Body(1); hostBody.OriginatingCard = new CardDefinition { authoredKey = "test.host" };
+            var host = Army(hostBody);
+            var solo = Body(10); solo.Abilities.Add(UnitAbilities.R1S4); Army(solo);
+            var usable = Body(4); var escort = Body(1); escort.OriginatingCard = hostBody.OriginatingCard;
+            Army(usable, escort);
+            var intent = Preparation(host.Id, 1); var snap = Snap();
+            snap.Self.MobilizationHeld = true; snap.Self.StrikeRoster = intent.Attack.TargetRoster;
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, null, solo), Is.Null);
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, null, usable), Is.SameAs(intent));
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, solo), Is.False);
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, usable), Is.True);
+        }
+
+        [Test]
+        public void GarrisonAwayFromPinnedStagingDoesNotDisplaceUsableHandCopy()
+        {
+            var hostBody = Body(1); hostBody.OriginatingCard = new CardDefinition { authoredKey = "test.host" };
+            var host = Army(hostBody);
+            var remote = Body(10); var guard = Body(1); guard.OriginatingCard = hostBody.OriginatingCard;
+            var garrison = Army(remote, guard); garrison.IsGarrison = true; garrison.Hex = new HexCoord(8, 0);
+            var hand = new CardData(infantry); var intent = Preparation(host.Id, 1); var snap = Snap(hand);
+            snap.Self.BaseHexes = new[] { host.Hex, garrison.Hex }; intent.Attack.StagingHex = host.Hex;
+            snap.Self.MobilizationHeld = true; snap.Self.StrikeRoster = intent.Attack.TargetRoster;
+            Assert.That(AiArmyRoles.CanSpareGarrisonMember(player, garrison, remote), Is.True,
+                "the remote body is spareable but is not a donor at this operation's staging base");
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, null, remote), Is.Null);
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, hand, null), Is.SameAs(intent));
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, remote), Is.False,
+                "the global peak must consume the hand copy already selected by this preparation");
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, hand, null), Is.True);
+            string initialKey = EquipmentUpgradeValuation.RecipientPriorityFacts(snap);
+            snap.Self.Armies.Single(a => a.ArmyId == host.Id).ReachableOwnBaseHexes = new[] { garrison.Hex };
+            intent.Attack.StagingHex = garrison.Hex;
+            Assert.That(EquipmentUpgradeValuation.RecipientPriorityFacts(snap), Is.Not.EqualTo(initialKey));
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, null, remote), Is.SameAs(intent));
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, hand, null), Is.Null);
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, remote), Is.True);
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, hand, null), Is.False);
+            // A lost staging base is re-resolved by the same policy as Attack preparation.
+            snap.Self.BaseHexes = new[] { host.Hex };
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, remote), Is.False);
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, null, remote), Is.Null);
+            Assert.That(EquipmentUpgradeValuation.EquipmentPurpose(snap, hand, null), Is.SameAs(intent));
+        }
+
+        [Test]
         public void OnlyTheMissingNumberOfHandCopiesReceivesPreparationPurpose()
         {
             var host = Army(Body(2)); var first = new CardData(infantry); var extra = new CardData(infantry);
@@ -154,6 +202,13 @@ namespace Game.EditorTests
             Assert.That(attempted, Is.Not.EqualTo(first));
             reservation.TriedGeneratorCards.Add("same-source");
             Assert.That(EquipmentUpgradeValuation.RecipientPriorityFacts(snap), Is.Not.EqualTo(attempted));
+            string scoped = EquipmentUpgradeValuation.RecipientPriorityFacts(snap);
+            StrategicTempoBudget.RecordGenerationAttempt(player, snap.TurnNumber);
+            Assert.That(EquipmentUpgradeValuation.RecipientPriorityFacts(snap), Is.Not.EqualTo(scoped),
+                "the live count still matters when a supplied reservation is stale");
+            string quota = EquipmentUpgradeValuation.RecipientPriorityFacts(snap);
+            StrategicTempoBudget.For(player, snap.TurnNumber).TotalTempoActionsUsed++;
+            Assert.That(EquipmentUpgradeValuation.RecipientPriorityFacts(snap), Is.Not.EqualTo(quota));
         }
 
         [Test]

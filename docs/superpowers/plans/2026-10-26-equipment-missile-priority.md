@@ -43,3 +43,13 @@
 - Publication uses verified real remote parent fa1a55a647d14939e95312af04ceda628c94aabf and its tree, replacing only the task's files. Local synthetic checkpoint2590a16 is not a remote parent. Report: docs/ai-equipment-missile-priority-report-2026-10-26.md.
 
 - Integration: PR #239 contains the verified task tree. The user’s explicit commit/merge/push instruction authorizes integration into master after the review; no repeat confirmation is needed. Compilation/Unity limitations remain disclosed.
+
+## Follow-up requested audit
+
+- [x] Trace modifier and production rules to recipient selection, materialization, allocator/spendability, execution and intent completion; verify current remote master 5acfc0128bf306098b17bcd9dda2b2563cfb8779 before changes.
+- [x] Correct unavailable physical donor copies and share selected preparation hand/map copies with the peak quota; cover changed/lost staging.
+- [x] Pass the operationally validated unresolved claim through Phase-B surplus equipment scoring; cover actual held-base-garrison ranking and preserve optional CardUpgrade semantics.
+- [x] Reject incomplete/stale retry projections and exhausted generation/total tempo allowances; include shared counters in keys.
+- [x] Fix the existing shared-test chain-kind omission; add targeted unexecuted regression scenarios. No compiler/runtime is available; no pass is claimed.
+- [x] Run differential syntax/diff/qualified-enum and caller audits; independent re-review. Six C# files parse cleanly, 273 enum references match; no new assets/meta, no unresolved Critical/Important findings.
+- [x] Publish follow-up on the real remote parent (never the synthetic local checkpoint) and integrate as previously authorized. Re-verify the final master ref and exact merged tree; user-facing result must disclose missing Unity compilation/tests.
