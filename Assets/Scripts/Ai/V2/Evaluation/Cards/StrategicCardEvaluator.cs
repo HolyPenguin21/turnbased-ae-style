@@ -351,7 +351,10 @@ namespace Game.Ai.V2
             bool heroCard = pdef != null && pdef.cardType == CardType.Hero;
             IReadOnlyList<string> pabil = plan.ProjectedAbilities ?? pdef?.grantedAbilities;
             bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(pabil);
-            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv) : 0f;
+            // A concrete Phase-A capability request needs this incoming recipient even before
+            // it has a physical army/roster identity. Optional CardUpgrade remains recipient-based.
+            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv,
+                requiredRecipient: demand.Capability != CapabilityKind.CardUpgrade) : 0f;
 
             // Built before RoleFitCore so HeroLeadershipFit can read the destination army's capacity
             // off the SAME EffectEvaluationContext.ResolveDestination walk the ability registry uses
@@ -378,7 +381,8 @@ namespace Game.Ai.V2
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind)
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.SynergyValue = SynergyValue(plan, snap, inv, role != IntendedRole.EquipmentUpgrade) + ec.Synergy + ec.GlobalSynergy;
+            bd.SynergyValue = SynergyValue(plan, snap, inv, includeEquipment: false)
+                + (role != IntendedRole.EquipmentUpgrade ? equipUpgrade : 0f) + ec.Synergy + ec.GlobalSynergy;
             // Zeroed for a hero card (both phases now) — a hero's own body already prices into
             // HeroLeadershipFit's combatPart; ForceGrowthValue's SurplusCombatReadinessUtility-based
             // marginal power would double-count the same Attack/Defense/HP line a second time.

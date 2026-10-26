@@ -14,7 +14,7 @@ namespace Game.Ai.V2
 {
     // Equipment upgrade valuation, split from StrategicCardEvaluator: the value of attaching
     // equipment to a recipient against its mission's known opposition. Costs stay with the evaluator.
-    internal static class EquipmentUpgradeValuation
+    internal static partial class EquipmentUpgradeValuation
     {
         [System.ThreadStatic] private static bool s_operatorForecast;
         internal static bool IsOperatorForecast => s_operatorForecast;
@@ -51,7 +51,7 @@ namespace Game.Ai.V2
 
         // A materialization chain carrying equipment onto the body it deploys.
         internal static float EquipmentUpgradeValue(MaterializationPlan p, WorldSnapshot snap = null,
-            CapabilityInventory inv = null)
+            CapabilityInventory inv = null, bool requiredRecipient = false)
         {
             CardDefinition host = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
             CardDefinition eq = p?.GeneratedEquipmentDef ?? p?.EquipmentInHand?.Definition;
@@ -60,7 +60,7 @@ namespace Game.Ai.V2
             // A deployment's SynergyValue already prices its final Stealth trait. Bound
             // existing-recipient upgrades need the marginal trait; deploy chains must not add it twice.
             EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv,
-                includeStealthTrait: false, deployment: p);
+                includeStealthTrait: false, deployment: p, requiredRecipient: requiredRecipient);
             // The same production-only repeat rule used by bound READY recipients. A generated
             // body carrying an existing hand item must not damp that item's own utility.
             float productionScale = p.Generation?.ProducesEquipment == true
@@ -110,14 +110,14 @@ namespace Game.Ai.V2
 
         private static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData hostCard,
             CardDefinition host, WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait = true,
-            MaterializationPlan deployment = null)
+            MaterializationPlan deployment = null, bool requiredRecipient = false)
         {
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
                 return default;
             var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
             var before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
-            return WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, current.Abilities,
+            return PrioritizeRecipient(WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, current.Abilities,
                 host.cardType == CardType.Hero, snap, inv,
                 EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait,
                 host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment,
@@ -125,7 +125,7 @@ namespace Game.Ai.V2
                 afterConsumption: EquipmentSystem.Consumption(host,
                     equipDef.attachmentSlot == AttachmentSlot.Equipment ? equipDef : hostCard?.Equipment,
                     equipDef.attachmentSlot == AttachmentSlot.Mutator ? equipDef : hostCard?.Mutator),
-                singleUseHost: ExplosionAttack.IsSingleUseUnit(host)));
+                singleUseHost: ExplosionAttack.IsSingleUseUnit(host))), snap, hostCard, null, deployment, requiredRecipient);
         }
 
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, UnitData host,
@@ -156,12 +156,12 @@ namespace Game.Ai.V2
                 stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host,
                     EquipmentStat.Fate, projectedFate);
             var projected = new PredictedEquipmentState(stats, next.Abilities);
-            return WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv,
+            return PrioritizeRecipient(WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv,
                 projected, true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
                 OwnWorld.Of(snap?.Observer).ArmyContaining(host), null,
                 Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host,
                 EquipmentSystem.Consumption(host), EquipmentSystem.Consumption(host, equipDef),
-                projectedFateMax: next.Stats[EquipmentStat.Fate]));
+                projectedFateMax: next.Stats[EquipmentStat.Fate])), snap, null, host);
         }
 
         // The one slot weight (AiConfigV2.equipMutatorValueMult): only a positive gain of a
@@ -782,14 +782,12 @@ namespace Game.Ai.V2
         private static MissionIntent FindEquipmentPurpose(WorldSnapshot snap, CardData card, UnitData unit)
         {
             ArmyData army = unit != null ? OwnWorld.Of(snap?.Observer).ArmyContaining(unit) : null;
-            string key = unit != null ? StrikeRoster.UnitKey(unit) : StrikeRoster.CardKey(card?.Definition);
             var intents = snap?.Intents?.All;
             return intents?.Where(i => i != null && i.Status == IntentStatus.Active && !i.IsLifecycleLeg
                 && (unit != null && object.ReferenceEquals(i.Development?.Hero, unit)
                     || i.PreferredMoverArmyId == army?.Id && army != null
                     || army != null && GroundCombatLegs.HeldGroundSupportArmyIds(i).Contains(army.Id)
-                    || i.Attack?.Preparation == true && key != null
-                        && i.Attack.TargetRoster?.Any(r => r.Key == key) == true))
+                    || SelectedForPreparation(snap, i, (object)unit ?? card)))
                 .OrderBy(i => unit != null && object.ReferenceEquals(i.Development?.Hero, unit) ? 0
                     : i.Kind == MissionKind.Attack ? 1 : i.Kind == MissionKind.Scout ? 2 : 3)
                 .ThenBy(i => i.IntentKey).FirstOrDefault();
@@ -800,9 +798,7 @@ namespace Game.Ai.V2
             MissionIntent intent = EquipmentPurpose(snap, card, unit);
             if (intent != null && intent.Kind != MissionKind.Economy)
                 return intent.Kind.ToString();
-            string key = unit != null ? StrikeRoster.UnitKey(unit) : StrikeRoster.CardKey(card?.Definition);
-            return AttackForceReadiness.MobilizationOpen(snap?.Self)
-                && snap.Self.StrikeRoster.Any(r => r.Key == key) ? "AttackPreparation" : "in-advance";
+            return IsRequiredEquipmentRecipient(snap, card, unit) ? "required" : "in-advance";
         }
 
         private static List<WorthIt.DefendingArmy> EquipmentOpposition(WorldSnapshot snap, MissionIntent purpose)
@@ -842,12 +838,23 @@ namespace Game.Ai.V2
         {
             [System.ThreadStatic] private static EquipmentTargetMemo s_current;
             private readonly EquipmentTargetMemo _outer;
+            private readonly MaterializationReservation _reservation;
+            internal static MaterializationReservation Reservation => s_current?._reservation;
             private readonly Dictionary<(WorldSnapshot, MissionIntent), List<WorthIt.DefenderProfile>> _sets = new();
 
             // Opposition and the owning purpose depend only on snapshot + mission / recipient inside
             // one Enumerate. Consumers treat the cached list as read-only.
             private readonly Dictionary<(WorldSnapshot, MissionIntent), List<WorthIt.DefendingArmy>> _opposition = new();
             private readonly Dictionary<(WorldSnapshot, object), MissionIntent> _purposes = new();
+            private readonly Dictionary<WorldSnapshot, RecipientPriorityContext> _priority = new();
+
+            internal static RecipientPriorityContext Priority(WorldSnapshot snap)
+            {
+                if (snap == null || s_current == null) return new RecipientPriorityContext();
+                if (!s_current._priority.TryGetValue(snap, out var context))
+                    s_current._priority[snap] = context = new RecipientPriorityContext();
+                return context;
+            }
 
             internal static bool TryGetOpposition(WorldSnapshot snap, MissionIntent purpose,
                 out List<WorthIt.DefendingArmy> opposition)
@@ -937,7 +944,8 @@ namespace Game.Ai.V2
                 if (s_current != null) s_current._valuesBefore[(snap, host, includeStealthTrait)] = value;
             }
 
-            public EquipmentTargetMemo() { _outer = s_current; s_current = this; }
+            public EquipmentTargetMemo(MaterializationReservation reservation = null)
+            { _outer = s_current; _reservation = reservation ?? s_current?._reservation; s_current = this; }
             public void Dispose() => s_current = _outer;
 
             // A memo filled in several pieces (Development's paced verdict warm-up yields between
@@ -946,6 +954,7 @@ namespace Game.Ai.V2
             // frames (FramePacer); the keys still include the snapshot.
             private EquipmentTargetMemo(bool activate)
             {
+                _reservation = s_current?._reservation;
                 if (activate) { _outer = s_current; s_current = this; }
             }
 

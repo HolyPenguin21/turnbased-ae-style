@@ -706,7 +706,7 @@ namespace Game.EditorTests
                     "the delivery's net is its benefit minus a real price");
                 Assert.That(step.WorldTaskScore.Value, Is.GreaterThan(0f));
             }
-            finally { UnityEngine.UnityEngine.Object.DestroyImmediate(mapObject); }
+            finally { UnityEngine.Object.DestroyImmediate(mapObject); }
         }
 
         [Test]

@@ -37,7 +37,8 @@ namespace Game.EditorTests
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); AirSortieRegistry.Clear();
             VisionSystem.Clear(); VisionSystem.Configure(null); AiMapMemory.Clear();
-            MissionIntentRegistry.Clear(); StrategicResourceReservationLedger.ClearAll();
+            MissionIntentRegistry.Clear(); StrategicResourceReservationLedger.ClearAll(); AiHandRegistry.Clear();
+            DevelopmentInvestmentGate.Clear(); StrategicTempoBudget.ClearAll();
             owner = new PlayerSetupData(); enemy = new PlayerSetupData();
             missile = Read(AttachmentContentTestData.NeutralPath, "neutral.production.unit.tactical-missile");
         }
@@ -47,7 +48,8 @@ namespace Game.EditorTests
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); AirSortieRegistry.Clear();
             VisionSystem.Clear(); VisionSystem.Configure(null); AiMapMemory.Clear();
-            MissionIntentRegistry.Clear(); StrategicResourceReservationLedger.ClearAll();
+            MissionIntentRegistry.Clear(); StrategicResourceReservationLedger.ClearAll(); AiHandRegistry.Clear();
+            DevelopmentInvestmentGate.Clear(); StrategicTempoBudget.ClearAll();
         }
 
         private WorthIt.DefenderProfile[] Infantry(int count) => Enumerable.Range(0, count)
@@ -352,6 +354,159 @@ namespace Game.EditorTests
                 new[] { new AviationCombatEstimator.ExplosionCollateral(profile, true) });
             Assert.That(projected, Is.EqualTo(actual).Within(.001f));
             Assert.That(projected, Is.LessThan(0));
+        }
+
+        [TestCase("ready", true)]
+        [TestCase("supplied", false)]
+        [TestCase("no_ap", false)]
+        [TestCase("no_energy", false)]
+        [TestCase("unaffordable", false)]
+        [TestCase("no_operator", false)]
+        [TestCase("no_route", false)]
+        [TestCase("low_value", false)]
+        [TestCase("quota", false)]
+        [TestCase("tried_source", false)]
+        [TestCase("full_hand", false)]
+        [TestCase("global_quota", false)]
+        [TestCase("closed_window", false)]
+        [TestCase("retry_state_unknown", false)]
+        [TestCase("tried_with_alternative", true)]
+        [Category("UnityEngine")]
+        public void EquipmentCompetitionRequiresARealUncoveredExecutableMissileProduction(string scenario, bool expected)
+        {
+            using var world = new EngineWorld(owner);
+            var field = world.Airfield(owner, 0);
+            var site = BuildingRegistry.FindAt(default);
+            var factory = new FacilityData(); factory.Abilities.Add(UnitAbilities.Production);
+            site.FacilitySlots[0] = factory;
+            var hero = AttachmentSlotTests.Body(Read("Assets/Cards/IronConcord/CardCatalog_IronConcord.asset", "concord.card.bolt-jax"));
+            hero.Owner = owner; hero.IsHero = true; hero.Abilities.Add(UnitAbilities.Assembler);
+            var operatorArmy = new ArmyData { Owner = owner }; operatorArmy.Members.Add(hero);
+            ArmyRegistry.Register(operatorArmy);
+            var blueprint = new CardDefinition { cardType = CardType.Tactic, authoredKey = "test.missile-production",
+                fate = 0, apCost = 0, resourceCost = new ResourceCost() };
+            var source = new GenerationStep { CardDef = missile, BlueprintDef = blueprint, Hero = hero,
+                Mode = ResearchProductionMode.Production, FacilityHex = default, SuccessChance = 1f, CardKey = "ready-missile" };
+            var snap = Snapshot(Sighting(scenario == "low_value" ? Infantry(1) : MixedArmy(),
+                hex: scenario == "no_route" ? new HexCoord(50, 0) : target));
+            snap.Map = world.Map; snap.Development.ForecastSources = new[] { source };
+            var hand = new AiHandData(null, owner.Faction, 0);
+            if (scenario == "supplied") hand.Hand.Add(ResearchProductionSystem.MintCard(missile));
+            if (scenario == "full_hand") hand.SetCapacity(0);
+            snap.Self.Hand = hand.Hand;
+            if (scenario == "no_ap") world.Root.ActionPoints = 0;
+            if (scenario == "no_energy") world.Root.AddResource(ResourceType.Energy, -50);
+            if (scenario == "unaffordable") blueprint.resourceCost.materials = 1000;
+            if (scenario == "closed_window") blueprint.resourceCost.materials = 1;
+            if (scenario == "no_operator") ArmyRegistry.Unregister(operatorArmy);
+            var reservation = new MaterializationReservation();
+            if (scenario == "quota") reservation.GenerationAttemptsUsed = AiConfigV2.maxGenerationActionsPerTurn;
+            if (scenario == "tried_source" || scenario == "tried_with_alternative") {
+                reservation.TriedGeneratorCards.Add(source.CardKey); reservation.GenerationAttemptsUsed = 1;
+            }
+            if (scenario == "tried_with_alternative") snap.Development.ForecastSources = new[] { source,
+                new GenerationStep { CardDef = missile, BlueprintDef = new CardDefinition {
+                    cardType = CardType.Tactic, authoredKey = "test.alternative-missile", fate = 0, apCost = 0,
+                    resourceCost = new ResourceCost() }, Hero = hero, Mode = source.Mode,
+                    FacilityHex = source.FacilityHex, SuccessChance = 1f, CardKey = "untried-missile" } };
+            if (scenario == "retry_state_unknown") {
+                StrategicTempoBudget.RecordGenerationAttempt(owner, snap.TurnNumber);
+                reservation = null;
+            }
+            if (scenario == "global_quota") {
+                for (int i = 0; i < AiConfigV2.maxGenerationActionsPerTurn; i++)
+                    StrategicTempoBudget.RecordGenerationAttempt(owner, snap.TurnNumber);
+                reservation = null;
+            }
+            int ap = world.Root.ActionPoints, count = ArmyRegistry.AllForOwner(owner).Count();
+            var beforeUnit = new UnitData(); var beforeCard = new CardData(missile);
+            Assert.That(NonCombatCardPlayer.HasExecutableMissileProduction(snap, hand, reservation), Is.EqualTo(expected));
+            Assert.That(world.Root.ActionPoints, Is.EqualTo(ap));
+            Assert.That(ArmyRegistry.AllForOwner(owner).Count(), Is.EqualTo(count));
+            Assert.That(new UnitData().RuntimeId, Is.EqualTo(beforeUnit.RuntimeId + 1), "valuation consumes no unit identity");
+            Assert.That(new CardData(missile).RuntimeId, Is.EqualTo(beforeCard.RuntimeId + 1), "valuation consumes no card identity");
+        }
+
+        [Test]
+        [Category("UnityEngine")]
+        public void SharedEquipmentPipelineDiscountsReserveOnlyWhileMissileProductionCompetes()
+        {
+            using var world = new EngineWorld(owner);
+            world.Airfield(owner, 0);
+            var factory = new FacilityData(); factory.Abilities.Add(UnitAbilities.Production);
+            BuildingRegistry.FindAt(default).FacilitySlots[0] = factory;
+            var hero = AttachmentSlotTests.Body(Read("Assets/Cards/IronConcord/CardCatalog_IronConcord.asset", "concord.card.bolt-jax"));
+            hero.Owner = owner; hero.IsHero = true; hero.Abilities.Add(UnitAbilities.Assembler);
+            var operatorArmy = new ArmyData { Owner = owner }; operatorArmy.Members.Add(hero);
+            ArmyRegistry.Register(operatorArmy);
+            var source = new GenerationStep { CardDef = missile, Hero = hero, Mode = ResearchProductionMode.Production,
+                BlueprintDef = new CardDefinition { cardType = CardType.Tactic, fate = 0, apCost = 0, resourceCost = new ResourceCost() },
+                FacilityHex = default, SuccessChance = 1f, CardKey = "ready-missile" };
+            var snap = Snapshot(Sighting(MixedArmy())); snap.Map = world.Map;
+            var hostDef = new CardDefinition { cardType = CardType.Unit, authoredKey = "test.reserve",
+                attack = 2, defenseRating = 2, hitPoints = 8, moveMax = 3, initiative = 2 };
+            var host = AttachmentSlotTests.Body(hostDef); host.Owner = owner;
+            var army = new ArmyData { Owner = owner, Hex = new HexCoord(1, 0) }; army.Members.Add(host);
+            ArmyRegistry.Register(army);
+            snap.TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { new ArmySnapshot {
+                Members = new[] { new WorthIt.DefenderProfile(defense: 14, hasCeramicArmor: false,
+                    attack: 5, hitPoints: 8, initiative: 2) } } } };
+            var equipment = new CardDefinition { cardType = CardType.Equipment, attachmentSlot = AttachmentSlot.Equipment,
+                equipment = new EquipmentGrant() };
+            equipment.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 20 });
+            var hand = AiHandRegistry.GetOrCreate(owner, null, 0);
+            var handHost = new CardData(hostDef); hand.Hand.Add(handHost); snap.Self.Hand = hand.Hand;
+            var deployment = new MaterializationPlan { BaseCardInHand = handHost, EquipmentInHand = new CardData(equipment),
+                Deploy = new PlacementOption(army.Hex, DeploymentKind.NewArmy, null) };
+            string budgetKey = DevelopmentAdmission.RecipientVerdictKey(snap, Array.Empty<MissionIntent>(), owner, hand);
+            world.Root.ActionPoints--;
+            Assert.That(DevelopmentAdmission.RecipientVerdictKey(snap, Array.Empty<MissionIntent>(), owner, hand), Is.Not.EqualTo(budgetKey),
+                "live spendability invalidates recipient verdicts even before a fresh snapshot");
+            world.Root.ActionPoints++;
+            float liveBaseline = EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, host, snap).Total;
+            float handBaseline = EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total;
+            float deployBaseline = EquipmentUpgradeValuation.EquipmentUpgradeValue(deployment, snap);
+            Assert.That(liveBaseline, Is.GreaterThan(0)); Assert.That(handBaseline, Is.GreaterThan(0));
+            var demand = new AxisDemand { Capability = CapabilityKind.FieldCombatPower,
+                RequestingAxis = DesireAxis.Aggression, DesiredAmount = 1 };
+            float demandedBaseline = StrategicCardEvaluator.ScoreForDemand(deployment, demand, deployment.ExpectedTraits,
+                new CapabilityInventory(), hostDef.moveMax, false, snap).NetScore;
+            snap.Development.ForecastSources = new[] { source };
+            Assert.That(NonCombatCardPlayer.HasExecutableMissileProduction(snap), Is.True);
+            Assert.That(StrategicCardEvaluator.ScoreForDemand(deployment, demand, deployment.ExpectedTraits,
+                new CapabilityInventory(), hostDef.moveMax, false, snap).NetScore,
+                Is.EqualTo(demandedBaseline).Within(.001f), "a requested incoming unit is needed before it has an army identity");
+            float m = AiConfigV2.equipmentReserveMissileCompetitionMultiplier;
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, host, snap).Total,
+                Is.EqualTo(liveBaseline * m).Within(.001f));
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total,
+                Is.EqualTo(handBaseline * m).Within(.001f));
+            Assert.That(EquipmentUpgradeValuation.EquipmentUpgradeValue(deployment, snap),
+                Is.EqualTo(deployBaseline * m).Within(.001f));
+            var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
+                PreferredMoverArmyId = army.Id, Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore } };
+            intent.IntentKey = MissionIntentKey.For(intent); MissionIntentRegistry.GetOrCreate(owner).Put(intent);
+            snap.Intents = MissionIntentRegistry.GetOrCreate(owner);
+            snap.Development.ForecastSources = Array.Empty<GenerationStep>();
+            float assignedBaseline = EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, host, snap).Total;
+            snap.Development.ForecastSources = new[] { source };
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, host, snap).Total,
+                Is.EqualTo(assignedBaseline).Within(.001f), "assigned recipient retains its whole value");
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, hero), Is.True,
+                "the factory operator is required even without an intent");
+            var failed = new MaterializationReservation { GenerationAttemptsUsed = 1 };
+            failed.TriedGeneratorCards.Add(source.CardKey);
+            using (new EquipmentUpgradeValuation.EquipmentTargetMemo(failed))
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total,
+                    Is.EqualTo(handBaseline).Within(.001f), "a failed sole source is no competing alternative");
+            StrategicTempoBudget.RecordGenerationAttempt(owner, snap.TurnNumber);
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total,
+                Is.EqualTo(handBaseline).Within(.001f), "unreserved forecast cannot assume the used source is untried");
+            StrategicTempoBudget.ClearAll();
+            hand.Hand.Add(ResearchProductionSystem.MintCard(missile));
+            Assert.That(NonCombatCardPlayer.HasExecutableMissileProduction(snap), Is.False);
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, handHost, snap).Total,
+                Is.EqualTo(handBaseline).Within(.001f), "covered missile demand restores reserve value");
         }
 
         private sealed class EngineWorld : IDisposable

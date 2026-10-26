@@ -160,6 +160,46 @@ namespace Game.Ai.V2
             return best;
         }
 
+        // The equipment scorer asks only whether a real competing manufacture is available.
+        // Aviation still owns its target/supply, flight, placement and complete chain valuation.
+        internal static bool HasExecutableMissileProduction(WorldSnapshot snap, AiHandData hand = null,
+            MaterializationReservation reservation = null)
+        {
+            var player = snap?.Observer;
+            var root = PlayerRootRegistry.FindFor(player);
+            hand = hand ?? AiHandRegistry.Peek(player);
+            if (player == null || root == null || snap.Map == null || hand == null || !hand.HasFreeSlot
+                || (reservation?.GenerationAttemptsUsed ?? StrategicTempoBudget.GenerationUsed(player, snap.TurnNumber))
+                    >= AiConfigV2.maxGenerationActionsPerTurn)
+                return false;
+            // Forecasts outside actual card selection do not own the turn's exact retry set.
+            // Once any attempt has happened, its absence cannot prove an untried alternative.
+            // Keep reserve value until the real selection supplies its carried reservation.
+            if (reservation == null && StrategicTempoBudget.GenerationUsed(player, snap.TurnNumber) > 0)
+                return false;
+            var ctx = new AiTurnContext { Map = snap.Map, TurnNumber = snap.TurnNumber };
+            foreach (GenerationStep source in snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
+            {
+                CardDefinition def = source?.CardDef;
+                if (reservation?.TriedGeneratorCards.Contains(source?.CardKey) == true
+                    || def?.isAviation != true || !ExplosionAttack.IsSingleUseUnit(def)
+                    || ExplosionAttack.TargetLimit(def.grantedAbilities) <= 0 || source.SuccessChance <= 0
+                    || !ResearchProductionSystem.IsEligible(player, source.FacilityHex, source.Mode, out _)
+                    || !ResearchProductionSystem.ActorStillQualifies(player, source.Hero, source.FacilityHex, source.Mode)
+                    || !DevelopmentInvestmentGate.IsOpenFor(player, snap.TurnNumber, source.ChallengeCard.resourceCost)
+                    || !GenerationSource.FitsReservedAffordability(root, player, ctx, source.ChallengeCard)) continue;
+                // Negative preview identity cannot consume a real hand/supply position.
+                var preview = CardData.WithRuntimeId(def, -1);
+                preview.ResearchProductionCreated = true;
+                foreach (var play in BuildAviationPlays(preview, source, snap, player, root, hand, ctx, null))
+                    if (play.Score > AiConfigV2.devEvMargin
+                        && play.ApCost <= StrategicSpendability.SpendableAp(player, root, ctx)
+                        && StrategicSpendability.FitsSpendableResources(player, root, ctx, play.ResCost))
+                        return true;
+            }
+            return false;
+        }
+
         // Successful-output utility on the same scale as real production. The operator portfolio
         // applies success probability, attempt cost and success-contingent deployment cost later.
         internal static float OperatorAviationServiceValue(WorldSnapshot snap, GenerationStep source,
@@ -206,6 +246,7 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand?.Hand == null || ctx == null)
                 yield break;
             if (blocked == null) blocked = new List<string>();
+            using var equipmentTargets = new EquipmentUpgradeValuation.EquipmentTargetMemo(reservation);
 
             var ownBaseHexes = OwnedBaseHexes(snap, player);
 
@@ -450,7 +491,7 @@ namespace Game.Ai.V2
 
             if (strikeTargets != null)
                 strikeTargets = GroundCombatAirSupport.UncoveredMissileStock(snap, projected,
-                    strikeTargets, hand.Hand, ctx.Map, card);
+                    strikeTargets, hand.Hand, ctx.Map, generation == null ? card : null);
 
             foreach (HexCoord airfield in airfields)
             {
@@ -543,18 +584,16 @@ namespace Game.Ai.V2
         // the deployed aircraft will have when Assignment evaluates it.
         internal static List<UnitData> ProjectedAircraft(CardDefinition def, PlayerSetupData player)
         {
-            var aircraft = new UnitData
-            {
-                Owner = player, IsAviation = true, OriginatingCard = def,
-                Defense = def.defenseRating, HitPointsMax = def.hitPoints, HitPointsCurrent = def.hitPoints,
-                Initiative = def.initiative, Range = def.range,
-                MoveMax = Mathf.Max(1, def.moveMax),
-                MoveCurrent = Mathf.Max(1, def.moveMax),
-                Attack = Mathf.Max(0, def.attack),
-                ActivationApCost = Mathf.Max(0, def.activationApCost),
-                LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
-                TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
-            };
+            var aircraft = UnitData.CreateProjection();
+            aircraft.Owner = player; aircraft.IsAviation = true; aircraft.OriginatingCard = def;
+            aircraft.Defense = def.defenseRating;
+            aircraft.HitPointsMax = aircraft.HitPointsCurrent = def.hitPoints;
+            aircraft.Initiative = def.initiative; aircraft.Range = def.range;
+            aircraft.MoveMax = aircraft.MoveCurrent = Mathf.Max(1, def.moveMax);
+            aircraft.Attack = Mathf.Max(0, def.attack);
+            aircraft.ActivationApCost = Mathf.Max(0, def.activationApCost);
+            aircraft.LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost);
+            aircraft.TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel);
             if (def.unitTypeTags != null) aircraft.TypeTags.UnionWith(def.unitTypeTags);
             if (def.grantedAbilities != null)
                 aircraft.Abilities.UnionWith(def.grantedAbilities);

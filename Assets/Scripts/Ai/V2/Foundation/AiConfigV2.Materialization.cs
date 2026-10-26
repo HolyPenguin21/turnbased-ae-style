@@ -409,5 +409,6 @@
         // recipient (hand Equipment, AttachDeploy, generated upgrade, Development preparation).
         // Equipment persists across turns/battles while its Challenge/attach cost is paid once.
         public const float equipmentUpgradePersistence = 3f;
+        public const float equipmentReserveMissileCompetitionMultiplier = 0.25f;
     }
 }

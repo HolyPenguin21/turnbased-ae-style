@@ -44,6 +44,7 @@ namespace Game.Ai.V2
             + $"|res={resources}"
             + $"|price={PriceInputs(snapshot, player, root, ctx)}"
             + $"|operatorForecast={OperatorForecastFacts(snapshot, player)}"
+            + $"|equipmentPriority={EquipmentUpgradeValuation.RecipientPriorityFacts(snapshot)}"
             + $"|hand={handVersion}"
             + $"|recipients={RecipientFacts(player, hand)}"
             // The need's exact inputs, not its value: computing the value runs the Monte Carlo
@@ -97,6 +98,7 @@ namespace Game.Ai.V2
                     + string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i).OrderBy(x => x))));
             return $"turn={snapshot?.TurnNumber}"
                 + $"|operatorForecast={OperatorForecastFacts(snapshot, player)}"
+                + $"|equipmentPriority={EquipmentUpgradeValuation.RecipientPriorityFacts(snapshot)}"
                 + $"|held={held}"
                 + $"|memory={AiMapMemory.RouteMemoryVersionFor(player)}"
                 + $"|know={snapshot?.KnowledgeVersion}"
@@ -109,6 +111,8 @@ namespace Game.Ai.V2
 
         internal static string OperatorForecastFacts(WorldSnapshot snap, PlayerSetupData player)
         {
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            var ctx = root == null ? null : new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 };
             string budget = string.Join(",", ResourceBundle.All.Select(t =>
                 $"{snap?.Economy?.SpendableStockpile.Get(t)}:{snap?.Self?.PerTurnIncome.Get(t)}:"
                 + ActionPrice.PendingCardResourceDemand(snap, t).ToString("R", CultureInfo.InvariantCulture)));
@@ -127,7 +131,9 @@ namespace Game.Ai.V2
                 + DevelopmentDiversity.HistoryKey(player, snap?.TurnNumber ?? 0)
                 + $"|airfields={airfields}|path={snap?.MapPathingVersion}"
                 + $"|missileStock={GroundCombatAirSupport.MissileStockFacts(snap, player)}"
-                + "|preservation=" + PriceInputs(snap, player, null, null);
+                + $"|liveAp={(root == null ? "-" : StrategicSpendability.SpendableAp(player, root, ctx).ToString("R", CultureInfo.InvariantCulture))}"
+                + $"|handCapacity={AiHandRegistry.Peek(player)?.HasFreeSlot}"
+                + "|preservation=" + PriceInputs(snap, player, root, ctx);
         }
 
         // Per resource: spendable (stock net of other owners' holds), income, and the current
@@ -204,6 +210,7 @@ namespace Game.Ai.V2
                     {
                         if (u == null) continue;
                         rows.Add($"u:{u.RuntimeId}:{a.Id}:{a.IsPrison}:{u.IsPrisoner}:{u.IsHero}:"
+                            + $"{a.Hex}:{a.IsGarrison}:{a.IsAirfield}:{a.IsAirArmy}:{u.IsAviation}:{u.IsSummoned}:{StrikeRoster.UnitKey(u)}:"
                             + $"{u.Equipment != null}:{u.Mutator != null}:"
                             + $"{u.Equipment?.authoredKey}:{u.Mutator?.authoredKey}:{u.Attack}:{u.Defense}:"
                             + $"{u.Range}:{u.HitPointsMax}:{u.HitPointsCurrent}:"
