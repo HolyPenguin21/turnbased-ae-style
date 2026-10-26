@@ -18,6 +18,27 @@ namespace Game.UI
             SceneUIAudioBinder.BindCreatedRoot(button);
         }
 
+        // Keep authored contents in one coordinate space. The stretched anchors describe
+        // the available window area; the root keeps its design size and uniformly fits it.
+        // Unlike stretching the window itself, this includes runtime children with fixed metrics.
+        public static bool FitPanelToAnchors(RectTransform panel, Vector2 designSize)
+        {
+            if (panel == null || !(panel.parent is RectTransform parent)
+                || designSize.x <= 0f || designSize.y <= 0f) return false;
+            Vector2 available = Vector2.Scale(parent.rect.size, panel.anchorMax - panel.anchorMin);
+            if (available.x <= 0f || available.y <= 0f) return false;
+            float scale = Mathf.Min(available.x / designSize.x, available.y / designSize.y);
+            bool resized = (panel.rect.size - designSize).sqrMagnitude > .0001f;
+            bool rescaled = (panel.localScale - Vector3.one * scale).sqrMagnitude > .00000001f;
+            if (resized)
+            {
+                panel.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, designSize.x);
+                panel.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, designSize.y);
+            }
+            if (rescaled) panel.localScale = Vector3.one * scale;
+            return resized || rescaled;
+        }
+
         // ---- Lists ----
         // Shared by every UI component that instantiates a list of child components and needs to
         // tear them all down before repopulating (ArmyButtonRowUI's button row, ArmyViewerModalUI's

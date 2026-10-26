@@ -129,7 +129,19 @@ namespace Game.UI
                 titleRoot != null ? titleRoot : nameText?.gameObject, moveText, skillsText);
         }
 
-        private void OnDisable() => OnPointerExit(null);
+        private void OnDisable()
+        {
+            CancelDrag();
+            OnPointerExit(null);
+        }
+
+        public void CancelDrag()
+        {
+            if (!IsDragging) return;
+            IsDragging = false;
+            if (_canvas != null) _canvas.overrideSorting = false;
+            if (rectTransform != null) rectTransform.anchoredPosition = _homeSlot;
+        }
 
         public void Setup(ArmyViewerModalUI modal, UnitData unit)
         {
@@ -399,7 +411,7 @@ namespace Game.UI
         {
             bool changed = (anchoredPosition - _homeSlot).sqrMagnitude > 0.01f;
             _homeSlot = anchoredPosition;
-            if (IsDragging || !changed)
+            if (IsDragging || (!changed && animated))
                 return;
 
             if (_slotAnim != null)

@@ -99,9 +99,111 @@ public sealed class RuntimeResponsiveUiTests
         Call(hand, "CreateSeparatorLayer");
         area.sizeDelta = new Vector2(730f, 203f);
         Call(hand, "RefreshHandLayout");
-        var reference = new Vector3(0f, 101.5f, 0f);
+        var reference = new Vector3(0f, 76.40996f, 0f);
         float y = area.InverseTransformPoint(separator.position).y;
         Assert.That(y - reference.y, Is.EqualTo(-58.1253f).Within(.01f));
+    }
+
+    [Test]
+    public void SetupAndArmyWindowsKeepTheirLayoutAcrossResizeAndReopen()
+    {
+        var parent = Rect("Canvas coordinates");
+        foreach (var spec in new[] {
+            (size: new Vector2(901.68f, 532.64f), min: new Vector2(.14778125f, .09977779f), max: new Vector2(.8522188f, .8395557f)),
+            (size: new Vector2(828.32f, 478.32f), min: new Vector2(.17665625f, .2854445f), max: new Vector2(.82378125f, .94977784f)) })
+        {
+            var panel = Rect("Window", parent); panel.anchorMin = spec.min; panel.anchorMax = spec.max;
+            panel.pivot = new Vector2(.5f, .5f); panel.sizeDelta = Vector2.zero;
+            // Resize the SAME instance, including returning to the original size.
+            foreach (var size in new[] { new Vector2(1280, 720), new Vector2(802, 1149),
+                new Vector2(1558, 591), new Vector2(1108.5125f, 831.3844f), new Vector2(1280, 720) })
+            {
+                parent.sizeDelta = size;
+                UIUtility.FitPanelToAnchors(panel, spec.size);
+                Assert.That(panel.rect.width, Is.EqualTo(spec.size.x).Within(.01f));
+                Assert.That(panel.rect.height, Is.EqualTo(spec.size.y).Within(.01f));
+                Assert.That(panel.localScale.x, Is.EqualTo(panel.localScale.y));
+                var min = parent.rect.min + Vector2.Scale(size, spec.min);
+                var max = parent.rect.min + Vector2.Scale(size, spec.max);
+                var centre = parent.InverseTransformPoint(panel.position);
+                Assert.That(centre.x, Is.EqualTo((min.x + max.x) / 2f).Within(.01f));
+                Assert.That(centre.y, Is.EqualTo((min.y + max.y) / 2f).Within(.01f));
+                var corners = new Vector3[4]; panel.GetWorldCorners(corners);
+                foreach (var corner in corners)
+                {
+                    var local = parent.InverseTransformPoint(corner);
+                    Assert.That(local.x, Is.InRange(min.x - .01f, max.x + .01f));
+                    Assert.That(local.y, Is.InRange(min.y - .01f, max.y + .01f));
+                }
+                panel.gameObject.SetActive(false); panel.gameObject.SetActive(true);
+                Assert.That(UIUtility.FitPanelToAnchors(panel, spec.size), Is.False, "Reopen must not multiply scale");
+            }
+        }
+    }
+
+    [Test]
+    public void TallHandKeepsCardsSlotsPinsAndDragBandOnTheBottomReference()
+    {
+        var root = Rect("Hand"); root.gameObject.SetActive(false);
+        var hand = root.gameObject.AddComponent<CardHandUI>();
+        var area = Rect("Cards", root); area.sizeDelta = new Vector2(842.4f, 176.35f);
+        Set(hand, "handContainer", area); Set(hand, "overlapFraction", 0f);
+        var template = AssetDatabase.LoadAssetAtPath<CardUI>("Assets/Prefabs/UI/Cards/Card_Hand.prefab");
+        var card = Object.Instantiate(template, area);
+        card.Setup(hand, new CardData(new CardDefinition { cardType = CardType.Unit }), 1f, 1.3f, 20f, .1f, .5f);
+        Get<List<CardUI>>(hand, "_cards").Add(card);
+        Call(hand, "CreateSlotBackgrounds");
+        area.sizeDelta = new Vector2(730f, 203f);
+        Call(hand, "RefreshHandLayout");
+        var rect = (RectTransform)card.transform;
+        Assert.That(rect.anchoredPosition.y, Is.EqualTo(-25.09004f).Within(.01f));
+        Assert.That(203f / 2f + rect.anchoredPosition.y - rect.rect.height * card.transform.localScale.y / 2f,
+            Is.EqualTo(9.25065f).Within(.01f));
+        Assert.That(Get<RectTransform[]>(hand, "slotRects")[0].anchoredPosition.y, Is.EqualTo(rect.anchoredPosition.y));
+        Assert.That(Call(hand, "IsWithinDragBand", -135f), Is.EqualTo(true), "Band must follow the moved card centre");
+    }
+
+    [Test]
+    public void SameAspectCanvasScaleChangeCancelsAnExistingHandDrag()
+    {
+        var root = Rect("Hand"); root.gameObject.SetActive(false);
+        var hand = root.gameObject.AddComponent<CardHandUI>();
+        var area = Rect("Cards", root); area.sizeDelta = new Vector2(842.4f, 176.35f);
+        Set(hand, "handContainer", area);
+        var card = Rect("Card", area).gameObject.AddComponent<CardUI>();
+        card.Setup(hand, new CardData(new CardDefinition { cardType = CardType.Unit }), 1f, 1.3f, 20f, .1f, .5f);
+        Get<List<CardUI>>(hand, "_cards").Add(card);
+        Call(hand, "RefreshHandLayout");
+        typeof(CardUI).GetProperty("IsDragging").GetSetMethod(true).Invoke(card, new object[] { true });
+        root.localScale = Vector3.one * 2f;
+        Call(hand, "RefreshHandLayout");
+        Assert.That(card.IsDragging, Is.False, "Same logical size can still have changed screen coordinates");
+    }
+
+    [Test]
+    public void ArmyDetailUsesABoundedScrollableViewportWithoutDuplicatingItOnReopen()
+    {
+        var root = Rect("Army"); root.gameObject.SetActive(false);
+        var modal = root.gameObject.AddComponent<ArmyViewerModalUI>();
+        var detail = Rect("DetailText", root); detail.sizeDelta = new Vector2(140, 80);
+        var text = detail.gameObject.AddComponent<TMPro.TextMeshProUGUI>();
+        text.font = TMPro.TMP_Settings.defaultFontAsset;
+        text.fontSize = 12; text.text = string.Join("\n", new string[30]);
+        Set(modal, "detailText", text);
+        Call(modal, "EnsureDetailScroll");
+        var scroll = detail.GetComponentInParent<ScrollRect>(true);
+        Assert.That(scroll, Is.Not.Null);
+        Assert.That(scroll.content, Is.SameAs(detail));
+        Assert.That(scroll.viewport.GetComponent<RectMask2D>(), Is.Not.Null);
+        Assert.That(scroll.viewport.GetComponent<Image>().raycastTarget, Is.True);
+        Assert.That(scroll.horizontal, Is.False);
+        Assert.That(scroll.vertical, Is.True);
+        root.gameObject.SetActive(true);
+        text.text = string.Join("\n", System.Linq.Enumerable.Repeat("Unit ability description", 30));
+        LayoutRebuilder.ForceRebuildLayoutImmediate(detail);
+        Assert.That(detail.rect.height, Is.GreaterThan(scroll.viewport.rect.height));
+        Call(modal, "EnsureDetailScroll");
+        Assert.That(root.GetComponentsInChildren<ScrollRect>(true).Length, Is.EqualTo(1));
     }
 
     [Test]
