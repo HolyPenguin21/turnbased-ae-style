@@ -24,7 +24,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dotnet', default=shutil.which('dotnet'))
     args = parser.parse_args()
-    run(sys.executable, HERE / 'test_runtime_layout.py')
+    # Report all independent checks even when an authored-scene baseline is red.
+    # Preserve the failure exit code; never let passing math hide a source regression.
+    source_exit = subprocess.run([sys.executable, str(HERE / 'test_runtime_layout.py')],
+                                 cwd=ROOT, check=False).returncode
     paths = ['Assets/Scenes/MainMenu.unity', 'Assets/Scenes/Game.unity',
              'Assets/Prefabs/UI/Rows/PlayerRow.prefab', 'Assets/Prefabs/UI/Collection/CollectionCard.prefab']
     for validator in ['verify_full.js', 'verify_types.js']:
@@ -56,6 +59,8 @@ def main():
             shutil.copy2(csc.parent / name, work / name)
         run(dotnet, work / 'GeometryChecks.dll')
         run(dotnet, work / 'SyntaxChecks.dll', ROOT / 'Assets')
+    if source_exit:
+        raise SystemExit('Source layout suite failed (see failures above); independent YAML/C# checks completed.')
 
 
 if __name__ == '__main__':

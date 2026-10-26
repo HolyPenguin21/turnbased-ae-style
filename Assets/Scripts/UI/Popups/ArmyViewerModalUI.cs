@@ -27,6 +27,7 @@ namespace Game.UI
     public class ArmyViewerModalUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
+        [SerializeField] private Vector2 referenceWindowSize = new Vector2(828.32f, 478.32f);
         [SerializeField] private Image factionLogo;
         [SerializeField] private TMP_Text titleText;
         [SerializeField] private Button contextButton;
@@ -98,6 +99,8 @@ namespace Game.UI
         private IReadOnlyList<ArmyData> _snapshotSiblings;
         private Canvas _canvas;
         private ScrollRect tutorialScroll;
+        private ScrollRect detailScroll;
+        private Vector3 lastWindowWorldScale;
         // Live drag-reorder state (see BeginReorderPreview/PreviewReorder/TryDropUnit) — a
         // scratch copy of _currentArmy.Members that's live-reordered as the card moves, so the
         // rest of the grid visibly makes room for it before the drop, the same way CardHandUI's
@@ -265,6 +268,7 @@ namespace Game.UI
         {
             armyButtonRow?.SetMaxVisible(8);
             _canvas = GetComponentInParent<Canvas>();
+            EnsureDetailScroll();
             tutorialScroll = gridContainer != null ? gridContainer.GetComponentInParent<ScrollRect>() : null;
             if (tutorialScroll != null) tutorialScroll.onValueChanged.AddListener(OnTutorialScroll);
             if (closeButton != null)
@@ -273,6 +277,45 @@ namespace Game.UI
                 contextButton.onClick.AddListener(OnContextButtonClicked);
             if (renamePopup != null)
                 renamePopup.VisibilityChanged += () => VisibilityChanged?.Invoke();
+        }
+
+        private void EnsureDetailScroll()
+        {
+            if (detailText == null) return;
+            var content = detailText.rectTransform;
+            detailScroll = content.GetComponentInParent<ScrollRect>(true);
+            if (detailScroll != null && detailScroll.content == content) return;
+            var viewportObject = new GameObject("ArmyDetailViewport", typeof(RectTransform),
+                typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+            viewportObject.layer = content.gameObject.layer;
+            var viewport = (RectTransform)viewportObject.transform;
+            viewport.SetParent(content.parent, false);
+            viewport.SetSiblingIndex(content.GetSiblingIndex());
+            viewport.anchorMin = content.anchorMin; viewport.anchorMax = content.anchorMax;
+            viewport.pivot = content.pivot; viewport.sizeDelta = content.sizeDelta;
+            viewport.anchoredPosition = content.anchoredPosition;
+            var background = viewportObject.GetComponent<Image>();
+            background.color = Color.clear; background.raycastTarget = true;
+            content.SetParent(viewport, false);
+            content.anchorMin = new Vector2(0f, 1f); content.anchorMax = Vector2.one;
+            content.pivot = new Vector2(.5f, 1f);
+            content.anchoredPosition = Vector2.zero; content.sizeDelta = Vector2.zero;
+            var fitter = content.GetComponent<ContentSizeFitter>();
+            if (fitter == null) fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            detailScroll = viewportObject.GetComponent<ScrollRect>();
+            detailScroll.viewport = viewport; detailScroll.content = content;
+            detailScroll.horizontal = false; detailScroll.vertical = true;
+            detailScroll.movementType = ScrollRect.MovementType.Clamped;
+            detailScroll.scrollSensitivity = 24f;
+        }
+
+        private void ResetDetailScroll()
+        {
+            if (detailScroll == null) return;
+            detailScroll.StopMovement();
+            detailScroll.content.anchoredPosition = Vector2.zero;
         }
 
         private void OnTutorialScroll(Vector2 position) => TutorialHintController.Invalidate();
@@ -351,6 +394,7 @@ namespace Game.UI
             if (panelRoot == null)
                 return;
             panelRoot.SetActive(true);
+            UIUtility.FitPanelToAnchors(panelRoot.transform as RectTransform, referenceWindowSize);
             panelRoot.transform.SetAsLastSibling();
             VisibilityChanged?.Invoke();
         }
@@ -382,6 +426,24 @@ namespace Game.UI
             }
         }
 
+        private void LateUpdate()
+        {
+            if (!IsShowing) return;
+            bool changed = UIUtility.FitPanelToAnchors(panelRoot.transform as RectTransform, referenceWindowSize);
+            Vector3 worldScale = panelRoot.transform.lossyScale;
+            if (!changed && worldScale == lastWindowWorldScale) return;
+            lastWindowWorldScale = worldScale;
+            // A changed window scale invalidates a carried card's screen-space gesture.
+            // Keep the roster untouched and return every visual to its real slot.
+            ClearReorderPreview();
+            for (int i = 0; i < _cards.Count; i++)
+            {
+                _cards[i].CancelDrag();
+                _cards[i].SetSlot(SlotPosition(i), animated: false);
+            }
+            FitGridContent(_cards.Count);
+        }
+
         // ESC closes the rename popup first if it's open (matching a Cancel button, which it
         // doesn't otherwise have), and the whole modal on a second press — never both actions
         // on the same keypress.
@@ -407,6 +469,7 @@ namespace Game.UI
         {
             TutorialHintController.Invalidate();
             _currentArmy = army;
+            if (tutorialScroll != null) { tutorialScroll.StopMovement(); tutorialScroll.verticalNormalizedPosition = 1f; }
             RefreshTitle();
             RefreshButtonRow();
             RefreshGrid();
@@ -415,6 +478,7 @@ namespace Game.UI
 
         public void ShowUnitDetail(UnitData unit)
         {
+            ResetDetailScroll();
             if (unit == null)
             {
                 ShowArmySummary();
@@ -889,7 +953,12 @@ namespace Game.UI
             }
         }
 
-        private void ClearGrid() => UIUtility.DestroyAndClear(_cards);
+        private void ClearGrid()
+        {
+            ClearReorderPreview();
+            foreach (var card in _cards) if (card != null) card.gameObject.SetActive(false);
+            UIUtility.DestroyAndClear(_cards);
+        }
 
         private void FitGridContent(int slots)
         {
@@ -922,6 +991,7 @@ namespace Game.UI
         // see what this army's hex would give it before it's actually attacked.
         private void ShowArmySummary()
         {
+            ResetDetailScroll();
             if (detailArt != null)
                 detailArt.gameObject.SetActive(false);
             if (detailText == null || _currentArmy == null)

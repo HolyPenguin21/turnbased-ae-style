@@ -15,6 +15,7 @@ namespace Game.Setup
     public class GameSetupController : MonoBehaviour
     {
         [SerializeField] private Transform playerListContainer;
+        [SerializeField] private Vector2 referenceWindowSize = new Vector2(901.68f, 532.64f);
         [SerializeField] private Button addPlayerButton;
         [SerializeField] private GameObject mainMenuPanel;
         [SerializeField] private GameConfig gameConfig;
@@ -34,6 +35,7 @@ namespace Game.Setup
 
         private void LateUpdate()
         {
+            UIUtility.FitPanelToAnchors(transform as RectTransform, referenceWindowSize);
             if (!revealNewestPlayer) return;
             revealNewestPlayer = false;
             var scroll = playerListContainer != null ? playerListContainer.GetComponentInParent<ScrollRect>() : null;
@@ -62,6 +64,7 @@ namespace Game.Setup
 
         private void OnEnable()
         {
+            UIUtility.FitPanelToAnchors(transform as RectTransform, referenceWindowSize);
             if (gameConfig == null)
             {
                 Debug.LogWarning("GameSetupController: Game Config is not assigned.");
