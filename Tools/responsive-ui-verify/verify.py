@@ -190,8 +190,13 @@ def check_layout(game, menu, assets):
             assert needed[0] <= box[2] + .01 and needed[1] <= box[3] + .01, f"Modal grid overflow: {rect}"
 
         hand = g.data(7770000000000010003)
-        needed = 5 * (hand["cardSize"]["x"] * (1 - hand["overlapFraction"]) + hand["cardSpacing"]) + hand["cardSize"]["x"]
-        assert needed <= g.box(136068550)[2]
+        hand_box = g.box(136068550)
+        reference = hand["referenceHandSize"]
+        width_ratio, height_ratio = hand_box[2] / reference["x"], hand_box[3] / reference["y"]
+        # Seven fixed slots; spacing is a code constant, not a serialized scene field.
+        step = hand["cardSize"]["x"] * (1 - hand["overlapFraction"]) + 3
+        needed = 6 * step * width_ratio + hand["cardSize"]["x"] * min(width_ratio, height_ratio)
+        assert needed <= hand_box[2] + .01
         drawer = g.box(1139703871)
         hand_top = g.box(7770000000000010002)[1] + g.box(7770000000000010002)[3]
         resources = g.box(6660000000000082002)
@@ -205,8 +210,18 @@ def check_layout(game, menu, assets):
 
         row = assets["Assets/Prefabs/UI/Rows/PlayerRow.prefab"][2038967255859839617][1]
         required_height = 6 * row["m_PreferredHeight"] + 5 * m.data(162901673)["m_Spacing"]
-        area = m.box(162901672)
-        assert required_height <= area[3]
+        content = m.data(162901672)
+        viewport = content["m_Father"]["fileID"]
+        scrolls = [obj for _, obj in menu.values()
+                   if obj.get("m_Content", {}).get("fileID") == 162901672]
+        assert len(scrolls) == 1 and scrolls[0]["m_Viewport"]["fileID"] == viewport
+        assert scrolls[0]["m_Vertical"] == 1 and scrolls[0]["m_Horizontal"] == 0
+        # ContentSizeFitter owns the runtime height; the serialized Content starts empty.
+        content_go = content["m_GameObject"]["fileID"]
+        assert any(obj.get("m_GameObject", {}).get("fileID") == content_go
+                   and obj.get("m_VerticalFit") == 2 for _, obj in menu.values())
+        area = m.box(viewport)
+        assert required_height >= 6 * 86 and area[3] >= row["m_PreferredHeight"]
         assert contains(m.box(759005952), area)
         assert area[1] >= m.box(502412740)[1] + m.box(502412740)[3]
         print(f"{width}x{height}: scale={scale:g}; root bounds, battle grid, modal grids, hand, drawer and six-player setup PASS")

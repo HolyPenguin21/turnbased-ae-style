@@ -280,12 +280,14 @@ namespace Game.UI
                     if (oldCard != null)
                     {
                         oldCard.gameObject.SetActive(progress < 0.5f);
-                        oldCard.transform.localScale = new Vector3(restingScale * Mathf.Clamp01(1f - progress * 2f), restingScale, restingScale);
+                        float scale = restingScale * HandLayoutScale;
+                        oldCard.transform.localScale = new Vector3(scale * Mathf.Clamp01(1f - progress * 2f), scale, scale);
                     }
                     if (newCard != null)
                     {
                         newCard.gameObject.SetActive(progress >= 0.5f);
-                        newCard.transform.localScale = new Vector3(restingScale * Mathf.Clamp01(progress * 2f - 1f), restingScale, restingScale);
+                        float scale = restingScale * HandLayoutScale;
+                        newCard.transform.localScale = new Vector3(scale * Mathf.Clamp01(progress * 2f - 1f), scale, scale);
                     }
                 }
                 yield return null;

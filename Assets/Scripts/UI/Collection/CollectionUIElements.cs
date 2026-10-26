@@ -71,7 +71,7 @@ namespace Game.UI
                 var grid = content.GetComponent<GridLayoutGroup>();
                 if (grid != null)
                 {
-                    grid.cellSize = new Vector2(140, 198); grid.spacing = new Vector2(8, 8);
+                    grid.cellSize = new Vector2(140, 204); grid.spacing = new Vector2(8, 8);
                     grid.padding = new RectOffset(6, 6, 8, 8);
                     grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount; grid.constraintCount = 4;
                 }
@@ -116,6 +116,27 @@ namespace Game.UI
             if (costTitle != null) costTitle.alignment = TextAlignmentOptions.Right;
             foreach (string path in new[] { "UnsavedModal/Window", "ConfirmModal/Window" })
                 root.Find(path)?.SetAsFirstSibling();
+
+            // Keep editor rebuilds responsive too. Preserve the authored 1280x720 geometry
+            // while changing which edges each column follows; runtime opening only skins scrolls.
+            AnchorAtReference(root.Find("CardDetails") as RectTransform, new Vector2(0, 0), new Vector2(0, 1));
+            AnchorAtReference(root.Find("Cards") as RectTransform, Vector2.zero, Vector2.one);
+            AnchorAtReference(root.Find("Deck") as RectTransform, new Vector2(1, 0), Vector2.one);
+            AnchorAtReference(root.Find("Back") as RectTransform, Vector2.one, Vector2.one);
+            AnchorAtReference(root.Find("Title") as RectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1));
+            AnchorAtReference(root.Find("TitlePlaque") as RectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1));
+            AnchorAtReference(root.Find("Status") as RectTransform, Vector2.zero, new Vector2(1, 0));
+        }
+
+        private static void AnchorAtReference(RectTransform rect, Vector2 min, Vector2 max)
+        {
+            if (rect == null) return;
+            var reference = new Vector2(1280, 720);
+            Vector2 oldSpan = rect.anchorMax - rect.anchorMin, newSpan = max - min;
+            rect.anchoredPosition -= Vector2.Scale(reference,
+                min - rect.anchorMin + Vector2.Scale(newSpan - oldSpan, rect.pivot));
+            rect.sizeDelta -= Vector2.Scale(reference, newSpan - oldSpan);
+            rect.anchorMin = min; rect.anchorMax = max;
         }
 
         public static void ApplyDeckRowSkin(RectTransform root)
