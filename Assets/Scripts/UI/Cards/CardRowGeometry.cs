@@ -21,11 +21,12 @@ namespace Game.UI
         {
             float widthRatio = Math.Max(0f, width) / Math.Max(.01f, referenceWidth);
             float heightRatio = Math.Max(0f, height) / Math.Max(.01f, referenceHeight);
-            return new CardRowGeometry(Math.Max(1, count), Math.Min(widthRatio, heightRatio),
-                preferredStep * widthRatio, referenceHeight, Math.Max(0f, height));
+            float scale = Math.Min(widthRatio, heightRatio);
+            return new CardRowGeometry(Math.Max(1, count), scale,
+                preferredStep * scale, referenceHeight, Math.Max(0f, height));
         }
 
-        public float SlotX(int index) => (index - (count - 1) * .5f) * Step;
+        public float SlotX(float index) => (index - (count - 1) * .5f) * Step;
         public float IndexAt(float x) => Step > 0f ? (x - SlotX(0)) / Step : 0f;
         public float DecorationOffsetY(float authoredY) => CenterOffsetY + (authoredY - referenceHeight * .5f) * Scale;
     }

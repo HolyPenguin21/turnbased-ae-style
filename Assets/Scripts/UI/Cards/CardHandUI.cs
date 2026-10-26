@@ -247,10 +247,10 @@ namespace Game.UI
                 var go = new GameObject($"Slot{i}", typeof(RectTransform));
                 var rt = (RectTransform)go.transform;
                 rt.SetParent(handContainer, false);
-                rt.anchorMin = rt.anchorMax = new Vector2(SlotAnchorX(i), 0.5f);
+                rt.anchorMin = rt.anchorMax = new Vector2(.5f, .5f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
                 rt.sizeDelta = slotVisualSize;
-                rt.anchoredPosition = new Vector2(0f, HandGeometry.CenterOffsetY);
+                rt.anchoredPosition = HandSlotPosition(i);
                 rt.localScale = Vector3.one * HandLayoutScale;
                 slotRects[i] = rt;
                 // Inserted at the front, in order — every card is added to handContainer AFTER
@@ -290,8 +290,8 @@ namespace Game.UI
                 separator.SetParent(layer, false);
                 float anchorY = Mathf.Lerp(separator.anchorMin.y, separator.anchorMax.y, separator.pivot.y);
                 separatorDesignY[i] = separator.anchoredPosition.y + anchorY * referenceHandSize.y;
-                separator.anchorMin = separator.anchorMax = new Vector2(SlotAnchorX(i + .5f), .5f);
-                separator.anchoredPosition = new Vector2(0f, HandGeometry.DecorationOffsetY(separatorDesignY[i]));
+                separator.anchorMin = separator.anchorMax = new Vector2(.5f, .5f);
+                separator.anchoredPosition = new Vector2(HandGeometry.SlotX(i + .5f), HandGeometry.DecorationOffsetY(separatorDesignY[i]));
                 if (separator.TryGetComponent(out Graphic graphic))
                     graphic.raycastTarget = false;
             }

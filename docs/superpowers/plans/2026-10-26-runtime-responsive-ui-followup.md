@@ -84,3 +84,31 @@ In the full project, run the complete EditMode suite and then check:
 
 Scale of change: local layout/lifecycle fixes using existing controllers and utility;
 no gameplay rules, asset GUIDs, or UI architecture were replaced.
+
+
+## Horizontal follow-up after the wide Game View screenshot
+
+Baseline: master `adf48913cd1b85ac2b5045f8a202552f36754705`. Its three commits after
+#242 change the two scenes; those changes were read and preserved. In this baseline
+all five source-layout tests pass, including the collection checks that failed on the
+earlier baseline described above. No scene or collection content is changed here.
+
+The user's new screenshot shows very large horizontal gaps. Confirmed cause:
+CardRowGeometry used the minimum width/height ratio for card scale but width ratio
+alone for the step. In a wide/short view, card width shrinks while centre spacing grows.
+The old standalone C# calculation fails the new regression with:
+`Wide Free Aspect stretches card spacing independently from card size`.
+
+The row step now uses the same uniform scale as the card. Empty slots and separators
+use explicit positions from the same geometry rather than independent width anchors.
+Pins use half-slot coordinates. Paging arrows retain their authored offsets from the
+hand centre with the same scale. Ordinary, tactic, debug and reorder paths already use
+that shared geometry; the bottom reference from #242 is retained.
+
+Checks: full source runner passes (five layout tests, both YAML validators, actual C#
+geometry, syntax of 863 C# files), plus diff checks and independent source review.
+Geometry covers ten screen sizes including 1240×360 and 3440×1440, constant proportional
+gaps, pin midpoints, bottom clearance and reorder inversion. Added native tests cover
+first-open at reference/wide/portrait sizes and repeated resizing of one instance,
+including arrow and slot alignment. Unity compilation, native tests and Game View
+interaction remain unexecuted because Unity is not installed.
