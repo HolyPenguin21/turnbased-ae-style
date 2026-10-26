@@ -89,6 +89,9 @@ namespace Game.Cards
         public const string Transport = "Transport";
         // Opens paid repair for all own armies on the ground carrier's current hex.
         public const string Repair = "Repair";
+        // Suppresses positive hostile Base/Citadel defence while present on its hex or arriving.
+        // Frozen for each encounter; neither terrain nor the units' own defence is affected.
+        public const string Disruption = "Disruption";
         public const string Airfield = "Airfield";
         // On Equipment: consume the attachment. Innate on a Unit: expend the unit after attack.
         public const string SingleUse = "SingleUse";
@@ -255,7 +258,7 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
-            Splash, Scorcher, RaiseTheRots, Heal, Transport, Repair, Airfield, SingleUse,
+            Splash, Scorcher, RaiseTheRots, Heal, Transport, Repair, Disruption, Airfield, SingleUse,
             Explosion3, Explosion5, Explosion10, Ionic, Bodyguard, Counterattack, Drill,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus, TacticalIntelligence,
             Barracks, Research, Researcher, Production, Assembler,

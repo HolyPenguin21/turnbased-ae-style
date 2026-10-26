@@ -160,6 +160,51 @@ namespace Game.Ai.V2
             return best;
         }
 
+        // The equipment scorer asks only whether a real competing manufacture is available.
+        // Aviation still owns its target/supply, flight, placement and complete chain valuation.
+        internal static bool HasExecutableMissileProduction(WorldSnapshot snap, AiHandData hand = null,
+            MaterializationReservation reservation = null)
+        {
+            var player = snap?.Observer;
+            var root = PlayerRootRegistry.FindFor(player);
+            hand = hand ?? AiHandRegistry.Peek(player);
+            if (player == null || root == null || snap.Map == null || hand == null || !hand.HasFreeSlot)
+                return false;
+            // Missile manufacture is a Phase-B action. A later cold Phase-A residual may
+            // still price equipment after this shared tempo allowance has been exhausted.
+            var tempo = StrategicTempoBudget.For(player, snap.TurnNumber);
+            if (tempo.TotalCapHit) return false;
+            // Forecasts and reaction probes may know the count without the exact retry set.
+            // Each real attempt records one distinct source key. An incomplete projection cannot
+            // prove an untried alternative: keep reserve value until the carried history is known.
+            int attempts = System.Math.Max(reservation?.GenerationAttemptsUsed ?? 0,
+                tempo.GenerationAttemptsUsed);
+            if (attempts >= AiConfigV2.maxGenerationActionsPerTurn
+                || attempts > (reservation?.TriedGeneratorCards.Count ?? 0))
+                return false;
+            var ctx = new AiTurnContext { Map = snap.Map, TurnNumber = snap.TurnNumber };
+            foreach (GenerationStep source in snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
+            {
+                CardDefinition def = source?.CardDef;
+                if (reservation?.TriedGeneratorCards.Contains(source?.CardKey) == true
+                    || def?.isAviation != true || !ExplosionAttack.IsSingleUseUnit(def)
+                    || ExplosionAttack.TargetLimit(def.grantedAbilities) <= 0 || source.SuccessChance <= 0
+                    || !ResearchProductionSystem.IsEligible(player, source.FacilityHex, source.Mode, out _)
+                    || !ResearchProductionSystem.ActorStillQualifies(player, source.Hero, source.FacilityHex, source.Mode)
+                    || !DevelopmentInvestmentGate.IsOpenFor(player, snap.TurnNumber, source.ChallengeCard.resourceCost)
+                    || !GenerationSource.FitsReservedAffordability(root, player, ctx, source.ChallengeCard)) continue;
+                // Negative preview identity cannot consume a real hand/supply position.
+                var preview = CardData.WithRuntimeId(def, -1);
+                preview.ResearchProductionCreated = true;
+                foreach (var play in BuildAviationPlays(preview, source, snap, player, root, hand, ctx, null))
+                    if (play.Score > AiConfigV2.devEvMargin
+                        && play.ApCost <= StrategicSpendability.SpendableAp(player, root, ctx)
+                        && StrategicSpendability.FitsSpendableResources(player, root, ctx, play.ResCost))
+                        return true;
+            }
+            return false;
+        }
+
         // Successful-output utility on the same scale as real production. The operator portfolio
         // applies success probability, attempt cost and success-contingent deployment cost later.
         internal static float OperatorAviationServiceValue(WorldSnapshot snap, GenerationStep source,
@@ -206,6 +251,7 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand?.Hand == null || ctx == null)
                 yield break;
             if (blocked == null) blocked = new List<string>();
+            using var equipmentTargets = new EquipmentUpgradeValuation.EquipmentTargetMemo(reservation);
 
             var ownBaseHexes = OwnedBaseHexes(snap, player);
 
@@ -450,7 +496,7 @@ namespace Game.Ai.V2
 
             if (strikeTargets != null)
                 strikeTargets = GroundCombatAirSupport.UncoveredMissileStock(snap, projected,
-                    strikeTargets, hand.Hand, ctx.Map, card);
+                    strikeTargets, hand.Hand, ctx.Map, generation == null ? card : null);
 
             foreach (HexCoord airfield in airfields)
             {
@@ -522,8 +568,8 @@ namespace Game.Ai.V2
             return service;
         }
 
-        // Executable support plus honest missile-preparation witnesses. Formation still reads
-        // only CombatSupportTargets; a reserve witness never owns or launches an attack.
+        // Executable support, including independent useful missile-preparation strikes.
+        // Every witness has the existing AirSupport proposal/provisioning/flight lifecycle.
         // Inventory is filtered at production/deployment, not rebase (self must not hide demand).
         internal static List<CombatAirSupportRequest> KnownStrikeTargets(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -534,7 +580,7 @@ namespace Game.Ai.V2
             ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
             return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,
                 AviationRebasePlanner.CombatSupportTargets(snap, intents), commitments)
-                .Concat(GroundCombatAirSupport.MissileStockTargets(snap)).ToList();
+                .ToList();
         }
 
         // The not-yet-deployed aircraft as the sortie planners see it. It carries the card's
@@ -543,18 +589,16 @@ namespace Game.Ai.V2
         // the deployed aircraft will have when Assignment evaluates it.
         internal static List<UnitData> ProjectedAircraft(CardDefinition def, PlayerSetupData player)
         {
-            var aircraft = new UnitData
-            {
-                Owner = player, IsAviation = true, OriginatingCard = def,
-                Defense = def.defenseRating, HitPointsMax = def.hitPoints, HitPointsCurrent = def.hitPoints,
-                Initiative = def.initiative, Range = def.range,
-                MoveMax = Mathf.Max(1, def.moveMax),
-                MoveCurrent = Mathf.Max(1, def.moveMax),
-                Attack = Mathf.Max(0, def.attack),
-                ActivationApCost = Mathf.Max(0, def.activationApCost),
-                LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
-                TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
-            };
+            var aircraft = UnitData.CreateProjection();
+            aircraft.Owner = player; aircraft.IsAviation = true; aircraft.OriginatingCard = def;
+            aircraft.Defense = def.defenseRating;
+            aircraft.HitPointsMax = aircraft.HitPointsCurrent = def.hitPoints;
+            aircraft.Initiative = def.initiative; aircraft.Range = def.range;
+            aircraft.MoveMax = aircraft.MoveCurrent = Mathf.Max(1, def.moveMax);
+            aircraft.Attack = Mathf.Max(0, def.attack);
+            aircraft.ActivationApCost = Mathf.Max(0, def.activationApCost);
+            aircraft.LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost);
+            aircraft.TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel);
             if (def.unitTypeTags != null) aircraft.TypeTags.UnionWith(def.unitTypeTags);
             if (def.grantedAbilities != null)
                 aircraft.Abilities.UnionWith(def.grantedAbilities);

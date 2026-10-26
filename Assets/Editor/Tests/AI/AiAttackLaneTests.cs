@@ -129,6 +129,66 @@ namespace Game.EditorTests
             Assert.That(eligible.Contains(19), Is.False);
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ReadyGather_DoesNotBypassTheExistingHomeDeparturePolicy(bool preparation)
+        {
+            ArmySnapshot host = Army(7, OurBase, Strong());
+            ArmySnapshot guard = Army(33, OurBase, Weak());
+            guard.IsGarrison = true;
+            guard.IsStructuralRaidActor = false;
+            WorldSnapshot snap = DefendedSite(new[] { host, guard }, new[] { OurBase }, alsoOwnBuilding: true);
+            ArmySnapshot enemy = Army(60, new HexCoord(-1, 0), SiteDefenders());
+            enemy.Owner = Red;
+            var contact = new EnemyContactSnapshot { Army = enemy, Position = enemy.Hex,
+                Knowledge = ContactKnowledge.Exact, Confidence = 1f, LastObservedTurn = snap.TurnNumber };
+            snap.Threat.Contacts = new[] { contact };
+            snap.Threat.Threats = new[] { new AssetThreatSnapshot { Contact = contact, CanDamage = true,
+                EnemyEta = 1, Confidence = 1f, Asset = new StrategicAssetSnapshot {
+                    Kind = AssetKind.Citadel, Hex = OurBase, Value = 10f } } };
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Gather, 7);
+            intent.Attack.Preparation = preparation;
+            Assert.That(AttackMarchPolicy.Assess(snap, intent.Attack.Target, host).Verdict,
+                Is.EqualTo(AttackMarchVerdict.DefendHome));
+            Assert.That(AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null, out _),
+                Is.False, "Release the force for Defence before starting a forbidden march");
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Gather));
+        }
+
+        [Test]
+        public void ProjectedGatherCannotTakeBothDefendersOfARemoteBase()
+        {
+            ArmySnapshot host = Army(7, new HexCoord(20, 0), Strong());
+            ArmySnapshot first = Army(8, OurBase, Strong());
+            ArmySnapshot second = Army(9, OurBase, Strong());
+            WorldSnapshot snap = DefendedSite(new[] { host, first, second }, new[] { OurBase },
+                alsoOwnBuilding: true);
+            ArmySnapshot enemy = Army(60, new HexCoord(-1, 0), SiteDefenders()); enemy.Owner = Red;
+            var contact = new EnemyContactSnapshot { Army = enemy, Position = enemy.Hex,
+                Knowledge = ContactKnowledge.Exact, Confidence = 1f, LastObservedTurn = snap.TurnNumber };
+            snap.Threat.Contacts = new[] { contact };
+            snap.Threat.Threats = new[] { new AssetThreatSnapshot { Contact = contact, CanDamage = true,
+                EnemyEta = 1, Confidence = 1f, Asset = new StrategicAssetSnapshot {
+                    Kind = AssetKind.Base, Hex = OurBase, Value = 10f } } };
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, first), Is.False);
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, second), Is.False);
+            ArmySnapshot movedFirst = Army(8, host.Hex, Weak());
+            ArmySnapshot movedSecond = Army(9, host.Hex, Weak());
+            var projected = new Dictionary<int, ArmySnapshot> {
+                [host.ArmyId] = host, [first.ArmyId] = movedFirst, [second.ArmyId] = movedSecond };
+            var target = AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base);
+            var departure = new GroundCombatAssemblyPlan { Feasible = true, BaseArmyId = host.ArmyId };
+            Assert.That(AttackMarchPolicy.CanStart(snap, target, departure, snap.Intents, out _, projected),
+                Is.False, "a distant host cannot excuse the combined loss of both home defenders");
+            var gather = new GroundCombatGatherPlan { Feasible = true, HostArmyId = host.ArmyId };
+            foreach (var pair in projected) gather.DepartureArmies[pair.Key] = pair.Value;
+            Assert.That(AttackMarchPolicy.GatherDepartureReason(snap, target, gather), Is.Not.Null);
+            projected.Remove(second.ArmyId); gather.DepartureArmies.Remove(second.ArmyId);
+            Assert.That(AttackMarchPolicy.CanStart(snap, target, departure, snap.Intents, out _, projected), Is.True);
+            Assert.That(AttackMarchPolicy.GatherDepartureReason(snap, target, gather), Is.Null,
+                "a sufficient retained defender permits the useful convoy");
+        }
+
         [Test]
         public void BlindAssault_WaitsForObservationThenUsesTheExistingRecoveryLeg()
         {

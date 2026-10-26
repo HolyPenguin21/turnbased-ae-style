@@ -61,7 +61,9 @@ namespace Game.Ai.V2
             {
                 new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander,
                     AiMapMemory.KnownHexDefenseBonusFor(player, ctx?.Map, sighting.Value.Hex,
-                        sighting.Value.Owner), sighting.Value.ArmyId),
+                        sighting.Value.Owner), sighting.Value.ArmyId,
+                    AiMapMemory.KnownBuildingDefenseBonusFor(player, ctx?.Map, sighting.Value.Hex,
+                        sighting.Value.Owner)),
             };
             KnownOpposition.AddCoOccupants(session.Snapshot, sighting.Value.Hex, target.EnemyArmyId, opposition);
             bool immediate = target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity;
@@ -157,6 +159,10 @@ namespace Game.Ai.V2
                     defenceHandoffEnemyId: target.EnemyArmyId))
                 return ProvisioningResult.Fail(wingFailure);
             HexCoord targetHex = sighting.Value.Hex;
+            target.LastKnownHex = targetHex;
+            if (!GroundCombatAirSupport.PreparationStrikeUsefulLive(player, ctx, target, w.Wing))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "preparation strike no longer has a useful known missile target"));
             float eps = AiConfigV2.allocatorSliceEpsilon;
             if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w, targetHex,
                     "active-defence", eps, out HexCoord landing, out float ap, out float energy,

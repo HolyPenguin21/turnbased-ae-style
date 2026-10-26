@@ -36,11 +36,13 @@ namespace Game.Ai.V2
         // WingArmyId names an own airfield: its stored aircraft (StoredSupportGroup) launch for
         // this sortie, and the wing is formed when the leg executes.
         internal readonly bool FromStorage;
+        internal readonly TaskScore? ServiceScore;
 
         internal AirSupportOption(int wingArmyId, HexCoord landingHex, int etaTurns,
             int firstStrikeEta, int strikeTurns, float expectedDamage, bool rosterKnown,
-            float winAfter, float ap, ResourceVector resources, bool fromStorage = false)
+            float winAfter, float ap, ResourceVector resources, bool fromStorage = false, TaskScore? serviceScore = null)
         {
+            ServiceScore = serviceScore;
             FromStorage = fromStorage;
             WingArmyId = wingArmyId;
             LandingHex = landingHex;
@@ -205,7 +207,7 @@ namespace Game.Ai.V2
                         result.Add(new WorthIt.DefendingArmy(after.Bodies,
                             targets.First(t => t.ArmyId == army.ArmyId.Value).Roster.CommanderIndex < 0
                                 ? army.Commander : after.Commander,
-                            army.DefenseBonusOverride, army.ArmyId));
+                            army.DefenseBonusOverride, army.ArmyId, army.BuildingDefenseBonus));
                 }
                 else result.Add(army);
             return result;
@@ -214,10 +216,12 @@ namespace Game.Ai.V2
         internal static List<AirSupportOption> Options(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, HexCoord targetHex,
             AirStrikePolicy policy, Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst,
-            float currentWin, ISet<int> unavailableArmyIds, int? fixedWingArmyId = null)
+            float currentWin, ISet<int> unavailableArmyIds, int? fixedWingArmyId = null,
+            CombatAirSupportRequest? supportRequest = null)
         {
             var result = new List<AirSupportOption>();
-            if (snap?.Self?.Armies == null || TargetKnownEmpty(snap, targetHex, policy))
+            if (snap?.Self?.Armies == null || TargetKnownEmpty(snap, targetHex, policy)
+                || (supportRequest?.IsStockPreparation == true && ReferenceEquals(snap.Map, null)))
                 return result;
             HexCoord? landing = LandingBase(snap, targetHex);
             if (ReferenceEquals(snap.Map, null) && !landing.HasValue)
@@ -252,7 +256,7 @@ namespace Game.Ai.V2
                         && (!fixedWingArmyId.HasValue || active.Kind != AirSortieKind.Strike))
                         continue;
                     var projection = ProjectService(snap, snap.Observer, snap.Map, live.Members,
-                        live.Hex, new CombatAirSupportRequest(default, targetHex, policy, default), live,
+                        live.Hex, supportRequest ?? new CombatAirSupportRequest(default, targetHex, policy, default), live,
                         firstStrikeThisTurnOnly: reconHandoff);
                     if (!projection.HasValue) continue;
                     CombatAirService service = projection.Value;
@@ -262,7 +266,7 @@ namespace Game.Ai.V2
                         service.FirstStrikeEta, service.StrikeTurns,
                         service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
                         service.RosterKnown, projectedWin, service.Ap,
-                        new ResourceVector(0f, 0f, service.Energy, 0f, 0f)));
+                        new ResourceVector(0f, 0f, service.Energy, 0f, 0f), serviceScore: service.Score));
                     continue;
                 }
                 List<WorthIt.DefenderProfile> attackers = (wing.RecoveryMembers
@@ -325,7 +329,7 @@ namespace Game.Ai.V2
                 .OrderBy(x => x.ArmyId))
             {
                 ArmyData live = OwnWorld.Of(snap.Observer).Army(field.ArmyId);
-                if (StoredSupportGroup(snap, live, targetHex, policy, out CombatAirService service).Count == 0)
+                if (StoredSupportGroup(snap, live, targetHex, policy, out CombatAirService service, supportRequest).Count == 0)
                     continue;
                 float projectedWin = service.RosterKnown && winAgainst != null
                     ? winAgainst(AfterAirStrike(opposition, airTargets, service.Estimate)) : currentWin;
@@ -333,7 +337,7 @@ namespace Game.Ai.V2
                     service.FirstStrikeEta, service.StrikeTurns,
                     service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
                     service.RosterKnown, projectedWin, service.Ap,
-                    new ResourceVector(0f, 0f, service.Energy, 0f, 0f), fromStorage: true));
+                    new ResourceVector(0f, 0f, service.Energy, 0f, 0f), fromStorage: true, serviceScore: service.Score));
             }
             return result;
         }
@@ -343,14 +347,15 @@ namespace Game.Ai.V2
         // runtime id). The option, the provisioning and the execution all read this one choice,
         // so they always name the same aircraft. Empty when no stored aircraft can serve.
         internal static List<UnitData> StoredSupportGroup(WorldSnapshot snap, ArmyData airfield,
-            HexCoord targetHex, AirStrikePolicy policy, out CombatAirService service)
+            HexCoord targetHex, AirStrikePolicy policy, out CombatAirService service,
+            CombatAirSupportRequest? supportRequest = null)
         {
             service = default;
             var best = new List<UnitData>();
             if (snap?.Observer == null || ReferenceEquals(snap.Map, null) || airfield == null
                 || !AviationRules.IsAirfield(airfield) || airfield.Owner != snap.Observer)
                 return best;
-            var request = new CombatAirSupportRequest(default, targetHex, policy, default);
+            var request = supportRequest ?? new CombatAirSupportRequest(default, targetHex, policy, default);
             foreach (UnitData aircraft in airfield.Members
                 .Where(u => u != null && AviationRules.IsAviation(u) && AviationRules.EffectiveMoveCurrent(u) > 0)
                 .OrderBy(u => u.RuntimeId))
@@ -465,7 +470,7 @@ namespace Game.Ai.V2
             for (int a = 0; a < opposition.Count; a++)
                 if (perArmy[a].Count > 0)
                     result.Add(new WorthIt.DefendingArmy(perArmy[a], opposition[a].Commander,
-                        opposition[a].DefenseBonusOverride, opposition[a].ArmyId));
+                        opposition[a].DefenseBonusOverride, opposition[a].ArmyId, opposition[a].BuildingDefenseBonus));
             return result;
         }
 
@@ -659,7 +664,9 @@ namespace Game.Ai.V2
             AirStrikePolicy targetPolicy = funded.Mission.Target is RaidMissionTarget raid
                 ? AirStrikePolicy.RaidSupport(raid.Target.ArmyId)
                 : funded.Mission.Target is ActiveDefenceMissionTarget defence
-                    ? AirStrikePolicy.DefenceSupport(defence.EnemyArmyId) : AirStrikePolicy.Standard;
+                    ? AirSupportPolicy(defence) : AirStrikePolicy.Standard;
+            CombatAirSupportRequest? supportRequest = funded.Mission.Target is ActiveDefenceMissionTarget airTarget
+                ? AirSupportRequest(airTarget, funded.Mission.Score, targetHex) : (CombatAirSupportRequest?)null;
             if (w.Active?.Kind == AirSortieKind.Recon
                 && (targetPolicy.Kind != AirStrikePolicyKind.DefenceSupport
                     || !HasImmediateDefenceService(session.Snapshot, wing, targetPolicy.ExactTargetArmyId)))
@@ -676,7 +683,7 @@ namespace Game.Ai.V2
             {
                 // The same aircraft the option was priced on; its launch is the claimed cost.
                 List<UnitData> group = StoredSupportGroup(session.Snapshot, wing, targetHex, targetPolicy,
-                    out CombatAirService service);
+                    out CombatAirService service, supportRequest);
                 if (group.Count == 0)
                 {
                     failure = ProvisionFailure.NoExecutableStep(
@@ -689,6 +696,13 @@ namespace Game.Ai.V2
                 energy = service.Energy;
                 return FitsLaunchBudget(player, root, ctx, session, funded, wing, lane, eps, ap, energy,
                     out failure);
+            }
+            if (supportRequest?.IsStockPreparation == true
+                && !ProjectService(session.Snapshot, player, ctx.Map, wing.Members, wing.Hex,
+                    supportRequest.Value, wing).HasValue)
+            {
+                failure = ProvisionFailure.TargetInvalidated("preparation strike no longer has a useful missile service");
+                return false;
             }
             Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player, singleUseStrike: true);
             MultiTurnSortie? multi = sameTurn.HasValue ? null

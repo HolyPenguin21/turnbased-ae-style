@@ -14,6 +14,8 @@ namespace Game.Combat
         public ArmyData Defender { get; }
         public BattleGrid Grid { get; }
         public int BattleSeed { get; }
+        // One encounter snapshot shared by damage, tactical AI and defence presentation.
+        public int DefenderBuildingDefenseBonus { get; }
 
         public int Round { get; set; } = 1;
         public List<UnitData> TurnOrder { get; set; } = new List<UnitData>();
@@ -27,6 +29,8 @@ namespace Game.Combat
             Defender = defender;
             Grid = grid;
             BattleSeed = battleSeed;
+            DefenderBuildingDefenseBonus = DisruptionRules.BuildingDefenseAtEncounterStart(
+                battleHex, defender, attacker);
         }
 
         public ArmyData OwningArmy(UnitData unit)

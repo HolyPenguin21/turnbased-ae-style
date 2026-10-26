@@ -413,6 +413,96 @@ namespace Game.EditorTests
             Assert.That(host.Members.Count, Is.EqualTo(2), "planning moves nobody");
         }
 
+        [TestCase(false)] [TestCase(true)]
+        public void DirectPreparationCardServesOnlyItsOwnConsumer(bool differentConsumer)
+        {
+            var host = OwnBaseArmy(false, Body(2));
+            var attack = new AttackIntent { PrimaryArmyId = host.Id, Preparation = true,
+                Phase = AttackMissionPhase.Gather,
+                Target = AttackTargetRef.For(new HexCoord(5, 0), new PlayerSetupData(), AttackTargetKind.Base) };
+            var intent = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                PreferredMoverArmyId = host.Id, IntentKey = MissionIntentKey.ForAttack(attack.Target),
+                Objective = attack };
+            MissionIntentRegistry.GetOrCreate(player).Put(intent);
+            var snap = Snapshot(); snap.Self.Armies.Single().ArmyId = host.Id;
+            snap.Intents = MissionIntentRegistry.GetOrCreate(player);
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower, ConsumerMissionKind = MissionKind.Attack,
+                ConsumerIntentKey = differentConsumer ? MissionIntentKey.ForAttack(
+                    AttackTargetRef.For(new HexCoord(6, 0), attack.Target.ExpectedOwner, AttackTargetKind.Base)) : intent.IntentKey,
+                AttackFistArmyId = host.Id, AttackFistIsPreparationHost = true, TargetHex = Base };
+            var plan = new MaterializationPlan { BaseCardInHand = StrongBody(),
+                Deploy = new PlacementOption(Base, DeploymentKind.ExistingArmy, host) };
+            var result = MaterializationDeliveryPolicy.AssessDemandOperationally(plan, demand, snap,
+                player, new AiTurnContext());
+            Assert.That(result.CanDeliver, Is.EqualTo(!differentConsumer), result.ToString());
+            var pass = new PhaseAPass(snap, player, null, null, new AiTurnContext(), null,
+                null, null, MissionIntentRegistry.GetOrCreate(player), null, null, null, null, false,
+                new StrategicPhaseResult { Reservation = new MaterializationReservation() }) {
+                ColdStates = new System.Collections.Generic.List<DemandState> {
+                    new DemandState { Demand = demand, Remaining = 1f } } };
+            pass.PublishEarlyResiduals();
+            AxisDemand residual = pass.Reservation.UnresolvedDemands.Single();
+            Assert.That(residual.ConsumerMissionKind, Is.EqualTo(MissionKind.Attack));
+            Assert.That(MaterializationDeliveryPolicy.AssessDemandOperationally(plan, residual, snap,
+                player, new AiTurnContext()).CanDeliver, Is.EqualTo(!differentConsumer),
+                "Phase B must retain the same consumer identity and delivery contract");
+            Assert.That(host.Members.Count, Is.EqualTo(1), "the delivery proof is read-only");
+        }
+
+        [TestCase(1, false)] [TestCase(2, true)]
+        public void PreparationCardRouteProofMatchesRefitAndWaitWitness(int incomingMovement, bool allowed)
+        {
+            var mapObject = new UnityEngine.GameObject("preparation card route");
+            try
+            {
+                var map = mapObject.AddComponent<HexMap>();
+                var goal = new HexCoord(3, 0);
+                map.SetData(5, 1f, new System.Collections.Generic.Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry> {
+                    [Base] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 },
+                    [goal] = new Game.Terrain.TerrainTypeEntry { moveCost = 2 },
+                });
+                var host = OwnBaseArmy(false, Body(2), Body(3));
+                var attack = new AttackIntent { PrimaryArmyId = host.Id, Preparation = true,
+                    Phase = AttackMissionPhase.Gather,
+                    Target = AttackTargetRef.For(goal, new PlayerSetupData(), AttackTargetKind.Base) };
+                var intent = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                    PreferredMoverArmyId = host.Id, IntentKey = MissionIntentKey.ForAttack(attack.Target), Objective = attack };
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+                var snap = Snapshot(); snap.Map = map; snap.Intents = MissionIntentRegistry.GetOrCreate(player);
+                snap.Self.Armies.Single().ArmyId = host.Id;
+                var card = StrongBody(); card.Definition.moveMax = incomingMovement;
+                var demand = new AxisDemand { AttackFistArmyId = host.Id, AttackFistIsPreparationHost = true,
+                    TargetHex = Base, AttackObjectiveHex = goal, Capability = CapabilityKind.FieldCombatPower };
+                var plans = Enumerate(demand, card, snap);
+                Assert.That(plans.Count, Is.EqualTo(allowed ? 1 : 0));
+                if (allowed)
+                {
+                    Assert.That(AttackBaseRefitPolicy.Validate(plans.Single(), snap, player,
+                        MissionIntentRegistry.GetOrCreate(player).All, out _, out _), Is.True);
+                    card.Definition.moveMax = 1;
+                    Assert.That(AttackBaseRefitPolicy.Validate(plans.Single(), snap, player,
+                        MissionIntentRegistry.GetOrCreate(player).All, out _, out _), Is.False,
+                        "a pinned refit is rechecked before it spends or mutates");
+                    card.Definition.moveMax = incomingMovement;
+                }
+                snap.Self.Hand = new[] { card };
+                Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, host,
+                    taskTarget: goal) != null, Is.EqualTo(allowed), "the WAIT must name an executable delivery");
+                host.Members.RemoveAt(1);
+                var direct = new MaterializationPlan { BaseCardInHand = card,
+                    Deploy = new PlacementOption(Base, DeploymentKind.ExistingArmy, host) };
+                demand.ConsumerMissionKind = MissionKind.Attack; demand.ConsumerIntentKey = intent.IntentKey;
+                Assert.That(MaterializationDeliveryPolicy.AssessDemandOperationally(direct, demand, snap,
+                    player, new AiTurnContext { Map = map }).CanDeliver, Is.EqualTo(allowed));
+                Assert.That(MaterializationDeliveryPolicy.CardPreservesAttackTaskRoute(snap, host,
+                    card.Definition, AiPower.ProjectMaterialization(direct)), Is.EqualTo(allowed),
+                    "execution resolves the same active target without a demand object");
+                Assert.That(host.Members.Count, Is.EqualTo(1));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(mapObject); }
+        }
+
         // The unbound demand's free fist: the same exchange; a fist an operation owns is not free.
         [TestCase(false, 1)] [TestCase(true, 0)]
         public void FreeFist_FullRosterIsServedByExchangeOnlyWhileUnclaimed(bool claimed, int expected)

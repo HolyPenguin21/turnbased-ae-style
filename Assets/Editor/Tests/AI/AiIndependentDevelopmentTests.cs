@@ -770,6 +770,85 @@ namespace Game.EditorTests
                 "its qualified operator is not sold again as a delivery to the second base");
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ProjectedPreparationStaffingUsesReplacementRosterAndOutsideOperators(bool outsideOperator)
+        {
+            var op = new UnitData { Owner = _player, IsHero = true, CommandRating = 6 };
+            op.Abilities.Add(UnitAbilities.Assembler);
+            var preview = ArmyData.CreateVisualSnapshot();
+            preview.Owner = _player; preview.Hex = Site; preview.Members.Add(op);
+            Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(ResearchProductionMode.Production,
+                _snapshot, _player, _hand, _ctx, null), Is.Null);
+            var projectedSite = DevelopmentOpportunityEvaluator.SelectedPreparationSite(
+                ResearchProductionMode.Production, _snapshot, _player, _hand, _ctx, null, preview);
+            Assert.That(projectedSite, Is.EqualTo((HexCoord?)Site),
+                "the new hero staffs the preparation site before its card is paid");
+            var live = new ArmyData { Owner = _player, Hex = Site };
+            live.Members.Add(op); ArmyRegistry.Register(live);
+            var replacement = ArmyData.CreateVisualSnapshot(); replacement.Owner = _player; replacement.Hex = Site;
+            if (outsideOperator)
+            {
+                var other = new UnitData { Owner = _player, IsHero = true };
+                other.Abilities.Add(UnitAbilities.Assembler); _garrison.Members.Add(other);
+            }
+            Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(ResearchProductionMode.Production,
+                _snapshot, _player, _hand, _ctx, null, replacement, live),
+                Is.EqualTo(outsideOperator ? (HexCoord?)Site : null),
+                "a removed operator does not survive in the replaced live container");
+            Assert.That(DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(_player, preview, null,
+                mode => DevelopmentOpportunityEvaluator.SelectedPreparationSite(mode, _snapshot,
+                    _player, _hand, _ctx, null, preview, live)), Is.EqualTo(!outsideOperator));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        [Category("UnityEngine")]
+        public void EconomyHeroPreflightRejectsNewSolePreparationOperatorBeforePayment(bool outsideOperator)
+        {
+            AiHandRegistry.Clear();
+            var mapObject = new GameObject("projected-operator-delivery");
+            try
+            {
+                var liveHand = AiHandRegistry.GetOrCreate(_player, null, 0);
+                liveHand.AddCard(_facility); liveHand.AddCard(_operator);
+                _operator.Definition.moveMax = 3;
+                _operator.Definition.hitPoints = 6;
+                _operator.Definition.activationApCost = 1;
+                var target = new HexCoord(Site.Q + 1, Site.R);
+                _ctx.Map = mapObject.AddComponent<HexMap>();
+                _ctx.Map.SetData(2, 1f, new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
+                {
+                    [Site] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 },
+                    [target] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 },
+                });
+                _snapshot.Map = _ctx.Map;
+                _snapshot.Self.Hand = liveHand.Hand;
+                Assert.That(_snapshot.Development.PreparationSiteFor(ResearchProductionMode.Production), Is.Null);
+                if (outsideOperator)
+                {
+                    var other = new UnitData { Owner = _player, IsHero = true };
+                    other.Abilities.Add(UnitAbilities.Assembler); _garrison.Members.Add(other);
+                }
+                var plan = new MaterializationPlan { BaseCardInHand = _operator,
+                    Deploy = new PlacementOption(Site, DeploymentKind.NewArmy, null) };
+                var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                    Capability = CapabilityKind.Hero, TargetHex = target, Value = 1000f,
+                    EconomySiteValue = 1000f, EconomyBuildApCost = 1,
+                    EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Base }) };
+                int apBefore = _root.ActionPoints;
+                var result = MaterializationDeliveryPolicy.AssessDemandOperationally(plan, demand,
+                    _snapshot, _player, _ctx);
+                Assert.That(result.CanDeliver, Is.EqualTo(outsideOperator), result.ToString());
+                if (!outsideOperator)
+                    Assert.That(result.FailureReason,
+                        Is.EqualTo(MaterializationDeliveryPolicy.DeliveryFailureReason.InsufficientSafeEscort));
+                Assert.That(_root.ActionPoints, Is.EqualTo(apBefore));
+                Assert.That(liveHand.Hand, Does.Contain(_operator));
+            }
+            finally { AiHandRegistry.Clear(); _ctx.Map = null; UnityEngine.Object.DestroyImmediate(mapObject); }
+        }
+
         [Test]
         public void WholeArmyDepartureIsBlockedOnlyWhenNoQualifiedOperatorStaysOutsideIt()
         {

@@ -178,15 +178,19 @@ public static class CollectionWindowBuilder
     // (nested Card_Army, mask, fonts) and is loaded by LoadOrCreatePrefab; this stub has no card preview.
     internal static CollectionCardCellView BuildCell(TMP_FontAsset font)
     {
-        var root = Panel(null, "CollectionCard"); root.sizeDelta = new Vector2(140, 194);
-        var host = Rect(root, "Card");
+        var root = Panel(null, "CollectionCard"); root.sizeDelta = new Vector2(140, 204);
+        var visual = Rect(root, "Visual");
+        visual.anchorMin = visual.anchorMax = new Vector2(.5f, 1f);
+        visual.pivot = new Vector2(.5f, 1f); visual.sizeDelta = root.sizeDelta;
+        var host = Rect(visual, "Card");
         host.anchorMin = host.anchorMax = new Vector2(.5f, 1); host.pivot = new Vector2(.5f, 1);
         host.anchoredPosition = Vector2.zero; host.sizeDelta = new Vector2(106, 155);
-        var info = Text(root, "Info", "", 1, 158, 138, 15, 12, font);
+        var info = Text(visual, "Info", "", 1, 158, 138, 15, 12, font);
         info.alignment = TextAlignmentOptions.Center;
-        var add = MakeButton(root, "Add", "", 8, 176, 124, 18, 12, font);
+        var add = MakeButton(visual, "Add", "", 8, 176, 124, 18, 12, font);
         var view = root.gameObject.AddComponent<CollectionCardCellView>();
         var so = new SerializedObject(view);
+        so.FindProperty("visual").objectReferenceValue = visual;
         so.FindProperty("cardHost").objectReferenceValue = host;
         so.FindProperty("infoLabel").objectReferenceValue = info;
         so.FindProperty("addButton").objectReferenceValue = add;

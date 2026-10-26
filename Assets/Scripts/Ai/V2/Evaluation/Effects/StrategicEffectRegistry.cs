@@ -47,6 +47,7 @@ namespace Game.Ai.V2
         TransportMobility, // actual expected movement gain of the whole recipient army
         MobileAirfield,    // held/deployed aircraft not yet served by mobile deck capacity
         MobileRepair,      // additional paid repair access for wounded own units on this hex
+        BuildingDisruption, // missing carrier for a known hostile structural defence
         FreeBattleSlots,    // summon— BaseFit scaled by min(free slots, CapacityRequirement) / CapacityRequirement
     }
 
@@ -908,8 +909,16 @@ namespace Game.Ai.V2
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
                         stacking: EffectStacking.Unique, stackingKey: "Bodyguard", bodyOnly: true),
                 },
-                // Drill: an aura over the destination army's fighters (EligibleAllies), so it is
-                // worth something on a hero card and feeds IncomingAuraSynergy for new bodies.
+                // Structure suppression is an army support capability, with no generic field
+                // power bump. Its value requires a known hostile positive building defence.
+                [UnitAbilities.Disruption] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectDrillFit,
+                        StrategicEffectContext.BuildingDisruption, EffectField.Synergy, coverage: false,
+                        scope: EffectScope.DestArmy, stacking: EffectStacking.Unique,
+                        stackingKey: UnitAbilities.Disruption),
+                },
+                // Drill is an aura over the destination army's fighters (EligibleAllies).
                 [UnitAbilities.Drill] = new[]
                 {
                     new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectDrillFit,
@@ -1590,6 +1599,13 @@ namespace Game.Ai.V2
                     return e.BaseFit * ctx.MobileAirfieldService;
                 case StrategicEffectContext.MobileRepair:
                     return e.BaseFit * ctx.MobileRepairService;
+                case StrategicEffectContext.BuildingDisruption:
+                    if (DisruptionRules.HasCarrier(ctx.DestArmyMembers)) return 0f;
+                    float structureDefense = (ctx.Snap?.Known?.Buildings
+                        ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                        .Where(b => b.IsBase && b.Owner != null && b.Owner != ctx.Snap.Observer)
+                        .Select(b => Mathf.Max(0f, b.Defense)).DefaultIfEmpty(0f).Max();
+                    return e.BaseFit * magP * structureDefense;
                 case StrategicEffectContext.ExpectedSustain:
                 {
                     // §3.2 — regen value ≈ BaseFit × (usable rounds / norm) × HP factor × magP.

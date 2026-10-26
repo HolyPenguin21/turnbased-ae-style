@@ -34,6 +34,8 @@ namespace Game.Ai.V2
             if (snap == null || intent == null)
                 return false;
 
+            if (ReconScoutKinds.IsDisruption(intent.Kind))
+                return ReconObjectiveEvaluator.AssaultNeedsDisruption(snap, intent.FocusHex);
             if (ReconScoutKinds.IsCapture(intent.Kind))
                 return snap.Self?.ReconCaptureOpportunities?.Any(x => x.Hex.Equals(intent.FocusHex)) == true;
             if (ReconScoutKinds.IsHunt(intent.Kind))

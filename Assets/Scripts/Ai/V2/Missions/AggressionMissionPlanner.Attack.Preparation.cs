@@ -115,7 +115,8 @@ namespace Game.Ai.V2
                     player == null ? null : intentState?.All);
                 GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                     hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceGate,
-                    fieldHost.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
+                    fieldHost.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true,
+                    departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, objective.Target, candidate));
                 // The lead leg is a FREE army (a bought donor stays with its operation until the
                 // intent this step creates retires it), exactly as the fresh gather's lead.
                 ArmySnapshot lead = gather.Feasible
@@ -147,7 +148,9 @@ namespace Game.Ai.V2
                 }
                 ArmyData liveField = player == null ? null : OwnWorld.Of(player).Army(fieldHost.ArmyId);
                 GroundCombatAssemblyPlan fieldStep = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
-                    snap, liveField, excluded, opposition, hexBonus);
+                    snap, liveField, excluded, opposition, hexBonus,
+                    rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, liveField,
+                        objective.Target.Hex, SafeRouteProfile.Attack));
                 if (fieldStep.Feasible)
                 {
                     AppendPreparationStep(snap, objective, fieldHost.ArmyId, fieldHost.Hex,
@@ -177,11 +180,14 @@ namespace Game.Ai.V2
                 host.IsGarrison = false;
             }
             GroundCombatAssemblyPlan seed = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
-                snap, host, excluded, opposition, hexBonus);
+                snap, host, excluded, opposition, hexBonus,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, host,
+                    objective.Target.Hex, SafeRouteProfile.Attack));
             // ATK-F02 — a container is created or reused only for a concrete source: a same-hex
             // member or a card that would strengthen it (never a bare positive Reserve).
             string cardSource = seed.Feasible || host == null ? null
-                : AggressionDemandEvaluator.PreparationHostCardSource(snap, host);
+                : AggressionDemandEvaluator.PreparationHostCardSource(snap, host,
+                    taskTarget: objective.Target.Hex);
             if (!seed.Feasible && cardSource == null)
             {
                 AiDebugLog.WriteDeduped(logKey,
@@ -353,7 +359,9 @@ namespace Game.Ai.V2
                 snap.Self.AttackPeak, KnownOpposition.OnHex(snap, a.Target.Hex),
                 hexBonus);
             GroundCombatAssemblyPlan step = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
-                snap, live, unavailable, opposition, hexBonus);
+                snap, live, unavailable, opposition, hexBonus,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, live,
+                    a.Target.Hex, SafeRouteProfile.Attack));
             if (!step.Feasible)
                 return;
             AttackObjective objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
@@ -420,7 +428,8 @@ namespace Game.Ai.V2
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap,
                 KnownOpposition.OnHex(snap, a.Target.Hex), hexBonus,
                 a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate,
-                host.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
+                host.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true,
+                departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate));
             List<int> bought = plan.Feasible
                 ? plan.SupportArmyIds.Where(donorValues.ContainsKey).ToList() : new List<int>();
             if (bought.Count == 0)

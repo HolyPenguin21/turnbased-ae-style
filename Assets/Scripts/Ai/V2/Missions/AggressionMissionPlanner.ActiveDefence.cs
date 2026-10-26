@@ -287,7 +287,7 @@ namespace Game.Ai.V2
                         OwnWorld.Of(snap.Observer).Army(w.ArmyId)))
                     unavailable.Add(w.ArmyId);
 
-            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap)
+            foreach (ActiveDefenceObjective objective in GroundCombatAirSupport.AirSupportObjectives(snap, activeIntents)
                 .OrderBy(o => o.Target.EnemyEta ?? int.MaxValue).ThenByDescending(o => o.BaseValue))
             {
                 int enemyId = objective.Target.EnemyArmyId;
@@ -295,6 +295,14 @@ namespace Game.Ai.V2
                     && i.Status == IntentStatus.Active
                     && i.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport
                     && i.ActiveDefence.EnemyArmyId == enemyId);
+                // A preparation series keeps its missile-only policy even if its target has
+                // since become a listed threat. Its operation and paid launch stay the same.
+                if (incumbent?.ActiveDefence?.InterceptPurpose == ActiveDefenceInterceptPurpose.PreparationStrike)
+                {
+                    ActiveDefenceMissionTarget retained = objective.Target;
+                    retained.InterceptPurpose = ActiveDefenceInterceptPurpose.PreparationStrike;
+                    objective.Target = retained;
+                }
                 int? fixedWing = incumbent?.ActiveDefence?.AirSupportArmyId;
                 if (incumbent != null && (!fixedWing.HasValue
                         || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, fixedWing.Value,
@@ -312,10 +320,11 @@ namespace Game.Ai.V2
                 if (opposition == null)
                     continue; // no honest contact position — nothing to fly to
                 HexCoord targetHex = objective.Target.LastKnownHex;
-                AirStrikePolicy policy = AirStrikePolicy.DefenceSupport(enemyId);
+                AirStrikePolicy policy = GroundCombatAirSupport.AirSupportPolicy(objective.Target);
+                CombatAirSupportRequest request = GroundCombatAirSupport.AirSupportRequest(objective.Target, objective.TaskScore);
                 List<AirSupportOption> options = GroundCombatAirSupport.Ranked(
                     GroundCombatAirSupport.Options(snap, opposition, targetHex, policy, null, 0f,
-                        fixedWing.HasValue ? null : unavailable, fixedWing));
+                        fixedWing.HasValue ? null : unavailable, fixedWing, request));
                 if (options.Count == 0)
                     continue;
                 AirSupportOption best = options[0];
@@ -330,7 +339,8 @@ namespace Game.Ai.V2
                 // Expected share of the threat the series removes; an unknown roster is neutral.
                 float effect = best.RosterKnown && totalHp > 0f
                     ? UnityEngine.Mathf.Clamp01(best.ExpectedDamage / totalHp) : 0.5f;
-                TaskScore score = GroundCombatAirSupport.ServiceScore(objective.TaskScore, effect,
+                TaskScore score = (request.IsStockPreparation ? best.ServiceScore : null)
+                    ?? GroundCombatAirSupport.ServiceScore(objective.TaskScore, effect,
                     best.Ap, best.Resources.Energy, best.EtaTurns);
 
                 ActiveDefenceMissionTarget target = objective.Target;
@@ -351,7 +361,7 @@ namespace Game.Ai.V2
                     DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
                     Requirements = GroundCombatAirSupport.LegRequirements(wing, targetHex, best.EtaTurns,
                         best.Ap, best.Resources.Energy),
-                    Explain = $"ActiveDefence enemy #{enemyId} AirSupport wing #{wing.ArmyId} "
+                    Explain = $"ActiveDefence {target.InterceptPurpose} enemy #{enemyId} AirSupport wing #{wing.ArmyId} "
                         + $"-> {best.StrikeTurns} strike turn(s), land "
                         + $"({target.AirSupportLandingHex.Value.Q},{target.AirSupportLandingHex.Value.R}) "
                         + $"task {score.Value:0.00}",

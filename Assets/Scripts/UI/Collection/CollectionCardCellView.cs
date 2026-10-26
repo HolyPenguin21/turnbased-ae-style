@@ -17,7 +17,21 @@ namespace Game.UI
         [SerializeField] private ArmyUnitCardUI preview;
         [SerializeField] private CanvasGroup previewGroup;
         [SerializeField] private GameObject selection;
+        [SerializeField] private RectTransform visual;
         public CardDefinition Card { get; private set; }
+
+        private void OnRectTransformDimensionsChange() => FitVisual();
+        private void OnEnable() => FitVisual();
+
+        private void FitVisual()
+        {
+            if (visual == null) return;
+            var cell = (RectTransform)transform;
+            if (visual.rect.width <= 0f || visual.rect.height <= 0f) return;
+            float scale = Mathf.Max(0f, Mathf.Min(cell.rect.width / visual.rect.width,
+                cell.rect.height / visual.rect.height));
+            visual.localScale = Vector3.one * scale;
+        }
 
         public void Init(Action<CardDefinition> onAdd)
         {
@@ -26,6 +40,7 @@ namespace Game.UI
 
         public void Bind(CardDefinition card, GameConfig config, Action<CardDefinition> onSelect, Func<bool> inputAllowed)
         {
+            FitVisual();
             if (Card == card) return;
             Card = card; gameObject.name = card.authoredKey;
             preview.SetupPreview(card, config, onSelect, inputAllowed);

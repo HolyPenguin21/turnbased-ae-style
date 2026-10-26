@@ -241,15 +241,18 @@ namespace Game.UI
             if (handContainer == null)
                 return;
 
+            slotRects = new RectTransform[MaxVisible];
             for (int i = 0; i < MaxVisible; i++)
             {
                 var go = new GameObject($"Slot{i}", typeof(RectTransform));
                 var rt = (RectTransform)go.transform;
                 rt.SetParent(handContainer, false);
-                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.anchorMin = rt.anchorMax = new Vector2(SlotAnchorX(i), 0.5f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
                 rt.sizeDelta = slotVisualSize;
-                rt.anchoredPosition = new Vector2(SlotX(i), 0f);
+                rt.anchoredPosition = Vector2.zero;
+                rt.localScale = Vector3.one * HandLayoutScale;
+                slotRects[i] = rt;
                 // Inserted at the front, in order — every card is added to handContainer AFTER
                 // these (see AddCard), so later siblings (the actual cards) always render on
                 // top without needing any extra sorting-order bookkeeping here.
@@ -273,14 +276,11 @@ namespace Game.UI
 
             var go = new GameObject("CardSeparators", typeof(RectTransform));
             var layer = (RectTransform)go.transform;
+            separatorLayer = layer;
             layer.SetParent(handContainer.parent, false);
             layer.SetSiblingIndex(handContainer.GetSiblingIndex() + 1);
-            layer.anchorMin = handContainer.anchorMin;
-            layer.anchorMax = handContainer.anchorMax;
-            layer.pivot = handContainer.pivot;
-            layer.sizeDelta = handContainer.sizeDelta;
-            layer.anchoredPosition = handContainer.anchoredPosition;
-            layer.localScale = handContainer.localScale;
+            SyncSeparatorLayer();
+            separatorDesignY = new float[cardSeparators.Length];
 
             for (int i = 0; i < cardSeparators.Length; i++)
             {
@@ -288,7 +288,10 @@ namespace Game.UI
                 if (separator == null)
                     continue;
                 separator.SetParent(layer, false);
-                separator.anchoredPosition = new Vector2((SlotX(i) + SlotX(i + 1)) * 0.5f, separator.anchoredPosition.y);
+                float anchorY = Mathf.Lerp(separator.anchorMin.y, separator.anchorMax.y, separator.pivot.y);
+                separatorDesignY[i] = separator.anchoredPosition.y + anchorY * referenceHandSize.y;
+                separator.anchorMin = separator.anchorMax = new Vector2(SlotAnchorX(i + .5f), .5f);
+                separator.anchoredPosition = new Vector2(0f, HandGeometry.DecorationOffsetY(separatorDesignY[i]));
                 if (separator.TryGetComponent(out Graphic graphic))
                     graphic.raycastTarget = false;
             }
@@ -349,6 +352,7 @@ namespace Game.UI
         // there's nothing left that only a per-frame poll could catch.
         private void OnEnable()
         {
+            RefreshHandLayout();
             BindTacticInventory();
             _humanRoot = FindHumanRoot();
             if (_humanRoot != null)
@@ -821,8 +825,8 @@ namespace Game.UI
 
         private bool IsWithinDragBand(float localY)
         {
-            float maxY = cardSize.y * 0.5f + hoverLift + dragBandBuffer;
-            float minY = -(cardSize.y * 0.5f + dragBandBuffer);
+            float maxY = (cardSize.y * 0.5f + hoverLift + dragBandBuffer) * HandLayoutScale;
+            float minY = -(cardSize.y * 0.5f + dragBandBuffer) * HandLayoutScale;
             return localY >= minY && localY <= maxY;
         }
 
@@ -1289,13 +1293,11 @@ namespace Game.UI
                 if (c != dragged && c.gameObject.activeSelf)
                     _scratchVisible.Add(c);
 
-            float step = cardSize.x * (1f - overlapFraction) + cardSpacing;
+            float step = HandGeometry.Step;
             if (step <= 0f)
                 return _scrollOffset + _scratchVisible.Count;
 
-            float totalWidth = MaxVisible > 0 ? (MaxVisible - 1) * step : 0f;
-            float slot0LeftEdge = -totalWidth * 0.5f - step * 0.5f;
-            float raw = (dropX - slot0LeftEdge) / step;
+            float raw = HandGeometry.IndexAt(dropX) + .5f;
 
             // Slot the card currently sits in, in the same visible-slot space as `raw` (raw is
             // in [k, k+1) while the card is over visible slot k). Stay put unless raw has left
@@ -1365,9 +1367,7 @@ namespace Game.UI
         // container's own pivot (x=0), just never on a per-card-count basis any more.
         private float SlotX(int index)
         {
-            float step = cardSize.x * (1f - overlapFraction) + cardSpacing;
-            float totalWidth = MaxVisible > 0 ? (MaxVisible - 1) * step : 0f;
-            return -totalWidth * 0.5f + index * step;
+            return HandGeometry.SlotX(index);
         }
 
         private void OnDrawClicked()

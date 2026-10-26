@@ -351,7 +351,10 @@ namespace Game.Ai.V2
             bool heroCard = pdef != null && pdef.cardType == CardType.Hero;
             IReadOnlyList<string> pabil = plan.ProjectedAbilities ?? pdef?.grantedAbilities;
             bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(pabil);
-            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv) : 0f;
+            // A concrete Phase-A capability request needs this incoming recipient even before
+            // it has a physical army/roster identity. Optional CardUpgrade remains recipient-based.
+            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv,
+                requiredRecipient: demand.Capability != CapabilityKind.CardUpgrade) : 0f;
 
             // Built before RoleFitCore so HeroLeadershipFit can read the destination army's capacity
             // off the SAME EffectEvaluationContext.ResolveDestination walk the ability registry uses
@@ -378,7 +381,8 @@ namespace Game.Ai.V2
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind)
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.SynergyValue = SynergyValue(plan, snap, inv, role != IntendedRole.EquipmentUpgrade) + ec.Synergy + ec.GlobalSynergy;
+            bd.SynergyValue = SynergyValue(plan, snap, inv, includeEquipment: false)
+                + (role != IntendedRole.EquipmentUpgrade ? equipUpgrade : 0f) + ec.Synergy + ec.GlobalSynergy;
             // Zeroed for a hero card (both phases now) — a hero's own body already prices into
             // HeroLeadershipFit's combatPart; ForceGrowthValue's SurplusCombatReadinessUtility-based
             // marginal power would double-count the same Attack/Defense/HP line a second time.
@@ -422,7 +426,8 @@ namespace Game.Ai.V2
         public static StrategicCardUseCandidate ScoreSurplus(MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected, WorldSnapshot snap,
             float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
+            AxisDemand deliveredDemand = null)
         {
             CardDefinition def = PlanBaseDef(plan);
             BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv, hand?.Hand);
@@ -433,7 +438,7 @@ namespace Game.Ai.V2
             foreach (IntendedRole role in roles)
                 scored.Add(ScoreSurplusRole(plan, role, inv, recce, hero, hand, projected, snap,
                     baseline, versatility, witnessedUsefulApDemand, projectedLegalFillers,
-                    spendableResource, player));
+                    spendableResource, player, deliveredDemand));
 
             scored.Sort((a, b) =>
             {
@@ -460,7 +465,8 @@ namespace Game.Ai.V2
             CapabilityInventory inv, bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
             WorldSnapshot snap, BaselineForceReadiness baseline, float versatility,
             float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
+            AxisDemand deliveredDemand = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
@@ -469,7 +475,8 @@ namespace Game.Ai.V2
             // here. It is a second explicit descriptor contribution (EffectField.ImmediateTempo on
             // the ApBonus row) and arrives below via ec.ImmediateTempo, counted exactly once and
             // identically in Phase A. The evaluator no longer knows RecurringResource is special.
-            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv) : 0f;
+            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeValuation.EquipmentUpgradeValue(plan, snap, inv,
+                requiredRecipient: deliveredDemand != null && deliveredDemand.Capability != CapabilityKind.CardUpgrade) : 0f;
 
             // Built before RoleFitCore — see ScoreForDemand's comment on the same ordering.
             var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);

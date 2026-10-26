@@ -150,7 +150,8 @@ namespace Game.Ai.V2
             // Admission must precede BOTH durable patrol creation and required-stealth AP spend.
             // RunPreparedStep repeats these same domain checks after each awaited movement: a
             // valid scout can still be lost/recomposed or a battle can start between steps.
-            if (!AiArmyRoles.IsSoloRecce(army))
+            if (!AiArmyRoles.IsSoloRecce(army)
+                || (ReconScoutKinds.IsDisruption(pm.ScoutKind) && !DisruptionRules.HasCarrier(army)))
             {
                 result.StopReason = ExecutionStopReason.MoverLost;
                 result.ApSpent = 0f;
@@ -177,7 +178,9 @@ namespace Game.Ai.V2
                     : pm.FocusHex,
             };
 
-            if (!ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
+            if (ReconScoutKinds.IsDisruption(pm.ScoutKind))
+                ReconPatrolStateRegistry.Retire(player, army.Id, "Disruption delivery replaces patrol");
+            if (ReconScoutKinds.UsesPatrolLane(pm.ScoutKind))
                 ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
                     prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
@@ -213,7 +216,8 @@ namespace Game.Ai.V2
                 ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover lost");
                 yield break;
             }
-            if (!AiArmyRoles.IsSoloRecce(army))
+            if (!AiArmyRoles.IsSoloRecce(army)
+                || (ReconScoutKinds.IsDisruption(pm.ScoutKind) && !DisruptionRules.HasCarrier(army)))
             {
                 control.StopReason = ExecutionStopReason.MoverLost;
                 ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "actor no longer solo Recce");
@@ -232,7 +236,8 @@ namespace Game.Ai.V2
             { control.StopReason = ExecutionStopReason.ReachedGoal; yield break; }
             // Hidden arrival does nothing until the resident voluntarily reveals. Zero MP/AP
             // is sufficient for this contact; gameplay owns capture, not a second AI rule.
-            if (ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, army.Hex))
+            if (!ReconScoutKinds.IsDisruption(pm.ScoutKind)
+                && ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, army.Hex))
             {
                 control.CommandAttempted = true;
                 result.StealthChanged |= ExitArmyStealth(army);
@@ -244,13 +249,27 @@ namespace Game.Ai.V2
                     : ExecutionStopReason.StepCompleted;
                 yield break;
             }
+            if (ReconScoutKinds.IsDisruption(pm.ScoutKind))
+            {
+                if (result.ReachedGoal)
+                { control.StopReason = ExecutionStopReason.ReachedGoal; yield break; }
+                // Stealth is required on every delivery step, including the stationary source.
+                // Never voluntarily reveal to hunt/capture while providing the passive support.
+                if (!StealthSystem.IsArmyFullyHidden(army))
+                { control.StopReason = ExecutionStopReason.RequiredStealthUnavailable; yield break; }
+                if (army.Hex.Equals(pm.FocusHex))
+                { control.StopReason = ExecutionStopReason.OutOfMovement; yield break; }
+            }
             ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(
-                ReconScoutKinds.IsLocalStrike(pm.ScoutKind) ? null : player, army.Id,
+                !ReconScoutKinds.UsesPatrolLane(pm.ScoutKind) ? null : player, army.Id,
                 army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
                 player, ctx.Map, army, assignment);
-            if (ReconScoutKinds.IsCapture(pm.ScoutKind))
+            if (ReconScoutKinds.IsDisruption(pm.ScoutKind))
+                reaction = new ReconReactionDecision(ReconReactionAction.Continue,
+                    pm.FocusHex, null, 0f, "funded hidden Disruption delivery");
+            else if (ReconScoutKinds.IsCapture(pm.ScoutKind))
             {
                 if (!ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, pm.FocusHex))
                 { control.StopReason = ExecutionStopReason.TargetInvalidated; yield break; }
@@ -317,6 +336,12 @@ namespace Game.Ai.V2
                     break;
                 case ReconReactionAction.Continue:
                 default:
+                    if (ReconScoutKinds.IsDisruption(pm.ScoutKind))
+                    {
+                        next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, pm.FocusHex);
+                        actionWhy = "Disruption delivery";
+                        break;
+                    }
                     ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
                         player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot);
                     if (choice.HasValue)
@@ -334,7 +359,10 @@ namespace Game.Ai.V2
             // Tactical policies choose the desired destination; the shared ground-routing
             // owner decides the executable first step for every Recon action shape.
             next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, next.Value);
-            if (!next.HasValue || (reaction.Action == ReconReactionAction.Flee
+            if (!next.HasValue || (ReconScoutKinds.IsDisruption(pm.ScoutKind)
+                && (ScoutRiskModel.StepBlocked(player, army, next.Value)
+                    || ScoutRiskModel.DetectorRiskLive(player, next.Value) >= 1f))
+                || (reaction.Action == ReconReactionAction.Flee
                 && ScoutRiskModel.StepBlocked(player, army, next.Value)))
             {
                 control.StopReason = ExecutionStopReason.NoSafeStep;
@@ -414,10 +442,10 @@ namespace Game.Ai.V2
             if (moved)
             {
                 result.StepsMoved++;
-                if (!ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
+                if (ReconScoutKinds.UsesPatrolLane(pm.ScoutKind))
                     ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
                 // The turn-wide distinct-scout budget counts scouts that really walked.
-                if (!ReconScoutKinds.IsLocalStrike(pm.ScoutKind))
+                if (ReconScoutKinds.UsesPatrolLane(pm.ScoutKind))
                     ReconTurnStateStore.For(player, ctx.TurnNumber)
                         .MarkReconGroundActorUsed(ctx.TurnNumber, pm.MoverArmyId);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
@@ -493,7 +521,8 @@ namespace Game.Ai.V2
             }
 
             RefreshObjectiveSatisfied(player, pm, result);
-            control.CanContinue = !ReconScoutKinds.IsCapture(pm.ScoutKind) && army.CurrentMovement > 0;
+            control.CanContinue = !ReconScoutKinds.IsCapture(pm.ScoutKind) && army.CurrentMovement > 0
+                && !(ReconScoutKinds.IsDisruption(pm.ScoutKind) && army.Hex.Equals(pm.FocusHex));
             control.StopReason = ReconScoutKinds.IsLocalStrike(pm.ScoutKind) && result.ReachedGoal
                 ? ExecutionStopReason.ReachedGoal : control.CanContinue
                 ? ExecutionStopReason.StepCompleted

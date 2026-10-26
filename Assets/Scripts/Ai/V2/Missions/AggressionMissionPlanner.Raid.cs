@@ -329,7 +329,10 @@ namespace Game.Ai.V2
                 IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.ForRaid(snap, ri.Target);
                 List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                     snap, primaryId, opposition, committed,
-                    KnownOpposition.RaidDefenceBonus(snap, ri.Target));
+                    KnownOpposition.RaidDefenceBonus(snap, ri.Target),
+                    rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                        AiV2Util.ResolveArmy(snap.Observer, primaryId), ri.LastKnownHex,
+                        SafeRouteProfile.Combat));
                 if (candidates.Count == 0)
                 {
                     deferredReason = "raid_waiting_for_support";

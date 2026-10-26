@@ -65,7 +65,11 @@ namespace Game.Ai.V2
             }
             List<int> existing = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                 snap, primaryId, opposition, commitments?.ClaimedArmyIdSet, hexBonus,
-                allowCommandHandover: consumerKind == MissionKind.Attack);
+                allowCommandHandover: consumerKind == MissionKind.Attack,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                    AiV2Util.ResolveArmy(snap.Observer, primaryId),
+                    consumerKind == MissionKind.Attack ? intent.Attack.Target.Hex : intent.Raid.LastKnownHex,
+                    consumerKind == MissionKind.Attack ? SafeRouteProfile.Attack : SafeRouteProfile.Combat));
             if (existing.Count > 0)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "

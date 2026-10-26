@@ -453,7 +453,9 @@ namespace Game.Ai.V2
                 string why = null;
                 RendezvousPlan? meet = null;
                 if (bound == null || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(primary, bound,
-                        opposition, hexBonus, allowCommandHandover: true))
+                        opposition, hexBonus, allowCommandHandover: true,
+                        rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                            AiV2Util.ResolveArmy(snap.Observer, primary.ArmyId), a.Target.Hex, SafeRouteProfile.Attack)))
                     why = "no longer improves the primary";
                 else
                     meet = GroundCombatRendezvous.SelectForward(snap, primary, bound, a.Target.Hex,
@@ -543,7 +545,9 @@ namespace Game.Ai.V2
             foreach (AttackGatherReturn r in a.GatherReturns)
                 excluded.Add(r.ArmyId);
             List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
-                a.PrimaryArmyId.Value, opposition, excluded, hexBonus, allowCommandHandover: true);
+                a.PrimaryArmyId.Value, opposition, excluded, hexBonus, allowCommandHandover: true,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                    AiV2Util.ResolveArmy(snap.Observer, primary.ArmyId), a.Target.Hex, SafeRouteProfile.Attack));
             int? bestId = null;
             var rejected = new List<string>();
             foreach (int id in candidates.OrderBy(x => x))
@@ -741,7 +745,9 @@ namespace Game.Ai.V2
                 // (the plan may keep it for that alone).
                 return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
-                        allowCommandHandover: true);
+                        allowCommandHandover: true,
+                        rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                            AiV2Util.ResolveArmy(snap.Observer, host.ArmyId), a.Target.Hex, SafeRouteProfile.Attack));
             }).ToList();
             if (dropped.Count > 0)
             {
@@ -754,6 +760,20 @@ namespace Game.Ai.V2
             if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
                 && AttackPrimaryClearsTarget(snap, a))
             {
+                if (!AttackMarchPolicy.CanStart(snap, a.Target,
+                        new GroundCombatAssemblyPlan { Feasible = true, BaseArmyId = a.PrimaryArmyId.Value },
+                        snap.Intents, out string departureWhy))
+                {
+                    if (departureWhy == "defenders_unknown" || departureWhy == "defenders_stale")
+                    {
+                        intent.LastProtectedTurn = snap.TurnNumber;
+                        AiDebugLog.WriteDeduped(intent.IntentKey + "#gather-observation",
+                            $"[AI][V2][Attack][Gather] {intent.IntentKey} HOLD {departureWhy}; awaiting Recon before departure");
+                        return true;
+                    }
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} retired before departure: {departureWhy}");
+                    return false; // free the host for Defence; do not invent a return from the same home
+                }
                 AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} phase Gather -> Assault "
                     + $"(host #{a.PrimaryArmyId} clears {a.Target.DiagnosticLabel} "
                     + $"win={a.ProjectedWinChance:0.00}); released supports "
@@ -774,7 +794,8 @@ namespace Game.Ai.V2
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 a.PrimaryArmyId, null,
-                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
+                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
+                departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate));
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
@@ -833,7 +854,9 @@ namespace Game.Ai.V2
                 return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || host.MemberCount == 0
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
-                        allowCommandHandover: true);
+                        allowCommandHandover: true,
+                        rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                            AiV2Util.ResolveArmy(snap.Observer, host.ArmyId), a.Target.Hex, SafeRouteProfile.Attack));
             }).ToList();
             if (dropped.Count > 0)
             {
@@ -861,6 +884,20 @@ namespace Game.Ai.V2
             if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
                 && AttackPrimaryClearsTarget(snap, a))
             {
+                if (!AttackMarchPolicy.CanStart(snap, a.Target,
+                        new GroundCombatAssemblyPlan { Feasible = true, BaseArmyId = a.PrimaryArmyId.Value },
+                        snap.Intents, out string departureWhy))
+                {
+                    if (departureWhy == "defenders_unknown" || departureWhy == "defenders_stale")
+                    {
+                        intent.LastProtectedTurn = snap.TurnNumber;
+                        AiDebugLog.WriteDeduped(intent.IntentKey + "#gather-observation",
+                            $"[AI][V2][Attack][Gather] {intent.IntentKey} HOLD {departureWhy}; awaiting Recon before departure");
+                        return true;
+                    }
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} retired before departure: {departureWhy}");
+                    return false; // free the host for Defence; do not invent a return from the same home
+                }
                 // 2026-10-01 (user decision) — a fist at the peak has nothing left to wait for:
                 // an unobserved (location-only) target no longer holds it. It marches, observes on
                 // the way, and every pass of the march re-checks the then-known defenders.
@@ -921,7 +958,8 @@ namespace Game.Ai.V2
                 // RecruitDonors proposal (AggressionMissionPlanner.AppendPreparationRecruit).
                 : GroundCombatAssemblyPlanner.PlanGather(snap, opposition, hexBonus, a.Target.Hex,
                     unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate, hostId, null,
-                    minimumArmyPower: required, allowPartial: true);
+                    minimumArmyPower: required, allowPartial: true,
+                    departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate));
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
@@ -936,7 +974,9 @@ namespace Game.Ai.V2
 
             ArmyData liveHost = AiV2Util.ResolveArmy(snap.Observer, hostId);
             bool sameHexStep = liveHost != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(
-                snap, liveHost, unavailable, opposition, hexBonus).Feasible;
+                snap, liveHost, unavailable, opposition, hexBonus,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, liveHost,
+                    a.Target.Hex, SafeRouteProfile.Attack)).Feasible;
             // ATK-F02 — a WAIT names its concrete source; a positive Reserve alone is no delivery
             // into this exact (possibly full) host.
             string cardSource = sameHexStep ? null
@@ -1101,7 +1141,9 @@ namespace Game.Ai.V2
             float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
                 a.PrimaryArmyId.Value, opposition, unavailableArmyIds, hexBonus,
-                allowCommandHandover: true).Count > 0;
+                allowCommandHandover: true,
+                rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
+                    AiV2Util.ResolveArmy(snap.Observer, a.PrimaryArmyId.Value), a.Target.Hex, SafeRouteProfile.Attack)).Count > 0;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken
@@ -1259,7 +1301,7 @@ namespace Game.Ai.V2
                 {
                     CreateAttackIntent(state, o, turn);
                     AiDebugLog.Write($"[AI][V2][Attack] continuity - [{aid}] {o.IntentKey} "
-                        + "captured on its opening step; intent recorded for a clean release");
+                        + $"{o.AttackFacts().AttackTarget.Phase} opening leg completed; intent recorded for phase reconciliation");
                     return true;
                 }
             }

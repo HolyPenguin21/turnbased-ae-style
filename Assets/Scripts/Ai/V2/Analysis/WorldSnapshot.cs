@@ -1182,6 +1182,7 @@ namespace Game.Ai.V2
         public AssetKind Kind;
         public float Value;                // importance to US, set by the snapshot
         public float HexDefenseBonus;      // the structural / terrain part alone (fed to WorthIt as its hexDefenseBonus)
+        public float BuildingDefenseBonus; // removable positive component, frozen with the asset
         // Who an attacker must beat to take this asset: for a structure every own ground army on
         // its hex (garrison and field armies, each its own battle with its commander — the rules'
         // one-army-after-another fight); for a field army, that army alone.

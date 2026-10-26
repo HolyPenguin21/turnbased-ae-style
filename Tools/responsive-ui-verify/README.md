@@ -1,5 +1,34 @@
 # Responsive UI verification
 
+For the runtime setup/collection/map-hand changes, run the focused source checks:
+
+```sh
+python Tools/responsive-ui-verify/run_runtime_checks.py --dotnet /path/to/dotnet
+```
+
+Requires Python/PyYAML, Node and an installed .NET 8 SDK; downloads nothing. Checks source
+geometry at 1280x720, 1920x1080, 2560x1440, 1920x1200, 2560x1080 and 1024x768;
+both YAML validators; the real C# hand-geometry implementation; and C# syntax across Assets.
+This does **not** compile against Unity assemblies or run native interactions.
+
+In Unity also run `RuntimeResponsiveUiTests`, `ResponsiveUiInteractionTests`,
+`TacticHandPresentationTests`, `CollectionScrollPresentationTests` and the full EditMode suite.
+The focused native tests instantiate six player rows, resize/reuse real collection cells,
+and exercise ordinary/tactic/debug card resizing, hover, interrupted flips and cancelled drags.
+Changing the hand area during a drag deliberately cancels the gesture and returns the card;
+the subsequent pointer-up never plays it using stale geometry. Separators keep their scaled
+offset from card centres, including when width and height ratios differ. Adding a player
+reveals the new row after its layout rebuild; reopened lists begin at the top.
+Manually check first open, reopen, resize during drag/flip, paging beyond seven cards,
+and TMP popups escaping the setup viewport mask. Preserve the authored look at 1280x720.
+
+The earlier broad source audit below covers the older Full HD conversion. It is not a native
+acceptance result for the runtime layout changes.
+The bottom-up check also reproduced its existing `ResourceBar` root-bounds failure: the bar
+extends 2.2000122 logical units above the canvas in both original master `2e0491fa` and this
+working tree. That unrelated HUD geometry was not changed. The hand/setup assertions have
+been updated for seven runtime slots and the scrollable two-line player rows.
+
 Run from the repository root (Python 3 with PyYAML):
 
 ```sh
@@ -11,8 +40,8 @@ node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/Game.unity Assets/Sce
 The Python check parses every scene and prefab, checks duplicate YAML keys, local reference
 integrity, component ownership and bidirectional hierarchy. It evaluates the serialized anchors
 at 1280x720, 1600x900, 1920x1080 and 2560x1440 with the authored 1280x720 CanvasScaler.
-It checks root bounds, the 5x5 battle grid, production/base grids, six hand slots, all five
-resource-drawer states, six player setup rows, scroll wiring, maskable army cards and the
+It checks root bounds, the 5x5 battle grid, production/base grids, seven hand slots, all five
+resource-drawer states, six scrollable player setup rows, scroll wiring, maskable army cards and the
 statistics text viewport with a readable fixed font size.
 It also checks player resolution defaults, the project's Unity version and the audio
 settings prefab's root bounds and scene override targets.

@@ -208,22 +208,34 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ExecutionResult result, ArmyData wing)
         {
             int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
-            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing);
             AiMapMemory.KnownEnemySighting? witness = AiMapMemory.KnownHostileSightingOf(player, enemyId);
-            if (!AviationRules.IsValidAirArmy(wing) || !witness.HasValue
+            if (!(AviationRules.IsValidAirArmy(wing) || AviationRules.IsAirfield(wing)) || !witness.HasValue
                 || !pm.ActiveDefenceTarget.AirSupportLandingHex.HasValue)
             {
                 result.StopForReplan(ExecutionStopReason.TargetInvalidated);
                 yield break;
             }
             HexCoord targetHex = witness.Value.Hex;
+            pm.ActiveDefenceTarget.LastKnownHex = targetHex;
+            if (!GroundCombatAirSupport.PreparationStrikeUsefulLive(player, ctx, pm.ActiveDefenceTarget, wing))
+            {
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
+                yield break;
+            }
+            wing = GroundCombatLegStep.MaterializeSupportWing(player, ctx, pm, result, wing);
+            if (!AviationRules.IsValidAirArmy(wing))
+            {
+                result.StopForReplan(ExecutionStopReason.TargetInvalidated);
+                yield break;
+            }
             pm.ExecutionHex = targetHex;
             pm.ActiveDefenceTarget.LastKnownHex = targetHex;
             pm.ActiveDefenceTarget.LastObservedTurn = witness.Value.SeenTurn;
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
             yield return GroundCombatLegStep.AirStrikeSortie(player, root, ctx, pm, result, wing,
                 targetHex, pm.ActiveDefenceTarget.AirSupportLandingHex.Value,
-                AirStrikePolicy.DefenceSupport(enemyId), "DefenceSupport",
+                GroundCombatAirSupport.AirSupportPolicy(pm.ActiveDefenceTarget),
+                pm.ActiveDefenceTarget.InterceptPurpose.ToString(),
                 $"flies to strike threat #{enemyId}");
             // The real strike publishes the hex (VisionSystem.NotifyContentChanged); whether the
             // threat is gone is then read from honest memory by Continuity on the next pass.

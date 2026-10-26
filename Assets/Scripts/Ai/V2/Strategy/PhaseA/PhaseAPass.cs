@@ -292,6 +292,7 @@ namespace Game.Ai.V2
                 AttackCoverageTargetHex = d.AttackCoverageTargetHex,
                 DeliveryShape = d.DeliveryShape,
                 ConsumerIntentKey = d.ConsumerIntentKey,
+                ConsumerMissionKind = d.ConsumerMissionKind,
                 Explain = d.Explain,
                 IsPersistenceDeferred = d.IsPersistenceDeferred,
             };
