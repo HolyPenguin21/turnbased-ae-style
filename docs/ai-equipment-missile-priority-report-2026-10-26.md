@@ -34,4 +34,4 @@ Use the project's Unity version and run the full EditMode suite, especially AiEq
 - Fulfill a concrete Scout/Attack/Defence demand with a new generated/equipped army. Its required equipment value must not be discounted before deployment. Check negative mobility/capability deltas remain vetoes.
 - Threaten a secondary base while a Disruption scout travels and an assault assembles. Equipment competition must not weaken required defence or strip those assignments. Compare multi-turn AP/resource spending and missile saturation in real matches before changing 0.25.
 
-Remote publication must use real parent fa1a55a647d14939e95312af04ceda628c94aabf, never synthetic local checkpoint2590a16. Only task files are overlaid on the complete remote tree; this task is published separately for review.
+Remote publication must use real parent fa1a55a647d14939e95312af04ceda628c94aabf, never synthetic local checkpoint2590a16. Only task files are overlaid on the complete remote tree; integration is through [PR #239](https://github.com/HolyPenguin21/turnbased-ae-style/pull/239) into master as explicitly requested. The merged tree will be checked against the published task tree.

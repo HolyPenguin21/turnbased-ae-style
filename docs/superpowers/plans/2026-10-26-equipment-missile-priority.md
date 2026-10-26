@@ -29,7 +29,7 @@
 ## Task 3 — cache, broad review and delivery
 - [x] Extend admission/recipient keys for finite copy allocation and duty; retain existing missile/budget/path/supply facts.
 - [x] Run git diff --check, differential tree-sitter and .meta/GUID/caller audits; no YAML changes expected.
-- [x] One fresh-context review of full task diff, resolve concrete Important/Critical findings, update journal/report and publish separate reviewable branch/PR based on real remote parent. No automatic master merge in this new task.
+- [x] One fresh-context review of full task diff, resolve concrete Important/Critical findings, update journal/report and publish separate reviewable branch/PR based on real remote parent. Integrate into master after review, following the user’s explicit commit/merge/push instruction; disclose unavailable checks.
 
 ## Ledger
 - Initial worktree contains the already-published #237/#238 tree. Saved as local checkpoint2590a16 and isolated new branch work/ai-equipment-missile-priority; no prior work is reimplemented.
@@ -41,3 +41,5 @@
 - Fixed an existing qualified-name typo in AiIndependentDevelopmentTests (UnityEngine.UnityEngine.Object -> UnityEngine.Object) found during the caller/compile-plausibility audit.
 - Verification: git diff --check; differential tree-sitter on all 10 task C# files (zero parser errors); both new .meta pairs present and GUIDs unique; existing assembly predicate callers remain 8 PlanGather / 6 PlanPreparationAssembly. No YAML assets changed in this task; rerunning both validators on the prior three assets also passed. Unity/dotnet/mono are absent, so no real compilation, NUnit/EditMode or gameplay execution occurred. The misleading missing-dotnet compile script result is not used.
 - Publication uses verified real remote parent fa1a55a647d14939e95312af04ceda628c94aabf and its tree, replacing only the task's files. Local synthetic checkpoint2590a16 is not a remote parent. Report: docs/ai-equipment-missile-priority-report-2026-10-26.md.
+
+- Integration: PR #239 contains the verified task tree. The user’s explicit commit/merge/push instruction authorizes integration into master after the review; no repeat confirmation is needed. Compilation/Unity limitations remain disclosed.
