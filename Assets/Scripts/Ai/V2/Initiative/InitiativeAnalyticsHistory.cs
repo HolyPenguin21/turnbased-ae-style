@@ -37,7 +37,7 @@ namespace Game.Ai.V2.Initiative
     // Per-player bounded ring buffer used ONLY by the pre-turn Initiative module. It never feeds
     // WorldAnalysis / Radar / DemandLayer / MissionLayer / ResourceAllocator / StrategicManager /
     // TaskExecutor / HousekeepingManager.
-    public static class InitiativeAnalyticsHistory
+    public static partial class InitiativeAnalyticsHistory
     {
         private static readonly Dictionary<PlayerSetupData, List<InitiativeTurnRecord>> ByPlayer =
             new Dictionary<PlayerSetupData, List<InitiativeTurnRecord>>();

@@ -10,6 +10,9 @@ namespace Game.Progression
     // Atomic disk boundary. The service publishes in-memory changes only after this succeeds.
     public sealed class CollectionProfileStore
     {
+        public const int MaximumProfileBytes = 16 * 1024 * 1024;
+        public const int MaximumEventRewards = 100000;
+        public const int MaximumRewardIdentityLength = 256;
         private readonly string path;
         public CollectionProfileStore(string directory) { path = Path.Combine(directory, "collection-v1.json"); }
         public CollectionProfile Load(out string notice)
@@ -22,19 +25,43 @@ namespace Game.Progression
             }
             return profile;
         }
+        [Serializable] private sealed class ReceiptLedger
+        {
+            // No initializer: a missing v2 ledger must not become an innocent empty list.
+            public List<EventRewardReceipt> eventRewards = null;
+        }
         private static CollectionProfile Read(string file)
         {
-            var profile = JsonUtility.FromJson<CollectionProfile>(File.ReadAllText(file));
+            if (new FileInfo(file).Length > MaximumProfileBytes) throw new InvalidDataException("Collection file too large.");
+            string json = File.ReadAllText(file);
+            var profile = JsonUtility.FromJson<CollectionProfile>(json);
+            if (profile != null && profile.schemaVersion == 2
+                && JsonUtility.FromJson<ReceiptLedger>(json)?.eventRewards == null)
+                throw new InvalidDataException("Missing event reward ledger.");
+            // v1 predates event receipts. Existing ownership is retained without inventing or
+            // replaying historical grants; only future event claims acquire durable receipts.
+            if (profile != null && profile.schemaVersion == 1)
+            {
+                if (profile.eventRewards == null) profile.eventRewards = new List<EventRewardReceipt>();
+                profile.schemaVersion = 2;
+            }
             ValidateShape(profile);
             return profile;
         }
         public static void ValidateShape(CollectionProfile p)
         {
             if (p == null || string.IsNullOrWhiteSpace(p.profileId)) throw new InvalidDataException("Missing profile identity.");
-            if (p.schemaVersion > 1) throw new NotSupportedException("This profile needs a newer game version.");
-            if (p.schemaVersion != 1) throw new InvalidDataException("Unsupported profile schema.");
-            if (p.ownedCards == null || p.savedDecks == null || p.selectedDeckByFaction == null || p.pendingRewards == null || p.claimedMatchIds == null)
+            if (p.schemaVersion > 2) throw new NotSupportedException("This profile needs a newer game version.");
+            if (p.schemaVersion != 2) throw new InvalidDataException("Unsupported profile schema.");
+            if (p.ownedCards == null || p.savedDecks == null || p.selectedDeckByFaction == null || p.pendingRewards == null || p.claimedMatchIds == null || p.eventRewards == null)
                 throw new InvalidDataException("Incomplete profile.");
+            if (p.eventRewards.Count > MaximumEventRewards) throw new InvalidDataException("Too many event reward receipts.");
+            var eventIdentities = new HashSet<(string, string)>();
+            foreach (var receipt in p.eventRewards)
+                if (receipt == null || !ValidRewardIdentity(receipt.matchId) || !ValidRewardIdentity(receipt.eventId)
+                    || (!string.IsNullOrEmpty(receipt.cardKey) && string.IsNullOrWhiteSpace(receipt.cardKey))
+                    || !eventIdentities.Add((receipt.matchId, receipt.eventId)))
+                    throw new InvalidDataException("Invalid event reward receipts.");
             var keys = new HashSet<string>();
             foreach (var e in p.ownedCards)
                 if (e == null || string.IsNullOrWhiteSpace(e.cardKey) || e.count < 0 || !keys.Add(e.cardKey))
@@ -59,10 +86,14 @@ namespace Game.Progression
                 || p.pendingRewards.Select(r => r.matchId).Distinct().Count() != p.pendingRewards.Count)
                 throw new InvalidDataException("Invalid pending rewards.");
         }
+        public static bool ValidRewardIdentity(string value)
+            => !string.IsNullOrWhiteSpace(value) && value.Length <= MaximumRewardIdentityLength;
         public void Save(CollectionProfile profile)
         {
             ValidateShape(profile);
-            AtomicJsonFile.Save(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(profile, true)));
+            var bytes = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(profile, true));
+            if (bytes.Length > MaximumProfileBytes) throw new InvalidDataException("Collection file too large.");
+            AtomicJsonFile.Save(path, bytes);
         }
     }
 }

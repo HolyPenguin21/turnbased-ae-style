@@ -23,7 +23,7 @@ namespace Game.Campaign
         public CompletedMatchResult(string matchId, Faction winner, Faction loser, bool draw)
         { MatchId = matchId; WinnerFaction = winner; LoserFaction = loser; Draw = draw; }
     }
-    public static class CampaignMatchBridge
+    public static partial class CampaignMatchBridge
     {
         public static CampaignController Controller { get; private set; }
         public static string Notice { get; private set; }

@@ -116,6 +116,31 @@ namespace Game.Setup
             if (cameraController != null)
                 cameraController.SetPanningEnabled(false);
 
+            if (GameSession.PendingRestore != null)
+            {
+                // Default-order HUD/camera startup completes before binding restored objects.
+                yield return null;
+                try
+                {
+                    if (!string.IsNullOrEmpty(GameSession.SetupError))
+                        throw new System.InvalidOperationException(GameSession.SetupError);
+                    ConfigureWorldSystems();
+                    MatchRestoreCoordinator.RestorePending(gameConfig, map, turnController, hexSelectionController);
+                    if (popupCanvas != null) Destroy(popupCanvas);
+                    if (hexSelectionController != null) hexSelectionController.enabled = true;
+                    if (cameraController != null) cameraController.SetPanningEnabled(true);
+                    Destroy(gameObject);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogException(ex);
+                    MatchStateInventory.EndMatch(turnController);
+                    GameSession.SetupError = "Could not restore the saved match: " + ex.Message;
+                    UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
+                }
+                yield break;
+            }
+
             if (confirmButton != null)
             {
                 confirmButton.interactable = false;
@@ -126,10 +151,27 @@ namespace Game.Setup
             if (gameConfig == null || map == null || GameSession.Players == null || GameSession.Players.Count == 0)
                 yield break;
 
+            ConfigureWorldSystems();
+            AssignStartingHexes(GameSession.Players);
+
+            _allPlayers.Clear();
+            _allPlayers.AddRange(GameSession.Players);
+            if (_allPlayers.Count == 0)
+                yield break;
+
+            // Our Awake runs early to reset the world before generation. Let default-order
+            // Start methods initialize the camera/HUD before placement can pan or start a game.
+            yield return null;
+            BeginPlayerTurn(0);
+        }
+
+        private void ConfigureWorldSystems()
+        {
             // Configure before AssignStartingHexes/the per-player loop below ever registers an
             // army or building — both registries recompute vision the moment something is
             // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii
             // need to already be known by then, not set afterward.
+            if (gameConfig == null || map == null) throw new System.InvalidOperationException("Match configuration or map is missing.");
             VisionSystem.Configure(gameConfig);
             // Stealth detection needs the terrain move-cost at a hidden unit's hex for its
             // hide-tokens bump; hand StealthSystem a lookup into the live map here, same
@@ -142,17 +184,6 @@ namespace Game.Setup
             // VisionSystem.VisibilityChanged, which the very first Register call below can
             // already fire, so the subscription needs to be in place before that happens.
             AiMapMemory.EnsureSubscribed(map);
-            AssignStartingHexes(GameSession.Players);
-
-            _allPlayers.Clear();
-            _allPlayers.AddRange(GameSession.Players);
-            if (_allPlayers.Count == 0)
-                yield break;
-
-            // Our Awake runs early to reset the world before generation. Let default-order
-            // Start methods initialize the camera/HUD before placement can pan or start a game.
-            yield return null;
-            BeginPlayerTurn(0);
         }
 
         // --- Per-player turn sequencing --------------------------------------------------
@@ -701,6 +732,7 @@ namespace Game.Setup
             // spawns under this owner.
             _neutralPlayer = new PlayerSetupData
             {
+                PlayerId = "neutral",
                 Nickname = "Neutral",
                 ColorIndex = PlayerColorPalette.NeutralColorIndex, // white, reserved — never offered to real players
                 Faction = Faction.Neutral,

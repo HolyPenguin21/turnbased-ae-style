@@ -104,9 +104,7 @@ namespace Game.Map
             {
                 MapObjectVisual visual;
                 using (new Game.Core.ProfileScope("Map/Instantiate.RememberedArmy"))
-                    visual = Instantiate(source.Controller.Visual, source.Controller.transform.position,
-                        source.Controller.transform.rotation, transform);
-                visual.name = source.Controller.Visual.name + " (Last Seen)";
+                    visual = source.Controller.Visual.CreateFrozenSnapshot(transform);
                 remembered = new RememberedArmyVisual { Visual = visual };
                 visuals[source.Id] = remembered;
             }
@@ -294,8 +292,10 @@ namespace Game.Map
             // replaces another on the same hex (a Base founded over a resource facility) is a
             // different prefab — copying onto the old clone leaves the new art (flag, accent)
             // missing, so the ghost kept showing the facility. Re-clone from the new marker.
-            if (snapshot != null && _rememberedBuildingSources.TryGetValue(snapshot, out MapObjectVisual clonedFrom)
-                && clonedFrom != source)
+            // Imported snapshots have no live source link: their first real re-observation must
+            // also re-clone the now-observed marker, rather than reuse a historical hierarchy.
+            if (snapshot != null && (!_rememberedBuildingSources.TryGetValue(snapshot, out MapObjectVisual clonedFrom)
+                || clonedFrom != source))
             {
                 _rememberedBuildingSources.Remove(snapshot);
                 Destroy(snapshot.gameObject);
@@ -304,12 +304,7 @@ namespace Game.Map
             if (snapshot == null)
             {
                 using (new Game.Core.ProfileScope("Map/Instantiate.RememberedBuilding"))
-                    snapshot = Instantiate(source, source.transform.position, source.transform.rotation, transform);
-                snapshot.name = source.name + " (Last Seen)";
-                // A remembered marker is a frozen sighting. Its cloned flag animator has no
-                // owner selected, so leaving it running would clear the copied emblem next frame.
-                foreach (MapFlagAnimator flag in snapshot.GetComponentsInChildren<MapFlagAnimator>(true))
-                    flag.enabled = false;
+                    snapshot = source.CreateFrozenSnapshot(transform);
                 visuals[hex] = snapshot;
             }
             _rememberedBuildingSources[snapshot] = source;

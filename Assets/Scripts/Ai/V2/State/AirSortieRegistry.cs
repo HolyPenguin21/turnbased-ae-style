@@ -37,7 +37,7 @@ namespace Game.Ai.V2
         public AirStrikePolicy StrikePolicy = AirStrikePolicy.Standard;
     }
 
-    public static class AirSortieRegistry
+    public static partial class AirSortieRegistry
     {
         private static readonly Dictionary<PlayerSetupData, List<AirSortie>> ByPlayer =
             new Dictionary<PlayerSetupData, List<AirSortie>>();

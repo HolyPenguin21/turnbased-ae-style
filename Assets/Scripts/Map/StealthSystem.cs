@@ -36,7 +36,7 @@ namespace Game.Map
     // The hidden challenge itself reuses Game.Combat.ChallengeResolver (the one deterministic/
     // testable tokens path) and is SILENT: no popup, no combat UI, no player-facing or owner-
     // facing log.
-    public static class StealthSystem
+    public static partial class StealthSystem
     {
         // Set by GameTurnController.BeginGame. Default returns 0 so the standalone stealth
         // simulation (Tools/stealth-sim) can drive detection expiry by hand without a live
@@ -450,7 +450,7 @@ namespace Game.Map
 
         private static bool ResolveDetection(UnitData unit, PlayerSetupData observer, HexCoord hex, int spot)
         {
-            if (unit == null || !unit.IsHidden || observer == null || observer == unit.Owner)
+            if (Game.Setup.MatchRestoreScope.IsRestoring || unit == null || !unit.IsHidden || observer == null || observer == unit.Owner)
                 return false;
             if (IsDetectedBy(unit, observer))
                 return true; // already personally visible to this observer — no re-roll

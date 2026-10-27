@@ -18,7 +18,7 @@ namespace Game.Ai.V2
     //  It is a preference, never a prohibition: nothing here blocks a hex. Cleared on session
     //  reset alongside the other V2 recon registries.
     // ===========================================================================================
-    internal static class ScoutTrailRegistry
+    internal static partial class ScoutTrailRegistry
     {
         private sealed class Trail
         {

@@ -11,7 +11,7 @@ namespace Game.Map
     // GenerateRandomEvents) rather than at grant time, since EventDefinition itself has no
     // back-reference to its owning EventCatalog for EventCatalog.ResolveCard to be called
     // against later.
-    public static class HexEventRegistry
+    public static partial class HexEventRegistry
     {
         public class Entry
         {

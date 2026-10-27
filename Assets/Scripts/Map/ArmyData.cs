@@ -32,7 +32,7 @@ namespace Game.Map
         private ArmyData(int restoredId)
         {
             Id = restoredId;
-            if (_nextId <= restoredId) _nextId = restoredId + 1;
+            ReserveIdentity(restoredId);
         }
         // Load path: an army rebuilt under its saved identity; later armies are numbered above it.
         internal static ArmyData WithIdentity(int id) => new ArmyData(restoredId: id);

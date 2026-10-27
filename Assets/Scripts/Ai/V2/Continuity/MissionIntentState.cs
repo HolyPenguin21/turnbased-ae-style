@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // File-split (mechanical, no behaviour change) from MissionIntent.cs — see
     // Docs/ai-v2-file-split-refactor-tasks.md Task 3. Independent standalone types,
     // not a partial class.
-    public sealed class MissionIntentState : IMissionIntentView
+    public sealed partial class MissionIntentState : IMissionIntentView
     {
         private readonly Dictionary<MissionIntentKey, MissionIntent> _intents =
             new Dictionary<MissionIntentKey, MissionIntent>();
@@ -75,7 +75,7 @@ namespace Game.Ai.V2
         internal ReconTurnState ReconTurn(int turn) => ReconTurnStateStore.For((object)Owner ?? this, turn);
     }
 
-    public static class MissionIntentRegistry
+    public static partial class MissionIntentRegistry
     {
         private static readonly Dictionary<PlayerSetupData, MissionIntentState> ByPlayer =
             new Dictionary<PlayerSetupData, MissionIntentState>();

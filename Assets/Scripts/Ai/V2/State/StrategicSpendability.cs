@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // operation. From then on (Phase B, housekeeping, reactions of the same turn) the Hard-operation
     // continuation protection no longer holds AP: an operation still standing was not funded or
     // could not step, and freezing its AP would only waste it. Turn-stamped; lazily resets.
-    internal static class OperationContinuationWindow
+    internal static partial class OperationContinuationWindow
     {
         private static readonly Dictionary<PlayerSetupData, int> SettledTurn =
             new Dictionary<PlayerSetupData, int>();

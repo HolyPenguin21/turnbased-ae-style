@@ -103,7 +103,7 @@ namespace Game.Ai.V2
         }
     }
 
-    internal static class ReconAirSortieRegistry
+    internal static partial class ReconAirSortieRegistry
     {
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, ReconAirSortieState>> ByPlayer =
             new Dictionary<PlayerSetupData, Dictionary<int, ReconAirSortieState>>();
@@ -162,7 +162,7 @@ namespace Game.Ai.V2
     //  recently covered at all. Keeping every recent distinct sortie source makes "a DIFFERENT
     //  sortie still counts" actually hold. Sources older than the cooldown are pruned lazily.
     // ===========================================================================================
-    internal static class AirReconCoverageRegistry
+    internal static partial class AirReconCoverageRegistry
     {
         // player -> hex -> (sortieId -> last turn that sortie air-observed the hex)
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, Dictionary<int, int>>> ByPlayer =

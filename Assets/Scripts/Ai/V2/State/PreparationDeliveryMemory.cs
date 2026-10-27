@@ -9,7 +9,7 @@ namespace Game.Ai.V2
     // (AggressionDemandEvaluator.PreparationHostCardSource). One source of truth instead of a
     // second, looser rule in the witness (Cassia T21-T23: WAIT on Dust Runner that Phase A never
     // played). Turn-scoped player memory; nothing survives two turns.
-    internal static class PreparationDeliveryMemory
+    internal static partial class PreparationDeliveryMemory
     {
         private sealed class Entry
         {

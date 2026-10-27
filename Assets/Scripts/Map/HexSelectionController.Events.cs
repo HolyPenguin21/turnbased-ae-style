@@ -407,12 +407,18 @@ namespace Game.Map
                 ShowLibraryRewardFailure(hex, recipient, entry);
                 return;
             }
-            if (!ProgressionContext.Collection.TryGrantRandomCollectionCard(out CardDefinition card, out string error))
+            // The hex is a stable event instance within this MatchId. A tactical load may
+            // rewind the visit/hand, while this receipt stays with the permanent collection.
+            string eventId = hex.Q.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":"
+                + hex.R.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (!ProgressionContext.Collection.TryGrantRandomCollectionCard(Game.Core.GameSession.MatchId, eventId,
+                out CardDefinition card, out string error))
             {
                 Debug.LogError("Library collection reward could not be saved: " + error);
                 ShowLibraryRewardFailure(hex, recipient, entry);
                 return;
             }
+            entry.ResolvedCardRewards.Clear();
             if (card != null)
             {
                 // A Library explicitly awards BOTH a permanent copy and a current-match card.

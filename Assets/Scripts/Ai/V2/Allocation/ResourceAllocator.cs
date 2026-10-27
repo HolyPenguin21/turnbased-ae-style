@@ -342,7 +342,7 @@ namespace Game.Ai.V2
         public int RemainingAt(int turn) => Mathf.Max(0, UntilTurn - turn + 1);
     }
 
-    public sealed class AiAllocatorState
+    public sealed partial class AiAllocatorState
     {
         private readonly Dictionary<StableMissionKey, MissionCooldownInfo> _cooldowns =
             new Dictionary<StableMissionKey, MissionCooldownInfo>();
@@ -374,7 +374,7 @@ namespace Game.Ai.V2
         }
     }
 
-    public static class AiAllocatorStateRegistry
+    public static partial class AiAllocatorStateRegistry
     {
         private static readonly Dictionary<PlayerSetupData, AiAllocatorState> ByPlayer =
             new Dictionary<PlayerSetupData, AiAllocatorState>();

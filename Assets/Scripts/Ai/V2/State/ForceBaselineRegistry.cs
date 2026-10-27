@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     //  Written once per player by the pipeline right after the turn's scan; Analysis only reads
     //  it. Cleared at match start by MatchStateInventory.ResetForNewMatch.
     // ===========================================================================================
-    public static class ForceBaselineRegistry
+    public static partial class ForceBaselineRegistry
     {
         private static readonly Dictionary<PlayerSetupData, float> StartPotential =
             new Dictionary<PlayerSetupData, float>();

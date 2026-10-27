@@ -10,7 +10,7 @@ namespace Game.Map
     // remains the sole source for those. A moving enemy is stored as an immutable last-observed
     // position/roster until the observing human's own next turn ends; stationary buildings
     // remain known until the same hex is observed again and found empty.
-    public static class HumanVisualMemory
+    public static partial class HumanVisualMemory
     {
         public sealed class ArmySighting
         {
@@ -50,7 +50,7 @@ namespace Game.Map
 
         public static void ObserveArmy(PlayerSetupData viewer, ArmyData army, HexCoord observedHex)
         {
-            if (!Tracks(viewer) || army == null)
+            if (Game.Setup.MatchRestoreScope.IsRestoring || !Tracks(viewer) || army == null)
                 return;
             // An army entirely hidden from this viewer (stealth) was never observed: remembering
             // it would plant an empty-roster "last seen" marker once it walks into fog.
@@ -133,48 +133,53 @@ namespace Game.Map
 
         private static UnitData SnapshotUnit(UnitData source)
         {
-            var snapshot = new UnitData
-            {
-                Name = source.Name,
-                Owner = source.Owner,
-                BerserkStacks = source.BerserkStacks,
-                BerserkDefenseLost = source.BerserkDefenseLost,
-                DrillAttackBonus = source.DrillAttackBonus,
-                MoveMax = source.MoveMax,
-                MoveCurrent = source.MoveCurrent,
-                ActivationApCost = source.ActivationApCost,
-                ApCost = source.ApCost,
-                OriginalResourceCost = SnapshotResourceCost(source.OriginalResourceCost),
-                RepairResourceCost = SnapshotResourceCost(source.RepairResourceCost),
-                IsHero = source.IsHero,
-                CommandRating = source.CommandRating,
-                Fate = source.Fate,
-                FateMax = source.FateMax,
-                Art = source.Art,
-                DetailArt = source.DetailArt,
-                Equipment = source.Equipment,
-                Mutator = source.Mutator,
-                Attack = source.Attack,
-                Defense = source.Defense,
-                Range = source.Range,
-                HitPointsMax = source.HitPointsMax,
-                HitPointsCurrent = source.HitPointsCurrent,
-                Row = source.Row,
-                Initiative = source.Initiative,
-                IsPrisoner = source.IsPrisoner,
-                CapturedFrom = source.CapturedFrom,
-                // AviationRules.IsAirArmy reads this per member to classify the containing
-                // ArmyData snapshot — without it a remembered air army's own members would all
-                // read as ordinary ground units under fog (see SnapshotArmy's own IsAirfield
-                // comment for the other half of this: that flag can't self-heal from composition).
-                IsAviation = source.IsAviation,
-                AirfieldCapacity = source.AirfieldCapacity,
-            };
+            var snapshot = UnitData.CreateProjection(source.RuntimeId);
+            CopySnapshotUnit(source, snapshot);
+            return snapshot;
+        }
+
+        private static void CopySnapshotUnit(UnitData source, UnitData snapshot)
+        {
+            // Visual copies retain references to authored art/definitions only.
+            snapshot.Name = source.Name;
+            snapshot.Owner = source.Owner;
+            snapshot.BerserkStacks = source.BerserkStacks;
+            snapshot.BerserkDefenseLost = source.BerserkDefenseLost;
+            snapshot.DrillAttackBonus = source.DrillAttackBonus;
+            snapshot.MoveMax = source.MoveMax;
+            snapshot.MoveCurrent = source.MoveCurrent;
+            snapshot.ActivationApCost = source.ActivationApCost;
+            snapshot.ApCost = source.ApCost;
+            snapshot.OriginalResourceCost = SnapshotResourceCost(source.OriginalResourceCost);
+            snapshot.RepairResourceCost = SnapshotResourceCost(source.RepairResourceCost);
+            snapshot.IsHero = source.IsHero;
+            snapshot.CommandRating = source.CommandRating;
+            snapshot.Fate = source.Fate;
+            snapshot.FateMax = source.FateMax;
+            snapshot.Art = source.Art;
+            snapshot.DetailArt = source.DetailArt;
+            snapshot.Equipment = source.Equipment;
+            snapshot.Mutator = source.Mutator;
+            snapshot.Attack = source.Attack;
+            snapshot.Defense = source.Defense;
+            snapshot.Range = source.Range;
+            snapshot.HitPointsMax = source.HitPointsMax;
+            snapshot.HitPointsCurrent = source.HitPointsCurrent;
+            snapshot.Row = source.Row;
+            snapshot.Initiative = source.Initiative;
+            snapshot.IsPrisoner = source.IsPrisoner;
+            snapshot.CapturedFrom = source.CapturedFrom;
+            // AviationRules.IsAirArmy reads this per member to classify the containing
+            // ArmyData snapshot — without it a remembered air army's own members would all
+            // read as ordinary ground units under fog (see SnapshotArmy's own IsAirfield
+            // comment for the other half of this: that flag can't self-heal from composition).
+            snapshot.IsAviation = source.IsAviation;
+            snapshot.AirfieldCapacity = source.AirfieldCapacity;
+
             foreach (string ability in source.Abilities)
                 snapshot.Abilities.Add(ability);
             foreach (UnitTypeTag tag in source.TypeTags)
                 snapshot.TypeTags.Add(tag);
-            return snapshot;
         }
 
         private static ResourceCost SnapshotResourceCost(ResourceCost source)
@@ -190,7 +195,7 @@ namespace Game.Map
 
         public static void ObserveBuilding(PlayerSetupData viewer, HexCoord hex, bool exists)
         {
-            if (!Tracks(viewer))
+            if (Game.Setup.MatchRestoreScope.IsRestoring || !Tracks(viewer))
                 return;
             if (!KnownBuildingHexes.TryGetValue(viewer, out HashSet<HexCoord> buildings))
             {

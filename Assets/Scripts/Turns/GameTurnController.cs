@@ -33,7 +33,7 @@ namespace Game.Turns
     // fixed last slot in phase 2 (index == CurrentTurnOrder.Count, represented as `null`
     // everywhere a real player would be) — same pass-after-a-pause treatment as AI, since it
     // has no actions of its own yet either.
-    public class GameTurnController : MonoBehaviour
+    public partial class GameTurnController : MonoBehaviour
     {
         [SerializeField] private TurnOrderPopupUI turnOrderPopup;
         [SerializeField] private Button endTurnButton;
@@ -577,6 +577,18 @@ namespace Game.Turns
         // Called once, right after every player has placed their citadel.
         public void BeginGame()
         {
+            InitializeMatchPresentation();
+            TurnNumber = 0;
+            _completedTurns.Clear();
+            _matchGreetingsShown.Clear();
+            _turnConfirmationInProgress = false;
+            Game.Ai.AiMatchStats.BeginMatch(GameSession.Players);
+            ConfigureStealthTurnProviders();
+            BeginNewTurn();
+        }
+
+        private void InitializeMatchPresentation()
+        {
             armyRadioChatter?.Configure(this, cameraController != null ? cameraController.GetComponent<Camera>() : Camera.main,
                 cardHand != null ? cardHand.GetComponent<RectTransform>() : null, gameConfig != null ? gameConfig.armyRadioChatter : null, hexSelectionController);
             _aiObserverMatch = GameSession.Players != null
@@ -605,11 +617,10 @@ namespace Game.Turns
                 Game.UI.UIUtility.ResetRuntimeListeners(endTurnButton);
                 endTurnButton.onClick.AddListener(OnEndTurnClicked);
             }
-            TurnNumber = 0;
-            _completedTurns.Clear();
-            _matchGreetingsShown.Clear();
-            _turnConfirmationInProgress = false;
-            Game.Ai.AiMatchStats.BeginMatch(GameSession.Players);
+        }
+
+        private void ConfigureStealthTurnProviders()
+        {
             // StealthSystem is otherwise turn-controller-agnostic (the stealth sim drives it
             // by hand) — hand it the live completed-turn count now that a real game is starting.
             Game.Map.StealthSystem.CompletedTurnsProvider = CompletedTurnsFor;
@@ -617,7 +628,6 @@ namespace Game.Turns
             // their NEXT turn — their completed-turn count isn't bumped until the current turn
             // ends, so MarkDetected needs to know "is this observer the one acting right now".
             Game.Map.StealthSystem.ObserverTakingTurnProvider = p => p != null && p == CurrentPlayer;
-            BeginNewTurn();
         }
 
         // Every player has just passed (Neutral's own fixed last slot in phase 2 — see

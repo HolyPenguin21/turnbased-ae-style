@@ -54,10 +54,18 @@ namespace Game.Cards
         // Load path: a card rebuilt under its saved identity; later cards are numbered above it.
         internal static CardData WithRuntimeId(CardDefinition definition, int runtimeId)
         {
+            ReserveIdentity(runtimeId);
+            return new CardData(definition, runtimeId);
+        }
+
+        public static int IdentityHighWaterMark => Volatile.Read(ref _nextRuntimeId);
+        // Reserve identities referenced only by destroyed/remembered entities as well.
+        public static void ReserveIdentity(int runtimeId)
+        {
+            if (runtimeId <= 0 || runtimeId == int.MaxValue) throw new System.ArgumentOutOfRangeException(nameof(runtimeId));
             int issued;
             while ((issued = Volatile.Read(ref _nextRuntimeId)) < runtimeId
                 && Interlocked.CompareExchange(ref _nextRuntimeId, runtimeId, issued) != issued) { }
-            return new CardData(definition, runtimeId);
         }
 
         // Play-time AP cost of THIS instance — activationApCost for a Research/Production card,

@@ -44,6 +44,7 @@ namespace Game.Map
             }
             if (list.Contains(army)) return;
             list.Add(army);
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             army.RefreshTransport();
             AviationActions.EnsureCarrierContainers(army);
             VisionSystem.RecomputeFor(army.Owner);
@@ -63,6 +64,11 @@ namespace Game.Map
                 return;
             HexCoord origin = army.Hex;
             ByHex[origin].Remove(army);
+            if (Game.Setup.MatchRestoreScope.IsRestoring)
+            {
+                if (finalHex.HasValue) army.Hex = finalHex.Value;
+                return;
+            }
             foreach (var unit in army.Members.ToList())
                 AviationActions.RemoveCarrierContainers(unit);
             army.ClearTransport();
@@ -141,7 +147,8 @@ namespace Game.Map
             if (!IsRegistered(army) || army.Hex.Equals(newHex))
                 return;
 
-            AviationActions.LandWingsBeforeCarrierDeparts(army);
+            if (!Game.Setup.MatchRestoreScope.IsRestoring)
+                AviationActions.LandWingsBeforeCarrierDeparts(army);
             HexCoord oldHex = army.Hex;
             RelocateInIndex(army, newHex);
             // The whole indexed group is in its final position before observers are notified.
@@ -152,7 +159,8 @@ namespace Game.Map
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(oldHex);
             VisionSystem.NotifyContentChanged(newHex);
-            ArmyRelocated?.Invoke(army, oldHex, newHex);
+            if (!Game.Setup.MatchRestoreScope.IsRestoring)
+                ArmyRelocated?.Invoke(army, oldHex, newHex);
         }
 
         private static void RelocateInIndex(ArmyData army, HexCoord hex)

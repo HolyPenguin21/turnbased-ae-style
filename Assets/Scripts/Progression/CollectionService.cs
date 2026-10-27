@@ -30,22 +30,56 @@ namespace Game.Progression
         {
             acquired = null;
             error = null;
+            CardDefinition chosen = SelectCollectionReward();
+            if (chosen == null) return true;
+            if (!Transact(p => GrantCollectionCopy(p, chosen), out error)) return false;
+            acquired = chosen;
+            return true;
+        }
+        // Replay of a pre-event match snapshot must receive exactly the original hand card,
+        // without permanently granting another copy. Receipts are never pruned while matches
+        // can be reloaded; reaching the storage limit rejects a new claim safely.
+        public bool TryGrantRandomCollectionCard(string matchId, string eventId, out CardDefinition acquired, out string error)
+        {
+            acquired = null;
+            error = null;
+            if (!CollectionProfileStore.ValidRewardIdentity(matchId) || !CollectionProfileStore.ValidRewardIdentity(eventId))
+            { error = "Cannot save this event reward without a valid match and event identity."; return false; }
+            var receipt = profile.eventRewards.Find(r => r.matchId == matchId && r.eventId == eventId);
+            if (receipt != null)
+            {
+                if (string.IsNullOrEmpty(receipt.cardKey)) return true;
+                acquired = Rules.Resolve(receipt.cardKey);
+                if (acquired != null) return true;
+                error = "The saved event reward card is unavailable. Restore its card catalog and try again.";
+                return false;
+            }
+            if (profile.eventRewards.Count >= CollectionProfileStore.MaximumEventRewards)
+            { error = "The collection cannot store any more event rewards."; return false; }
+            CardDefinition chosen = SelectCollectionReward();
+            if (!Transact(p =>
+            {
+                if (chosen != null) GrantCollectionCopy(p, chosen);
+                p.eventRewards.Add(new EventRewardReceipt { matchId = matchId, eventId = eventId, cardKey = chosen?.authoredKey ?? string.Empty });
+            }, out error)) return false;
+            acquired = chosen;
+            return true;
+        }
+        private CardDefinition SelectCollectionReward()
+        {
             var candidates = DeckRules.PlayableFactions.SelectMany(Rules.Cards)
                 .Where(c => !string.IsNullOrWhiteSpace(c.authoredKey) && Rules.Resolve(c.authoredKey) == c
                     && Owned(c.authoredKey) < DeckRules.CopyLimit(c))
                 .GroupBy(c => c.authoredKey).Select(g => g.First()).ToList();
-            if (candidates.Count == 0) return true;
-            CardDefinition chosen = candidates[collectionRewardRandom.Next(candidates.Count)];
-            if (!Transact(p =>
-            {
-                if (p.Owned(chosen.authoredKey) >= DeckRules.CopyLimit(chosen))
-                    throw new InvalidOperationException("Collection copy limit reached for this card.");
-                var row = p.ownedCards.Find(e => e.cardKey == chosen.authoredKey);
-                if (row == null) p.ownedCards.Add(new DeckCardEntry { cardKey = chosen.authoredKey, count = 1 });
-                else row.count++;
-            }, out error)) return false;
-            acquired = chosen;
-            return true;
+            return candidates.Count == 0 ? null : candidates[collectionRewardRandom.Next(candidates.Count)];
+        }
+        private static void GrantCollectionCopy(CollectionProfile target, CardDefinition card)
+        {
+            if (target.Owned(card.authoredKey) >= DeckRules.CopyLimit(card))
+                throw new InvalidOperationException("Collection copy limit reached for this card.");
+            var row = target.ownedCards.Find(e => e.cardKey == card.authoredKey);
+            if (row == null) target.ownedCards.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 });
+            else row.count++;
         }
         public CollectionService(DeckRules rules, CollectionProfileStore store, CollectionProfile initial)
         { Rules = rules; this.store = store; profile = initial.Copy(); ClampBlueprintCopies(profile); }

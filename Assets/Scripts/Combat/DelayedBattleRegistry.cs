@@ -7,7 +7,7 @@ namespace Game.Combat
     // drained by GameTurnController right before the next round actually starts, so both the
     // human and AI (once AI can decide anything here) get the rest of this turn to bring in
     // reinforcements before it's resolved.
-    public static class DelayedBattleRegistry
+    public static partial class DelayedBattleRegistry
     {
         private static readonly List<PendingBattle> Pending = new List<PendingBattle>();
 

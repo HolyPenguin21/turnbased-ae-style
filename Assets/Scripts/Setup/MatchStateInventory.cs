@@ -146,6 +146,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Cache,
                 DevelopmentOpportunityEvaluator.ClearRecipientEvaluationCache),
 
+            new MatchStateEntry("Game.Setup.MatchRestoreScope", MatchStateKind.Scoped),
+
             // --- identities ------------------------------------------------------------------------
             new MatchStateEntry("Game.Map.ArmyData", MatchStateKind.IdentitySequence, resetBy: "Game.Map.ArmyRegistry"),
             new MatchStateEntry("Game.Units.UnitData", MatchStateKind.IdentitySequence),

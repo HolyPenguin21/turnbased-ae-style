@@ -12,7 +12,7 @@ namespace Game.Map
     // BuildingRegistry's shape, but deliberately a separate store: a hex keeps its bonus even if
     // the building on it changes (there's no way to remove/relocate a citadel yet, but this is
     // the model that's actually intended, not just what happens to be true today).
-    public static class HexResourceBonusRegistry
+    public static partial class HexResourceBonusRegistry
     {
         private static readonly Dictionary<HexCoord, ResourceYields> ByHex = new Dictionary<HexCoord, ResourceYields>();
 

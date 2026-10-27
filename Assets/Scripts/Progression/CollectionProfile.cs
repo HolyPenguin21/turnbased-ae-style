@@ -30,9 +30,17 @@ namespace Game.Progression
         public List<string> acquiredKeys = new List<string>();
         public bool claimed;
     }
+    // Permanent grant and its exact current-match result are committed in one profile write.
+    // An empty cardKey records that no eligible collection card remained for this event.
+    [Serializable] public sealed class EventRewardReceipt
+    {
+        public string matchId;
+        public string eventId;
+        public string cardKey;
+    }
     [Serializable] public sealed class CollectionProfile
     {
-        public int schemaVersion = 1;
+        public int schemaVersion = 2;
         // Separate from the storage schema: authored starter balance updates apply once.
         public int starterDeckRevision;
         public string profileId = Guid.NewGuid().ToString("N");
@@ -41,10 +49,20 @@ namespace Game.Progression
         public List<DeckSelection> selectedDeckByFaction = new List<DeckSelection>();
         public List<PendingReward> pendingRewards = new List<PendingReward>();
         public List<string> claimedMatchIds = new List<string>();
+        public List<EventRewardReceipt> eventRewards = new List<EventRewardReceipt>();
 
         public int Owned(string key) => ownedCards.Find(e => e.cardKey == key)?.count ?? 0;
         public CollectionProfile Copy() => JsonUtility.FromJson<CollectionProfile>(JsonUtility.ToJson(this));
-        public static SavedDeck CopyDeck(SavedDeck deck) => JsonUtility.FromJson<SavedDeck>(JsonUtility.ToJson(deck));
+        // Shared by profile editing and immutable match loadouts. Plain value copies avoid
+        // coupling a runtime snapshot to native JSON serialization or a mutable profile list.
+        public static SavedDeck CopyDeck(SavedDeck deck) => deck == null ? null : new SavedDeck
+        {
+            deckId = deck.deckId, isStarter = deck.isStarter, name = deck.name, faction = deck.faction,
+            mainCards = CopyDeckEntries(deck.mainCards), equipment = CopyDeckEntries(deck.equipment),
+            mutators = CopyDeckEntries(deck.mutators),
+        };
+        private static List<DeckCardEntry> CopyDeckEntries(List<DeckCardEntry> entries) => entries?.ConvertAll(
+            entry => entry == null ? null : new DeckCardEntry {cardKey=entry.cardKey,count=entry.count});
     }
     public enum MatchOutcome { Victory, Defeat, Draw }
     public readonly struct ParticipantResult

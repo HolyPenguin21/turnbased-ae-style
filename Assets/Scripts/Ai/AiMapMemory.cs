@@ -185,6 +185,7 @@ namespace Game.Ai
         // hex must refresh MapKnowledge even when object memory and this turn's IntelAge match.
         private static void OnVisionStateChanged(PlayerSetupData player)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             BumpKnowledgeVersion(player);
             OnVisibilityChanged(player);
         }
@@ -194,11 +195,13 @@ namespace Game.Ai
         // whose reveal area stayed identical.
         private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             OnVisibilityChanged(player);
         }
 
         private static void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             // VisualStateChanged is deliberately emitted before BuildingRegistry recomputes the
             // old/new owners' vision. Only players whose CURRENT pre-change visibility includes
             // this hex receive the memory write; players out of sight learn nothing.
@@ -209,12 +212,14 @@ namespace Game.Ai
 
         private static void OnStealthChanged()
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             foreach (PlayerSetupData player in SessionPlayers())
                 OnVisibilityChanged(player);
         }
 
         private static void OnStructureLost(HexCoord hex, PlayerSetupData formerOwner)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (formerOwner == null)
                 return;
             StoreFor(LostStructures, formerOwner)[hex] = _currentTurn;
@@ -256,6 +261,7 @@ namespace Game.Ai
 
         private static void OnEncounterFinalized(BattleState state, BattleEncounterFinalization result)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (state == null)
                 return;
             foreach (ArmyData army in new[] { state.Attacker, state.Defender })
@@ -265,6 +271,7 @@ namespace Game.Ai
 
         private static void OnArmyRetreated(BattleState state, ArmyData army, BattleRetreatApplication result)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (army != null && result.Destroyed)
                 RecordDestroyed(army, state?.BattleHex ?? army.Hex, state?.Attacker, state?.Defender);
         }

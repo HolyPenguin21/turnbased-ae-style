@@ -10,7 +10,7 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // Persistent per-player generated operator claims. The reconciliation rule is unchanged.
-    internal sealed class DevelopmentLifecycleState : IDevelopmentLifecycleView
+    internal sealed partial class DevelopmentLifecycleState : IDevelopmentLifecycleView
     {
         // Challenge mints a physical Hero before the destination factory can deploy it.
         // This per-player intent store survives turns; AP/resource reservations do not.

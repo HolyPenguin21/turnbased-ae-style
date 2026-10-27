@@ -193,7 +193,7 @@ namespace Game.Ai.V2
     // Scout materialisation. RegisterAndCheck returns true only once the same deficit class has
     // held for reconCapacityDeficitPersistTurns CONSECUTIVE turns beyond the turn it first
     // appeared (persist = 0 => act immediately).
-    internal static class ReconCapacityDeficitRegistry
+    internal static partial class ReconCapacityDeficitRegistry
     {
         private sealed class Entry
         {

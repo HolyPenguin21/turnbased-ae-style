@@ -41,6 +41,7 @@ namespace Game.Ai
 
         private static void OnVisibilityChanged(PlayerSetupData player)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (player == null)
                 return;
 
@@ -255,6 +256,7 @@ namespace Game.Ai
         // else learns by re-observing the hex later ("видимость с памятью").
         private static void OnEventConsumed(HexCoord hex)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             PlayerSetupData consumer = HexEventRegistry.FindAt(hex)?.ConsumedBy;
             var holders = new List<PlayerSetupData>(KnownEventCompleted.Keys);
             if (consumer != null && !holders.Contains(consumer))
@@ -271,6 +273,7 @@ namespace Game.Ai
         // guard, if any) for exactly this player. Idempotent - a repeat changes nothing.
         private static void OnEventDiscovered(HexCoord hex, PlayerSetupData player)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (player == null || player.IsNeutral)
                 return;
             PublishEventKnowledge(player, hex, true);

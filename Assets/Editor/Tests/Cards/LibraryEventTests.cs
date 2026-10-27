@@ -208,7 +208,7 @@ namespace Game.EditorTests
         {
             WithScene((selector, hand) =>
             {
-                SetField(hand, "maxHandSize", 1);
+                hand.BindHumanHand(new PlayerHandData(null, 0, capacity: 1));
                 hand.AddCard(new CardData(card));
                 var human = new PlayerSetupData { IsHuman = true, Faction = Faction.IronConcord };
                 var hex = new HexCoord(3, 1);
@@ -220,6 +220,31 @@ namespace Game.EditorTests
                 Assert.That(hand.HumanHand.Count(), Is.EqualTo(2));
                 Assert.That(hand.HumanHand.Last().Definition, Is.SameAs(card));
                 Assert.That(store.Load(out _).Owned(card.authoredKey), Is.EqualTo(1));
+                Assert.That(HexEventRegistry.FindAt(hex).Consumed, Is.True);
+            });
+        }
+
+        [Test, Category("UnityScene")] public void ReplayedLibraryVisitRestoresOriginalHandCardWithoutPermanentDuplicate()
+        {
+            WithScene((selector, hand) =>
+            {
+                var human = new PlayerSetupData { IsHuman = true, Faction = Faction.IronConcord };
+                var hex = new HexCoord(3, 1);
+                var definition = new EventDefinition { grantsRandomCollectionCard = true };
+                HexEventRegistry.Set(hex, definition, null, null, null, null);
+                var army = new ArmyData { Owner = human };
+                selector.GrantEventReward(hex, army);
+                var original = hand.HumanHand.Single().Definition;
+                collection = new CollectionService(collection.Rules, store, store.Load(out _));
+                typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
+                // Equivalent event/hand state to a tactical snapshot taken before the visit.
+                hand.BindHumanHand(new PlayerHandData(null, 0));
+                HexEventRegistry.Set(hex, definition, null, null, null, null);
+                selector.GrantEventReward(hex, army);
+                selector.GrantEventReward(hex, army);
+                Assert.That(hand.HumanHand.Single().Definition, Is.SameAs(original));
+                Assert.That(collection.Owned(original.authoredKey), Is.EqualTo(1));
+                Assert.That(HexEventRegistry.FindAt(hex).ResolvedCardRewards.Single().Item2, Is.SameAs(original));
                 Assert.That(HexEventRegistry.FindAt(hex).Consumed, Is.True);
             });
         }
@@ -350,11 +375,13 @@ namespace Game.EditorTests
         private void WithScene(Action<HexSelectionController, CardHandUI> check)
         {
             var previous = ProgressionContext.Collection;
+            string previousMatchId = Game.Core.GameSession.MatchId;
             var scene = new GameObject("Library reward test"); scene.SetActive(false);
             HexEventRegistry.Clear(); ArmyRegistry.Clear();
             try
             {
                 typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
+                typeof(Game.Core.GameSession).GetProperty("MatchId").SetValue(null, "library-scene-test");
                 var selector = scene.AddComponent<HexSelectionController>();
                 var hand = scene.AddComponent<CardHandUI>();
                 var container = new GameObject("hand", typeof(RectTransform)); container.transform.SetParent(scene.transform);
@@ -367,6 +394,7 @@ namespace Game.EditorTests
             finally
             {
                 typeof(ProgressionContext).GetProperty("Collection").SetValue(null, previous);
+                typeof(Game.Core.GameSession).GetProperty("MatchId").SetValue(null, previousMatchId);
                 HexEventRegistry.Clear(); ArmyRegistry.Clear();
                 UnityEngine.Object.DestroyImmediate(scene);
             }

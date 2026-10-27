@@ -668,7 +668,7 @@ namespace Game.EditorTools
         [Test] public void FutureSchemaDoesNotFallBackOrOverwriteTheCurrentFile()
         {
             var store = new CollectionProfileStore(directory); var p = new CollectionProfile();
-            store.Save(p); store.Save(p); p.schemaVersion = 2;
+            store.Save(p); store.Save(p); p.schemaVersion = 3;
             string path = Path.Combine(directory, "collection-v1.json");
             string future = JsonUtility.ToJson(p); File.WriteAllText(path, future);
             Assert.Throws<NotSupportedException>(() => store.Load(out _));

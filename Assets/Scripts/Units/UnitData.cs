@@ -9,7 +9,7 @@ namespace Game.Units
     // A unit's core stats — pure data, no map presence of its own at all (only its ArmyData
     // does — see ArmyData.Controller). A unit is always exactly wherever its army is; there is
     // deliberately no per-unit Hex field to keep in sync with that.
-    public class UnitData
+    public partial class UnitData
     {
         private static int _nextRuntimeId;
 
@@ -45,9 +45,7 @@ namespace Game.Units
         // Load path: a unit rebuilt under its saved identity; later units are numbered above it.
         internal static UnitData WithRuntimeId(int runtimeId)
         {
-            int issued;
-            while ((issued = Volatile.Read(ref _nextRuntimeId)) < runtimeId
-                && Interlocked.CompareExchange(ref _nextRuntimeId, runtimeId, issued) != issued) { }
+            ReserveIdentity(runtimeId);
             return new UnitData(false, runtimeId);
         }
 
