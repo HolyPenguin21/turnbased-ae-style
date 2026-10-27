@@ -6,142 +6,29 @@ using UnityEngine;
 
 namespace Game.Ai
 {
-    // Headless mirror of CardHandUI's own deck/hand state (see its own Awake/PopRandomCard)
-    // for a non-human player — each player resolves their own deck from the shared
-    // StartingDeckCatalog by their own Faction, same as the human does, just plain data with no
-    // MonoBehaviour/UI attached. One instance per AI player, created lazily the first time that
-    // player's turn actually needs to look at its hand (see AiHandRegistry.GetOrCreate) — an AI
-    // player that's already been eliminated, or never gets a turn, never spends the memory on one.
-    public class AiHandData
+    // AI's match-owned hand uses the same deck/capacity rules as the human model. Its only
+    // specialization is the owner-turn stamp used by AI scoring.
+    public class AiHandData : PlayerHandData
     {
-        public readonly List<CardData> Hand = new List<CardData>();
-
-        // Fired after every successful mutation of Hand, from whichever single entry point
-        // actually changed it (AddCard/RemoveCard below, including DrawOne's own draw) — the one
-        // thing CardHandUI's AI hand debug view (see its own OnDebugHandChanged) needs to stay
-        // live across an AI turn without any executor having to know a debug view might be
-        // watching (DEBUG-UI-01: every V2 card-execution path already goes through one of these
-        // two methods as "the executor owns the hand boundary", so this is the one place a
-        // refresh notification can live without duplicating it into recruit/equipment/generated/
-        // etc separately).
-        public event Action HandChanged;
-
-        // Shared hand capacity (spec P0 §10) — set from CardHandUI.MaxHandSize via AiTurnContext
-        // (AiHandRegistry can't reach the scene, so the value is pushed in on construction — see
-        // AiHandRegistry.GetOrCreate / AiTurnController.RunTurn). Defaults to CardHandUI's own
-        // default of 10 so a hand created before that push still caps somewhere sane. Draws and
-        // ordinary grants obey the cap at AddCard; only prepaid Research/Production output may
-        // overflow it. Private setter — pushed in only via the constructor or SetCapacity,
-        // never assigned field-style from outside.
-        public int Capacity { get; private set; } = 10;
-
-        public bool HasFreeSlot => Hand.Count < Capacity;
-
-        // Monotonic owner-side stamp for post-step observation. It changes for every hand or
-        // capacity mutation, including non-draw event rewards routed through AddCard.
-        public int MutationVersion { get; private set; }
-
-        // Consumed (RemoveAt), not cycled — mirrors CardHandUI's _remainingDeck: every card in
-        // the deck is one-time-use for the whole game.
-        private readonly List<CardDefinition> _remainingDeck = new List<CardDefinition>();
-
-        public bool HasCardsLeftToDraw => _remainingDeck.Count > 0;
-        // Cards not yet drawn this game — AiTurnController.LogHand's own turn-begin log line
-        // (2026-08-24, project owner's own ask: surface unused-AP-relevant deck/hand state that
-        // was otherwise invisible outside the Inspector).
-        public int RemainingDeckCount => _remainingDeck.Count;
-
-        // The still-drawable draw pool itself, not just its count — read by the Strategy V2
-        // WorldAnalysis scan (Game.Ai.V2) to forecast the player's whole-game military/economic
-        // potential from the cards they can still get to. Draw order is random (see DrawOne), so
-        // this is an honest multiset the AI knows, never a peek at what comes next. Read-only
-        // view — the deck is still mutated only through DrawOne.
-        public IReadOnlyList<CardDefinition> RemainingDeck => _remainingDeck;
+        // Keep the existing AI fixture API; gameplay mutations use AddCard/RemoveCard so the
+        // observer notification and mutation version continue to be issued at one boundary.
+        public new List<CardData> Hand => HandCards;
 
         public AiHandData(StartingDeckCatalog deckCatalog, Faction faction, int startingHandSize, int capacity = 10,
             string aiDeckName = null, string grantedLeaderKey = null)
-        {
-            Capacity = Mathf.Max(0, capacity);
+            : base(deckCatalog?.BuildAiDeckPool(faction, aiDeckName, grantedLeaderKey), startingHandSize,
+                capacity, reserveRapidHero: true) { }
 
-            if (deckCatalog != null)
-                _remainingDeck.AddRange(deckCatalog.BuildAiDeckPool(faction, aiDeckName, grantedLeaderKey));
+        protected override void OnAcquired(CardData card) => card.AcquiredTurn = CurrentTurn;
 
-            foreach (CardDefinition definition in DeckDraw.DrawStartingHand(_remainingDeck,
-                Math.Min(startingHandSize, Capacity), reserveRapidHero: true))
-                AddCard(new CardData(definition));
-        }
-
-        // The owner's current turn, pushed in by AiTurnController.RunTurn every turn (same way as
-        // the capacity). AddCard stamps it onto the card as CardData.AcquiredTurn. Cards drawn
-        // into the starting hand (constructor) are stamped with 0.
-        public int CurrentTurn { get; private set; }
-
-        public void SetCurrentTurn(int turn) => CurrentTurn = Mathf.Max(0, turn);
-
-        // Whole turns this card has been in hand at `turnNumber` (0 for an unstamped card).
         public static int AgeInTurns(CardData card, int turnNumber) =>
             card == null || card.AcquiredTurn < 0 ? 0 : Mathf.Max(0, turnNumber - card.AcquiredTurn);
 
-        public void SetCapacity(int capacity)
+        public new static AiHandData FromState(HandState state, Func<string, CardDefinition> resolve)
         {
-            int next = Mathf.Max(0, capacity);
-            if (next == Capacity) return;
-            Capacity = next;
-            MutationVersion++;
-            HandChanged?.Invoke();
-        }
-
-        // The only two places Hand is ever added to/removed from outside DrawOne — every V2
-        // card-execution path (deploy, base/facility build, aviation, equipment attach,
-        // Research/Production mint) and the non-draw hex-event grant path (HexSelectionController.
-        // GrantCard) call these instead of touching the list directly, so HandChanged always fires.
-        public void AddCard(CardData card)
-        {
-            // CardHandUI.AddCardToHand rejects ordinary event rewards and returned aircraft
-            // when full. Previously this AI boundary admitted them without limit, even though
-            // DrawOne was capped. The card-instance prepayment flag is the ONLY exception:
-            // Research/Production deliberately mints over capacity, and must remain playable.
-            // Rejected grants are no-ops: no false hand-change event or mutation-version bump.
-            if (card?.Definition == null || (!card.ResearchProductionCreated && !HasFreeSlot))
-                return;
-
-            card.AcquiredTurn = CurrentTurn;
-            Hand.Add(card);
-            MutationVersion++;
-            HandChanged?.Invoke();
-        }
-
-        public bool RemoveCard(CardData card)
-        {
-            bool removed = Hand.Remove(card);
-            if (removed)
-            {
-                MutationVersion++;
-                HandChanged?.Invoke();
-            }
-            return removed;
-        }
-
-        // Same DeckDraw.PopRandom + AddCard pairing CardHandUI's own OnDrawClicked uses (the
-        // draw-from-deck mechanic itself is shared via DeckDraw, so the two can't drift), minus
-        // the AP check (the caller's job — see AiTurnController) and minus any UI animation.
-        // Null once the deck's empty, same "nothing left to draw" outcome CardHandUI has too.
-        public CardData DrawOne()
-        {
-            // Checked BEFORE pulling anything off the deck — a full hand must not consume a
-            // one-time-use deck card it then has nowhere to put (spec P1 §"Execution rechecks
-            // invariant"). This is the layer that actually makes Hand.Count > Capacity unreachable
-            // for ordinary cards; prepaid Research/Production cards can legitimately overflow.
-            if (_remainingDeck.Count == 0 || !HasFreeSlot)
-                return null;
-
-            CardDefinition definition = DeckDraw.PopRandom(_remainingDeck);
-            if (definition == null)
-                return null;
-
-            var card = new CardData(definition);
-            AddCard(card);
-            return card;
+            var hand = new AiHandData(null, Faction.None, 0);
+            hand.LoadState(state, resolve);
+            return hand;
         }
     }
 
@@ -167,6 +54,16 @@ namespace Game.Ai
         // never had a hand built yet.
         public static AiHandData Peek(PlayerSetupData player) =>
             player != null && ByPlayer.TryGetValue(player, out AiHandData hand) ? hand : null;
+
+        // Rebind a restored model without invoking GetOrCreate (which would deal a new hand).
+        public static void RegisterRestored(PlayerSetupData player, AiHandData hand)
+        {
+            if (player == null) throw new ArgumentNullException(nameof(player));
+            if (hand == null) throw new ArgumentNullException(nameof(hand));
+            if (ByPlayer.TryGetValue(player, out var old)) OwnerByHand.Remove(old);
+            ByPlayer[player] = hand;
+            OwnerByHand[hand] = player;
+        }
 
         public static bool TryGetOwner(AiHandData hand, out PlayerSetupData player)
         {

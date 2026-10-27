@@ -25,7 +25,7 @@ namespace Game.Map
     // their own tracked visible/visited sets regardless of whether they're the current viewer —
     // the owner's own "честный ИИ" call means AI decision-making will eventually read these too,
     // not just the human-facing render.
-    public static class VisionSystem
+    public static partial class VisionSystem
     {
         private static GameConfig _config;
         private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> Visible = new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
@@ -140,7 +140,7 @@ namespace Game.Map
         // ArmyController.MoveRoutine's shouldStopEarly callback) rather than polled.
         public static void RecomputeFor(PlayerSetupData player)
         {
-            if (player == null)
+            if (player == null || Game.Setup.MatchRestoreScope.IsRestoring)
                 return;
 
             int buildingRadius = _config != null ? _config.buildingVisionRadius : 1;
@@ -231,6 +231,7 @@ namespace Game.Map
         // is all any subscriber (AiMapMemory chief among them) actually needs.
         public static void NotifyContentChanged(HexCoord hex)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             foreach (KeyValuePair<PlayerSetupData, HashSet<HexCoord>> entry in new List<KeyValuePair<PlayerSetupData, HashSet<HexCoord>>>(Visible))
                 if (entry.Value.Contains(hex))
                     VisibleContentChanged?.Invoke(entry.Key, hex);

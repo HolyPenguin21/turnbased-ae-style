@@ -16,6 +16,8 @@ namespace Game.Terrain
     [Serializable]
     public sealed class TerrainComplexTemplate
     {
+        public string contentKey;
+        public string ContentKey => TerrainContentKeys.Resolve(contentKey, "complex", string.IsNullOrWhiteSpace(name) ? terrainName : name);
         public string name;
         public string terrainName;
         [Tooltip("Use this complex when generating maps for this biome. Disabled templates receive no placements.")]

@@ -26,7 +26,7 @@ namespace Game.Ai.V2
     //
     //  The history is a decision input, unlike DevelopmentOutcomeTelemetry (log-only tally).
     // ===========================================================================================
-    internal static class DevelopmentDiversity
+    internal static partial class DevelopmentDiversity
     {
         private static readonly Dictionary<PlayerSetupData, List<(int Turn, string CardKey)>> History =
             new Dictionary<PlayerSetupData, List<(int Turn, string CardKey)>>();

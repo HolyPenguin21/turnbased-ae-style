@@ -51,6 +51,7 @@ namespace Game.Map
         public static void Register(HexCoord hex, BuildingData building)
         {
             ByHex[hex] = building;
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             AiMatchStats.RecordBuilt(building);
             VisionSystem.RecomputeFor(building?.Owner);
             VisionSystem.NotifyContentChanged(hex);
@@ -71,6 +72,7 @@ namespace Game.Map
             if (!ByHex.TryGetValue(hex, out BuildingData building))
                 return;
             ByHex.Remove(hex);
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             VisualStateChanged?.Invoke(hex, null);
             BuildingDestroyed?.Invoke(building);
             VisionSystem.RecomputeFor(building.Owner);

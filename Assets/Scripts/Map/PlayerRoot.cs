@@ -10,7 +10,7 @@ namespace Game.Map
     // Parents every scene object owned by one player — citadel, buildings, armies, whatever
     // comes later — under a single GameObject, so the scene hierarchy groups by owner instead
     // of staying flat. Setup is null for the neutral "belongs to no player" root.
-    public class PlayerRoot : MonoBehaviour
+    public partial class PlayerRoot : MonoBehaviour
     {
         public PlayerSetupData Setup { get; private set; }
         public Color Color { get; private set; } = Color.grey;

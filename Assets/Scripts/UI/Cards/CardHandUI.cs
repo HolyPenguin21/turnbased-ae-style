@@ -76,8 +76,9 @@ namespace Game.UI
         // sharing one hardcoded catalog+deckIndices pair.
         public StartingDeckCatalog StartingDeckCatalog => startingDeckCatalog;
         // The real human hand, even while the spectator UI is showing an AI hand.
-        public IEnumerable<CardData> HumanHand => _cards.Select(card => card.Data);
-        public IReadOnlyList<CardDefinition> HumanRemainingDeck => _remainingDeck;
+        public IEnumerable<CardData> HumanHand => _humanHand.Hand;
+        public PlayerHandData HumanHandModel => _humanHand;
+        public IReadOnlyList<CardDefinition> HumanRemainingDeck => _humanHand.RemainingDeck;
         public int StartingHandSize => startingHandSize;
         public int DrawApCost => drawApCost;
 
@@ -138,11 +139,9 @@ namespace Game.UI
         // a drag.
         private readonly List<CardUI> _scratchVisible = new List<CardUI>();
         private int _scrollOffset;
-        // Consumed (RemoveAt), not cycled — every card in the deck is one-time-use for the
-        // whole game, so drawing must never hand out the same physical card twice, even though
-        // the same CardDefinition can appear several times (several copies of the same card,
-        // see StartingDeckCatalog.BuildDeckPool).
-        private readonly List<CardDefinition> _remainingDeck = new List<CardDefinition>();
+        private PlayerHandData _humanHand = new PlayerHandData(null, 0);
+        private bool _handAwake;
+        private bool _handEnabled;
         // Tracks whether the card currently being dragged is still within the hand row's drag
         // band as of the last PreviewDrag call — set there, read in FinishDrop to decide
         // "reorder within the hand" (still in band) vs. "attempt to play it onto the map"
@@ -206,6 +205,7 @@ namespace Game.UI
             if (armyViewerModal != null)
                 armyViewerModal.SetCardHand(this);
 
+            _handAwake = true;
             // Debug-only spectator mode (GameTurnController.debugWatchAiTurns) can run with no
             // human in the match at all — FindHumanPlayer() returns null. Dealing a starting
             // deck/hand to nobody there just creates a phantom hand that ShowAiHandDebug has to
@@ -214,20 +214,27 @@ namespace Game.UI
             PlayerSetupData human = FindHumanPlayer();
             if (human != null)
             {
-                var rules = new DeckRules(startingDeckCatalog, Game.Progression.ProgressionContext.Collection?.Rules.Research);
-                if (human.MatchLoadout == null || human.MatchLoadout.Faction != human.Faction
-                    || !human.MatchLoadout.TryBuildPool(rules, out var pool, out var error))
+                if (human.Hand != null)
+                    BindHumanHand(human.Hand);
+                else
                 {
-                    GameSession.SetupError = "Cannot load the selected deck. Select a saved deck in Collection & Decks.";
-                    GameSession.EndRewardEligibility();
-                    UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.MainMenu);
-                    return;
+                    var rules = new DeckRules(startingDeckCatalog, Game.Progression.ProgressionContext.Collection?.Rules.Research);
+                    if (human.MatchLoadout == null || human.MatchLoadout.Faction != human.Faction
+                        || !human.MatchLoadout.TryBuildPool(rules, out var pool, out var error))
+                    {
+                        GameSession.SetupError = "Cannot load the selected deck. Select a saved deck in Collection & Decks.";
+                        GameSession.EndRewardEligibility();
+                        UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.MainMenu);
+                        return;
+                    }
+                    human.Hand = new PlayerHandData(pool, startingHandSize, maxHandSize);
+                    BindHumanHand(human.Hand);
                 }
-                _remainingDeck.AddRange(pool);
-
-                foreach (CardDefinition card in DeckDraw.DrawStartingHand(_remainingDeck,
-                    Mathf.Min(startingHandSize, maxHandSize)))
-                    AddCard(new CardData(card));
+            }
+            else
+            {
+                _humanHand.SetCapacity(maxHandSize);
+                BindHumanHand(_humanHand);
             }
         }
 
@@ -297,11 +304,89 @@ namespace Game.UI
             }
         }
 
-        // Removes and returns one random card for ordinary draws (null if the deck is empty).
-        // The opening deal above uses DeckDraw.DrawStartingHand. The random mechanic lives in
-        // DeckDraw.PopRandom, the one place AiHandData.DrawOne's headless mirror also calls it
-        // from, so the human and AI draw algorithm can never quietly diverge.
-        private CardDefinition PopRandomCard() => DeckDraw.PopRandom(_remainingDeck);
+        // May be called before Awake by a load coordinator: retain the restored model without
+        // dealing, spending RNG, or rebuilding cards through the ordinary grant boundary.
+        public void BindHumanHand(PlayerHandData hand)
+        {
+            if (hand == null) throw new System.ArgumentNullException(nameof(hand));
+            if (_handAwake)
+            {
+                CancelAttachMode();
+                foreach (var view in _cards) if (view != null) view.CancelDrag();
+                _dragHexKnown = false;
+                _scrollOffset = 0;
+            }
+            _humanHand.HandChanged -= OnHumanHandChanged;
+            _humanHand = hand;
+            maxHandSize = hand.Capacity;
+            var human = FindHumanPlayer();
+            _humanPlayer = human;
+            if (human != null) human.Hand = hand;
+            if (_humanRoot != null) _humanRoot.ResourcesChanged -= RefreshDrawButtonInteractable;
+            _humanRoot = FindHumanRoot();
+            if (_handEnabled && _humanRoot != null) _humanRoot.ResourcesChanged += RefreshDrawButtonInteractable;
+            if (_handEnabled) BindTacticInventory();
+            _humanHand.HandChanged += OnHumanHandChanged;
+            if (_handAwake) OnHumanHandChanged();
+        }
+
+        private void ObserveHumanHand()
+        {
+            // Event/production grants can arrive while the panel is still inactive and Awake
+            // has not run. Preserve both their model state and the existing hidden-view behavior.
+            if (!_handAwake)
+            {
+                var owner = HumanPlayer;
+                if (owner?.Hand != null && !ReferenceEquals(owner.Hand, _humanHand)) BindHumanHand(owner.Hand);
+                else if (owner != null) owner.Hand = _humanHand;
+                _humanHand.SetCapacity(maxHandSize);
+            }
+            _humanHand.HandChanged -= OnHumanHandChanged;
+            _humanHand.HandChanged += OnHumanHandChanged;
+        }
+
+        private void OnHumanHandChanged()
+        {
+            // Keep surviving views (and their drag state), but derive membership AND order from
+            // the model. A hidden/unavailable presentation never loses authoritative cards.
+            StopTacticFlip();
+            maxHandSize = _humanHand.Capacity;
+            if (_pendingAttachment != null && !_humanHand.Hand.Contains(_pendingAttachment)) CancelAttachMode();
+            for (int i = _cards.Count - 1; i >= 0; i--)
+            {
+                var view = _cards[i];
+                if (_humanHand.Hand.Contains(view.Data)) continue;
+                _cards.RemoveAt(i);
+                view.gameObject.SetActive(false);
+                Destroy(view.gameObject);
+            }
+            bool added = false;
+            if (cardPrefab != null && handContainer != null)
+                for (int i = 0; i < _humanHand.Hand.Count; i++)
+                {
+                    var data = _humanHand.Hand[i];
+                    var view = _cards.Find(c => ReferenceEquals(c.Data, data));
+                    if (view == null)
+                    {
+                        view = Instantiate(cardPrefab, handContainer);
+                        Game.Audio.SceneUIAudioBinder.BindCreatedRoot(view);
+                        view.Setup(this, data, restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
+                        _cards.Insert(i, view);
+                        added = true;
+                    }
+                    else
+                    {
+                        _cards.Remove(view);
+                        _cards.Insert(i, view);
+                    }
+                }
+            if (added) _scrollOffset = Mathf.Max(0, _cards.Count - MaxVisible);
+            _lastDisplayedHandCount = -1;
+            Relayout(animated: gameObject.activeInHierarchy);
+            RestoreSiblingOrder();
+            if (!ShowingDebugHand) RefreshDeckCountText();
+            RefreshDrawButtonInteractable();
+        }
 
         // Called once by GameTurnController.BeginGame, right after citadel setup. This object is
         // CardHandPanel, which also parents the end-turn button; ResourceBarUI is its own panel
@@ -352,6 +437,7 @@ namespace Game.UI
         // there's nothing left that only a per-frame poll could catch.
         private void OnEnable()
         {
+            _handEnabled = true;
             RefreshHandLayout();
             BindTacticInventory();
             _humanRoot = FindHumanRoot();
@@ -385,6 +471,7 @@ namespace Game.UI
         // OnDestroy / the next ShowAiHandDebug instead.
         private void OnDisable()
         {
+            _handEnabled = false;
             UnbindTacticInventory();
             ResetTacticPresentation();
             if (_humanRoot != null)
@@ -399,6 +486,7 @@ namespace Game.UI
 
         private void OnDestroy()
         {
+            _humanHand.HandChanged -= OnHumanHandChanged;
             if (_debugHand != null)
                 _debugHand.HandChanged -= OnDebugHandChanged;
             _debugHand = null;
@@ -458,9 +546,9 @@ namespace Game.UI
 
         private void RefreshDeckCountText()
         {
-            if (deckCountText == null || _remainingDeck.Count == _lastDisplayedDeckCount)
+            if (deckCountText == null || _humanHand.RemainingDeckCount == _lastDisplayedDeckCount)
                 return;
-            SetDeckCountText(_remainingDeck.Count);
+            SetDeckCountText(_humanHand.RemainingDeckCount);
         }
 
         // Unconditional write, unlike RefreshDeckCountText's own no-op-if-unchanged guard —
@@ -481,7 +569,7 @@ namespace Game.UI
         {
             // Don't let the real/phantom hand's count clobber the AI debug hand's counter —
             // RenderDebugHand/OnDebugHandChanged own the counter while a debug hand is showing.
-            int count = _showingTactics ? _tacticCards.Count : _cards.Count;
+            int count = _showingTactics ? _tacticCards.Count : _humanHand.Hand.Count;
             if (handCountText == null || ShowingDebugHand || count == _lastDisplayedHandCount)
                 return;
             if (_showingTactics)
@@ -508,7 +596,7 @@ namespace Game.UI
                 return;
             if (_humanRoot == null)
                 _humanRoot = FindHumanRoot();
-            drawButton.interactable = _remainingDeck.Count > 0
+            drawButton.interactable = _humanHand.RemainingDeckCount > 0
                 && CanDragCards()
                 && _humanRoot != null
                 && _humanRoot.CanSpendActionPoints(drawApCost);
@@ -623,7 +711,7 @@ namespace Game.UI
 
             // Force the counters back to the human's own real numbers — ShowAiHandDebug may
             // have just overwritten them with an AI player's.
-            SetDeckCountText(_remainingDeck.Count);
+            SetDeckCountText(_humanHand.RemainingDeckCount);
             _lastDisplayedHandCount = -1;
             Relayout(animated: false);
         }
@@ -635,10 +723,10 @@ namespace Game.UI
         // blocked until enough cards have left the hand.
         public bool AddProducedCardToHand(CardData data)
         {
+            ObserveHumanHand();
             if (data?.Definition == null || !data.ResearchProductionCreated)
                 return false;
-            AddCard(data);
-            return true;
+            return _humanHand.TryAddCard(data);
         }
 
         // The shared hand capacity (spec P0 §10 — one hand cap for human and AI). Read once into
@@ -660,34 +748,24 @@ namespace Game.UI
         // this is a restore, not a fresh attach — nothing is charged here.
         public bool AddCardToHand(CardData data)
         {
+            ObserveHumanHand();
             if (data?.Definition == null) return false;
             if (data.Definition.cardType == CardType.Tactic)
                 return HumanPlayer?.Tactics.Add(data) == true;
-            if (_cards.Count >= maxHandSize)
+            if (!_humanHand.HasFreeSlot)
             {
                 turnController?.ShowSpawnHint($"Hand full ({maxHandSize}). {data.Definition.displayName} was lost.");
                 return false;
             }
-            AddCard(data);
-            return true;
+            return _humanHand.TryAddCard(data);
         }
 
+        // Explicit uncapped grant retained for Library rewards. All membership now belongs to
+        // the model; a missing prefab cannot silently consume a drawn card or discard a reward.
         public void AddCard(CardData data)
         {
-            if (cardPrefab == null || handContainer == null)
-                return;
-
-            // A wave captures slot indices; settle it before the backing list changes.
-            StopTacticFlip();
-            CardUI card = Instantiate(cardPrefab, handContainer);
-            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
-            card.Setup(this, data, restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
-            _cards.Add(card);
-            // Scroll so the newly added card is actually visible, not silently added past the
-            // edge of the window.
-            _scrollOffset = Mathf.Max(0, _cards.Count - MaxVisible);
-            Relayout(animated: true);
-            RestoreSiblingOrder();
+            ObserveHumanHand();
+            _humanHand.TryAddCard(data, allowOverflow: true);
         }
 
         // Called by a CardUI every time it moves while dragged — reorders the hand live so the
@@ -721,13 +799,7 @@ namespace Game.UI
             int newIndex = IndexForDropX(card, currentIndex, localPosition.x);
             if (newIndex != currentIndex)
             {
-                _cards.RemoveAt(currentIndex);
-                _cards.Insert(Mathf.Clamp(newIndex, 0, _cards.Count), card);
-                Relayout(animated: true);
-                // Only touches sibling order (a hierarchy change on every card) when the order
-                // actually changed — while nothing's changing between ticks, this used to run
-                // every single frame for no visible effect.
-                RestoreSiblingOrder();
+                _humanHand.MoveCard(card.Data, newIndex);
                 // Re-assert the dragged card on top, but ONLY here — RestoreSiblingOrder just
                 // put it back at its list index. Calling this every OnDrag tick (as it used to)
                 // dirtied the parent canvas's sort/batch every single frame; the card is already
@@ -1149,12 +1221,7 @@ namespace Game.UI
                 case CardType.Facility: TutorialHintController.Learned(TutorialHintId.BuildFacility); break;
                 case CardType.Equipment: TutorialHintController.Learned(TutorialHintId.Upgrade); break;
             }
-            StopTacticFlip();
-            _cards.Remove(card);
-            card.gameObject.SetActive(false);
-            Destroy(card.gameObject);
-            Relayout(animated: true);
-            RestoreSiblingOrder();
+            _humanHand.RemoveCard(card.Data);
         }
 
         // Same, addressed by the CardData rather than its CardUI — used by the equipment attach
@@ -1373,9 +1440,9 @@ namespace Game.UI
 
         private void OnDrawClicked()
         {
-            if (_remainingDeck.Count == 0 || !CanDragCards())
+            if (_humanHand.RemainingDeckCount == 0 || !CanDragCards())
                 return;
-            if (_cards.Count >= maxHandSize)
+            if (!_humanHand.HasFreeSlot)
             {
                 turnController.ShowSpawnHint($"Hand full ({maxHandSize}). Play or discard a card before drawing.");
                 return;
@@ -1384,13 +1451,12 @@ namespace Game.UI
             if (root == null || !root.CanSpendActionPoints(drawApCost))
                 return;
 
-            CardDefinition card = PopRandomCard();
+            CardData card = _humanHand.DrawOne();
             if (card == null)
                 return;
 
             RefreshDeckCountText();
             root.SpendActionPoints(drawApCost);
-            AddCard(new CardData(card));
             TutorialHintController.Complete(TutorialHintId.Draw);
         }
 

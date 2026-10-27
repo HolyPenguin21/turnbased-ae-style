@@ -406,8 +406,14 @@ MonoBehaviour:
     alpha: 0.9
     groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
     terrainTypes:
-    - terrainName: City ruins
+    - contentKey: terrain.arid.city-ruins
+      terrainName: City ruins
+      textureKey: texture.06c0a85340f07ab4c9835e37b8d15123
       texture: {fileID: 2800000, guid: 06c0a85340f07ab4c9835e37b8d15123, type: 3}
+      alternativeTextureKeys:
+      - texture.353be55a0458c2148af5d2febe76f0ae
+      - texture.7e61c22c02e2573479141d755a361f10
+      - texture.b9e07fcd7be42254a9ca4611ceb87fdf
       alternativeTextures:
       - {fileID: 2800000, guid: 353be55a0458c2148af5d2febe76f0ae, type: 3}
       - {fileID: 2800000, guid: 7e61c22c02e2573479141d755a361f10, type: 3}
@@ -421,8 +427,18 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 0
       defenseModifier: 1
-    - terrainName: Desert
+    - contentKey: terrain.arid.desert
+      terrainName: Desert
+      textureKey: texture.cc69b687163987f4aaee72f259d23275
       texture: {fileID: 2800000, guid: cc69b687163987f4aaee72f259d23275, type: 3}
+      alternativeTextureKeys:
+      - texture.918ed519ed841a54588912136ee3bba2
+      - texture.a9ffb72fb0cd9194ea8f683229151956
+      - texture.fccdd79fde2f05b41ba2b91e2664da30
+      - texture.537c2f6614e077446aaab50984a94ba1
+      - texture.ee16ad4217af01c4a9df7afd234dff7a
+      - texture.a081bc0b635257b4da0fe4a78cffe18e
+      - texture.a86ee867fe741844e95852966b92d9ea
       alternativeTextures:
       - {fileID: 2800000, guid: 918ed519ed841a54588912136ee3bba2, type: 3}
       - {fileID: 2800000, guid: a9ffb72fb0cd9194ea8f683229151956, type: 3}
@@ -440,8 +456,14 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 0
       defenseModifier: 0
-    - terrainName: Mountains
+    - contentKey: terrain.arid.mountains
+      terrainName: Mountains
+      textureKey: texture.74bfa362df5a7a14d9b4dbb1128501b6
       texture: {fileID: 2800000, guid: 74bfa362df5a7a14d9b4dbb1128501b6, type: 3}
+      alternativeTextureKeys:
+      - texture.9d26127d93710eb43984f68555f57821
+      - texture.d67fdfd315735f848be1123786255afb
+      - texture.561ec0444a2e45d4aa5fb2b3644af51e
       alternativeTextures:
       - {fileID: 2800000, guid: 9d26127d93710eb43984f68555f57821, type: 3}
       - {fileID: 2800000, guid: d67fdfd315735f848be1123786255afb, type: 3}
@@ -455,8 +477,14 @@ MonoBehaviour:
       moveCost: 3
       blocksGroundMovement: 0
       defenseModifier: 2
-    - terrainName: Rock desert
+    - contentKey: terrain.arid.rock-desert
+      terrainName: Rock desert
+      textureKey: texture.05e651b1c6ceef94d8dadfeeaead2433
       texture: {fileID: 2800000, guid: 05e651b1c6ceef94d8dadfeeaead2433, type: 3}
+      alternativeTextureKeys:
+      - texture.3c4c4e67cc226924881db590152eacae
+      - texture.6d400a2c4b82092409836eae34cbe6cf
+      - texture.59ad39281c1e965448819108a0219604
       alternativeTextures:
       - {fileID: 2800000, guid: 3c4c4e67cc226924881db590152eacae, type: 3}
       - {fileID: 2800000, guid: 6d400a2c4b82092409836eae34cbe6cf, type: 3}
@@ -470,8 +498,14 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 0
       defenseModifier: 1
-    - terrainName: Sand dunes
+    - contentKey: terrain.arid.sand-dunes
+      terrainName: Sand dunes
+      textureKey: texture.b9242a52e05ddbe42abac1d922f63983
       texture: {fileID: 2800000, guid: b9242a52e05ddbe42abac1d922f63983, type: 3}
+      alternativeTextureKeys:
+      - texture.c62c900940ca6a14d8fdd402d7bd4869
+      - texture.55eb96ad3668c514383a9d36c7081560
+      - texture.06f4cbc3ef1e1f048982185c6c5d2f57
       alternativeTextures:
       - {fileID: 2800000, guid: c62c900940ca6a14d8fdd402d7bd4869, type: 3}
       - {fileID: 2800000, guid: 55eb96ad3668c514383a9d36c7081560, type: 3}
@@ -485,8 +519,11 @@ MonoBehaviour:
       moveCost: 2
       blocksGroundMovement: 0
       defenseModifier: 1
-    - terrainName: Acid lake
+    - contentKey: terrain.arid.acid-lake
+      terrainName: Acid lake
+      textureKey: texture.b547aa40cb3e46b5990fa944e24072e5
       texture: {fileID: 2800000, guid: b547aa40cb3e46b5990fa944e24072e5, type: 3}
+      alternativeTextureKeys: []
       alternativeTextures: []
       baselineWeight: 0
       resourceYields:
@@ -497,8 +534,11 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 1
       defenseModifier: 0
-    - terrainName: Deep canyon
+    - contentKey: terrain.arid.deep-canyon
+      terrainName: Deep canyon
+      textureKey: texture.4153d9126b8f4c4f9e3b09afc2f1209d
       texture: {fileID: 2800000, guid: 4153d9126b8f4c4f9e3b09afc2f1209d, type: 3}
+      alternativeTextureKeys: []
       alternativeTextures: []
       baselineWeight: 0
       resourceYields:
@@ -509,8 +549,11 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 1
       defenseModifier: 0
-    - terrainName: Boiling mud field
+    - contentKey: terrain.arid.boiling-mud-field
+      terrainName: Boiling mud field
+      textureKey: texture.e5fac893866845ba9eb012da3b6be079
       texture: {fileID: 2800000, guid: e5fac893866845ba9eb012da3b6be079, type: 3}
+      alternativeTextureKeys: []
       alternativeTextures: []
       baselineWeight: 0
       resourceYields:
@@ -521,8 +564,11 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 1
       defenseModifier: 0
-    - terrainName: Giant machine wreck
+    - contentKey: terrain.arid.giant-machine-wreck
+      terrainName: Giant machine wreck
+      textureKey: texture.d86149fc329b49458eefe9915b5d2923
       texture: {fileID: 2800000, guid: d86149fc329b49458eefe9915b5d2923, type: 3}
+      alternativeTextureKeys: []
       alternativeTextures: []
       baselineWeight: 0
       resourceYields:
@@ -534,7 +580,8 @@ MonoBehaviour:
       blocksGroundMovement: 1
       defenseModifier: 0
     complexes:
-    - name: Arid acid lake single hex
+    - contentKey: complex.arid.arid-acid-lake-single-hex
+      name: Arid acid lake single hex
       terrainName: Acid lake
       useInGeneration: 0
       randomizeRotation: 0
@@ -558,7 +605,8 @@ MonoBehaviour:
         - {fileID: 2800000, guid: e52656ec5c2245a69feb54b6a540401e, type: 3}
         - {fileID: 2800000, guid: 9d172f1d69f34b78ac2c0a5131154681, type: 3}
         - {fileID: 2800000, guid: e85d2043d42d4b779f2192b3def4c27a, type: 3}
-    - name: Arid canyon snake
+    - contentKey: complex.arid.arid-canyon-snake
+      name: Arid canyon snake
       terrainName: Deep canyon
       useInGeneration: 1
       randomizeRotation: 0
@@ -582,7 +630,8 @@ MonoBehaviour:
       - offset: {x: 1, y: 1}
         frames:
         - {fileID: 2800000, guid: 09be4da248f94e7b9b507c4d3fbe9a66, type: 3}
-    - name: AridSteppe Boiling mud field
+    - contentKey: complex.arid.aridsteppe-boiling-mud-field
+      name: AridSteppe Boiling mud field
       terrainName: Boiling mud field
       useInGeneration: 1
       randomizeRotation: 0
@@ -606,7 +655,8 @@ MonoBehaviour:
         - {fileID: 2800000, guid: fe50939d6cac494d975fc38c324bda08, type: 3}
         - {fileID: 2800000, guid: 0035d98d54df422a88012e7c18be63ab, type: 3}
         - {fileID: 2800000, guid: 3eeaeebc8557475b83ffc7038787adf3, type: 3}
-    - name: AridSteppe Giant machine wreck
+    - contentKey: complex.arid.aridsteppe-giant-machine-wreck
+      name: AridSteppe Giant machine wreck
       terrainName: Giant machine wreck
       useInGeneration: 1
       randomizeRotation: 0
@@ -638,8 +688,14 @@ MonoBehaviour:
     borderNoiseScale: 0.22
     desertOverride:
       terrainTypes:
-      - terrainName: City ruins
+      - contentKey: terrain.desert.city-ruins
+        terrainName: City ruins
+        textureKey: texture.920c40d031c55a849a52b5e1c5341cfe
         texture: {fileID: 2800000, guid: 920c40d031c55a849a52b5e1c5341cfe, type: 3}
+        alternativeTextureKeys:
+        - texture.69c636ddb8ca94342b2dd1249552b0a6
+        - texture.88c59ea2ddbd18040b7fb677c00507a0
+        - texture.c570cc5cfcc028743939065b76786152
         alternativeTextures:
         - {fileID: 2800000, guid: 69c636ddb8ca94342b2dd1249552b0a6, type: 3}
         - {fileID: 2800000, guid: 88c59ea2ddbd18040b7fb677c00507a0, type: 3}
@@ -653,8 +709,18 @@ MonoBehaviour:
         moveCost: 1
         blocksGroundMovement: 0
         defenseModifier: 1
-      - terrainName: Desert
+      - contentKey: terrain.desert.desert
+        terrainName: Desert
+        textureKey: texture.74893629b977f9e4da84b2640d1460a3
         texture: {fileID: 2800000, guid: 74893629b977f9e4da84b2640d1460a3, type: 3}
+        alternativeTextureKeys:
+        - texture.de1979af3c73f7743832d7c31e06b816
+        - texture.da03bb693c144154aa3670bde081e11b
+        - texture.783216fbc2dabea43adb039212709eaf
+        - texture.6ddc075071e1e6346943c323ab939b63
+        - texture.4d9b066bc11f38349b428d99fb567b53
+        - texture.1a63ac5e64743a84aa9878a5e7627345
+        - texture.4b23c7fcc0c195141a161b1486f2d9c1
         alternativeTextures:
         - {fileID: 2800000, guid: de1979af3c73f7743832d7c31e06b816, type: 3}
         - {fileID: 2800000, guid: da03bb693c144154aa3670bde081e11b, type: 3}
@@ -672,8 +738,14 @@ MonoBehaviour:
         moveCost: 1
         blocksGroundMovement: 0
         defenseModifier: 0
-      - terrainName: Mountains
+      - contentKey: terrain.desert.mountains
+        terrainName: Mountains
+        textureKey: texture.ca042cbd5d70ec447b5ea05c20a59bd3
         texture: {fileID: 2800000, guid: ca042cbd5d70ec447b5ea05c20a59bd3, type: 3}
+        alternativeTextureKeys:
+        - texture.24a58b3d33963cf4eba9beda4be5dec1
+        - texture.dac7f95350a01114681aa7f61ef04718
+        - texture.9d2c970fa1b3c02408fbeb29ecdf81b6
         alternativeTextures:
         - {fileID: 2800000, guid: 24a58b3d33963cf4eba9beda4be5dec1, type: 3}
         - {fileID: 2800000, guid: dac7f95350a01114681aa7f61ef04718, type: 3}
@@ -687,8 +759,14 @@ MonoBehaviour:
         moveCost: 3
         blocksGroundMovement: 0
         defenseModifier: 2
-      - terrainName: Rock desert
+      - contentKey: terrain.desert.rock-desert
+        terrainName: Rock desert
+        textureKey: texture.3b5b3e8bc4e41d94285511a3c6308ee8
         texture: {fileID: 2800000, guid: 3b5b3e8bc4e41d94285511a3c6308ee8, type: 3}
+        alternativeTextureKeys:
+        - texture.fa5028903e988974b80470a932c65457
+        - texture.49faa7cdce14c9f439bbc3e74e5e733b
+        - texture.51429523637db8849bc202228c2d83dd
         alternativeTextures:
         - {fileID: 2800000, guid: fa5028903e988974b80470a932c65457, type: 3}
         - {fileID: 2800000, guid: 49faa7cdce14c9f439bbc3e74e5e733b, type: 3}
@@ -702,8 +780,14 @@ MonoBehaviour:
         moveCost: 1
         blocksGroundMovement: 0
         defenseModifier: 1
-      - terrainName: Sand dunes
+      - contentKey: terrain.desert.sand-dunes
+        terrainName: Sand dunes
+        textureKey: texture.1b92812766508b54391954f6e3eb3ac5
         texture: {fileID: 2800000, guid: 1b92812766508b54391954f6e3eb3ac5, type: 3}
+        alternativeTextureKeys:
+        - texture.1288cf09996ad6c4faa871baf0a4aa4c
+        - texture.ca815b5d884bdd04ebd08146335980c5
+        - texture.945d31d4db5e07b45a4f416c60e84588
         alternativeTextures:
         - {fileID: 2800000, guid: 1288cf09996ad6c4faa871baf0a4aa4c, type: 3}
         - {fileID: 2800000, guid: ca815b5d884bdd04ebd08146335980c5, type: 3}
@@ -717,8 +801,11 @@ MonoBehaviour:
         moveCost: 2
         blocksGroundMovement: 0
         defenseModifier: 1
-      - terrainName: Acid lake
+      - contentKey: terrain.desert.acid-lake
+        terrainName: Acid lake
+        textureKey: texture.005d68e88d2e5d6bb377f0885891503b
         texture: {fileID: 2800000, guid: 005d68e88d2e5d6bb377f0885891503b, type: 3}
+        alternativeTextureKeys: []
         alternativeTextures: []
         baselineWeight: 0
         resourceYields:
@@ -729,8 +816,11 @@ MonoBehaviour:
         moveCost: 1
         blocksGroundMovement: 1
         defenseModifier: 0
-      - terrainName: Deep canyon
+      - contentKey: terrain.desert.deep-canyon
+        terrainName: Deep canyon
+        textureKey: texture.3552ab8d62fa5637afcdd771ad69f833
         texture: {fileID: 2800000, guid: 3552ab8d62fa5637afcdd771ad69f833, type: 3}
+        alternativeTextureKeys: []
         alternativeTextures: []
         baselineWeight: 0
         resourceYields:
@@ -741,8 +831,11 @@ MonoBehaviour:
         moveCost: 1
         blocksGroundMovement: 1
         defenseModifier: 0
-      - terrainName: Boiling mud field
+      - contentKey: terrain.desert.boiling-mud-field
+        terrainName: Boiling mud field
+        textureKey: texture.60fc94984ccb4f348a52eee0cd923212
         texture: {fileID: 2800000, guid: 60fc94984ccb4f348a52eee0cd923212, type: 3}
+        alternativeTextureKeys: []
         alternativeTextures: []
         baselineWeight: 0
         resourceYields:
@@ -753,8 +846,11 @@ MonoBehaviour:
         moveCost: 1
         blocksGroundMovement: 1
         defenseModifier: 0
-      - terrainName: Giant machine wreck
+      - contentKey: terrain.desert.giant-machine-wreck
+        terrainName: Giant machine wreck
+        textureKey: texture.b3a2244363c4470089994f9c51800d09
         texture: {fileID: 2800000, guid: b3a2244363c4470089994f9c51800d09, type: 3}
+        alternativeTextureKeys: []
         alternativeTextures: []
         baselineWeight: 0
         resourceYields:
@@ -766,7 +862,8 @@ MonoBehaviour:
         blocksGroundMovement: 1
         defenseModifier: 0
       complexes:
-      - name: Acid lake single hex
+      - contentKey: complex.desert.acid-lake-single-hex
+        name: Acid lake single hex
         terrainName: Acid lake
         useInGeneration: 1
         randomizeRotation: 0
@@ -790,7 +887,8 @@ MonoBehaviour:
           - {fileID: 2800000, guid: ef23a7265c8f58e6beeaf02ec856da96, type: 3}
           - {fileID: 2800000, guid: 123a640688eb51e4ab51afcc2c7a8246, type: 3}
           - {fileID: 2800000, guid: 895acce0bd2d5a85be6acaed713ab69d, type: 3}
-      - name: Canyon snake directional 000
+      - contentKey: complex.desert.canyon-snake-directional-000
+        name: Canyon snake directional 000
         terrainName: Deep canyon
         useInGeneration: 1
         randomizeRotation: 0
@@ -814,7 +912,8 @@ MonoBehaviour:
         - offset: {x: 1, y: 1}
           frames:
           - {fileID: 2800000, guid: a9c9786ccdf5432c87468a7451721d3c, type: 3}
-      - name: Canyon snake directional 060
+      - contentKey: complex.desert.canyon-snake-directional-060
+        name: Canyon snake directional 060
         terrainName: Deep canyon
         useInGeneration: 1
         randomizeRotation: 0
@@ -838,7 +937,8 @@ MonoBehaviour:
         - offset: {x: -1, y: 2}
           frames:
           - {fileID: 2800000, guid: b437c7e4347e41ada954351572337108, type: 3}
-      - name: Canyon snake directional 120
+      - contentKey: complex.desert.canyon-snake-directional-120
+        name: Canyon snake directional 120
         terrainName: Deep canyon
         useInGeneration: 1
         randomizeRotation: 0
@@ -862,7 +962,8 @@ MonoBehaviour:
         - offset: {x: -2, y: 1}
           frames:
           - {fileID: 2800000, guid: e35421c74c10481cb5dce4aab2c24e1e, type: 3}
-      - name: Canyon snake directional 180
+      - contentKey: complex.desert.canyon-snake-directional-180
+        name: Canyon snake directional 180
         terrainName: Deep canyon
         useInGeneration: 1
         randomizeRotation: 0
@@ -886,7 +987,8 @@ MonoBehaviour:
         - offset: {x: -1, y: -1}
           frames:
           - {fileID: 2800000, guid: 0311492b44a74818b62cae7ff385006a, type: 3}
-      - name: Canyon snake directional 240
+      - contentKey: complex.desert.canyon-snake-directional-240
+        name: Canyon snake directional 240
         terrainName: Deep canyon
         useInGeneration: 1
         randomizeRotation: 0
@@ -910,7 +1012,8 @@ MonoBehaviour:
         - offset: {x: 1, y: -2}
           frames:
           - {fileID: 2800000, guid: bd7e61ca78b440519a1180808e6ef68d, type: 3}
-      - name: Canyon snake directional 300
+      - contentKey: complex.desert.canyon-snake-directional-300
+        name: Canyon snake directional 300
         terrainName: Deep canyon
         useInGeneration: 1
         randomizeRotation: 0
@@ -934,7 +1037,8 @@ MonoBehaviour:
         - offset: {x: 2, y: -1}
           frames:
           - {fileID: 2800000, guid: 8747d65d12654708b4d611f5050685b9, type: 3}
-      - name: Desert Boiling mud field
+      - contentKey: complex.desert.desert-boiling-mud-field
+        name: Desert Boiling mud field
         terrainName: Boiling mud field
         useInGeneration: 0
         randomizeRotation: 0
@@ -958,7 +1062,8 @@ MonoBehaviour:
           - {fileID: 2800000, guid: b631feff22bc444684bce4956664eb12, type: 3}
           - {fileID: 2800000, guid: c7a23af71157403ca5c758d26138785d, type: 3}
           - {fileID: 2800000, guid: e1d653c978fb44cfb72c99cc06e07592, type: 3}
-      - name: Desert Giant machine wreck directional 000
+      - contentKey: complex.desert.desert-giant-machine-wreck-directional-000
+        name: Desert Giant machine wreck directional 000
         terrainName: Giant machine wreck
         useInGeneration: 1
         randomizeRotation: 0
@@ -979,7 +1084,8 @@ MonoBehaviour:
         - offset: {x: 1, y: 0}
           frames:
           - {fileID: 2800000, guid: 815b08ae9ea641ee992cdde25168c1d2, type: 3}
-      - name: Desert Giant machine wreck directional 060
+      - contentKey: complex.desert.desert-giant-machine-wreck-directional-060
+        name: Desert Giant machine wreck directional 060
         terrainName: Giant machine wreck
         useInGeneration: 1
         randomizeRotation: 0
@@ -1000,7 +1106,8 @@ MonoBehaviour:
         - offset: {x: 0, y: 1}
           frames:
           - {fileID: 2800000, guid: ebb4c52dd1b449a4906046a6f4e0b6bc, type: 3}
-      - name: Desert Giant machine wreck directional 120
+      - contentKey: complex.desert.desert-giant-machine-wreck-directional-120
+        name: Desert Giant machine wreck directional 120
         terrainName: Giant machine wreck
         useInGeneration: 1
         randomizeRotation: 0
@@ -1021,7 +1128,8 @@ MonoBehaviour:
         - offset: {x: -1, y: 1}
           frames:
           - {fileID: 2800000, guid: 8bcc65a32f39426bab89bbad4a356821, type: 3}
-      - name: Desert Giant machine wreck directional 180
+      - contentKey: complex.desert.desert-giant-machine-wreck-directional-180
+        name: Desert Giant machine wreck directional 180
         terrainName: Giant machine wreck
         useInGeneration: 1
         randomizeRotation: 0
@@ -1042,7 +1150,8 @@ MonoBehaviour:
         - offset: {x: -1, y: 0}
           frames:
           - {fileID: 2800000, guid: a67e88fc5b424c42b52764f9f2c09169, type: 3}
-      - name: Desert Giant machine wreck directional 240
+      - contentKey: complex.desert.desert-giant-machine-wreck-directional-240
+        name: Desert Giant machine wreck directional 240
         terrainName: Giant machine wreck
         useInGeneration: 1
         randomizeRotation: 0
@@ -1063,7 +1172,8 @@ MonoBehaviour:
         - offset: {x: 0, y: -1}
           frames:
           - {fileID: 2800000, guid: f559ab04cb874cb6a2a544dbc1435167, type: 3}
-      - name: Desert Giant machine wreck directional 300
+      - contentKey: complex.desert.desert-giant-machine-wreck-directional-300
+        name: Desert Giant machine wreck directional 300
         terrainName: Giant machine wreck
         useInGeneration: 1
         randomizeRotation: 0

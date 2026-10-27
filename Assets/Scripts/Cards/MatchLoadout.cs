@@ -30,6 +30,26 @@ namespace Game.Cards
             if (!validation.IsValid) { pool = null; error = string.Join("\n", validation.Errors); return false; }
             return rules.Starting.TryBuildDeckPool(deck.mainCards, out pool, out error);
         }
+        // A match saves its frozen starting loadout, never the currently selected profile deck.
+        // The existing profile copy boundary also detaches the saved match from profile edits.
+        public SavedDeck CaptureState() => CollectionProfile.CopyDeck(deck);
+
+        public static MatchLoadout FromState(SavedDeck state, DeckRules rules)
+        {
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            var savedOwnership = new Dictionary<string, int>();
+            foreach (var entries in new[] { state.mainCards, state.equipment, state.mutators })
+                if (entries != null)
+                    foreach (var entry in entries)
+                        if (entry != null && !string.IsNullOrEmpty(entry.cardKey))
+                        {
+                            if (rules?.Resolve(entry.cardKey) == null)
+                                throw new InvalidOperationException("Cannot resolve saved loadout card: " + entry.cardKey);
+                            savedOwnership[entry.cardKey] = entry.count;
+                        }
+            return new MatchLoadout(state, rules, key => savedOwnership.TryGetValue(key, out int n) ? n : 0);
+        }
+
         internal List<DeckCardEntry> BlueprintEntries()
         {
             var result = new List<DeckCardEntry>();
@@ -44,11 +64,40 @@ namespace Game.Cards
         private readonly HashSet<string> unlocked = new HashSet<string>();
         private readonly HashSet<string> pending = new HashSet<string>();
         public BlueprintQuota(MatchLoadout loadout) { foreach (var e in loadout.BlueprintEntries()) if (e.count > 0) unlocked.Add(e.cardKey); }
+        private BlueprintQuota() { }
+        public BlueprintQuotaState CaptureState()
+        {
+            var state = new BlueprintQuotaState();
+            state.unlockedKeys.AddRange(unlocked);
+            state.pendingKeys.AddRange(pending);
+            state.unlockedKeys.Sort(StringComparer.Ordinal);
+            state.pendingKeys.Sort(StringComparer.Ordinal);
+            return state;
+        }
+        public static BlueprintQuota FromState(BlueprintQuotaState state)
+        {
+            if (state?.unlockedKeys == null || state.pendingKeys == null)
+                throw new InvalidOperationException("Invalid saved blueprint quota.");
+            var quota = new BlueprintQuota();
+            foreach (var key in state.unlockedKeys)
+                if (string.IsNullOrEmpty(key) || !quota.unlocked.Add(key))
+                    throw new InvalidOperationException("Invalid saved blueprint identity.");
+            foreach (var key in state.pendingKeys)
+                if (!quota.Unlocked(key) || !quota.pending.Add(key))
+                    throw new InvalidOperationException("Pending blueprint is missing or duplicated.");
+            return quota;
+        }
         // A blueprint in the deck unlocks unlimited production; only one attempt per card may be in flight.
         public bool Unlocked(string key) => unlocked.Contains(key ?? "");
         public bool Available(string key) => Unlocked(key) && !pending.Contains(key);
         internal bool TryReserve(string key) { if (!Available(key)) return false; return pending.Add(key); }
         internal void Release(string key) { pending.Remove(key); }
+    }
+    [Serializable]
+    public sealed class BlueprintQuotaState
+    {
+        public List<string> unlockedKeys = new List<string>();
+        public List<string> pendingKeys = new List<string>();
     }
     public sealed class ProductionAttempt : IDisposable
     {

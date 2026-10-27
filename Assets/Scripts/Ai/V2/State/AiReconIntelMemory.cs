@@ -10,7 +10,7 @@ namespace Game.Ai.V2
     // remembers enemy contacts, while this one remembers when map information itself was last
     // refreshed. Observed != Visited — this class never writes VisionSystem's Visited/EverSeen
     // state and therefore aircraft can refresh intelligence without completing ground Explore.
-    public static class AiReconIntelMemory
+    public static partial class AiReconIntelMemory
     {
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> LastObservedByPlayer =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
@@ -39,6 +39,7 @@ namespace Game.Ai.V2
         // keep the memory fresh after each live movement/content update during the turn.
         public static void ObserveCurrentVisibility(PlayerSetupData player, int currentTurn)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (player == null)
                 return;
 
@@ -94,12 +95,14 @@ namespace Game.Ai.V2
 
         private static void OnVisibilityChanged(PlayerSetupData player)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (player != null && CurrentTurnByPlayer.TryGetValue(player, out int turn))
                 ObserveCurrentVisibility(player, turn);
         }
 
         private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
         {
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
             if (player == null || !CurrentTurnByPlayer.TryGetValue(player, out int turn)
                 || !VisionSystem.IsVisible(player, hex))
                 return;

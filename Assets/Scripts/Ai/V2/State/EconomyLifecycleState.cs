@@ -10,7 +10,7 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // Persistent per-project delivery evidence and bounded suppression. No resource storage.
-    internal sealed class EconomyLifecycleState : IEconomyLifecycleView
+    internal sealed partial class EconomyLifecycleState : IEconomyLifecycleView
     {
         internal static bool ObjectiveSatisfied(PlayerSetupData player, EconomyMissionTarget t)
         {
@@ -50,6 +50,23 @@ namespace Game.Ai.V2
             // a failed turn, whatever order that turn's outcomes arrive in (a first attempt blocked,
             // a later one delivered), and it ends the running streak.
             private readonly Dictionary<TKey, int> _progressTurn = new Dictionary<TKey, int>();
+
+            internal DeliveryEvidence<TSaved> Capture<TSaved>(Func<TKey, TSaved> key) =>
+                new DeliveryEvidence<TSaved>(
+                    AiPersistenceCollections.Freeze(_failures.Select(x => new KeyValuePair<TSaved, (int Turn, int Count)>(key(x.Key), x.Value))),
+                    AiPersistenceCollections.Freeze(_suppressedUntilTurn.Select(x => new KeyValuePair<TSaved, int>(key(x.Key), x.Value))),
+                    AiPersistenceCollections.Freeze(_progressTurn.Select(x => new KeyValuePair<TSaved, int>(key(x.Key), x.Value))));
+
+            internal void Restore<TSaved>(DeliveryEvidence<TSaved> state, Func<TSaved, TKey> key)
+            {
+                var failures = state.Failures.ToDictionary(x => key(x.Key), x => x.Value);
+                var suppressed = state.SuppressedUntil.ToDictionary(x => key(x.Key), x => x.Value);
+                var progress = state.ProgressTurns.ToDictionary(x => key(x.Key), x => x.Value);
+                _failures.Clear(); _suppressedUntilTurn.Clear(); _progressTurn.Clear();
+                foreach (var x in failures) _failures.Add(x.Key, x.Value);
+                foreach (var x in suppressed) _suppressedUntilTurn.Add(x.Key, x.Value);
+                foreach (var x in progress) _progressTurn.Add(x.Key, x.Value);
+            }
 
             public void RecordProgress(int turn, TKey key)
             {

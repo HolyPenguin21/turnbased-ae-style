@@ -45,7 +45,7 @@ namespace Game.Ai.V2
         public float Pressure => StartAp > 0 ? Demand / StartAp : 0f;
     }
 
-    internal static class ApTurnPressure
+    internal static partial class ApTurnPressure
     {
         private static readonly Dictionary<PlayerSetupData, List<(int Turn, float Demand)>> ByPlayer =
             new Dictionary<PlayerSetupData, List<(int, float)>>();

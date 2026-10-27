@@ -46,7 +46,7 @@ namespace Game.Ai.V2
         public int Turn;
     }
 
-    public static class ReconPatrolStateRegistry
+    public static partial class ReconPatrolStateRegistry
     {
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, ReconPatrolState>> ByPlayer =
             new Dictionary<PlayerSetupData, Dictionary<int, ReconPatrolState>>();

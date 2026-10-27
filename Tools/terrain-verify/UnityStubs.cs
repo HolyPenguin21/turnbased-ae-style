@@ -19,13 +19,13 @@ namespace UnityEngine
         public T AddComponent<T>() where T:Component,new() { var c=new T{gameObject=this};_components[typeof(T)]=c;return c; }
         public T GetComponent<T>() where T:class => _components.TryGetValue(typeof(T),out var c)?(T)c:null;
     }
-    public class Transform { public GameObject gameObject; public Vector3 position, localScale; public Vector3 TransformPoint(Vector3 v)=>v; public Vector3 InverseTransformPoint(Vector3 v)=>v; public Transform Find(string name)=>null; public void SetParent(Transform parent,bool worldPositionStays){} }
-    public class MeshFilter : Component { public Mesh sharedMesh; }
-    public class MeshRenderer : Component { public Material sharedMaterial; public Material[] sharedMaterials; public int sortingOrder; }
+    public class Transform { public GameObject gameObject; public Vector3 position, localScale, localPosition; public Quaternion localRotation; public Vector3 TransformPoint(Vector3 v)=>v; public Vector3 InverseTransformPoint(Vector3 v)=>v; public Transform Find(string name)=>null; public void SetParent(Transform parent,bool worldPositionStays){} }
+    public class MeshFilter : Component { public Mesh sharedMesh; public Mesh mesh {get=>sharedMesh;set=>sharedMesh=value;} }
+    public class MeshRenderer : Component { public Material sharedMaterial; public Material[] sharedMaterials; public int sortingOrder; public Rendering.ShadowCastingMode shadowCastingMode; public bool receiveShadows; public void GetPropertyBlock(MaterialPropertyBlock block){} public void SetPropertyBlock(MaterialPropertyBlock block){} }
     public class BoxCollider : Component { public Vector3 center,size; }
     public enum TextureWrapMode { Clamp }
-    public class Texture2D : Object { public TextureWrapMode wrapMode; public Texture2D(int w,int h) {} }
-    public class Shader : Object { public static Shader Find(string n)=>new Shader(); }
+    public class Texture2D : Object { public TextureWrapMode wrapMode; public FilterMode filterMode; public Texture2D(int w,int h) {} public Texture2D(int w,int h,TextureFormat format,bool mipChain) {} public void SetPixelData(byte[] bytes,int mip){} public void Apply(bool updateMipmaps){} }
+    public class Shader : Object { public static Shader Find(string n)=>new Shader(); public static int PropertyToID(string n)=>n.GetHashCode(); }
     public class Material : Object { public Texture2D mainTexture; public Color color; public Material(Shader s) {} }
     public struct Bounds { public Vector3 center,size; public Bounds(Vector3 center,Vector3 size){this.center=center;this.size=size;} public void Encapsulate(Vector3 point){} }
     public class Mesh : Object
@@ -39,7 +39,7 @@ namespace UnityEngine
         public void SetColors(IEnumerable<Color> v)=>colors=v.ToArray();
         public void SetTriangles(IEnumerable<int> v,int submesh)=>_triangles[submesh]=v.ToArray();
         public int[] GetTriangles(int submesh)=>_triangles[submesh];
-        public void RecalculateBounds(){} public void RecalculateTangents(){}
+        public void RecalculateBounds(){} public void RecalculateTangents(){} public void RecalculateNormals(){}
     }
     public static class Random
     {
@@ -51,14 +51,14 @@ namespace UnityEngine
         public static float Range(float min,float max)=>min+(max-min)*(float)_rng.NextDouble();
         public static float value=>(float)_rng.NextDouble();
     }
-    public static class Debug { public static void LogWarning(string message)=>System.Console.WriteLine("WARN "+message); }
+    public static class Debug { public static void LogWarning(string message)=>System.Console.WriteLine("WARN "+message); public static void LogError(string message)=>System.Console.WriteLine("ERROR "+message); }
     public readonly struct Vector2Int { public readonly int x,y; public Vector2Int(int x,int y){this.x=x;this.y=y;} }
-    public struct Vector2 { public float x,y; public Vector2(float x,float y){this.x=x;this.y=y;} }
+    public struct Vector2 { public static Vector2 zero=>new Vector2(); public float x,y; public Vector2(float x,float y){this.x=x;this.y=y;} }
     public struct Color { public static Color white=>new Color(1,1,1,1); public float r,g,b,a; public Color(float r,float g,float b,float a=1){this.r=r;this.g=g;this.b=b;this.a=a;} }
     public struct Vector3
     {
         public float x,y,z; public Vector3(float x,float y,float z){this.x=x;this.y=y;this.z=z;}
-        public static Vector3 zero=>new Vector3(); public static Vector3 up=>new Vector3(0,1,0);
+        public static Vector3 one=>new Vector3(1,1,1); public static Vector3 zero=>new Vector3(); public static Vector3 up=>new Vector3(0,1,0);
         public float sqrMagnitude => x*x+y*y+z*z;
         public static Vector3 Cross(Vector3 a,Vector3 b)=>new Vector3(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);
         public static float Dot(Vector3 a,Vector3 b)=>a.x*b.x+a.y*b.y+a.z*b.z;
@@ -85,13 +85,17 @@ namespace UnityEngine
     }
     public static class Time { public static double timeAsDouble; public static float deltaTime=1f/60; }
     public static class Application { public static bool isPlaying; }
+    public enum TextureFormat {R8} public enum FilterMode {Bilinear}
+    public struct Quaternion {public static Quaternion identity=>new Quaternion();}
+    public struct Vector4 {public Vector4(float x,float y,float z,float w){}}
+    public class MaterialPropertyBlock {public void SetTexture(int id,Texture2D value){} public void SetFloat(int id,float value){} public void SetVector(int id,Vector4 value){}}
     public class SerializeField:Attribute{} public class RequireComponent:Attribute{public RequireComponent(params Type[] t){}}
     public class ExecuteAlways:Attribute{} public class ContextMenu:Attribute{public ContextMenu(string n){}}
     public class TooltipAttribute:Attribute{public TooltipAttribute(string n){}}
     public class HeaderAttribute:Attribute{public HeaderAttribute(string n){}}
     public class MinAttribute:Attribute{public MinAttribute(float n){}} public class RangeAttribute:Attribute{public RangeAttribute(float a,float b){}}
 }
-namespace UnityEngine.Rendering { public enum IndexFormat { UInt32 } }
+namespace UnityEngine.Rendering { public enum IndexFormat { UInt32 } public enum ShadowCastingMode {Off} }
 namespace Game.Players { public class PlayerSetupData {} }
 namespace Game.Units { public class UnitData { public int MoveCurrent,MoveMax;public bool IsAviation,HasEmergencyFlightPenalty;} }
 namespace Game.Map
@@ -101,10 +105,13 @@ namespace Game.Map
     public static class ArmyRegistry { public static IEnumerable<ArmyData> AllAt(Game.HexGrid.HexCoord h)=>Array.Empty<ArmyData>(); }
     public static class HexEventRegistry { public static object FindAt(Game.HexGrid.HexCoord h)=>null; }
     public class MapResourceDisplay:UnityEngine.Component { public void RefreshAll(){} }
-    public class FogOfWarController:UnityEngine.Component { public void RefreshAll(){} }
+    public class HexCoordLabel:UnityEngine.Component { public void ApplyStyle(Game.Styles.FogOfWarStyle style){} public void SetCoord(int q,int r){} public void SetVisited(bool visited){} }
     public class MapObjectVisual : UnityEngine.Component { public bool IsVisible = true; }
     public static class VisionSystem {
         public static Game.Players.PlayerSetupData CurrentViewer;
+        public static event Action<Game.Players.PlayerSetupData> VisibilityChanged;
+        public static bool IsVisibleToCurrentViewer(Game.HexGrid.HexCoord coord)=>false;
+        public static bool IsVisitedByCurrentViewer(Game.HexGrid.HexCoord coord)=>false;
         public static event Action<Game.HexGrid.HexCoord> ContentChangedForTest;
         public static void NotifyContentChanged(Game.HexGrid.HexCoord hex)=>ContentChangedForTest?.Invoke(hex);
     }
@@ -130,9 +137,12 @@ namespace Game.Aviation
 namespace Game.Core
 {
     public struct ProfileScope:IDisposable{public ProfileScope(string s){} public void Dispose(){}}
-    public class GameConfig:UnityEngine.ScriptableObject { public Game.Terrain.MapGenerationSettings mapGeneration; }
+    public class GameConfig:UnityEngine.ScriptableObject { public Game.Terrain.MapGenerationSettings mapGeneration; public Game.Styles.FogOfWarStyle fogOfWarStyle; }
+    public sealed class PendingMapRestore { public Game.Map.HexMapLayout Map; }
     public static class GameSession
     {
+        public static PendingMapRestore PendingRestore;
+        public static string SetupError;
         public static int ResolveMapRadius(int fallback)=>fallback;
         public static Game.Terrain.Biome ResolveBiome()=>Game.Terrain.Biome.Arid;
     }
@@ -164,3 +174,6 @@ namespace Game.Ai.V2 {}
 namespace Game.Combat {}
 
 
+
+namespace Game.Styles { public class FogOfWarStyle {public int sortingOrder; public UnityEngine.Vector2 coordLabelOffset;} }
+namespace Game.Turns { public class GameTurnController:UnityEngine.Component {public event Action TurnStateChanged;} }

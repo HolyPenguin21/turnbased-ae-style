@@ -36,6 +36,30 @@ namespace Game.Map
         // hit area filling most of a hex and swallowing plain hex clicks into the army modal.
         [SerializeField, Range(0.2f, 1f)] private float clickRadiusFactor = 0.7f;
 
+        // A future appearance codec decodes a detached marker tree, then freezes it before
+        // handing it to the remembered-visual importer. Never hand that importer a live marker.
+        public bool IsFrozenRememberedAppearance { get; private set; }
+
+        public void FreezeRememberedAppearance()
+        {
+            foreach (MapFlagAnimator flag in GetComponentsInChildren<MapFlagAnimator>(true))
+                flag.enabled = false;
+            IsFrozenRememberedAppearance = true;
+            SetVisible(false);
+        }
+
+        // Copy the observed hierarchy as well as its renderer values: layered flags/icons may
+        // not exist on a generic marker. Further live recolouring/destruction cannot change it.
+        public MapObjectVisual CreateFrozenSnapshot(Transform parent = null)
+        {
+            var snapshot = Instantiate(this, transform.position, transform.rotation, parent);
+            snapshot.name = name + " (Last Seen)";
+            snapshot.FreezeRememberedAppearance();
+            snapshot.transform.localScale = transform.localScale;
+            snapshot.CopyAppearanceFrom(this);
+            return snapshot;
+        }
+
         public void SetColor(Color color)
         {
             if (tintInnerCircle && innerCircle != null)

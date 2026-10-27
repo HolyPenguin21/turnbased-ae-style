@@ -18,7 +18,8 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   - {fileID: 11400000, guid: c7d27e53b32c458d83fbfe43e8732dee, type: 2}
   events:
-  - name: Oasis outpost
+  - authoredKey: event-ae6b5fa1213259b2985d8d71ae95a436
+    name: Oasis outpost
     image: {fileID: 21300000, guid: a8ff5139211963a4ba9c4071e7ad163c, type: 3}
     description: The dry oasis outpost still has a deep well beneath its collapsed adobe courtyard. Its cistern and storehouse may hold useful supplies.
     variants:
@@ -52,7 +53,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.tactic.disruption
-  - name: Solar farm
+  - authoredKey: event-cf497b5df6f75fddbbe71f03b1eb53dd
+    name: Solar farm
     image: {fileID: 21300000, guid: b8125e3b9e589a2438d6e66d8c80f7e8, type: 3}
     description: Rows of dead photovoltaic mirrors cover the salt flats. A few intact converters remain behind the perimeter fence.
     variants:
@@ -65,7 +67,8 @@ MonoBehaviour:
     - guardArmyName: Event Heavy 09
       resourceCount: 4
       rewards: []
-  - name: Crashed cargo blimp
+  - authoredKey: event-2c36bf63de94597e82da20d833281646
+    name: Crashed cargo blimp
     image: {fileID: 21300000, guid: d3d2a7273506a574da64907964c0f68e, type: 3}
     description: A cargo blimp lies tangled among desert rocks. Its torn hold has exposed sealed crates beneath the sun-bleached envelope.
     variants:
@@ -99,7 +102,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.tactic.tactical-advantage
-  - name: Orbital satellite
+  - authoredKey: event-ddfd20ea4f665045ae01ef47ca1f5e06
+    name: Orbital satellite
     image: {fileID: 21300000, guid: e110a89a93bed9345a939fd80bd2d6aa, type: 3}
     description: A fallen orbital satellite has carved a long scar through the dunes. Its surviving instruments may still be worth salvaging.
     variants:
@@ -133,7 +137,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.tactic.flawless-execution
-  - name: Abandoned warehouse
+  - authoredKey: event-d1c80d418c275b38b23b0eb52b52d9c4
+    name: Abandoned warehouse
     image: {fileID: 21300000, guid: a220bd1f5f6eb7a4fbd3c515e0e6df1a, type: 3}
     description: A locked warehouse stands beside an old freight road. Movement behind the shutters suggests that its stock is still claimed.
     variants:
@@ -167,7 +172,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.equipment.infantry.ceramic-vest
-  - name: Concrete bunker
+  - authoredKey: event-fae93f6724b95b84be082e7fe8b9e7b6
+    name: Concrete bunker
     image: {fileID: 21300000, guid: de6a3cf512d99a442aa3dfad897b3902, type: 3}
     description: A reinforced logistics bunker hides beneath a ruined highway. Its supply vaults are occupied.
     variants:
@@ -180,7 +186,8 @@ MonoBehaviour:
     - guardArmyName: Event Heavy 03
       resourceCount: 4
       rewards: []
-  - name: Resort settlement
+  - authoredKey: event-8a1ef51c9ac357e7aa1184a8c8a47d3b
+    name: Resort settlement
     image: {fileID: 21300000, guid: e899db11b325dca4abbf7d226647091f, type: 3}
     description: Glass-fronted resort houses emerge from the dunes. Their abandoned rooms may still contain useful supplies.
     variants:
@@ -214,7 +221,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.tactic.disruption
-  - name: Auto repair shop
+  - authoredKey: event-a094f37f743155bf9762bca43cb601f9
+    name: Auto repair shop
     image: {fileID: 21300000, guid: f182ac5c45a6b894ba60e907bc147d9e, type: 3}
     description: An old repair shop shelters a pickup truck and racks of spare parts. Salvagers are working behind the half-open shutters.
     variants:
@@ -248,7 +256,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.equipment.mechanical.servo-actuators
-  - name: Nuclear silo
+  - authoredKey: event-9c1a719bb1905f4b96496716ee70ae98
+    name: Nuclear silo
     image: {fileID: 21300000, guid: 26e3f7db440643843a22bba89cad625f, type: 3}
     description: A sunken missile silo opens into a dry lakebed. The surviving service tunnels may still contain useful equipment.
     variants:
@@ -282,7 +291,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.tactic.total-disruption
-  - name: Research bunker
+  - authoredKey: event-0799bf88603451d485687daeae017966
+    name: Research bunker
     image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
     description: A disguised research bunker lies under a treatment station. Its sealed laboratories remain under guard.
     variants:
@@ -316,7 +326,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.mutator.reinforced-skeleton
-  - name: Factory
+  - authoredKey: event-564421b930655c539c39187bc58101fd
+    name: Factory
     image: {fileID: 21300000, guid: 5b8041f5d35ba1445b31169b8b12c6e0, type: 3}
     description: The dead smokestacks of a manufacturing plant rise above the sand. Its assembly floor still contains recoverable machinery.
     variants:
@@ -329,7 +340,8 @@ MonoBehaviour:
     - guardArmyName: Event Heavy 08
       resourceCount: 4
       rewards: []
-  - name: Airplane boneyard
+  - authoredKey: event-81db536524a35fff8b02c979402fb6c8
+    name: Airplane boneyard
     image: {fileID: 21300000, guid: 163172a6c2e2e93409c7f956e041a13a, type: 3}
     description: Stripped airliners and transport craft rest half-buried in the desert. Their sheltered compartments may hide spare parts.
     variants:
@@ -342,7 +354,8 @@ MonoBehaviour:
     - guardArmyName:
       resourceCount: 4
       rewards: []
-  - name: Tunnel
+  - authoredKey: event-0559d00177c350448ccb81e73997bda0
+    name: Tunnel
     image: {fileID: 21300000, guid: 705ae8d5867e0f349a77e77ee190e92b, type: 3}
     description: A mountain tunnel is blocked by rusted vehicles and fallen stone. A route through the wrecks leads toward abandoned cargo.
     variants:
@@ -355,7 +368,8 @@ MonoBehaviour:
     - guardArmyName:
       resourceCount: 4
       rewards: []
-  - name: Train station
+  - authoredKey: event-bccb174057bd5809b641e23b10bde9f5
+    name: Train station
     image: {fileID: 21300000, guid: 334db0f20a20a304390f75bc764d8e33, type: 3}
     description: Only the concrete roof of a buried railway station remains visible. Its platforms and service rooms are still accessible.
     variants:
@@ -368,7 +382,8 @@ MonoBehaviour:
     - guardArmyName:
       resourceCount: 4
       rewards: []
-  - name: Oil refinery
+  - authoredKey: event-bc57280dcf415faeae07e1f5f0471bb0
+    name: Oil refinery
     image: {fileID: 21300000, guid: 2789e4f57f3425e46a0b28cfb9ef0da7, type: 3}
     description: Pipelines and storage tanks mark an abandoned refinery. The remaining fuel stores have drawn a local patrol.
     variants:
@@ -381,7 +396,8 @@ MonoBehaviour:
     - guardArmyName: Event Heavy 02
       resourceCount: 4
       rewards: []
-  - name: Casino resort
+  - authoredKey: event-54e0e9390982594c9cd6a833a3432663
+    name: Casino resort
     image: {fileID: 21300000, guid: e0d33263f0ad6694594ce8ba63bbd50b, type: 3}
     description: A looted casino resort rises above the dunes. Its service vaults and private rooms may still hold valuables.
     variants:
@@ -394,7 +410,8 @@ MonoBehaviour:
     - guardArmyName:
       resourceCount: 4
       rewards: []
-  - name: Radio observatory
+  - authoredKey: event-b87f1e4eb66c5cd6b37643b9e67a1e92
+    name: Radio observatory
     image: {fileID: 21300000, guid: 0cc82e1994ea4e57b96fb45fc6e78a19, type: 3}
     description: Dish antennas surround a silent desert observatory. The control room may contain intact signal equipment.
     variants:
@@ -407,7 +424,8 @@ MonoBehaviour:
     - guardArmyName:
       resourceCount: 4
       rewards: []
-  - name: Water purification plant
+  - authoredKey: event-253e6531902c579f81f0062e69a1ac96
+    name: Water purification plant
     image: {fileID: 21300000, guid: 437b6d78e5d54b548e524634ef384cd9, type: 3}
     description: A water purification plant stands behind cracked settling pools. Its filters and reserve tanks have become valuable territory.
     variants:
@@ -420,7 +438,8 @@ MonoBehaviour:
     - guardArmyName: Event Heavy 05
       resourceCount: 4
       rewards: []
-  - name: Armored convoy wreck
+  - authoredKey: event-a30a41a65bed509fb43a061fd5b06cc0
+    name: Armored convoy wreck
     image: {fileID: 21300000, guid: 4581641ff37c44368a1c3a78c634d0c5, type: 3}
     description: An armored convoy lies scattered across an old causeway. Sealed transport cases remain among the burnt-out vehicles.
     variants:
@@ -454,7 +473,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.equipment.vehicle.turbocharger
-  - name: Underground archive
+  - authoredKey: event-49d673ef821f59c999014bea98244dcd
+    name: Underground archive
     image: {fileID: 21300000, guid: 6999513a02774353868c09d5e84715dc, type: 3}
     description: A buried archive can be reached through a collapsed access shaft. Shelved records and preserved equipment wait below.
     variants:
@@ -488,7 +508,8 @@ MonoBehaviour:
           materials: 0
           tech: 0
         cardKey: neutral.mutator.adrenal-surge
-  - name: Library
+  - authoredKey: event-e7d0d1702aeb51fda5e38ba02f12e9df
+    name: Library
     image: {fileID: 21300000, guid: a66e8ac9d5e34a0fb6c6ddc7dd16dc9b, type: 3}
     description: Behind the ruined reading hall, armed custodians protect shelves of old-world books and military records. Defeat the guards to uncover a random card from any faction. The card will be added to your hand and permanently to your COLLECTION.
     grantsRandomCollectionCard: 1

@@ -13,7 +13,7 @@ namespace Game.Aviation
     //      — fired OR skipped — is never re-prompted for that SAME air army re-entering/leaving
     //      the same radius again this turn, even though the AA unit itself may still be free to
     //      react to a DIFFERENT air army.
-    public static class AntiAirState
+    public static partial class AntiAirState
     {
         private static readonly HashSet<UnitData> FiredThisTurn = new HashSet<UnitData>();
         private static readonly HashSet<(UnitData aaUnit, int airArmyId)> PromptedThisTurn =

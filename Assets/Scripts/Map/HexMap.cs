@@ -31,6 +31,11 @@ namespace Game.Map
         // the generated combined mesh and its animation groups have a fixed layout. Reject
         // edits once that layout is published rather than silently desynchronizing its view.
         private bool _terrainLayoutPublished;
+        private HexMapLayout _layout;
+        public HexMapLayout Layout => _layout?.Copy();
+
+        // Rendering publishes the descriptor only after the mesh and logical data agree.
+        public void SetLayout(HexMapLayout layout) => _layout = layout?.Copy();
         public void PublishTerrainLayout() => _terrainLayoutPublished = true;
 
         public bool SetTerrainAt(HexCoord coord, TerrainTypeEntry entry)
@@ -53,6 +58,20 @@ namespace Game.Map
         // time. Live view over _hexData's own keys, not a snapshot.
         public IEnumerable<HexCoord> AllCoords => _hexData.Keys;
 
+        // Presentation bounds include the retained decorative layout. These coordinates are
+        // deliberately absent from AllCoords and every gameplay terrain lookup.
+        public IEnumerable<HexCoord> AllVisualCoords
+        {
+            get
+            {
+                foreach (HexCoord coord in _hexData.Keys) yield return coord;
+                if (_layout?.BorderCells == null) yield break;
+                foreach (MapLayoutCell cell in _layout.BorderCells)
+                    yield return new HexCoord(cell.Q, cell.R);
+            }
+        }
+
+
         public bool TryGetTerrainAt(HexCoord coord, out TerrainTypeEntry entry) => _hexData.TryGetValue(coord, out entry);
 
         // Terrain name of the "City ruins" hex type — matches GameConfig's
@@ -73,6 +92,7 @@ namespace Game.Map
         // Called once by HexMapGenerator right after building the mesh.
         public void SetData(int ringRadius, float radius, Dictionary<HexCoord, TerrainTypeEntry> hexData)
         {
+            _layout = null;
             fieldRadius = ringRadius;
             outerRadius = radius;
             _hexData.Clear();

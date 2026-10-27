@@ -110,7 +110,7 @@ namespace Game.Ai.V2
         public int LastTurn = -1;
     }
 
-    public static class AiRadarStateRegistry
+    public static partial class AiRadarStateRegistry
     {
         private static readonly Dictionary<PlayerSetupData, AiRadarState> ByPlayer =
             new Dictionary<PlayerSetupData, AiRadarState>();

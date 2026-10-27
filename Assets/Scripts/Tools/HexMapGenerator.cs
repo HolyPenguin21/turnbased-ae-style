@@ -47,6 +47,16 @@ namespace Game.Map
 
         private void OnEnable()
         {
+            if (Application.isPlaying && GameSession.PendingRestore != null)
+            {
+                try { BuildFromLayout(GameSession.PendingRestore.Map); }
+                catch (System.Exception ex)
+                {
+                    GameSession.SetupError = "Could not restore the saved map: " + ex.Message;
+                    Debug.LogError(GameSession.SetupError);
+                }
+                return;
+            }
             Generate();
         }
 
@@ -68,24 +78,92 @@ namespace Game.Map
                 return;
             }
 
+            HexMapLayout layout = CreateLayout();
+            BuildFromLayout(layout);
+        }
+
+        private HexMapLayout CreateLayout()
+        {
             List<HexCoord> allCoords = BuildCoordList();
             Dictionary<HexCoord, int> assignment = AssignTerrainTypes(allCoords);
-
-            List<TextureVariantSlot> variantSlots = BuildVariantSlots(out List<int>[] slotIndicesByType);
+            List<TextureVariantSlot> slots = BuildVariantSlots(out List<int>[] slotIndicesByType);
             List<PlacedComplex> complexes = PlaceComplexes(allCoords, assignment);
-            var complexSlots = new Dictionary<HexCoord, int>();
-            var complexRotations = new Dictionary<HexCoord, int>();
+            var complexTextures = new Dictionary<HexCoord, Texture2D>();
+            foreach (PlacedComplex complex in complexes)
+                for (int part = 0; part < complex.Cells.Length; part++)
+                    complexTextures.Add(complex.Cells[part], complex.Template.parts[part].frames[0]);
+            var chosen = new Dictionary<HexCoord, Texture2D>();
+            var cells = new List<MapLayoutCell>();
+            foreach (HexCoord coord in allCoords)
+            {
+                int typeIndex = assignment[coord];
+                TerrainTypeEntry terrain = _activeBiome.terrainTypes[typeIndex];
+                bool complexPart = complexTextures.TryGetValue(coord, out Texture2D texture);
+                if (!complexPart)
+                    texture = slots[PickVariantSlot(slotIndicesByType, typeIndex, slots,
+                        CollectNeighborTextures(coord, typeIndex, assignment, chosen))].Texture;
+                chosen[coord] = texture;
+                cells.Add(Cell(coord, terrain.ContentKey, complexPart ? null : terrain.GetTextureKey(texture)));
+            }
+            List<HexCoord> border = BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment);
+            var borderChosen = new Dictionary<HexCoord, Texture2D>();
+            var borderCells = new List<MapLayoutCell>();
+            foreach (HexCoord coord in border)
+            {
+                int typeIndex = borderAssignment[coord];
+                TerrainTypeEntry terrain = _activeBiome.terrainTypes[typeIndex];
+                Texture2D texture = slots[PickVariantSlot(slotIndicesByType, typeIndex, slots,
+                    CollectNeighborTextures(coord, typeIndex, borderAssignment, borderChosen))].Texture;
+                borderChosen[coord] = texture;
+                borderCells.Add(Cell(coord, terrain.ContentKey, terrain.GetTextureKey(texture)));
+            }
+            var totals = complexes.GroupBy(c => c.Template).ToDictionary(g => g.Key, g => g.Count());
+            var seen = new Dictionary<TerrainComplexTemplate, int>();
+            var offsets = new Dictionary<TerrainComplexTemplate, int>();
+            var complexLayouts = new List<MapLayoutComplex>();
             foreach (PlacedComplex complex in complexes)
             {
-                complex.FirstSlot = variantSlots.Count;
-                for (int i = 0; i < complex.Cells.Length; i++)
+                int instance = seen.TryGetValue(complex.Template, out int n) ? n : 0;
+                seen[complex.Template] = instance + 1;
+                int frameCount = complex.Template.parts[0].frames.Length;
+                if (!offsets.TryGetValue(complex.Template, out int offset))
+                    offsets[complex.Template] = offset = Random.Range(0, frameCount);
+                complexLayouts.Add(new MapLayoutComplex
                 {
-                    complexSlots[complex.Cells[i]] = variantSlots.Count;
-                    complexRotations[complex.Cells[i]] = complex.RotationSteps;
-                    variantSlots.Add(new TextureVariantSlot(complex.TypeIndex, complex.Template.parts[i].frames[0]));
-                }
+                    TemplateKey = complex.Template.ContentKey, RotationSteps = complex.RotationSteps,
+                    Phase = (offset + instance * frameCount / totals[complex.Template]) % frameCount,
+                    FramesPerSecond = complex.Template.framesPerSecond,
+                    Parts = complex.Cells.Select(c => Cell(c, _activeBiome.terrainTypes[complex.TypeIndex].ContentKey, null)).ToArray(),
+                });
             }
+            Biome requested = Application.isPlaying ? GameSession.ResolveBiome() : Biome.Arid;
+            Biome actual = requested == Biome.Desert && Settings.desertOverride?.terrainTypes?.Count > 0
+                ? Biome.Desert : Biome.Arid;
+            return new HexMapLayout
+            {
+                FieldRadius = _activeRadius, OuterRadius = Settings.outerRadius, Biome = actual,
+                Blend = Settings.blend, Alpha = Settings.alpha,
+                GroundColor = FromColor(_activeBiome.groundColor), BorderTint = FromColor(_activeBiome.borderTint),
+                Cells = cells.ToArray(), BorderCells = borderCells.ToArray(), Complexes = complexLayouts.ToArray(),
+            };
+        }
 
+        private static MapLayoutCell Cell(HexCoord coord, string terrainKey, string textureKey) =>
+            new MapLayoutCell { Q = coord.Q, R = coord.R, TerrainKey = terrainKey, TextureKey = textureKey };
+        private static MapLayoutColor FromColor(Color color) => new MapLayoutColor(color.r, color.g, color.b, color.a);
+        private static Color ToColor(MapLayoutColor color) => new Color(color.R, color.G, color.B, color.A);
+
+        // Same pipeline as a newly generated map, with every placement/variant/phase already
+        // decided. Validation resolves content and rejects bad layouts before replacing a mesh.
+        public void BuildFromLayout(HexMapLayout source)
+        {
+            HexMapLayout layout = source?.Copy();
+            ResolvedLayout plan = ResolveLayout(layout, gameConfig);
+            _activeRadius = layout.FieldRadius;
+            _activeBiome = plan.Biome;
+            List<HexCoord> allCoords = layout.Cells.Select(c => new HexCoord(c.Q, c.R)).ToList();
+            List<TextureVariantSlot> variantSlots = plan.Slots;
+            List<PlacedComplex> complexes = plan.Complexes;
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
             var uvs = new List<Vector2>();
@@ -95,8 +173,7 @@ namespace Game.Map
             // One triangle list per texture variant (submesh) — every hex using the same
             // variant lands in the same submesh, so they share a single draw call. A terrain
             // type with only one texture gets exactly one submesh, same as before; one with
-            // several gets several, and each hex of that type independently rolls which one
-            // below.
+            // several gets several; the descriptor already records each hex's choice.
             var trianglesByVariant = new List<int>[variantSlots.Count];
             for (int i = 0; i < trianglesByVariant.Length; i++)
                 trianglesByVariant[i] = new List<int>();
@@ -104,21 +181,13 @@ namespace Game.Map
             var bounds = new Bounds(Vector3.zero, Vector3.zero);
             bool boundsInitialized = false;
 
-            // Which texture each already-placed hex ended up with — lets a same-type neighbour
-            // steer away from repeating it (see PickVariantSlot) instead of every hex rolling
-            // its variant in isolation.
-            var chosenTexture = new Dictionary<HexCoord, Texture2D>(allCoords.Count);
-
             foreach (HexCoord coord in allCoords)
             {
-                Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, Settings.outerRadius);
-                int typeIndex = assignment[coord];
-                HashSet<Texture2D> neighborTextures = CollectNeighborTextures(coord, typeIndex, assignment, chosenTexture);
-                int variantSlot = complexSlots.TryGetValue(coord, out int complexSlot)
-                    ? complexSlot : PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
-                chosenTexture[coord] = variantSlots[variantSlot].Texture;
-                int rotationSteps = complexRotations.TryGetValue(coord, out int rotation) ? rotation : 0;
-                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha,
+                Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, layout.OuterRadius);
+                int variantSlot = plan.CellSlots[coord];
+                int typeIndex = variantSlots[variantSlot].TypeIndex;
+                int rotationSteps = plan.Rotations.TryGetValue(coord, out int rotation) ? rotation : 0;
+                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, layout.OuterRadius, layout.Blend, layout.Alpha,
                     rotationSteps: rotationSteps);
                 hexData[coord] = _activeBiome.terrainTypes[typeIndex];
 
@@ -132,16 +201,12 @@ namespace Game.Map
             // RtsCameraController — is unaffected. groundBounds (not bounds) drives the ground
             // plane, so it extends far enough that the border never runs out onto bare background.
             Bounds groundBounds = bounds;
-            List<HexCoord> borderCoords = BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment);
-            var borderChosenTexture = new Dictionary<HexCoord, Texture2D>(borderCoords.Count);
+            List<HexCoord> borderCoords = layout.BorderCells.Select(c => new HexCoord(c.Q, c.R)).ToList();
             foreach (HexCoord coord in borderCoords)
             {
-                Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, Settings.outerRadius);
-                int typeIndex = borderAssignment[coord];
-                HashSet<Texture2D> neighborTextures = CollectNeighborTextures(coord, typeIndex, borderAssignment, borderChosenTexture);
-                int variantSlot = PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
-                borderChosenTexture[coord] = variantSlots[variantSlot].Texture;
-                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha, _activeBiome.borderTint);
+                Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, layout.OuterRadius);
+                int variantSlot = plan.CellSlots[coord];
+                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, layout.OuterRadius, layout.Blend, layout.Alpha, ToColor(layout.BorderTint));
 
                 groundBounds.Encapsulate(center);
             }
@@ -169,22 +234,9 @@ namespace Game.Map
             mapRenderer.sharedMaterials = _materialInstances.ToArray();
             mapRenderer.sortingOrder = MapSortingOrder.Map;
             var animationGroups = new List<MapTerrainAnimator.Group>();
-            // Instances of one template start from evenly spread frames (random shared offset),
-            // so two copies never show the same frame at the same moment when frames allow it.
-            var totalByTemplate = new Dictionary<TerrainComplexTemplate, int>();
-            foreach (PlacedComplex complex in complexes)
-                totalByTemplate[complex.Template] = totalByTemplate.TryGetValue(complex.Template, out int n) ? n + 1 : 1;
-            var seenByTemplate = new Dictionary<TerrainComplexTemplate, int>();
-            var offsetByTemplate = new Dictionary<TerrainComplexTemplate, int>();
             foreach (PlacedComplex complex in complexes)
             {
                 int count = complex.Cells.Length;
-                int instance = seenByTemplate.TryGetValue(complex.Template, out int seen) ? seen : 0;
-                seenByTemplate[complex.Template] = instance + 1;
-                int frameCount = Mathf.Max(1, complex.Template.parts[0].frames.Length);
-                if (!offsetByTemplate.TryGetValue(complex.Template, out int offset))
-                    offsetByTemplate[complex.Template] = offset = Random.Range(0, frameCount);
-                int phase = (offset + instance * frameCount / totalByTemplate[complex.Template]) % frameCount;
                 var materials = new Material[count];
                 var frames = new Texture2D[count][];
                 for (int i = 0; i < count; i++)
@@ -195,17 +247,18 @@ namespace Game.Map
                 animationGroups.Add(new MapTerrainAnimator.Group
                 {
                     Materials = materials, Frames = frames,
-                    FramesPerSecond = complex.Template.framesPerSecond,
-                    Phase = phase,
+                    FramesPerSecond = complex.FramesPerSecond,
+                    Phase = complex.Phase,
                 });
             }
             MapTerrainAnimator animator = GetComponent<MapTerrainAnimator>();
             if (animator == null) animator = gameObject.AddComponent<MapTerrainAnimator>();
             animator.Configure(animationGroups, _materialInstances.ToArray());
 
-            GenerateGround(groundBounds);
+            GenerateGround(groundBounds, layout.OuterRadius, ToColor(layout.GroundColor));
 
-            GetComponent<HexMap>().SetData(_activeRadius, Settings.outerRadius, hexData);
+            GetComponent<HexMap>().SetData(_activeRadius, layout.OuterRadius, hexData);
+            GetComponent<HexMap>().SetLayout(layout);
             GetComponent<HexMap>().PublishTerrainLayout();
 
             // Shows every hex's own resource yield right away, before any citadel exists —
@@ -232,6 +285,140 @@ namespace Game.Map
             // remove the tool once the game is actually running.
             if (Application.isPlaying)
                 Destroy(this);
+        }
+
+        public static void ValidateLayout(HexMapLayout layout, GameConfig config) => ResolveLayout(layout, config);
+
+        private sealed class ResolvedLayout
+        {
+            public BiomeTerrainSet Biome;
+            public List<TextureVariantSlot> Slots;
+            public readonly Dictionary<HexCoord, int> CellSlots = new Dictionary<HexCoord, int>();
+            public readonly Dictionary<HexCoord, int> Rotations = new Dictionary<HexCoord, int>();
+            public readonly List<PlacedComplex> Complexes = new List<PlacedComplex>();
+        }
+
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        private static bool ValidColor(MapLayoutColor color) =>
+            Finite(color.R) && Finite(color.G) && Finite(color.B) && Finite(color.A);
+        private static long DistanceFromOrigin(MapLayoutCell cell) => System.Math.Max(
+            System.Math.Max(System.Math.Abs((long)cell.Q), System.Math.Abs((long)cell.R)),
+            System.Math.Abs((long)cell.Q + cell.R));
+        private static System.ArgumentException InvalidLayout(string detail) =>
+            new System.ArgumentException("Cannot restore map layout: " + detail);
+
+        private static ResolvedLayout ResolveLayout(HexMapLayout layout, GameConfig config)
+        {
+            if (layout == null || config == null || config.mapGeneration == null)
+                throw InvalidLayout("missing layout or map configuration.");
+            if (layout.Version != 1 || layout.FieldRadius < 0 || !Finite(layout.OuterRadius) || layout.OuterRadius <= 0
+                || !Finite(layout.Blend) || layout.Blend < 0 || layout.Blend > 1
+                || !Finite(layout.Alpha) || layout.Alpha < 0 || layout.Alpha > 1
+                || !ValidColor(layout.GroundColor) || !ValidColor(layout.BorderTint)
+                || !System.Enum.IsDefined(typeof(Biome), layout.Biome)
+                || layout.Cells == null || layout.BorderCells == null || layout.Complexes == null)
+                throw InvalidLayout("unsupported version, dimensions or visual settings.");
+            long expected = 1L + 3L * layout.FieldRadius * (layout.FieldRadius + 1L);
+            if (layout.Cells.LongLength != expected) throw InvalidLayout("incomplete playable footprint.");
+            // A saved Desert palette must remain Desert; fallback is only a new-game choice.
+            if (layout.Biome == Biome.Desert && (config.mapGeneration.desertOverride?.terrainTypes?.Count ?? 0) <= 0)
+                throw InvalidLayout("saved biome is unavailable.");
+            BiomeTerrainSet biome = config.mapGeneration.ResolveBiome(layout.Biome);
+            if (biome.terrainTypes == null || biome.terrainTypes.Count == 0 || biome.terrainTypes.Any(t => t == null))
+                throw InvalidLayout("terrain catalog is empty or contains null entries.");
+            var terrainIndices = new Dictionary<string, int>(System.StringComparer.Ordinal);
+            for (int i = 0; i < biome.terrainTypes.Count; i++)
+            {
+                string key = biome.terrainTypes[i].ContentKey;
+                if (terrainIndices.ContainsKey(key)) throw InvalidLayout("duplicate terrain key '" + key + "'.");
+                terrainIndices.Add(key, i);
+            }
+            var plan = new ResolvedLayout { Biome = biome, Slots = BuildVariantSlots(biome, out _) };
+            var textureSlots = new Dictionary<(int type, string key), int>();
+            for (int i = 0; i < plan.Slots.Count; i++)
+            {
+                TextureVariantSlot slot = plan.Slots[i];
+                var key = (slot.TypeIndex, biome.terrainTypes[slot.TypeIndex].GetTextureKey(slot.Texture));
+                if (textureSlots.TryGetValue(key, out int previous))
+                {
+                    if (plan.Slots[previous].Texture != slot.Texture) throw InvalidLayout("duplicate texture key '" + key.Item2 + "'.");
+                }
+                else textureSlots.Add(key, i);
+            }
+            var cells = new Dictionary<HexCoord, MapLayoutCell>();
+            foreach (MapLayoutCell cell in layout.Cells.Concat(layout.BorderCells))
+            {
+                if (cell == null || string.IsNullOrEmpty(cell.TerrainKey) || !terrainIndices.ContainsKey(cell.TerrainKey))
+                    throw InvalidLayout("unknown terrain key.");
+                var coord = new HexCoord(cell.Q, cell.R);
+                if (cells.ContainsKey(coord)) throw InvalidLayout("duplicate coordinate " + coord + ".");
+                cells.Add(coord, cell);
+            }
+            var playable = new HashSet<HexCoord>();
+            foreach (MapLayoutCell cell in layout.Cells)
+            {
+                if (DistanceFromOrigin(cell) > layout.FieldRadius) throw InvalidLayout("playable coordinate outside field.");
+                playable.Add(new HexCoord(cell.Q, cell.R));
+            }
+            foreach (MapLayoutCell cell in layout.BorderCells)
+                if (DistanceFromOrigin(cell) <= layout.FieldRadius) throw InvalidLayout("border coordinate inside field.");
+            var templates = new Dictionary<string, TerrainComplexTemplate>(System.StringComparer.Ordinal);
+            foreach (TerrainComplexTemplate template in biome.complexes)
+            {
+                if (template == null) continue;
+                string key = template.ContentKey;
+                if (templates.ContainsKey(key)) throw InvalidLayout("duplicate complex key '" + key + "'.");
+                templates.Add(key, template);
+            }
+            foreach (MapLayoutComplex complex in layout.Complexes)
+            {
+                if (complex == null || string.IsNullOrEmpty(complex.TemplateKey)
+                    || !templates.TryGetValue(complex.TemplateKey, out TerrainComplexTemplate template)
+                    || !template.IsValid() || complex.Parts == null || complex.Parts.Length != template.parts.Length
+                    || complex.RotationSteps < 0 || complex.RotationSteps > 5
+                    || complex.Phase < 0 || complex.Phase >= template.parts[0].frames.Length
+                    || !Finite(complex.FramesPerSecond) || complex.FramesPerSecond <= 0)
+                    throw InvalidLayout("unknown or incompatible complex.");
+                var placed = new PlacedComplex
+                {
+                    Template = template, RotationSteps = complex.RotationSteps, Phase = complex.Phase,
+                    FramesPerSecond = complex.FramesPerSecond, Cells = new HexCoord[complex.Parts.Length], FirstSlot = plan.Slots.Count,
+                };
+                HexCoord? origin = null;
+                string terrainKey = null;
+                for (int i = 0; i < complex.Parts.Length; i++)
+                {
+                    MapLayoutCell part = complex.Parts[i];
+                    if (part == null) throw InvalidLayout("null complex part.");
+                    var coord = new HexCoord(part.Q, part.R);
+                    if (!playable.Contains(coord) || !cells.TryGetValue(coord, out MapLayoutCell cell)
+                        || cell.TerrainKey != part.TerrainKey || !string.IsNullOrEmpty(cell.TextureKey)
+                        || plan.CellSlots.ContainsKey(coord)) throw InvalidLayout("overlapping or mismatched complex part.");
+                    terrainKey = terrainKey ?? cell.TerrainKey;
+                    if (terrainKey != cell.TerrainKey) throw InvalidLayout("mixed terrain in complex.");
+                    HexCoord offset = HexGridMath.RotateOffset60(new HexCoord(template.parts[i].offset.x,
+                        template.parts[i].offset.y), complex.RotationSteps);
+                    var candidateOrigin = new HexCoord(coord.Q - offset.Q, coord.R - offset.R);
+                    if (origin.HasValue && !origin.Value.Equals(candidateOrigin)) throw InvalidLayout("incompatible complex footprint.");
+                    origin = candidateOrigin;
+                    placed.Cells[i] = coord;
+                    placed.TypeIndex = terrainIndices[cell.TerrainKey];
+                    plan.CellSlots.Add(coord, plan.Slots.Count);
+                    plan.Rotations.Add(coord, complex.RotationSteps);
+                    plan.Slots.Add(new TextureVariantSlot(placed.TypeIndex, template.parts[i].frames[0]));
+                }
+                plan.Complexes.Add(placed);
+            }
+            foreach (KeyValuePair<HexCoord, MapLayoutCell> entry in cells)
+            {
+                if (plan.CellSlots.ContainsKey(entry.Key)) continue;
+                int typeIndex = terrainIndices[entry.Value.TerrainKey];
+                if (string.IsNullOrEmpty(entry.Value.TextureKey)
+                    || !textureSlots.TryGetValue((typeIndex, entry.Value.TextureKey), out int slot))
+                    throw InvalidLayout("unknown texture key.");
+                plan.CellSlots.Add(entry.Key, slot);
+            }
+            return plan;
         }
 
         // --- Terrain placement -----------------------------------------------------------
@@ -419,6 +606,8 @@ namespace Game.Map
             public HexCoord[] Cells;
             public int TypeIndex;
             public int FirstSlot;
+            public int Phase;
+            public float FramesPerSecond;
         }
 
         private List<PlacedComplex> PlaceComplexes(List<HexCoord> allCoords, Dictionary<HexCoord, int> assignment)
@@ -502,9 +691,12 @@ namespace Game.Map
             public TextureVariantSlot(int typeIndex, Texture2D texture) { TypeIndex = typeIndex; Texture = texture; }
         }
 
-        private List<TextureVariantSlot> BuildVariantSlots(out List<int>[] slotIndicesByType)
+        private List<TextureVariantSlot> BuildVariantSlots(out List<int>[] slotIndicesByType) =>
+            BuildVariantSlots(_activeBiome, out slotIndicesByType);
+
+        private static List<TextureVariantSlot> BuildVariantSlots(BiomeTerrainSet biome, out List<int>[] slotIndicesByType)
         {
-            List<TerrainTypeEntry> terrainTypes = _activeBiome.terrainTypes;
+            List<TerrainTypeEntry> terrainTypes = biome.terrainTypes;
             var slots = new List<TextureVariantSlot>();
             slotIndicesByType = new List<int>[terrainTypes.Count];
 
@@ -599,7 +791,7 @@ namespace Game.Map
 
         // A single flat quad behind the whole map, in a solid colour matching the terrain
         // palette — this is what every hex's edge fades into.
-        private void GenerateGround(Bounds tileBounds)
+        private void GenerateGround(Bounds tileBounds, float outerRadius, Color groundColor)
         {
             var groundTransform = transform.Find("Ground");
             GameObject groundObject;
@@ -616,7 +808,7 @@ namespace Game.Map
                 groundObject = groundTransform.gameObject;
             }
 
-            float margin = Settings.outerRadius * 2f;
+            float margin = outerRadius * 2f;
             float sizeX = tileBounds.size.x + margin * 2f;
             float sizeZ = tileBounds.size.z + margin * 2f;
             Vector3 center = tileBounds.center;
@@ -645,7 +837,7 @@ namespace Game.Map
 
             if (_groundMaterialInstance == null)
                 _groundMaterialInstance = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-            _groundMaterialInstance.color = _activeBiome.groundColor;
+            _groundMaterialInstance.color = groundColor;
             groundObject.GetComponent<MeshRenderer>().sharedMaterial = _groundMaterialInstance;
 
             // No longer needed for hex picking (see HexSelectionController.RaycastHex/

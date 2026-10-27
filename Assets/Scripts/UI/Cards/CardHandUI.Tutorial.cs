@@ -75,7 +75,7 @@ namespace Game.UI
 
         internal bool CanOfferDrawTutorial()
         {
-            if (!TutorialInputReady || _remainingDeck.Count == 0 || _cards.Count >= maxHandSize)
+            if (!TutorialInputReady || _humanHand.RemainingDeckCount == 0 || !_humanHand.HasFreeSlot)
                 return false;
             var root = FindHumanRoot();
             var owner = FindHumanPlayer();

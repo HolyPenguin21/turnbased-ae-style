@@ -27,7 +27,7 @@ namespace Game.Ai.V2
     //  materialization or non-combat chain could start. A turn that was never observed reads as
     //  closed for every resource.
     // ===========================================================================================
-    internal static class DevelopmentInvestmentGate
+    internal static partial class DevelopmentInvestmentGate
     {
         private sealed class State
         {

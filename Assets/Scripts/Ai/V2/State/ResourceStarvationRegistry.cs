@@ -39,7 +39,7 @@ namespace Game.Ai.V2
         }
     }
 
-    internal static class ResourceStarvationRegistry
+    internal static partial class ResourceStarvationRegistry
     {
         private sealed class State
         {

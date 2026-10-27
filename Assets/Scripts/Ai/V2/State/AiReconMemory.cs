@@ -36,7 +36,7 @@ namespace Game.Ai.V2
         public WorthIt.SideCommander Commander;
     }
 
-    public static class AiReconMemory
+    public static partial class AiReconMemory
     {
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, ReconObservation>> ByPlayer =
             new Dictionary<PlayerSetupData, Dictionary<int, ReconObservation>>();

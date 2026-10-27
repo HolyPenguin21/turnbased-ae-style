@@ -49,6 +49,8 @@ namespace Game.Cards
     [System.Serializable]
     public class EventDefinition
     {
+        // Immutable authored identity for match snapshots; display names and list positions are not IDs.
+        public string authoredKey;
         public string name;
         public Sprite image;
         [TextArea]
@@ -75,6 +77,27 @@ namespace Game.Cards
     {
         public List<FactionCardCatalog> cardCatalogs = new List<FactionCardCatalog>();
         public List<EventDefinition> events = new List<EventDefinition>();
+
+        public EventDefinition ResolveEvent(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return null;
+            EventDefinition found = null;
+            foreach (var entry in events)
+                if (entry != null && entry.authoredKey == key)
+                {
+                    if (found != null) throw new System.InvalidOperationException("Duplicate event identity: " + key);
+                    found = entry;
+                }
+            return found;
+        }
+
+        private void OnValidate()
+        {
+            foreach (var entry in events)
+                if (entry != null && string.IsNullOrWhiteSpace(entry.authoredKey))
+                    entry.authoredKey = "event-" + System.Guid.NewGuid().ToString("N");
+        }
+
 
         // Scans `cardCatalogs` for the card named by cardKey ("<catalog.displayName>/<card.
         // displayName>") — null if the catalog or the card inside it can no longer be found,

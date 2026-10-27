@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using Game.Ai;
 using Game.Players;
 
 namespace Game.Turns
@@ -10,12 +12,23 @@ namespace Game.Turns
     //
     // GameTurnController.OnTurnOrderResolved records one entry per player every turn, AFTER the
     // roll, BEFORE next turn's ResetBonusInitiativeTokens wipes the counts. Cleared on a new game.
-    public static class InitiativePublicHistory
+    public static partial class InitiativePublicHistory
     {
         private const int MaxSamples = 6;
 
         private static readonly Dictionary<PlayerSetupData, List<int>> BoughtByPlayer =
             new Dictionary<PlayerSetupData, List<int>>();
+
+        // Detached public observations, preserved by match-local player identity. Restore is
+        // direct: re-recording would truncate or manufacture the historical sample sequence.
+        internal static IReadOnlyDictionary<string, IReadOnlyList<int>> CapturePersistentState(
+            Func<PlayerSetupData, string> playerId) =>
+            AiPersistenceCollections.Capture(BoughtByPlayer, playerId,
+                samples => AiPersistenceCollections.FreezeList(samples));
+
+        internal static void RestorePersistentState(IReadOnlyDictionary<string, IReadOnlyList<int>> state,
+            Func<string, PlayerSetupData> player) =>
+            AiPersistenceCollections.Restore(BoughtByPlayer, state, player, samples => new List<int>(samples));
 
         public static void Clear() => BoughtByPlayer.Clear();
 

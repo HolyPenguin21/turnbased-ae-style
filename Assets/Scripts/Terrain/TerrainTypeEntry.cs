@@ -7,6 +7,12 @@ namespace Game.Terrain
     [System.Serializable]
     public class TerrainTypeEntry
     {
+        // Keep these keys unchanged when renaming/reordering authored content. Legacy content
+        // derives deterministic initial keys; shipped assets author them explicitly.
+        public string contentKey;
+        public string textureKey;
+        public string[] alternativeTextureKeys;
+        public string ContentKey => TerrainContentKeys.Resolve(contentKey, "terrain", terrainName);
         public string terrainName;
         public Texture2D texture;
 
@@ -44,6 +50,18 @@ namespace Game.Terrain
         // Per-entry, tuned in the Inspector same as moveCost/resourceYields; defaults to 0
         // (no effect) until set.
         public int defenseModifier;
+
+        public string GetTextureKey(Texture2D selected)
+        {
+            if (selected == null) return "texture.none";
+            if (selected == texture) return TerrainContentKeys.Resolve(textureKey, "texture", string.IsNullOrWhiteSpace(selected.name) ? "primary" : selected.name);
+            if (alternativeTextures != null)
+                for (int i = 0; i < alternativeTextures.Length; i++)
+                    if (alternativeTextures[i] == selected)
+                        return TerrainContentKeys.Resolve(alternativeTextureKeys != null && i < alternativeTextureKeys.Length
+                            ? alternativeTextureKeys[i] : null, "texture", string.IsNullOrWhiteSpace(selected.name) ? "alternative." + i : selected.name);
+            throw new System.ArgumentException("Texture does not belong to this terrain.");
+        }
 
         // texture + alternativeTextures, nulls skipped — every hex-visual-variant a generator
         // needs to pick between.

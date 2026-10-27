@@ -94,6 +94,7 @@ namespace Game.Map
         // Shared combat presentation already owned by this controller; expose its
         // encounter-completion signal to the existing AI move-operation trace.
         public BattleScreenUI BattleScreen => battleScreen;
+        internal bool HasProductionTransaction => _rpTransactionActive;
         public bool IsBattleActive =>
             _revealedArmyContacts.Count > 0 ||
             (battleScreen != null && battleScreen.IsShowing) ||

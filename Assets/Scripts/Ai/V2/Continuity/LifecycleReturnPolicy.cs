@@ -20,7 +20,7 @@ namespace Game.Ai.V2
     //  lived turns 4-15). A leg that waited on the previous turn goes at normal priority now, and
     //  a deliberate wait is marked protected so it never spends the StallTurns budget.
     // ===========================================================================================
-    internal static class LifecycleReturnPolicy
+    internal static partial class LifecycleReturnPolicy
     {
         internal const string DeferralReason = "lifecycle_return_waits_for_tempo";
 

@@ -8,7 +8,7 @@ namespace Game.Core
     // Carries the configured players (and now map size/biome) from the main menu's setup panel
     // into the Game scene. Plain static holder — simplest way to pass data across a scene load
     // without needing a DontDestroyOnLoad object.
-    public static class GameSession
+    public static partial class GameSession
     {
         public static string MatchId { get; private set; }
         public static bool RewardsEligible { get; private set; }
@@ -23,6 +23,7 @@ namespace Game.Core
         public static bool TryPrepareMatch(List<PlayerSetupData> players, GameConfig config, out string error)
         {
             error = null;
+            PendingRestore = null;
             CampaignContext = null; FinalResult = null;
             ClearMapConditions();
             if (players.FindAll(p => p.IsHuman).Count > 1)
@@ -31,6 +32,7 @@ namespace Game.Core
             {
                 AssignAiDecks(players, config?.collectionDeckCatalog);
                 foreach (var player in players) { player.Tactics.Clear(); player.MatchLoadout = null; player.BlueprintQuota = null; }
+                AssignPlayerIdentities(players);
                 MatchId = System.Guid.NewGuid().ToString("N"); RewardsEligible = false;
                 return true;
             }
@@ -64,6 +66,7 @@ namespace Game.Core
             // Resolve Random only after validation/persistence succeeds. A rejected start must
             // leave the setup row's Random choice intact instead of pinning the next attempt.
             AssignAiDecks(players, config?.collectionDeckCatalog);
+            AssignPlayerIdentities(players);
             MatchId = System.Guid.NewGuid().ToString("N");
             RewardsEligible = players.Exists(p => p.IsHuman);
             return true;
@@ -83,12 +86,22 @@ namespace Game.Core
                 player.AiBlueprints = catalog.BuildAiBlueprintKeys(player.Faction, player.AiDeckName);
             }
         }
+        private static void AssignPlayerIdentities(List<PlayerSetupData> players)
+        {
+            foreach (var player in players)
+            {
+                player.PlayerId = System.Guid.NewGuid().ToString("N");
+                player.Hand = null;
+            }
+        }
+
         public static void EndRewardEligibility() => RewardsEligible = false;
 
         // Tactical session only. The campaign controller, its pending operation and the
         // collection/reward profile have independent persistence and must survive this reset.
         public static void ClearMatch()
         {
+            PendingRestore = null;
             Players = new List<PlayerSetupData>();
             ClearMapConditions();
             MatchId = null;

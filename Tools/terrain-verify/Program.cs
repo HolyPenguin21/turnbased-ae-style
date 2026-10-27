@@ -5,11 +5,11 @@ using NUnit.Framework;
 using Game.EditorTests;
 public static class Program
 {
-    public static int Main()
+    public static int Main(string[] args)
     {
         int passed=0,failed=0;
-        foreach (var type in new[] { typeof(TerrainComplexTests), typeof(MatchResourcePlacementTests) })
-        foreach (var method in type.GetMethods().Where(m=>m.GetCustomAttribute<TestAttribute>()!=null))
+        foreach (var type in new[] { typeof(TerrainComplexTests), typeof(MatchResourcePlacementTests), typeof(HexMapLayoutTests) })
+        foreach (var method in type.GetMethods().Where(m=>m.GetCustomAttribute<TestAttribute>()!=null && (args.Length == 0 || type.Name.Contains(args[0]))))
         {
             var fixture=Activator.CreateInstance(type);
             try { type.GetMethod("SetUp").Invoke(fixture,null);method.Invoke(fixture,null);passed++;Console.WriteLine("PASS "+method.Name); }
