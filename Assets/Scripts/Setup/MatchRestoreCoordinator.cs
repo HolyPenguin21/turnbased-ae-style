@@ -19,6 +19,10 @@ namespace Game.Setup
                 source.RestoreKnowledge();
                 source.RestorePresentation(selection);
                 selection.ValidateRememberedVisualCoverage();
+                // Generation ran before restored bonuses/events existed. Rebuild their derived
+                // markers now, with complete knowledge, without publishing gameplay events.
+                map.GetComponent<MapResourceDisplay>()?.RefreshAll();
+                map.GetComponent<MapEventDisplay>()?.RefreshAll();
             }
             // One presentation bind after complete world+knowledge. This resumes a settled
             // turn rather than performing any of the new-game / new-round side effects.

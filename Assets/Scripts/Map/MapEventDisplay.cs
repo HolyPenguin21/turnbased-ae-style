@@ -50,6 +50,29 @@ namespace Game.Map
                 RefreshVisibility();
         }
 
+        // Rebuild derived presentation after silent world/knowledge restore. Read the existing
+        // registry without replaying Skip/discovery/reward actions or changing anyone's memory.
+        public void RefreshAll()
+        {
+            HexMap map = Map;
+            if (map == null)
+                return;
+
+            var desired = new HashSet<HexCoord>();
+            foreach (HexCoord hex in map.AllCoords)
+            {
+                HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
+                if (entry != null && entry.Skipped && !entry.Consumed)
+                    desired.Add(hex);
+            }
+            foreach (HexCoord hex in new List<HexCoord>(_markersByHex.Keys))
+                if (!desired.Contains(hex))
+                    OnEventConsumed(hex);
+            foreach (HexCoord hex in desired)
+                OnEventSkipped(hex);
+            RefreshVisibility();
+        }
+
         // Same "remembered once seen" exception the resource row already has (see
         // MapResourceDisplay.GetVisibilityTier) — once a viewer has discovered a still-active
         // event's hex, its marker stays up even after fog covers it again, instead of re-hiding
@@ -100,7 +123,11 @@ namespace Game.Map
             if (!_markersByHex.TryGetValue(hex, out EventMarkerVisual marker))
                 return;
             if (marker != null)
-                Destroy(marker.gameObject);
+            {
+                marker.gameObject.SetActive(false);
+                if (Application.isPlaying) Destroy(marker.gameObject);
+                else DestroyImmediate(marker.gameObject);
+            }
             _markersByHex.Remove(hex);
         }
 

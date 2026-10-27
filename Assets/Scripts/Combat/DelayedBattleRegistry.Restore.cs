@@ -12,14 +12,19 @@ namespace Game.Combat
     }
     public static partial class DelayedBattleRegistry
     {
-        public static List<DelayedBattleState> CaptureState()
+        // A queued participant may already be gone from ArmyRegistry. Keep its shell available
+        // to the entity codec without registering it again; the round-boundary check discards stale fights.
+        public static List<DelayedBattleState> CaptureState(Action<ArmyData> includeReferencedArmy = null)
         {
             var result = new List<DelayedBattleState>();
             foreach (var battle in Pending)
             {
                 var state = new DelayedBattleState { Hex = battle.Hex };
                 if (battle.Participants != null) foreach (var army in battle.Participants)
+                {
+                    includeReferencedArmy?.Invoke(army);
                     state.ParticipantArmyIds.Add(army.Id);
+                }
                 result.Add(state);
             }
             return result;
