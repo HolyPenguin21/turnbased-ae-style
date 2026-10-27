@@ -228,6 +228,41 @@ namespace Game.EditorTests
             Assert.That(DelayedBattleRegistry.TakeNext().Participants, Is.EqualTo(new[]{b, a}));
             Assert.That(DelayedBattleRegistry.HasAny, Is.False);
         }
+
+        [Test] public void DelayedBattleCaptureRetainsRemovedParticipantWithoutRegisteringItOnRestore()
+        {
+            var firstHex = new HexCoord(1, 3); var secondHex = new HexCoord(4, 2);
+            var attacker = new ArmyData { Hex = firstHex }; var removed = new ArmyData { Hex = firstHex };
+            var otherAttacker = new ArmyData { Hex = secondHex }; var otherDefender = new ArmyData { Hex = secondHex };
+            foreach (var army in new[] { attacker, removed, otherAttacker, otherDefender })
+            { army.Members.Add(new UnitData()); ArmyRegistry.Register(army); }
+            DelayedBattleRegistry.Add(new PendingBattle { Hex = firstHex, Participants = new List<ArmyData> { attacker, removed } });
+            DelayedBattleRegistry.Add(new PendingBattle { Hex = secondHex, Participants = new List<ArmyData> { otherAttacker, otherDefender } });
+            removed.Members.Clear(); ArmyRegistry.Unregister(removed);
+
+            var retained = new Dictionary<int, ArmyData>();
+            var state = DelayedBattleRegistry.CaptureState(army => retained.Add(army.Id, army));
+            Assert.That(retained[removed.Id], Is.SameAs(removed));
+            Assert.That(ArmyRegistry.IsRegistered(removed), Is.False, "Capturing a stale participant must not revive it.");
+
+            ArmyRegistry.Clear(); DelayedBattleRegistry.Clear();
+            var restored = new Dictionary<int, ArmyData>();
+            foreach (var pair in retained)
+            {
+                var shell = ArmyData.WithIdentity(pair.Key); shell.Hex = pair.Value.Hex;
+                restored.Add(pair.Key, shell);
+                if (pair.Value != removed) ArmyRegistry.Register(shell);
+            }
+            DelayedBattleRegistry.RestoreState(state, id => restored.TryGetValue(id, out var army) ? army : null);
+
+            var first = DelayedBattleRegistry.TakeNext(); var second = DelayedBattleRegistry.TakeNext();
+            Assert.That(first.Hex, Is.EqualTo(firstHex));
+            Assert.That(first.Participants, Is.EqualTo(new[] { restored[attacker.Id], restored[removed.Id] }));
+            Assert.That(second.Hex, Is.EqualTo(secondHex));
+            Assert.That(second.Participants, Is.EqualTo(new[] { restored[otherAttacker.Id], restored[otherDefender.Id] }));
+            Assert.That(ArmyRegistry.IsRegistered(restored[removed.Id]), Is.False, "The delayed queue owns a reference, not live map membership.");
+            Assert.That(DelayedBattleRegistry.HasAny, Is.False);
+        }
     }
 }
 #endif
