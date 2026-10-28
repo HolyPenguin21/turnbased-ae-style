@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems><NoWarn>0649;0414</NoWarn></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Adapters.cs" /><Compile Include="Program.cs" />
+    <Compile Include="../../../Assets/Scripts/Map/MapObjectVisual.cs" />
+    <Compile Include="../../../Assets/Scripts/Map/MapObjectVisual.Persistence.cs" />
+    <Compile Include="../../../Assets/Scripts/Map/MapObjectVisual.SaveSource.cs" />
+    <Compile Include="../../../Assets/Scripts/Saves/MatchPresentationData.cs" />
+    <Compile Include="../../../Assets/Scripts/Saves/MatchPresentationVisualCodec.cs" />
+    <Compile Include="../../../Assets/Scripts/Saves/MatchSaveJson.cs" />
+  </ItemGroup>
+</Project>

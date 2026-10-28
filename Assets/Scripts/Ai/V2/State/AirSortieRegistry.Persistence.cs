@@ -11,6 +11,18 @@ namespace Game.Ai.V2
     {
         internal readonly struct SortieState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal SortieState(bool __matchSave, int __ArmyId, global::Game.Ai.V2.AirSortieKind __Kind, global::Game.HexGrid.HexCoord __TargetHex, global::Game.HexGrid.HexCoord __LandingHex, bool __Outbound, int? __HeldTurn, global::Game.Aviation.AirStrikePolicy __StrikePolicy)
+        {
+            ArmyId = __ArmyId;
+            Kind = __Kind;
+            TargetHex = __TargetHex;
+            LandingHex = __LandingHex;
+            Outbound = __Outbound;
+            HeldTurn = __HeldTurn;
+            StrikePolicy = __StrikePolicy;
+        }
+
             internal readonly int ArmyId;
             internal readonly AirSortieKind Kind;
             internal readonly HexCoord TargetHex, LandingHex;

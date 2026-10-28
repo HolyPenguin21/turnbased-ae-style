@@ -11,6 +11,13 @@ namespace Game.Ai.V2
     {
         internal sealed class PersistentState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, int __LastTurn, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.DesireAxis, float> __Smoothed)
+        {
+            LastTurn = __LastTurn;
+            Smoothed = __Smoothed;
+        }
+
             internal readonly int LastTurn;
             internal readonly IReadOnlyDictionary<DesireAxis, float> Smoothed;
             internal PersistentState(AiRadarState state)

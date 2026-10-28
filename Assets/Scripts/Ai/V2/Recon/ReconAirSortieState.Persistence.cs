@@ -11,6 +11,22 @@ namespace Game.Ai.V2
     {
         internal readonly struct SortieState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal SortieState(bool __matchSave, int __SortieId, global::Game.Ai.V2.ReconAirPhase __Phase, global::Game.HexGrid.HexCoord __LaunchHex, global::Game.HexGrid.HexCoord __ChosenLandingHex, bool __HasChosenLanding, global::Game.Ai.V2.ReconSector __ClaimedSector, bool __HasClaim, float __BestOutboundStepScore, int __LastProcessedTurn, string __LastDecisionReason, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> __Trail)
+        {
+            SortieId = __SortieId;
+            Phase = __Phase;
+            LaunchHex = __LaunchHex;
+            ChosenLandingHex = __ChosenLandingHex;
+            HasChosenLanding = __HasChosenLanding;
+            ClaimedSector = __ClaimedSector;
+            HasClaim = __HasClaim;
+            BestOutboundStepScore = __BestOutboundStepScore;
+            LastProcessedTurn = __LastProcessedTurn;
+            LastDecisionReason = __LastDecisionReason;
+            Trail = __Trail;
+        }
+
             internal readonly int SortieId;
             internal readonly ReconAirPhase Phase;
             internal readonly HexCoord LaunchHex;
@@ -32,6 +48,13 @@ namespace Game.Ai.V2
         }
         internal sealed class PersistentState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, int __NextSortieId, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconAirSortieRegistry.SortieState>> __Players)
+        {
+            NextSortieId = __NextSortieId;
+            Players = __Players;
+        }
+
             internal readonly int NextSortieId;
             internal readonly IReadOnlyDictionary<string, IReadOnlyDictionary<int, SortieState>> Players;
             internal PersistentState(Func<PlayerSetupData, string> playerId)

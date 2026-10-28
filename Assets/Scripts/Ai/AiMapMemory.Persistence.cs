@@ -13,6 +13,13 @@ namespace Game.Ai
         // profiles are the already observed values, never rebuilt from the current world.
         internal readonly struct OwnedObservation<T>
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal OwnedObservation(bool __matchSave, string __OwnerId, T __Observation)
+        {
+            OwnerId = __OwnerId;
+            Observation = __Observation;
+        }
+
             internal readonly string OwnerId;
             internal readonly T Observation;
             internal OwnedObservation(string ownerId, T observation)
@@ -21,6 +28,20 @@ namespace Game.Ai
 
         internal sealed class PlayerMemoryState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PlayerMemoryState(bool __matchSave, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.KnownResourceHex> __Resources, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownEnemySighting>> __Enemies, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownAirSighting>> __Aircraft, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownBuilding>> __Buildings, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::Game.Ai.AiMapMemory.GuardStrength> __Guards, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, bool> __Events, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int> __StructureLosses, global::System.Collections.Generic.IReadOnlyList<int> __DestroyedArmies, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> __RefutedCitadels)
+        {
+            Resources = __Resources;
+            Enemies = __Enemies;
+            Aircraft = __Aircraft;
+            Buildings = __Buildings;
+            Guards = __Guards;
+            Events = __Events;
+            StructureLosses = __StructureLosses;
+            DestroyedArmies = __DestroyedArmies;
+            RefutedCitadels = __RefutedCitadels;
+        }
+
             internal readonly IReadOnlyList<KnownResourceHex> Resources;
             internal readonly IReadOnlyList<OwnedObservation<KnownEnemySighting>> Enemies;
             internal readonly IReadOnlyList<OwnedObservation<KnownAirSighting>> Aircraft;
@@ -57,6 +78,13 @@ namespace Game.Ai
 
         internal sealed class PersistentState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, int __CurrentTurn, global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.AiMapMemory.PlayerMemoryState> __Players)
+        {
+            CurrentTurn = __CurrentTurn;
+            Players = __Players;
+        }
+
             internal readonly int CurrentTurn;
             internal readonly IReadOnlyDictionary<string, PlayerMemoryState> Players;
             internal PersistentState(int currentTurn, IReadOnlyDictionary<string, PlayerMemoryState> players)

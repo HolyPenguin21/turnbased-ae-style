@@ -49,6 +49,9 @@ with tempfile.TemporaryDirectory(prefix="ai-state-verify-") as temporary:
     (output / "ManagedMath.cs").write_text(math)
     files = [*source.rglob("*.cs"), output / "EngineStubs.cs", output / "ManagedMath.cs",
              REPO / "Assets/Editor/Tests/AI/AiPersistencePreparationTests.cs",
+             REPO / "Assets/Editor/Tests/AI/AiPersistentGraphRoundTripTests.cs",
+             REPO / "Assets/Editor/Tests/AI/MatchAiJsonCodecTests.cs",
+             REPO / "Assets/Editor/Tests/AI/MatchAiAggregateJsonTests.cs",
              REPO / "Assets/Editor/Tests/Core/MatchRestorePreparationTests.cs", HERE / "Program.cs"]
     refs = [*(refpack / "ref/net8.0").glob("*.dll"), *engine.glob("*.dll"), ui[0], nunit]
     args = ["-nologo", "-target:exe", "-langversion:9", "-unsafe", "-define:UNITY_INCLUDE_TESTS;UNITY_EDITOR;UNITY_6000_0_OR_NEWER",

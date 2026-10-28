@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 SOURCES = [
     "Map/ArmyData.cs", "Map/ArmyData.Transport.cs", "Map/ArmyData.Restore.cs",
-    "Units/UnitData.cs", "Units/UnitData.Restore.cs", "Cards/CardData.cs",
+    "Units/UnitData.cs", "Units/UnitData.Restore.cs", "Units/SerializableNullableInt.cs", "Cards/CardData.cs",
     "Map/ArmyRegistry.cs", "Map/BuildingRegistry.cs", "Map/WorldPreparationState.cs",
     "Map/VisionSystem.cs", "Map/VisionSystem.Restore.cs", "Map/StealthSystem.cs", "Map/StealthSystem.Restore.cs",
     "Map/HumanVisualMemory.cs", "Map/HumanVisualMemory.Restore.cs", "Map/PlayerRoot.cs", "Map/PlayerRoot.Restore.cs",

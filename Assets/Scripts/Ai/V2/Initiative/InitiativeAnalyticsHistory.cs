@@ -9,6 +9,18 @@ namespace Game.Ai.V2.Initiative
     // observations are strong enough to count as AP starvation.
     public readonly struct InitiativeTurnRecord
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal InitiativeTurnRecord(bool __matchSave, int __InitiativeBaseAp, int __TotalStartAp, int __ApSpent, int __EndAp, int __ActionableArmyCountAtStart, int __UnactivatedActionableArmyCountAtEnd, bool __HadPotentialApWorkAtEnd)
+        {
+            InitiativeBaseAp = __InitiativeBaseAp;
+            TotalStartAp = __TotalStartAp;
+            ApSpent = __ApSpent;
+            EndAp = __EndAp;
+            ActionableArmyCountAtStart = __ActionableArmyCountAtStart;
+            UnactivatedActionableArmyCountAtEnd = __UnactivatedActionableArmyCountAtEnd;
+            HadPotentialApWorkAtEnd = __HadPotentialApWorkAtEnd;
+        }
+
         public readonly int InitiativeBaseAp;
         public readonly int TotalStartAp;
         public readonly int ApSpent;

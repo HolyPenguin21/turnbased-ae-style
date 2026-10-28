@@ -11,6 +11,13 @@ namespace Game.Ai.V2
     {
         internal sealed class ForecastState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal ForecastState(bool __matchSave, int __Turn, global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceBundle> __Needs)
+        {
+            Turn = __Turn;
+            Needs = __Needs;
+        }
+
             internal readonly int Turn;
             internal readonly IReadOnlyDictionary<string, ResourceBundle> Needs;
             internal ForecastState(int turn, IReadOnlyDictionary<string, ResourceBundle> needs)
@@ -18,6 +25,18 @@ namespace Game.Ai.V2
         }
         internal sealed class PersistentState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.ForecastState> __Forecasts, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, float> __Pressure, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, global::Game.Ai.V2.ResourceBlockEvidence> __CurrentBlocks, global::System.Collections.Generic.IReadOnlyList<global::Game.Economy.ResourceType> __VerifiedPending, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int> __LastPressureHitTurn, bool __RequireVerifiedEvidence, int __LastDecayTurn)
+        {
+            Forecasts = __Forecasts;
+            Pressure = __Pressure;
+            CurrentBlocks = __CurrentBlocks;
+            VerifiedPending = __VerifiedPending;
+            LastPressureHitTurn = __LastPressureHitTurn;
+            RequireVerifiedEvidence = __RequireVerifiedEvidence;
+            LastDecayTurn = __LastDecayTurn;
+        }
+
             internal readonly IReadOnlyDictionary<string, ForecastState> Forecasts;
             internal readonly IReadOnlyDictionary<Game.Economy.ResourceType, float> Pressure;
             internal readonly IReadOnlyDictionary<Game.Economy.ResourceType, ResourceBlockEvidence> CurrentBlocks;

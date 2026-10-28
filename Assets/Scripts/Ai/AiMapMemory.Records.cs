@@ -17,6 +17,16 @@ namespace Game.Ai
         // only on visible hexes; it never changes the existing ground/route sightings.
         public readonly struct KnownAirSighting
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal KnownAirSighting(bool __matchSave, global::Game.HexGrid.HexCoord __Hex, global::Game.Players.PlayerSetupData __Owner, int __SeenTurn, bool __IsGroundArmy, global::Game.Combat.AviationCombatEstimator.DefendingAirArmy __Roster)
+        {
+            Hex = __Hex;
+            Owner = __Owner;
+            SeenTurn = __SeenTurn;
+            IsGroundArmy = __IsGroundArmy;
+            Roster = __Roster;
+        }
+
             public readonly HexCoord Hex;
             public readonly PlayerSetupData Owner;
             public readonly int SeenTurn;
@@ -42,6 +52,27 @@ namespace Game.Ai
         // so a moved army's record is updated in place instead of leaving an orphan at its old hex.
         public readonly struct KnownEnemySighting
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal KnownEnemySighting(bool __matchSave, int __ArmyId, global::Game.HexGrid.HexCoord __Hex, global::Game.Players.PlayerSetupData __Owner, string __Name, int __MemberCount, float __DefenseSum, float __AttackSum, global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile> __Defenders, bool __HasAntiAir, int __RecceRadius, int __RecceSpotStrength, int __SeenTurn, bool __IsGarrison, bool __IsAir, int __MaxMovement, global::Game.Combat.WorthIt.SideCommander __Commander)
+        {
+            ArmyId = __ArmyId;
+            Hex = __Hex;
+            Owner = __Owner;
+            Name = __Name;
+            MemberCount = __MemberCount;
+            DefenseSum = __DefenseSum;
+            AttackSum = __AttackSum;
+            Defenders = __Defenders;
+            HasAntiAir = __HasAntiAir;
+            RecceRadius = __RecceRadius;
+            RecceSpotStrength = __RecceSpotStrength;
+            SeenTurn = __SeenTurn;
+            IsGarrison = __IsGarrison;
+            IsAir = __IsAir;
+            MaxMovement = __MaxMovement;
+            Commander = __Commander;
+        }
+
             // The sighted army's stable ArmyData.Id. Lets a consumer track one physical army
             // across moves (AiReconMemory keys its longer observation history by it).
             public readonly int ArmyId;
@@ -135,6 +166,17 @@ namespace Game.Ai
         // guard army's name and commander. The guard is never a live army until Explore is chosen.
         public readonly struct GuardStrength
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal GuardStrength(bool __matchSave, float __Defense, float __Attack, global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile> __Defenders, string __Name, global::Game.Combat.WorthIt.SideCommander __Commander, int __RewardTier)
+        {
+            Defense = __Defense;
+            Attack = __Attack;
+            Defenders = __Defenders;
+            Name = __Name;
+            Commander = __Commander;
+            RewardTier = __RewardTier;
+        }
+
             public readonly float Defense;
             public readonly float Attack;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
@@ -167,6 +209,14 @@ namespace Game.Ai
         // Yield directly and must never reconstruct hidden quantities from the live map.
         public readonly struct KnownResourceHex
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal KnownResourceHex(bool __matchSave, global::Game.HexGrid.HexCoord __Hex, global::Game.Economy.ResourceType __DominantType, global::Game.Economy.ResourceYields __Yield)
+        {
+            Hex = __Hex;
+            DominantType = __DominantType;
+            Yield = __Yield;
+        }
+
             public readonly HexCoord Hex;
             public readonly ResourceType DominantType;
             public readonly ResourceYields Yield;
@@ -200,6 +250,21 @@ namespace Game.Ai
         // is never known further than this player's own last look at that hex.
         public readonly struct KnownBuilding
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal KnownBuilding(bool __matchSave, global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile> __ExplosionStructures, global::Game.HexGrid.HexCoord __Hex, global::Game.Players.PlayerSetupData __Owner, bool __IsStartingCitadel, bool __IsBase, global::System.Collections.Generic.IReadOnlyCollection<string> __FacilityAbilities, global::System.Collections.Generic.IReadOnlyList<int> __CollectedAmounts, int __FreeFacilitySlots, float __Defense, int __SeenTurn)
+        {
+            ExplosionStructures = __ExplosionStructures;
+            Hex = __Hex;
+            Owner = __Owner;
+            IsStartingCitadel = __IsStartingCitadel;
+            IsBase = __IsBase;
+            FacilityAbilities = __FacilityAbilities;
+            CollectedAmounts = __CollectedAmounts;
+            FreeFacilitySlots = __FreeFacilitySlots;
+            Defense = __Defense;
+            SeenTurn = __SeenTurn;
+        }
+
             // Public structure stats for explosion pricing; own facility slots included.
             public readonly IReadOnlyList<WorthIt.DefenderProfile> ExplosionStructures;
             public readonly HexCoord Hex;

@@ -28,6 +28,28 @@ namespace Game.Ai.V2
     {
         internal sealed class IntentState<TObjective>
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal IntentState(bool __matchSave, global::Game.Ai.V2.MissionIntentKey __IntentKey, global::Game.Ai.V2.StableMissionKey __LastAttemptKey, global::Game.Ai.V2.MissionKind __Kind, global::Game.Ai.V2.CommitmentTier __Funding, global::Game.Ai.V2.IntentStatus __Status, global::Game.Ai.V2.SuspendReason __Suspended, int __CreatedTurn, int __TurnsActive, int __LastReconciledTurn, int __LastProgressTurn, int __LastProtectedTurn, int __StallTurns, float __LastIntrinsicValue, float __CumulativeApSpent, int __StepsMovedTotal, int? __PreferredMoverArmyId, TObjective __Objective)
+        {
+            IntentKey = __IntentKey;
+            LastAttemptKey = __LastAttemptKey;
+            Kind = __Kind;
+            Funding = __Funding;
+            Status = __Status;
+            Suspended = __Suspended;
+            CreatedTurn = __CreatedTurn;
+            TurnsActive = __TurnsActive;
+            LastReconciledTurn = __LastReconciledTurn;
+            LastProgressTurn = __LastProgressTurn;
+            LastProtectedTurn = __LastProtectedTurn;
+            StallTurns = __StallTurns;
+            LastIntrinsicValue = __LastIntrinsicValue;
+            CumulativeApSpent = __CumulativeApSpent;
+            StepsMovedTotal = __StepsMovedTotal;
+            PreferredMoverArmyId = __PreferredMoverArmyId;
+            Objective = __Objective;
+        }
+
             internal readonly MissionIntentKey IntentKey;
             internal readonly StableMissionKey LastAttemptKey;
             internal readonly MissionKind Kind;
@@ -109,6 +131,15 @@ namespace Game.Ai.V2
 
         internal readonly struct RetreatTargetState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal RetreatTargetState(bool __matchSave, bool __HasValue, global::Game.HexGrid.HexCoord __Hex, string __ExpectedOwnerId, global::Game.Ai.V2.AttackTargetKind __Kind)
+        {
+            HasValue = __HasValue;
+            Hex = __Hex;
+            ExpectedOwnerId = __ExpectedOwnerId;
+            Kind = __Kind;
+        }
+
             internal readonly bool HasValue;
             internal readonly HexCoord Hex;
             internal readonly string ExpectedOwnerId;
@@ -127,6 +158,19 @@ namespace Game.Ai.V2
 
         internal readonly struct RetreatWitnessState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal RetreatWitnessState(bool __matchSave, global::Game.Ai.V2.MissionIntentState.RetreatTargetState __Target, int __OwnArmyId, int __EnemyArmyId, int __EnemyFingerprint, int __OwnFingerprint, int __Turn, global::Game.HexGrid.HexCoord __EnemyHex, string __Reason)
+        {
+            Target = __Target;
+            OwnArmyId = __OwnArmyId;
+            EnemyArmyId = __EnemyArmyId;
+            EnemyFingerprint = __EnemyFingerprint;
+            OwnFingerprint = __OwnFingerprint;
+            Turn = __Turn;
+            EnemyHex = __EnemyHex;
+            Reason = __Reason;
+        }
+
             internal readonly RetreatTargetState Target;
             internal readonly int OwnArmyId, EnemyArmyId, EnemyFingerprint, OwnFingerprint, Turn;
             internal readonly HexCoord EnemyHex;
@@ -147,6 +191,15 @@ namespace Game.Ai.V2
 
         internal sealed class PersistentState<TObjective>
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.IntentState<TObjective>> __Intents, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.RetreatWitnessState> __RetreatWitnesses, global::Game.Ai.V2.EconomyLifecycleState.PersistentState __Economy, global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, global::Game.Cards.ResearchProductionMode Mode, int Turn)> __Development)
+        {
+            Intents = __Intents;
+            RetreatWitnesses = __RetreatWitnesses;
+            Economy = __Economy;
+            Development = __Development;
+        }
+
             internal readonly IReadOnlyList<IntentState<TObjective>> Intents;
             internal readonly IReadOnlyList<RetreatWitnessState> RetreatWitnesses;
             internal readonly EconomyLifecycleState.PersistentState Economy;
@@ -176,7 +229,7 @@ namespace Game.Ai.V2
         // Produces a detached owner-bound store before it can become registry authority.
         internal static MissionIntentState RestorePersistentState<TObjective>(PlayerSetupData owner,
             PersistentState<TObjective> state, IMissionObjectiveStateCodec<TObjective> codec, Func<int, CardData> card,
-            Func<string, PlayerSetupData> player)
+            Func<string, PlayerSetupData> player, bool reserveIdentities = true)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             if (codec == null) throw new ArgumentNullException(nameof(codec));
@@ -196,7 +249,7 @@ namespace Game.Ai.V2
             int highestArmyId = restored._intents.Values.Select(x => x.PreferredMoverArmyId ?? -1)
                 .Concat(restored._retreatWitnesses.Values.SelectMany(x => new[] { x.OwnArmyId, x.EnemyArmyId }))
                 .DefaultIfEmpty(-1).Max();
-            if (highestArmyId >= 0) ArmyData.ReserveIdentity(highestArmyId);
+            if (reserveIdentities && highestArmyId >= 0) ArmyData.ReserveIdentity(highestArmyId);
             return restored;
         }
     }

@@ -48,6 +48,7 @@ namespace Game.Units
             ReserveIdentity(runtimeId);
             return new UnitData(false, runtimeId);
         }
+        internal static UnitData CreateDetached(int runtimeId) => new UnitData(false, runtimeId);
 
         public string Name;
         public PlayerSetupData Owner;

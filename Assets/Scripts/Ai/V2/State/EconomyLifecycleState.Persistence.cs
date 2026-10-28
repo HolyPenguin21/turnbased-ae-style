@@ -11,6 +11,14 @@ namespace Game.Ai.V2
     {
         internal sealed class DeliveryEvidence<TKey>
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal DeliveryEvidence(bool __matchSave, global::System.Collections.Generic.IReadOnlyDictionary<TKey, (int Turn, int Count)> __Failures, global::System.Collections.Generic.IReadOnlyDictionary<TKey, int> __SuppressedUntil, global::System.Collections.Generic.IReadOnlyDictionary<TKey, int> __ProgressTurns)
+        {
+            Failures = __Failures;
+            SuppressedUntil = __SuppressedUntil;
+            ProgressTurns = __ProgressTurns;
+        }
+
             internal readonly IReadOnlyDictionary<TKey, (int Turn, int Count)> Failures;
             internal readonly IReadOnlyDictionary<TKey, int> SuppressedUntil;
             internal readonly IReadOnlyDictionary<TKey, int> ProgressTurns;
@@ -20,6 +28,14 @@ namespace Game.Ai.V2
         }
         internal sealed class PersistentState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(int CardId, global::Game.HexGrid.HexCoord Hex)> __BaseDelivery, global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex)> __ExtractionDelivery, global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, float Value)> __EndedOutboundBuilders)
+        {
+            BaseDelivery = __BaseDelivery;
+            ExtractionDelivery = __ExtractionDelivery;
+            EndedOutboundBuilders = __EndedOutboundBuilders;
+        }
+
             internal readonly DeliveryEvidence<(int CardId, HexCoord Hex)> BaseDelivery;
             internal readonly DeliveryEvidence<(ResourceType? Resource, HexCoord Hex)> ExtractionDelivery;
             internal readonly IReadOnlyDictionary<int, (HexCoord Site, float Value)> EndedOutboundBuilders;

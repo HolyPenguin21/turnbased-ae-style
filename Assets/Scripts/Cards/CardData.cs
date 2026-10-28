@@ -57,6 +57,8 @@ namespace Game.Cards
             ReserveIdentity(runtimeId);
             return new CardData(definition, runtimeId);
         }
+        // Detached save validation must not reserve live identities until scene activation.
+        internal static CardData CreateDetached(CardDefinition definition, int runtimeId) => new CardData(definition, runtimeId);
 
         public static int IdentityHighWaterMark => Volatile.Read(ref _nextRuntimeId);
         // Reserve identities referenced only by destroyed/remembered entities as well.

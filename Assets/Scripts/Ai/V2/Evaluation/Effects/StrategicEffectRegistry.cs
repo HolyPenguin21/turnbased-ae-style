@@ -108,6 +108,32 @@ namespace Game.Ai.V2
 
     internal readonly struct StrategicEffect
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal StrategicEffect(bool __matchSave, global::Game.Ai.V2.IntendedRole __Role, float __BaseFit, global::Game.Ai.V2.StrategicEffectContext __Context, global::Game.Ai.V2.EffectField __Field, bool __CountsAsCoverage, global::System.Func<global::Game.Combat.WorthIt.DefenderProfile, bool> __EligiblePredicate, global::Game.Ai.V2.EffectScope __Scope, float __Magnitude, float __Probability, global::Game.Ai.V2.EffectTiming __Timing, int __DurationRounds, int __CapacityRequirement, global::Game.Ai.V2.EffectStacking __Stacking, string __StackingKey, global::Game.Ai.V2.GlobalResourceKind __GlobalResource, float __GlobalYieldPerTurn, bool __PrimaryExchange, bool __RequiresHit, int __SecondaryTargets, int __SecondaryPriority, bool __BodyOnly)
+        {
+            Role = __Role;
+            BaseFit = __BaseFit;
+            Context = __Context;
+            Field = __Field;
+            CountsAsCoverage = __CountsAsCoverage;
+            EligiblePredicate = __EligiblePredicate;
+            Scope = __Scope;
+            Magnitude = __Magnitude;
+            Probability = __Probability;
+            Timing = __Timing;
+            DurationRounds = __DurationRounds;
+            CapacityRequirement = __CapacityRequirement;
+            Stacking = __Stacking;
+            StackingKey = __StackingKey;
+            GlobalResource = __GlobalResource;
+            GlobalYieldPerTurn = __GlobalYieldPerTurn;
+            PrimaryExchange = __PrimaryExchange;
+            RequiresHit = __RequiresHit;
+            SecondaryTargets = __SecondaryTargets;
+            SecondaryPriority = __SecondaryPriority;
+            BodyOnly = __BodyOnly;
+        }
+
         public readonly IntendedRole Role;
         public readonly float BaseFit;
         public readonly StrategicEffectContext Context;

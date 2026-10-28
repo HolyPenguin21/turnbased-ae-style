@@ -107,6 +107,27 @@ namespace Game.Cards
             hand.LoadState(state, resolve);
             return hand;
         }
+        // Canonical graph import retains exact card instances shared with AI evidence.
+        internal void RestoreCanonical(HandState state, Func<int, CardData> resolveCard, Func<string, CardDefinition> resolve)
+        {
+            if (state == null || state.capacity < 0 || state.currentTurn < 0 || state.mutationVersion < 0
+                || state.cards == null || state.remainingDeckKeys == null)
+                throw new InvalidOperationException("Invalid saved hand state.");
+            var ids = new HashSet<int>();
+            var cards = new List<CardData>();
+            foreach (var saved in state.cards)
+            {
+                if (saved == null || !ids.Add(saved.runtimeId)) throw new InvalidOperationException("Duplicate saved hand card.");
+                var card = resolveCard(saved.runtimeId);
+                if (card == null) throw new InvalidOperationException("Missing canonical hand card.");
+                cards.Add(card);
+            }
+            var deck = new List<CardDefinition>();
+            foreach (var key in state.remainingDeckKeys) deck.Add(CardState.Resolve(key, resolve));
+            HandCards.Clear(); HandCards.AddRange(cards);
+            remainingDeck.Clear(); remainingDeck.AddRange(deck);
+            Capacity = state.capacity; CurrentTurn = state.currentTurn; MutationVersion = state.mutationVersion;
+        }
 
         // Populate directly: restore must never draw or invoke OnAcquired/AddCard, which would
         // cap a legitimate overflowing hand or overwrite AI AcquiredTurn.

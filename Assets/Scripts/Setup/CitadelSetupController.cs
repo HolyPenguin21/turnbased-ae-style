@@ -122,20 +122,22 @@ namespace Game.Setup
                 yield return null;
                 try
                 {
-                    if (!string.IsNullOrEmpty(GameSession.SetupError))
-                        throw new System.InvalidOperationException(GameSession.SetupError);
-                    ConfigureWorldSystems();
-                    MatchRestoreCoordinator.RestorePending(gameConfig, map, turnController, hexSelectionController);
-                    if (popupCanvas != null) Destroy(popupCanvas);
-                    if (hexSelectionController != null) hexSelectionController.enabled = true;
-                    if (cameraController != null) cameraController.SetPanningEnabled(true);
-                    Destroy(gameObject);
+                    if (TryRestorePreparedMatch())
+                    {
+                        if (popupCanvas != null) Destroy(popupCanvas);
+                        if (hexSelectionController != null) hexSelectionController.enabled = true;
+                        if (cameraController != null) cameraController.SetPanningEnabled(true);
+                        string restoreNotice = GameSession.RestoreNotice;
+                        GameSession.RestoreNotice = null;
+                        if (!string.IsNullOrEmpty(restoreNotice)) Game.UI.CollectionScreensUI.ShowMessage(transform, restoreNotice);
+                        Destroy(gameObject);
+                    }
+                    else
+                        UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
                 }
                 catch (System.Exception ex)
                 {
-                    Debug.LogException(ex);
-                    MatchStateInventory.EndMatch(turnController);
-                    GameSession.SetupError = "Could not restore the saved match: " + ex.Message;
+                    FailMatchRestore(ex);
                     UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
                 }
                 yield break;
@@ -295,6 +297,7 @@ namespace Game.Setup
                 return;
 
             MapObjectVisual marker = Instantiate(catalog.citadelPrefab);
+            marker.PersistenceSourcePrefab = catalog.citadelPrefab;
             Vector3 offset = new Vector3(offset2D.x, 0f, offset2D.y) * map.OuterRadius;
             marker.transform.position = map.HexToWorld(hex) + offset;
             marker.SetColor(PlayerColorPalette.Colors[player.ColorIndex]);

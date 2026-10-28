@@ -723,6 +723,16 @@ namespace Game.Cards
     // and simulation retain this snapshot, never a hidden live equipment/UnitData reference.
     public sealed class EquipmentConsumption
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal EquipmentConsumption(bool __matchSave, global::Game.Cards.PredictedEquipmentState __Before, global::Game.Cards.PredictedEquipmentState __After, int __HpSpentExcess, int __FateSpentExcess, string __Key)
+        {
+            Before = __Before;
+            After = __After;
+            HpSpentExcess = __HpSpentExcess;
+            FateSpentExcess = __FateSpentExcess;
+            Key = __Key;
+        }
+
         public readonly PredictedEquipmentState Before, After;
         public readonly int HpSpentExcess, FateSpentExcess;
         public readonly string Key;
@@ -774,6 +784,11 @@ namespace Game.Cards
             HpSpent = hpSpent; MoveSpent = moveSpent; FateSpent = fateSpent;
             LastHp = unit.HitPointsCurrent; LastMove = unit.MoveCurrent; LastFate = unit.Fate;
         }
+        internal AttachmentResourceState(int hpSpent, int moveSpent, int fateSpent, int lastHp, int lastMove, int lastFate)
+        {
+            HpSpent = hpSpent; MoveSpent = moveSpent; FateSpent = fateSpent;
+            LastHp = lastHp; LastMove = lastMove; LastFate = lastFate;
+        }
     }
 
     // Return value of EquipmentSystem.Predict — the post-attach snapshot an evaluator scores.
@@ -781,6 +796,13 @@ namespace Game.Cards
     // host's full effective tag set once the grant's clear/remove/add have been replayed.
     public readonly struct PredictedEquipmentState
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PredictedEquipmentState(bool __matchSave, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Cards.EquipmentStat, int> __Stats, global::System.Collections.Generic.IReadOnlyList<string> __Abilities)
+        {
+            Stats = __Stats;
+            Abilities = __Abilities;
+        }
+
         public readonly IReadOnlyDictionary<EquipmentStat, int> Stats;
         public readonly IReadOnlyList<string> Abilities;
 

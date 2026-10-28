@@ -24,6 +24,7 @@ namespace Game.Core
         {
             error = null;
             PendingRestore = null;
+            RestoreNotice = null;
             CampaignContext = null; FinalResult = null;
             ClearMapConditions();
             if (players.FindAll(p => p.IsHuman).Count > 1)
@@ -102,6 +103,7 @@ namespace Game.Core
         public static void ClearMatch()
         {
             PendingRestore = null;
+            RestoreNotice = null;
             Players = new List<PlayerSetupData>();
             ClearMapConditions();
             MatchId = null;

@@ -181,6 +181,11 @@ namespace Game.Map
                     if (army.Owner == owner)
                         yield return army;
         }
+        internal static IEnumerable<ArmyData> AllArmies()
+        {
+            foreach (var list in ByHex.Values)
+                foreach (var army in list) yield return army;
+        }
     }
 }
 

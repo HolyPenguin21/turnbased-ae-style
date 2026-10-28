@@ -307,6 +307,31 @@ namespace Game.Map
         private static System.ArgumentException InvalidLayout(string detail) =>
             new System.ArgumentException("Cannot restore map layout: " + detail);
 
+        private static void ValidateLayoutGeometry(HexMapLayout layout)
+        {
+            float minX = float.MaxValue, minZ = float.MaxValue;
+            float maxX = float.MinValue, maxZ = float.MinValue;
+            foreach (var cell in layout.Cells.Concat(layout.BorderCells))
+            {
+                var center = HexGridMath.AxialToWorld(cell.Q, cell.R, layout.OuterRadius);
+                float left = center.x - layout.OuterRadius, right = center.x + layout.OuterRadius;
+                float bottom = center.z - layout.OuterRadius, top = center.z + layout.OuterRadius;
+                if (!Finite(left) || !Finite(right) || !Finite(bottom) || !Finite(top))
+                    throw InvalidLayout("tile geometry overflows world coordinates.");
+                minX = System.Math.Min(minX, left); maxX = System.Math.Max(maxX, right);
+                minZ = System.Math.Min(minZ, bottom); maxZ = System.Math.Max(maxZ, top);
+            }
+            // Bounds, ground padding and fog are derived after scene replacement. Finite
+            // source fields alone do not guarantee their single-precision arithmetic is finite.
+            float padding = layout.OuterRadius * 4f;
+            float width = maxX - minX + padding, depth = maxZ - minZ + padding;
+            float x = (minX + maxX) * 0.5f, z = (minZ + maxZ) * 0.5f;
+            if (!Finite(width) || !Finite(depth) || !Finite(x) || !Finite(z)
+                || !Finite(x - width * 0.5f) || !Finite(x + width * 0.5f)
+                || !Finite(z - depth * 0.5f) || !Finite(z + depth * 0.5f))
+                throw InvalidLayout("map bounds, ground or fog geometry overflows world coordinates.");
+        }
+
         private static ResolvedLayout ResolveLayout(HexMapLayout layout, GameConfig config)
         {
             if (layout == null || config == null || config.mapGeneration == null)
@@ -362,6 +387,7 @@ namespace Game.Map
             }
             foreach (MapLayoutCell cell in layout.BorderCells)
                 if (DistanceFromOrigin(cell) <= layout.FieldRadius) throw InvalidLayout("border coordinate inside field.");
+            ValidateLayoutGeometry(layout);
             var templates = new Dictionary<string, TerrainComplexTemplate>(System.StringComparer.Ordinal);
             foreach (TerrainComplexTemplate template in biome.complexes)
             {

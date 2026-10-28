@@ -8,6 +8,7 @@ namespace Game.Core
     public static partial class GameSession
     {
         public static IMatchRestoreSource PendingRestore { get; private set; }
+        public static string RestoreNotice { get; set; }
 
         public static bool TryPrepareRestore(IMatchRestoreSource source, GameConfig config, out string error)
         {
@@ -22,6 +23,7 @@ namespace Game.Core
                 CampaignContext = source.CampaignContext;
                 FinalResult = null;
                 SetupError = null;
+                RestoreNotice = null;
                 ClearMapConditions();
                 PendingRestore = source;
                 error = null;
