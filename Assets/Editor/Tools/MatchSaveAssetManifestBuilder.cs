@@ -67,6 +67,8 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
                 .OrderBy(p => p, StringComparer.Ordinal).ToArray();
             foreach (string path in content)
             {
+                // Scene objects cannot be loaded via LoadAllAssetsAtPath; scenes hold no manifest content.
+                if (path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) continue;
                 foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(path))
                 {
                     if (asset is Sprite sprite) sprites[Key(sprite)] = sprite;
