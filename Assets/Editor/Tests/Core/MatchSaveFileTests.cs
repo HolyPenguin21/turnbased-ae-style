@@ -10,7 +10,10 @@ namespace Game.Tests.Core
     public sealed class MatchSaveFileTests
     {
         [Serializable] public sealed class Sample { public int version; public string value; public float number; }
+        // Self-reference is the point: the tests exercise deep chains and cycle rejection in MatchSaveJson.
+#pragma warning disable UAC1005
         [Serializable] public sealed class Node { public long id; public string name; public Node next; }
+#pragma warning restore UAC1005
         private string directory;
         [SetUp] public void SetUp() => directory = Path.Combine(Path.GetTempPath(), "match-save-" + Guid.NewGuid().ToString("N"));
         [TearDown] public void TearDown() { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
