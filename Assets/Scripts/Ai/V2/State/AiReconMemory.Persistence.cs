@@ -11,6 +11,26 @@ namespace Game.Ai.V2
     {
         internal readonly struct ObservationState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal ObservationState(bool __matchSave, int __ArmyId, global::Game.HexGrid.HexCoord __LastObservedHex, int __LastObservedTurn, int __MemberCount, float __AttackSum, float __DefenseSum, bool __HasAntiAir, int __RecceRadius, int __RecceSpotStrength, bool __IsGarrison, bool __IsAir, int __MaxMovement, global::Game.Combat.WorthIt.SideCommander __Commander, string __OwnerId, global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile> __Defenders)
+        {
+            ArmyId = __ArmyId;
+            LastObservedHex = __LastObservedHex;
+            LastObservedTurn = __LastObservedTurn;
+            MemberCount = __MemberCount;
+            AttackSum = __AttackSum;
+            DefenseSum = __DefenseSum;
+            HasAntiAir = __HasAntiAir;
+            RecceRadius = __RecceRadius;
+            RecceSpotStrength = __RecceSpotStrength;
+            IsGarrison = __IsGarrison;
+            IsAir = __IsAir;
+            MaxMovement = __MaxMovement;
+            Commander = __Commander;
+            OwnerId = __OwnerId;
+            Defenders = __Defenders;
+        }
+
             internal readonly int ArmyId;
             internal readonly HexCoord LastObservedHex;
             internal readonly int LastObservedTurn;
@@ -65,6 +85,13 @@ namespace Game.Ai.V2
         }
         internal sealed class PersistentState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.AiReconMemory.ObservationState>> __Observations, global::System.Collections.Generic.IReadOnlyDictionary<string, int> __ObservedTurns)
+        {
+            Observations = __Observations;
+            ObservedTurns = __ObservedTurns;
+        }
+
             internal readonly IReadOnlyDictionary<string, IReadOnlyDictionary<int, ObservationState>> Observations;
             internal readonly IReadOnlyDictionary<string, int> ObservedTurns;
             internal PersistentState(Func<PlayerSetupData, string> playerId)

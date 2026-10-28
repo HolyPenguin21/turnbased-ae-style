@@ -73,6 +73,7 @@ namespace Game.Map
             MapObjectVisual marker;
             using (new Game.Core.ProfileScope("Map/Instantiate.ArmyMarker"))
                 marker = Instantiate(prefab);
+            marker.PersistenceSourcePrefab = prefab;
             ArmyController controller = marker.gameObject.AddComponent<ArmyController>();
             controller.SetData(army);
             army.Controller = controller;
@@ -98,7 +99,10 @@ namespace Game.Map
             // went back into the airfield (an ordinary empty shell again).
             MapObjectVisual prefab = AviationRules.IsAirArmy(army) ? ownerCatalog?.airArmyPrefab : ownerCatalog?.armyPrefab;
             if (prefab != null)
+            {
                 army.Controller.Visual.ApplyPrefabAppearance(prefab);
+                army.Controller.Visual.PersistenceSourcePrefab = prefab;
+            }
         }
 
         private void DeleteReturnedWing(ArmyData wing)
@@ -191,6 +195,7 @@ namespace Game.Map
             MapObjectVisual marker;
             using (new Game.Core.ProfileScope("Map/Instantiate.BuildingMarker"))
                 marker = Instantiate(prefab);
+            marker.PersistenceSourcePrefab = prefab;
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root != null)
                 marker.transform.SetParent(root.transform, worldPositionStays: true);

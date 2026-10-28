@@ -11,6 +11,13 @@ namespace Game.Ai.V2
     {
         internal sealed class PersistentState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PersistentState(bool __matchSave, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>> __Observations, global::System.Collections.Generic.IReadOnlyDictionary<string, int> __CurrentTurns)
+        {
+            Observations = __Observations;
+            CurrentTurns = __CurrentTurns;
+        }
+
             internal readonly IReadOnlyDictionary<string, IReadOnlyDictionary<HexCoord, int>> Observations;
             internal readonly IReadOnlyDictionary<string, int> CurrentTurns;
             internal PersistentState(Func<PlayerSetupData, string> playerId)

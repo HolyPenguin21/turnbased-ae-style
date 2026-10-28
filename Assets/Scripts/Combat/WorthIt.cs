@@ -185,6 +185,15 @@ namespace Game.Combat
         // Completed ground encounters replenish Fate; card-only projections start full.
         public readonly struct SideCommander : System.IEquatable<SideCommander>
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal SideCommander(bool __matchSave, bool __Present, int __Initiative, int __Fate, global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile> __SupportHeroes)
+        {
+            Present = __Present;
+            Initiative = __Initiative;
+            Fate = __Fate;
+            SupportHeroes = __SupportHeroes;
+        }
+
             public readonly bool Present;
             public readonly int Initiative;
             public readonly int Fate;
@@ -1438,6 +1447,27 @@ namespace Game.Combat
         // other side.
         public readonly struct DefenderProfile : System.IEquatable<DefenderProfile>
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal DefenderProfile(bool __matchSave, bool __SingleUseUnit, bool __CanDisruptBuilding, global::Game.Cards.EquipmentConsumption __Consumption, float __Defense, bool __HasCeramicArmor, global::System.Collections.Generic.IReadOnlyList<global::Game.Cards.UnitTypeTag> __TypeTags, float __Attack, float __HitPoints, float __MaxHitPoints, int __Initiative, global::System.Collections.Generic.IReadOnlyList<string> __Abilities, bool __IsGroundCombatant, bool __IsHero, int __FateMax, bool __IsSummoned, int __Range)
+        {
+            SingleUseUnit = __SingleUseUnit;
+            CanDisruptBuilding = __CanDisruptBuilding;
+            Consumption = __Consumption;
+            Defense = __Defense;
+            HasCeramicArmor = __HasCeramicArmor;
+            TypeTags = __TypeTags;
+            Attack = __Attack;
+            HitPoints = __HitPoints;
+            MaxHitPoints = __MaxHitPoints;
+            Initiative = __Initiative;
+            Abilities = __Abilities;
+            IsGroundCombatant = __IsGroundCombatant;
+            IsHero = __IsHero;
+            FateMax = __FateMax;
+            IsSummoned = __IsSummoned;
+            Range = __Range;
+        }
+
             public readonly bool SingleUseUnit;
             // Abstract/card profiles default to ground. Live snapshots explicitly exclude
             // aircraft and prisoners, preserving that eligibility across forecasts and caches.

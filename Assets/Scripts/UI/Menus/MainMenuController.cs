@@ -42,6 +42,7 @@ namespace Game.UI
             bool canContinue = Game.Campaign.CampaignMatchBridge.Load(out _);
             if (continueCampaignButton != null) continueCampaignButton.interactable = canContinue;
             BindCampaignButtons();
+            AddMatchLoadButton();
             if (gameConfig == null) return;
             if (collectionScreens != null) collectionScreens.Configure(gameConfig);
             else Debug.LogError("MainMenuController: CollectionWindow is not assigned. Run Tools/UI/Build Collection Window.", this);
@@ -57,6 +58,22 @@ namespace Game.UI
         {
             if (collectionScreens != null) collectionScreens.Show(mainMenuPanel);
         }
+        private void AddMatchLoadButton()
+        {
+            if (settingsButton == null || settingsButton.transform.parent.Find("Load Match") != null) return;
+            var button = Instantiate(settingsButton, settingsButton.transform.parent);
+            button.name = "Load Match";
+            button.onClick = new Button.ButtonClickedEvent();
+            button.onClick.AddListener(OnLoadMatchClicked);
+            var rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(rect.anchorMin.x, .64033f);
+            rect.anchorMax = new Vector2(rect.anchorMax.x, .74866f);
+            rect.anchoredPosition = Vector2.zero; rect.sizeDelta = Vector2.zero;
+            var label = button.GetComponentInChildren<TMP_Text>();
+            if (label != null) label.text = "Load Match";
+            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
+        }
+        public void OnLoadMatchClicked() => MatchSaveSlotsUI.Show(gameConfig, null, false);
         public void OpenDeckBuilderFromSetup(System.Action onClosed, Game.Players.Faction? faction = null, string deckId = null)
         {
             if (collectionScreens == null || gameSetupPanel == null || UIFocusUtility.HasOverlay) return;

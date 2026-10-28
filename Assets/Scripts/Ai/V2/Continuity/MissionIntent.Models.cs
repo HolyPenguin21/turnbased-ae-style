@@ -19,6 +19,17 @@ namespace Game.Ai.V2
 
     public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>, IComparable<MissionIntentKey>
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal MissionIntentKey(bool __matchSave, global::Game.Ai.V2.MissionKind __Kind, int __SubKind, int __ObjectiveId, int __Q, int __R, global::Game.Ai.V2.RaidTargetKind __TargetKind)
+        {
+            Kind = __Kind;
+            SubKind = __SubKind;
+            ObjectiveId = __ObjectiveId;
+            Q = __Q;
+            R = __R;
+            TargetKind = __TargetKind;
+        }
+
         public readonly MissionKind Kind;
         public readonly int SubKind;
         public readonly int ObjectiveId;

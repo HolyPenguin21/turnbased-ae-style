@@ -18,6 +18,33 @@ namespace Game.Ai
     // codec; this API never substitutes fresh planning for missing continuation/history.
     internal sealed class AiPersistentState<TObjective>
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal AiPersistentState(bool __matchSave, global::Game.Ai.AiMapMemory.PersistentState __Map, global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.MissionIntentState.PersistentState<TObjective>> __Missions, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.AirSortieRegistry.SortieState>> __Sorties, global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.AiRadarStateRegistry.PersistentState> __Radar, global::System.Collections.Generic.IReadOnlyDictionary<string, float> __ForceBaseline, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)>> __PreparationDelivery, global::Game.Ai.V2.AiReconMemory.PersistentState __Recon, global::Game.Ai.V2.AiReconIntelMemory.PersistentState __Intel, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState>> __Patrols, global::Game.Ai.V2.ReconAirSortieRegistry.PersistentState __ReconSorties, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::System.Collections.Generic.IReadOnlyDictionary<int, int>>> __ReconCoverage, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.ReconDeficitKind, (int FirstSeenTurn, int LastSeenTurn)>> __ReconDeficits, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)>> __ScoutTrails, global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.PersistentState> __Starvation, global::System.Collections.Generic.IReadOnlyDictionary<string, (int LastTurn, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int> Streak, global::Game.Ai.V2.ResourceBundle Surplus)> __DevelopmentGate, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.StableMissionKey, global::Game.Ai.V2.MissionCooldownInfo>> __Allocator, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.Initiative.InitiativeTurnRecord>> __Initiative, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<int>> __PublicInitiative, global::System.Collections.Generic.IReadOnlyDictionary<string, int> __MobilizationHold, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, string CardKey)>> __DevelopmentHistory, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, float Demand)>> __ApPressure, global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>> __LifecycleWaits)
+        {
+            Map = __Map;
+            Missions = __Missions;
+            Sorties = __Sorties;
+            Radar = __Radar;
+            ForceBaseline = __ForceBaseline;
+            PreparationDelivery = __PreparationDelivery;
+            Recon = __Recon;
+            Intel = __Intel;
+            Patrols = __Patrols;
+            ReconSorties = __ReconSorties;
+            ReconCoverage = __ReconCoverage;
+            ReconDeficits = __ReconDeficits;
+            ScoutTrails = __ScoutTrails;
+            Starvation = __Starvation;
+            DevelopmentGate = __DevelopmentGate;
+            Allocator = __Allocator;
+            Initiative = __Initiative;
+            PublicInitiative = __PublicInitiative;
+            MobilizationHold = __MobilizationHold;
+            DevelopmentHistory = __DevelopmentHistory;
+            ApPressure = __ApPressure;
+            LifecycleWaits = __LifecycleWaits;
+        }
+
         internal readonly AiMapMemory.PersistentState Map;
         internal readonly IReadOnlyDictionary<string, MissionIntentState.PersistentState<TObjective>> Missions;
         internal readonly IReadOnlyDictionary<string, IReadOnlyList<AirSortieRegistry.SortieState>> Sorties;

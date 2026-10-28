@@ -1,0 +1,6002 @@
+{
+  "global::Game.Ai.AiPersistentState<string>": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Map",
+        "type": "global::Game.Ai.AiMapMemory.PersistentState",
+        "readOnly": true
+      },
+      {
+        "name": "Missions",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.MissionIntentState.PersistentState<string>>",
+        "readOnly": true
+      },
+      {
+        "name": "Sorties",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.AirSortieRegistry.SortieState>>",
+        "readOnly": true
+      },
+      {
+        "name": "Radar",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.AiRadarStateRegistry.PersistentState>",
+        "readOnly": true
+      },
+      {
+        "name": "ForceBaseline",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, float>",
+        "readOnly": true
+      },
+      {
+        "name": "PreparationDelivery",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)>>",
+        "readOnly": true
+      },
+      {
+        "name": "Recon",
+        "type": "global::Game.Ai.V2.AiReconMemory.PersistentState",
+        "readOnly": true
+      },
+      {
+        "name": "Intel",
+        "type": "global::Game.Ai.V2.AiReconIntelMemory.PersistentState",
+        "readOnly": true
+      },
+      {
+        "name": "Patrols",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState>>",
+        "readOnly": true
+      },
+      {
+        "name": "ReconSorties",
+        "type": "global::Game.Ai.V2.ReconAirSortieRegistry.PersistentState",
+        "readOnly": true
+      },
+      {
+        "name": "ReconCoverage",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::System.Collections.Generic.IReadOnlyDictionary<int, int>>>",
+        "readOnly": true
+      },
+      {
+        "name": "ReconDeficits",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.ReconDeficitKind, (int FirstSeenTurn, int LastSeenTurn)>>",
+        "readOnly": true
+      },
+      {
+        "name": "ScoutTrails",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)>>",
+        "readOnly": true
+      },
+      {
+        "name": "Starvation",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.PersistentState>",
+        "readOnly": true
+      },
+      {
+        "name": "DevelopmentGate",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, (int LastTurn, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int> Streak, global::Game.Ai.V2.ResourceBundle Surplus)>",
+        "readOnly": true
+      },
+      {
+        "name": "Allocator",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.StableMissionKey, global::Game.Ai.V2.MissionCooldownInfo>>",
+        "readOnly": true
+      },
+      {
+        "name": "Initiative",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.Initiative.InitiativeTurnRecord>>",
+        "readOnly": true
+      },
+      {
+        "name": "PublicInitiative",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<int>>",
+        "readOnly": true
+      },
+      {
+        "name": "MobilizationHold",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, int>",
+        "readOnly": true
+      },
+      {
+        "name": "DevelopmentHistory",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, string CardKey)>>",
+        "readOnly": true
+      },
+      {
+        "name": "ApPressure",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, float Demand)>>",
+        "readOnly": true
+      },
+      {
+        "name": "LifecycleWaits",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiPersistencePreparation.cs",
+    "insert": 678,
+    "name": "AiPersistentState",
+    "originalFields": [
+      {
+        "name": "Map",
+        "type": "global::Game.Ai.AiMapMemory.PersistentState"
+      },
+      {
+        "name": "Missions",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.MissionIntentState.PersistentState<TObjective>>"
+      },
+      {
+        "name": "Sorties",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.AirSortieRegistry.SortieState>>"
+      },
+      {
+        "name": "Radar",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.AiRadarStateRegistry.PersistentState>"
+      },
+      {
+        "name": "ForceBaseline",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, float>"
+      },
+      {
+        "name": "PreparationDelivery",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)>>"
+      },
+      {
+        "name": "Recon",
+        "type": "global::Game.Ai.V2.AiReconMemory.PersistentState"
+      },
+      {
+        "name": "Intel",
+        "type": "global::Game.Ai.V2.AiReconIntelMemory.PersistentState"
+      },
+      {
+        "name": "Patrols",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState>>"
+      },
+      {
+        "name": "ReconSorties",
+        "type": "global::Game.Ai.V2.ReconAirSortieRegistry.PersistentState"
+      },
+      {
+        "name": "ReconCoverage",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::System.Collections.Generic.IReadOnlyDictionary<int, int>>>"
+      },
+      {
+        "name": "ReconDeficits",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.ReconDeficitKind, (int FirstSeenTurn, int LastSeenTurn)>>"
+      },
+      {
+        "name": "ScoutTrails",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)>>"
+      },
+      {
+        "name": "Starvation",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.PersistentState>"
+      },
+      {
+        "name": "DevelopmentGate",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, (int LastTurn, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int> Streak, global::Game.Ai.V2.ResourceBundle Surplus)>"
+      },
+      {
+        "name": "Allocator",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.StableMissionKey, global::Game.Ai.V2.MissionCooldownInfo>>"
+      },
+      {
+        "name": "Initiative",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.Initiative.InitiativeTurnRecord>>"
+      },
+      {
+        "name": "PublicInitiative",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<int>>"
+      },
+      {
+        "name": "MobilizationHold",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, int>"
+      },
+      {
+        "name": "DevelopmentHistory",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, string CardKey)>>"
+      },
+      {
+        "name": "ApPressure",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, float Demand)>>"
+      },
+      {
+        "name": "LifecycleWaits",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>>"
+      }
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.PersistentState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "CurrentTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Players",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.AiMapMemory.PlayerMemoryState>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Persistence.cs",
+    "insert": 3470,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "CurrentTurn",
+        "type": "int"
+      },
+      {
+        "name": "Players",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.AiMapMemory.PlayerMemoryState>"
+      }
+    ]
+  },
+  "int": {
+    "kind": "primitive"
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.AiMapMemory.PlayerMemoryState>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::Game.Ai.AiMapMemory.PlayerMemoryState"
+    ]
+  },
+  "string": {
+    "kind": "primitive"
+  },
+  "global::Game.Ai.AiMapMemory.PlayerMemoryState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Resources",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.KnownResourceHex>",
+        "readOnly": true
+      },
+      {
+        "name": "Enemies",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownEnemySighting>>",
+        "readOnly": true
+      },
+      {
+        "name": "Aircraft",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownAirSighting>>",
+        "readOnly": true
+      },
+      {
+        "name": "Buildings",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownBuilding>>",
+        "readOnly": true
+      },
+      {
+        "name": "Guards",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::Game.Ai.AiMapMemory.GuardStrength>",
+        "readOnly": true
+      },
+      {
+        "name": "Events",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, bool>",
+        "readOnly": true
+      },
+      {
+        "name": "StructureLosses",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>",
+        "readOnly": true
+      },
+      {
+        "name": "DestroyedArmies",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": true
+      },
+      {
+        "name": "RefutedCitadels",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Persistence.cs",
+    "insert": 729,
+    "name": "PlayerMemoryState",
+    "originalFields": [
+      {
+        "name": "Resources",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.KnownResourceHex>"
+      },
+      {
+        "name": "Enemies",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownEnemySighting>>"
+      },
+      {
+        "name": "Aircraft",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownAirSighting>>"
+      },
+      {
+        "name": "Buildings",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownBuilding>>"
+      },
+      {
+        "name": "Guards",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::Game.Ai.AiMapMemory.GuardStrength>"
+      },
+      {
+        "name": "Events",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, bool>"
+      },
+      {
+        "name": "StructureLosses",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>"
+      },
+      {
+        "name": "DestroyedArmies",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "RefutedCitadels",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.KnownResourceHex>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.AiMapMemory.KnownResourceHex"
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.KnownResourceHex": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "DominantType",
+        "type": "global::Game.Economy.ResourceType",
+        "readOnly": true
+      },
+      {
+        "name": "Yield",
+        "type": "global::Game.Economy.ResourceYields",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Records.cs",
+    "insert": 9649,
+    "name": "KnownResourceHex",
+    "originalFields": [
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "DominantType",
+        "type": "global::Game.Economy.ResourceType"
+      },
+      {
+        "name": "Yield",
+        "type": "global::Game.Economy.ResourceYields"
+      }
+    ]
+  },
+  "global::Game.HexGrid.HexCoord": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Q",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "R",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/HexGrid/HexCoord.cs",
+    "insert": 289,
+    "name": "HexCoord",
+    "originalFields": [
+      {
+        "name": "Q",
+        "type": "int"
+      },
+      {
+        "name": "R",
+        "type": "int"
+      }
+    ]
+  },
+  "global::Game.Economy.ResourceType": {
+    "kind": "enum"
+  },
+  "global::Game.Economy.ResourceYields": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "human",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "energy",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "materials",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "tech",
+        "type": "int",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Economy/ResourceYields.cs",
+    "insert": 417,
+    "name": "ResourceYields",
+    "originalFields": [
+      {
+        "name": "human",
+        "type": "int"
+      },
+      {
+        "name": "energy",
+        "type": "int"
+      },
+      {
+        "name": "materials",
+        "type": "int"
+      },
+      {
+        "name": "tech",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownEnemySighting>>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownEnemySighting>"
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownEnemySighting>": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "OwnerId",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "Observation",
+        "type": "global::Game.Ai.AiMapMemory.KnownEnemySighting",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Persistence.cs",
+    "insert": 438,
+    "name": "OwnedObservation",
+    "originalFields": [
+      {
+        "name": "OwnerId",
+        "type": "string"
+      },
+      {
+        "name": "Observation",
+        "type": "T"
+      }
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.KnownEnemySighting": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData",
+        "readOnly": true
+      },
+      {
+        "name": "Name",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "MemberCount",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "DefenseSum",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "AttackSum",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Defenders",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": true
+      },
+      {
+        "name": "HasAntiAir",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "RecceRadius",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "RecceSpotStrength",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "SeenTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "IsGarrison",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "IsAir",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "MaxMovement",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Records.cs",
+    "insert": 2185,
+    "name": "KnownEnemySighting",
+    "originalFields": [
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData"
+      },
+      {
+        "name": "Name",
+        "type": "string"
+      },
+      {
+        "name": "MemberCount",
+        "type": "int"
+      },
+      {
+        "name": "DefenseSum",
+        "type": "float"
+      },
+      {
+        "name": "AttackSum",
+        "type": "float"
+      },
+      {
+        "name": "Defenders",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      },
+      {
+        "name": "HasAntiAir",
+        "type": "bool"
+      },
+      {
+        "name": "RecceRadius",
+        "type": "int"
+      },
+      {
+        "name": "RecceSpotStrength",
+        "type": "int"
+      },
+      {
+        "name": "SeenTurn",
+        "type": "int"
+      },
+      {
+        "name": "IsGarrison",
+        "type": "bool"
+      },
+      {
+        "name": "IsAir",
+        "type": "bool"
+      },
+      {
+        "name": "MaxMovement",
+        "type": "int"
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander"
+      }
+    ]
+  },
+  "global::Game.Players.PlayerSetupData": {
+    "kind": "primitive"
+  },
+  "float": {
+    "kind": "primitive"
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Combat.WorthIt.DefenderProfile"
+    ]
+  },
+  "global::Game.Combat.WorthIt.DefenderProfile": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "SingleUseUnit",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "CanDisruptBuilding",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "Consumption",
+        "type": "global::Game.Cards.EquipmentConsumption",
+        "readOnly": true
+      },
+      {
+        "name": "Defense",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "HasCeramicArmor",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "TypeTags",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Cards.UnitTypeTag>",
+        "readOnly": true
+      },
+      {
+        "name": "Attack",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "HitPoints",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "MaxHitPoints",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Initiative",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Abilities",
+        "type": "global::System.Collections.Generic.IReadOnlyList<string>",
+        "readOnly": true
+      },
+      {
+        "name": "IsGroundCombatant",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "IsHero",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "FateMax",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "IsSummoned",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "Range",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Combat/WorthIt.cs",
+    "insert": 84940,
+    "name": "DefenderProfile",
+    "originalFields": [
+      {
+        "name": "SingleUseUnit",
+        "type": "bool"
+      },
+      {
+        "name": "CanDisruptBuilding",
+        "type": "bool"
+      },
+      {
+        "name": "Consumption",
+        "type": "global::Game.Cards.EquipmentConsumption"
+      },
+      {
+        "name": "Defense",
+        "type": "float"
+      },
+      {
+        "name": "HasCeramicArmor",
+        "type": "bool"
+      },
+      {
+        "name": "TypeTags",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Cards.UnitTypeTag>"
+      },
+      {
+        "name": "Attack",
+        "type": "float"
+      },
+      {
+        "name": "HitPoints",
+        "type": "float"
+      },
+      {
+        "name": "MaxHitPoints",
+        "type": "float"
+      },
+      {
+        "name": "Initiative",
+        "type": "int"
+      },
+      {
+        "name": "Abilities",
+        "type": "global::System.Collections.Generic.IReadOnlyList<string>"
+      },
+      {
+        "name": "IsGroundCombatant",
+        "type": "bool"
+      },
+      {
+        "name": "IsHero",
+        "type": "bool"
+      },
+      {
+        "name": "FateMax",
+        "type": "int"
+      },
+      {
+        "name": "IsSummoned",
+        "type": "bool"
+      },
+      {
+        "name": "Range",
+        "type": "int"
+      }
+    ]
+  },
+  "bool": {
+    "kind": "primitive"
+  },
+  "global::Game.Cards.EquipmentConsumption": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Before",
+        "type": "global::Game.Cards.PredictedEquipmentState",
+        "readOnly": true
+      },
+      {
+        "name": "After",
+        "type": "global::Game.Cards.PredictedEquipmentState",
+        "readOnly": true
+      },
+      {
+        "name": "HpSpentExcess",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "FateSpentExcess",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Key",
+        "type": "string",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Cards/EquipmentSystem.cs",
+    "insert": 39438,
+    "name": "EquipmentConsumption",
+    "originalFields": [
+      {
+        "name": "Before",
+        "type": "global::Game.Cards.PredictedEquipmentState"
+      },
+      {
+        "name": "After",
+        "type": "global::Game.Cards.PredictedEquipmentState"
+      },
+      {
+        "name": "HpSpentExcess",
+        "type": "int"
+      },
+      {
+        "name": "FateSpentExcess",
+        "type": "int"
+      },
+      {
+        "name": "Key",
+        "type": "string"
+      }
+    ]
+  },
+  "global::Game.Cards.PredictedEquipmentState": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Stats",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Cards.EquipmentStat, int>",
+        "readOnly": true
+      },
+      {
+        "name": "Abilities",
+        "type": "global::System.Collections.Generic.IReadOnlyList<string>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Cards/EquipmentSystem.cs",
+    "insert": 43183,
+    "name": "PredictedEquipmentState",
+    "originalFields": [
+      {
+        "name": "Stats",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Cards.EquipmentStat, int>"
+      },
+      {
+        "name": "Abilities",
+        "type": "global::System.Collections.Generic.IReadOnlyList<string>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Cards.EquipmentStat, int>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Cards.EquipmentStat",
+      "int"
+    ]
+  },
+  "global::Game.Cards.EquipmentStat": {
+    "kind": "enum"
+  },
+  "global::System.Collections.Generic.IReadOnlyList<string>": {
+    "kind": "list",
+    "args": [
+      "string"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Cards.UnitTypeTag>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Cards.UnitTypeTag"
+    ]
+  },
+  "global::Game.Cards.UnitTypeTag": {
+    "kind": "enum"
+  },
+  "global::Game.Combat.WorthIt.SideCommander": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Present",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "Initiative",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Fate",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "SupportHeroes",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Combat/WorthIt.cs",
+    "insert": 11851,
+    "name": "SideCommander",
+    "originalFields": [
+      {
+        "name": "Present",
+        "type": "bool"
+      },
+      {
+        "name": "Initiative",
+        "type": "int"
+      },
+      {
+        "name": "Fate",
+        "type": "int"
+      },
+      {
+        "name": "SupportHeroes",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownAirSighting>>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownAirSighting>"
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownAirSighting>": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "OwnerId",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "Observation",
+        "type": "global::Game.Ai.AiMapMemory.KnownAirSighting",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Persistence.cs",
+    "insert": 438,
+    "name": "OwnedObservation",
+    "originalFields": [
+      {
+        "name": "OwnerId",
+        "type": "string"
+      },
+      {
+        "name": "Observation",
+        "type": "T"
+      }
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.KnownAirSighting": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData",
+        "readOnly": true
+      },
+      {
+        "name": "SeenTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "IsGroundArmy",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "Roster",
+        "type": "global::Game.Combat.AviationCombatEstimator.DefendingAirArmy",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Records.cs",
+    "insert": 814,
+    "name": "KnownAirSighting",
+    "originalFields": [
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData"
+      },
+      {
+        "name": "SeenTurn",
+        "type": "int"
+      },
+      {
+        "name": "IsGroundArmy",
+        "type": "bool"
+      },
+      {
+        "name": "Roster",
+        "type": "global::Game.Combat.AviationCombatEstimator.DefendingAirArmy"
+      }
+    ]
+  },
+  "global::Game.Combat.AviationCombatEstimator.DefendingAirArmy": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Units",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": true
+      },
+      {
+        "name": "CurrentFates",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": true
+      },
+      {
+        "name": "CommanderIndex",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Combat/AviationCombatEstimator.cs",
+    "insert": 5074,
+    "name": "DefendingAirArmy",
+    "originalFields": [
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "Units",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      },
+      {
+        "name": "CurrentFates",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "CommanderIndex",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<int>": {
+    "kind": "list",
+    "args": [
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownBuilding>>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownBuilding>"
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.OwnedObservation<global::Game.Ai.AiMapMemory.KnownBuilding>": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "OwnerId",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "Observation",
+        "type": "global::Game.Ai.AiMapMemory.KnownBuilding",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Persistence.cs",
+    "insert": 438,
+    "name": "OwnedObservation",
+    "originalFields": [
+      {
+        "name": "OwnerId",
+        "type": "string"
+      },
+      {
+        "name": "Observation",
+        "type": "T"
+      }
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.KnownBuilding": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "ExplosionStructures",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": true
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData",
+        "readOnly": true
+      },
+      {
+        "name": "IsStartingCitadel",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "IsBase",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "FacilityAbilities",
+        "type": "global::System.Collections.Generic.IReadOnlyCollection<string>",
+        "readOnly": true
+      },
+      {
+        "name": "CollectedAmounts",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": true
+      },
+      {
+        "name": "FreeFacilitySlots",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Defense",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "SeenTurn",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Records.cs",
+    "insert": 11117,
+    "name": "KnownBuilding",
+    "originalFields": [
+      {
+        "name": "ExplosionStructures",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData"
+      },
+      {
+        "name": "IsStartingCitadel",
+        "type": "bool"
+      },
+      {
+        "name": "IsBase",
+        "type": "bool"
+      },
+      {
+        "name": "FacilityAbilities",
+        "type": "global::System.Collections.Generic.IReadOnlyCollection<string>"
+      },
+      {
+        "name": "CollectedAmounts",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "FreeFacilitySlots",
+        "type": "int"
+      },
+      {
+        "name": "Defense",
+        "type": "float"
+      },
+      {
+        "name": "SeenTurn",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyCollection<string>": {
+    "kind": "list",
+    "args": [
+      "string"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::Game.Ai.AiMapMemory.GuardStrength>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.HexGrid.HexCoord",
+      "global::Game.Ai.AiMapMemory.GuardStrength"
+    ]
+  },
+  "global::Game.Ai.AiMapMemory.GuardStrength": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Defense",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Attack",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Defenders",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": true
+      },
+      {
+        "name": "Name",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander",
+        "readOnly": true
+      },
+      {
+        "name": "RewardTier",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/AiMapMemory.Records.cs",
+    "insert": 7882,
+    "name": "GuardStrength",
+    "originalFields": [
+      {
+        "name": "Defense",
+        "type": "float"
+      },
+      {
+        "name": "Attack",
+        "type": "float"
+      },
+      {
+        "name": "Defenders",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      },
+      {
+        "name": "Name",
+        "type": "string"
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander"
+      },
+      {
+        "name": "RewardTier",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, bool>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.HexGrid.HexCoord",
+      "bool"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.HexGrid.HexCoord",
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>": {
+    "kind": "list",
+    "args": [
+      "global::Game.HexGrid.HexCoord"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.MissionIntentState.PersistentState<string>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::Game.Ai.V2.MissionIntentState.PersistentState<string>"
+    ]
+  },
+  "global::Game.Ai.V2.MissionIntentState.PersistentState<string>": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Intents",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.IntentState<string>>",
+        "readOnly": true
+      },
+      {
+        "name": "RetreatWitnesses",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.RetreatWitnessState>",
+        "readOnly": true
+      },
+      {
+        "name": "Economy",
+        "type": "global::Game.Ai.V2.EconomyLifecycleState.PersistentState",
+        "readOnly": true
+      },
+      {
+        "name": "Development",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, global::Game.Cards.ResearchProductionMode Mode, int Turn)>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntentState.Persistence.cs",
+    "insert": 7670,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "Intents",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.IntentState<TObjective>>"
+      },
+      {
+        "name": "RetreatWitnesses",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.RetreatWitnessState>"
+      },
+      {
+        "name": "Economy",
+        "type": "global::Game.Ai.V2.EconomyLifecycleState.PersistentState"
+      },
+      {
+        "name": "Development",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, global::Game.Cards.ResearchProductionMode Mode, int Turn)>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.IntentState<string>>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.MissionIntentState.IntentState<string>"
+    ]
+  },
+  "global::Game.Ai.V2.MissionIntentState.IntentState<string>": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "IntentKey",
+        "type": "global::Game.Ai.V2.MissionIntentKey",
+        "readOnly": true
+      },
+      {
+        "name": "LastAttemptKey",
+        "type": "global::Game.Ai.V2.StableMissionKey",
+        "readOnly": true
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.MissionKind",
+        "readOnly": true
+      },
+      {
+        "name": "Funding",
+        "type": "global::Game.Ai.V2.CommitmentTier",
+        "readOnly": true
+      },
+      {
+        "name": "Status",
+        "type": "global::Game.Ai.V2.IntentStatus",
+        "readOnly": true
+      },
+      {
+        "name": "Suspended",
+        "type": "global::Game.Ai.V2.SuspendReason",
+        "readOnly": true
+      },
+      {
+        "name": "CreatedTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "TurnsActive",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastReconciledTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastProgressTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastProtectedTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "StallTurns",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastIntrinsicValue",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "CumulativeApSpent",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "StepsMovedTotal",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "PreferredMoverArmyId",
+        "type": "int?",
+        "readOnly": true
+      },
+      {
+        "name": "Objective",
+        "type": "objective",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntentState.Persistence.cs",
+    "insert": 1265,
+    "name": "IntentState",
+    "originalFields": [
+      {
+        "name": "IntentKey",
+        "type": "global::Game.Ai.V2.MissionIntentKey"
+      },
+      {
+        "name": "LastAttemptKey",
+        "type": "global::Game.Ai.V2.StableMissionKey"
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.MissionKind"
+      },
+      {
+        "name": "Funding",
+        "type": "global::Game.Ai.V2.CommitmentTier"
+      },
+      {
+        "name": "Status",
+        "type": "global::Game.Ai.V2.IntentStatus"
+      },
+      {
+        "name": "Suspended",
+        "type": "global::Game.Ai.V2.SuspendReason"
+      },
+      {
+        "name": "CreatedTurn",
+        "type": "int"
+      },
+      {
+        "name": "TurnsActive",
+        "type": "int"
+      },
+      {
+        "name": "LastReconciledTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastProgressTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastProtectedTurn",
+        "type": "int"
+      },
+      {
+        "name": "StallTurns",
+        "type": "int"
+      },
+      {
+        "name": "LastIntrinsicValue",
+        "type": "float"
+      },
+      {
+        "name": "CumulativeApSpent",
+        "type": "float"
+      },
+      {
+        "name": "StepsMovedTotal",
+        "type": "int"
+      },
+      {
+        "name": "PreferredMoverArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "Objective",
+        "type": "TObjective"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.MissionIntentKey": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.MissionKind",
+        "readOnly": true
+      },
+      {
+        "name": "SubKind",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "ObjectiveId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Q",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "R",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "TargetKind",
+        "type": "global::Game.Ai.V2.RaidTargetKind",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 844,
+    "name": "MissionIntentKey",
+    "originalFields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.MissionKind"
+      },
+      {
+        "name": "SubKind",
+        "type": "int"
+      },
+      {
+        "name": "ObjectiveId",
+        "type": "int"
+      },
+      {
+        "name": "Q",
+        "type": "int"
+      },
+      {
+        "name": "R",
+        "type": "int"
+      },
+      {
+        "name": "TargetKind",
+        "type": "global::Game.Ai.V2.RaidTargetKind"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.MissionKind": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.RaidTargetKind": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.StableMissionKey": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.MissionKind",
+        "readOnly": true
+      },
+      {
+        "name": "SubKind",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "TargetId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Q",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "R",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "TargetKind",
+        "type": "global::Game.Ai.V2.RaidTargetKind",
+        "readOnly": true
+      },
+      {
+        "name": "ActorId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "DetailId",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Allocation/ResourceAllocator.cs",
+    "insert": 4228,
+    "name": "StableMissionKey",
+    "originalFields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.MissionKind"
+      },
+      {
+        "name": "SubKind",
+        "type": "int"
+      },
+      {
+        "name": "TargetId",
+        "type": "int"
+      },
+      {
+        "name": "Q",
+        "type": "int"
+      },
+      {
+        "name": "R",
+        "type": "int"
+      },
+      {
+        "name": "TargetKind",
+        "type": "global::Game.Ai.V2.RaidTargetKind"
+      },
+      {
+        "name": "ActorId",
+        "type": "int"
+      },
+      {
+        "name": "DetailId",
+        "type": "int"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.CommitmentTier": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.IntentStatus": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.SuspendReason": {
+    "kind": "enum"
+  },
+  "int?": {
+    "kind": "nullable",
+    "args": [
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.MissionIntentState.RetreatWitnessState>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.MissionIntentState.RetreatWitnessState"
+    ]
+  },
+  "global::Game.Ai.V2.MissionIntentState.RetreatWitnessState": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Target",
+        "type": "global::Game.Ai.V2.MissionIntentState.RetreatTargetState",
+        "readOnly": true
+      },
+      {
+        "name": "OwnArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "EnemyArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "EnemyFingerprint",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "OwnFingerprint",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Turn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "EnemyHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "Reason",
+        "type": "string",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntentState.Persistence.cs",
+    "insert": 6526,
+    "name": "RetreatWitnessState",
+    "originalFields": [
+      {
+        "name": "Target",
+        "type": "global::Game.Ai.V2.MissionIntentState.RetreatTargetState"
+      },
+      {
+        "name": "OwnArmyId",
+        "type": "int"
+      },
+      {
+        "name": "EnemyArmyId",
+        "type": "int"
+      },
+      {
+        "name": "EnemyFingerprint",
+        "type": "int"
+      },
+      {
+        "name": "OwnFingerprint",
+        "type": "int"
+      },
+      {
+        "name": "Turn",
+        "type": "int"
+      },
+      {
+        "name": "EnemyHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Reason",
+        "type": "string"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.MissionIntentState.RetreatTargetState": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "HasValue",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "ExpectedOwnerId",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.AttackTargetKind",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntentState.Persistence.cs",
+    "insert": 5623,
+    "name": "RetreatTargetState",
+    "originalFields": [
+      {
+        "name": "HasValue",
+        "type": "bool"
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "ExpectedOwnerId",
+        "type": "string"
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.AttackTargetKind"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.AttackTargetKind": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.EconomyLifecycleState.PersistentState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "BaseDelivery",
+        "type": "global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(int CardId, global::Game.HexGrid.HexCoord Hex)>",
+        "readOnly": true
+      },
+      {
+        "name": "ExtractionDelivery",
+        "type": "global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex)>",
+        "readOnly": true
+      },
+      {
+        "name": "EndedOutboundBuilders",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, float Value)>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/EconomyLifecycleState.Persistence.cs",
+    "insert": 892,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "BaseDelivery",
+        "type": "global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(int CardId, global::Game.HexGrid.HexCoord Hex)>"
+      },
+      {
+        "name": "ExtractionDelivery",
+        "type": "global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex)>"
+      },
+      {
+        "name": "EndedOutboundBuilders",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, float Value)>"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(int CardId, global::Game.HexGrid.HexCoord Hex)>": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Failures",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<(int CardId, global::Game.HexGrid.HexCoord Hex), (int Turn, int Count)>",
+        "readOnly": true
+      },
+      {
+        "name": "SuppressedUntil",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<(int CardId, global::Game.HexGrid.HexCoord Hex), int>",
+        "readOnly": true
+      },
+      {
+        "name": "ProgressTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<(int CardId, global::Game.HexGrid.HexCoord Hex), int>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/EconomyLifecycleState.Persistence.cs",
+    "insert": 273,
+    "name": "DeliveryEvidence",
+    "originalFields": [
+      {
+        "name": "Failures",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<TKey, (int Turn, int Count)>"
+      },
+      {
+        "name": "SuppressedUntil",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<TKey, int>"
+      },
+      {
+        "name": "ProgressTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<TKey, int>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<(int CardId, global::Game.HexGrid.HexCoord Hex), (int Turn, int Count)>": {
+    "kind": "dict",
+    "args": [
+      "(int CardId, global::Game.HexGrid.HexCoord Hex)",
+      "(int Turn, int Count)"
+    ]
+  },
+  "(int CardId, global::Game.HexGrid.HexCoord Hex)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "CardId",
+        "type": "int"
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      }
+    ]
+  },
+  "(int Turn, int Count)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "Turn",
+        "type": "int"
+      },
+      {
+        "name": "Count",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<(int CardId, global::Game.HexGrid.HexCoord Hex), int>": {
+    "kind": "dict",
+    "args": [
+      "(int CardId, global::Game.HexGrid.HexCoord Hex)",
+      "int"
+    ]
+  },
+  "global::Game.Ai.V2.EconomyLifecycleState.DeliveryEvidence<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex)>": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Failures",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex), (int Turn, int Count)>",
+        "readOnly": true
+      },
+      {
+        "name": "SuppressedUntil",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex), int>",
+        "readOnly": true
+      },
+      {
+        "name": "ProgressTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex), int>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/EconomyLifecycleState.Persistence.cs",
+    "insert": 273,
+    "name": "DeliveryEvidence",
+    "originalFields": [
+      {
+        "name": "Failures",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<TKey, (int Turn, int Count)>"
+      },
+      {
+        "name": "SuppressedUntil",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<TKey, int>"
+      },
+      {
+        "name": "ProgressTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<TKey, int>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex), (int Turn, int Count)>": {
+    "kind": "dict",
+    "args": [
+      "(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex)",
+      "(int Turn, int Count)"
+    ]
+  },
+  "(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "Resource",
+        "type": "global::Game.Economy.ResourceType?"
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      }
+    ]
+  },
+  "global::Game.Economy.ResourceType?": {
+    "kind": "nullable",
+    "args": [
+      "global::Game.Economy.ResourceType"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex), int>": {
+    "kind": "dict",
+    "args": [
+      "(global::Game.Economy.ResourceType? Resource, global::Game.HexGrid.HexCoord Hex)",
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, float Value)>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "(global::Game.HexGrid.HexCoord Site, float Value)"
+    ]
+  },
+  "(global::Game.HexGrid.HexCoord Site, float Value)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "Site",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Value",
+        "type": "float"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord Site, global::Game.Cards.ResearchProductionMode Mode, int Turn)>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "(global::Game.HexGrid.HexCoord Site, global::Game.Cards.ResearchProductionMode Mode, int Turn)"
+    ]
+  },
+  "(global::Game.HexGrid.HexCoord Site, global::Game.Cards.ResearchProductionMode Mode, int Turn)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "Site",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Mode",
+        "type": "global::Game.Cards.ResearchProductionMode"
+      },
+      {
+        "name": "Turn",
+        "type": "int"
+      }
+    ]
+  },
+  "global::Game.Cards.ResearchProductionMode": {
+    "kind": "enum"
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.AirSortieRegistry.SortieState>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.AirSortieRegistry.SortieState>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.AirSortieRegistry.SortieState>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.AirSortieRegistry.SortieState"
+    ]
+  },
+  "global::Game.Ai.V2.AirSortieRegistry.SortieState": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.AirSortieKind",
+        "readOnly": true
+      },
+      {
+        "name": "TargetHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "LandingHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "Outbound",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "HeldTurn",
+        "type": "int?",
+        "readOnly": true
+      },
+      {
+        "name": "StrikePolicy",
+        "type": "global::Game.Aviation.AirStrikePolicy",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/AirSortieRegistry.Persistence.cs",
+    "insert": 257,
+    "name": "SortieState",
+    "originalFields": [
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.AirSortieKind"
+      },
+      {
+        "name": "TargetHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "LandingHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Outbound",
+        "type": "bool"
+      },
+      {
+        "name": "HeldTurn",
+        "type": "int?"
+      },
+      {
+        "name": "StrikePolicy",
+        "type": "global::Game.Aviation.AirStrikePolicy"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.AirSortieKind": {
+    "kind": "enum"
+  },
+  "global::Game.Aviation.AirStrikePolicy": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Aviation.AirStrikePolicyKind",
+        "readOnly": true
+      },
+      {
+        "name": "ExactTargetArmyId",
+        "type": "int?",
+        "readOnly": true
+      },
+      {
+        "name": "MinimumSurvivors",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Aviation/AviationCombatPresenter.cs",
+    "insert": 582,
+    "name": "AirStrikePolicy",
+    "originalFields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Aviation.AirStrikePolicyKind"
+      },
+      {
+        "name": "ExactTargetArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "MinimumSurvivors",
+        "type": "int"
+      }
+    ]
+  },
+  "global::Game.Aviation.AirStrikePolicyKind": {
+    "kind": "enum"
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.AiRadarStateRegistry.PersistentState>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::Game.Ai.V2.AiRadarStateRegistry.PersistentState"
+    ]
+  },
+  "global::Game.Ai.V2.AiRadarStateRegistry.PersistentState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "LastTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Smoothed",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.DesireAxis, float>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/AiRadarStateRegistry.Persistence.cs",
+    "insert": 261,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "LastTurn",
+        "type": "int"
+      },
+      {
+        "name": "Smoothed",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.DesireAxis, float>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.DesireAxis, float>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Ai.V2.DesireAxis",
+      "float"
+    ]
+  },
+  "global::Game.Ai.V2.DesireAxis": {
+    "kind": "enum"
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, float>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "float"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<int, (int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, (int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "(int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)"
+    ]
+  },
+  "(int Turn, global::System.Collections.Generic.IReadOnlyList<string> CardKeys)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "Turn",
+        "type": "int"
+      },
+      {
+        "name": "CardKeys",
+        "type": "global::System.Collections.Generic.IReadOnlyList<string>"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.AiReconMemory.PersistentState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Observations",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.AiReconMemory.ObservationState>>",
+        "readOnly": true
+      },
+      {
+        "name": "ObservedTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, int>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/AiReconMemory.Persistence.cs",
+    "insert": 2977,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "Observations",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.AiReconMemory.ObservationState>>"
+      },
+      {
+        "name": "ObservedTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, int>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.AiReconMemory.ObservationState>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.AiReconMemory.ObservationState>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.AiReconMemory.ObservationState>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "global::Game.Ai.V2.AiReconMemory.ObservationState"
+    ]
+  },
+  "global::Game.Ai.V2.AiReconMemory.ObservationState": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastObservedHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "LastObservedTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "MemberCount",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "AttackSum",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "DefenseSum",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "HasAntiAir",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "RecceRadius",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "RecceSpotStrength",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "IsGarrison",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "IsAir",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "MaxMovement",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander",
+        "readOnly": true
+      },
+      {
+        "name": "OwnerId",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "Defenders",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/AiReconMemory.Persistence.cs",
+    "insert": 258,
+    "name": "ObservationState",
+    "originalFields": [
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "LastObservedHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "LastObservedTurn",
+        "type": "int"
+      },
+      {
+        "name": "MemberCount",
+        "type": "int"
+      },
+      {
+        "name": "AttackSum",
+        "type": "float"
+      },
+      {
+        "name": "DefenseSum",
+        "type": "float"
+      },
+      {
+        "name": "HasAntiAir",
+        "type": "bool"
+      },
+      {
+        "name": "RecceRadius",
+        "type": "int"
+      },
+      {
+        "name": "RecceSpotStrength",
+        "type": "int"
+      },
+      {
+        "name": "IsGarrison",
+        "type": "bool"
+      },
+      {
+        "name": "IsAir",
+        "type": "bool"
+      },
+      {
+        "name": "MaxMovement",
+        "type": "int"
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander"
+      },
+      {
+        "name": "OwnerId",
+        "type": "string"
+      },
+      {
+        "name": "Defenders",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, int>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "int"
+    ]
+  },
+  "global::Game.Ai.V2.AiReconIntelMemory.PersistentState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Observations",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>>",
+        "readOnly": true
+      },
+      {
+        "name": "CurrentTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, int>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/AiReconIntelMemory.Persistence.cs",
+    "insert": 259,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "Observations",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>>"
+      },
+      {
+        "name": "CurrentTurns",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, int>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState"
+    ]
+  },
+  "global::Game.Ai.V2.ReconPatrolStateRegistry.PatrolState": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Mode",
+        "type": "global::Game.Ai.V2.ReconMode",
+        "readOnly": true
+      },
+      {
+        "name": "PreferredMoverArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "StrategicAnchor",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "StrategicSector",
+        "type": "global::Game.Ai.V2.ReconSector",
+        "readOnly": true
+      },
+      {
+        "name": "StartedTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastProgressTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastModeSwitchTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastStrategicReassignmentTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Escape",
+        "type": "(global::Game.HexGrid.HexCoord FromHex, global::Game.Ai.V2.ReconEscapeCause Cause, float Risk, int? ThreatArmyId, int Turn)?",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Recon/ReconPatrolState.Persistence.cs",
+    "insert": 264,
+    "name": "PatrolState",
+    "originalFields": [
+      {
+        "name": "Mode",
+        "type": "global::Game.Ai.V2.ReconMode"
+      },
+      {
+        "name": "PreferredMoverArmyId",
+        "type": "int"
+      },
+      {
+        "name": "StrategicAnchor",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "StrategicSector",
+        "type": "global::Game.Ai.V2.ReconSector"
+      },
+      {
+        "name": "StartedTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastProgressTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastModeSwitchTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastStrategicReassignmentTurn",
+        "type": "int"
+      },
+      {
+        "name": "Escape",
+        "type": "(global::Game.HexGrid.HexCoord FromHex, global::Game.Ai.V2.ReconEscapeCause Cause, float Risk, int? ThreatArmyId, int Turn)?"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ReconMode": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.ReconSector": {
+    "kind": "enum"
+  },
+  "(global::Game.HexGrid.HexCoord FromHex, global::Game.Ai.V2.ReconEscapeCause Cause, float Risk, int? ThreatArmyId, int Turn)?": {
+    "kind": "nullable",
+    "args": [
+      "(global::Game.HexGrid.HexCoord FromHex, global::Game.Ai.V2.ReconEscapeCause Cause, float Risk, int? ThreatArmyId, int Turn)"
+    ]
+  },
+  "(global::Game.HexGrid.HexCoord FromHex, global::Game.Ai.V2.ReconEscapeCause Cause, float Risk, int? ThreatArmyId, int Turn)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "FromHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Cause",
+        "type": "global::Game.Ai.V2.ReconEscapeCause"
+      },
+      {
+        "name": "Risk",
+        "type": "float"
+      },
+      {
+        "name": "ThreatArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "Turn",
+        "type": "int"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ReconEscapeCause": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.ReconAirSortieRegistry.PersistentState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "NextSortieId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Players",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconAirSortieRegistry.SortieState>>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Recon/ReconAirSortieState.Persistence.cs",
+    "insert": 1890,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "NextSortieId",
+        "type": "int"
+      },
+      {
+        "name": "Players",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconAirSortieRegistry.SortieState>>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconAirSortieRegistry.SortieState>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconAirSortieRegistry.SortieState>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, global::Game.Ai.V2.ReconAirSortieRegistry.SortieState>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "global::Game.Ai.V2.ReconAirSortieRegistry.SortieState"
+    ]
+  },
+  "global::Game.Ai.V2.ReconAirSortieRegistry.SortieState": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "SortieId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Phase",
+        "type": "global::Game.Ai.V2.ReconAirPhase",
+        "readOnly": true
+      },
+      {
+        "name": "LaunchHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "ChosenLandingHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "HasChosenLanding",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "ClaimedSector",
+        "type": "global::Game.Ai.V2.ReconSector",
+        "readOnly": true
+      },
+      {
+        "name": "HasClaim",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "BestOutboundStepScore",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "LastProcessedTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "LastDecisionReason",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "Trail",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Recon/ReconAirSortieState.Persistence.cs",
+    "insert": 264,
+    "name": "SortieState",
+    "originalFields": [
+      {
+        "name": "SortieId",
+        "type": "int"
+      },
+      {
+        "name": "Phase",
+        "type": "global::Game.Ai.V2.ReconAirPhase"
+      },
+      {
+        "name": "LaunchHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "ChosenLandingHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "HasChosenLanding",
+        "type": "bool"
+      },
+      {
+        "name": "ClaimedSector",
+        "type": "global::Game.Ai.V2.ReconSector"
+      },
+      {
+        "name": "HasClaim",
+        "type": "bool"
+      },
+      {
+        "name": "BestOutboundStepScore",
+        "type": "float"
+      },
+      {
+        "name": "LastProcessedTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastDecisionReason",
+        "type": "string"
+      },
+      {
+        "name": "Trail",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ReconAirPhase": {
+    "kind": "enum"
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::System.Collections.Generic.IReadOnlyDictionary<int, int>>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::System.Collections.Generic.IReadOnlyDictionary<int, int>>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, global::System.Collections.Generic.IReadOnlyDictionary<int, int>>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.HexGrid.HexCoord",
+      "global::System.Collections.Generic.IReadOnlyDictionary<int, int>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, int>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.ReconDeficitKind, (int FirstSeenTurn, int LastSeenTurn)>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.ReconDeficitKind, (int FirstSeenTurn, int LastSeenTurn)>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.ReconDeficitKind, (int FirstSeenTurn, int LastSeenTurn)>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Ai.V2.ReconDeficitKind",
+      "(int FirstSeenTurn, int LastSeenTurn)"
+    ]
+  },
+  "global::Game.Ai.V2.ReconDeficitKind": {
+    "kind": "enum"
+  },
+  "(int FirstSeenTurn, int LastSeenTurn)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "FirstSeenTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastSeenTurn",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<int, (global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)>": {
+    "kind": "dict",
+    "args": [
+      "int",
+      "(global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)"
+    ]
+  },
+  "(global::Game.HexGrid.HexCoord? JustLeft, global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord> Recent)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "JustLeft",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "Recent",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>"
+      }
+    ]
+  },
+  "global::Game.HexGrid.HexCoord?": {
+    "kind": "nullable",
+    "args": [
+      "global::Game.HexGrid.HexCoord"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.PersistentState>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::Game.Ai.V2.ResourceStarvationRegistry.PersistentState"
+    ]
+  },
+  "global::Game.Ai.V2.ResourceStarvationRegistry.PersistentState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Forecasts",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.ForecastState>",
+        "readOnly": true
+      },
+      {
+        "name": "Pressure",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, float>",
+        "readOnly": true
+      },
+      {
+        "name": "CurrentBlocks",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, global::Game.Ai.V2.ResourceBlockEvidence>",
+        "readOnly": true
+      },
+      {
+        "name": "VerifiedPending",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Economy.ResourceType>",
+        "readOnly": true
+      },
+      {
+        "name": "LastPressureHitTurn",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int>",
+        "readOnly": true
+      },
+      {
+        "name": "RequireVerifiedEvidence",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "LastDecayTurn",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/ResourceStarvationRegistry.Persistence.cs",
+    "insert": 594,
+    "name": "PersistentState",
+    "originalFields": [
+      {
+        "name": "Forecasts",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.ForecastState>"
+      },
+      {
+        "name": "Pressure",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, float>"
+      },
+      {
+        "name": "CurrentBlocks",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, global::Game.Ai.V2.ResourceBlockEvidence>"
+      },
+      {
+        "name": "VerifiedPending",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Economy.ResourceType>"
+      },
+      {
+        "name": "LastPressureHitTurn",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int>"
+      },
+      {
+        "name": "RequireVerifiedEvidence",
+        "type": "bool"
+      },
+      {
+        "name": "LastDecayTurn",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceStarvationRegistry.ForecastState>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::Game.Ai.V2.ResourceStarvationRegistry.ForecastState"
+    ]
+  },
+  "global::Game.Ai.V2.ResourceStarvationRegistry.ForecastState": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Turn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Needs",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceBundle>",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/ResourceStarvationRegistry.Persistence.cs",
+    "insert": 267,
+    "name": "ForecastState",
+    "originalFields": [
+      {
+        "name": "Turn",
+        "type": "int"
+      },
+      {
+        "name": "Needs",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceBundle>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Game.Ai.V2.ResourceBundle>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::Game.Ai.V2.ResourceBundle"
+    ]
+  },
+  "global::Game.Ai.V2.ResourceBundle": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Human",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "Energy",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "Materials",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "Tech",
+        "type": "float",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Analysis/WorldSnapshot.cs",
+    "insert": 10125,
+    "name": "ResourceBundle",
+    "originalFields": [
+      {
+        "name": "Human",
+        "type": "float"
+      },
+      {
+        "name": "Energy",
+        "type": "float"
+      },
+      {
+        "name": "Materials",
+        "type": "float"
+      },
+      {
+        "name": "Tech",
+        "type": "float"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, float>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Economy.ResourceType",
+      "float"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, global::Game.Ai.V2.ResourceBlockEvidence>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Economy.ResourceType",
+      "global::Game.Ai.V2.ResourceBlockEvidence"
+    ]
+  },
+  "global::Game.Ai.V2.ResourceBlockEvidence": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Required",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "AvailableAtBlock",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "IncomePerTurn",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "DemandValue",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Turn",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/State/ResourceStarvationRegistry.cs",
+    "insert": 1230,
+    "name": "ResourceBlockEvidence",
+    "originalFields": [
+      {
+        "name": "Required",
+        "type": "float"
+      },
+      {
+        "name": "AvailableAtBlock",
+        "type": "float"
+      },
+      {
+        "name": "IncomePerTurn",
+        "type": "float"
+      },
+      {
+        "name": "DemandValue",
+        "type": "float"
+      },
+      {
+        "name": "Turn",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Economy.ResourceType>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Economy.ResourceType"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Economy.ResourceType",
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, (int LastTurn, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int> Streak, global::Game.Ai.V2.ResourceBundle Surplus)>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "(int LastTurn, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int> Streak, global::Game.Ai.V2.ResourceBundle Surplus)"
+    ]
+  },
+  "(int LastTurn, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int> Streak, global::Game.Ai.V2.ResourceBundle Surplus)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "LastTurn",
+        "type": "int"
+      },
+      {
+        "name": "Streak",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Economy.ResourceType, int>"
+      },
+      {
+        "name": "Surplus",
+        "type": "global::Game.Ai.V2.ResourceBundle"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.StableMissionKey, global::Game.Ai.V2.MissionCooldownInfo>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.StableMissionKey, global::Game.Ai.V2.MissionCooldownInfo>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.StableMissionKey, global::Game.Ai.V2.MissionCooldownInfo>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Ai.V2.StableMissionKey",
+      "global::Game.Ai.V2.MissionCooldownInfo"
+    ]
+  },
+  "global::Game.Ai.V2.MissionCooldownInfo": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "StartedTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "UntilTurn",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Reason",
+        "type": "string",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Allocation/ResourceAllocator.cs",
+    "insert": 17049,
+    "name": "MissionCooldownInfo",
+    "originalFields": [
+      {
+        "name": "StartedTurn",
+        "type": "int"
+      },
+      {
+        "name": "UntilTurn",
+        "type": "int"
+      },
+      {
+        "name": "Reason",
+        "type": "string"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.Initiative.InitiativeTurnRecord>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.Initiative.InitiativeTurnRecord>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.Initiative.InitiativeTurnRecord>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.Initiative.InitiativeTurnRecord"
+    ]
+  },
+  "global::Game.Ai.V2.Initiative.InitiativeTurnRecord": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "InitiativeBaseAp",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "TotalStartAp",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "ApSpent",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "EndAp",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "ActionableArmyCountAtStart",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "UnactivatedActionableArmyCountAtEnd",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "HadPotentialApWorkAtEnd",
+        "type": "bool",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Initiative/InitiativeAnalyticsHistory.cs",
+    "insert": 419,
+    "name": "InitiativeTurnRecord",
+    "originalFields": [
+      {
+        "name": "InitiativeBaseAp",
+        "type": "int"
+      },
+      {
+        "name": "TotalStartAp",
+        "type": "int"
+      },
+      {
+        "name": "ApSpent",
+        "type": "int"
+      },
+      {
+        "name": "EndAp",
+        "type": "int"
+      },
+      {
+        "name": "ActionableArmyCountAtStart",
+        "type": "int"
+      },
+      {
+        "name": "UnactivatedActionableArmyCountAtEnd",
+        "type": "int"
+      },
+      {
+        "name": "HadPotentialApWorkAtEnd",
+        "type": "bool"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<int>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyList<int>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, string CardKey)>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyList<(int Turn, string CardKey)>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<(int Turn, string CardKey)>": {
+    "kind": "list",
+    "args": [
+      "(int Turn, string CardKey)"
+    ]
+  },
+  "(int Turn, string CardKey)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "Turn",
+        "type": "int"
+      },
+      {
+        "name": "CardKey",
+        "type": "string"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyList<(int Turn, float Demand)>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyList<(int Turn, float Demand)>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<(int Turn, float Demand)>": {
+    "kind": "list",
+    "args": [
+      "(int Turn, float Demand)"
+    ]
+  },
+  "(int Turn, float Demand)": {
+    "kind": "tuple",
+    "fields": [
+      {
+        "name": "Turn",
+        "type": "int"
+      },
+      {
+        "name": "Demand",
+        "type": "float"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<string, global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>>": {
+    "kind": "dict",
+    "args": [
+      "string",
+      "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.Ai.V2.MissionIntentKey, int>": {
+    "kind": "dict",
+    "args": [
+      "global::Game.Ai.V2.MissionIntentKey",
+      "int"
+    ]
+  },
+  "global::Game.Ai.V2.ScoutIntent": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.ScoutTargetKind",
+        "readOnly": false
+      },
+      {
+        "name": "RequiresStealth",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "FocusHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 9526,
+    "name": "ScoutIntent",
+    "originalFields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.ScoutTargetKind"
+      },
+      {
+        "name": "RequiresStealth",
+        "type": "bool"
+      },
+      {
+        "name": "FocusHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ScoutTargetKind": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.RaidIntent": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Target",
+        "type": "global::Game.Ai.V2.RaidTargetRef",
+        "readOnly": false
+      },
+      {
+        "name": "LastKnownHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      },
+      {
+        "name": "TargetIsNeutral",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "OperationStarted",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "CompletedTargetAwaitingFreshDecision",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportLandingHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportAttemptedTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportStrikeSucceeded",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "ReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "SupportReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "RecoveryBaseHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "ReinforcementRequestedTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Phase",
+        "type": "global::Game.Ai.V2.RaidMissionPhase",
+        "readOnly": false
+      },
+      {
+        "name": "PrimaryArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "SupportArmyId",
+        "type": "int?",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 10716,
+    "name": "RaidIntent",
+    "originalFields": [
+      {
+        "name": "Target",
+        "type": "global::Game.Ai.V2.RaidTargetRef"
+      },
+      {
+        "name": "LastKnownHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "TargetIsNeutral",
+        "type": "bool"
+      },
+      {
+        "name": "OperationStarted",
+        "type": "bool"
+      },
+      {
+        "name": "CompletedTargetAwaitingFreshDecision",
+        "type": "bool"
+      },
+      {
+        "name": "AirSupportArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "AirSupportLandingHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "AirSupportAttemptedTurn",
+        "type": "int"
+      },
+      {
+        "name": "AirSupportStrikeSucceeded",
+        "type": "bool"
+      },
+      {
+        "name": "ReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "SupportReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "RecoveryBaseHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "ReinforcementRequestedTurn",
+        "type": "int"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.RaidTargetRef": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "HasValue",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.RaidTargetKind",
+        "readOnly": false
+      },
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Foundation/RaidTargetRef.cs",
+    "insert": 922,
+    "name": "RaidTargetRef",
+    "originalFields": []
+  },
+  "global::Game.Ai.V2.RaidMissionPhase": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.EconomyIntent": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.EconomyTaskKind",
+        "readOnly": false
+      },
+      {
+        "name": "TargetHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      },
+      {
+        "name": "ResourceType",
+        "type": "global::Game.Economy.ResourceType?",
+        "readOnly": false
+      },
+      {
+        "name": "BuilderArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "CollectorArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "CollectorSourceArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "ExpectedMarginalYield",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "SafeReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "ArrivalTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "LastIncomeOpportunityTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "BuildCard",
+        "type": "global::Game.Cards.CardData",
+        "readOnly": false
+      },
+      {
+        "name": "BuildResourceCost",
+        "type": "global::Game.Cards.ResourceCost",
+        "readOnly": false
+      },
+      {
+        "name": "BuildApCost",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "IntrinsicValue",
+        "type": "float?",
+        "readOnly": false
+      },
+      {
+        "name": "BuildValue",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "MinimumFollowupAp",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "Loaned",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "LoanSource",
+        "type": "global::Game.Ai.V2.MissionIntentKey",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 15009,
+    "name": "EconomyIntent",
+    "originalFields": [
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.EconomyTaskKind"
+      },
+      {
+        "name": "TargetHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "ResourceType",
+        "type": "global::Game.Economy.ResourceType?"
+      },
+      {
+        "name": "BuilderArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "CollectorArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "CollectorSourceArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "ExpectedMarginalYield",
+        "type": "int"
+      },
+      {
+        "name": "SafeReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "ArrivalTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastIncomeOpportunityTurn",
+        "type": "int"
+      },
+      {
+        "name": "BuildCard",
+        "type": "global::Game.Cards.CardData"
+      },
+      {
+        "name": "BuildResourceCost",
+        "type": "global::Game.Cards.ResourceCost"
+      },
+      {
+        "name": "BuildApCost",
+        "type": "float"
+      },
+      {
+        "name": "IntrinsicValue",
+        "type": "float?"
+      },
+      {
+        "name": "BuildValue",
+        "type": "float"
+      },
+      {
+        "name": "MinimumFollowupAp",
+        "type": "float"
+      },
+      {
+        "name": "Loaned",
+        "type": "bool"
+      },
+      {
+        "name": "LoanSource",
+        "type": "global::Game.Ai.V2.MissionIntentKey"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.EconomyTaskKind": {
+    "kind": "enum"
+  },
+  "global::Game.Cards.CardData": {
+    "kind": "primitive"
+  },
+  "global::Game.Cards.ResourceCost": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "human",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "energy",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "materials",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "tech",
+        "type": "int",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Cards/ResourceCost.cs",
+    "insert": 558,
+    "name": "ResourceCost",
+    "originalFields": [
+      {
+        "name": "human",
+        "type": "int"
+      },
+      {
+        "name": "energy",
+        "type": "int"
+      },
+      {
+        "name": "materials",
+        "type": "int"
+      },
+      {
+        "name": "tech",
+        "type": "int"
+      }
+    ]
+  },
+  "float?": {
+    "kind": "nullable",
+    "args": [
+      "float"
+    ]
+  },
+  "global::Game.Ai.V2.DevelopmentIntent": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "FacilityHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      },
+      {
+        "name": "Mode",
+        "type": "global::Game.Cards.ResearchProductionMode",
+        "readOnly": false
+      },
+      {
+        "name": "Hero",
+        "type": "global::Game.Units.UnitData",
+        "readOnly": false
+      },
+      {
+        "name": "HeroKey",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "IntrinsicValue",
+        "type": "float",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 16482,
+    "name": "DevelopmentIntent",
+    "originalFields": [
+      {
+        "name": "FacilityHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "Mode",
+        "type": "global::Game.Cards.ResearchProductionMode"
+      },
+      {
+        "name": "Hero",
+        "type": "global::Game.Units.UnitData"
+      },
+      {
+        "name": "HeroKey",
+        "type": "string"
+      },
+      {
+        "name": "IntrinsicValue",
+        "type": "float"
+      }
+    ]
+  },
+  "global::Game.Units.UnitData": {
+    "kind": "primitive"
+  },
+  "global::Game.Ai.V2.ActiveDefenceIntent": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Phase",
+        "type": "global::Game.Ai.V2.ActiveDefencePhase",
+        "readOnly": false
+      },
+      {
+        "name": "ReturnPurpose",
+        "type": "global::Game.Ai.V2.ActiveDefenceReturnPurpose",
+        "readOnly": false
+      },
+      {
+        "name": "InterceptPurpose",
+        "type": "global::Game.Ai.V2.ActiveDefenceInterceptPurpose",
+        "readOnly": false
+      },
+      {
+        "name": "ImmediateTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Sortie",
+        "type": "global::Game.Ai.V2.GarrisonSortiePlan",
+        "readOnly": false
+      },
+      {
+        "name": "EnemyEta",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "EnemyArmyId",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "LastKnownHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      },
+      {
+        "name": "LastObservedTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Confidence",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "ProtectedAssetHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      },
+      {
+        "name": "ProtectedAssetKind",
+        "type": "global::Game.Ai.V2.AssetKind",
+        "readOnly": false
+      },
+      {
+        "name": "ProtectedAssetValue",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "ThreatSeverity",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "ReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "ProjectedWinChance",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "CoversAllDefenders",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "EstimatedEta",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportLandingHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportBoundTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportSortieSeen",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "PrimaryArmyId",
+        "type": "int?",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 17145,
+    "name": "ActiveDefenceIntent",
+    "originalFields": [
+      {
+        "name": "Phase",
+        "type": "global::Game.Ai.V2.ActiveDefencePhase"
+      },
+      {
+        "name": "ReturnPurpose",
+        "type": "global::Game.Ai.V2.ActiveDefenceReturnPurpose"
+      },
+      {
+        "name": "InterceptPurpose",
+        "type": "global::Game.Ai.V2.ActiveDefenceInterceptPurpose"
+      },
+      {
+        "name": "ImmediateTurn",
+        "type": "int"
+      },
+      {
+        "name": "Sortie",
+        "type": "global::Game.Ai.V2.GarrisonSortiePlan"
+      },
+      {
+        "name": "EnemyEta",
+        "type": "int?"
+      },
+      {
+        "name": "EnemyArmyId",
+        "type": "int"
+      },
+      {
+        "name": "LastKnownHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "LastObservedTurn",
+        "type": "int"
+      },
+      {
+        "name": "Confidence",
+        "type": "float"
+      },
+      {
+        "name": "ProtectedAssetHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "ProtectedAssetKind",
+        "type": "global::Game.Ai.V2.AssetKind"
+      },
+      {
+        "name": "ProtectedAssetValue",
+        "type": "float"
+      },
+      {
+        "name": "ThreatSeverity",
+        "type": "float"
+      },
+      {
+        "name": "ReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "ProjectedWinChance",
+        "type": "float"
+      },
+      {
+        "name": "CoversAllDefenders",
+        "type": "bool"
+      },
+      {
+        "name": "EstimatedEta",
+        "type": "int"
+      },
+      {
+        "name": "AirSupportArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "AirSupportLandingHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "AirSupportBoundTurn",
+        "type": "int"
+      },
+      {
+        "name": "AirSupportSortieSeen",
+        "type": "bool"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ActiveDefencePhase": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.ActiveDefenceReturnPurpose": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.ActiveDefenceInterceptPurpose": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.GarrisonSortiePlan": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "DonorGarrisonId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "CoverRuntimeId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "EnemyArmyId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "RouteCost",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "ShellArmyId",
+        "type": "int?",
+        "readOnly": true
+      },
+      {
+        "name": "StrongholdHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "EnemyHex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": true
+      },
+      {
+        "name": "UnitRuntimeIds",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": true
+      },
+      {
+        "name": "Detachment",
+        "type": "global::Game.Ai.V2.ArmySnapshot",
+        "readOnly": true
+      },
+      {
+        "name": "WinChance",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "CoversAllDefenders",
+        "type": "bool",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Strategy/Objectives/ActiveDefenceObjectiveEvaluator.Sortie.cs",
+    "insert": 335,
+    "name": "GarrisonSortiePlan",
+    "originalFields": [
+      {
+        "name": "DonorGarrisonId",
+        "type": "int"
+      },
+      {
+        "name": "CoverRuntimeId",
+        "type": "int"
+      },
+      {
+        "name": "EnemyArmyId",
+        "type": "int"
+      },
+      {
+        "name": "RouteCost",
+        "type": "int"
+      },
+      {
+        "name": "ShellArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "StrongholdHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "EnemyHex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "UnitRuntimeIds",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "Detachment",
+        "type": "global::Game.Ai.V2.ArmySnapshot"
+      },
+      {
+        "name": "WinChance",
+        "type": "float"
+      },
+      {
+        "name": "CoversAllDefenders",
+        "type": "bool"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ArmySnapshot": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "EconomyDeparture",
+        "type": "global::Game.Ai.V2.ArmySnapshot",
+        "readOnly": false
+      },
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData",
+        "readOnly": false
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      },
+      {
+        "name": "IsGarrison",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "RequiresGarrisonExtraction",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "IsPrison",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "IsAir",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "IsAirfield",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "MobileAirfieldCapacity",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "RepairSourceCount",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "IsCarrierContainer",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "CarrierCargoPower",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "CanServeReconAir",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "StoredAircraft",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.StoredAircraftLaunchCost>",
+        "readOnly": false
+      },
+      {
+        "name": "MemberCount",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "HasHero",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "HeroCount",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "BestHeroCommandRating",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander",
+        "readOnly": false
+      },
+      {
+        "name": "HasAntiAir",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "StrategicCoverage",
+        "type": "global::Game.Ai.V2.RoleCoverage",
+        "readOnly": false
+      },
+      {
+        "name": "AllyAuraEffects",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.StrategicEffect>",
+        "readOnly": false
+      },
+      {
+        "name": "MembersWithHeroes",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroMutatorOccupied",
+        "type": "global::System.Collections.Generic.IReadOnlyList<bool>",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroActivationApCosts",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroMoveMax",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroIsAviation",
+        "type": "global::System.Collections.Generic.IReadOnlyList<bool>",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroRuntimeIds",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroSpareable",
+        "type": "global::System.Collections.Generic.IReadOnlyList<bool>",
+        "readOnly": false
+      },
+      {
+        "name": "GarrisonThreatFloor",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroCurrentMovement",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": false
+      },
+      {
+        "name": "NonHeroMovementSpent",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>",
+        "readOnly": false
+      },
+      {
+        "name": "HeroCurrentMovement",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "EconomyRosterProtected",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "EconomyHomeRouteCosts",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>",
+        "readOnly": false
+      },
+      {
+        "name": "HeroActivationApCost",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "HeroMoveMax",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "HeroIsHomeVocation",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "HasResearchOperator",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "HasProductionOperator",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "IsHiddenFromUs",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "AttackSum",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "DefenseSum",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "EffectiveArmyPower",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "CompositionQuality",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "MaxMovement",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "SafeUnlandedEndsRemaining",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Capacity",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "OccupiedBattleSlots",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "RosterCapacity",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "SupportCarrierSlots",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "CommanderRosterCandidate",
+        "type": "global::Game.Ai.V2.StrikeRosterCandidate?",
+        "readOnly": false
+      },
+      {
+        "name": "CommanderCommandRating",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "ActivationApCost",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "ActivationEnergyCost",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "HasActivatedThisTurn",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "PendingActivationApCost",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "PendingActivationEnergyCost",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "ActivationCoveredUnitRuntimeIds",
+        "type": "global::System.Collections.Generic.IReadOnlyCollection<int>",
+        "readOnly": false
+      },
+      {
+        "name": "CurrentMovement",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "IsSoloRecce",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "IsMobileEconomyBuilder",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "OperatorDutyBlocksDeparture",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "IsStructuralRaidActor",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "IsHidden",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "CanEnterStealth",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "StealthLevel",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "EffectiveVisionRadius",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "CollectionCapacity",
+        "type": "global::Game.Ai.V2.ResourceBundle",
+        "readOnly": false
+      },
+      {
+        "name": "ReachableOwnBaseHexes",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>",
+        "readOnly": false
+      },
+      {
+        "name": "RecoveryMembers",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.RaidRecoveryMemberSnapshot>",
+        "readOnly": false
+      },
+      {
+        "name": "Members",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Analysis/WorldSnapshot.cs",
+    "insert": 11766,
+    "name": "ArmySnapshot",
+    "originalFields": [
+      {
+        "name": "EconomyDeparture",
+        "type": "global::Game.Ai.V2.ArmySnapshot"
+      },
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "Owner",
+        "type": "global::Game.Players.PlayerSetupData"
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord"
+      },
+      {
+        "name": "IsGarrison",
+        "type": "bool"
+      },
+      {
+        "name": "RequiresGarrisonExtraction",
+        "type": "bool"
+      },
+      {
+        "name": "IsPrison",
+        "type": "bool"
+      },
+      {
+        "name": "IsAir",
+        "type": "bool"
+      },
+      {
+        "name": "IsAirfield",
+        "type": "bool"
+      },
+      {
+        "name": "MobileAirfieldCapacity",
+        "type": "int"
+      },
+      {
+        "name": "RepairSourceCount",
+        "type": "int"
+      },
+      {
+        "name": "IsCarrierContainer",
+        "type": "bool"
+      },
+      {
+        "name": "CarrierCargoPower",
+        "type": "float"
+      },
+      {
+        "name": "CanServeReconAir",
+        "type": "bool"
+      },
+      {
+        "name": "StoredAircraft",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.StoredAircraftLaunchCost>"
+      },
+      {
+        "name": "MemberCount",
+        "type": "int"
+      },
+      {
+        "name": "HasHero",
+        "type": "bool"
+      },
+      {
+        "name": "HeroCount",
+        "type": "int"
+      },
+      {
+        "name": "BestHeroCommandRating",
+        "type": "int"
+      },
+      {
+        "name": "Commander",
+        "type": "global::Game.Combat.WorthIt.SideCommander"
+      },
+      {
+        "name": "HasAntiAir",
+        "type": "bool"
+      },
+      {
+        "name": "StrategicCoverage",
+        "type": "global::Game.Ai.V2.RoleCoverage"
+      },
+      {
+        "name": "AllyAuraEffects",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.StrategicEffect>"
+      },
+      {
+        "name": "MembersWithHeroes",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      },
+      {
+        "name": "NonHeroMutatorOccupied",
+        "type": "global::System.Collections.Generic.IReadOnlyList<bool>"
+      },
+      {
+        "name": "NonHeroActivationApCosts",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "NonHeroMoveMax",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "NonHeroIsAviation",
+        "type": "global::System.Collections.Generic.IReadOnlyList<bool>"
+      },
+      {
+        "name": "NonHeroRuntimeIds",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "NonHeroSpareable",
+        "type": "global::System.Collections.Generic.IReadOnlyList<bool>"
+      },
+      {
+        "name": "GarrisonThreatFloor",
+        "type": "float"
+      },
+      {
+        "name": "NonHeroCurrentMovement",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "NonHeroMovementSpent",
+        "type": "global::System.Collections.Generic.IReadOnlyList<int>"
+      },
+      {
+        "name": "HeroCurrentMovement",
+        "type": "int"
+      },
+      {
+        "name": "EconomyRosterProtected",
+        "type": "bool"
+      },
+      {
+        "name": "EconomyHomeRouteCosts",
+        "type": "global::System.Collections.Generic.IReadOnlyDictionary<global::Game.HexGrid.HexCoord, int>"
+      },
+      {
+        "name": "HeroActivationApCost",
+        "type": "int"
+      },
+      {
+        "name": "HeroMoveMax",
+        "type": "int"
+      },
+      {
+        "name": "HeroIsHomeVocation",
+        "type": "bool"
+      },
+      {
+        "name": "HasResearchOperator",
+        "type": "bool"
+      },
+      {
+        "name": "HasProductionOperator",
+        "type": "bool"
+      },
+      {
+        "name": "IsHiddenFromUs",
+        "type": "bool"
+      },
+      {
+        "name": "AttackSum",
+        "type": "float"
+      },
+      {
+        "name": "DefenseSum",
+        "type": "float"
+      },
+      {
+        "name": "EffectiveArmyPower",
+        "type": "float"
+      },
+      {
+        "name": "CompositionQuality",
+        "type": "float"
+      },
+      {
+        "name": "MaxMovement",
+        "type": "int"
+      },
+      {
+        "name": "SafeUnlandedEndsRemaining",
+        "type": "int"
+      },
+      {
+        "name": "Capacity",
+        "type": "int"
+      },
+      {
+        "name": "OccupiedBattleSlots",
+        "type": "int"
+      },
+      {
+        "name": "RosterCapacity",
+        "type": "int"
+      },
+      {
+        "name": "SupportCarrierSlots",
+        "type": "int"
+      },
+      {
+        "name": "CommanderRosterCandidate",
+        "type": "global::Game.Ai.V2.StrikeRosterCandidate?"
+      },
+      {
+        "name": "CommanderCommandRating",
+        "type": "int"
+      },
+      {
+        "name": "ActivationApCost",
+        "type": "int"
+      },
+      {
+        "name": "ActivationEnergyCost",
+        "type": "int"
+      },
+      {
+        "name": "HasActivatedThisTurn",
+        "type": "bool"
+      },
+      {
+        "name": "PendingActivationApCost",
+        "type": "int"
+      },
+      {
+        "name": "PendingActivationEnergyCost",
+        "type": "int"
+      },
+      {
+        "name": "ActivationCoveredUnitRuntimeIds",
+        "type": "global::System.Collections.Generic.IReadOnlyCollection<int>"
+      },
+      {
+        "name": "CurrentMovement",
+        "type": "int"
+      },
+      {
+        "name": "IsSoloRecce",
+        "type": "bool"
+      },
+      {
+        "name": "IsMobileEconomyBuilder",
+        "type": "bool"
+      },
+      {
+        "name": "OperatorDutyBlocksDeparture",
+        "type": "bool"
+      },
+      {
+        "name": "IsStructuralRaidActor",
+        "type": "bool"
+      },
+      {
+        "name": "IsHidden",
+        "type": "bool"
+      },
+      {
+        "name": "CanEnterStealth",
+        "type": "bool"
+      },
+      {
+        "name": "StealthLevel",
+        "type": "int"
+      },
+      {
+        "name": "EffectiveVisionRadius",
+        "type": "int"
+      },
+      {
+        "name": "CollectionCapacity",
+        "type": "global::Game.Ai.V2.ResourceBundle"
+      },
+      {
+        "name": "ReachableOwnBaseHexes",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.HexGrid.HexCoord>"
+      },
+      {
+        "name": "RecoveryMembers",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.RaidRecoveryMemberSnapshot>"
+      },
+      {
+        "name": "Members",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile>"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.StoredAircraftLaunchCost>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.StoredAircraftLaunchCost"
+    ]
+  },
+  "global::Game.Ai.V2.StoredAircraftLaunchCost": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "RuntimeId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Ap",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Energy",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Movement",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Analysis/WorldSnapshot.cs",
+    "insert": 11484,
+    "name": "StoredAircraftLaunchCost",
+    "originalFields": [
+      {
+        "name": "RuntimeId",
+        "type": "int"
+      },
+      {
+        "name": "Ap",
+        "type": "int"
+      },
+      {
+        "name": "Energy",
+        "type": "int"
+      },
+      {
+        "name": "Movement",
+        "type": "int"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.RoleCoverage": {
+    "kind": "roles",
+    "isValue": true,
+    "fields": [],
+    "file": "Assets/Scripts/Ai/V2/Evaluation/Effects/StrategicEffectRegistry.cs",
+    "insert": 14072,
+    "name": "RoleCoverage",
+    "originalFields": []
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.StrategicEffect>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.StrategicEffect"
+    ]
+  },
+  "global::Game.Ai.V2.StrategicEffect": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Role",
+        "type": "global::Game.Ai.V2.IntendedRole",
+        "readOnly": true
+      },
+      {
+        "name": "BaseFit",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Context",
+        "type": "global::Game.Ai.V2.StrategicEffectContext",
+        "readOnly": true
+      },
+      {
+        "name": "Field",
+        "type": "global::Game.Ai.V2.EffectField",
+        "readOnly": true
+      },
+      {
+        "name": "CountsAsCoverage",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "EligiblePredicate",
+        "type": "global::System.Func<global::Game.Combat.WorthIt.DefenderProfile, bool>",
+        "readOnly": true
+      },
+      {
+        "name": "Scope",
+        "type": "global::Game.Ai.V2.EffectScope",
+        "readOnly": true
+      },
+      {
+        "name": "Magnitude",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Probability",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Timing",
+        "type": "global::Game.Ai.V2.EffectTiming",
+        "readOnly": true
+      },
+      {
+        "name": "DurationRounds",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "CapacityRequirement",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "Stacking",
+        "type": "global::Game.Ai.V2.EffectStacking",
+        "readOnly": true
+      },
+      {
+        "name": "StackingKey",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "GlobalResource",
+        "type": "global::Game.Ai.V2.GlobalResourceKind",
+        "readOnly": true
+      },
+      {
+        "name": "GlobalYieldPerTurn",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "PrimaryExchange",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "RequiresHit",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "SecondaryTargets",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "SecondaryPriority",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "BodyOnly",
+        "type": "bool",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Evaluation/Effects/StrategicEffectRegistry.cs",
+    "insert": 5443,
+    "name": "StrategicEffect",
+    "originalFields": [
+      {
+        "name": "Role",
+        "type": "global::Game.Ai.V2.IntendedRole"
+      },
+      {
+        "name": "BaseFit",
+        "type": "float"
+      },
+      {
+        "name": "Context",
+        "type": "global::Game.Ai.V2.StrategicEffectContext"
+      },
+      {
+        "name": "Field",
+        "type": "global::Game.Ai.V2.EffectField"
+      },
+      {
+        "name": "CountsAsCoverage",
+        "type": "bool"
+      },
+      {
+        "name": "EligiblePredicate",
+        "type": "global::System.Func<global::Game.Combat.WorthIt.DefenderProfile, bool>"
+      },
+      {
+        "name": "Scope",
+        "type": "global::Game.Ai.V2.EffectScope"
+      },
+      {
+        "name": "Magnitude",
+        "type": "float"
+      },
+      {
+        "name": "Probability",
+        "type": "float"
+      },
+      {
+        "name": "Timing",
+        "type": "global::Game.Ai.V2.EffectTiming"
+      },
+      {
+        "name": "DurationRounds",
+        "type": "int"
+      },
+      {
+        "name": "CapacityRequirement",
+        "type": "int"
+      },
+      {
+        "name": "Stacking",
+        "type": "global::Game.Ai.V2.EffectStacking"
+      },
+      {
+        "name": "StackingKey",
+        "type": "string"
+      },
+      {
+        "name": "GlobalResource",
+        "type": "global::Game.Ai.V2.GlobalResourceKind"
+      },
+      {
+        "name": "GlobalYieldPerTurn",
+        "type": "float"
+      },
+      {
+        "name": "PrimaryExchange",
+        "type": "bool"
+      },
+      {
+        "name": "RequiresHit",
+        "type": "bool"
+      },
+      {
+        "name": "SecondaryTargets",
+        "type": "int"
+      },
+      {
+        "name": "SecondaryPriority",
+        "type": "int"
+      },
+      {
+        "name": "BodyOnly",
+        "type": "bool"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.IntendedRole": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.StrategicEffectContext": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.EffectField": {
+    "kind": "enum"
+  },
+  "global::System.Func<global::Game.Combat.WorthIt.DefenderProfile, bool>": {
+    "kind": "predicate",
+    "isValue": false,
+    "fields": [],
+    "file": null,
+    "insert": null,
+    "name": "Func",
+    "originalFields": []
+  },
+  "global::Game.Ai.V2.EffectScope": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.EffectTiming": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.EffectStacking": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.GlobalResourceKind": {
+    "kind": "enum"
+  },
+  "global::System.Collections.Generic.IReadOnlyList<bool>": {
+    "kind": "list",
+    "args": [
+      "bool"
+    ]
+  },
+  "global::Game.Ai.V2.StrikeRosterCandidate?": {
+    "kind": "nullable",
+    "args": [
+      "global::Game.Ai.V2.StrikeRosterCandidate"
+    ]
+  },
+  "global::Game.Ai.V2.StrikeRosterCandidate": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Slot",
+        "type": "global::Game.Ai.V2.StrikeRosterSlot",
+        "readOnly": true
+      },
+      {
+        "name": "Unit",
+        "type": "global::Game.Ai.V2.AiPower.PowerUnit",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Analysis/StrikeRoster.cs",
+    "insert": 892,
+    "name": "StrikeRosterCandidate",
+    "originalFields": [
+      {
+        "name": "Slot",
+        "type": "global::Game.Ai.V2.StrikeRosterSlot"
+      },
+      {
+        "name": "Unit",
+        "type": "global::Game.Ai.V2.AiPower.PowerUnit"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.StrikeRosterSlot": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Key",
+        "type": "string",
+        "readOnly": true
+      },
+      {
+        "name": "IsHero",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "Power",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Source",
+        "type": "global::Game.Ai.V2.ForceSource",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Analysis/StrikeRoster.cs",
+    "insert": 373,
+    "name": "StrikeRosterSlot",
+    "originalFields": [
+      {
+        "name": "Key",
+        "type": "string"
+      },
+      {
+        "name": "IsHero",
+        "type": "bool"
+      },
+      {
+        "name": "Power",
+        "type": "float"
+      },
+      {
+        "name": "Source",
+        "type": "global::Game.Ai.V2.ForceSource"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ForceSource": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.AiPower.PowerUnit": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "BasePower",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Tags",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Cards.UnitTypeTag>",
+        "readOnly": true
+      },
+      {
+        "name": "Range",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "IsHero",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "CommandRating",
+        "type": "int",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Evaluation/Power/AiPower.cs",
+    "insert": 1701,
+    "name": "PowerUnit",
+    "originalFields": [
+      {
+        "name": "BasePower",
+        "type": "float"
+      },
+      {
+        "name": "Tags",
+        "type": "global::System.Collections.Generic.IReadOnlyList<global::Game.Cards.UnitTypeTag>"
+      },
+      {
+        "name": "Range",
+        "type": "int"
+      },
+      {
+        "name": "IsHero",
+        "type": "bool"
+      },
+      {
+        "name": "CommandRating",
+        "type": "int"
+      }
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyCollection<int>": {
+    "kind": "list",
+    "args": [
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.IReadOnlyList<global::Game.Ai.V2.RaidRecoveryMemberSnapshot>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.RaidRecoveryMemberSnapshot"
+    ]
+  },
+  "global::Game.Ai.V2.RaidRecoveryMemberSnapshot": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "RuntimeId",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "UnitIndex",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "IsHero",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "IsAviation",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "IsGroundBattleBody",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "CanSpareForRaid",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "ActivationApCost",
+        "type": "int",
+        "readOnly": true
+      },
+      {
+        "name": "CurrentProfile",
+        "type": "global::Game.Combat.WorthIt.DefenderProfile",
+        "readOnly": true
+      },
+      {
+        "name": "FullHealthProfile",
+        "type": "global::Game.Combat.WorthIt.DefenderProfile",
+        "readOnly": true
+      },
+      {
+        "name": "RepairCostInitialized",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "IsPrisoner",
+        "type": "bool",
+        "readOnly": true
+      },
+      {
+        "name": "RepairCost",
+        "type": "global::Game.Ai.V2.ResourceVector",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Analysis/WorldSnapshot.cs",
+    "insert": 26053,
+    "name": "RaidRecoveryMemberSnapshot",
+    "originalFields": [
+      {
+        "name": "RuntimeId",
+        "type": "int"
+      },
+      {
+        "name": "UnitIndex",
+        "type": "int"
+      },
+      {
+        "name": "IsHero",
+        "type": "bool"
+      },
+      {
+        "name": "IsAviation",
+        "type": "bool"
+      },
+      {
+        "name": "IsGroundBattleBody",
+        "type": "bool"
+      },
+      {
+        "name": "CanSpareForRaid",
+        "type": "bool"
+      },
+      {
+        "name": "ActivationApCost",
+        "type": "int"
+      },
+      {
+        "name": "CurrentProfile",
+        "type": "global::Game.Combat.WorthIt.DefenderProfile"
+      },
+      {
+        "name": "FullHealthProfile",
+        "type": "global::Game.Combat.WorthIt.DefenderProfile"
+      },
+      {
+        "name": "RepairCostInitialized",
+        "type": "bool"
+      },
+      {
+        "name": "IsPrisoner",
+        "type": "bool"
+      },
+      {
+        "name": "RepairCost",
+        "type": "global::Game.Ai.V2.ResourceVector"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.ResourceVector": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "Ap",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Human",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Energy",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Materials",
+        "type": "float",
+        "readOnly": true
+      },
+      {
+        "name": "Tech",
+        "type": "float",
+        "readOnly": true
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Allocation/ResourceAllocator.cs",
+    "insert": 241,
+    "name": "ResourceVector",
+    "originalFields": [
+      {
+        "name": "Ap",
+        "type": "float"
+      },
+      {
+        "name": "Human",
+        "type": "float"
+      },
+      {
+        "name": "Energy",
+        "type": "float"
+      },
+      {
+        "name": "Materials",
+        "type": "float"
+      },
+      {
+        "name": "Tech",
+        "type": "float"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.AssetKind": {
+    "kind": "enum"
+  },
+  "global::Game.Ai.V2.AttackIntent": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "Target",
+        "type": "global::Game.Ai.V2.AttackTargetRef",
+        "readOnly": false
+      },
+      {
+        "name": "IntermediateTarget",
+        "type": "global::Game.Ai.V2.AttackTargetRef",
+        "readOnly": false
+      },
+      {
+        "name": "Phase",
+        "type": "global::Game.Ai.V2.AttackMissionPhase",
+        "readOnly": false
+      },
+      {
+        "name": "OperationStarted",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "AssaultStarted",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "AssaultObservationWaitSinceTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "RefitBaseHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "RefitCaptureTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "RefitBattleStopTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "Preparation",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "StagingHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "Secondary",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "PreparationCardWaitSinceTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "TargetRoster",
+        "type": "global::System.Collections.Generic.List<global::Game.Ai.V2.StrikeRosterSlot>",
+        "readOnly": false
+      },
+      {
+        "name": "TargetRosterPeak",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "TargetRosterCommanderKey",
+        "type": "string",
+        "readOnly": false
+      },
+      {
+        "name": "TargetRosterPower",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "TargetRosterCapacity",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "CommanderArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "GatherSupportArmyIds",
+        "type": "global::System.Collections.Generic.List<int>",
+        "readOnly": false
+      },
+      {
+        "name": "GatherReturns",
+        "type": "global::System.Collections.Generic.List<global::Game.Ai.V2.AttackGatherReturn>",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportLandingHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportBoundTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportSortieSeen",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "AirSupportAttemptedTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "RecoveryBaseHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "SupportReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "RendezvousHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "ReinforcementRequestedTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "LastOpportunisticStrikeTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "TacticalRetreat",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "ProjectedWinChance",
+        "type": "float",
+        "readOnly": false
+      },
+      {
+        "name": "CoversAllDefenders",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "PrimaryArmyId",
+        "type": "int?",
+        "readOnly": false
+      },
+      {
+        "name": "SupportArmyId",
+        "type": "int?",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 19252,
+    "name": "AttackIntent",
+    "originalFields": [
+      {
+        "name": "Target",
+        "type": "global::Game.Ai.V2.AttackTargetRef"
+      },
+      {
+        "name": "IntermediateTarget",
+        "type": "global::Game.Ai.V2.AttackTargetRef"
+      },
+      {
+        "name": "Phase",
+        "type": "global::Game.Ai.V2.AttackMissionPhase"
+      },
+      {
+        "name": "OperationStarted",
+        "type": "bool"
+      },
+      {
+        "name": "AssaultStarted",
+        "type": "bool"
+      },
+      {
+        "name": "AssaultObservationWaitSinceTurn",
+        "type": "int"
+      },
+      {
+        "name": "RefitBaseHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "RefitCaptureTurn",
+        "type": "int"
+      },
+      {
+        "name": "RefitBattleStopTurn",
+        "type": "int"
+      },
+      {
+        "name": "Preparation",
+        "type": "bool"
+      },
+      {
+        "name": "StagingHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "Secondary",
+        "type": "bool"
+      },
+      {
+        "name": "PreparationCardWaitSinceTurn",
+        "type": "int"
+      },
+      {
+        "name": "TargetRoster",
+        "type": "global::System.Collections.Generic.List<global::Game.Ai.V2.StrikeRosterSlot>"
+      },
+      {
+        "name": "TargetRosterPeak",
+        "type": "float"
+      },
+      {
+        "name": "TargetRosterCommanderKey",
+        "type": "string"
+      },
+      {
+        "name": "TargetRosterPower",
+        "type": "float"
+      },
+      {
+        "name": "TargetRosterCapacity",
+        "type": "int"
+      },
+      {
+        "name": "CommanderArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "GatherSupportArmyIds",
+        "type": "global::System.Collections.Generic.List<int>"
+      },
+      {
+        "name": "GatherReturns",
+        "type": "global::System.Collections.Generic.List<global::Game.Ai.V2.AttackGatherReturn>"
+      },
+      {
+        "name": "AirSupportArmyId",
+        "type": "int?"
+      },
+      {
+        "name": "AirSupportLandingHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "AirSupportBoundTurn",
+        "type": "int"
+      },
+      {
+        "name": "AirSupportSortieSeen",
+        "type": "bool"
+      },
+      {
+        "name": "AirSupportAttemptedTurn",
+        "type": "int"
+      },
+      {
+        "name": "RecoveryBaseHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "SupportReturnHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "RendezvousHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "ReinforcementRequestedTurn",
+        "type": "int"
+      },
+      {
+        "name": "LastOpportunisticStrikeTurn",
+        "type": "int"
+      },
+      {
+        "name": "TacticalRetreat",
+        "type": "bool"
+      },
+      {
+        "name": "ProjectedWinChance",
+        "type": "float"
+      },
+      {
+        "name": "CoversAllDefenders",
+        "type": "bool"
+      }
+    ]
+  },
+  "global::Game.Ai.V2.AttackTargetRef": {
+    "kind": "object",
+    "isValue": true,
+    "fields": [
+      {
+        "name": "HasValue",
+        "type": "bool",
+        "readOnly": false
+      },
+      {
+        "name": "Hex",
+        "type": "global::Game.HexGrid.HexCoord",
+        "readOnly": false
+      },
+      {
+        "name": "ExpectedOwner",
+        "type": "global::Game.Players.PlayerSetupData",
+        "readOnly": false
+      },
+      {
+        "name": "Kind",
+        "type": "global::Game.Ai.V2.AttackTargetKind",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Foundation/AttackTargetRef.cs",
+    "insert": 1795,
+    "name": "AttackTargetRef",
+    "originalFields": []
+  },
+  "global::Game.Ai.V2.AttackMissionPhase": {
+    "kind": "enum"
+  },
+  "global::System.Collections.Generic.List<global::Game.Ai.V2.StrikeRosterSlot>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.StrikeRosterSlot"
+    ]
+  },
+  "global::System.Collections.Generic.List<int>": {
+    "kind": "list",
+    "args": [
+      "int"
+    ]
+  },
+  "global::System.Collections.Generic.List<global::Game.Ai.V2.AttackGatherReturn>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.AttackGatherReturn"
+    ]
+  },
+  "global::Game.Ai.V2.AttackGatherReturn": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "BaseHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 19097,
+    "name": "AttackGatherReturn",
+    "originalFields": [
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "BaseHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      }
+    ]
+  },
+  "objective": {
+    "kind": "objective"
+  }
+}

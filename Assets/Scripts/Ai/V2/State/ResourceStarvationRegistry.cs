@@ -22,6 +22,16 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal readonly struct ResourceBlockEvidence
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal ResourceBlockEvidence(bool __matchSave, float __Required, float __AvailableAtBlock, float __IncomePerTurn, float __DemandValue, int __Turn)
+        {
+            Required = __Required;
+            AvailableAtBlock = __AvailableAtBlock;
+            IncomePerTurn = __IncomePerTurn;
+            DemandValue = __DemandValue;
+            Turn = __Turn;
+        }
+
         public readonly float Required;
         public readonly float AvailableAtBlock;
         public readonly float IncomePerTurn;

@@ -18,6 +18,14 @@ namespace Game.Aviation
     // ordinary endpoint strike exactly; RaidSupport pins one physical target and a survivor floor.
     public readonly struct AirStrikePolicy
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal AirStrikePolicy(bool __matchSave, global::Game.Aviation.AirStrikePolicyKind __Kind, int? __ExactTargetArmyId, int __MinimumSurvivors)
+        {
+            Kind = __Kind;
+            ExactTargetArmyId = __ExactTargetArmyId;
+            MinimumSurvivors = __MinimumSurvivors;
+        }
+
         public readonly AirStrikePolicyKind Kind;
         public readonly int? ExactTargetArmyId;
         public readonly int MinimumSurvivors;

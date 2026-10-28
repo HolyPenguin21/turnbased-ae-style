@@ -10,6 +10,15 @@ namespace Game.Ai.V2
     // peak stack (SelfSnapshot.TotalMilitaryPotential) is made of, where it is now, and its power.
     public readonly struct StrikeRosterSlot
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal StrikeRosterSlot(bool __matchSave, string __Key, bool __IsHero, float __Power, global::Game.Ai.V2.ForceSource __Source)
+        {
+            Key = __Key;
+            IsHero = __IsHero;
+            Power = __Power;
+            Source = __Source;
+        }
+
         public readonly string Key;
         public readonly bool IsHero;
         public readonly float Power;
@@ -27,6 +36,13 @@ namespace Game.Ai.V2
     // One pool candidate: its roster slot and the PowerUnit the peak greedy reads.
     public readonly struct StrikeRosterCandidate
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal StrikeRosterCandidate(bool __matchSave, global::Game.Ai.V2.StrikeRosterSlot __Slot, global::Game.Ai.V2.AiPower.PowerUnit __Unit)
+        {
+            Slot = __Slot;
+            Unit = __Unit;
+        }
+
         public readonly StrikeRosterSlot Slot;
         public readonly AiPower.PowerUnit Unit;
 
