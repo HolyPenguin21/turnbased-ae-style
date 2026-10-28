@@ -1,3 +1,5 @@
+// Recursive DTOs are read by MatchSaveJson (reflection, HasData-gated), not Unity serialization.
+#pragma warning disable UAC1005, UAC1006, UAC1008
 using System;
 using System.Collections.Generic;
 using System.Linq;

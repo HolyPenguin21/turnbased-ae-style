@@ -35,7 +35,6 @@ namespace Game.EditorTests
     // Native EditMode file roundtrips: actual production capture, JSON envelope, atomic slot
     // store, decode, staging and scene-owner transaction. No substitute restore source or codec.
     // Explicit Awake/BuildFromLayout exercise the scene transaction, not PlayMode activation.
-    [NonParallelizable]
     public sealed class MatchSaveIntegrationTests
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;

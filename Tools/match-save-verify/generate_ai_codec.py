@@ -42,7 +42,7 @@ def fields(k):return j[k].get('fields',[])
 def call(k,x,dec=False):return f'{m(k,dec)}({x}, c)'
 def dtofield(k,f):return f'public {names[f["type"]]} {f["name"]};'
 
-out=['// Generated concrete JSON DTO schema. See Tools/match-save-verify/generate_ai_codec.py.','using System;','using System.Collections.Generic;','namespace Game.Saves','{']
+out=['// Generated concrete JSON DTO schema. See Tools/match-save-verify/generate_ai_codec.py.','// Recursive DTOs are read by MatchSaveJson (reflection, HasData-gated), not Unity serialization.','#pragma warning disable UAC1005, UAC1006, UAC1008','using System;','using System.Collections.Generic;','namespace Game.Saves','{']
 for k,v in j.items():
  kind=v['kind'];n=names[k]
  if kind in ['enum','primitive','predicate','objective']:continue

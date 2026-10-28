@@ -34,7 +34,6 @@ namespace Game.EditorTests
     // It deliberately invokes the scene's early reset and restore transaction explicitly:
     // EditMode does not execute PlayMode scene activation/OnEnable ordering. No tactical JSON,
     // disk codec, slot, new-game setup or replacement implementations are involved.
-    [NonParallelizable]
     public sealed class MatchRestoreIntegrationTests
     {
         public enum Failure { None, Prevalidation, World, Knowledge, Presentation, Resume }
