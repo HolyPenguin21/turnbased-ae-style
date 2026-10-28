@@ -15,7 +15,6 @@ using Object = UnityEngine.Object;
 
 namespace Game.EditorTests
 {
-    [NonParallelizable]
     public sealed class MatchPresentationCodecTests
     {
         private GameConfig config;
