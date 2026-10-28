@@ -5,8 +5,8 @@ namespace Game.Units
 {
     [Serializable] public sealed class UnitCarrierLinksState
     {
-        public int? AirfieldArmyId;
-        public int? FlightDeckArmyId;
+        public SerializableNullableInt AirfieldArmyId;
+        public SerializableNullableInt FlightDeckArmyId;
     }
     public partial class UnitData
     {

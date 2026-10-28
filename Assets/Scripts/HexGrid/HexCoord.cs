@@ -4,10 +4,12 @@ namespace Game.HexGrid
 {
     // Axial hex coordinate. Kept as its own type now (rather than a raw Vector2Int) since
     // neighbour/distance queries (movement, supply range) will need proper axial math later.
-    public readonly struct HexCoord : IEquatable<HexCoord>
+    // Fields are not readonly so Unity serialization (state snapshots) can store them; treat as immutable.
+    [Serializable]
+    public struct HexCoord : IEquatable<HexCoord>
     {
-        public readonly int Q;
-        public readonly int R;
+        public int Q;
+        public int R;
 
         public HexCoord(int q, int r)
         {

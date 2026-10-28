@@ -16,9 +16,9 @@ namespace Game.Map
     {
         public int PermanentMaximum;
         public int LegacyCurrent;
-        public int? Spent;
-        public int? TransportCarrierId;
-        public int? TransportArmyId;
+        public SerializableNullableInt Spent;
+        public SerializableNullableInt TransportCarrierId;
+        public SerializableNullableInt TransportArmyId;
     }
     [Serializable] public sealed class PlayerVisionState
     {
