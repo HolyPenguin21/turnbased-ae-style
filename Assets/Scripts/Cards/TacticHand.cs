@@ -31,6 +31,16 @@ namespace Game.Cards
         }
 
         public bool Contains(CardData card) => card != null && _cards.Contains(card);
+        internal void RestoreCanonical(IEnumerable<CardData> cards, int version)
+        {
+            if (cards == null || version < 0) throw new InvalidOperationException("Invalid saved tactics.");
+            var result = new List<CardData>();
+            foreach (var card in cards)
+                if (!TacticRules.IsTactic(card?.Definition) || result.Contains(card))
+                    throw new InvalidOperationException("Invalid or duplicate saved tactic.");
+                else result.Add(card);
+            _cards.Clear(); _cards.AddRange(result); Version = version;
+        }
 
         internal bool Consume(CardData card)
         {

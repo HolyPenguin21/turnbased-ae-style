@@ -36,6 +36,8 @@ namespace Game.Map
         }
         // Load path: an army rebuilt under its saved identity; later armies are numbered above it.
         internal static ArmyData WithIdentity(int id) => new ArmyData(restoredId: id);
+        internal static ArmyData CreateDetached(int id) => new ArmyData(false, id);
+        private ArmyData(bool assignIdentity, int identity) => Id = assignIdentity ? _nextId++ : identity;
 
         // Brand-new game/session (see ArmyRegistry.Clear, run by MatchStateInventory.
         // ResetForNewMatch with every other registry wipe) — without this the id sequence just

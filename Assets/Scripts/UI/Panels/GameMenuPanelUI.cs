@@ -59,16 +59,18 @@ namespace Game.UI
             if (turnController != null) turnController.TurnStateChanged += RefreshBattleAvailability;
             if (gearButton != null) gearButton.onClick.AddListener(OpenMenu);
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
+            if (saveButton != null) saveButton.onClick.AddListener(OpenSave);
+            if (loadButton != null) loadButton.onClick.AddListener(OpenLoad);
             if (continueButton != null) continueButton.onClick.AddListener(ContinueGame);
             if (exitButton != null) exitButton.onClick.AddListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed += OnOptionsClosed;
             if (battleScreen != null) battleScreen.VisibilityChanged += RefreshBattleAvailability;
-            if (saveButton != null) saveButton.interactable = false;
-            if (loadButton != null) loadButton.interactable = false;
             RefreshBattleAvailability();
         }
         private void RefreshBattleAvailability()
         {
+            if (saveButton != null) saveButton.interactable = turnController != null && turnController.CanSaveMatch(out _);
+            if (loadButton != null) loadButton.interactable = turnController != null && turnController.SaveConfiguration != null;
             if (!MenuAvailable && IsShowing) ContinueGame();
             if (gearButton != null)
             {
@@ -92,7 +94,10 @@ namespace Game.UI
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             VisibilityChanged?.Invoke();
             optionsButton?.Select();
+            RefreshBattleAvailability();
         }
+        private void OpenSave() => MatchSaveSlotsUI.Show(turnController.SaveConfiguration, turnController, true);
+        private void OpenLoad() => MatchSaveSlotsUI.Show(turnController.SaveConfiguration, turnController, false);
         public void OpenOptions()
         {
             if (!IsShowing || optionsPanel == null) return;
@@ -175,6 +180,8 @@ namespace Game.UI
             RestoreGameplayCanvases();
             if (gearButton != null) gearButton.onClick.RemoveListener(OpenMenu);
             if (optionsButton != null) optionsButton.onClick.RemoveListener(OpenOptions);
+            if (saveButton != null) saveButton.onClick.RemoveListener(OpenSave);
+            if (loadButton != null) loadButton.onClick.RemoveListener(OpenLoad);
             if (continueButton != null) continueButton.onClick.RemoveListener(ContinueGame);
             if (exitButton != null) exitButton.onClick.RemoveListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed -= OnOptionsClosed;

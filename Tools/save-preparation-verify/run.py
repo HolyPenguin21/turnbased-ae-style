@@ -110,8 +110,8 @@ def main():
         try: require_test_dependency(tests, nunit)
         except ValueError as error: raise SystemExit(str(error))
         if tests:
-            compile('ChangedTests',[*dest.rglob('*.cs'),work/'EngineStubs.cs',*tests],refs+list(engine.glob('*.dll'))+[ui[0],nunit],['-define:UNITY_INCLUDE_TESTS;UNITY_EDITOR;UNITY_6000_0_OR_NEWER'],False)
-            print(str(len(tests))+': changed/new EditMode test files bind successfully (not executed in Unity)')
+            compile('ChangedTests',[*dest.rglob('*.cs'),work/'EngineStubs.cs',HERE/'NativeEditorAdapters.cs',*tests],refs+list(engine.glob('*.dll'))+[ui[0],nunit],['-define:UNITY_INCLUDE_TESTS;UNITY_EDITOR;UNITY_6000_0_OR_NEWER'],False)
+            print(str(len(tests))+': changed/new EditMode test files bind successfully (compile-only native Editor/Test Framework declarations; not executed in Unity)')
     print('Native Unity compilation, scene startup, JsonUtility and EditMode execution still require Unity 6000.5.4f1.')
 
 

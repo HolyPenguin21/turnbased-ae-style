@@ -930,7 +930,7 @@ MonoBehaviour:
     deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Hunter Glands
+    displayName: Sensory Glands
     art: {fileID: 21300000, guid: 3529523b3a533ee4bb89798de47496f5, type: 3}
     detailArt: {fileID: 21300000, guid: 8fcf28a828e7d7e44ba62f6fcef07197, type: 3}
     faction: 2
@@ -985,7 +985,7 @@ MonoBehaviour:
     deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Predator Reflexes
+    displayName: Ballistic Adaptation
     art: {fileID: 21300000, guid: 34caabfccad6aad42a6831d2ca73ea85, type: 3}
     detailArt: {fileID: 21300000, guid: a959425143073b9479bc69a2105c2af1, type: 3}
     faction: 2
@@ -1203,7 +1203,7 @@ MonoBehaviour:
     deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Reactive Marrow
+    displayName: Vitality Strain
     art: {fileID: 21300000, guid: 31124208dccd2264bb76062501a13a94, type: 3}
     detailArt: {fileID: 21300000, guid: ea1c3e835adbdc84c9f9011d57b038de, type: 3}
     faction: 2
@@ -1311,7 +1311,7 @@ MonoBehaviour:
     deckPointCost: 2
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Hyper-Regeneration
+    displayName: Regenerative Marrow
     art: {fileID: 21300000, guid: 8315826a889a3de4fa25aac293056154, type: 3}
     detailArt: {fileID: 21300000, guid: 66b0aa8330af8b34c9a0542901a1454f, type: 3}
     faction: 2
@@ -1480,7 +1480,7 @@ MonoBehaviour:
     deckPointCost: 2
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Enhanced Senses
+    displayName: Sentinel Strain
     art: {fileID: 21300000, guid: 7db4feb32d3999c4c9d99a744a3e2cad, type: 3}
     detailArt: {fileID: 21300000, guid: 01db794b2eb34a34b88460526acc9ee5, type: 3}
     faction: 2
@@ -1536,7 +1536,7 @@ MonoBehaviour:
     deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Wanderer Strain
+    displayName: Stalker Strain
     art: {fileID: 21300000, guid: 136d73d6ad5883e43aa14a0a0d8f6b5c, type: 3}
     detailArt: {fileID: 21300000, guid: e89a783c4d5e9004bb40d68282b6e4b8, type: 3}
     faction: 2

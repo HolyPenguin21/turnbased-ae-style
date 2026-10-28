@@ -193,6 +193,15 @@ namespace Game.Ai.V2
     //     Known sighting can't see a hidden army at all).
     public readonly struct StoredAircraftLaunchCost
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal StoredAircraftLaunchCost(bool __matchSave, int __RuntimeId, int __Ap, int __Energy, int __Movement)
+        {
+            RuntimeId = __RuntimeId;
+            Ap = __Ap;
+            Energy = __Energy;
+            Movement = __Movement;
+        }
+
         public readonly int RuntimeId, Ap, Energy, Movement;
         public StoredAircraftLaunchCost(int runtimeId, int ap, int energy, int movement)
         { RuntimeId = runtimeId; Ap = ap; Energy = energy; Movement = movement; }
@@ -395,6 +404,23 @@ namespace Game.Ai.V2
 
     public readonly struct RaidRecoveryMemberSnapshot
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal RaidRecoveryMemberSnapshot(bool __matchSave, int __RuntimeId, int __UnitIndex, bool __IsHero, bool __IsAviation, bool __IsGroundBattleBody, bool __CanSpareForRaid, int __ActivationApCost, global::Game.Combat.WorthIt.DefenderProfile __CurrentProfile, global::Game.Combat.WorthIt.DefenderProfile __FullHealthProfile, bool __RepairCostInitialized, bool __IsPrisoner, global::Game.Ai.V2.ResourceVector __RepairCost)
+        {
+            RuntimeId = __RuntimeId;
+            UnitIndex = __UnitIndex;
+            IsHero = __IsHero;
+            IsAviation = __IsAviation;
+            IsGroundBattleBody = __IsGroundBattleBody;
+            CanSpareForRaid = __CanSpareForRaid;
+            ActivationApCost = __ActivationApCost;
+            CurrentProfile = __CurrentProfile;
+            FullHealthProfile = __FullHealthProfile;
+            RepairCostInitialized = __RepairCostInitialized;
+            IsPrisoner = __IsPrisoner;
+            RepairCost = __RepairCost;
+        }
+
         public readonly int RuntimeId;
         public readonly int UnitIndex;
         public readonly bool IsHero;

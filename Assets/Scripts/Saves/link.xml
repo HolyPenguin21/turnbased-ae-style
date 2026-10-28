@@ -1,0 +1,42 @@
+<linker>
+  <!-- Field metadata/default constructors used by the known tactical DTO schema. -->
+  <assembly fullname="Assembly-CSharp">
+    <type fullname="Game.Saves.*" preserve="all" />
+    <type fullname="Game.Cards.EquipmentStat" preserve="all" />
+    <type fullname="Game.Cards.RewardType" preserve="all" />
+    <type fullname="Game.Cards.UnitTypeTag" preserve="all" />
+    <type fullname="Game.Economy.ResourceType" preserve="all" />
+    <type fullname="Game.Players.Faction" preserve="all" />
+    <type fullname="Game.Terrain.Biome" preserve="all" />
+    <type fullname="Game.Units.BattleRow" preserve="all" />
+
+    <type fullname="Game.Aviation.AntiAirPromptState" preserve="all" />
+    <type fullname="Game.Cards.BlueprintQuotaState" preserve="all" />
+    <type fullname="Game.Cards.CardState" preserve="all" />
+    <type fullname="Game.Cards.DeckCardEntry" preserve="all" />
+    <type fullname="Game.Cards.EquipmentStatChange" preserve="all" />
+    <type fullname="Game.Cards.ResourceCost" preserve="all" />
+    <type fullname="Game.Cards.RewardEntry" preserve="all" />
+    <type fullname="Game.Economy.ResourceYields" preserve="all" />
+    <type fullname="Game.Map.ArmyActivationState" preserve="all" />
+    <type fullname="Game.Map.DetectionNoticesState" preserve="all" />
+    <type fullname="Game.Map.DetectionState" preserve="all" />
+    <type fullname="Game.Map.HexMapLayout" preserve="all" />
+    <type fullname="Game.Map.MapLayoutCell" preserve="all" />
+    <type fullname="Game.Map.MapLayoutColor" preserve="all" />
+    <type fullname="Game.Map.MapLayoutComplex" preserve="all" />
+    <type fullname="Game.Map.PlayerEconomyState" preserve="all" />
+    <type fullname="Game.Map.StealthState" preserve="all" />
+    <type fullname="Game.Progression.SavedDeck" preserve="all" />
+    <type fullname="Game.Setup.MatchIdentityState" preserve="all" />
+    <type fullname="Game.Turns.GameTurnState" preserve="all" />
+    <type fullname="Game.Turns.PlayerTurnCount" preserve="all" />
+    <type fullname="Game.Turns.PlayerTurnMessages" preserve="all" />
+  </assembly>
+  <assembly fullname="UnityEngine.CoreModule">
+    <type fullname="UnityEngine.Vector2" preserve="all" />
+    <type fullname="UnityEngine.Vector3" preserve="all" />
+    <type fullname="UnityEngine.Quaternion" preserve="all" />
+    <type fullname="UnityEngine.Color" preserve="all" />
+  </assembly>
+</linker>

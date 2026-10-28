@@ -11,6 +11,20 @@ namespace Game.Ai.V2
     {
         internal readonly struct PatrolState
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PatrolState(bool __matchSave, global::Game.Ai.V2.ReconMode __Mode, int __PreferredMoverArmyId, global::Game.HexGrid.HexCoord __StrategicAnchor, global::Game.Ai.V2.ReconSector __StrategicSector, int __StartedTurn, int __LastProgressTurn, int __LastModeSwitchTurn, int __LastStrategicReassignmentTurn, (global::Game.HexGrid.HexCoord FromHex, global::Game.Ai.V2.ReconEscapeCause Cause, float Risk, int? ThreatArmyId, int Turn)? __Escape)
+        {
+            Mode = __Mode;
+            PreferredMoverArmyId = __PreferredMoverArmyId;
+            StrategicAnchor = __StrategicAnchor;
+            StrategicSector = __StrategicSector;
+            StartedTurn = __StartedTurn;
+            LastProgressTurn = __LastProgressTurn;
+            LastModeSwitchTurn = __LastModeSwitchTurn;
+            LastStrategicReassignmentTurn = __LastStrategicReassignmentTurn;
+            Escape = __Escape;
+        }
+
             internal readonly ReconMode Mode;
             internal readonly int PreferredMoverArmyId;
             internal readonly HexCoord StrategicAnchor;

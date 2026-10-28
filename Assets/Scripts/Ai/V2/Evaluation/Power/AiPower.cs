@@ -30,6 +30,16 @@ namespace Game.Ai.V2
         // one code path.
         public readonly struct PowerUnit
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal PowerUnit(bool __matchSave, float __BasePower, global::System.Collections.Generic.IReadOnlyList<global::Game.Cards.UnitTypeTag> __Tags, int __Range, bool __IsHero, int __CommandRating)
+        {
+            BasePower = __BasePower;
+            Tags = __Tags;
+            Range = __Range;
+            IsHero = __IsHero;
+            CommandRating = __CommandRating;
+        }
+
             public readonly float BasePower;              // stat line * ability multiplier, no composition
             public readonly IReadOnlyList<UnitTypeTag> Tags;
             public readonly int Range;

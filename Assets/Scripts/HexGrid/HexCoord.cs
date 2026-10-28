@@ -8,6 +8,9 @@ namespace Game.HexGrid
     [Serializable]
     public struct HexCoord : IEquatable<HexCoord>
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal HexCoord(bool __matchSave, int __Q, int __R) : this(__Q, __R) { }
+
         public int Q;
         public int R;
 

@@ -11,6 +11,7 @@ namespace Game.Turns
 {
     public partial class GameTurnController
     {
+        internal GameConfig SaveConfiguration => gameConfig;
         public bool CanSaveMatch(out string reason)
         {
             reason = MatchSaveEligibility.UnavailableReason(new MatchSaveConditions

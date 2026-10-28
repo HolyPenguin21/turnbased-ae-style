@@ -86,6 +86,15 @@ namespace Game.Combat
         // current Fate. Army identity is retained until the strike policy has filtered targets.
         public readonly struct DefendingAirArmy
         {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal DefendingAirArmy(bool __matchSave, int __ArmyId, global::System.Collections.Generic.IReadOnlyList<global::Game.Combat.WorthIt.DefenderProfile> __Units, global::System.Collections.Generic.IReadOnlyList<int> __CurrentFates, int __CommanderIndex)
+        {
+            ArmyId = __ArmyId;
+            Units = __Units;
+            CurrentFates = __CurrentFates;
+            CommanderIndex = __CommanderIndex;
+        }
+
             public readonly int ArmyId;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> Units;
             public readonly IReadOnlyList<int> CurrentFates;

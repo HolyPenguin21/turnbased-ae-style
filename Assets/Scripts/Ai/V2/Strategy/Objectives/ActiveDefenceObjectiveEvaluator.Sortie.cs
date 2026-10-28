@@ -12,6 +12,22 @@ namespace Game.Ai.V2
     // One immutable witness for extraction AND its same-turn intercept. Never a generic garrison actor.
     public sealed class GarrisonSortiePlan
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal GarrisonSortiePlan(bool __matchSave, int __DonorGarrisonId, int __CoverRuntimeId, int __EnemyArmyId, int __RouteCost, int? __ShellArmyId, global::Game.HexGrid.HexCoord __StrongholdHex, global::Game.HexGrid.HexCoord __EnemyHex, global::System.Collections.Generic.IReadOnlyList<int> __UnitRuntimeIds, global::Game.Ai.V2.ArmySnapshot __Detachment, float __WinChance, bool __CoversAllDefenders)
+        {
+            DonorGarrisonId = __DonorGarrisonId;
+            CoverRuntimeId = __CoverRuntimeId;
+            EnemyArmyId = __EnemyArmyId;
+            RouteCost = __RouteCost;
+            ShellArmyId = __ShellArmyId;
+            StrongholdHex = __StrongholdHex;
+            EnemyHex = __EnemyHex;
+            UnitRuntimeIds = __UnitRuntimeIds;
+            Detachment = __Detachment;
+            WinChance = __WinChance;
+            CoversAllDefenders = __CoversAllDefenders;
+        }
+
         public readonly int DonorGarrisonId, CoverRuntimeId, EnemyArmyId, RouteCost;
         public readonly int? ShellArmyId;
         public readonly HexCoord StrongholdHex, EnemyHex;

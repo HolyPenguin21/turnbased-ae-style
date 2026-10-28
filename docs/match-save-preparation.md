@@ -1,6 +1,6 @@
 # Match save preparation
 
-Preparation for settled local-human-turn saves. Save/Load buttons and file slots remain disabled. No external packages or gameplay balance are changed.
+Preparation for settled local-human-turn saves. The subsequent concrete file/slot/UI implementation is documented in [match-save-load.md](match-save-load.md); sections below describe the original preparation boundaries. No external packages or gameplay balance are changed.
 
 ## Existing owners and new boundaries
 
@@ -62,6 +62,7 @@ python Tools/save-preparation-verify/run.py --binding --base e769664eb8398eea80e
 python Tools/save-preparation-verify/hand/run.py
 python Tools/save-preparation-verify/world/run.py
 python Tools/save-preparation-verify/presentation/run.py
+python Tools/save-preparation-verify/integration/run.py
 python Tools/save-preparation-verify/ai/run.py
 python Tools/collection-verify/run.py
 python Tools/terrain-verify/run_managed.py --dotnet "$DOTNET_BIN" --nunit "$NUNIT_DLL"
@@ -74,3 +75,5 @@ Managed harnesses use explicit testing adapters outside Assets. Binding compares
 `--binding` requires an explicit `--base`, resolves it to an immutable commit before running checks, and prints that commit. The command above uses the original preparation baseline; use `--base 7e087557dd25a5821521d627430f7467e4385cf0` to verify the audit fixes. Fixture selection includes committed changes since that baseline plus staged, working-tree and untracked files; deleted fixtures are omitted. The selected fixture count is always printed, and missing NUnit fails binding when fixtures are selected.
 
 Audit-fix managed result: **134 checks passed** (61 terrain, 10 hand, 22 world, 21 collection, 8 AI, 9 core/campaign and 3 map-presentation checks), plus **7 Python verifier regressions** and separate policy/turn checks. All 923 Assets C# files parse; runtime baseline/current and both changed/new EditMode fixture files bind against the explicit `7e087557dd25a5821521d627430f7467e4385cf0` audit baseline with the documented adapters. A fresh independent review found no further actionable defect in the fixes. Native Unity tests are not included in these claims.
+
+The subsequent in-memory integration check executes 11 linked match scenarios and a full 22-owner AI aggregate roundtrip, including repeated tactical rollback and real permanent Library receipt replay. See [match-restore-integration.md](match-restore-integration.md) for commands, adapter boundaries and native-only limits. The six new native scene transaction cases bind but were not executed; full Unity scene activation, UI and renderer startup remain unverified.

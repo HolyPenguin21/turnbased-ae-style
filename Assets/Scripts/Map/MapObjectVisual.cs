@@ -6,7 +6,7 @@ namespace Game.Map
     // top. The icon itself stays plain white in its source art — SetColor tints the circle
     // underneath (e.g. to a player's colour), which is what reads as the marker's colour;
     // the white icon on top just shows through untinted.
-    public class MapObjectVisual : MonoBehaviour
+    public partial class MapObjectVisual : MonoBehaviour
     {
         [SerializeField] private SpriteRenderer innerCircle;
         [SerializeField] private SpriteRenderer objectImage;
@@ -70,6 +70,7 @@ namespace Game.Map
 
         public void SetIcon(Sprite icon)
         {
+            PersistenceIcon = icon;
             if (icon != null && layeredIconVisual != null && icon == layeredIconTrigger)
             {
                 ApplyPrefabAppearance(layeredIconVisual);

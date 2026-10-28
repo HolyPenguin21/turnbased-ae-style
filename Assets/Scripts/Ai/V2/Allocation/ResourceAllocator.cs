@@ -11,6 +11,16 @@ namespace Game.Ai.V2
 {
     public readonly struct ResourceVector
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal ResourceVector(bool __matchSave, float __Ap, float __Human, float __Energy, float __Materials, float __Tech)
+        {
+            Ap = __Ap;
+            Human = __Human;
+            Energy = __Energy;
+            Materials = __Materials;
+            Tech = __Tech;
+        }
+
         public readonly float Ap;
         public readonly float Human;
         public readonly float Energy;
@@ -97,6 +107,19 @@ namespace Game.Ai.V2
 
     public readonly struct StableMissionKey : IEquatable<StableMissionKey>, IComparable<StableMissionKey>
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal StableMissionKey(bool __matchSave, global::Game.Ai.V2.MissionKind __Kind, int __SubKind, int __TargetId, int __Q, int __R, global::Game.Ai.V2.RaidTargetKind __TargetKind, int __ActorId, int __DetailId)
+        {
+            Kind = __Kind;
+            SubKind = __SubKind;
+            TargetId = __TargetId;
+            Q = __Q;
+            R = __R;
+            TargetKind = __TargetKind;
+            ActorId = __ActorId;
+            DetailId = __DetailId;
+        }
+
         public readonly MissionKind Kind;
         public readonly int SubKind;
         public readonly int TargetId;
@@ -330,6 +353,14 @@ namespace Game.Ai.V2
 
     public readonly struct MissionCooldownInfo
     {
+        // Exact detached save reconstruction; no planning, registration or normalization.
+        internal MissionCooldownInfo(bool __matchSave, int __StartedTurn, int __UntilTurn, string __Reason)
+        {
+            StartedTurn = __StartedTurn;
+            UntilTurn = __UntilTurn;
+            Reason = __Reason;
+        }
+
         public readonly int StartedTurn;
         public readonly int UntilTurn;
         public readonly string Reason;

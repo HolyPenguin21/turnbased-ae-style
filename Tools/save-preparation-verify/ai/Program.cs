@@ -25,6 +25,35 @@ static class Program
             finally { tests.ClearOwners(); }
         }
         Console.WriteLine($"AI preparation: {cases.Length - failed}/{cases.Length} passed (managed owners; no native Unity execution)");
+        var aggregate = new AiPersistentGraphRoundTripTests();
+        try
+        {
+            aggregate.ClearOwners();
+            aggregate.AggregateCaptureResetRestoreRebindsEveryOwnerAndContinuesWithoutPlanning();
+            Console.WriteLine("PASS AggregateCaptureResetRestoreRebindsEveryOwnerAndContinuesWithoutPlanning (22 actual owners; in-memory only)");
+        }
+        catch (Exception error) { failed++; Console.WriteLine("FAIL Aggregate AI roundtrip\n" + error); }
+        finally { aggregate.ClearOwners(); }
+        try
+        {
+            aggregate.ProductionCodecRoundtrip(data => Game.Saves.MatchSaveJson.Deserialize<Game.Saves.MatchAiData>(Game.Saves.MatchSaveJson.Serialize(data)), false);
+            Console.WriteLine("PASS ProductionCodecRoundtrip (22 owners; actual MatchSaveJson transport)");
+            var codecTests = new MatchAiJsonCodecTests();
+            codecTests.AllSixObjectivesSurviveProductionJsonWithFreshObjectsAndExactRaidClock();
+            Console.WriteLine("PASS AllSixObjectivesRoundtrip (actual MatchSaveJson transport)");
+            codecTests.DefenceSnapshotDetachesInternalFieldsAndKeepsEquipmentAndSortieBehavior();
+            Console.WriteLine("PASS DefenceSnapshotDetachesInternalFieldsAndKeepsEquipmentAndSortieBehavior");
+            codecTests.ObjectiveDecoderRejectsUnknownTagAndNonfiniteNestedFact();
+            Console.WriteLine("PASS ObjectiveDecoderRejectsUnknownTagAndNonfiniteNestedFact");
+            codecTests.LateMalformedOwnerFailsBeforeStaticStateOrIdentitySequenceChanges();
+            Console.WriteLine("PASS LateMalformedOwnerFailsBeforeStaticStateOrIdentitySequenceChanges");
+            codecTests.ValidAndLateInvalidValidationPreserveIssuedIdentityHighwater();
+            Console.WriteLine("PASS ValidAndLateInvalidValidationPreserveIssuedIdentityHighwater");
+            codecTests.AbsentReconSortieTrailIsRejectedBeforeOwnersOrIdentitiesChange();
+            Console.WriteLine("PASS AbsentReconSortieTrailIsRejectedBeforeOwnersOrIdentitiesChange");
+        }
+        catch (Exception error) { failed++; Console.WriteLine("FAIL Production AI JSON codec\n" + error); }
+        finally { aggregate.ClearOwners(); }
         var core = new MatchRestorePreparationTests();
         int corePassed = 0;
         var coreCases = new (string Name, Action Run)[]
