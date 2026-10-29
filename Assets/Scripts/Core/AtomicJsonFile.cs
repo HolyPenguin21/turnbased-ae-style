@@ -12,7 +12,8 @@ namespace Game.Core
 
         // Null when neither the file nor its backup exists. A future schema (NotSupportedException)
         // is never replaced by an older client's backup.
-        public static T Load<T>(string path, Func<string, T> read, string recoveredNotice, out string notice) where T : class
+        public static T Load<T>(string path, Func<string, T> read, string recoveredNotice, out string notice,
+            bool quarantineCorruptFile = true) where T : class
         {
             notice = null;
             if (!Exists(path)) return null;
@@ -22,7 +23,7 @@ namespace Game.Core
             {
                 var restored = read(path + ".bak");
                 notice = recoveredNotice + ex.Message;
-                if (File.Exists(path)) File.Move(path, path + ".corrupt-" + Guid.NewGuid().ToString("N"));
+                if (quarantineCorruptFile && File.Exists(path)) File.Move(path, path + ".corrupt-" + Guid.NewGuid().ToString("N"));
                 // Keep the known-good backup during recovery's next atomic write.
                 return restored;
             }

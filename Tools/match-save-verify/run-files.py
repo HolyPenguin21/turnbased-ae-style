@@ -10,19 +10,22 @@ nunit = Path(os.environ['NUGET_PACKAGES'])/'nunit/3.14.0/lib/netstandard2.0/nuni
 work = Path(os.environ.get('SAVE_FILE_VERIFY_WORK', tempfile.mkdtemp(prefix='match-file-check-')))
 work.mkdir(parents=True, exist_ok=True)
 (work/'Program.cs').write_text('''using System; using System.Linq; using System.Reflection; using NUnit.Framework;
-class Program { static int Main() { Game.UI.CardHandUI.VerifyCaptureGate(); int checks=0,failed=0; var type=typeof(Game.Tests.Core.MatchSaveFileTests);
+class Program { static int Main() { Game.UI.CardHandUI.VerifyCaptureGate(); int checks=0,failed=0,skipped=0; var types=new[]{typeof(Game.Tests.Core.MatchSaveFileTests),typeof(Game.Tests.Core.MatchSaveContentFingerprintTests)};
+foreach(var type in types) {
 foreach(var method in type.GetMethods()) { var cases=method.GetCustomAttributes<TestCaseAttribute>().ToArray();
 if(!method.IsDefined(typeof(TestAttribute)) && cases.Length==0) continue;
 foreach(var args in cases.Length==0 ? new[]{Array.Empty<object>()} : cases.Select(x=>x.Arguments)) {
  var fixture=Activator.CreateInstance(type); type.GetMethod("SetUp").Invoke(fixture,null);
  try{method.Invoke(fixture,args);checks++; Console.WriteLine("PASS "+method.Name);}
- catch(Exception ex){failed++;Console.WriteLine("FAIL "+method.Name+": "+(ex.InnerException??ex));}
+ catch(Exception ex){if((ex.InnerException??ex) is IgnoreException){skipped++;Console.WriteLine("SKIP "+method.Name);}else{failed++;Console.WriteLine("FAIL "+method.Name+": "+(ex.InnerException??ex));}}
  finally{type.GetMethod("TearDown").Invoke(fixture,null);}
-}} Console.WriteLine($"{checks} passed, {failed} failed");return failed==0?0:1; }}''')
+}}} Console.WriteLine($"{checks} passed, {failed} failed, {skipped} skipped");return failed==0?0:1; }}''')
 sources = [repo/p for p in [
  'Assets/Scripts/Core/AtomicJsonFile.cs', 'Assets/Scripts/Saves/MatchSaveStore.cs',
  'Assets/Scripts/Saves/MatchSaveJson.cs', 'Assets/Editor/Tests/Core/MatchSaveFileTests.cs',
  'Assets/Scripts/UI/Cards/CardHandUI.Persistence.cs','Tools/match-save-verify/CardOperationCheck.cs']]
+sources += [repo/'Assets/Editor/Tests/Core/MatchSaveContentFingerprintTests.cs']
+sources += list((repo/'Assets/Editor/Tools').glob('MatchSaveContentFingerprint.cs'))
 out = work/'FileCheck.dll'
 args=['-nologo','-target:exe','-langversion:9','-define:UNITY_INCLUDE_TESTS','-out:'+str(out)]
 args += ['-r:'+str(p) for p in refs.glob('*.dll')]+['-r:'+str(nunit)]

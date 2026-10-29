@@ -4,7 +4,7 @@ Implementation targets Unity **6000.5.4f1** and remote `master` **06c63685d3a54c
 
 ## Player flow and eligibility
 
-Game menu: Save and Load. Main menu: Load Match. The slot dialog initially shows six slots, pages through existing files and offers New slot; the format has no six-slot limit. Existing saves require an explicit Overwrite action. Cancel/Escape closes the dialog without preparing a new match. Failed saves show an error instead of a success message. A recovered backup is identified in the dialog and after a successful scene restoration.
+Game menu: Save and Load. Main menu: Continue opens saved matches when any exist, otherwise the readable campaign, otherwise is disabled. The authored slot window shows six initial positions in save mode, lists occupied positions in load mode, pages through files and offers New slot in save mode; the format has no six-slot limit. Existing saves require an explicit Overwrite action. Cancel/Escape closes the dialog without preparing a new match. Failed saves show an error instead of a success message. A recovered backup is identified in the dialog and after a successful scene restoration.
 
 Capture rechecks `GameTurnController.CanSaveMatch` immediately before capturing and again before returning the bytes for writing. Only a living local human's confirmed, settled turn qualifies: no combat/contact resolution, movement, production transaction, popup/decision/report, attachment, card drag, active tactical challenge or hand-flip transition. A queued future delayed battle is legal and persisted. The save dialog removes only its own overlay block during synchronous capture; all other checks still apply.
 
@@ -29,7 +29,7 @@ The transport is `MatchSaveJson`, a strict field-only JSON reader/writer over kn
 
 This transport replaces the initially considered `JsonUtility` wire path: the complete AI tree exceeds 15 nested levels, and v1 must preserve explicit nulls and depth without depending on Unity inline serializer behavior. No JSON package dependency was added. Inputs reject duplicate/unknown/missing fields, invalid UTF-8/JSON, nonfinite or out-of-range numbers, unknown enum values, excessive nesting/complexity, unsupported versions, invalid checksums and files over **64 MiB**. Owner codecs then validate authored keys, unique IDs, references, historical identity manifests and highwater limits, human turn position, map membership and memory coverage before staging. They never substitute a similar/random definition for a missing key.
 
-`MatchSaveAssetManifestBuilder` regenerates `Assets/Resources/MatchSaveAssetManifest.asset` automatically after content imports, before play and before build. It records GUID/local-file keys and direct references for sprites/materials/marker prefabs/events. Its fingerprint incorporates imported asset dependency hashes and Unity version; changed content is deliberately incompatible in schema 1. There is no migration promise across content edits. The committed manifest is a source-cache seed; import the complete project to generate the authoritative manifest before play/build.
+`MatchSaveAssetManifestBuilder` regenerates `Assets/Resources/MatchSaveAssetManifest.asset` automatically after content imports, before play and before build. It records GUID/local-file keys and direct references for sprites/materials/marker prefabs/events. Its fingerprint incorporates direct gameplay source/importer hashes and Unity version, while excluding declared UI presentation assets and generated registries; changed gameplay content is deliberately incompatible in schema 1. There is no migration promise across content edits. The committed manifest is a source-cache seed; import the complete project to generate the authoritative manifest before play/build.
 
 ## Capture and restoration
 
@@ -84,3 +84,35 @@ The managed full-file runner keeps the production transport, capture/decode/vali
 Final evidence and remaining native checks are recorded in the implementation plan execution ledger. Required final editor checks: complete EditMode suite, actual Game/MainMenu activation and slot dialog availability/cancel/errors, captured/destroyed Last Seen renderers and map-border fog extent, normal new game, Library receipt replay including no eligible card/profile backup failures, campaign operation replacement, and a stripped standalone build. Native/UI completion must not be inferred from managed adapter results.
 
 The subsequent bottom-up audit, confirmed defects, fixes and fresh results are recorded in `docs/match-save-load-audit.md`. That ledger supersedes the initial verification counts.
+
+## Authored Save/Load UI (2026-10-29)
+
+Edit `Assets/Prefabs/UI/Panels/MatchSaveSlots.prefab`. Its instances are under the MainMenu
+scene Canvas and GameMenuBlockingRoot in Game; both inherit the scene's 1280x720 scale.
+`Window` contains six reusable SlotRow buttons, status and pagination/action controls;
+`DeleteConfirmation` is an authored sibling with a confirmation panel. Code sets labels,
+visibility and availability, and preserves the authored styling/layout. Closing hides the
+instance instead of destroying it.
+
+MainMenu Continue has strict priority: any match files (including backup-only or corrupt)
+open the load list, otherwise a readable campaign opens Campaign, otherwise Continue is
+disabled. Multiplayer keeps its existing scene configuration. There is no campaign entry
+inside the load list. Game uses the same prefab for both modes and returns to its menu on
+cancel. MainMenu hides its underlying menu while the window is open to isolate keyboard input.
+
+Delete requires confirmation and removes the selected slot's `.tmp`, `.bak`, then primary
+file. An error is displayed and disk contents are re-read; if that read also fails, the current positions remain visible; other slot IDs are not renumbered.
+The six initial save positions become empty on deletion; a deleted extra position disappears. Other new unsaved positions remain available until the window is closed and reopened. The load
+list contains occupied positions only. Rendering metadata may read a usable backup without
+quarantining the primary; actual loading retains normal corruption quarantine behavior.
+
+Compatibility fingerprints now hash direct gameplay source files and importer metadata,
+excluding scenes, declared presentation directories, generated asset registries and known
+HUD-only shaders. World-marker dependencies stay protected even within UI directories.
+Direct hashing prevents GameConfig's references to UI prefabs from indirectly hashing their
+visual edits. Existing strict schema/content checks remain in force. This changes the
+fingerprint algorithm once: earlier saves are retained on disk but are not automatically
+compatible with this version. Later visual edits within the designated UI directories no
+longer invalidate newly created saves. No blanket legacy bypass/migration was added.
+
+Verification commands and native checks: `Tools/save-ui-verify/README.md`.

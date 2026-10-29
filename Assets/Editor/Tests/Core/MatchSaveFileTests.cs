@@ -96,6 +96,90 @@ namespace Game.Tests.Core
             Assert.Throws<UnauthorizedAccessException>(() => store.Save(1, Encoding.UTF8.GetBytes("valid-next")));
             Assert.That(store.Load(1, Read, out _), Is.EqualTo("valid-first"));
         }
+        private static void Delete(MatchSaveStore store, int slot)
+        {
+            var method = typeof(MatchSaveStore).GetMethod("Delete", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null, "MatchSaveStore must support deleting a slot, including its backup.");
+            try { method.Invoke(store, new object[] { slot }); }
+            catch (System.Reflection.TargetInvocationException ex) { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw(); }
+        }
+        [Test] public void InspectBackupDoesNotRenamePrimaryBeforeDeleteConfirmation()
+        {
+            var store = new MatchSaveStore(directory);
+            store.Save(1, Encoding.UTF8.GetBytes("valid-backup"));
+            store.Save(1, Encoding.UTF8.GetBytes("broken"));
+            var method = Array.Find(typeof(MatchSaveStore).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic),
+                m => m.Name == "Load" && m.GetParameters().Length == 4);
+            Assert.That(method, Is.Not.Null, "Listing slots must support a read without quarantining the original file.");
+            var arguments = new object[] { 1, (Func<byte[], string>)Read, null, false };
+            Assert.That(method.MakeGenericMethod(typeof(string)).Invoke(store, arguments), Is.EqualTo("valid-backup"));
+            Assert.That(arguments[2], Is.Not.Null);
+            Assert.That(File.ReadAllText(Path.Combine(directory, "slot-1.json")), Is.EqualTo("broken"));
+            Assert.That(Directory.GetFiles(directory, "*.corrupt-*").Length, Is.Zero);
+        }
+        [Test] public void DeleteRemovesPrimaryBackupAndTemporaryWithoutTouchingOtherSlots()
+        {
+            var store = new MatchSaveStore(directory);
+            store.Save(7, Encoding.UTF8.GetBytes("valid-first"));
+            store.Save(7, Encoding.UTF8.GetBytes("future"));
+            store.Save(8, Encoding.UTF8.GetBytes("valid-other"));
+            File.WriteAllText(Path.Combine(directory, "slot-7.json.tmp"), "unfinished");
+            Delete(store, 7);
+            Assert.That(store.Exists(7), Is.False);
+            Assert.That(File.Exists(Path.Combine(directory, "slot-7.json.tmp")), Is.False);
+            CollectionAssert.DoesNotContain(store.Slots(), 7);
+            Assert.That(store.Load(7, Read, out _), Is.Null);
+            Assert.That(store.Load(8, Read, out _), Is.EqualTo("valid-other"));
+        }
+        [Test] public void DeleteBackupOnlySlotAndRecreateDoesNotRecoverDeletedProgress()
+        {
+            var store = new MatchSaveStore(directory);
+            store.Save(2, Encoding.UTF8.GetBytes("valid-old"));
+            store.Save(2, Encoding.UTF8.GetBytes("valid-new"));
+            File.Delete(Path.Combine(directory, "slot-2.json"));
+            Delete(store, 2);
+            Assert.That(store.Exists(2), Is.False);
+            store.Save(2, Encoding.UTF8.GetBytes("broken"));
+            Assert.Throws<FileNotFoundException>(() => store.Load(2, Read, out _));
+        }
+        [Test] public void DeleteMissingSlotIsIdempotentAndRejectsNegativeNumber()
+        {
+            var store = new MatchSaveStore(directory);
+            Delete(store, 4);
+            Assert.That(Directory.Exists(directory), Is.False);
+            Assert.Throws<ArgumentOutOfRangeException>(() => Delete(store, -1));
+        }
+        [Test] public void DeleteFailureKeepsPrimaryWhenBackupCannotBeRemoved()
+        {
+            var store = new MatchSaveStore(directory);
+            store.Save(3, Encoding.UTF8.GetBytes("valid-current"));
+            Directory.CreateDirectory(Path.Combine(directory, "slot-3.json.bak"));
+            Assert.Throws<UnauthorizedAccessException>(() => Delete(store, 3));
+            Assert.That(store.Load(3, Read, out _), Is.EqualTo("valid-current"));
+        }
+        [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+        private static extern int chmod(string path, int mode);
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DeniedDirectoryIsNotReportedAsEmptyOrSuccessfullyDeleted(bool deleting)
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Unix) Assert.Ignore("Unix permission fixture.");
+            string parent = Path.Combine(directory, "access");
+            string child = Path.Combine(parent, "matches");
+            var store = new MatchSaveStore(child);
+            store.Save(1, Encoding.UTF8.GetBytes("valid-protected"));
+            Assert.That(chmod(parent, 0), Is.Zero);
+            try
+            {
+                bool denied = false;
+                try { Directory.GetFiles(child); } catch (UnauthorizedAccessException) { denied = true; }
+                if (!denied) Assert.Ignore("This process bypasses Unix permission checks.");
+                if (deleting) Assert.Throws<UnauthorizedAccessException>(() => Delete(store, 1));
+                else Assert.Throws<UnauthorizedAccessException>(() => store.Slots());
+            }
+            finally { chmod(parent, 448); } // 0700: restore access even when an assertion fails.
+            Assert.That(store.Load(1, Read, out _), Is.EqualTo("valid-protected"));
+        }
         [Test] public void SlotNumbersAreNotLimitedToTheInitialUiPage()
         {
             var store = new MatchSaveStore(directory);
