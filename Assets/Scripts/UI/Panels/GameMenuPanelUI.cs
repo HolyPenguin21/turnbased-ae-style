@@ -16,6 +16,7 @@ namespace Game.UI
         [SerializeField] private GameObject blockingRoot;
         [SerializeField] private GameObject menuPanel;
         [SerializeField] private GameSettingsPanelUI optionsPanel;
+        [SerializeField] private MatchSaveSlotsUI saveSlots;
         [SerializeField] private BattleScreenUI battleScreen;
         [SerializeField] private Button gearButton;
         [SerializeField] private Button optionsButton;
@@ -64,6 +65,7 @@ namespace Game.UI
             if (continueButton != null) continueButton.onClick.AddListener(ContinueGame);
             if (exitButton != null) exitButton.onClick.AddListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed += OnOptionsClosed;
+            if (saveSlots != null) saveSlots.Closed += OnSlotsClosed;
             if (battleScreen != null) battleScreen.VisibilityChanged += RefreshBattleAvailability;
             RefreshBattleAvailability();
         }
@@ -71,7 +73,9 @@ namespace Game.UI
         {
             if (saveButton != null) saveButton.interactable = turnController != null && turnController.CanSaveMatch(out _);
             if (loadButton != null) loadButton.interactable = turnController != null && turnController.SaveConfiguration != null;
-            if (!MenuAvailable && IsShowing) ContinueGame();
+            bool ownsSlots = saveSlots != null && saveSlots.IsShowing;
+            bool humanTurn = turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
+            if (IsShowing && (BattleActive || !humanTurn || (!MenuAvailable && !ownsSlots))) ContinueGame();
             if (gearButton != null)
             {
                 gearButton.gameObject.SetActive(!IsShowing);
@@ -96,8 +100,20 @@ namespace Game.UI
             optionsButton?.Select();
             RefreshBattleAvailability();
         }
-        private void OpenSave() => MatchSaveSlotsUI.Show(turnController.SaveConfiguration, turnController, true);
-        private void OpenLoad() => MatchSaveSlotsUI.Show(turnController.SaveConfiguration, turnController, false);
+        private void OpenSave() => OpenSlots(true);
+        private void OpenLoad() => OpenSlots(false);
+        private void OpenSlots(bool saving)
+        {
+            if (!IsShowing || saveSlots == null || turnController == null) return;
+            if (saveSlots.Show(turnController.SaveConfiguration, turnController, saving)) menuPanel.SetActive(false);
+        }
+        private void OnSlotsClosed()
+        {
+            if (!isActiveAndEnabled || !IsShowing) return;
+            menuPanel.SetActive(true);
+            RefreshBattleAvailability();
+            if (IsShowing) loadButton?.Select();
+        }
         public void OpenOptions()
         {
             if (!IsShowing || optionsPanel == null) return;
@@ -115,6 +131,7 @@ namespace Game.UI
             if (!IsShowing) return;
             blockedThroughFrame = Time.frameCount;
             IsShowing = false;
+            if (saveSlots != null) saveSlots.Close();
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             if (blockingRoot != null) blockingRoot.SetActive(false);
             RestoreGameplayCanvases();
@@ -185,6 +202,7 @@ namespace Game.UI
             if (continueButton != null) continueButton.onClick.RemoveListener(ContinueGame);
             if (exitButton != null) exitButton.onClick.RemoveListener(ExitMatch);
             if (optionsPanel != null) optionsPanel.Closed -= OnOptionsClosed;
+            if (saveSlots != null) saveSlots.Closed -= OnSlotsClosed;
             if (battleScreen != null) battleScreen.VisibilityChanged -= RefreshBattleAvailability;
             if (turnController != null) turnController.TurnStateChanged -= RefreshBattleAvailability;
             if (instance == this) instance = null;

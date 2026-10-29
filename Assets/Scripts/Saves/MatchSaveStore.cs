@@ -24,31 +24,49 @@ namespace Game.Saves
         }
         internal int[] Slots()
         {
-            if (!Directory.Exists(directory)) return Array.Empty<int>();
             var result = new HashSet<int>();
-            foreach (string file in Directory.EnumerateFiles(directory, "slot-*.json*"))
+            try
             {
-                string name = Path.GetFileName(file);
-                string suffix = name.EndsWith(".json.bak", StringComparison.Ordinal) ? ".json.bak" : ".json";
-                if (!name.EndsWith(suffix, StringComparison.Ordinal)) continue;
-                string number = name.Substring(5, name.Length - 5 - suffix.Length);
-                if (int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out int id)
-                    && id >= 0 && number == id.ToString(CultureInfo.InvariantCulture)) result.Add(id);
+                foreach (string file in Directory.EnumerateFiles(directory, "slot-*.json*"))
+                {
+                    string name = Path.GetFileName(file);
+                    string suffix = name.EndsWith(".json.bak", StringComparison.Ordinal) ? ".json.bak" : ".json";
+                    if (!name.EndsWith(suffix, StringComparison.Ordinal)) continue;
+                    string number = name.Substring(5, name.Length - 5 - suffix.Length);
+                    if (int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out int id)
+                        && id >= 0 && number == id.ToString(CultureInfo.InvariantCulture)) result.Add(id);
+                }
             }
+            catch (DirectoryNotFoundException) { return Array.Empty<int>(); }
             return result.OrderBy(x => x).ToArray();
         }
         internal bool Exists(int slot) => AtomicJsonFile.Exists(PathFor(slot));
+        internal void Delete(int slot)
+        {
+            string path = PathFor(slot);
+            // Directory.Exists also returns false on access errors. Perform the operation
+            // and tolerate only an actually missing directory; all other failures reach UI.
+            try
+            {
+                // Stop on failure before removing the primary. Leaving a backup behind
+                // would make a deleted slot reappear through normal recovery.
+                File.Delete(path + ".tmp");
+                File.Delete(path + ".bak");
+                File.Delete(path);
+            }
+            catch (DirectoryNotFoundException) { /* The slot's containing directory is already gone. */ }
+        }
         internal void Save(int slot, byte[] bytes)
         {
             if (bytes == null || bytes.Length == 0 || bytes.Length > MaximumFileBytes)
                 throw new ArgumentException("The saved match file has an invalid size.");
             AtomicJsonFile.Save(PathFor(slot), bytes);
         }
-        internal T Load<T>(int slot, Func<byte[], T> decode, out string notice) where T : class
+        internal T Load<T>(int slot, Func<byte[], T> decode, out string notice, bool quarantineCorruptFile = true) where T : class
         {
             if (decode == null) throw new ArgumentNullException(nameof(decode));
             return AtomicJsonFile.Load(PathFor(slot), path => decode(ReadBounded(path)),
-                "Recovered the previous save from backup. The latest file could not be loaded: ", out notice);
+                "Recovered the previous save from backup. The latest file could not be loaded: ", out notice, quarantineCorruptFile);
         }
         private static byte[] ReadBounded(string path)
         {
