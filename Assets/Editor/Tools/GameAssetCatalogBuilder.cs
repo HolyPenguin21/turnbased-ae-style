@@ -64,8 +64,7 @@ public static class GameAssetCatalogBuilder
         foreach (var (file, key) in SingleFiles) AddEntry(entries, key, file);
 
         entries.Sort((a, b) => string.CompareOrdinal(a.key, b.key));
-        catalog.Entries.Clear();
-        catalog.Entries.AddRange(entries);
+        catalog.ReplaceEntries(entries);
         EditorUtility.SetDirty(catalog);
         AssetDatabase.SaveAssets();
         Debug.Log($"GameAssetCatalog: {entries.Count} entries.");
