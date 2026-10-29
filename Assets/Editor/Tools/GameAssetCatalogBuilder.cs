@@ -34,7 +34,7 @@ public static class GameAssetCatalogBuilder
 
     private static readonly (string File, string Key)[] SingleFiles =
     {
-        ("Assets/Textures/Effects/Overlay.png", "Effects/Overlay"),
+        ("Assets/Textures/Game/Effects/Overlay.png", "Effects/Overlay"),
         ("Assets/Shaders/ScreenWear.shader", "Effects/ScreenWear"),
     };
 
