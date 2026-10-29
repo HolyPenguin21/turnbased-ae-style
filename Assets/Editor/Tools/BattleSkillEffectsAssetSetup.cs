@@ -61,6 +61,7 @@ public sealed class BattleSkillEffectsAssetSetup : AssetPostprocessor
         {
             var catalog = AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(GameAssetCatalogBuilder.CatalogPath);
             if (catalog == null) return;
+            var entries = catalog.Entries.ToList();
             bool changed = false;
             foreach (string path in Paths)
             {
@@ -72,14 +73,14 @@ public sealed class BattleSkillEffectsAssetSetup : AssetPostprocessor
                     : "UI/Effects/" + System.IO.Path.ChangeExtension(path.Substring("Assets/Textures/UI/Effects/".Length),null);
                 var assets = new[] { asset }.Concat(AssetDatabase.LoadAllAssetRepresentationsAtPath(path)
                     .OfType<Sprite>().Cast<Object>()).ToArray();
-                int index = catalog.Entries.FindIndex(e => e.key == key);
-                if (index >= 0 && catalog.Entries[index].assets != null
-                    && catalog.Entries[index].assets.SequenceEqual(assets)) continue;
+                int index = entries.FindIndex(e => e.key == key);
+                if (index >= 0 && entries[index].assets != null
+                    && entries[index].assets.SequenceEqual(assets)) continue;
                 var entry = new GameAssetCatalog.Entry { key = key, assets = assets };
-                if (index >= 0) catalog.Entries[index] = entry; else catalog.Entries.Add(entry);
+                if (index >= 0) entries[index] = entry; else entries.Add(entry);
                 changed = true;
             }
-            if (changed) { EditorUtility.SetDirty(catalog); AssetDatabase.SaveAssets(); }
+            if (changed) { catalog.ReplaceEntries(entries); EditorUtility.SetDirty(catalog); AssetDatabase.SaveAssets(); }
         }
         finally { _registering = false; }
     }
