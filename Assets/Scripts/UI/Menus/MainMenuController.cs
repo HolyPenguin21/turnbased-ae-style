@@ -1,4 +1,6 @@
 using Game.Core;
+using Game.Saves;
+using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -27,22 +29,26 @@ namespace Game.UI
         [SerializeField] private TMP_Text campaignOverwriteFaction;
         [SerializeField] private Button campaignOverwriteReplaceButton;
         [SerializeField] private Button campaignOverwriteCancelButton;
-        private Button continueCampaignButton;
+        [SerializeField] private Button continueCampaignButton;
+        [SerializeField] private MatchSaveSlotsUI saveSlots;
+        private MatchSaveStore matchStore;
         private GameObject campaignPreviousSelection;
         private Game.Players.Faction campaignPendingFaction;
         private void Awake()
         {
             Game.Core.GameSession.EndRewardEligibility();
             GameSession.ClearMapConditions();
-            foreach (var button in GetComponentsInChildren<Button>(true))
-                if (button.gameObject.name == "Continue Campaign") continueCampaignButton = button;
-            if (continueCampaignButton == null && mainMenuPanel != null)
-                foreach (var button in mainMenuPanel.GetComponentsInChildren<Button>(true))
-                    if (button.gameObject.name == "Continue Campaign") continueCampaignButton = button;
-            bool canContinue = Game.Campaign.CampaignMatchBridge.Load(out _);
-            if (continueCampaignButton != null) continueCampaignButton.interactable = canContinue;
+            matchStore = new MatchSaveStore(Path.Combine(Application.persistentDataPath, "Matches"));
+            // Retain campaign initialization for pending reward acknowledgements, independently
+            // of the first button's routing priority.
+            Game.Campaign.CampaignMatchBridge.Load(out _);
+            RefreshContinue();
             BindCampaignButtons();
-            AddMatchLoadButton();
+            if (saveSlots != null)
+            {
+                saveSlots.Closed += OnSlotsClosed;
+                saveSlots.SlotsChanged += RefreshContinue;
+            }
             if (gameConfig == null) return;
             if (collectionScreens != null) collectionScreens.Configure(gameConfig);
             else Debug.LogError("MainMenuController: CollectionWindow is not assigned. Run Tools/UI/Build Collection Window.", this);
@@ -58,22 +64,45 @@ namespace Game.UI
         {
             if (collectionScreens != null) collectionScreens.Show(mainMenuPanel);
         }
-        private void AddMatchLoadButton()
+        // 0 = unavailable, 1 = campaign, 2 = match list. Match files have strict priority.
+        internal static int ContinueAction(bool hasMatches, bool hasCampaign) => hasMatches ? 2 : hasCampaign ? 1 : 0;
+        private bool HasSavedMatches()
         {
-            if (settingsButton == null || settingsButton.transform.parent.Find("Load Match") != null) return;
-            var button = Instantiate(settingsButton, settingsButton.transform.parent);
-            button.name = "Load Match";
-            button.onClick = new Button.ButtonClickedEvent();
-            button.onClick.AddListener(OnLoadMatchClicked);
-            var rect = button.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(rect.anchorMin.x, .64033f);
-            rect.anchorMax = new Vector2(rect.anchorMax.x, .74866f);
-            rect.anchoredPosition = Vector2.zero; rect.sizeDelta = Vector2.zero;
-            var label = button.GetComponentInChildren<TMP_Text>();
-            if (label != null) label.text = "Load Match";
-            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
+            try { return matchStore != null && matchStore.Slots().Length > 0; }
+            catch (System.Exception ex)
+            {
+                // Keep the list reachable to display a storage error instead of silently
+                // routing into a campaign when the save directory cannot be inspected.
+                Debug.LogWarning(ex); return true;
+            }
         }
-        public void OnLoadMatchClicked() => MatchSaveSlotsUI.Show(gameConfig, null, false);
+        private void RefreshContinue()
+        {
+            if (!isActiveAndEnabled || continueCampaignButton == null) return;
+            bool matches = HasSavedMatches();
+            bool campaign = !matches && Game.Campaign.CampaignMatchBridge.Load(out _);
+            continueCampaignButton.interactable = ContinueAction(matches, campaign) != 0;
+        }
+        private void OnApplicationFocus(bool focused) { if (focused) RefreshContinue(); }
+        public void OnContinueClicked()
+        {
+            if (UIFocusUtility.HasOverlay || (mainMenuPanel != null && !mainMenuPanel.activeSelf)) return;
+            if (HasSavedMatches()) { OnLoadMatchClicked(); return; }
+            OnContinueCampaignClicked();
+        }
+        public void OnLoadMatchClicked()
+        {
+            if (saveSlots != null && saveSlots.Show(gameConfig, null, false) && mainMenuPanel != null)
+                mainMenuPanel.SetActive(false); // Exclude background buttons from keyboard navigation too.
+        }
+        private void OnSlotsClosed()
+        {
+            if (!isActiveAndEnabled) return;
+            if (mainMenuPanel != null) mainMenuPanel.SetActive(true);
+            RefreshContinue();
+            if (continueCampaignButton != null && continueCampaignButton.IsInteractable()) continueCampaignButton.Select();
+            else settingsButton?.Select();
+        }
         public void OpenDeckBuilderFromSetup(System.Action onClosed, Game.Players.Faction? faction = null, string deckId = null)
         {
             if (collectionScreens == null || gameSetupPanel == null || UIFocusUtility.HasOverlay) return;
@@ -189,7 +218,15 @@ namespace Game.UI
             if (!Game.Campaign.CampaignMatchBridge.Load(out string error)) { CollectionScreensUI.ShowMessage(transform, error ?? "No saved campaign."); return; }
             UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.Campaign);
         }
-        private void OnDestroy() { CloseCampaignSetup(); }
+        private void OnDestroy()
+        {
+            if (saveSlots != null)
+            {
+                saveSlots.Closed -= OnSlotsClosed;
+                saveSlots.SlotsChanged -= RefreshContinue;
+            }
+            CloseCampaignSetup();
+        }
 
         public void OnNewGameClicked()
         {
@@ -211,6 +248,7 @@ namespace Game.UI
         {
             if (settingsPanel != null) settingsPanel.SetActive(false);
             if (mainMenuPanel != null) mainMenuPanel.SetActive(true);
+            RefreshContinue();
             if (settingsButton != null) settingsButton.Select();
         }
 

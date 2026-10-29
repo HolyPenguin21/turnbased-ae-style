@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using Game.Cards;
+using Game.EditorTools;
 using Game.Map;
 using Game.Saves;
 using UnityEditor;
@@ -60,6 +59,7 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
             var materials = new SortedDictionary<string, Material>(StringComparer.Ordinal);
             var eventCatalogs = new List<EventCatalog>();
             var prefabs = new SortedDictionary<string, MapObjectVisual>(StringComparer.Ordinal);
+            var requiredWorldDependencies = new HashSet<string>(StringComparer.Ordinal);
             var content = AssetDatabase.GetAllAssetPaths()
                 .Where(p => p.StartsWith("Assets/", StringComparison.Ordinal) && !AssetDatabase.IsValidFolder(p)
                     && p != Output && !p.StartsWith("Assets/Editor/", StringComparison.Ordinal)
@@ -76,7 +76,13 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
                     if (asset is EventCatalog events && !eventCatalogs.Contains(events)) eventCatalogs.Add(events);
                     if (asset is GameObject prefab)
                     {
-                        foreach (var marker in prefab.GetComponentsInChildren<MapObjectVisual>(true)) prefabs[Key(marker)] = marker;
+                        var markers = prefab.GetComponentsInChildren<MapObjectVisual>(true);
+                        foreach (var marker in markers) prefabs[Key(marker)] = marker;
+                        // A sprite/material shared with world markers remains gameplay content,
+                        // even when its source happens to live in a presentation directory.
+                        if (markers.Length > 0)
+                            foreach (string dependency in AssetDatabase.GetDependencies(path, true))
+                                requiredWorldDependencies.Add(dependency);
                         foreach (var renderer in prefab.GetComponentsInChildren<SpriteRenderer>(true))
                         {
                             if (renderer.sprite != null) sprites[Key(renderer.sprite)] = renderer.sprite;
@@ -98,13 +104,8 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
             manifest.Materials = materials.Select(p => new MatchSaveMaterialAsset { Key = p.Key, Asset = p.Value }).ToList();
             manifest.EventCatalogs = eventCatalogs;
             manifest.Prefabs = prefabs.Select(p => new MatchSavePrefabAsset { Key = p.Key, Asset = p.Value }).ToList();
-            // Unity dependency hashes include imported art/material/shader dependencies and
-            // serialized authoring changes. GUID ordering makes a mere rename immaterial.
-            var identities = content.Select(p => AssetDatabase.AssetPathToGUID(p) + ":" + AssetDatabase.GetAssetDependencyHash(p))
-                .OrderBy(s => s, StringComparer.Ordinal);
-            string input = Application.unityVersion + "\n" + string.Join("\n", identities);
-            using (var sha = SHA256.Create())
-                manifest.ContentFingerprint = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(input))).Replace("-", "").ToLowerInvariant();
+            manifest.ContentFingerprint = MatchSaveContentFingerprint.Compute(Directory.GetCurrentDirectory(), Application.unityVersion,
+                content.Select(p => new KeyValuePair<string, string>(AssetDatabase.AssetPathToGUID(p), p)), requiredWorldDependencies);
             EditorUtility.SetDirty(manifest);
             AssetDatabase.SaveAssets();
         }

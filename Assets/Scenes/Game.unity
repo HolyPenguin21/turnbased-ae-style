@@ -17222,6 +17222,7 @@ MonoBehaviour:
   continueButton: {fileID: 1960000054}
   exitButton: {fileID: 1960000074}
   exitButtonText: {fileID: 1960000078}
+  saveSlots: {fileID: 2101000007}
 --- !u!1 &1960000006
 GameObject:
   m_ObjectHideFlags: 0
@@ -17372,6 +17373,7 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 2101000001}
   - {fileID: 1960000016}
   - {fileID: 1950000001}
   m_Father: {fileID: 1960000001}
@@ -39339,6 +39341,39 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3758356284495653695}
   m_CullTransparentMesh: 1
+--- !u!224 &2101000001 stripped
+RectTransform:
+  m_CorrespondingSourceObject: {fileID: 2100000001, guid: 7a879ba362e449b18fd92c44e337f229, type: 3}
+  m_PrefabInstance: {fileID: 2101000999}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2101000007 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2100000006, guid: 7a879ba362e449b18fd92c44e337f229, type: 3}
+  m_PrefabInstance: {fileID: 2101000999}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 815997d9d43d4a83807d7815f13d07dd, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.MatchSaveSlotsUI
+--- !u!1001 &2101000999
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 1960000012}
+    m_Modifications:
+    - target: {fileID: 2100000000, guid: 7a879ba362e449b18fd92c44e337f229, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 7a879ba362e449b18fd92c44e337f229, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
