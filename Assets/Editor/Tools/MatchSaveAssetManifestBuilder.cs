@@ -33,7 +33,9 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
     private static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
     {
         if (building) return;
-        if (imported.Concat(deleted).Concat(moved).Concat(movedFrom).Any(p => p != Output && p != Output + ".meta")) Queue();
+        // Editing UI/presentation prefabs or scenes cannot change save content; play/build still rebuild.
+        if (imported.Concat(deleted).Concat(moved).Concat(movedFrom).Any(p => p != Output && p != Output + ".meta"
+            && !MatchSaveContentFingerprint.IsPresentationAuthoring(p))) Queue();
     }
     private static void Queue()
     {
@@ -100,12 +102,22 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
                 if (material != null) materials[Key(material)] = material;
             }
             finally { UnityEngine.Object.DestroyImmediate(temporary); }
-            manifest.Sprites = sprites.Select(p => new MatchSaveSpriteAsset { Key = p.Key, Asset = p.Value }).ToList();
-            manifest.Materials = materials.Select(p => new MatchSaveMaterialAsset { Key = p.Key, Asset = p.Value }).ToList();
-            manifest.EventCatalogs = eventCatalogs;
-            manifest.Prefabs = prefabs.Select(p => new MatchSavePrefabAsset { Key = p.Key, Asset = p.Value }).ToList();
-            manifest.ContentFingerprint = MatchSaveContentFingerprint.Compute(Directory.GetCurrentDirectory(), Application.unityVersion,
+            var newSprites = sprites.Select(p => new MatchSaveSpriteAsset { Key = p.Key, Asset = p.Value }).ToList();
+            var newMaterials = materials.Select(p => new MatchSaveMaterialAsset { Key = p.Key, Asset = p.Value }).ToList();
+            var newPrefabs = prefabs.Select(p => new MatchSavePrefabAsset { Key = p.Key, Asset = p.Value }).ToList();
+            string fingerprint = MatchSaveContentFingerprint.Compute(Directory.GetCurrentDirectory(), Application.unityVersion,
                 content.Select(p => new KeyValuePair<string, string>(AssetDatabase.AssetPathToGUID(p), p)), requiredWorldDependencies);
+            // Rewriting an identical manifest would re-import it and churn the working tree.
+            if (manifest.ContentFingerprint == fingerprint
+                && manifest.Sprites.Select(a => (a.Key, a.Asset)).SequenceEqual(newSprites.Select(a => (a.Key, a.Asset)))
+                && manifest.Materials.Select(a => (a.Key, a.Asset)).SequenceEqual(newMaterials.Select(a => (a.Key, a.Asset)))
+                && manifest.Prefabs.Select(a => (a.Key, a.Asset)).SequenceEqual(newPrefabs.Select(a => (a.Key, a.Asset)))
+                && manifest.EventCatalogs.SequenceEqual(eventCatalogs)) return;
+            manifest.Sprites = newSprites;
+            manifest.Materials = newMaterials;
+            manifest.EventCatalogs = eventCatalogs;
+            manifest.Prefabs = newPrefabs;
+            manifest.ContentFingerprint = fingerprint;
             EditorUtility.SetDirty(manifest);
             AssetDatabase.SaveAssets();
         }

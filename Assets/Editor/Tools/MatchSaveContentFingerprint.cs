@@ -28,6 +28,11 @@ namespace Game.EditorTools
             && path != "Assets/Shaders/ScreenWear.shader" && path != "Assets/Textures/Game/Effects/Overlay.png"
             && !PresentationDirectories.Any(prefix => path.StartsWith(prefix, StringComparison.Ordinal));
 
+        // Scenes and prefabs in presentation folders never alter the fingerprint or the manifest.
+        internal static bool IsPresentationAuthoring(string path) => path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)
+            || (path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)
+                && PresentationDirectories.Any(prefix => path.StartsWith(prefix, StringComparison.Ordinal)));
+
         internal static string Compute(string rootDirectory, string unityVersion,
             IEnumerable<KeyValuePair<string, string>> assets, ISet<string> requiredWorldDependencies)
         {
