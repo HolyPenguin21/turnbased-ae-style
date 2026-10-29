@@ -25,7 +25,7 @@ namespace Game.EditorTools
             && path != "Assets/Resources/GameAssetCatalog.asset"
             && !path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)
             && path != "Assets/Shaders/MainMenuAtmosphere.shader" && path != "Assets/Shaders/CampaignSurface.shader"
-            && path != "Assets/Shaders/ScreenWear.shader" && path != "Assets/Textures/Effects/Overlay.png"
+            && path != "Assets/Shaders/ScreenWear.shader" && path != "Assets/Textures/Game/Effects/Overlay.png"
             && !PresentationDirectories.Any(prefix => path.StartsWith(prefix, StringComparison.Ordinal));
 
         internal static string Compute(string rootDirectory, string unityVersion,

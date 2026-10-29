@@ -43,7 +43,7 @@ namespace Game.Tests.Core
             Write("world", "Assets/Cards/Catalog.asset", "card rules");
             Write("registry", "Assets/Resources/GameAssetCatalog.asset", "font list v1");
             Write("screen", "Assets/Shaders/ScreenWear.shader", "HUD wear v1");
-            Write("overlay", "Assets/Textures/Effects/Overlay.png", "HUD overlay v1");
+            Write("overlay", "Assets/Textures/Game/Effects/Overlay.png", "HUD overlay v1");
             string before = Fingerprint();
             Write("registry", assets["registry"], "font list v2 with a new UI font");
             Write("screen", assets["screen"], "HUD wear v2");
