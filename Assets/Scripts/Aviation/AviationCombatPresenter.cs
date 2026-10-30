@@ -1,8 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using Game.Combat;
-using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -12,44 +11,8 @@ using UnityEngine;
 
 namespace Game.Aviation
 {
-    public enum AirStrikePolicyKind { Standard, RaidSupport, DefenceSupport, Transit }
-
-    // A transient policy supplied by the caller that owns the mission. Standard preserves the
-    // ordinary endpoint strike exactly; RaidSupport pins one physical target and a survivor floor.
-    public readonly struct AirStrikePolicy
-    {
-        // Exact detached save reconstruction; no planning, registration or normalization.
-        internal AirStrikePolicy(bool __matchSave, global::Game.Aviation.AirStrikePolicyKind __Kind, int? __ExactTargetArmyId, int __MinimumSurvivors)
-        {
-            Kind = __Kind;
-            ExactTargetArmyId = __ExactTargetArmyId;
-            MinimumSurvivors = __MinimumSurvivors;
-        }
-
-        public readonly AirStrikePolicyKind Kind;
-        public readonly int? ExactTargetArmyId;
-        public readonly int MinimumSurvivors;
-
-        public AirStrikePolicy(AirStrikePolicyKind kind, int? exactTargetArmyId = null,
-            int minimumSurvivors = 0)
-        {
-            Kind = kind;
-            ExactTargetArmyId = exactTargetArmyId;
-            MinimumSurvivors = Mathf.Max(0, minimumSurvivors);
-        }
-
-        public bool AllowsStrike => Kind != AirStrikePolicyKind.Transit;
-        public static AirStrikePolicy Transit => new AirStrikePolicy(AirStrikePolicyKind.Transit);
-        public static AirStrikePolicy Standard => new AirStrikePolicy(AirStrikePolicyKind.Standard);
-        public static AirStrikePolicy RaidSupport(int targetArmyId) =>
-            new AirStrikePolicy(AirStrikePolicyKind.RaidSupport, targetArmyId, 1);
-        // ActiveDefence: the one threatening army the defence answers, struck to destruction.
-        public static AirStrikePolicy DefenceSupport(int targetArmyId) =>
-            new AirStrikePolicy(AirStrikePolicyKind.DefenceSupport, targetArmyId, 0);
-    }
-
     // Map/UI adapter for aviation combat. Ordinary ground contact and aviation share
-    // ArmyController.MoveAlong's per-step resolution; AA and air strikes remain here.
+    // ArmyController.MoveAlong's per-step resolution; this adapter only presents requests.
     public class AviationCombatPresenter : MonoBehaviour
     {
         public static event System.Action<ArmyData> OperationCompleted;
@@ -57,347 +20,150 @@ namespace Game.Aviation
         [SerializeField] private AaChoicePopupUI aaChoicePopup;
         [SerializeField] private HexSelectionController hexSelection;
 
-        public IEnumerator ResolveStep(ArmyData mover, HexCoord hex, ArmyController.StepResolutionOutcome outcome)
-        {
-            if (mover == null)
-                yield break;
-
-            if (AviationRules.IsAirArmy(mover))
-                yield return ResolveAirArmyStep(mover, hex, outcome);
-            else if (mover.Members.Exists(member => AntiAirRules.TryGetRadius(member, out _)))
-                yield return ResolveGroundAaStep(mover, hex);
-        }
-
-        private IEnumerator ResolveAirArmyStep(ArmyData airArmy, HexCoord hex, ArmyController.StepResolutionOutcome outcome)
-        {
-            foreach (AaReaction reaction in AntiAirRules.CollectEntryReactions(airArmy, hex))
-            {
-                if (airArmy.Members.Count == 0)
-                    break;
-                yield return RunAaReaction(reaction);
-            }
-
-            if (airArmy.Members.Count == 0)
-            {
-                airArmy.PendingAirStrikePolicy = null;
-                outcome.StopMovement = true;
-                ArmyActions.DeleteArmyIfEmptied(airArmy);
-                yield break;
-            }
-
-            // Airborne AA carriers use the same reaction rules as ground AA. A moving escort
-            // can intercept a stationary enemy wing; the per-pair reaction state prevents repeats.
-            if (airArmy.Members.Exists(member => AntiAirRules.TryGetRadius(member, out _)))
-                yield return ResolveGroundAaStep(airArmy, hex);
-
-            // Passing through an occupied hex only exposes the air army to entry AA.
-            // Air strikes are endpoint actions, not automatic attacks along the route.
-            if (outcome == null || !outcome.IsTerminalStep)
-                yield break;
-
-            // The per-step hex is authoritative: ArmyData.Hex still points to the origin
-            // while a multi-hex movement order is in progress.
-            var result = new AirStrikeResult();
-            AirStrikePolicy policy = airArmy.PendingAirStrikePolicy ?? AirStrikePolicy.Standard;
-            yield return ResolveAirStrikeAtCurrentHex(airArmy, hex, policy, result);
-            airArmy.PendingAirStrikePolicy = null;
-            airArmy.LastAirStrikeHex = hex;
-            airArmy.LastAirStrikeAttacked = result.Attacked;
-        }
-
-        // Tokens source of the headless strike path only (never used while a popup exists).
+        // Kept for callers that seed the former headless path. Both adapters now use this source.
         public static System.Random HeadlessRng = new System.Random();
+        public sealed class AirStrikeResult : AviationCombatResult { }
 
-        public sealed class AirStrikeResult
+        private AviationCombatOperation CreateOperation()
         {
-            public bool Attacked;
-            public int? AttackedArmyId;
-            public int DefenderCountBefore;
-            public int DefenderCountAfter;
-            public int DamageDealt;
+            var operation = new AviationCombatOperation(HeadlessRng,
+                magnitudes: attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default);
+            operation.StrikeCompleted += army => OperationCompleted?.Invoke(army);
+            return operation;
         }
 
-        // Shared endpoint strike for movement and stationary repeat strikes. Publish the
-        // final defenders once after the entire aircraft group has finished resolving.
-        public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex,
-            AirStrikePolicy policy, AirStrikeResult result = null)
-        {
-            if (!policy.AllowsStrike || airArmy == null || airArmy.Members.Count == 0)
-                yield break;
-            List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner,
-                policy.ExactTargetArmyId);
-            if (targets.Count == 0 && !CanExplosionStrikeAt(airArmy, hex))
-                yield break;
+        private readonly HashSet<PresentationLifetime> _presentations = new HashSet<PresentationLifetime>();
 
-            if (result != null)
-                result.DefenderCountBefore = targets.Sum(a => a.Members.Count);
-            // Reuse the resolved strike result; selecting targets alone is not a completed attack.
-            AirStrikeResult operationResult = result ?? (OperationCompleted != null ? new AirStrikeResult() : null);
-            yield return RunAirStrike(airArmy, hex, targets, policy, operationResult);
-            if (result != null)
-                result.DefenderCountAfter = targets.Sum(a => a.Members.Count);
-            VisionSystem.NotifyContentChanged(hex);
-            if (operationResult != null && operationResult.Attacked) OperationCompleted?.Invoke(airArmy);
+        private void OnDisable()
+        {
+            foreach (var presentation in new List<PresentationLifetime>(_presentations)) presentation.Cancel();
         }
 
-        private IEnumerator ResolveGroundAaStep(ArmyData groundArmy, HexCoord hex)
-        {
-            foreach (AaReaction reaction in AntiAirRules.CollectGroundOpportunities(groundArmy, hex))
-                yield return RunAaReaction(reaction);
-        }
-
-        // Turn start of `owner` (GameTurnController, after the AA reset): every AA unit/Facility
-        // fires at an enemy air army already inside its radius (AntiAirRules.CollectTurnStartOpportunities).
-        // A stationary wing is not moving, so an emptied one is removed here.
+        public IEnumerator ResolveStep(ArmyData mover, HexCoord hex, ArmyController.StepResolutionOutcome outcome)
+            => Present(CreateOperation().ResolveStep(mover, hex, outcome), outcome);
         public IEnumerator ResolveTurnStartAntiAir(PlayerSetupData owner)
         {
-            foreach (AaReaction reaction in AntiAirRules.CollectTurnStartOpportunities(owner))
-            {
-                // A reaction earlier in this pass may have spent the AA or destroyed the wing.
-                if (reaction.AirArmy.Members.Count == 0
-                    || !AntiAirState.CanReact(reaction.AaUnit, reaction.AirArmy.Id))
-                    continue;
-                yield return RunAaReaction(reaction);
-                if (reaction.AirArmy.Members.Count == 0
-                    && (reaction.AirArmy.Controller == null || !reaction.AirArmy.Controller.IsMoving))
-                    ArmyActions.DeleteArmyIfEmptied(reaction.AirArmy);
-            }
+            var operation = CreateOperation();
+            var presentationOutcome = new ArmyController.StepResolutionOutcome();
+            var presentation = Present(operation.ResolveTurnStartAntiAir(owner), presentationOutcome);
+            try { while (presentation.MoveNext()) yield return presentation.Current; }
+            finally { (presentation as IDisposable)?.Dispose(); }
+            // The turn owner must not confirm/start planning while mandatory AA remains. A
+            // cancelled presentation falls back to the same operation's headless policy. Recollect
+            // eligible pairs: accepted shots/skips stay committed; a cancelled choice is undecided.
+            if (presentationOutcome.StopMovement)
+                AviationCombatHeadlessAdapter.Run(operation.ResolveTurnStartAntiAir(owner));
         }
 
-        private IEnumerator RunAaReaction(AaReaction reaction)
-        {
-            ArmyData airArmy = reaction.AirArmy;
-            if (airArmy.Members.Count == 0)
-                yield break;
-
-            PlayerSetupData aaOwner = reaction.AaOwner;
-            // A wing in flight is still indexed at its origin (ArmyData.Hex); aim at where it is.
-            HexCoord airHex = airArmy.Controller != null ? airArmy.Controller.CurrentHex : airArmy.Hex;
-            // Re-checked live: no prompt (and no spent shot) at a wing now fully hidden from the AA owner.
-            if (!StealthSystem.HasAnyTargetableMember(airArmy, aaOwner))
-                yield break;
-            bool attack = true;
-            if (aaOwner != null && aaOwner.IsHuman && aaChoicePopup != null)
-            {
-                bool decided = false;
-                aaChoicePopup.Show(reaction.AaUnit, airArmy,
-                    onAttack: () => { attack = true; decided = true; },
-                    onSkip: () => { attack = false; decided = true; });
-                yield return new WaitUntil(() => decided);
-            }
-
-            if (reaction.AaUnit.Owner != null && !reaction.AaUnit.Owner.IsHuman
-                && ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0
-                && ExplosionAttack.ExpectedNetValue(reaction.AaUnit,
-                    ExplosionAttack.KnownTargets(airHex, reaction.AaUnit.Owner, airArmy)) <= 0)
-                attack = false;
-            AntiAirState.RecordPrompted(reaction.AaUnit, airArmy.Id, attack);
-            if (!attack || attackPopup == null)
-                yield break;
-
-            if (ExplosionAttack.TargetLimit(reaction.AaUnit.Abilities) > 0)
-            {
-                var explosion = new ExplosionAttack(reaction.AaUnit, airHex, HeadlessRng, airArmy);
-                yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelection,
-                    tacticsCritical: reaction.AaArmy != null
-                        ? TacticBattleContext.IsCritical(airHex, reaction.AaArmy, airArmy)
-                        : TacticBattleContext.IsCritical(reaction.AaHex, aaOwner, airArmy));
-                yield break;
-            }
-
-            UnitData target = PickRandomSurvivor(airArmy, aaOwner);
-            if (target == null)
-                yield break;
-            // Committing the shot reveals the aircraft, as an air strike reveals its target.
-            Game.Map.StealthSystem.ExitStealth(target);
-
-            UnitData aaHero = reaction.AaArmy?.Members.Find(unit => unit.IsHero);
-            bool resolved = false;
-            attackPopup.Begin(reaction.AaUnit, aaHero, target, null, null, null,
-                onResolved: roll =>
-                {
-                    using var mutation = VisionSystem.BeginMutation();
-                    BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
-                        reaction.AaUnit, target, roll,
-                        attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
-                        aaHero, null);
-                    resolved = true;
-                    if (application.DefenderDied)
-                    {
-                        ArmyActions.RemoveMember(airArmy, target);
-                        if (airArmy.Controller == null || !airArmy.Controller.IsMoving)
-                            ArmyActions.DeleteArmyIfEmptied(airArmy);
-                    }
-                },
-                attackerPoolSize: reaction.AaUnit.Attack * 2,
-                tacticsCritical: reaction.AaArmy != null
-                    ? TacticBattleContext.IsCritical(reaction.AaArmy.Hex, reaction.AaArmy, airArmy)
-                    : TacticBattleContext.IsCritical(reaction.AaHex, aaOwner, airArmy),
-                challengeTitle: "ANTI AIR ATTACK");
-            yield return new WaitUntil(() => resolved);
-            hexSelection?.RestackArmiesOn(airArmy.Hex, null);
-            if (reaction.AaArmy != null)
-                ArmyActions.DeleteArmyIfEmptied(reaction.AaArmy);
-
-            // An AA hit on a stationary wing changes HP/roster without an Unregister.
-            // During flight CurrentHex has advanced, but ArmyRegistry still indexes the
-            // origin until the order completes. MoveArmy will publish both final hexes;
-            // taking a snapshot before that atomic relocation would record false content.
-            if (airArmy.Controller == null || !airArmy.Controller.IsMoving)
-                VisionSystem.NotifyContentChanged(airArmy.Hex);
-        }
-
-        private IEnumerator RunAirStrike(ArmyData airArmy, HexCoord hex, List<ArmyData> targetArmies,
+        public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex,
             AirStrikePolicy policy, AirStrikeResult result = null)
+            => Present(CreateOperation().ResolveAirStrikeAtCurrentHex(airArmy, hex, policy,
+                result ?? new AirStrikeResult()));
+
+        // Unity can stop a nested movement coroutine without disposing it. The movement owner
+        // therefore holds an explicit cancellation callback while this operation is suspended.
+        private sealed class PresentationLifetime : IDisposable
         {
-            foreach (UnitData aircraft in airArmy.Members.ToList())
+            private readonly AviationCombatPresenter _owner;
+            private readonly IEnumerator<AviationCombatOperation.Request> _iterator;
+            private readonly ArmyController.StepResolutionOutcome _outcome;
+            public AviationCombatOperation.ChallengeRequest Challenge;
+            public AviationCombatOperation.AaDecisionRequest AaDecision;
+            public bool IsCancelled { get; private set; }
+            private bool _disposed, _finished;
+            public void Finish() => _finished = true;
+            public PresentationLifetime(AviationCombatPresenter owner,
+                IEnumerator<AviationCombatOperation.Request> iterator, ArmyController.StepResolutionOutcome outcome)
             {
-                if (aircraft.HitPointsCurrent <= 0 || !airArmy.Members.Contains(aircraft)
-                    || aircraft.HasAirAttackedThisTurn || airArmy.Members.Count == 0)
-                    continue;
-
-                if (ExplosionAttack.TargetLimit(aircraft.Abilities) > 0)
+                _owner = owner; _iterator = iterator; _outcome = outcome;
+                owner._presentations.Add(this);
+                if (outcome != null) outcome.CancelResolution = Cancel;
+            }
+            public void Cancel()
+            {
+                if (_disposed) return;
+                IsCancelled = true;
+                if (_outcome != null) _outcome.StopMovement = true;
+                Dispose();
+            }
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                if (!_finished)
                 {
-                    // Random area damage cannot guarantee the survivor floor of a capture raid.
-                    if (policy.MinimumSurvivors > 0 || !CanExplosionStrikeAt(airArmy, hex)) continue;
-                    if (airArmy.Owner != null && !airArmy.Owner.IsHuman
-                        && ExplosionAttack.ExpectedNetValue(aircraft, ExplosionAttack.KnownTargets(hex, airArmy.Owner, airArmy)) <= 0) continue;
-                    aircraft.HasAirAttackedThisTurn = true;
-                    var explosion = new ExplosionAttack(aircraft, hex, HeadlessRng, airArmy);
-                    yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelection,
-                        tacticsCritical: TacticBattleContext.IsCritical(hex, airArmy, targetArmies.FirstOrDefault()),
-                        onHit: (target, application) =>
-                        {
-                            if (result == null) return;
-                            result.Attacked = true;
-                            if (target.Army?.Owner != airArmy.Owner && target.Army != null)
-                                result.AttackedArmyId = target.Army.Id;
-                            result.DamageDealt += Mathf.Max(0, application.Damage);
-                        });
-                    continue;
+                    IsCancelled = true;
+                    if (_outcome != null) _outcome.StopMovement = true;
                 }
-
-                if (targetArmies.Sum(a => a.Members.Count) <= policy.MinimumSurvivors)
-                    break;
-
-                List<(UnitData unit, ArmyData army)> pool = CollectStrikeTargets(targetArmies, airArmy.Owner);
-                if (pool.Count == 0)
-                    break;
-
-                (UnitData target, ArmyData targetArmy) = pool[attackPopup != null
-                    ? Random.Range(0, pool.Count) : HeadlessRng.Next(pool.Count)];
-                aircraft.HasAirAttackedThisTurn = true;
-                Game.Map.StealthSystem.ExitStealth(target);
-                if (result != null)
+                _owner._presentations.Remove(this);
+                if (_outcome != null) _outcome.CancelResolution = null;
+                AaDecision?.Cancel();
+                try { _iterator.Dispose(); }
+                finally
                 {
-                    result.Attacked = true;
-                    result.AttackedArmyId = targetArmy.Id;
+                    if (Challenge != null && _owner.attackPopup != null
+                        && _owner.attackPopup.PresentsSession(Challenge.Session)) _owner.attackPopup.Hide();
+                    if (AaDecision != null && _owner.aaChoicePopup != null) _owner.aaChoicePopup.Hide();
                 }
+            }
+        }
 
-                UnitData defenderHero = target.IsHero ? target : targetArmy.Members.Find(unit => unit.IsHero);
-                int? defenderPoolOverride = target.IsHero ? target.FateMax : (int?)null;
-
-                bool resolved = false;
-                void Apply(BattleChallengeRollResult roll)
+        private IEnumerator Present(IEnumerable<AviationCombatOperation.Request> requests,
+            ArmyController.StepResolutionOutcome outcome = null)
+        {
+            var iterator = requests.GetEnumerator();
+            using var lifetime = new PresentationLifetime(this, iterator, outcome);
+            AviationCombatOperation.ChallengeRequest previous = null;
+            while (!lifetime.IsCancelled && iterator.MoveNext())
+            {
+                if (previous != null) { hexSelection?.RestackArmiesOn(previous.Hex, null); previous = null; }
+                if (iterator.Current is AviationCombatOperation.AaDecisionRequest aa)
                 {
-                    using var mutation = VisionSystem.BeginMutation();
-                    BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
-                        aircraft, target, roll,
-                        attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
-                        null, defenderHero);
-                    resolved = true;
-                    if (result != null)
-                        result.DamageDealt += Mathf.Max(0, application.Damage);
-                    if (application.DefenderDied)
+                    lifetime.AaDecision = aa;
+                    if (aa.Reaction.AaOwner?.IsHuman == true && aaChoicePopup != null)
                     {
-                        ArmyActions.RemoveMember(targetArmy, target);
-                        ArmyActions.DeleteArmyIfEmptied(targetArmy);
+                        aaChoicePopup.Show(aa.Reaction.AaUnit, aa.Reaction.AirArmy,
+                            onAttack: () => aa.Complete(true), onSkip: () => aa.Complete(false),
+                            onCancelled: lifetime.Cancel);
+                        yield return new WaitUntil(() => lifetime.IsCancelled || aa.IsCompleted
+                            || aaChoicePopup == null || !aaChoicePopup.IsShowing);
+                        if (!aa.IsCompleted) { lifetime.Cancel(); yield break; }
                     }
+                    else aa.Complete(aa.SuggestedFire);
+                    lifetime.AaDecision = null;
                 }
-                if (attackPopup != null)
+                else if (iterator.Current is AviationCombatOperation.ChallengeRequest challenge)
                 {
-                    attackPopup.Begin(aircraft, null, target, defenderHero, null, null,
-                        onResolved: Apply, defenderPoolSize: defenderPoolOverride,
-                        tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy),
-                        challengeTitle: "AIR ATTACK");
-                    yield return new WaitUntil(() => resolved);
+                    lifetime.Challenge = challenge;
+                    if (attackPopup != null)
+                    {
+                        attackPopup.Begin(challenge.Attacker, challenge.AttackerHero, challenge.Defender,
+                            challenge.DefenderHero, null, null, challenge.Complete,
+                            attackerPoolSize: challenge.Session.AttackerPoolSize,
+                            defenderPoolSize: challenge.Session.DefenderPoolSize,
+                            tacticsCritical: challenge.TacticsCritical, challengeTitle: challenge.Title,
+                            session: challenge.Session);
+                        yield return new WaitUntil(() => lifetime.IsCancelled || challenge.IsCompleted
+                            || challenge.Session.IsCancelled || attackPopup == null
+                            || !attackPopup.PresentsSession(challenge.Session));
+                        if (!challenge.IsCompleted) { lifetime.Cancel(); yield break; }
+                    }
+                    else AviationCombatHeadlessAdapter.Resolve(challenge);
+                    previous = challenge;
+                    lifetime.Challenge = null;
                 }
-                else
-                {
-                    // Headless (no popup in the scene, e.g. automated tests): the same pools the
-                    // popup rolls — aircraft Attack vs the target's Defense (a hero's FateMax) —
-                    // through the same ResolveStandaloneAttack; tokens and the AI Fate duel from HeadlessRng.
-                    int defensePool = defenderPoolOverride ?? target.Defense;
-                    var challenge = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
-                        aircraft, target, aircraft.Attack, defensePool, 0, defenderHero?.Fate ?? 0,
-                        AbilityMagnitudes.Default,
-                        rollTokens: count => BattleSimulationKernel.RollTokens(count, HeadlessRng),
-                        tacticsCritical: TacticBattleContext.IsCritical(targetArmy.Hex, airArmy, targetArmy));
-                    challenge.Roll();
-                    challenge.ResolveAiDecisions();
-                    Apply(challenge.ToRollResult());
-                }
-
-                hexSelection?.RestackArmiesOn(targetArmy.Hex, null);
-                if (targetArmy.Members.Count == 0)
-                    ArmyActions.DeleteArmyIfEmptied(targetArmy);
             }
-            ArmyActions.DeleteArmyIfEmptied(airArmy);
+            lifetime.Finish();
+            if (previous != null) hexSelection?.RestackArmiesOn(previous.Hex, null);
         }
 
-        internal static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> targetArmies, PlayerSetupData striker)
-        {
-            var pool = new List<(UnitData, ArmyData)>();
-            foreach (ArmyData army in targetArmies)
-                if (army.Members.Count > 0)
-                    foreach (UnitData unit in army.Members)
-                        if (AviationRules.CanTargetFromAir(unit, army) && !Game.Map.StealthSystem.IsHiddenFrom(unit, striker))
-                            pool.Add((unit, army));
-            return pool;
-        }
-
+        internal static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> armies, PlayerSetupData striker)
+            => AviationCombatOperation.CollectStrikeTargets(armies, striker);
         public static bool CanExplosionStrikeAt(ArmyData airArmy, HexCoord hex)
-        {
-            if (airArmy == null || !airArmy.Members.Any(u => u.HitPointsCurrent > 0
-                && !u.HasAirAttackedThisTurn && ExplosionAttack.TargetLimit(u.Abilities) > 0)) return false;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building != null && building.Owner != airArmy.Owner && building.StructurePointsCurrent > 0) return true;
-            return ArmyRegistry.AllAt(hex).Any(a => a.Owner != airArmy.Owner
-                && a.Members.Any(u => AviationRules.CanTargetFromAir(u, a) && !StealthSystem.IsHiddenFrom(u, airArmy.Owner)));
-        }
-
-        // This query is shared with the move-arrow preview; event guards and aircraft
-        // stored in an airfield are not strike targets.
+            => AviationCombatOperation.CanExplosionStrikeAt(airArmy, hex);
         public static List<ArmyData> FindAirStrikeTargetsAt(HexCoord hex, PlayerSetupData owner)
-            => FindAirStrikeTargetsAt(hex, owner, null);
-
-        public static List<ArmyData> FindAirStrikeTargetsAt(HexCoord hex, PlayerSetupData owner,
-            int? exactTargetArmyId)
-        {
-            var result = new List<ArmyData>();
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-            {
-                if (army.Owner == owner || army.Owner == null || army.IsPrison || army.Members.Count == 0)
-                    continue;
-                if (exactTargetArmyId.HasValue && army.Id != exactTargetArmyId.Value)
-                    continue;
-                if (AviationRules.IsAirfield(army) || army.IsCarrierContainer)
-                    continue;
-                if (HexEventRegistry.IsEventGuardArmy(hex, army))
-                    continue;
-                if (!army.Members.Any(u => AviationRules.CanTargetFromAir(u, army)
-                    && !Game.Map.StealthSystem.IsHiddenFrom(u, owner)))
-                    continue;
-                result.Add(army);
-            }
-            return result;
-        }
-
-        // Only an aircraft the AA owner can see (stealth) can be picked.
-        private static UnitData PickRandomSurvivor(ArmyData airArmy, PlayerSetupData aaOwner)
-        {
-            List<UnitData> visible = StealthSystem.TargetableMembersFor(airArmy, aaOwner).ToList();
-            return visible.Count > 0 ? visible[Random.Range(0, visible.Count)] : null;
-        }
+            => AviationCombatOperation.FindAirStrikeTargetsAt(hex, owner);
+        public static List<ArmyData> FindAirStrikeTargetsAt(HexCoord hex, PlayerSetupData owner, int? exactTargetArmyId)
+            => AviationCombatOperation.FindAirStrikeTargetsAt(hex, owner, exactTargetArmyId);
     }
 }

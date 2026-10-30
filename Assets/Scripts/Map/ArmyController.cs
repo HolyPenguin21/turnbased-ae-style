@@ -27,6 +27,9 @@ namespace Game.Map
             public System.Func<bool> CanContinueMovement;
             public bool IsTerminalStep => CanContinueMovement == null || !CanContinueMovement();
             public bool StopMovement;
+            // Explicit ownership bridge for a suspended per-step operation; Unity stopping a
+            // coroutine alone does not guarantee disposal of its nested iterators.
+            public System.Action CancelResolution;
         }
 
         [SerializeField] private float pulseAmount = 0.1f;
@@ -56,6 +59,7 @@ namespace Game.Map
         private System.Action _onComplete;
         private System.Action _onSettled;
         private System.Action<HexCoord> _onCancelled;
+        private StepResolutionOutcome _stepResolution;
 
         private const float LayoutDuration = 0.18f;
         private bool _layoutTransition;
@@ -122,13 +126,19 @@ namespace Game.Map
             _onSettled = null;
             _onCancelled = null;
             IsMoving = false;
+            var resolution = _stepResolution;
+            _stepResolution = null;
             var settling = _settling;
             var movement = _movement;
             _settling = null;
             _movement = null;
-            if (settling != null) StopCoroutine(settling);
-            if (movement != null) StopCoroutine(movement);
-            cancelled?.Invoke(finalHex);
+            try { resolution?.CancelResolution?.Invoke(); }
+            finally
+            {
+                if (settling != null) StopCoroutine(settling);
+                if (movement != null) StopCoroutine(movement);
+                cancelled?.Invoke(finalHex);
+            }
         }
 
         private void OnDisable() => CancelMovement();
@@ -368,7 +378,9 @@ namespace Game.Map
                         CanContinueMovement = () => CanAffordNextMovementStep(
                             map, path, resolvedStepIndex, Data, Data.Members)
                     };
+                    _stepResolution = outcome;
                     yield return resolveStepAsync(previous, next, outcome);
+                    if (ReferenceEquals(_stepResolution, outcome)) _stepResolution = null;
                     if (!IsMoving) yield break;
                     // Data.Members is the SAME list `members` already points at — a reaction that
                     // destroyed every member (e.g. AA/air-strike wiping this army out) shrinks it

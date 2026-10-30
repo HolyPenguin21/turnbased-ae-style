@@ -33,20 +33,16 @@ namespace Game.UI
             int damage = outcome.Damage;
             var appliedAbilities = new List<string>(outcome.AppliedAbilities);
 
-            // UnitAbilities.Bodyguard: a landed hit goes to the guard instead, re-run against its
-            // own tags/armor — the same rule BattleEngine.ResolveAndApplyGroundAttack applies.
-            UnitData victim = _defender;
-            if (_interceptor != null && damage > 0 && _attacker != null)
+            BattleAttackPlan plan = _groundAttackPlan?.Invoke(_challengeSession.ToRollResult());
+            UnitData victim = plan?.Victim ?? _defender;
+            if (plan != null)
             {
-                victim = _interceptor;
-                damage = ChallengeResult.ApplyAbilityModifiers(outcome.RawDamage, _attacker, _interceptor,
-                    Magnitudes, out List<string> guardAbilities);
-                appliedAbilities = guardAbilities;
-                appliedAbilities.Add(UnitAbilities.Bodyguard);
+                outcome = plan.Outcome;
+                damage = plan.Damage;
+                appliedAbilities = new List<string>(plan.AppliedAbilities);
             }
-
             BattleRules.AppendHitEffectAbilities(appliedAbilities, _attacker, victim,
-                damage, _groundHitEffects?.Invoke(victim, damage));
+                damage, plan?.Effects ?? _groundHitEffects?.Invoke(victim, damage));
 
             // Presentation only: BattleEngine applies HP/Berserk/removal after the player
             // acknowledges this result. Keep a projected HP here so the Result panel can display
@@ -222,9 +218,11 @@ namespace Game.UI
         public void ShowSecondaryAttackResult(UnitData attacker, UnitData target, string summary, bool died,
             Action onAcknowledged, bool automateHumanSides = false)
         {
+            int generation = ++_presentationGeneration;
             StopAllCoroutines();
             CloseTacticPresentation();
             CleanupResearchProduction();
+            if (generation != _presentationGeneration) return;
 
             _automateHumanSides = automateHumanSides;
             _kind = ChallengeKind.Announcement;
@@ -238,6 +236,7 @@ namespace Game.UI
                 panelRoot.transform.SetAsLastSibling();
             }
             VisibilityChanged?.Invoke();
+            if (generation != _presentationGeneration) return;
 
             RenderResultScreen(attacker, target, summary, died);
 
@@ -272,45 +271,26 @@ namespace Game.UI
             if (_tacticInfoPopup is not null && TacticInputBlocked) return;
             _okAlreadyHandled = true;
 
-            // Research/Production reports through the shared finalization path — the SAME one a
-            // forced Hide() uses. Run it BEFORE Hide() (which calls it again as a safety net)
-            // so the pass with the real success/failure wins and Hide()'s call no-ops instead
-            // of reporting a second time. The R/P modal itself stays open; the caller decides
-            // what happens next.
+            // Close and detach this attempt before its callback can synchronously open another.
             if (_kind == ChallengeKind.ResearchProduction)
             {
                 FinalizeResearchProduction(_rpResultSuccess);
-                Hide();
                 return;
             }
 
+            // Snapshot/detach before Hide publishes its visibility notification. A subscriber
+            // may open a replacement popup synchronously; it owns its own callbacks and session.
+            var kind = _kind;
+            var roll = _challengeSession != null ? _challengeSession.ToRollResult()
+                : new BattleChallengeRollResult(_attackerTokens, _defenderTokens, _attackerFateRemaining, _defenderFateRemaining);
+            var resolved = _onResolved;
+            var captured = _onCaptureKillResolved;
+            var announced = _onAnnouncementAcknowledged;
+            _onResolved = null; _onCaptureKillResolved = null; _onAnnouncementAcknowledged = null;
             Hide();
-            if (_kind == ChallengeKind.CaptureKill)
-            {
-                Action<BattleChallengeRollResult> callback = _onCaptureKillResolved;
-                _onCaptureKillResolved = null;
-                callback?.Invoke(_challengeSession != null
-                    ? _challengeSession.ToRollResult()
-                    : new BattleChallengeRollResult(
-                        _attackerTokens, _defenderTokens, _attackerFateRemaining, _defenderFateRemaining));
-            }
-            else if (_kind == ChallengeKind.Announcement)
-            {
-                Action callback = _onAnnouncementAcknowledged;
-                _onAnnouncementAcknowledged = null;
-                callback?.Invoke();
-            }
-            else
-            {
-                // ChallengeKind.ResearchProduction is handled earlier (before Hide) via
-                // FinalizeResearchProduction and never reaches here.
-                Action<BattleChallengeRollResult> callback = _onResolved;
-                _onResolved = null;
-                callback?.Invoke(_challengeSession != null
-                    ? _challengeSession.ToRollResult()
-                    : new BattleChallengeRollResult(
-                        _attackerTokens, _defenderTokens, _attackerFateRemaining, _defenderFateRemaining));
-            }
+            if (kind == ChallengeKind.CaptureKill) captured?.Invoke(roll);
+            else if (kind == ChallengeKind.Announcement) announced?.Invoke();
+            else resolved?.Invoke(roll);
         }
     }
 }

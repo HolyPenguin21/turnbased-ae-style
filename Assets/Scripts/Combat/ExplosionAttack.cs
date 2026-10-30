@@ -153,7 +153,20 @@ namespace Game.Combat
         public IReadOnlyList<Target> Targets { get; }
         public int ResolvedCount { get; private set; }
         private bool _completed;
+        private readonly BattleEngine _battle;
+        internal bool IsCompleted => _completed;
         private readonly ArmyData _launcherArmy;
+
+        internal ExplosionAttack(BattleEngine battle, UnitData launcher, HexCoord hex, System.Random rng,
+            params ArmyData[] participatingArmies) : this(launcher, hex, rng, participatingArmies)
+        { _battle = battle; }
+
+        private BattleEngine OwningBattle(BattleEngine supplied)
+        {
+            if (_battle != null && supplied != null && !ReferenceEquals(_battle, supplied))
+                throw new InvalidOperationException("The explosion belongs to another battle.");
+            return _battle ?? supplied;
+        }
 
         public ExplosionAttack(UnitData launcher, HexCoord hex, System.Random rng,
             params ArmyData[] participatingArmies)
@@ -228,9 +241,12 @@ namespace Game.Combat
             AbilityMagnitudes magnitudes, UnitData attackerHero = null, UnitData defenderHero = null,
             BattleEngine battle = null)
         {
+            battle = OwningBattle(battle);
             using var mutation = VisionSystem.BeginMutation();
-            if (_completed || !Targets.Contains(target) || !target.IsAlive)
+            if (_completed || (battle != null && !battle.OwnsExplosion(this))
+                || !Targets.Contains(target) || !target.IsAlive)
                 throw new InvalidOperationException("Explosion target is no longer available.");
+            if (battle != null) magnitudes = battle.Magnitudes;
             if (!_resolved.Add(target)) throw new InvalidOperationException("An explosion cannot hit the same target twice.");
             ResolvedCount++;
             var application = BattleEngine.ResolveStandaloneAttack(Actor, defender, roll, magnitudes,
@@ -270,10 +286,13 @@ namespace Game.Combat
 
         public void Complete(BattleEngine battle = null, HexSelectionController selection = null)
         {
+            battle = OwningBattle(battle);
             using var mutation = VisionSystem.BeginMutation();
             if (_completed) return;
+            if (battle != null && !battle.OwnsExplosion(this))
+                throw new InvalidOperationException("The explosion does not own this battle action.");
             _completed = true;
-            if (ResolvedCount == 0) return;
+            if (ResolvedCount == 0) { battle?.CompleteExplosionAction(Launcher); return; }
             foreach (var target in Targets)
                 if (target.Unit != null && target.Unit.HitPointsCurrent <= 0)
                     AviationActions.RemoveCarrierContainers(target.Unit, selection);
@@ -297,6 +316,7 @@ namespace Game.Combat
             { ArmyActions.DeleteArmyIfEmptied(army); VisionSystem.RecomputeFor(army.Owner); }
             selection?.RestackArmiesOn(Hex, null);
             VisionSystem.NotifyContentChanged(Hex);
+            battle?.CompleteExplosionAction(Launcher);
         }
 
         public static void CompleteLauncher(UnitData launcher, BattleEngine battle = null,

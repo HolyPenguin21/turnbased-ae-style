@@ -157,6 +157,7 @@ namespace Game.EditorTests
             var state = new BattleState(default, attackerArmy, defenderArmy, grid, 123);
             var engine = new BattleEngine(state, AbilityMagnitudes.Default, new System.Random(1));
 
+            engine.StartRound();
             Assert.That(engine.CanGroundAttack(attacker, hero), Is.True);
 
             bool found = BattleTargetSelector.TryChooseAttackTarget(
@@ -246,7 +247,7 @@ namespace Game.EditorTests
             var state = new BattleState(default, attackerArmy, defenderArmy, grid, 123);
             var engine = new BattleEngine(state, AbilityMagnitudes.Default, new System.Random(1));
 
-            BattleAttackApplication result = engine.ApplyGroundAttack(attacker, hero, 2);
+            BattleAttackApplication result = BattleEngineTestDriver.ApplyHit(engine, attacker, hero, 2);
 
             Assert.That(result.DefenderDied, Is.True);
             Assert.That(defenderArmy.Members.Contains(hero), Is.False);
@@ -330,10 +331,10 @@ namespace Game.EditorTests
             BuildSimpleBattle(out BattleState state, out BattleEngine engine,
                 out UnitData attacker, out UnitData defender, out _);
             attacker.Abilities.Add(UnitAbilities.ShockAttack);
-            state.TurnOrder = new List<UnitData> { attacker, defender };
-            state.TurnIndex = 0;
+            BattleEngineTestDriver.Queue(state, new List<UnitData> { attacker, defender });
+            BattleEngineTestDriver.Index(state, 0);
 
-            BattleAttackApplication result = engine.ApplyGroundAttack(attacker, defender, 1);
+            BattleAttackApplication result = BattleEngineTestDriver.ApplyHit(engine, attacker, defender, 1);
 
             Assert.That(result.Shocked, Is.True);
             CollectionAssert.DoesNotContain(state.TurnOrder, defender);
@@ -353,10 +354,10 @@ namespace Game.EditorTests
             };
             defenderArmy.Members.Add(later);
             state.Grid.Set(BattleGrid.DefenderFrontRow, 3, later);
-            state.TurnOrder = new List<UnitData> { attacker, defender, later };
-            state.TurnIndex = 0;
+            BattleEngineTestDriver.Queue(state, new List<UnitData> { attacker, defender, later });
+            BattleEngineTestDriver.Index(state, 0);
 
-            BattleAttackApplication result = engine.ApplyGroundAttack(attacker, defender, 1);
+            BattleAttackApplication result = BattleEngineTestDriver.ApplyHit(engine, attacker, defender, 1);
 
             Assert.That(result.DefenderDied, Is.True);
             CollectionAssert.DoesNotContain(state.TurnOrder, defender);
@@ -374,7 +375,7 @@ namespace Game.EditorTests
             defender.Defense = 2;
             defender.Abilities.Add(UnitAbilities.Berserk);
 
-            engine.ApplyGroundAttack(attacker, defender, 1);
+            BattleEngineTestDriver.ApplyHit(engine, attacker, defender, 1);
 
             Assert.That(defender.Attack, Is.EqualTo(3));
             Assert.That(defender.Defense, Is.EqualTo(1));
@@ -405,7 +406,7 @@ namespace Game.EditorTests
             state.Grid.Set(BattleGrid.DefenderFrontRow, 3, right);
             state.Grid.Set(BattleGrid.DefenderBackRow, 0, far);
 
-            BattleAttackApplication result = engine.ApplyGroundAttack(attacker, defender, 4);
+            BattleAttackApplication result = BattleEngineTestDriver.ApplyHit(engine, attacker, defender, 4);
 
             Assert.That(result.SecondaryHits.Count, Is.EqualTo(2));
             Assert.That(left.HitPointsCurrent, Is.EqualTo(3));
@@ -416,8 +417,8 @@ namespace Game.EditorTests
         [Test]
         public void Scorcher_RandomNonBioPickMissesEvenWhenAdjacentBioExists()
         {
-            BuildSimpleBattle(out BattleState state, out _, out UnitData attacker,
-                out UnitData defender, out ArmyData defenderArmy);
+            BuildSimpleBattle(out BattleState state, out BattleEngine engine, out UnitData attacker,
+                out UnitData defender, out ArmyData defenderArmy, new SequenceRandom(0d));
             attacker.Abilities.Add(UnitAbilities.Scorcher);
 
             var adjacentNonBio = Body(defender.Owner, hp: 5);
@@ -430,9 +431,8 @@ namespace Game.EditorTests
             // index 0: Scorcher must miss rather than searching the remaining Bio neighbour.
             state.Grid.Set(BattleGrid.DefenderBackRow, 2, adjacentNonBio);
             state.Grid.Set(BattleGrid.DefenderFrontRow, 1, adjacentBio);
-            var engine = new BattleEngine(state, AbilityMagnitudes.Default, new SequenceRandom(0d));
 
-            BattleAttackApplication result = engine.ApplyGroundAttack(attacker, defender, 4);
+            BattleAttackApplication result = BattleEngineTestDriver.ApplyHit(engine, attacker, defender, 4);
 
             Assert.That(result.SecondaryHits.Count, Is.Zero);
             Assert.That(adjacentNonBio.HitPointsCurrent, Is.EqualTo(5));
@@ -549,7 +549,7 @@ namespace Game.EditorTests
             Assert.That(attackerHero.Fate, Is.EqualTo(4));
             Assert.That(defenderHero.Fate, Is.EqualTo(3));
 
-            engine.ResolveAndApplyGroundAttack(
+            BattleEngineTestDriver.ResolveHit(engine,
                 attacker, defender, roll, attackerHero, defenderHero);
 
             Assert.That(attackerHero.Fate, Is.EqualTo(2));
@@ -565,10 +565,10 @@ namespace Game.EditorTests
             defender.Abilities.Add(UnitAbilities.Berserk);
             defender.Attack = 2;
             defender.Defense = 2;
-            state.TurnOrder = new List<UnitData> { attacker, defender };
-            state.TurnIndex = 0;
+            BattleEngineTestDriver.Queue(state, new List<UnitData> { attacker, defender });
+            BattleEngineTestDriver.Index(state, 0);
 
-            BattleAttackApplication live = engine.ApplyGroundAttack(attacker, defender, 1);
+            BattleAttackApplication live = BattleEngineTestDriver.ApplyHit(engine, attacker, defender, 1);
 
             float simHp = 4f;
             int simAttack = 2;
@@ -965,7 +965,8 @@ namespace Game.EditorTests
                 attacker: null, defender: null,
                 attackerPoolSize: 1, defenderPoolSize: 1,
                 attackerFate: 1, defenderFate: 1,
-                AbilityMagnitudes.Default);
+                AbilityMagnitudes.Default, rollTokens: count => new bool[count]);
+            session.Roll();
 
             Assert.That(session.TryNextFateTurn(out bool defenderFirst), Is.True);
             Assert.That(defenderFirst, Is.True);
@@ -1069,7 +1070,7 @@ namespace Game.EditorTests
         };
 
         private static void BuildSimpleBattle(out BattleState state, out BattleEngine engine,
-            out UnitData attacker, out UnitData defender, out ArmyData defenderArmy)
+            out UnitData attacker, out UnitData defender, out ArmyData defenderArmy, System.Random random = null)
         {
             var a = new PlayerSetupData { Nickname = "A" };
             var d = new PlayerSetupData { Nickname = "D" };
@@ -1084,7 +1085,7 @@ namespace Game.EditorTests
             grid.Set(BattleGrid.AttackerFrontRow, 2, attacker);
             grid.Set(BattleGrid.DefenderFrontRow, 2, defender);
             state = new BattleState(default, attackerArmy, defenderArmy, grid, 123);
-            engine = new BattleEngine(state, AbilityMagnitudes.Default, new System.Random(1));
+            engine = new BattleEngine(state, AbilityMagnitudes.Default, random ?? new System.Random(1));
         }
     }
 }

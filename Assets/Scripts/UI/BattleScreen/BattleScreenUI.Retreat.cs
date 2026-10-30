@@ -41,10 +41,8 @@ namespace Game.UI
         private void ResolveRetreat()
         {
             ArmyData army = _retreatingArmy;
-            _retreatingArmy = null;
             if (army == null)
             {
-                _round++;
                 BeginRound();
                 return;
             }
@@ -58,7 +56,6 @@ namespace Game.UI
                 ? _battleEngine.CompleteRetreat(army, survivingArmy, map, hexSelectionController)
                 : BattleEngine.PerformRetreat(_battleState, army, survivingArmy, map, hexSelectionController);
             bool destroyed = retreat.Destroyed;
-            _retreatingArmy = null;
             if (retreat.ContactParticipants != null)
                 _pendingRetreatContacts.Enqueue((retreat.Destination, retreat.ContactParticipants));
             string title = destroyed
@@ -72,7 +69,7 @@ namespace Game.UI
             // Same auto-close-if-no-human as FinishBattleEnd (BattleScreenUI.Combat.cs) — a
             // retreat resolved between two AI-owned armies has nobody there to click Ok either.
             if (outcomePopup != null)
-                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged, autoCloseNoHuman: _localArmy == null);
+                outcomePopup.Show(title, message, OutcomeAcknowledgment(), autoCloseNoHuman: _localArmy == null);
             else
                 OnBattleOutcomeAcknowledged();
         }

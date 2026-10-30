@@ -490,10 +490,13 @@ namespace Game.EditorTests
             var own = Army(new PlayerSetupData(), actor, friend);
             var enemy = Army(new PlayerSetupData(), target);
             var grid = new BattleGrid(); grid.Set(3, 1, actor); grid.Set(3, 2, friend); grid.Set(2, 1, target);
-            var state = new BattleState(Hex, own, enemy, grid, 1)
-            { TurnOrder = new List<UnitData> { actor, target, friend } };
+            var state = new BattleState(Hex, own, enemy, grid, 1);
+            actor.Initiative = 100;
             var battle = new BattleEngine(state, AbilityMagnitudes.Default);
-            var attack = new ExplosionAttack(actor, Hex, new Random(1), own, enemy);
+            battle.StartRound();
+            BattleEngineTestDriver.Queue(state, new List<UnitData> { actor, target, friend });
+            Assert.That(battle.TryBeginAttack(actor, target), Is.True);
+            var attack = battle.CreateExplosionAttack(actor);
             foreach (var t in attack.Targets)
             {
                 var result = attack.Resolve(t, t.Unit, Roll(1), AbilityMagnitudes.Default, battle: battle);

@@ -74,6 +74,18 @@ namespace Game.Combat
             => Exchange(attack, defense, attackerAbilities, defenderTags, defenderAbilities, hpCap,
                 false, null).Distribution;
 
+        // Fair-token probability; raw success advantage and positive modified damage are
+        // deliberately distinct metrics. Existing HitProbability continues to mean the latter.
+        public static float BinomialHalfProbability(int n, int k)
+        {
+            if (n < 0 || k < 0 || k > n) return 0f;
+            if (n == 0) return k == 0 ? 1f : 0f;
+            double combinations = 1d;
+            int r = System.Math.Min(k, n - k);
+            for (int i = 1; i <= r; i++) combinations = combinations * (n - r + i) / i;
+            return (float)(combinations / System.Math.Pow(2d, n));
+        }
+
         private sealed class ExchangeEntry
         {
             internal double[] Distribution;

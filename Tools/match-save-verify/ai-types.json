@@ -2236,7 +2236,7 @@
         "readOnly": true
       }
     ],
-    "file": "Assets/Scripts/Aviation/AviationCombatPresenter.cs",
+    "file": "Assets/Scripts/Aviation/AirStrikePolicy.cs",
     "insert": 582,
     "name": "AirStrikePolicy",
     "originalFields": [

@@ -15,12 +15,15 @@ namespace Game.Combat
             public readonly float ExpectedDamage;
             public readonly float HitProbability;
             public readonly float KillProbability;
+            public readonly float RawHitProbability;
+            public float PositiveDamageProbability => HitProbability;
 
-            public ExchangeOdds(float expectedDamage, float hitProbability, float killProbability)
+            public ExchangeOdds(float expectedDamage, float hitProbability, float killProbability, float rawHitProbability = 0f)
             {
                 ExpectedDamage = expectedDamage;
                 HitProbability = hitProbability;
                 KillProbability = killProbability;
+                RawHitProbability = rawHitProbability;
             }
         }
 
@@ -41,19 +44,21 @@ namespace Game.Combat
             float expected = 0f;
             float hitProbability = 0f;
             float killProbability = 0f;
+            float rawHitProbability = 0f;
 
             for (int a = 0; a <= attackTokens; a++)
             {
-                float pa = BinomialHalfProbability(attackTokens, a);
+                float pa = BattleSimulationKernel.BinomialHalfProbability(attackTokens, a);
                 if (pa <= 0f)
                     continue;
                 for (int d = 0; d <= defenseTokens; d++)
                 {
-                    float probability = pa * BinomialHalfProbability(defenseTokens, d);
+                    float probability = pa * BattleSimulationKernel.BinomialHalfProbability(defenseTokens, d);
                     if (probability <= 0f)
                         continue;
 
                     int raw = Mathf.Max(0, a - d);
+                    if (raw > 0) rawHitProbability += probability;
                     int damage = ChallengeResult.ApplyAbilityModifiers(raw, attacker, defender, magnitudes);
                     if (interceptor != null && damage > 0)
                         damage = BattleSimulationKernel.InterceptedDamage(raw, attacker.Abilities,
@@ -66,21 +71,8 @@ namespace Game.Combat
                 }
             }
 
-            return new ExchangeOdds(expected, hitProbability, killProbability);
+            return new ExchangeOdds(expected, hitProbability, killProbability, rawHitProbability);
         }
 
-        private static float BinomialHalfProbability(int n, int k)
-        {
-            if (k < 0 || k > n)
-                return 0f;
-            if (n == 0)
-                return k == 0 ? 1f : 0f;
-
-            double combinations = 1d;
-            int r = System.Math.Min(k, n - k);
-            for (int i = 1; i <= r; i++)
-                combinations = combinations * (n - r + i) / i;
-            return (float)(combinations / System.Math.Pow(2d, n));
-        }
     }
 }

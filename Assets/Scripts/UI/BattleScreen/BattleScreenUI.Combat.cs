@@ -45,6 +45,8 @@ namespace Game.UI
             if (attackPopup == null || attacker == null || defender == null)
                 return;
 
+            if (_battleEngine == null || !_battleEngine.TryBeginAttack(attacker, defender, out var request, isCounterattack)) return;
+            BattleEngine engine = _battleEngine;
             if (ExplosionAttack.TargetLimit(attacker.Abilities) > 0)
             {
                 if (!isCounterattack) _battleEngine?.CommitGroundAttack(attacker);
@@ -81,13 +83,23 @@ namespace Game.UI
             // a separate post-combat/hero-only encounter mechanic.
             attackPopup.Begin(attacker, attackerHero, defender, defenderHero,
                 ResolveCatalog(attacker.Owner)?.logo, ResolveCatalog(defender.Owner)?.logo,
-                roll => OnAttackResolved(attacker, defender, attackerHero, defenderHero, roll, isCounterattack),
+                roll =>
+                {
+                    if (_battleEngine != engine) return;
+                    var plan = engine.PrepareGroundAttack(request, roll, attackerHero, defenderHero);
+                    OnAttackResolved(attacker, defender, attackerHero, defenderHero, roll, isCounterattack, plan);
+                },
                 ShowAiThought, defenderIsRetreating,
                 defense.TerrainBonus, defense.ConstructionBonus,
                 defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve,
                 interceptor: interceptor, isCounterattack: isCounterattack, tacticsCritical: _tacticsCritical,
                 groundHitEffects: (victim, damage) =>
-                    _battleEngine.PreviewGroundHitEffects(attacker, victim, damage, isCounterattack));
+                    engine.PreviewGroundHitEffects(attacker, victim, damage, isCounterattack),
+                groundAttackPlan: roll => engine.PrepareGroundAttack(request, roll, attackerHero, defenderHero),
+                session: new BattleChallengeSession(BattleChallengeMode.GroundCombat, attacker, defender,
+                    attacker.Attack, (defender.IsHero ? defender.FateMax : defender.Defense) + defense.TotalBonus,
+                    attackerHero?.Fate ?? 0, defenderHero?.Fate ?? 0, engine.Magnitudes,
+                    defenderIsRetreating, tacticsCritical: _tacticsCritical));
         }
 
         private IEnumerator RunExplosionAttack(UnitData attacker)
@@ -95,8 +107,8 @@ namespace Game.UI
             int generation = _attackPresentationGeneration;
             _isPresentingAttack = true;
             if (passButton != null) passButton.interactable = false;
-            var explosion = new ExplosionAttack(attacker, _battleEngine.State.BattleHex,
-                AviationCombatPresenter.HeadlessRng, _battleEngine.State.Attacker, _battleEngine.State.Defender);
+            var explosion = _battleEngine.CreateExplosionAttack(attacker);
+            if (explosion == null) yield break;
             try
             {
                 yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelectionController,
@@ -117,12 +129,13 @@ namespace Game.UI
 
         private void OnAttackResolved(UnitData attacker, UnitData defender,
             UnitData attackerHero, UnitData defenderHero, BattleChallengeRollResult roll,
-            bool isCounterattack = false)
+            bool isCounterattack = false, BattleAttackPlan plan = null)
         {
             if (_battleEngine == null)
                 return;
-            BattleAttackApplication application = _battleEngine.ResolveAndApplyGroundAttack(
-                attacker, defender, roll, attackerHero, defenderHero, isCounterattack);
+            BattleAttackApplication application = plan != null
+                ? _battleEngine.ApplyAttackPlan(plan) : new BattleAttackApplication();
+            if (!application.Applied) return;
             UnitData victim = application.Victim ?? defender;
 
             foreach (BattleUnitRemoval removal in application.Removals)
@@ -150,8 +163,11 @@ namespace Game.UI
 
             // A surviving Counterattack carrier answers before the acting unit's turn ends; the
             // answer resolves through this same method and then ends that same turn.
+            bool continued = false;
             void Continue()
             {
+                if (continued) return;
+                continued = true;
                 if (CheckBattleEnd())
                     return;
                 if (application.Counterattacker != null)
@@ -360,8 +376,10 @@ namespace Game.UI
             // "Coroutine couldn't be started because the game object ... is inactive" (see the
             // user's own report). CheckBattleEnd's own RunNextCaptureKillChallenge call runs
             // while a real battle's panelRoot IS already showing, so that one still narrates.
+            BattleState targetOnlyState = _battleState;
             Action finishEncounter = () =>
             {
+                if (_battleState != targetOnlyState || !BattleEncounterCoordinator.TryAcknowledge(targetOnlyState, out var finalization, hexSelectionController)) return;
                 // This hero-only encounter never goes through OnBattleOutcomeAcknowledged (see
                 // this method's own comment — attackPopup IS the entire encounter), so unlike a
                 // normal battle it never got that method's own Fate replenish either. Without
@@ -372,8 +390,7 @@ namespace Game.UI
                 // (see the project owner's own report: the defending side's Fate wasn't full on
                 // a second capture attempt). Both sides, same as OnBattleOutcomeAcknowledged.
                 HexCoord hunterHex = hunterArmy.Hex;
-                BattleEncounterFinalization finalization = BattleEngine.FinalizeStandaloneCaptureKill(
-                    hunterArmy, targetArmy, hexSelectionController);
+
 
                 EncounterResolved?.Invoke(hunterArmy, targetArmy);
 
@@ -394,12 +411,14 @@ namespace Game.UI
                 return;
             }
 
+            BattleState expectedState = _battleState;
+            int generation = _attackPresentationGeneration;
             attackPopup.BeginCaptureKill(next.HunterArmy, next.Hero,
                 ResolveCatalog(next.HunterArmy?.Owner)?.logo, ResolveCatalog(next.Hero?.Owner)?.logo,
                 roll =>
                 {
-                    BattleCaptureKillStep step = sequence.ResolveCurrent(
-                        roll, map, hexSelectionController);
+                    if (_battleState != expectedState || generation != _attackPresentationGeneration) return;
+                    if (!sequence.TryResolveCurrent(next, roll, map, hexSelectionController, out var step)) return;
                     RefreshGrid();
 
                     if (step.Retreat.ContactParticipants != null)
@@ -409,7 +428,7 @@ namespace Game.UI
                     RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts);
                 },
                 suppressAiThoughts ? null : ShowAiThought, automateHumanSides: _fastResolve,
-                tacticsCritical: _tacticsCritical);
+                tacticsCritical: _tacticsCritical, magnitudes: _battleEngine?.Magnitudes);
         }
 
         private void FinishBattleEnd(bool attackerAlive, bool defenderAlive)
@@ -444,7 +463,7 @@ namespace Game.UI
             // there to click Ok, so the popup closes itself after a beat instead of stalling the
             // AI's turn (see BattleOutcomePopupUI.Show's own comment).
             if (outcomePopup != null)
-                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged, autoCloseNoHuman: _localArmy == null);
+                outcomePopup.Show(title, message, OutcomeAcknowledgment(), autoCloseNoHuman: _localArmy == null);
             else
                 OnBattleOutcomeAcknowledged();
         }
@@ -465,14 +484,19 @@ namespace Game.UI
             ShowArmyThought(army, survived ? AiThoughtCategory.BattleWon : AiThoughtCategory.BattleLost);
         }
 
+        private Action OutcomeAcknowledgment()
+        {
+            BattleState expected = _battleState;
+            return () => { if (_battleState == expected) OnBattleOutcomeAcknowledged(); };
+        }
+
         private void OnBattleOutcomeAcknowledged()
         {
+            if (!BattleEncounterCoordinator.TryAcknowledge(_battleState, out var finalization, hexSelectionController)) return;
             ArmyData resolvedAttacker = _attacker;
             ArmyData resolvedDefender = _defender;
             HexCoord hex = _battleHex;
 
-            BattleEncounterFinalization finalization = BattleEngine.FinalizeEncounter(
-                _battleState, hexSelectionController);
 
             EncounterResolved?.Invoke(resolvedAttacker, resolvedDefender);
             ResetBattlePanel();

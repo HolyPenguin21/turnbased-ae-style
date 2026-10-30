@@ -161,7 +161,7 @@ namespace Game.EditorTests
                 var map = go.AddComponent<HexMap>();
                 map.SetData(3, 1f, new Dictionary<HexCoord, TerrainTypeEntry>
                     { [_hex] = new TerrainTypeEntry { defenseModifier = 2 } });
-                var engine = Engine(attacker, defender, grid);
+                var engine = new BattleEngine(new BattleState(_hex, attacker, defender, grid, 1), AbilityMagnitudes.Default, map: map);
                 BattleDefenseBreakdown bonus = engine.GetDefenseBreakdown(defender.Members[0], map);
                 Assert.That(bonus.TerrainBonus, Is.EqualTo(2));
                 Assert.That(bonus.FormationBonus, Is.EqualTo(BattleRules.GuardedDefenseBonus));

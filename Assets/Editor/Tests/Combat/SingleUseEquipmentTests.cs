@@ -229,9 +229,9 @@ namespace Game.EditorTests
             var own = Army(new PlayerSetupData(), a); var foe = Army(new PlayerSetupData(), b, neighbour);
             var grid = new BattleGrid(); grid.Set(1, 1, a); grid.Set(2, 1, b); grid.Set(2, 2, neighbour);
             var state = new BattleState(default, own, foe, grid, 1);
-            state.TurnOrder.Add(a); state.TurnOrder.Add(b); state.TurnOrder.Add(neighbour);
+            BattleEngineTestDriver.Queue(state, new System.Collections.Generic.List<UnitData> { a, b, neighbour });
             var engine = new BattleEngine(state, AbilityMagnitudes.Default, new System.Random(1));
-            var outcome = engine.ResolveAndApplyGroundAttack(a, b, Roll(2));
+            var outcome = BattleEngineTestDriver.ResolveHit(engine, a, b, Roll(2));
             Assert.That(outcome.Damage, Is.EqualTo(4));
             Assert.That(neighbour.HitPointsCurrent, Is.EqualTo(8));
             Assert.That(outcome.Shocked, Is.True);
@@ -245,9 +245,9 @@ namespace Game.EditorTests
             var own = Army(new PlayerSetupData(), a); var foe = Army(new PlayerSetupData(), b);
             var grid = new BattleGrid(); grid.Set(1, 1, a); grid.Set(2, 1, b);
             var engine = new BattleEngine(new BattleState(default, own, foe, grid, 1), AbilityMagnitudes.Default);
-            Assert.That(engine.ResolveAndApplyGroundAttack(a, b, Roll(0)).Counterattacker, Is.SameAs(b));
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, a, b, Roll(0)).Counterattacker, Is.SameAs(b));
             Assert.That(b.Equipment, Is.Not.Null, "Defending alone must not spend it");
-            engine.ResolveAndApplyGroundAttack(b, a, Roll(0), isCounterattack: true);
+            BattleEngineTestDriver.ResolveHit(engine, b, a, Roll(0), isCounterattack: true);
             Assert.That(b.Equipment, Is.Null);
         }
 

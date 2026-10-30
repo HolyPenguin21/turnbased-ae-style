@@ -40,8 +40,9 @@ namespace Game.UI
         private void OnDisable()
         {
             _awaitingHumanDecision = false;
-            CloseTacticPresentation();
-            FinalizeResearchProduction(false);
+            _challengeSession?.Dispose();
+            try { CloseTacticPresentation(); }
+            finally { FinalizeResearchProduction(false); }
         }
 
         private PlayerSetupData HumanParticipant() => IsHumanSide(_defender) ? _defender?.Owner
@@ -345,9 +346,19 @@ namespace Game.UI
             if (reason != null) { ShowTacticError(reason); return false; }
             // Clear the preview before Consume publishes the inventory change, avoiding double effects.
             _pendingTactic = null;
-            bool applied = _kind == ChallengeKind.ResearchProduction
-                ? _rpTactics.TryPlay(card, out reason)
-                : _challengeSession.TryPlayTactic(_defenderTurnActive, card, out reason);
+            bool applied;
+            var production = _rpTactics;
+            try
+            {
+                applied = _kind == ChallengeKind.ResearchProduction
+                    ? production.TryPlay(card, out reason)
+                    : _challengeSession.TryPlayTactic(_defenderTurnActive, card, out reason);
+            }
+            catch
+            {
+                if (production != null && ReferenceEquals(_rpTactics, production)) FinalizeResearchProduction(false);
+                throw;
+            }
             if (!applied)
             {
                 _pendingTactic = card;
@@ -378,8 +389,7 @@ namespace Game.UI
         {
             if (_rpHero == null || _rpTactics == null) return false;
             GetTacticPreview(out int a, out int d);
-            return ResearchProductionSystem.CanSpendFate(_rpTokens, _rpHero.Fate,
-                System.Math.Max(0, _rpTactics.BaseRequired + d) - a);
+            return _rpTactics.CanSpendWithModifiers(a, d);
         }
 
         private void RefreshTacticSpendButtons()
@@ -409,7 +419,8 @@ namespace Game.UI
             {
                 attackerRow?.SetSuccessModifier(a);
                 defenderRow?.SetFixedSuccesses(System.Math.Max(0, _rpTactics.BaseRequired + d));
-                if (_rpHero != null) attackerRow?.SetFatePreview(_rpHero.Fate);
+                attackerRow?.SetFateDisplay(_rpTactics.FateRemaining);
+                attackerRow?.SetFatePreview(_rpTactics.FateRemaining);
             }
             else if (_challengeSession != null)
             {

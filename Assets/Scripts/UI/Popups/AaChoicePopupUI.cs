@@ -22,17 +22,20 @@ namespace Game.UI
         [SerializeField] private Button attackButton;
         [SerializeField] private Button skipButton;
 
-        public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+        public bool IsShowing => isActiveAndEnabled && panelRoot != null && panelRoot.activeInHierarchy;
+        private Action _onCancelled;
 
         // Lets GameTurnController react to this popup opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked), same pattern every other
         // map-level popup already follows.
         public event Action VisibilityChanged;
 
-        public void Show(UnitData aaUnit, ArmyData airArmy, Action onAttack, Action onSkip)
+        public void Show(UnitData aaUnit, ArmyData airArmy, Action onAttack, Action onSkip, Action onCancelled = null)
         {
             if (aaUnit == null || airArmy == null)
                 return;
+            Hide();
+            _onCancelled = onCancelled;
 
             if (aaUnitArtImage != null)
             {
@@ -61,12 +64,12 @@ namespace Game.UI
             if (attackButton != null)
             {
                 Game.UI.UIUtility.ResetRuntimeListeners(attackButton);
-                attackButton.onClick.AddListener(() => { Hide(); onAttack?.Invoke(); });
+                attackButton.onClick.AddListener(() => Resolve(onAttack));
             }
             if (skipButton != null)
             {
                 Game.UI.UIUtility.ResetRuntimeListeners(skipButton);
-                skipButton.onClick.AddListener(() => { Hide(); onSkip?.Invoke(); });
+                skipButton.onClick.AddListener(() => Resolve(onSkip));
             }
 
             if (panelRoot != null)
@@ -77,12 +80,28 @@ namespace Game.UI
             VisibilityChanged?.Invoke();
         }
 
+        private void Resolve(Action answer)
+        {
+            _onCancelled = null;
+            Hide();
+            answer?.Invoke();
+        }
+
+        private void OnDisable() => Hide();
+
         public void Hide()
         {
-            if (panelRoot == null || !panelRoot.activeSelf)
-                return;
-            panelRoot.SetActive(false);
-            VisibilityChanged?.Invoke();
+            var cancelled = _onCancelled;
+            _onCancelled = null;
+            try
+            {
+                if (panelRoot != null && panelRoot.activeSelf)
+                {
+                    panelRoot.SetActive(false);
+                    VisibilityChanged?.Invoke();
+                }
+            }
+            finally { cancelled?.Invoke(); }
         }
     }
 }
