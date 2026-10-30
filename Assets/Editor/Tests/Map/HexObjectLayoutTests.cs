@@ -134,6 +134,9 @@ namespace Game.EditorTests
                     typeof(MapObjectVisual).GetField("innerCircle", BindingFlags.Instance | BindingFlags.NonPublic)
                         .SetValue(visual, renderer);
                     army.Controller = marker.AddComponent<ArmyController>();
+                    // Edit Mode never calls Awake, which binds the marker's visual.
+                    typeof(ArmyController).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(army.Controller, null);
                     army.Controller.SetData(army); ArmyRegistry.Register(army);
                 }
                 VisionSystem.CurrentViewer = own;

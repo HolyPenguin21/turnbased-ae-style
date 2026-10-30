@@ -61,7 +61,7 @@ namespace Game.EditorTests
             var toggle = serialized.FindProperty("tutorialHintsToggle").objectReferenceValue as Toggle;
             Assert.That(toggle, Is.Not.Null);
             Assert.That(prefab.transform.Find("TutorialHintsLabel").GetComponent<TMP_Text>().text,
-                Is.EqualTo("Show tutorial hints"));
+                Is.EqualTo("Show hints")); // owner wording, 3debb85c
         }
 
         [Test]

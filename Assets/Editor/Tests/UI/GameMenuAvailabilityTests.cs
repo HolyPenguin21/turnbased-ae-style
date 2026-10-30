@@ -42,11 +42,17 @@ namespace Game.EditorTests
             blocker.SetActive(false);
             Field(menu, "blockingRoot", blocker);
             Field(menu, "menuPanel", blocker);
+            // Edit Mode never calls OnEnable, where the menu finds its turn controller and wires the gear.
+            Lifecycle("OnEnable");
         }
+
+        private void Lifecycle(string method) => typeof(GameMenuPanelUI)
+            .GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(menu, null);
 
         [TearDown]
         public void TearDown()
         {
+            Lifecycle("OnDisable");
             UnityEngine.Object.DestroyImmediate(menuObject);
             UnityEngine.Object.DestroyImmediate(turnObject);
         }

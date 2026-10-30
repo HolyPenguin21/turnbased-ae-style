@@ -126,7 +126,7 @@ namespace Game.UI
                 rectTransform = (RectTransform)transform;
             _canvas = GetComponentInParent<Canvas>();
             _actionHoverText = new CardActionHoverText(
-                titleRoot != null ? titleRoot : nameText?.gameObject, moveText, skillsText);
+                titleRoot != null ? titleRoot : nameText != null ? nameText.gameObject : null, moveText, skillsText);
         }
 
         private void OnDisable()
@@ -161,7 +161,7 @@ namespace Game.UI
             }
             if (nameText != null)
                 nameText.text = unit != null ? unit.Name : string.Empty;
-            titleRoot?.SetActive(unit != null);
+            if (titleRoot != null) titleRoot.SetActive(unit != null);
             if (moveText != null)
             {
                 // Abilities only now — Move used to be prefixed onto this same line, but now
@@ -243,7 +243,7 @@ namespace Game.UI
             }
             if (nameText != null)
                 nameText.text = card != null ? card.displayName : string.Empty;
-            titleRoot?.SetActive(card != null);
+            if (titleRoot != null) titleRoot.SetActive(card != null);
             // Skip when moveText is the preview description label itself (see PreviewSkillsLabel)
             // — RefreshSkillsText owns that line in preview mode and would only overwrite this.
             if (moveText != null && moveText != PreviewSkillsLabel)

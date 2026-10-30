@@ -723,7 +723,7 @@ namespace Game.EditorTests
                 ArmyData enemyArmy = EnemyArmy();
                 var wing = new ArmyData { Owner = owner, Hex = target, IsAirArmy = true };
                 wing.Members.Add(LiveAircraft()); ArmyRegistry.Register(wing);
-                wing.Controller = actorObject.AddComponent<ArmyController>();
+                wing.Controller = actorObject.AddComponent<ArmyController>(); wing.Controller.SetData(wing);
                 var presenter = presenterObject.AddComponent<AviationCombatPresenter>();
                 typeof(HexSelectionController).GetField("aviationCombatPresenter", System.Reflection.BindingFlags.Instance
                     | System.Reflection.BindingFlags.NonPublic).SetValue(world.Context.HexSelection, presenter);
