@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Core;
 using Game.Players;
@@ -63,7 +64,6 @@ namespace Game.Campaign
         [SerializeField] private TMP_Text statusLabel, noBattlesLabel, summaryLabel;
         [SerializeField] private Button endTurnButton, resumeButton;
         [Header("History footer (optional)")]
-        [SerializeField] private TMP_Text statusTitle;
         [SerializeField] private HistoryRowRefs[] historyRows;
         [SerializeField] private Image playerEmblem;
         [SerializeField] private TMP_Text playerFactionName;
@@ -77,6 +77,7 @@ namespace Game.Campaign
         [SerializeField] private CampaignDeckRowView deckRowPrefab;
 
         private Material cloudMaterial, consoleMaterial, surfacePanelMaterial, regionPreviewMaterial;
+        private readonly List<Material> attackPreviewMaterials = new List<Material>();
         private RectTransform modalContent;
         private int? selected, hovered;
         private int confirmFrom, confirmTarget;
@@ -330,9 +331,24 @@ namespace Game.Campaign
                 RenderAttacks(s, region, region.OwnerFaction == s.HumanFaction ? "No attacks available from this region." : "Attack unavailable this turn.");
         }
         // From an own region: every legal target next to it. From an enemy region: that region, if any own region can reach it.
+        private void RoundAttackPreview(RawImage preview)
+        {
+            if (consoleMaterial == null) return;
+            var size = preview.rectTransform.rect.size;
+            if (size.x <= 0 || size.y <= 0) return;
+            var uv = preview.uvRect;
+            var material = new Material(consoleMaterial) { name = "CampaignAttackPreview (runtime)" };
+            material.SetFloat("_CornerRadius", 8);
+            material.SetVector("_SurfaceSize", new Vector4(size.x, size.y, 0, 0));
+            material.SetVector("_UVRect", new Vector4(uv.x, uv.y, uv.width, uv.height));
+            preview.material = material;
+            attackPreviewMaterials.Add(material);
+        }
         private void RenderAttacks(CampaignState s, RegionState region, string emptyText)
         {
             ClearChildren(attacksContent);
+            foreach (var m in attackPreviewMaterials) if (m != null) Destroy(m);
+            attackPreviewMaterials.Clear();
             var attacks = region.OwnerFaction == s.HumanFaction
                 ? region.NeighborIds.Where(id => CampaignRules.CanAttack(s, s.HumanFaction, region.RegionId, id)).Select(id => (from: region.RegionId, target: id)).ToList()
                 : s.Regions.Where(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId)).Take(1).Select(r => (from: r.RegionId, target: region.RegionId)).ToList();
@@ -340,7 +356,7 @@ namespace Game.Campaign
             {
                 var target = s.Regions.Find(r => r.RegionId == targetId);
                 var view = Instantiate(attackRowPrefab, attacksContent, false);
-                if (view.TerrainPreview != null) ShowTerrain(view.TerrainPreview, target);
+                if (view.TerrainPreview != null) { ShowTerrain(view.TerrainPreview, target); RoundAttackPreview(view.TerrainPreview); }
                 if (view.OwnerLogo != null) SetLogo(view.OwnerLogo, target.OwnerFaction);
                 if (view.RegionName != null) view.RegionName.text = target.Name;
                 if (view.OwnerName != null) view.OwnerName.text = "Owner: " + FactionName(target.OwnerFaction);
@@ -354,8 +370,8 @@ namespace Game.Campaign
             // Title/body pairs; without a separate title slot they join into the original one-line status.
             var (title, separator, body) = finished ? (s.Factions.Find(f => f.Faction == s.HumanFaction).Eliminated ? ("CAMPAIGN DEFEAT", " - ", "your faction has been eliminated.") : ("PLANET CONQUERED", " - ", "campaign completed."))
                 : s.PendingOperation != null ? ("Pending battle", " - ", s.Phase.ToString()) : s.CurrentFaction == s.HumanFaction ? ("Your turn:", " ", "attack an adjacent enemy region or end turn.") : ("", "", "AI faction is choosing an attack.");
-            if (statusTitle != null) { statusTitle.text = title.ToUpperInvariant(); statusLabel.text = body.ToUpperInvariant(); }
-            else statusLabel.text = title + separator + body;
+            statusLabel.text = title.Length == 0 ? body.ToUpperInvariant()
+                : "<color=#EE9E40>" + title.ToUpperInvariant() + "</color>" + separator + body.ToUpperInvariant();
             var rows = historyRows ?? Array.Empty<HistoryRowRefs>();
             var history = s.BattleHistory.AsEnumerable().Reverse().Take(rows.Length).ToList();
             noBattlesLabel.gameObject.SetActive(history.Count == 0);
@@ -537,6 +553,7 @@ namespace Game.Campaign
         private void OnDestroy()
         {
             UIFocusUtility.SetOverlay(this, false);
+            foreach (var m in attackPreviewMaterials) if (m != null) Destroy(m);
             if (cloudMaterial != null) Destroy(cloudMaterial);
             if (consoleMaterial != null) Destroy(consoleMaterial);
             if (surfacePanelMaterial != null) Destroy(surfacePanelMaterial);

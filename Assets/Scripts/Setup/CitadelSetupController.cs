@@ -89,6 +89,9 @@ namespace Game.Setup
         private readonly List<PlayerSetupData> _allPlayers = new List<PlayerSetupData>();
         private readonly Dictionary<PlayerSetupData, MapObjectVisual> _citadelMarkers = new Dictionary<PlayerSetupData, MapObjectVisual>();
 
+        // Per-player placement region glow; only the human currently placing sees theirs.
+        private readonly Dictionary<PlayerSetupData, GameObject> _regionHighlights = new Dictionary<PlayerSetupData, GameObject>();
+
         private HexShaderHighlight _selectedHighlight;
         private HexCoord _currentCandidate;
         private HexCoord? _placedHex;
@@ -210,6 +213,8 @@ namespace Game.Setup
             }
 
             BuildValidHexes(_currentCandidate);
+            if (_regionHighlights.TryGetValue(player, out GameObject region) && region != null)
+                region.SetActive(true);
             _placedHex = null;
             _canPlace = false;
             if (confirmButton != null)
@@ -378,6 +383,7 @@ namespace Game.Setup
         private void AssignStartingHexes(List<PlayerSetupData> players)
         {
             _startHexes.Clear();
+            _regionHighlights.Clear();
 
             List<HexCoord> eligible = GetEdgeEligibleHexes();
             if (eligible.Count == 0 || players.Count == 0)
@@ -554,6 +560,11 @@ namespace Game.Setup
             marker.ApplyStyle(gameConfig.regionHighlightStyle);
             marker.SetColor(PlayerColorPalette.Colors[player.ColorIndex]);
             marker.ShowCluster(cluster, map.OuterRadius);
+
+            // Hidden until this player's own placement turn (see BeginPlayerTurn) — nobody
+            // should see where the other players' regions are, and AI ones never show at all.
+            highlightObject.SetActive(false);
+            _regionHighlights[player] = highlightObject;
         }
 
         // --- Citadel placement (current human player clicks within their neighbourhood) --
@@ -623,6 +634,8 @@ namespace Game.Setup
             if (!_placedHex.HasValue)
                 return;
 
+            if (_regionHighlights.TryGetValue(_allPlayers[_currentPlayerIndex], out GameObject region) && region != null)
+                region.SetActive(false);
             FinalizePlayer(_allPlayers[_currentPlayerIndex], _placedHex.Value);
             AdvanceToNextPlayer();
         }

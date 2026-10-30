@@ -313,15 +313,13 @@ public static class CampaignScreenBuilder
 
         // Footer: status title, history columns and the player's emblem next to End Turn.
         var status = Get<TMP_Text>("statusLabel");
-        if (status != null && Missing("statusTitle"))
+        if (status != null && status.transform.parent.Find("StatusIcon") == null)
         {
             var footer = status.transform.parent;
             var icon = Created(Panel(footer, "StatusIcon")); Place(icon, 28, 14, 34, 34); icon.GetComponent<Image>().raycastTarget = false;
-            var title = Created(Text(footer, "StatusTitle", "YOUR TURN:", 70, 16, 170, 32, 23, new Color(.93f, .62f, .25f), true)); NoWrap(title);
-            Set("statusTitle", title);
             Undo.RecordObject(status.rectTransform, "Add Campaign Reference Slots");
-            status.rectTransform.anchoredPosition = new Vector2(246, status.rectTransform.anchoredPosition.y);
-            status.rectTransform.sizeDelta = new Vector2(660, status.rectTransform.sizeDelta.y);
+            status.rectTransform.anchoredPosition = new Vector2(70, status.rectTransform.anchoredPosition.y);
+            status.rectTransform.sizeDelta = new Vector2(836, status.rectTransform.sizeDelta.y);
         }
         var history = so.FindProperty("historyRows");
         var noBattles = Get<TMP_Text>("noBattlesLabel");
