@@ -85,7 +85,7 @@ namespace Game.EditorTests
         {
             randomBefore = UnityEngine.Random.state;
             MatchStateInventory.EndMatch();
-            isolatedScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+            isolatedScene = IsolatedTestScene.Open();
             objects = new GameObject("in-memory-restore-fixture"); objects.SetActive(false);
             SceneManager.MoveGameObjectToScene(objects, isolatedScene);
             config = ScriptableObject.CreateInstance<GameConfig>();
@@ -117,7 +117,7 @@ namespace Game.EditorTests
             // an injected-failure cleanup assertion pass.
             MatchStateInventory.EndMatch(); SetCollection(previousCollection);
             Object.DestroyImmediate(objects);
-            if (isolatedScene.IsValid()) EditorSceneManager.CloseScene(isolatedScene, true);
+            IsolatedTestScene.Close(isolatedScene);
             Object.DestroyImmediate(config);
             Object.DestroyImmediate(observedSprite); Object.DestroyImmediate(changedSprite); Object.DestroyImmediate(texture);
             Object.DestroyImmediate(catalog); Object.DestroyImmediate(research); Object.DestroyImmediate(faction);

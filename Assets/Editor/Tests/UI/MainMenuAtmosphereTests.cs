@@ -20,7 +20,7 @@ namespace Game.EditorTests
         {
             using (var vh = new VertexHelper())
             {
-                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private).Invoke(graphic, new object[] { vh });
+                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null).Invoke(graphic, new object[] { vh });
                 return vh.currentVertCount;
             }
         }
@@ -107,7 +107,7 @@ namespace Game.EditorTests
             Rect rect = graphic.rectTransform.rect;
             using (var vh = new VertexHelper())
             {
-                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private).Invoke(graphic, new object[] { vh });
+                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null).Invoke(graphic, new object[] { vh });
                 var vertex = UIVertex.simpleVert;
                 for (int i = 0; i < vh.currentVertCount; i++)
                 {
@@ -126,7 +126,7 @@ namespace Game.EditorTests
             Rect rect = graphic.rectTransform.rect;
             using (var vh = new VertexHelper())
             {
-                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private).Invoke(graphic, new object[] { vh });
+                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null).Invoke(graphic, new object[] { vh });
                 var vertex = UIVertex.simpleVert;
                 vh.PopulateUIVertex(ref vertex, vh.currentVertCount - 4);
                 float dx = -sample.Width * rect.width * .5f, dy = -sample.Height * rect.height * .5f;
@@ -178,7 +178,7 @@ namespace Game.EditorTests
             graphic.color = new Color(1, 1, 1, 0);
             using (var vh = new VertexHelper())
             {
-                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private).Invoke(graphic, new object[] { vh });
+                typeof(MainMenuAtmosphereGraphic).GetMethod("OnPopulateMesh", Private, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null).Invoke(graphic, new object[] { vh });
                 Assert.That(vh.currentVertCount, Is.GreaterThan(0));
                 var vertex = UIVertex.simpleVert;
                 for (int i = 0; i < vh.currentVertCount; i++)

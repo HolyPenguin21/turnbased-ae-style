@@ -143,7 +143,7 @@ namespace Game.Map
                 PlayerSetupData previousOwner = building.Owner;
                 Unregister(building.Hex);
                 if (building.Visual != null)
-                    UnityEngine.Object.Destroy(building.Visual.gameObject);
+                    Game.Core.UnityObjectLifetime.Destroy(building.Visual.gameObject);
                 AiDebugLog.Write($"[BUILDING] Facility \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) owned by "
                     + $"{(previousOwner != null ? previousOwner.Nickname : "nobody")} destroyed by {(newOwner != null ? newOwner.Nickname : "nobody")}.");
                 AiMatchStats.RecordBuildingTaken(false, previousOwner, newOwner);

@@ -51,7 +51,7 @@ namespace Game.Campaign
         private Shape Sample(Mesh mesh, Color meshTint)
         {
             var shape = new Shape { vertices = mesh.vertices, colors = mesh.colors, triangles = mesh.triangles, tint = meshTint };
-            Destroy(mesh); return shape;
+            Game.Core.UnityObjectLifetime.Destroy(mesh); return shape;
         }
         public void Play(Vector2 projectedSource, Vector2 projectedTarget, float fromExtent, float toExtent, Color factionColor)
         {

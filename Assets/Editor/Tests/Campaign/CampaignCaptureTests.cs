@@ -163,7 +163,7 @@ public sealed class CampaignCaptureVisualTests
             Assert.AreNotSame(material, rendered, "The campaign panel uses a stencil material copy");
             Assert.That(rendered.GetFloat("_CaptureProgress"), Is.EqualTo(.5f).Within(.001f));
             Assert.AreEqual(material.GetFloat("_CaptureProgress"), rendered.GetFloat("_CaptureProgress"));
-            var populate = typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", BindingFlags.NonPublic | BindingFlags.Instance);
+            var populate = typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null);
             using (var vh = new UnityEngine.UI.VertexHelper()) { populate.Invoke(graphic, new object[] { vh }); vh.FillMesh(mesh); }
             var data = new System.Collections.Generic.List<Vector4>(); mesh.GetUVs(2, data); Assert.True(data.Any(v => v.y == 1));
             effect.Finish();

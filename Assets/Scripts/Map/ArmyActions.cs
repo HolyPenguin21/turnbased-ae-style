@@ -83,7 +83,7 @@ namespace Game.Map
             // A composed operation may compensate this removal before publishing. Keep the
             // old marker available until commit; discarded notifications must not destroy it.
             if (controller != null)
-                VisionSystem.PublishAfterMutation(() => UnityEngine.Object.Destroy(controller.gameObject));
+                VisionSystem.PublishAfterMutation(() => Game.Core.UnityObjectLifetime.Destroy(controller.gameObject));
         }
         public static bool RemoveMember(ArmyData army, UnitData unit, bool cleanup = true, bool publish = true)
             => RemoveMembers(army, new[] { unit }, cleanup, publish) > 0;

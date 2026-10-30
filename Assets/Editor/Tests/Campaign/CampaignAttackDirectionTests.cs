@@ -54,7 +54,7 @@ public sealed class CampaignAttackDirectionGeometryTests
             var arrow = root.AddComponent<CampaignArrowGraphic>(); arrow.Initialize(new MoveArrowStyle());
             using (var vh = new VertexHelper())
             {
-                void Populate() => typeof(CampaignArrowGraphic).GetMethod("OnPopulateMesh", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(arrow, new object[] { vh });
+                void Populate() => typeof(CampaignArrowGraphic).GetMethod("OnPopulateMesh", BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null).Invoke(arrow, new object[] { vh });
                 foreach (var size in new[] { new Vector2(1360, 744), new Vector2(906, 496), new Vector2(1813, 992) })
                 {
                     arrow.rectTransform.sizeDelta = size;

@@ -271,7 +271,7 @@ public sealed class CampaignVisualTests
             graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), true, false, false, false, true);
             using (var vh = new VertexHelper())
             {
-                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null)
                     .Invoke(graphic, new object[] { vh });
                 vh.FillMesh(mesh);
             }
@@ -303,7 +303,7 @@ public sealed class CampaignVisualTests
             graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), false, false, false, false, true);
             using (var vh = new VertexHelper())
             {
-                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null)
                     .Invoke(graphic, new object[] { vh });
                 vh.FillMesh(mesh);
             }
@@ -311,7 +311,7 @@ public sealed class CampaignVisualTests
             graphic.Configure(state.Regions[0], null, null, true);
             using (var vh = new VertexHelper())
             {
-                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance, null, new[] { typeof(UnityEngine.UI.VertexHelper) }, null)
                     .Invoke(graphic, new object[] { vh });
                 vh.FillMesh(mesh);
             }

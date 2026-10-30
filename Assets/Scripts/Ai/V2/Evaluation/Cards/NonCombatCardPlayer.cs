@@ -194,7 +194,7 @@ namespace Game.Ai.V2
                     || !DevelopmentInvestmentGate.IsOpenFor(player, snap.TurnNumber, source.ChallengeCard.resourceCost)
                     || !GenerationSource.FitsReservedAffordability(root, player, ctx, source.ChallengeCard)) continue;
                 // Negative preview identity cannot consume a real hand/supply position.
-                var preview = CardData.WithRuntimeId(def, -1);
+                var preview = CardData.CreateDetached(def, -1);
                 preview.ResearchProductionCreated = true;
                 foreach (var play in BuildAviationPlays(preview, source, snap, player, root, hand, ctx, null))
                     if (play.Score > AiConfigV2.devEvMargin

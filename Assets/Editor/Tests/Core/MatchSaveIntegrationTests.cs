@@ -100,7 +100,7 @@ namespace Game.EditorTests
             randomBefore = UnityEngine.Random.state;
             MatchStateInventory.EndMatch();
             previousActiveScene = SceneManager.GetActiveScene();
-            isolatedScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+            isolatedScene = IsolatedTestScene.Open();
             SceneManager.SetActiveScene(isolatedScene);
             objects = new GameObject("file-save-fixture"); objects.SetActive(false);
             SceneManager.MoveGameObjectToScene(objects, isolatedScene);
@@ -155,7 +155,7 @@ namespace Game.EditorTests
             Object.DestroyImmediate(eventCatalog);
             Object.DestroyImmediate(objects);
             if (previousActiveScene.IsValid()) SceneManager.SetActiveScene(previousActiveScene);
-            if (isolatedScene.IsValid()) EditorSceneManager.CloseScene(isolatedScene, true);
+            IsolatedTestScene.Close(isolatedScene);
             Object.DestroyImmediate(config);
             Object.DestroyImmediate(observedSprite); Object.DestroyImmediate(changedSprite); Object.DestroyImmediate(texture);
             Object.DestroyImmediate(catalog); Object.DestroyImmediate(research); Object.DestroyImmediate(faction);
