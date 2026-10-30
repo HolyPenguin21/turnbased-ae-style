@@ -10,8 +10,7 @@ node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/MainMenu.unity Assets
 
 These checks do not compile C# or prove Unity imports or plays the assets correctly.
 
-In Unity 6000.5.4f1, run all EditMode tests, including `UIAudioBindingTests` and
-`UIAudioLifecyclePlayModeTests` (the latter enter Play Mode using UnityTest).
+In Unity 6000.5.4f1, run all EditMode tests. The native UI tests were removed on 2026-10-30: UI is tuned and checked by hand in the editor.
 Verify MainMenu → Game → MainMenu, direct Game launch, inactive and dynamically
 created buttons, human turn PopupPanel sound and the three other popup openings, mouse and keyboard settings navigation,
 master zero, music pause/resume, persistence after restarting, and repeated Play

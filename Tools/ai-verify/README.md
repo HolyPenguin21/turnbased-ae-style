@@ -53,8 +53,8 @@ Limits, know them before trusting a green run:
 ## Unity runs
 
 Routine check after a task — the full EditMode suite without the `Extended` category
-(Play Mode fixtures that enter Play Mode per test, thousand-seed generators, whole-campaign runs;
-about 125 tests and 50 of the ~53 minutes measured on 2026-10-30):
+(fixtures that enter Play Mode per test, thousand-seed generators, whole-campaign runs; on
+2026-10-30 they took 50 of ~53 minutes, most of it UI Play Mode fixtures since removed):
 
 ```bash
 Unity.exe -batchmode -projectPath <checkout> -runTests -testPlatform EditMode \

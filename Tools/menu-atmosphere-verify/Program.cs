@@ -1,8 +1,8 @@
 using System;
 using System.Reflection;
 
-// Engine-independent checks of the real motion sampler. Unity graphics/lifecycle tests
-// live in Assets/Editor/Tests/UI/MainMenuAtmosphereTests.cs and require the editor.
+// Engine-independent checks of the real motion sampler. Graphics/lifecycle are checked by
+// hand in the editor (the native UI tests were removed on 2026-10-30).
 internal static class Program
 {
     private static Type Motion => typeof(Program).Assembly.GetType("Game.UI.MainMenuWindMotion")
