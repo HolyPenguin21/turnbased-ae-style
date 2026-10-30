@@ -94,7 +94,7 @@ namespace Game.UI
             menuPanel.SetActive(true);
             if (exitButtonText != null)
                 exitButtonText.text = CampaignMatchBridge.ReturnScene(GameSession.MatchId) == SceneNames.Campaign
-                    ? "Return to Campaign" : "Return to Main Menu";
+                    ? "Campaign" : "Main Menu";
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             VisibilityChanged?.Invoke();
             optionsButton?.Select();
