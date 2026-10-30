@@ -25,18 +25,17 @@ namespace Game.Progression
             }
             return profile;
         }
-        [Serializable] private sealed class ReceiptLedger
-        {
-            // No initializer: a missing v2 ledger must not become an innocent empty list.
-            public List<EventRewardReceipt> eventRewards = null;
-        }
+        // A missing v2 ledger must not become an innocent empty list. Unity's JsonUtility always
+        // allocates list fields, so the key itself is checked in the file text.
+        private static readonly System.Text.RegularExpressions.Regex ReceiptLedgerKey =
+            new System.Text.RegularExpressions.Regex(@"""eventRewards""\s*:");
         private static CollectionProfile Read(string file)
         {
             if (new FileInfo(file).Length > MaximumProfileBytes) throw new InvalidDataException("Collection file too large.");
             string json = File.ReadAllText(file);
             var profile = JsonUtility.FromJson<CollectionProfile>(json);
             if (profile != null && profile.schemaVersion == 2
-                && JsonUtility.FromJson<ReceiptLedger>(json)?.eventRewards == null)
+                && !ReceiptLedgerKey.IsMatch(json))
                 throw new InvalidDataException("Missing event reward ledger.");
             // v1 predates event receipts. Existing ownership is retained without inventing or
             // replaying historical grants; only future event claims acquire durable receipts.

@@ -358,7 +358,7 @@ namespace Game.UI
                 if (_humanHand.Hand.Contains(view.Data)) continue;
                 _cards.RemoveAt(i);
                 view.gameObject.SetActive(false);
-                Destroy(view.gameObject);
+                Game.Core.UnityObjectLifetime.Destroy(view.gameObject);
             }
             bool added = false;
             if (cardPrefab != null && handContainer != null)

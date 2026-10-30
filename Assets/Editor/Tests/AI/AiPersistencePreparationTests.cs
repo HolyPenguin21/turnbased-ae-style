@@ -20,7 +20,8 @@ namespace Game.EditorTests
     {
         private static PlayerSetupData Player(string id) => new PlayerSetupData { PlayerId = id };
 
-        [TearDown]
+        // Also before each test: other fixtures may leave owners without a match-local ID.
+        [SetUp, TearDown]
         public void ClearOwners()
         {
             AiMapMemory.Clear();

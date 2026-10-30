@@ -322,6 +322,11 @@ namespace Game.EditorTests
             var hex = new HexCoord(88, -31);
             var army = new ArmyData { Owner = _owner, Hex = hex, IsGarrison = garrison };
             ArmyRegistry.Register(army);
+            // Deployment checks the destination terrain on the selector's map.
+            var map = _scene.AddComponent<HexMap>();
+            map.SetData(1, 1f, new System.Collections.Generic.Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
+                { [hex] = new Game.Terrain.TerrainTypeEntry() });
+            typeof(HexSelectionController).GetField("map", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_selector, map);
             var building = new BuildingData { Owner = _owner, Hex = hex };
             building.Abilities.Add(UnitAbilities.Barracks);
             BuildingRegistry.Register(hex, building);

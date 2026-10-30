@@ -307,7 +307,8 @@ namespace Game.EditorTests
         {
             var first = new UnitData { Owner = owner, IsAviation = true }; var last = new UnitData { Owner = owner, IsAviation = true };
             var wing = new ArmyData { Owner = owner, Hex = hex, IsAirArmy = true }; wing.Members.Add(first); wing.Members.Add(last); ArmyRegistry.Register(wing);
-            catalog.airArmyPrefab = marker.GetComponent<MapObjectVisual>();
+            // The marker factory needs the ordinary army prefab before it picks the air variant.
+            catalog.armyPrefab = catalog.airArmyPrefab = marker.GetComponent<MapObjectVisual>();
             var controller = selection.CreateArmyMarker(wing);
             Bind(controller, "<IsMoving>k__BackingField", true); Bind(controller, "_currentHex", new HexCoord(9, 9));
             var viewer = new PlayerSetupData { PlayerId = "origin-viewer" };
@@ -326,11 +327,19 @@ namespace Game.EditorTests
         {
             catalog.armyPrefab = marker.GetComponent<MapObjectVisual>();
             var controller = selection.CreateArmyMarker(source); Bind(selection, "_selectedArmy", controller);
+            // Edit Mode never calls OnEnable/OnDisable of a runtime component: drive them as Play Mode would.
+            void Lifecycle(string method) => typeof(HexSelectionController)
+                .GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(selection, null);
             scene.SetActive(true); selection.enabled = enabled;
-            ArmyActions.ClearMembers(source); ArmyActions.DeleteArmyIfEmptied(source);
-            if (!enabled) selection.enabled = true;
-            var selected = typeof(HexSelectionController).GetField("_selectedArmy", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(selection);
-            Assert.That(selected, Is.Null);
+            if (enabled) Lifecycle("OnEnable");
+            try
+            {
+                ArmyActions.ClearMembers(source); ArmyActions.DeleteArmyIfEmptied(source);
+                if (!enabled) { selection.enabled = true; Lifecycle("OnEnable"); }
+                var selected = typeof(HexSelectionController).GetField("_selectedArmy", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(selection);
+                Assert.That(selected, Is.Null);
+            }
+            finally { Lifecycle("OnDisable"); }
         }
 
         [TestCase(true)] [TestCase(false)]
