@@ -126,7 +126,7 @@ public sealed class CampaignAttackDirectionFlowTests
         UnityEngine.Object.DestroyImmediate(starting); UnityEngine.Object.DestroyImmediate(research); UnityEngine.Object.DestroyImmediate(catalog);
         if (Directory.Exists(directory)) Directory.Delete(directory, true);
     }
-    [Test] public void DeferredAiSelectionHasNoResultAndResolvesIdenticallyToImmediateFlow()
+    [Test, Category("Extended")] public void DeferredAiSelectionHasNoResultAndResolvesIdenticallyToImmediateFlow()
     {
         var rules = new DeckRules(starting, research); var resolver = new CampaignBattleResolver(); int samples = 0, manualSamples = 0;
         for (int seed = 0; seed < 30; seed++)

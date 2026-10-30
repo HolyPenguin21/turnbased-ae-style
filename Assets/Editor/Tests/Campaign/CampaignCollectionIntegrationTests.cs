@@ -45,7 +45,7 @@ public sealed class CampaignCollectionIntegrationTests
         }
         finally { UnityEngine.Object.DestroyImmediate(root); }
     }
-    [Test] public void GeneratedRegionsCanBeTriangulatedAfterVisualProjection()
+    [Test, Category("Extended")] public void GeneratedRegionsCanBeTriangulatedAfterVisualProjection()
     {
         for (int seed = 0; seed < 100; seed++)
         {

@@ -19,6 +19,8 @@ using Object = UnityEngine.Object;
 
 namespace Game.EditorTests
 {
+    // Enters Play Mode per test (~20 s each): full suite only (Tools/ai-verify/README.md, "Unity runs").
+    [Category("Extended")]
     public sealed class TacticHandPresentationTests
     {
         private GameObject root;

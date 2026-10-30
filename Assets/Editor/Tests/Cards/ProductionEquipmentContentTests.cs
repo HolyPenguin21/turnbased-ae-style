@@ -240,6 +240,7 @@ namespace Game.EditorTests
             foreach (var c in ground) Assert.That(EquipmentSystem.FitsHost(gear, c, out _), Is.True, c.displayName);
         }
 
+        [Category("Extended")]
         [TestCase("Shotgun")]
         [TestCase("Marksman Rifle")]
         [TestCase("Optical Scope")]
@@ -501,6 +502,7 @@ namespace Game.EditorTests
             Assert.That(body.Equipment, Is.Null); Assert.That(body.Mutator, Is.SameAs(mutation));
         }
 
+        [Category("Extended")]
         [Test]
         public void SelectedVesselsKeepInnateAdvantagesAndStillRejectBioGenomes()
         {

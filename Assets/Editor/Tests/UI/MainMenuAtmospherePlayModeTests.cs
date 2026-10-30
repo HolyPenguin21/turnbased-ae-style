@@ -8,6 +8,8 @@ using UnityEngine.TestTools;
 
 namespace Game.EditorTests
 {
+    // Enters Play Mode per test (~20 s each): full suite only (Tools/ai-verify/README.md, "Unity runs").
+    [Category("Extended")]
     public sealed class MainMenuAtmospherePlayModeTests
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;

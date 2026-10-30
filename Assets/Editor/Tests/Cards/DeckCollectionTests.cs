@@ -140,7 +140,7 @@ namespace Game.EditorTools
             var snapshot = new MatchLoadout(deck, rules, _ => 1);
             Assert.That(snapshot.TryBuildPool(rules, out var pool, out _), Is.True); Assert.That(pool, Is.Empty);
         }
-        [Test] public void SixStrategyFixturesPerFactionValidateNearBudget()
+        [Test, Category("Extended")] public void SixStrategyFixturesPerFactionValidateNearBudget()
         {
             var rules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));

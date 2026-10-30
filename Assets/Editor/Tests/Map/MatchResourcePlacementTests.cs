@@ -58,7 +58,7 @@ namespace Game.EditorTests
                     Assert.That(HexGridMath.Distance(hexes[i], hexes[j]), Is.GreaterThanOrEqualTo(2));
         }
 
-        [Test] public void AllSizesAndPlayerCountsKeepCountsSpacingAndCentralTechAcrossSeeds()
+        [Test, Category("Extended")] public void AllSizesAndPlayerCountsKeepCountsSpacingAndCentralTechAcrossSeeds()
         {
             for (int radius = 5; radius <= 8; radius++)
             for (int players = 2; players <= 4; players++)
@@ -121,7 +121,7 @@ namespace Game.EditorTests
             System.Console.WriteLine($"Fixed-map diversity: {layouts.Count}/80 far layouts, {techLayouts.Count}/80 Tech layouts.");
         }
 
-        [Test] public void InwardShiftedCitadelsStillGetCompleteNearAndFarLayouts()
+        [Test, Category("Extended")] public void InwardShiftedCitadelsStillGetCompleteNearAndFarLayouts()
         {
             for (int radius = 5; radius <= 8; radius++)
             for (int players = 2; players <= 4; players++)
@@ -189,7 +189,7 @@ namespace Game.EditorTests
             }
         }
 
-        [Test] public void RegionalTypedPlansAcrossTerrainCostsAndShiftedStarts()
+        [Test, Category("Extended")] public void RegionalTypedPlansAcrossTerrainCostsAndShiftedStarts()
         {
             for (int radius = 5; radius <= 8; radius++)
             for (int players = 2; players <= 4; players++)

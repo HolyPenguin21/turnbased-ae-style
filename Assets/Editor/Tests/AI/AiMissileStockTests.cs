@@ -157,6 +157,7 @@ namespace Game.EditorTests
             Assert.That(previous, Is.EqualTo(ten).Within(.001f));
         }
 
+        [Category("Extended")]
         [Test]
         public void StockIsHonestRecentEnemyPlayerDemandAndOneSlotPerHex()
         {
