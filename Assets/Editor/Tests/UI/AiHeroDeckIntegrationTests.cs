@@ -65,7 +65,6 @@ namespace Game.EditorTests
             ArmyRegistry.Register(garrison);
             GameSession.SetCampaignContext(new CampaignMatchContext { MatchId = "leader-grant" });
             var definition = decks.ResolveAiLeader(faction, name);
-            var random = UnityEngine.Random.state;
             Grant(setup, player, hex); Grant(setup, player, hex);
             Assert.That(garrison.Members.Count, Is.EqualTo(1));
             var leader = garrison.Members.Single();
@@ -78,7 +77,9 @@ namespace Game.EditorTests
             Assert.That(root.ActionPoints, Is.Zero);
             foreach (ResourceType resource in Enum.GetValues(typeof(ResourceType)))
                 Assert.That(root.GetResource(resource), Is.Zero);
-            Assert.That(UnityEngine.Random.state, Is.EqualTo(random));
+            // No Random-state check: every live unit rolls its repair cost when it materializes
+            // (UnitRepair.InitializeRepairCost), the granted leader included.
+            Assert.That(leader.RepairResourceCost, Is.Not.Null);
             Assert.That(player.AiGrantedLeaderKey, Is.EqualTo(definition.authoredKey));
             var hand = AiHandRegistry.GetOrCreate(player, decks, 7, 10);
             Assert.That(hand.Hand.Select(c => c.Definition).Concat(hand.RemainingDeck).Contains(definition), Is.False);
@@ -206,7 +207,8 @@ namespace Game.EditorTests
             Set(setup, "hexSelectionController", host.AddComponent<HexSelectionController>());
             var neutralCatalog = AssetDatabase.LoadAssetAtPath<NeutralArmyCatalog>("Assets/Cards/NeutralArmyCatalog.asset");
             Set(setup, "neutralArmyCatalog", neutralCatalog); Set(setup, "_neutralPlayer", neutral);
-            var origin = new HexCoord(0, 0); var target = new HexCoord(2, 0);
+            // The leader (Recce r1) sees one hex around the garrison; armies have no base radius.
+            var origin = new HexCoord(0, 0); var target = new HexCoord(1, 0);
             var garrison = new ArmyData { Owner = player, Hex = origin, IsGarrison = true };
             ArmyRegistry.Register(garrison);
             GameSession.SetCampaignContext(new CampaignMatchContext { MatchId = "initial-observation" });

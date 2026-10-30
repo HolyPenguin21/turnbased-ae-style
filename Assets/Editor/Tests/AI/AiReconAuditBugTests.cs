@@ -489,9 +489,10 @@ namespace Game.EditorTests
             snap.Observer = player;
             snap.Self.ReconHuntOpportunities = new[] { (10, focus) };
             float baseline = ReconObjectiveEvaluator.HuntAt(snap, focus).BaseValue;
-            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(
+            // The shared fixture has no Known section; this case supplies the one building.
+            snap.Known = new KnownSnapshot { Buildings = new[] { new AiMapMemory.KnownBuilding(
                 new HexCoord(focus.Q + distance, focus.R), own ? player : new PlayerSetupData(),
-                false, new string[0], collectedAmounts: new[] { collected, 0, 0, 0 }, isBase: isBase) };
+                false, new string[0], collectedAmounts: new[] { collected, 0, 0, 0 }, isBase: isBase) } };
             float changed = ReconObjectiveEvaluator.HuntAt(snap, focus).BaseValue;
             Assert.That(changed - baseline, Is.EqualTo(prioritize ? 1.8f : 0f).Within(0.0001f));
         }
