@@ -125,7 +125,7 @@ namespace Game.EditorTests
                     { cardType = Game.Cards.CardType.Facility, authoredKey = "filler" + i,
                       grantedAbilities = new List<string> { "Intel" } });
             BuildingRegistry.Register(citadel, full);
-            var researcher = new Game.Units.UnitData { IsHero = true, MoveMax = 2 };
+            var researcher = new Game.Units.UnitData { Owner = player, IsHero = true, MoveMax = 2 };
             researcher.Abilities.Add(Game.Cards.UnitAbilities.Researcher);
             var garrison = new ArmyData { Owner = player, Hex = citadel, IsGarrison = true };
             garrison.Members.Add(researcher);
@@ -138,8 +138,9 @@ namespace Game.EditorTests
                 resourceCost = new Game.Cards.ResourceCost(human: 1, energy: 1, tech: 1),
                 grantedAbilities = new List<string> { Game.Cards.UnitAbilities.Research },
             }));
+            // A unit output is always applicable (an equipment output would need a fitting host).
             var output = new Game.Cards.CardDefinition
-                { cardType = Game.Cards.CardType.Equipment, authoredKey = "mutator" };
+                { cardType = Game.Cards.CardType.Unit, authoredKey = "mutator" };
             var cards = UnityEngine.ScriptableObject.CreateInstance<Game.Cards.FactionCardCatalog>();
             cards.cards.Add(output);
             var catalog = UnityEngine.ScriptableObject.CreateInstance<Game.Cards.ResearchProductionCatalog>();

@@ -613,13 +613,16 @@ namespace Game.EditorTests
                 new EconomyResourceStanding { Type = ResourceType.Tech },
             };
             HexCoord site = new HexCoord(2, 0);
-            snap.Economy.ExtractionOpportunities = new[]
-            {
-                ExtractionOpportunity(site, ResourceType.Materials, 1),
-            };
             ArmySnapshot builder = EconomyBuilder(34, 1, 1f);
             builder.Hex = site;
             snap.Self.Armies = new[] { builder };
+            EconomyExtractionOpportunity opportunity =
+                ExtractionOpportunity(site, ResourceType.Materials, 1);
+            // The committed builder stands on the site: Analysis witnesses an on-target route.
+            EconomyBuilderRouteSnapshot onSite = BuilderRoute(builder, 0, 0, 1);
+            onSite.IsOnTarget = true;
+            opportunity.BuilderRoutes = new[] { onSite };
+            snap.Economy.ExtractionOpportunities = new[] { opportunity };
             var committed = new MissionIntent
             {
                 Kind = MissionKind.Economy,
@@ -1027,6 +1030,11 @@ namespace Game.EditorTests
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
                 snapshot.Self.Armies = new List<ArmySnapshot> { EconomyBuilder(army.Id, 1, 0f) };
                 MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+                // The planner always carries the witnessed builder routes on the target;
+                // Provisioning ranks builders only over them.
+                var target = (EconomyMissionTarget)mission.Target;
+                target.BuilderRoutes = new[] { BuilderRoute(snapshot.Self.Armies[0], 2, 2, 1) };
+                mission.Target = target;
                 MissionIntent intent = DurableEconomyIntent(mission, army.Id);
                 MissionIntentRegistry.GetOrCreate(player).Put(intent);
                 var session = new ProvisioningSession(snapshot); // no ClaimedArmyIds entry this time
@@ -1266,6 +1274,9 @@ namespace Game.EditorTests
                             facilityAbilities: null, isBase: true),
                     };
                     refreshed.Self.BaseHexes = new List<HexCoord> { alternative };
+                    // Recovery picks only a shelter Analysis priced a route to.
+                    refreshed.Self.Armies[0].EconomyHomeRouteCosts =
+                        new Dictionary<HexCoord, int> { [alternative] = 1 };
                 }
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, refreshed);
@@ -1590,13 +1601,16 @@ namespace Game.EditorTests
             WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
             ArmySnapshot builder = EconomyBuilder(34, 2, 200f);
             snapshot.Self.Armies = new[] { builder };
-            snapshot.Economy.ExtractionOpportunities = new[]
-            {
-                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 3),
-            };
+            EconomyExtractionOpportunity site =
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 3);
+            // Builder candidates come only from the frozen Analysis route witnesses.
+            site.BuilderRoutes = new[] { BuilderRoute(builder, 2, 2, 1) };
+            snapshot.Economy.ExtractionOpportunities = new[] { site };
 
+            // The ready-hero demand, not its paired new-hero alternative (2026-09-24).
             AxisDemand demand = DemandLayer.EconomyDemands(
-                snapshot, new DesireBreakdown(), null, null, null).Single();
+                snapshot, new DesireBreakdown(), null, null, null)
+                .Single(d => !d.IsEconomyNewHeroAlternative);
 
             Assert.That(demand.EconomyPreferredBuilderArmyId, Is.EqualTo(34));
             Assert.That(demand.EconomyHeroOpportunityCost, Is.Zero);
@@ -1655,6 +1669,9 @@ namespace Game.EditorTests
                     // the admission threshold.
                     Hex = new HexCoord(3, 0),
                     ForwardProgressValue = 1f, CorridorAlignmentValue = 1f,
+                    // Positional terms alone no longer originate a Base (2026-09-21): one new
+                    // resource cluster hex is its economy reason.
+                    NewResourceClusterHexes = 1,
                 },
             };
 
@@ -2042,6 +2059,10 @@ namespace Game.EditorTests
             UnitData hero = Hero("Builder hero", activation: 1);
             UnitData heavy = Body("Heavy", 8, 8, activation: 3);
             UnitData light = Body("Light", 3, 3, activation: 2);
+            // Movement makes the target reachable: Analysis witnesses no route for a 0-MP army.
+            hero.MoveMax = heavy.MoveMax = light.MoveMax = 3;
+            // Transfers move only units owned by the armies' owner.
+            hero.Owner = heavy.Owner = light.Owner = player;
             builder.Members.AddRange(new[] { hero, heavy, light });
             var garrison = new ArmyData
                 { Owner = player, Hex = home, Name = "Garrison", IsGarrison = true };
@@ -2063,11 +2084,13 @@ namespace Game.EditorTests
                 float after = ProvisioningManager.EconomyMissionClaimedAp(
                     builder, 1f, 1f, null);
 
-                Assert.That(moved, Is.EqualTo(2));
-                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero }));
-                Assert.That(garrison.Members, Is.EquivalentTo(new[] { heavy, light }));
+                // TryLightenEconomyArmy prepares a founding roster, and founding must deliver a
+                // ground body (2026-10-18): the cheaper-to-activate body stays, the other leaves.
+                Assert.That(moved, Is.EqualTo(1));
+                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero, light }));
+                Assert.That(garrison.Members, Is.EquivalentTo(new[] { heavy }));
                 Assert.That(after, Is.LessThan(before));
-                Assert.That(after, Is.EqualTo(2f));
+                Assert.That(after, Is.EqualTo(before - heavy.ActivationApCost));
             }
             finally
             {
@@ -2271,16 +2294,22 @@ namespace Game.EditorTests
                     // but not yet admitted" range the test exercises.
                     Hex = new HexCoord(4, 0),
                     ForwardProgressValue = 1f,
+                    // Positional terms alone no longer originate a Base (2026-09-21): the site
+                    // needs an economy reason, here one new resource cluster hex.
+                    NewResourceClusterHexes = 1,
                     BuilderRoutes = new[] { BuilderRoute(builder, 4, 0, 1) },
                 },
             };
             try
             {
+                // The ready-builder demand; the 4-hex walk also pairs a new-hero alternative.
                 AxisDemand first = DemandLayer.EconomyDemands(snapshot,
-                    new DesireBreakdown(), player, null, null).Single();
+                    new DesireBreakdown(), player, null, null)
+                    .Single(d => !d.IsEconomyNewHeroAlternative);
                 snapshot.TurnNumber = 2;
                 AxisDemand second = DemandLayer.EconomyDemands(snapshot,
-                    new DesireBreakdown(), player, null, null).Single();
+                    new DesireBreakdown(), player, null, null)
+                    .Single(d => !d.IsEconomyNewHeroAlternative);
                 MissionProposal mission = EconomyMissionPlanner.Propose(snapshot,
                     new DesireBreakdown(), null, new[] { second }).Single();
 
@@ -2311,8 +2340,10 @@ namespace Game.EditorTests
                 {
                     // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup);
                     // stands in for the old pressure(1.2)*10=12, same reasonValue this boundary
-                    // test (below-threshold-then-admitted) depends on.
+                    // test (below-threshold-then-admitted) depends on. The economy reason itself
+                    // is one new resource cluster hex (positional terms alone admit nothing).
                     Hex = new HexCoord(3, 0),
+                    NewResourceClusterHexes = 1,
                     BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
                 },
             };
@@ -2449,22 +2480,25 @@ namespace Game.EditorTests
                 new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = 0.1f },
                 new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = 0.9f, RemainingDeckResourceNeed = 8f },
             };
+            // Both sites at the same home distance: the extraction distance cost made the old
+            // 8-10 hex sites worthless, and the coordinate tie-break (lower Q first) favours the
+            // Human site, so only value can pick Tech.
             snapshot.Known.ResourceHexes = new List<Game.Ai.AiMapMemory.KnownResourceHex>
             {
-                KnownResource(new HexCoord(-5, -5), ResourceType.Human, new ResourceBundle { Human = 1f }),
-                KnownResource(new HexCoord(4, 4), ResourceType.Tech, new ResourceBundle { Tech = 1f }),
+                KnownResource(new HexCoord(-2, 0), ResourceType.Human, new ResourceBundle { Human = 1f }),
+                KnownResource(new HexCoord(2, 0), ResourceType.Tech, new ResourceBundle { Tech = 1f }),
             };
             snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>();
             snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
             {
-                ExtractionOpportunity(new HexCoord(-5, -5), ResourceType.Human, 1),
-                ExtractionOpportunity(new HexCoord(4, 4), ResourceType.Tech, 1),
+                ExtractionOpportunity(new HexCoord(-2, 0), ResourceType.Human, 1),
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Tech, 1),
             };
 
             AxisDemand selected = DemandLayer.EconomyDemands(snapshot, new DesireBreakdown(), null, null, null)
                 .First();
 
-            Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(4, 4)));
+            Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(2, 0)));
             Assert.That(selected.EconomyResourceType, Is.EqualTo(ResourceType.Tech));
         }
 
@@ -2591,13 +2625,20 @@ namespace Game.EditorTests
                     CurrentMovement = 3,
                 },
             };
+            EconomyExtractionOpportunity opportunity =
+                ExtractionOpportunity(site, ResourceType.Human, 1);
+            // Builder candidates come only from the frozen Analysis route witnesses (2026-09-09);
+            // a field hero without one is not a builder for this site.
+            opportunity.BuilderRoutes = new[] { BuilderRoute(snapshot.Self.Armies[0], 2, 2, 1) };
             snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
             {
-                ExtractionOpportunity(site, ResourceType.Human, 1),
+                opportunity,
             };
 
+            // The ready-hero demand, not its paired new-hero alternative (2026-09-24).
             AxisDemand demand = DemandLayer.EconomyDemands(
-                snapshot, new DesireBreakdown(), null, null, null).Single();
+                snapshot, new DesireBreakdown(), null, null, null)
+                .Single(d => !d.IsEconomyNewHeroAlternative);
 
             Assert.That(demand.Capability,
                 Is.EqualTo(CapabilityKind.EconomicInfrastructure));
@@ -2615,11 +2656,20 @@ namespace Game.EditorTests
                 {
                     ArmyId = 10, Hex = local, HasHero = true,
                     IsGarrison = true, MemberCount = 1,
+                    Members = System.Array.Empty<Game.Combat.WorthIt.DefenderProfile>(),
                 },
+            };
+            EconomyExtractionOpportunity localSite =
+                ExtractionOpportunity(local, ResourceType.Human, 1);
+            // Analysis witnesses the garrison hero only on its own hex (an on-target route);
+            // the remote site below has no route for it.
+            localSite.BuilderRoutes = new[]
+            {
+                new EconomyBuilderRouteSnapshot { ArmyId = 10, IsOnTarget = true, ArmySize = 1 },
             };
             snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
             {
-                ExtractionOpportunity(local, ResourceType.Human, 1),
+                localSite,
             };
 
             AxisDemand localDemand = DemandLayer.EconomyDemands(
@@ -2766,8 +2816,10 @@ namespace Game.EditorTests
                 var snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
                 snapshot.Self.Armies = new[]
                 {
+                    // With movement: an actor with none is deferred for this pass
+                    // (EconomyMissionPlanner.DeferredThisPass) and proposes nothing.
                     new ArmySnapshot { ArmyId = 91, HasHero = true,
-                        IsMobileEconomyBuilder = true },
+                        IsMobileEconomyBuilder = true, CurrentMovement = 3, MaxMovement = 3 },
                 };
                 ActorCommitments commitments = ActorCommitments.FromIntents(
                     new[] { intent }, snapshot, null);
@@ -2917,20 +2969,22 @@ namespace Game.EditorTests
             try
             {
                 // The real garrison disappears before the first assessment of this snapshot.
+                // Extraction (includeReturn), not founding: since 2026-10-18 founding also needs a
+                // spareable garrison body, which is not what this snapshot-freezing test is about.
                 EconomyBuilderSelection.EconomyBuilderChoice missing = EconomyBuilderSelection.AssessEconomyArmy(
-                    oldSnapshot, target, route, army, 1f, includeReturn: false);
+                    oldSnapshot, target, route, army, 1f, includeReturn: true);
                 Assert.That(missing.Suitability,
                     Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
 
                 ArmyRegistry.Register(garrison);
                 EconomyBuilderSelection.EconomyBuilderChoice frozen = EconomyBuilderSelection.AssessEconomyArmy(
-                    oldSnapshot, target, route, army, 1f, includeReturn: false);
+                    oldSnapshot, target, route, army, 1f, includeReturn: true);
                 // A fresh Analysis witness publishes the newly available container. Demand never
                 // queries the live registry behind an existing immutable snapshot.
                 EconomyBuilderRouteSnapshot freshRoute = route;
                 freshRoute.ExtractionContainerAvailable = true;
                 EconomyBuilderSelection.EconomyBuilderChoice fresh = EconomyBuilderSelection.AssessEconomyArmy(
-                    new WorldSnapshot(), target, freshRoute, army, 1f, includeReturn: false);
+                    new WorldSnapshot(), target, freshRoute, army, 1f, includeReturn: true);
 
                 Assert.That(frozen.Suitability, Is.EqualTo(missing.Suitability),
                     "an old snapshot must keep its own assessment after the live registry changes");
@@ -3000,12 +3054,16 @@ namespace Game.EditorTests
                 snapshot, new HexCoord(1, 0),
                 new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
                 30f, 1f, includeReturn: true);
+            // Escort need is threat-driven (route RouteThreats), not distance-driven: the
+            // "central" site is the one whose route an enemy watches.
+            EconomyBuilderRouteSnapshot threatened = BuilderRoute(solo, 3, 3, 1);
+            threatened.RouteThreats = new[] { WeakEnemySighting() };
             EconomyBuilderSelection.EconomyBuilderChoice central = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(3, 0),
-                new[] { BuilderRoute(solo, 3, 3, 1) }, null, null,
+                new[] { threatened }, null, null,
                 30f, 1f, includeReturn: true);
 
-            Assert.That(rear, Is.Not.Null);
+            Assert.That(rear, Is.Not.Null, "rear");
             Assert.That(rear.MinimumEscortCount, Is.Zero);
             Assert.That(central, Is.Null);
 
@@ -3025,24 +3083,30 @@ namespace Game.EditorTests
                 NonHeroMoveMax = new[] { 3, 2 },
                 MaxMovement = 2,
             };
+            // Builder assessments are frozen per snapshot (EconomyAssessmentCache): a changed
+            // world is a new snapshot, not a mutated one.
+            snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             snapshot.Self.Armies = new[] { solo, garrison };
             EconomyBuilderSelection.EconomyBuilderChoice reinforced = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(3, 0),
-                new[] { BuilderRoute(solo, 3, 3, 1) }, null, null,
+                new[] { threatened }, null, null,
                 30f, 1f, includeReturn: true);
-            Assert.That(reinforced, Is.Not.Null);
+            Assert.That(reinforced, Is.Not.Null, "reinforced");
             Assert.That(reinforced.Suitability,
                 Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.ReinforceAtBase));
             Assert.That(reinforced.MinimumEscortCount, Is.EqualTo(1));
             Assert.That(reinforced.ProjectedActivationApCost, Is.EqualTo(2));
 
             ArmySnapshot escorted = EconomyBuilder(42, 2, 5f);
+            snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             snapshot.Self.Armies = new[] { escorted };
+            EconomyBuilderRouteSnapshot escortedRoute = BuilderRoute(escorted, 3, 3, 2);
+            escortedRoute.RouteThreats = new[] { WeakEnemySighting() };
             EconomyBuilderSelection.EconomyBuilderChoice frontier = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(3, 0),
-                new[] { BuilderRoute(escorted, 3, 3, 2) }, null, null,
+                new[] { escortedRoute }, null, null,
                 30f, 1f, includeReturn: true);
-            Assert.That(frontier, Is.Not.Null);
+            Assert.That(frontier, Is.Not.Null, "frontier");
             Assert.That(frontier.MinimumEscortCount, Is.EqualTo(1));
         }
 
@@ -3066,6 +3130,8 @@ namespace Game.EditorTests
             cheap.MoveMax = 3;
             UnitData expensive = Body("Expensive escort", 4, 4, activation: 4);
             expensive.MoveMax = 2;
+            // Transfers move only units owned by the armies' owner.
+            hero.Owner = cheap.Owner = expensive.Owner = player;
             garrison.Members.AddRange(new[] { cheap, expensive });
 
             ArmySnapshot solo = EconomyBuilder(builder.Id, 1, 1f);
@@ -3083,9 +3149,11 @@ namespace Game.EditorTests
             };
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             snapshot.Self.Armies = new[] { solo, reserve };
+            // Projected as founding, like the TryLightenEconomyArmy seam below: founding needs a
+            // ground body (2026-10-18), so the solo hero takes the minimum escort from the base.
             EconomyBuilderSelection.EconomyBuilderChoice projected = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, target, new[] { BuilderRoute(solo, 3, 3, 1) },
-                null, null, 30f, 1f, includeReturn: true);
+                null, null, 30f, 1f, includeReturn: false);
 
             ArmyRegistry.Register(builder);
             ArmyRegistry.Register(garrison);
@@ -3129,15 +3197,19 @@ namespace Game.EditorTests
             snapshot.Self.Armies = new[] { unsafeSolo, suitable };
             EconomyExtractionOpportunity opportunity = ExtractionOpportunity(
                 target, ResourceType.Human, 1);
-            opportunity.BuilderRoutes = new[]
-            {
-                BuilderRoute(unsafeSolo, 3, 3, 1),
-                BuilderRoute(suitable, 2, 2, 2),
-            };
+            // Escort need is threat-driven: the solo is unsafe because an enemy watches its route.
+            EconomyBuilderRouteSnapshot unsafeRoute = BuilderRoute(unsafeSolo, 3, 3, 1);
+            unsafeRoute.RouteThreats = new[] { WeakEnemySighting() };
+            EconomyBuilderRouteSnapshot suitableRoute = BuilderRoute(suitable, 2, 2, 2);
+            suitableRoute.RouteThreats = new[] { WeakEnemySighting() };
+            opportunity.BuilderRoutes = new[] { unsafeRoute, suitableRoute };
             snapshot.Economy.ExtractionOpportunities = new[] { opportunity };
 
+            // The ready-builder demand; its paired new-hero alternative (2026-09-24) is not
+            // the actor choice under test.
             AxisDemand demand = DemandLayer.EconomyDemands(
-                snapshot, new DesireBreakdown(), null, null, null).Single();
+                snapshot, new DesireBreakdown(), null, null, null)
+                .Single(d => !d.IsEconomyNewHeroAlternative);
 
             Assert.That(demand.Capability,
                 Is.EqualTo(CapabilityKind.EconomicInfrastructure));
@@ -3154,10 +3226,10 @@ namespace Game.EditorTests
             snapshot.Self.Armies = new[] { unsafeSolo };
             EconomyExtractionOpportunity opportunity = ExtractionOpportunity(
                 target, ResourceType.Human, 1);
-            opportunity.BuilderRoutes = new[]
-            {
-                BuilderRoute(unsafeSolo, 3, 3, 1),
-            };
+            // Escort need is threat-driven: the solo is unsafe because an enemy watches its route.
+            EconomyBuilderRouteSnapshot unsafeRoute = BuilderRoute(unsafeSolo, 3, 3, 1);
+            unsafeRoute.RouteThreats = new[] { WeakEnemySighting() };
+            opportunity.BuilderRoutes = new[] { unsafeRoute };
             snapshot.Economy.ExtractionOpportunities = new[] { opportunity };
             var intent = new MissionIntent
             {
@@ -3205,8 +3277,12 @@ namespace Game.EditorTests
                 snapshot, player, 12, first);
             EconomyReservationLifecycle.ReserveDeferredEconomyResources(
                 snapshot, player, 12, winner);
-
+            // Deferred rows are owner-scoped since 2026-09-21 (independent builds may hold at
+            // once); Phase A's single pre-intent hold replaces the alternative by retaining
+            // only the winner's owner (PhaseAEconomyHolds).
             string winnerOwner = InfrastructureFulfillment.EconomyReservationOwner(winner);
+            EconomyReservationLifecycle.RetainDeferredEconomyOwner(player, 12, winnerOwner);
+
             Assert.That(StrategicResourceReservationLedger.Active(
                 player, 12, StrategicReservedResource.Human), Is.Zero);
             Assert.That(StrategicResourceReservationLedger.Active(
@@ -3538,6 +3614,15 @@ namespace Game.EditorTests
                 EconomyBuildResourceCost = new ResourceCost { human = 3, materials = 4 },
                 Value = 40f,
             };
+            // The planner re-reads the current route witness from the snapshot's opportunity.
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                new EconomyExtractionOpportunity
+                {
+                    Hex = demand.TargetHex.Value, ResourceType = ResourceType.Materials,
+                    BuilderRoutes = demand.EconomyBuilderRoutes,
+                },
+            };
 
             MissionProposal mission = EconomyMissionPlanner.Propose(
                 snapshot, new DesireBreakdown(), null, new[] { demand }).Single();
@@ -3570,6 +3655,15 @@ namespace Game.EditorTests
                 MinimumFollowupAp = 1,
                 EconomyBuildResourceCost = new ResourceCost { human = 3, materials = 4 },
                 Value = 40f,
+            };
+            // The planner re-reads the current route witness from the snapshot's opportunity.
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                new EconomyExtractionOpportunity
+                {
+                    Hex = demand.TargetHex.Value, ResourceType = ResourceType.Materials,
+                    BuilderRoutes = demand.EconomyBuilderRoutes,
+                },
             };
 
             MissionProposal mission = EconomyMissionPlanner.Propose(
@@ -3698,7 +3792,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyDemand_ImmediateHandBottleneckBeatsConvenientDeckResource()
+        public void EconomyDemand_ImmediateHandDemandRaisesResourcePriority()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.65f, 0.1f, actionable: true);
             snapshot.Economy.PerType = new[]
@@ -3721,34 +3815,19 @@ namespace Game.EditorTests
             EconomyExtractionOpportunity energy = ExtractionOpportunity(
                 new HexCoord(2, 0), ResourceType.Energy, 1);
             energy.BuilderRoutes = new[] { BuilderRoute(builder, 2, 2, 1) };
+            // No resource is preferred by itself: its importance is the card demand (hand and
+            // deck costs, owner rule 2026-10-30). Both sites are equally far, so only that
+            // demand separates them; an on-target site may still win on proximity/delivery.
             EconomyExtractionOpportunity tech = ExtractionOpportunity(
-                new HexCoord(0, 0), ResourceType.Tech, 1);
-            tech.BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) };
+                new HexCoord(0, 2), ResourceType.Tech, 1);
+            tech.BuilderRoutes = new[] { BuilderRoute(builder, 2, 2, 1) };
             snapshot.Economy.ExtractionOpportunities = new[] { energy, tech };
 
             AxisDemand selected = DemandLayer.EconomyDemands(
-                snapshot, new DesireBreakdown(), null, null, null).Single();
+                snapshot, new DesireBreakdown(), null, null, null).Single(d => !d.IsEconomyNewHeroAlternative);
 
             Assert.That(selected.EconomyResourceType, Is.EqualTo(ResourceType.Energy));
             Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(2, 0)));
-
-            snapshot.Self.ActionPoints = 1;
-            MissionProposal economy = EconomyMissionPlanner.Propose(
-                snapshot, new DesireBreakdown(), null, new[] { selected }).Single();
-            MissionProposal refresh = AllocatorMission(
-                MissionKind.Scout, 56.6f, DesireAxis.Recon, armyId: 8);
-            Radar radar = Radar.Even();
-            radar.Weight[DesireAxis.Recon] = 0.56f;
-            radar.Weight[DesireAxis.Economy] = 0.13f;
-            refresh.EffectiveValue = refresh.BaseValue * RadarValueScale.For(radar, refresh);
-            economy.EffectiveValue = economy.BaseValue * RadarValueScale.For(radar, economy);
-
-            TentativeAllocation allocation = ResourceAllocator.BeginTurn(
-                snapshot, radar, new List<MissionProposal> { refresh, economy },
-                new List<Commitment>(), new Game.Players.PlayerSetupData()).Pack();
-
-            Assert.That(allocation.Funded.First().Mission, Is.SameAs(economy),
-                "Immediate hand shortage must beat routine Refresh even under the captured turn-3 radar.");
         }
 
         [Test]
@@ -3769,8 +3848,11 @@ namespace Game.EditorTests
                 },
             };
 
+            // No local count cap since 2026-09-21: both sites are offered (the allocator
+            // arbitrates); the protected one must rank first.
             AxisDemand selected = DemandLayer.EconomyDemands(
-                snapshot, new DesireBreakdown(), null, null, null).Single();
+                snapshot, new DesireBreakdown(), null, null, null)
+                .OrderByDescending(d => d.Value).First();
 
             Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(2, 0)));
         }
@@ -3826,7 +3908,7 @@ namespace Game.EditorTests
 
             AxisDemand selected = DemandLayer.EconomyDemands(
                     snapshot, new DesireBreakdown(), null, null, null)
-                .Single(x => x.EconomyBuildCard != null);
+                .Single(x => x.EconomyBuildCard != null && !x.IsEconomyNewHeroAlternative);
 
             Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(6, 0)));
         }
@@ -3850,10 +3932,13 @@ namespace Game.EditorTests
             farSite.BuilderRoutes = new[] { BuilderRoute(farBuilder, 4, 4, 1) };
             far.Economy.ExtractionOpportunities = new[] { farSite };
 
+            // The ready-builder demands; the far one also pairs a new-hero alternative.
             AxisDemand nearDemand = DemandLayer.EconomyDemands(
-                near, new DesireBreakdown(), null, null, null).Single();
+                near, new DesireBreakdown(), null, null, null)
+                .Single(d => !d.IsEconomyNewHeroAlternative);
             AxisDemand farDemand = DemandLayer.EconomyDemands(
-                far, new DesireBreakdown(), null, null, null).Single();
+                far, new DesireBreakdown(), null, null, null)
+                .Single(d => !d.IsEconomyNewHeroAlternative);
 
             Assert.That(farDemand.EconomySiteValue,
                 Is.EqualTo(nearDemand.EconomySiteValue).Within(0.001f),
@@ -4080,6 +4165,10 @@ namespace Game.EditorTests
                     TargetHex = new HexCoord(3, 3),
                     BuildResourceCost = cost,
                 },
+                // Continuity always records the attempt key the reservation owner derives from;
+                // a default key names a different (Scout) owner than the Economy reservation.
+                LastAttemptKey = StableMissionKey.ForEconomy(
+                    EconomyTaskKind.FoundBase, 0, new HexCoord(3, 3)),
             };
             StrategicResourceReservationLedger.BeginTurn(player, 20);
 

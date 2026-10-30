@@ -515,8 +515,10 @@ namespace Game.EditorTests
         [Test]
         public void AttackTaskScore_DoesNotFeedAggressionRadarDesire()
         {
-            WorldSnapshot fresh = Snap(new[] { B(RedBase, Red, seenTurn: 6) }, new[] { OurBase });
-            WorldSnapshot stale = Snap(new[] { B(RedBase, Red, seenTurn: 1) }, new[] { OurBase });
+            // The target's kind is an Attack-only fact (StrategicRelevance). Intel age no longer
+            // prices an Attack target (2026-09-28), so it cannot serve as that fact any more.
+            WorldSnapshot fresh = Snap(new[] { B(RedBase, Red, citadel: true) }, new[] { OurBase });
+            WorldSnapshot stale = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
             float freshTask = AttackObjectiveEvaluator.Enumerate(fresh).Single().TaskScore.Value;
             float staleTask = AttackObjectiveEvaluator.Enumerate(stale).Single().TaskScore.Value;
 
@@ -525,7 +527,7 @@ namespace Game.EditorTests
             float staleAxis = StrategyLayer.Evaluate(stale, new AiRadarState())
                 .Desires.Raw[DesireAxis.Aggression];
 
-            Assert.That(freshTask, Is.Not.EqualTo(staleTask), "staleness changes Attack TaskScore");
+            Assert.That(freshTask, Is.Not.EqualTo(staleTask), "target kind changes Attack TaskScore");
             Assert.That(staleAxis, Is.EqualTo(freshAxis).Within(0.0001f),
                 "Attack-specific score changes must not feed Radar and then all Aggression peers");
         }

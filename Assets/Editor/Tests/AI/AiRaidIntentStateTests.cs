@@ -212,8 +212,11 @@ namespace Game.EditorTests
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
 
-                Assert.That(active, Has.No.Member(intent));
-                Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _), Is.False);
+                // The assault is abandoned; since 2026-09-20 the same intent brings the primary
+                // home as a terminal Return leg instead of dropping it in the field.
+                Assert.That(active, Does.Contain(intent));
+                Assert.That(intent.Raid.Phase, Is.EqualTo(RaidMissionPhase.Return));
+                Assert.That(intent.Raid.ReturnHex, Is.EqualTo(baseHex));
             }
             finally { HexEventRegistry.Clear(); }
         }

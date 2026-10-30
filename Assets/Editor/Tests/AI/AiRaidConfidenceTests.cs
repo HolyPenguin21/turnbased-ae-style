@@ -51,7 +51,9 @@ namespace Game.EditorTests
         public void KnownFixedEventGuard_NoEnemyContact_DoesNotGetPhantomStalenessPenalty()
         {
             WorldSnapshot snap = Snapshot(turn: 11);
-            var hex = new HexCoord(7, 2);
+            // Within the Raid leash (2026-10-07): a guard 9 hexes out falls below the
+            // objective floor, which is not what this staleness check is about.
+            var hex = new HexCoord(2, 1);
             var defenders = new List<WorthIt.DefenderProfile> { Weak(), Weak(), Weak() };
             snap.Known.EventGuards = new List<KnownEventGuardSnapshot>
             {

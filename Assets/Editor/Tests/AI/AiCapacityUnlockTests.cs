@@ -225,7 +225,10 @@ namespace Game.EditorTests
             int level = _base.Level;
             var kinds = Admitted().Select(o => o.PreparationKind).ToList();
             Facts(); Admitted(); Admitted();
-            Assert.That(kinds, Has.Member(DevelopmentPreparationKind.Operator));
+            // Since 2026-10-17 an operator brought to a full Base carries that Base's
+            // CapacityUnlock price; this hand operator does not outweigh it, so only the
+            // unlock is admitted. Looking must still leave the world untouched.
+            Assert.That(kinds, Has.No.Member(DevelopmentPreparationKind.Operator));
             Assert.That(kinds, Has.Member(DevelopmentPreparationKind.CapacityUnlock));
             Assert.That(Bank(), Is.EqualTo(before));
             Assert.That(_base.Level, Is.EqualTo(level));
@@ -466,6 +469,8 @@ namespace Game.EditorTests
         public void HumanUpgradeStillBuysAnyLegalLevelWithoutAWitness()
         {
             _hand.RemoveCard(_facility);
+            // All three tiers cost 7 of each resource; the fixture starts with 5.
+            foreach (ResourceType t in ResourceBundle.All) _root.AddResource(t, 2);
             for (int level = 1; level <= 3; level++)
                 Assert.That(InfrastructureActions.TryUpgradeBase(_base, _config.baseUpgradeTiers).Ok, Is.True, "level " + level);
             Assert.That(_base.Level, Is.EqualTo(4));

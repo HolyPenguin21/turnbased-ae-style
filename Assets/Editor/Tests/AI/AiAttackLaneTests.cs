@@ -1138,8 +1138,11 @@ namespace Game.EditorTests
         {
             using IDisposable coverage = Coverage(required: true);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
-            WorldSnapshot snap = DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase });
+            // A contested but still winnable fight: since 2026-10-16 a losing one withdraws and
+            // is no longer a committed assault.
+            WorldSnapshot snap = DefendedSite(new[] { Army(7, EnRoute, Holding()) }, new[] { OurBase });
             AttackContinuity.ResolveAttackIntent(Us, snap, intent, intent.Attack, null, out _);
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
             // A reusable shell exists: before commitment this would be an IndependentFieldArmy.
             var inventory = new CapabilityInventory
             {
@@ -1151,7 +1154,7 @@ namespace Game.EditorTests
                 diag, demands);
 
             Assert.That(demands.Where(d => d.ConsumerIntentKey.Equals(intent.IntentKey)), Is.Empty);
-            Assert.That(diag.Any(d => d.Contains("committed_assault_uses_existing_support_only")), Is.True);
+            Assert.That(diag.Any(d => d.Contains("committed_assault_no_remote_reinforcement_request")), Is.True);
         }
 
         [Test]

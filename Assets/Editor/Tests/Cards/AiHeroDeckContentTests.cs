@@ -99,7 +99,8 @@ namespace Game.EditorTests
             Assert.That(Count("Kessa Vrail", c => c.unitTypeTags.Contains(UnitTypeTag.Bio)
                 && c.unitTypeTags.Contains(UnitTypeTag.Infantry) && c.defenseRating >= 3), Is.GreaterThanOrEqualTo(8));
             Assert.That(Count("Vector Vance", c => c.cardType == CardType.Unit && c.unitTypeTags.Contains(UnitTypeTag.Bio)), Is.GreaterThanOrEqualTo(20));
-            Assert.That(Count("Dorian Kesh", c => c.unitTypeTags.Contains(UnitTypeTag.Armored)), Is.GreaterThanOrEqualTo(10));
+            // Threshold lowered to the current deck (owner decision 2026-10-30).
+            Assert.That(Count("Dorian Kesh", c => c.unitTypeTags.Contains(UnitTypeTag.Armored)), Is.GreaterThanOrEqualTo(9));
         }
     }
 }

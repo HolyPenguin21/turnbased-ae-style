@@ -365,7 +365,11 @@ namespace Game.EditorTests
             {
                 string actual = System.BitConverter.ToString(hash.ComputeHash(
                     System.Text.Encoding.UTF8.GetBytes(text.ToString()))).Replace("-", "");
-                Assert.That(actual, Is.EqualTo("1EFAECD28958C4B4475EBAE17624222809C4BF396342B0E8597A05DF539FDAA4"));
+                // Re-recorded 2026-10-30: the 2026-10-08 value never matched its own revision
+                // (that code gave BFF544B7...), and the defensive-Fate retry rule (e8778221,
+                // 2026-10-20) changed the simulation deliberately. Re-record only for an intended
+                // combat-rule change.
+                Assert.That(actual, Is.EqualTo("2B6723C199EBA2CE8524B5E2A042D58823448B491233C51885BABAE947DA29AC"));
             }
         }
 

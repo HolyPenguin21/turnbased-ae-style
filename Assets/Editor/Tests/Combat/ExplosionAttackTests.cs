@@ -161,8 +161,10 @@ namespace Game.EditorTests
             var attempt = new ProductionAttempt(blueprint, null, aircraft);
             Assert.That(attempt.Complete(true).Definition, Is.SameAs(aircraft));
             Assert.That(attempt.Complete(true), Is.Null);
+            // Hero Fate pool rule (2026-10-21): 4 base tokens + 4 Fate spent = 8, 6 successes:
+            // P(X >= 6 | n = 8) = 37/256.
             Assert.That(ResearchProductionSystem.EstimateSuccessChanceForFate(4, generation.ChallengeCard),
-                Is.EqualTo(0.25390625f));
+                Is.EqualTo(37f / 256f));
         }
 
         [Test]

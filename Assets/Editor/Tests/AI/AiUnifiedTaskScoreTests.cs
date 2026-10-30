@@ -759,8 +759,10 @@ namespace Game.EditorTests
                     result.Requirements.EtaTurns)));
             Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
-            // 9 hexes from the only BaseHex, at the falloff distance (9) -> fully saturated -3.
-            Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.0001f));
+            // 9 hexes from the only BaseHex: the saturated signed slope plus the Raid leash
+            // past raidLeashHexes (2026-10-07).
+            Assert.That(objective.TaskScore.OwnTerritoryProximity,
+                Is.EqualTo(TaskScoreEvaluator.RaidProximity(9)).Within(0.0001f));
             // No fresh opportunity report: a started stationary neutral/event Raid keeps
             // the exact same intrinsic target value. Fog changes visibility only; it does not
             // move the objective or change its intrinsic value. Actual target destruction/invalidation
