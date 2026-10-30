@@ -71,6 +71,7 @@ namespace Game.Map
 
         public static void Clear()
         {
+            ResetMutationNotifications();
             Visible.Clear();
             Visited.Clear();
             EverSeen.Clear();
@@ -143,6 +144,8 @@ namespace Game.Map
             if (player == null || Game.Setup.MatchRestoreScope.IsRestoring)
                 return;
 
+            if (pendingMutation != null) { pendingMutation.Owners.Add(player); return; }
+            int epoch = mutationEpoch;
             int buildingRadius = _config != null ? _config.buildingVisionRadius : 1;
 
             var fresh = new HashSet<HexCoord>();
@@ -213,9 +216,10 @@ namespace Game.Map
             everSeen.UnionWith(fresh);
 
             if (newGround != null)
-                foreach (var hex in newGround) GroundHexVisited?.Invoke(player, hex);
-            if (visibilityChanged || visitedChanged)
-                VisibilityChanged?.Invoke(player);
+                foreach (var hex in newGround)
+                    if (epoch == mutationEpoch) PublishAfterMutation(GroundHexVisited, player, hex);
+            if (epoch == mutationEpoch && (visibilityChanged || visitedChanged))
+                PublishAfterMutation(VisibilityChanged, player);
         }
 
         // RecomputeFor above only ever recomputes and fires for the mover/builder's own owner
@@ -229,12 +233,17 @@ namespace Game.Map
         // report). Deliberately does NOT touch that player's own Visible/Visited/EverSeen — their
         // vision radius didn't move, only what's sitting on `hex` did, so re-snapshotting content
         // is all any subscriber (AiMapMemory chief among them) actually needs.
+        internal static IEnumerable<PlayerSetupData> ViewersOf(HexCoord hex) =>
+            new List<KeyValuePair<PlayerSetupData, HashSet<HexCoord>>>(Visible)
+                .FindAll(entry => entry.Value.Contains(hex)).ConvertAll(entry => entry.Key);
         public static void NotifyContentChanged(HexCoord hex)
         {
             if (Game.Setup.MatchRestoreScope.IsRestoring) return;
+            if (pendingMutation != null) { pendingMutation.Hexes.Add(hex); return; }
+            int epoch = mutationEpoch;
             foreach (KeyValuePair<PlayerSetupData, HashSet<HexCoord>> entry in new List<KeyValuePair<PlayerSetupData, HashSet<HexCoord>>>(Visible))
-                if (entry.Value.Contains(hex))
-                    VisibleContentChanged?.Invoke(entry.Key, hex);
+                if (epoch == mutationEpoch && entry.Value.Contains(hex))
+                    PublishAfterMutation(VisibleContentChanged, entry.Key, hex);
         }
     }
 }

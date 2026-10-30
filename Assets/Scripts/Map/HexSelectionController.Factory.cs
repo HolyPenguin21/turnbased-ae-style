@@ -107,6 +107,7 @@ namespace Game.Map
 
         private void DeleteReturnedWing(ArmyData wing)
         {
+            if (_selectedArmy != null && _selectedArmy.Data == wing) SetSelectedArmy(null);
             DeleteArmyIfEmptied(wing, force: true);
             RestackArmiesOn(wing.Hex, null);
         }
@@ -117,46 +118,24 @@ namespace Game.Map
         // DeleteArmyIfEmptied keeps what persists empty: any army on its owner's own Barracks hex,
         // an airfield container, a carrier deck. A Prison is a fixed container, never disbanded.
         public void DisbandEmptyArmiesOf(PlayerSetupData owner)
-        {
-            if (owner == null)
-                return;
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(owner)
-                         .Where(a => a.Members.Count == 0 && !a.IsPrison).ToList())
-                DeleteArmyIfEmptied(army);
-        }
+            => ArmyActions.DisbandEmptyArmiesOf(owner);
 
         public void DeleteArmyIfEmptied(ArmyData army, bool force = false)
         {
-            if (army == null || army.Members.Count > 0)
-                return;
-            if (!force && army.IsCarrierContainer)
-                return;
-            ArmyController controller = army.Controller;
-            HexCoord actualHex = controller != null ? controller.CurrentHex : army.Hex;
-            // Persistent containers survive at their indexed building. A travelling army
-            // killed over another building is not a new empty container at either endpoint.
-            BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (!force && !army.WasCarrierWing && (controller == null || !controller.IsMoving) && building != null && building.Owner == army.Owner
-                && (building.HasAbility(UnitAbilities.Barracks)
-                    || (army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner))))
-            {
-                VisionSystem.NotifyContentChanged(army.Hex);
-                return;
-            }
-            if (controller != null) controller.CancelMovement();
-            if (_selectedArmy == controller)
-                SetSelectedArmy(null);
-            // Detach before publishing removal so subscribers cannot see a live controller
-            // for the deleted army. Cancellation never executes the arrival callback.
-            army.Controller = null;
-            army.PendingAirStrikePolicy = null;
-            ArmyRegistry.Unregister(army, actualHex);
-            if (controller != null)
-                Destroy(controller.gameObject);
+            ArmyController controller = army?.Controller;
+            ArmyActions.DeleteArmyIfEmptied(army, force);
+            if (controller != null && !ArmyRegistry.IsRegistered(army) && _selectedArmy == controller) SetSelectedArmy(null);
         }
 
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
+            => SpawnBuildingCore(definition, hex, owner, runVisionChecks: true);
+
+        internal BuildingData SpawnBuildingForFounding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
+            => SpawnBuildingCore(definition, hex, owner, runVisionChecks: false);
+
+        private BuildingData SpawnBuildingCore(CardDefinition definition, HexCoord hex, PlayerSetupData owner, bool runVisionChecks)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (map == null || !map.CanEnter(hex) || owner == null || definition == null)
                 return null;
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
@@ -186,7 +165,7 @@ namespace Game.Map
             if (building.AirfieldCapacity > 0)
                 AviationActions.EnsureAirfield(this, owner, hex);
             RestackArmiesOn(hex, null);
-            StealthSystem.RunChecksForNewVisionSource(building);
+            if (runVisionChecks) StealthSystem.RunChecksForNewVisionSource(building);
             return building;
         }
 
@@ -226,6 +205,7 @@ namespace Game.Map
 
         public bool TryBuildExtractionFacility(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (map == null || !map.CanEnter(hex) || definition == null || owner == null || gameConfig == null || turnController == null)
                 return false;
             if (!HasOwnHeroArmyAt(hex, owner))

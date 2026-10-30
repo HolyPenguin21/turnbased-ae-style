@@ -52,6 +52,7 @@ namespace Game.Aviation
                     messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: airfield full; {unlanded} aircraft could not land"
                         + (landed > 0 ? $" ({landed} landed)." : "."));
                 }
+                using var mutation = VisionSystem.BeginMutation();
                 bool damaged = false;
                 var destroyedAircraft = new List<UnitData>();
                 foreach (UnitData aircraft in airArmy.Members.ToList())
@@ -72,18 +73,16 @@ namespace Game.Aviation
                         continue;
                     }
                     aircraft.HitPointsCurrent = 0;
-                    airArmy.Members.Remove(aircraft);
                     destroyedAircraft.Add(aircraft);
                 }
                 // Finish the whole roster before cleanup can notify stealth subscribers, then
                 // publish the final HP/composition once even when the last damaged aircraft dies.
-                foreach (UnitData aircraft in destroyedAircraft)
-                    StealthSystem.OnUnitRemoved(aircraft);
+                ArmyActions.RemoveMembers(airArmy, destroyedAircraft);
                 if (damaged)
                     VisionSystem.NotifyContentChanged(airArmy.Hex);
                 if (airArmy.Members.Count == 0)
                 {
-                    hexSelection?.DeleteArmyIfEmptied(airArmy);
+                    ArmyActions.DeleteArmyIfEmptied(airArmy);
                     messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: all aircraft destroyed: refuelling overdue.");
                 }
                 else if (destroyedAircraft.Count > 0)

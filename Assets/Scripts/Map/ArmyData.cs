@@ -55,8 +55,20 @@ namespace Game.Map
         public int? VisualSnapshotCurrentMovement;
         public int? VisualSnapshotMaxMovement;
         public string Name;
-        public HexCoord Hex;
-        public PlayerSetupData Owner;
+        private HexCoord hex;
+        private PlayerSetupData owner;
+        public HexCoord Hex
+        {
+            get => hex;
+            set { if (ArmyRegistry.IsRegistered(this)) ArmyRegistry.MoveArmy(this, value); else hex = value; }
+        }
+        public PlayerSetupData Owner
+        {
+            get => owner;
+            set { if (ArmyRegistry.IsRegistered(this)) ArmyActions.ChangeOwner(this, value); else owner = value; }
+        }
+        internal void SetHex(HexCoord value) => hex = value;
+        internal void SetOwner(PlayerSetupData value) => owner = value;
         public bool IsGarrison;
         // Marks the one Prison army every citadel starts with (see CitadelSetupController) —
         // holds Captured heroes (see BattleScreenUI.Combat.cs's TryImprison), immobile like the
@@ -76,7 +88,9 @@ namespace Game.Map
         // Retained after take-off, when the wing becomes independent of its carrier.
         public UnitData LaunchCarrier;
         public bool WasCarrierWing => LaunchCarrier != null;
+        // Compatibility representation for shared consumers/codecs; new gameplay uses ArmyActions.
         public readonly List<UnitData> Members = new List<UnitData>();
+        public IReadOnlyList<UnitData> Roster => Members.AsReadOnly();
 
         // The player's own last battle-grid layout for this specific army (see
         // BattleScreenUI's Arrangement phase) — keyed by unit reference so it survives members
@@ -482,9 +496,13 @@ namespace Game.Map
             int idx = Members.IndexOf(hero);
             if (idx < 0) { fail = "hero not in this army"; return false; }
             if (idx == 0) { fail = "hero is already the commander"; return false; }
-            Members.RemoveAt(idx);
-            Members.Insert(0, hero);
-            return true;
+            var projected = Members.ToList(); projected.RemoveAt(idx); projected.Insert(0, hero);
+            if (Id < 0)
+            {
+                if (!RosterFits(projected, IsGarrison)) { fail = "not enough capacity"; return false; }
+                Members.Clear(); Members.AddRange(IsGarrison ? NormalizeRoster(projected) : projected); return true;
+            }
+            return ArmyActions.ReorderMembers(this, projected, out fail);
         }
     }
 }

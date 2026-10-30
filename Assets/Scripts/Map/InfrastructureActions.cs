@@ -106,6 +106,7 @@ namespace Game.Map
             CardDefinition definition, HexCoord hex, PlayerSetupData owner, int apCost, ResourceCost resourceCost,
             Func<BuildingData, bool> completeBeforeCommit = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (hexSelection == null || hexSelection.Map == null || !hexSelection.Map.CanEnter(hex))
                 return InfrastructureBuildOutcome.Fail("Buildings cannot be placed on this terrain.");
             if (!CanFoundBase(definition, hex, owner, apCost, resourceCost, out string reason, hexSelection.Map))
@@ -120,12 +121,19 @@ namespace Game.Map
             bool ownerAirfieldExistedBefore = AviationRules.AirfieldsAt(hex, owner).Any(a => !a.IsCarrierContainer);
 
             int[] resourcesBefore = completeBeforeCommit == null ? null : SnapshotResources(root);
-            var rostersBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllAt(hex)
-                .Where(a => a != null && a.Owner == owner)
+            var rostersBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllForOwner(owner)
+                .Where(a => a != null)
                 .ToDictionary(a => a, a => a.Members.ToArray());
+            var placementBefore = rostersBefore?.Keys.ToDictionary(a => a,
+                a => (a.Hex, a.IsAirArmy, a.AirWingLanded));
+            var armiesBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllArmies().ToHashSet();
             UnitData[] unitsBefore = rostersBefore?.Values.SelectMany(u => u).Distinct().ToArray();
+            var sortiesBefore = unitsBefore?.Where(u => u.IsAviation).ToDictionary(u => u,
+                u => (u.SortieLaunchPaid, u.ConsecutiveUnlandedEnds, u.HasEmergencyFlightPenalty));
+            var transportBefore = unitsBefore?.ToDictionary(u => u, u => (Carrier: u.AssignedTransportCarrier, Army: u.TransportArmy));
             var coverageBefore = rostersBefore?.Keys.ToDictionary(a => a,
                 a => unitsBefore.Where(a.HasActivationCoverageFor).ToHashSet());
+            Action restoreDetection = completeBeforeCommit == null ? null : StealthSystem.CaptureDetectionRollback();
             int apBefore = root.ActionPoints;
             root.SpendActionPoints(apCost);
             resourceCost?.PayFrom(root);
@@ -133,7 +141,7 @@ namespace Game.Map
             bool threw = false;
             try
             {
-                building = hexSelection.SpawnBuilding(definition, hex, owner);
+                building = hexSelection.SpawnBuildingForFounding(definition, hex, owner);
             }
             catch (Exception e)
             {
@@ -143,11 +151,12 @@ namespace Game.Map
 
             if (building == null)
             {
-                if (threw)
+                if (threw || !ReferenceEquals(BuildingRegistry.FindAt(hex), existing))
                     RollbackPartialSpawn(hexSelection, hex, owner, existing,
                         ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
                 root.ActionPoints = apBefore;
                 Refund(root, resourceCost);
+                mutation.Discard();
                 return InfrastructureBuildOutcome.Fail("Could not build the base. Costs refunded.");
             }
 
@@ -163,8 +172,7 @@ namespace Game.Map
                     building.FacilitySlots[slot] = facility;
                     slot++;
                 }
-                // SpawnBuilding already notified on registration, before inherited slots
-                // were copied. Publish the final merged building only if slots moved.
+                // Registration is batched; publish the completed inherited slots together.
                 if (slot > 0)
                     VisionSystem.NotifyContentChanged(hex);
             }
@@ -181,9 +189,9 @@ namespace Game.Map
             }
             if (!completionAccepted)
             {
-                // Transfers may have published a member before a vision/UI callback threw.
-                // Restore every original recipient/source; discard only this transaction's additions.
-                foreach (ArmyData army in ArmyRegistry.AllAt(hex).Where(a => a != null && a.Owner == owner).ToArray())
+                // Success is still unpublished. Restore every canonical source/recipient,
+                // including same-owner transfers arriving from another indexed hex.
+                foreach (ArmyData army in rostersBefore.Keys.Concat(ArmyRegistry.AllForOwner(owner)).Distinct().ToArray())
                 {
                     foreach (UnitData unit in unitsBefore)
                         army.MarkUnitActivationPaid(unit,
@@ -193,15 +201,49 @@ namespace Game.Map
                         army.Members.AddRange(members);
                     army.RefreshTransport();
                 }
+                using (Game.Setup.MatchRestoreScope.Begin())
+                    foreach (ArmyData added in ArmyRegistry.AllArmies().Where(a => !armiesBefore.Contains(a)).ToArray())
+                    {
+                        added.ClearTransport();
+                        if (added.CarrierUnit != null)
+                        {
+                            if (added.CarrierUnit.CarrierAirfield == added) added.CarrierUnit.CarrierAirfield = null;
+                            if (added.CarrierUnit.CarrierFlightDeck == added) added.CarrierUnit.CarrierFlightDeck = null;
+                            added.CarrierUnit = null;
+                        }
+                        ArmyRegistry.Unregister(added);
+                        if (added.Controller != null) UnityEngine.Object.Destroy(added.Controller.gameObject);
+                        added.Controller = null;
+                    }
+                // Transfer reconciliation can relocate an existing carrier's containers, and a
+                // landing closes a sortie. Restoring lists alone would leave both inconsistent.
+                using (Game.Setup.MatchRestoreScope.Begin())
+                    foreach (var entry in placementBefore)
+                    {
+                        ArmyRegistry.MoveArmy(entry.Key, entry.Value.Hex);
+                        entry.Key.IsAirArmy = entry.Value.IsAirArmy;
+                        entry.Key.AirWingLanded = entry.Value.AirWingLanded;
+                    }
+                foreach (var entry in sortiesBefore)
+                {
+                    entry.Key.SortieLaunchPaid = entry.Value.SortieLaunchPaid;
+                    entry.Key.ConsecutiveUnlandedEnds = entry.Value.ConsecutiveUnlandedEnds;
+                    entry.Key.HasEmergencyFlightPenalty = entry.Value.HasEmergencyFlightPenalty;
+                }
+                foreach (var entry in transportBefore) entry.Key.SetTransportCarrier(entry.Value.Carrier, entry.Value.Army);
+                foreach (ArmyData original in rostersBefore.Keys) original.RebindRestoredTransportRecipients();
                 root.ActionPoints = apBefore;
                 RestoreResources(root, resourcesBefore);
                 RollbackPartialSpawn(hexSelection, hex, owner, existing,
                     ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
+                restoreDetection?.Invoke();
+                mutation.Discard();
                 return InfrastructureBuildOutcome.Fail("Could not finish building the base. Costs refunded.");
             }
             if (oldVisual != null)
                 UnityEngine.Object.Destroy(oldVisual.gameObject);
-            BaseFounded?.Invoke(building);
+            StealthSystem.RunChecksForNewVisionSource(building);
+            VisionSystem.PublishAfterMutation(BaseFounded, building);
             return InfrastructureBuildOutcome.Success(building, -1, apBefore - root.ActionPoints);
         }
 
@@ -209,6 +251,7 @@ namespace Game.Map
             PlayerSetupData owner, BuildingData siteBefore, bool ownerGarrisonExistedBefore,
             bool ownerAirfieldExistedBefore)
         {
+            using var restore = Game.Setup.MatchRestoreScope.Begin();
             BuildingData now = BuildingRegistry.FindAt(hex);
             if (now != null && now != siteBefore)
             {
@@ -279,6 +322,7 @@ namespace Game.Map
         public static BaseUpgradeOutcome TryUpgradeBase(BuildingData building, BaseUpgradeTier[] tiers,
             int? expectedLevel = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!CanUpgradeBase(building, tiers, expectedLevel, out BaseUpgradeTier tier, out string reason))
                 return BaseUpgradeOutcome.Fail(reason);
             PlayerRoot root = PlayerRootRegistry.FindFor(building.Owner);
@@ -317,6 +361,7 @@ namespace Game.Map
         public static InfrastructureBuildOutcome TryPlaceFacility(CardDefinition definition, HexCoord baseHex,
             PlayerSetupData owner, int apCost, ResourceCost resourceCost)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!CanPlaceFacility(definition, baseHex, owner, apCost, resourceCost, out string reason))
                 return InfrastructureBuildOutcome.Fail(reason);
 
@@ -347,6 +392,7 @@ namespace Game.Map
         public static InfrastructureBuildOutcome TryBuildExtractionSite(HexSelectionController hexSelection,
             CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (hexSelection == null || facilityDefinition == null || owner == null)
                 return InfrastructureBuildOutcome.Fail("Cannot build this resource facility here.");
             if (!HexSelectionController.HasOwnHeroArmyAt(hex, owner))
@@ -390,6 +436,7 @@ namespace Game.Map
                     else
                         RestoreFacilitySlots(siteBefore, slotsBefore);
                 }
+                mutation.Discard();
                 return InfrastructureBuildOutcome.Fail(threw
                     ? "Could not build this resource facility. Costs refunded."
                     : "Cannot build this resource facility on this hex.");
@@ -402,6 +449,7 @@ namespace Game.Map
         private static void RollbackPartialExtractionSite(HexSelectionController hexSelection,
             HexCoord hex, BuildingData siteBefore)
         {
+            using var restore = Game.Setup.MatchRestoreScope.Begin();
             BuildingData now = BuildingRegistry.FindAt(hex);
             if (now != null && now != siteBefore)
             {

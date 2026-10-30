@@ -228,6 +228,7 @@ namespace Game.Combat
             AbilityMagnitudes magnitudes, UnitData attackerHero = null, UnitData defenderHero = null,
             BattleEngine battle = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (_completed || !Targets.Contains(target) || !target.IsAlive)
                 throw new InvalidOperationException("Explosion target is no longer available.");
             if (!_resolved.Add(target)) throw new InvalidOperationException("An explosion cannot hit the same target twice.");
@@ -242,8 +243,8 @@ namespace Game.Combat
                         application.Removals.Add(battle.RemoveUnit(target.Unit, announceKiller: false, deferCarrierCleanup: true));
                     else
                     {
-                        target.Army.Members.Remove(target.Unit);
-                        StealthSystem.OnUnitRemoved(target.Unit, deferCarrierCleanup: true);
+                        ArmyActions.RemoveMember(target.Army, target.Unit, cleanup: false, publish: false);
+                        StealthSystem.OnUnitRemoved(target.Unit, deferCarrierCleanup: true, deferNotifications: true);
                     }
                     target.Army.RefreshTransport();
                 }
@@ -269,6 +270,7 @@ namespace Game.Combat
 
         public void Complete(BattleEngine battle = null, HexSelectionController selection = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (_completed) return;
             _completed = true;
             if (ResolvedCount == 0) return;
@@ -292,7 +294,7 @@ namespace Game.Combat
                 }
             }
             foreach (ArmyData army in Targets.Where(t => t.Army != null).Select(t => t.Army).Distinct())
-                selection?.DeleteArmyIfEmptied(army);
+            { ArmyActions.DeleteArmyIfEmptied(army); VisionSystem.RecomputeFor(army.Owner); }
             selection?.RestackArmiesOn(Hex, null);
             VisionSystem.NotifyContentChanged(Hex);
         }
@@ -300,6 +302,7 @@ namespace Game.Combat
         public static void CompleteLauncher(UnitData launcher, BattleEngine battle = null,
             HexSelectionController selection = null, ArmyData launcherArmy = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (launcher == null) return;
             bool expendUnit = IsSingleUseUnit(launcher);
             EquipmentSystem.ConsumeAfterAttack(launcher);
@@ -309,10 +312,10 @@ namespace Game.Combat
                 ArmyData army = launcherArmy ?? ArmyRegistry.FindArmyContaining(launcher) ?? battle?.State.OwningArmy(launcher);
                 if (battle != null && battle.State.OwningArmy(launcher) != null)
                     battle.RemoveUnit(launcher, announceKiller: false, deferCarrierCleanup: true);
-                else { army?.Members.Remove(launcher); StealthSystem.OnUnitRemoved(launcher, deferCarrierCleanup: true); }
+                else { ArmyActions.RemoveMember(army, launcher, cleanup: false); StealthSystem.OnUnitRemoved(launcher, deferCarrierCleanup: true); }
                 AviationActions.RemoveCarrierContainers(launcher, selection);
                 army?.RefreshTransport();
-                selection?.DeleteArmyIfEmptied(army);
+                ArmyActions.DeleteArmyIfEmptied(army);
             }
         }
     }

@@ -604,6 +604,7 @@ namespace Game.UI
             candidate.RemoveAt(currentIndex);
             candidate.Insert(targetIndex, card.Unit);
 
+            if (!ArmyActions.CanReorderMembers(_currentArmy, candidate, out _)) return;
             _dragPreviewOrder = candidate;
             RepositionNonDraggedCards();
         }
@@ -763,10 +764,9 @@ namespace Game.UI
             }
 
             ClearReorderPreview();
-            _currentArmy.Members.Clear();
-            _currentArmy.Members.AddRange(previewOrder);
-            RefreshGrid();
-            return true;
+            bool reordered = ArmyActions.ReorderMembers(_currentArmy, previewOrder, out string reason);
+            if (!reordered && !string.IsNullOrEmpty(reason)) turnController?.ShowSpawnHint(reason);
+            RefreshGrid(); return reordered;
         }
 
         private ArmyButtonUI FindButtonAt(Vector2 screenPosition)

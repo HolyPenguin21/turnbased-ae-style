@@ -448,6 +448,7 @@ namespace Game.Combat
         {
             if (army == null || template == null || spawn == null || _state.Grid == null)
                 return default;
+            using var mutation = VisionSystem.BeginMutation();
 
             int summoners = army.Members.Count(m => !m.IsSummoned
                 && m.HasAbility(UnitAbilities.RaiseTheRots));
@@ -462,7 +463,7 @@ namespace Game.Combat
                 if (unit == null)
                     break;
                 unit.IsSummoned = true;
-                army.AddMemberSorted(unit);
+                if (!ArmyActions.AddBattleSummon(army, unit)) break;
                 _state.Grid.Set(row, col, unit);
                 spawned++;
             }
@@ -632,6 +633,7 @@ namespace Game.Combat
             BattleChallengeRollResult roll, UnitData attackerHero = null, UnitData defenderHero = null,
             bool isCounterattack = false)
         {
+            using var mutation = VisionSystem.BeginMutation();
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleRules.GroundAttackOutcome outcome = BattleRules.ResolveGroundAttack(
                 roll.AttackerTokens, roll.DefenderTokens, attacker, defender, _magnitudes, roll.AttackerModifier, roll.DefenderModifier);
@@ -679,6 +681,7 @@ namespace Game.Combat
 
         public BattleAttackApplication ApplyGroundAttack(UnitData attacker, UnitData defender, int damage)
         {
+            using var mutation = VisionSystem.BeginMutation();
             var application = new BattleAttackApplication { Damage = Mathf.Max(0, damage), Victim = defender };
             if (attacker == null || defender == null)
                 return application;
@@ -719,16 +722,17 @@ namespace Game.Combat
 
         public BattleUnitRemoval RemoveUnit(UnitData unit, bool announceKiller, bool deferCarrierCleanup = false)
         {
+            using var mutation = VisionSystem.BeginMutation();
             ArmyData deadSide = _state.OwningArmy(unit);
             ArmyData killerSide = _state.OpposingArmy(deadSide);
 
             if (_state.Grid != null && _state.Grid.TryFindPosition(unit, out int row, out int col))
                 _state.Grid.Set(row, col, null);
-            _state.Attacker?.Members.Remove(unit);
-            _state.Defender?.Members.Remove(unit);
+            ArmyActions.RemoveMember(_state.Attacker, unit, cleanup: false, publish: !deferCarrierCleanup);
+            ArmyActions.RemoveMember(_state.Defender, unit, cleanup: false, publish: !deferCarrierCleanup);
             _state.Attacker?.RefreshTransport();
             _state.Defender?.RefreshTransport();
-            StealthSystem.OnUnitRemoved(unit, deferCarrierCleanup);
+            StealthSystem.OnUnitRemoved(unit, deferCarrierCleanup, deferNotifications: deferCarrierCleanup);
 
             if (_state.TurnOrder != null)
             {
@@ -816,6 +820,7 @@ namespace Game.Combat
         public static BattleCaptureKillApplication ApplyCaptureKillOutcome(BattleState state,
             CaptureKillOutcome outcome, UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)
         {
+            using var mutation = VisionSystem.BeginMutation();
             CaptureKillOutcome effective = outcome;
             if (effective == CaptureKillOutcome.Escaped && heroArmy != null && heroArmy.IsGarrison)
                 effective = CaptureKillOutcome.Captured;
@@ -840,7 +845,7 @@ namespace Game.Combat
 
             bool needsRetreat = heroArmy != null && heroArmy.Members.Count > 0
                 && !BattleInitiator.IsCombatCapable(heroArmy);
-            if (imprisoned) HeroImprisoned?.Invoke(hunterArmy, hero);
+            if (imprisoned) VisionSystem.PublishAfterMutation(HeroImprisoned, hunterArmy, hero);
             return new BattleCaptureKillApplication(outcome, effective, imprisoned, removed, needsRetreat);
         }
 
@@ -913,6 +918,7 @@ namespace Game.Combat
         public static BattleEncounterFinalization FinalizeEncounter(BattleState state,
             HexSelectionController hexSelectionController)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (state == null)
                 return default;
 
@@ -957,18 +963,19 @@ namespace Game.Combat
             foreach (HexCoord changedHex in changedHexes)
                 VisionSystem.NotifyContentChanged(changedHex);
 
-            hexSelectionController?.DeleteArmyIfEmptied(state.Attacker);
-            hexSelectionController?.DeleteArmyIfEmptied(state.Defender);
+            ArmyActions.DeleteArmyIfEmptied(state.Attacker);
+            ArmyActions.DeleteArmyIfEmptied(state.Defender);
             hexSelectionController?.RestackArmiesOn(hex, null);
 
             var finalization = new BattleEncounterFinalization(survivor, attackerHere, defenderHere);
-            EncounterFinalized?.Invoke(state, finalization);
+            VisionSystem.PublishAfterMutation(EncounterFinalized, state, finalization);
             return finalization;
         }
 
         public static BattleEncounterFinalization FinalizeStandaloneCaptureKill(
             ArmyData hunterArmy, ArmyData targetArmy, HexSelectionController hexSelectionController)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (hunterArmy == null)
                 return default;
 
@@ -984,7 +991,7 @@ namespace Game.Combat
             foreach (HexCoord changedHex in changedHexes)
                 VisionSystem.NotifyContentChanged(changedHex);
 
-            hexSelectionController?.DeleteArmyIfEmptied(targetArmy);
+            ArmyActions.DeleteArmyIfEmptied(targetArmy);
             if (targetArmy != null)
                 hexSelectionController?.RestackArmiesOn(targetArmy.Hex, null);
             hexSelectionController?.RestackArmiesOn(hunterHex, null);
@@ -1040,6 +1047,7 @@ namespace Game.Combat
         public static BattleRetreatApplication PerformRetreat(BattleState state, ArmyData army,
             ArmyData survivingArmy, HexMap map, HexSelectionController hexSelectionController)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (army == null)
                 return new BattleRetreatApplication(false, false, default, null);
 
@@ -1091,10 +1099,8 @@ namespace Game.Combat
             }
             else
             {
-                foreach (UnitData member in army.Members.ToArray())
-                    StealthSystem.OnUnitRemoved(member);
-                army.Members.Clear();
-                hexSelectionController?.DeleteArmyIfEmptied(army);
+                ArmyActions.ClearMembers(army);
+                ArmyActions.DeleteArmyIfEmptied(army);
             }
 
             if (retreatingFromOwnBuilding)
@@ -1104,12 +1110,13 @@ namespace Game.Combat
             hexSelectionController?.HandleRetreatFromHexEvent(battleHex, army.Owner);
 
             var application = new BattleRetreatApplication(!relocated, relocated, destination, contactParticipants);
-            ArmyRetreated?.Invoke(state, army, application);
+            VisionSystem.PublishAfterMutation(ArmyRetreated, state, army, application);
             return application;
         }
 
         public static void StripSummonedUnits(BattleState state, ArmyData army)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (army == null)
                 return;
             for (int i = army.Members.Count - 1; i >= 0; i--)
@@ -1120,7 +1127,7 @@ namespace Game.Combat
                 if (state?.Grid != null && state.Grid.TryFindPosition(member, out int row, out int col))
                     state.Grid.Set(row, col, null);
                 state?.TurnOrder?.Remove(member);
-                army.Members.RemoveAt(i);
+                ArmyActions.RemoveMember(army, member, cleanup: false);
                 StealthSystem.OnUnitRemoved(member);
             }
             army.RefreshTransport();
@@ -1256,18 +1263,20 @@ namespace Game.Combat
 
         private static void RemoveHero(BattleState state, ArmyData army, UnitData hero)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (hero == null)
                 return;
             if (state?.Grid != null && state.Grid.TryFindPosition(hero, out int row, out int col))
                 state.Grid.Set(row, col, null);
             state?.TurnOrder?.Remove(hero);
-            army?.Members.Remove(hero);
+            ArmyActions.RemoveMember(army, hero, cleanup: false);
             army?.RefreshTransport();
             StealthSystem.OnUnitRemoved(hero);
         }
 
         private static bool TryImprison(BattleState state, UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)
         {
+            using var mutation = VisionSystem.BeginMutation();
             PlayerSetupData capturer = hunterArmy?.Owner;
             if (hero == null || heroArmy == null || capturer == null
                 || !capturer.CitadelHexQ.HasValue || !capturer.CitadelHexR.HasValue)
@@ -1281,12 +1290,7 @@ namespace Game.Combat
             if (state?.Grid != null && state.Grid.TryFindPosition(hero, out int row, out int col))
                 state.Grid.Set(row, col, null);
             state?.TurnOrder?.Remove(hero);
-            heroArmy.Members.Remove(hero);
-
-            hero.CapturedFrom = hero.Owner;
-            hero.Owner = capturer;
-            hero.IsPrisoner = true;
-            prison.Members.Add(hero);
+            ArmyActions.ImprisonMember(hero, heroArmy, prison);
             heroArmy.RefreshTransport();
             prison.RefreshTransport();
             VisionSystem.NotifyContentChanged(citadelHex);

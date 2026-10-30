@@ -20,7 +20,7 @@ namespace Game.Aviation
             if (wing != null && receiver != null && aircraft != null && aircraft.IsAviation
                 && receiver.Owner == wing.Owner && receiver.Members.Contains(aircraft)
                 && !aircraft.SortieLaunchPaid)
-                AircraftLanded?.Invoke(wing, receiver, aircraft);
+                VisionSystem.PublishAfterMutation(AircraftLanded, wing, receiver, aircraft);
         }
         public static ArmyData EnsureAirfield(HexSelectionController hexSelection, PlayerSetupData owner, Game.HexGrid.HexCoord hex)
         {
@@ -61,9 +61,10 @@ namespace Game.Aviation
         public static bool TryLaunch(ArmyData airfield, IList<UnitData> aircraft, FactionCardCatalog catalog,
             HexSelectionController hexSelection, out ArmyData launchedArmy, out string failReason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             launchedArmy = null;
             failReason = null;
-            if (!AviationRules.IsAirfield(airfield) || aircraft == null || aircraft.Count == 0)
+            if (airfield == null || airfield.Id < 0 || !AviationRules.IsAirfield(airfield) || aircraft == null || aircraft.Count == 0)
             {
                 failReason = "Select aircraft from an airfield to launch.";
                 return false;
@@ -97,50 +98,41 @@ namespace Game.Aviation
             if (army.Controller == null) hexSelection?.CreateArmyMarker(army);
             else hexSelection?.RefreshArmyAirLook(army); // a carrier deck marker was made empty (ground look)
             hexSelection?.RestackArmiesOn(airfield.Hex, null);
+            airfield.RefreshTransport(); army.RefreshTransport();
+            VisionSystem.RecomputeFor(army.Owner);
+            VisionSystem.NotifyContentChanged(army.Hex);
             launchedArmy = army;
             return true;
         }
 
-        // Shared by the aviation service's own BuildingRegistry subscription (see
-        // HexSelectionController.ReturnStaleAviationAt) — capturing or destroying the building
-        // that hosts an airfield leaves its STORED (never-launched) aircraft, and any already-
-        // launched air army still parked right there on the same hex, with no owner able to fly
-        // them, so each one's card goes back to its original owner's hand (same destination a
-        // hex-event reward card lands in — see HexSelectionController.GrantCard) instead of just
-        // vanishing — per the project owner's own spec (2026-08-26): "все воздушные юниты (из
-        // ангара и армий) снова кладутся в руку игроку, чтобы он их снова разыгрывал". Works on
-        // either an IsAirfield container or a real IsAirArmy formation — both just end up as a
-        // list of aircraft UnitData to convert back into cards.
+        // Match-owned aircraft return. The hand model grants the ordinary card (with its
+        // attachments); optional presentation only observes the completed result.
         public static void ReturnAircraftToDeck(ArmyData army, HexSelectionController hexSelection)
         {
             if (army == null || (!AviationRules.IsAirfield(army) && !AviationRules.IsAirArmy(army)
                 && !army.IsCarrierContainer))
                 return;
-            foreach (UnitData aircraft in army.Members.ToList())
+            using var mutation = VisionSystem.BeginMutation();
+            var aircraftToReturn = army.Members.ToList(); army.Members.Clear();
+            foreach (UnitData aircraft in aircraftToReturn)
             {
-                army.Members.Remove(aircraft);
-                Game.Map.StealthSystem.OnUnitRemoved(aircraft);
-                if (aircraft.OriginatingCard != null)
-                {
-                    // Hand back a CardData, not just the definition, so any Equipment attached
-                    // to this aircraft rides home with its card — replaying it then respawns the
-                    // plane fully kitted. Its cost isn't re-charged: this is the same card
-                    // instance's gear, restored, not a fresh attach (see CardHandUI.AddCardToHand).
-                    //
-                    // INTENTIONAL: this is a fresh, ordinary CardData — ResearchProductionCreated
-                    // is left at its default false even if the aircraft was originally minted by a
-                    // Research/Production Challenge. Once a produced card has been played, the
-                    // "first activation" concessions (activationApCost instead of apCost, no
-                    // ResourceCost) are spent for good; a unit the game hands back to hand is an
-                    // ordinary card and pays full apCost + ResourceCost on its next play. Do NOT
-                    // thread the production flag through UnitData / OriginatingCard to "preserve"
-                    // it here — that is not a bug (see CardData.ResearchProductionCreated).
-                    var returnedCard = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment, Mutator = aircraft.Mutator };
-                    if (hexSelection != null) hexSelection.GrantCard(army.Owner, returnedCard);
-                    else AircraftReturnedToHand?.Invoke(army.Owner, returnedCard);
-                }
+                StealthSystem.OnUnitRemoved(aircraft);
+                if (aircraft.OriginatingCard == null || army.Owner == null) continue;
+                var card = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment, Mutator = aircraft.Mutator };
+                if ((army.Owner.Hand ??= new PlayerHandData(null, 0)).TryAddCard(card))
+                    VisionSystem.PublishAfterMutation(AircraftReturnedToHand, army.Owner, card);
             }
-            hexSelection?.DeleteArmyIfEmptied(army);
+            army.RefreshTransport(); ArmyActions.DeleteArmyIfEmptied(army);
+            VisionSystem.RecomputeFor(army.Owner); VisionSystem.NotifyContentChanged(army.Hex);
+        }
+        internal static void ReturnStaleAviationAt(Game.HexGrid.HexCoord hex, BuildingData building)
+        {
+            using var mutation = VisionSystem.BeginMutation();
+            foreach (ArmyData army in ArmyRegistry.At(hex).Where(a => !a.IsCarrierContainer
+                && (AviationRules.IsAirfield(a) || AviationRules.IsAirArmy(a))
+                && (a.IsAirfield ? !AviationRules.IsAirfieldBuilding(building, a.Owner)
+                    : !AviationRules.IsOwnedAirfieldAt(hex, a.Owner))).ToArray())
+            { ReturnAircraftToDeck(army, null); if (army.IsAirfield) DeleteReturnedWing(army, null); }
         }
 
         // Stationary air strike — an air army already sitting on a hex attacking whatever enemy
@@ -202,6 +194,7 @@ namespace Game.Aviation
         // of aircraft landed; any that found no slot stay airborne in the wing.
         public static int LandInSlotOrder(ArmyData airArmy, HexSelectionController hexSelection)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!AviationRules.IsValidAirArmy(airArmy))
                 return 0;
             if (EnsureAirfield(hexSelection, airArmy.Owner, airArmy.Hex) == null) return 0;

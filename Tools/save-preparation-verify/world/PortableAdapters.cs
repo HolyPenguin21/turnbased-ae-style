@@ -9,6 +9,11 @@ using Game.Units;
 using Game.HexGrid;
 namespace UnityEngine
 {
+    public static class Debug
+    {
+        public static int NotificationFailures;
+        public static void LogException(Exception error) { NotificationFailures++; Console.Error.WriteLine(error); }
+    }
     public class Object { public static void Destroy(object value) {} public static void DestroyImmediate(object value) {} }
     public class MonoBehaviour { public object gameObject; }
     public class ScriptableObject : Object {}
@@ -77,6 +82,16 @@ namespace Game.Map
     }
     public static class PlayerRootRegistry { public static PlayerRoot FindFor(PlayerSetupData owner) => null; }
 }
+namespace Game.Map
+{
+    // Gameplay commands are outside this preparation-only compile; unexpected use fails.
+    public static class ArmyActions
+    {
+        public static void ChangeOwner(ArmyData army, PlayerSetupData owner) => throw new NotSupportedException();
+        public static void DeleteArmyIfEmptied(ArmyData army, bool force = false) => throw new NotSupportedException();
+        public static bool ReorderMembers(ArmyData army, IReadOnlyList<UnitData> order, out string failure) => throw new NotSupportedException();
+    }
+}
 namespace Game.Aviation
 {
     public enum AirStrikePolicy {}
@@ -93,6 +108,7 @@ namespace Game.Aviation
         { foreach (var unit in army.Members) if (unit.AirfieldCapacity > 0) unit.CarrierAirfield = new ArmyData(); }
         public static void RemoveCarrierContainers(UnitData unit) {}
         public static void LandWingsBeforeCarrierDeparts(ArmyData army) {}
+        public static void ReturnStaleAviationAt(HexCoord hex, BuildingData building) => throw new NotSupportedException();
     }
 }
 namespace Game.Ai

@@ -237,6 +237,7 @@ namespace Game.Setup
 
         private void FinalizePlayer(PlayerSetupData player, HexCoord hex)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (map == null || !map.CanEnter(hex)) return;
             player.CitadelHexQ = hex.Q;
             player.CitadelHexR = hex.R;

@@ -40,7 +40,7 @@ namespace Game.Map
                 if (_actionPoints == value)
                     return;
                 _actionPoints = value;
-                ResourcesChanged?.Invoke();
+                VisionSystem.PublishAfterMutation(ResourcesChanged);
             }
         }
 
@@ -188,7 +188,7 @@ namespace Game.Map
             if (amount == 0)
                 return;
             _resources[type] += amount;
-            ResourcesChanged?.Invoke();
+            VisionSystem.PublishAfterMutation(ResourcesChanged);
         }
     }
 }

@@ -214,14 +214,14 @@ namespace Game.Map
             }
             if (anyChanged)
             {
-                StealthChanged?.Invoke();
-                StealthChangedAt?.Invoke(hex);
+                VisionSystem.PublishAfterMutation(StealthChanged);
+                VisionSystem.PublishAfterMutation(StealthChangedAt, hex);
             }
         }
 
         // Death / removal from play / return-to-deck — drop every trace so a recycled
         // UnitData reference can never carry a stale detection.
-        public static void OnUnitRemoved(UnitData unit, bool deferCarrierCleanup = false)
+        public static void OnUnitRemoved(UnitData unit, bool deferCarrierCleanup = false, bool deferNotifications = false)
         {
             if (unit == null)
                 return;
@@ -229,8 +229,7 @@ namespace Game.Map
             bool had = unit.IsHidden || _detected.ContainsKey(unit);
             unit.IsHidden = false;
             _detected.Remove(unit);
-            if (had)
-                Notify(unit, null);
+            if (had && !deferNotifications) Notify(unit, null);
         }
 
         // ------------------------------------------------------------ personal detection ----
@@ -267,7 +266,7 @@ namespace Game.Map
             byObserver[observer] = expiry;
             // A new personal detection changes what `observer` can see — refresh UI rosters/
             // markers and AiMapMemory (spec §4).
-            StealthChanged?.Invoke();
+            VisionSystem.PublishAfterMutation(StealthChanged);
         }
 
         // Drop every now-expired detection whose observer is `observer` and fire one change
@@ -294,7 +293,7 @@ namespace Game.Map
             foreach (UnitData unit in emptied)
                 _detected.Remove(unit);
             if (anyLapsed)
-                StealthChanged?.Invoke();
+                VisionSystem.PublishAfterMutation(StealthChanged);
         }
 
         // THE predicate every enemy-facing query filters on: "is `unit` currently invisible
@@ -466,7 +465,7 @@ namespace Game.Map
             if (detected)
             {
                 MarkDetected(unit, observer); // fires StealthChanged itself
-                StealthChangedAt?.Invoke(hex);
+                VisionSystem.PublishAfterMutation(StealthChangedAt, hex);
                 QueueDetectionNotice(observer, unit, hex);
             }
             return detected;
@@ -614,11 +613,25 @@ namespace Game.Map
                     yield return player;
         }
 
+        internal static Action CaptureDetectionRollback()
+        {
+            var detected = new Dictionary<UnitData, Dictionary<PlayerSetupData, long>>();
+            foreach (var entry in _detected) detected.Add(entry.Key, new Dictionary<PlayerSetupData, long>(entry.Value));
+            var notices = new Dictionary<PlayerSetupData, List<string>>();
+            foreach (var entry in _detectionNotices) notices.Add(entry.Key, new List<string>(entry.Value));
+            return () =>
+            {
+                _detected.Clear(); _detectionNotices.Clear();
+                foreach (var entry in detected) _detected.Add(entry.Key, entry.Value);
+                foreach (var entry in notices) _detectionNotices.Add(entry.Key, entry.Value);
+            };
+        }
+
         private static void Notify(UnitData unit, HexCoord? hex)
         {
-            StealthChanged?.Invoke();
+            VisionSystem.PublishAfterMutation(StealthChanged);
             if (hex.HasValue)
-                StealthChangedAt?.Invoke(hex.Value);
+                VisionSystem.PublishAfterMutation(StealthChangedAt, hex.Value);
         }
     }
 }
