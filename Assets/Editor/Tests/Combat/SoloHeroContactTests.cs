@@ -28,11 +28,13 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void VisibleHeroDoesNotExposeItsHiddenCombatForce()
+        // Owner rule (2026-10-20, 7385a40b): a visible hero always initiates the encounter. Alone
+        // it starts the capture challenge; with hidden units in its army a battle begins.
+        public void VisibleHeroWithHiddenForceInitiatesContact()
         {
             ArmyData army = Army(new PlayerSetupData(), true);
             army.Members.Add(new UnitData { Owner = army.Owner, IsHidden = true });
-            Assert.That(BattleInitiator.CanInitiateContact(army), Is.False);
+            Assert.That(BattleInitiator.CanInitiateContact(army), Is.True);
         }
 
         [Test]

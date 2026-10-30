@@ -3792,7 +3792,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyDemand_ImmediateHandBottleneckBeatsConvenientDeckResource()
+        public void EconomyDemand_ImmediateHandDemandRaisesResourcePriority()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.65f, 0.1f, actionable: true);
             snapshot.Economy.PerType = new[]
@@ -3815,13 +3815,16 @@ namespace Game.EditorTests
             EconomyExtractionOpportunity energy = ExtractionOpportunity(
                 new HexCoord(2, 0), ResourceType.Energy, 1);
             energy.BuilderRoutes = new[] { BuilderRoute(builder, 2, 2, 1) };
+            // No resource is preferred by itself: its importance is the card demand (hand and
+            // deck costs, owner rule 2026-10-30). Both sites are equally far, so only that
+            // demand separates them; an on-target site may still win on proximity/delivery.
             EconomyExtractionOpportunity tech = ExtractionOpportunity(
-                new HexCoord(0, 0), ResourceType.Tech, 1);
-            tech.BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) };
+                new HexCoord(0, 2), ResourceType.Tech, 1);
+            tech.BuilderRoutes = new[] { BuilderRoute(builder, 2, 2, 1) };
             snapshot.Economy.ExtractionOpportunities = new[] { energy, tech };
 
             AxisDemand selected = DemandLayer.EconomyDemands(
-                snapshot, new DesireBreakdown(), null, null, null).Single();
+                snapshot, new DesireBreakdown(), null, null, null).Single(d => !d.IsEconomyNewHeroAlternative);
 
             Assert.That(selected.EconomyResourceType, Is.EqualTo(ResourceType.Energy));
             Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(2, 0)));
