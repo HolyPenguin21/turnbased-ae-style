@@ -765,10 +765,11 @@ namespace Game.EditorTests
                 committed.Claim(field.Id);
                 ArmyReorgAnalysis protectedAnalysis = ArmyReorgAnalyzer.Analyze(
                     owner, committed, new WorldSnapshot(), ctx);
-                ReorganizationPlan protectedPlan = ArmyReorganizationPlanner.Plan(
-                    protectedAnalysis.Groups[0]);
-                Assert.That(protectedPlan.Transfers.Any(t =>
-                    t.FromArmyId == field.Id), Is.False);
+                // A claimed singleton leaves nothing worth planning on the hex: no group at all
+                // is as protective as a group that does not move it.
+                Assert.That(protectedAnalysis.Groups.SelectMany(g =>
+                        ArmyReorganizationPlanner.Plan(g).Transfers)
+                    .Any(t => t.FromArmyId == field.Id), Is.False);
             }
             finally
             {
@@ -795,6 +796,15 @@ namespace Game.EditorTests
                     { Owner = owner, Hex = capturedHex, IsGarrison = true };
                 ArmyRegistry.Register(citadelGarrison);
                 ArmyRegistry.Register(capturedGarrison);
+                // A lone empty garrison is not worth a planning pass (no group is built); a
+                // local field singleton beside each makes both hexes planned groups.
+                foreach (HexCoord hex in new[] { citadelHex, capturedHex })
+                {
+                    var single = new ArmyData { Owner = owner, Hex = hex };
+                    single.AddMemberSorted(new UnitData { Owner = owner, Attack = 2, Defense = 2,
+                        HitPointsCurrent = 2, HitPointsMax = 2, MoveMax = 3, MoveCurrent = 3 });
+                    ArmyRegistry.Register(single);
+                }
 
                 ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(
                     owner, new ActorCommitments(), new WorldSnapshot(), new AiTurnContext());

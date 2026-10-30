@@ -301,8 +301,10 @@ namespace Game.EditorTests
         {
             // raidObjectiveMinBaseValue is consulted on every candidate. There is no second
             // Raid-local value scale or floor: accepted objective value is canonical TaskScore.
-            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 55, hex: new HexCoord(500, 500),
-                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true, closeToBase: false);
+            // Near home: since 2026-09-18 a far plain neutral has negative proximity and is
+            // rejected by this very gate (RaidValue_UsesSignedNearestHomeProximity_ForNeutralAndEvent).
+            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 55, hex: new HexCoord(2, 0),
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true, closeToBase: true);
             CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
 
             List<RaidObjective> objectives = RaidObjectiveEvaluator.Enumerate(snap, report);
@@ -442,9 +444,12 @@ namespace Game.EditorTests
                 defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
             RaidObjective nearRaid = RaidObjectiveEvaluator.Enumerate(near,
                 CombatOpportunityAnalyzer.Analyze(near)).Single();
-            Assert.That(nearRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(1.5f).Within(0.0001f));
+            // The signed proximity curve at 3 hexes (its falloff was recalibrated 2026-09-28).
+            float nearProximity = TaskScoreEvaluator.OwnTerritoryProximity(3);
+            Assert.That(nearProximity, Is.GreaterThan(0f));
+            Assert.That(nearRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(nearProximity).Within(0.0001f));
             // A plain neutral earns nothing for itself: only the shorter route (proximity) remains.
-            Assert.That(nearRaid.BaseValue, Is.EqualTo(1.5f).Within(0.0001f));
+            Assert.That(nearRaid.BaseValue, Is.EqualTo(nearProximity).Within(0.0001f));
 
             WorldSnapshot far = SnapshotWithNeutralSighting(armyId: 82,
                 hex: new HexCoord(12, 0),

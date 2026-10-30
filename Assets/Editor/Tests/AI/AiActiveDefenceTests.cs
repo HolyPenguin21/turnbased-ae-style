@@ -486,6 +486,10 @@ namespace Game.EditorTests
             snap.Known.EnemySightings = snap.Known.EnemySightings.Concat(new[] {
                 new AiMapMemory.KnownEnemySighting(site, enemy, "garrison", 1, 1f, 1f, new[] { weak },
                     false, 0, 0, 8, 98) }).ToArray();
+            // Seeing the garrison is seeing its structure this turn: a decisive blow needs that
+            // assault observation (2026-10-20).
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(site, enemy, true, null, null, 0,
+                true, 0f, 8) };
             AttackMarchAssessment mate = AttackMarchPolicy.Assess(snap, citadel, marcher);
             Assert.That(mate.Decisive, Is.True);
             Assert.That(mate.Verdict, Is.EqualTo(AttackMarchVerdict.Continue), "the decisive Citadel blow lands first");
@@ -515,6 +519,10 @@ namespace Game.EditorTests
                 threat.Contact.Army.Owner, AttackTargetKind.Base);
             AttackTargetRef elsewhere = AttackTargetRef.For(new HexCoord(3, -1),
                 threat.Contact.Army.Owner, AttackTargetKind.Base);
+            // The threat's Base is observed this turn: a decisive blow needs that assault
+            // observation (2026-10-20).
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(threat.Contact.Position.Value,
+                threat.Contact.Army.Owner, false, null, null, 0, true, 0f, 8) };
 
             Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.EqualTo(Secondary));
             AttackMarchAssessment strike = AttackMarchPolicy.Assess(snap, threatBase, marcher);
