@@ -841,58 +841,14 @@ namespace Game.UI
             CardDefinition definition = card.Data?.Definition;
             PlayerSetupData human = HumanPlayer;
             bool valid = hex.HasValue && human != null
-                && (IsValidDropTarget(definition, human, hex.Value)
-                    || IsValidBaseDropTarget(definition, human, hex.Value)
-                    || IsValidFacilityHexDropTarget(definition, human, hex.Value));
+                && CardHandCommands.TryQuotePlay(human, _humanHand, card.Data,
+                    CardPlayTarget.AtHex(hex.Value), hexSelection.Map, out _, out _);
             card.SetDragHoverValid(valid);
         }
 
         private static bool IsUnitOrHero(CardDefinition definition)
         {
             return definition != null && (definition.cardType == CardType.Unit || definition.cardType == CardType.Hero);
-        }
-
-        // Shared by the live drag-hover preview above and the actual drop attempt in
-        // TryDeployUnitOrHero, so the two can never disagree about what counts as a valid target.
-        private bool IsValidDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
-        {
-            return hexSelection?.Map != null && hexSelection.Map.CanEnter(hex)
-                && IsUnitOrHero(definition)
-                && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, definition);
-        }
-
-        // Same idea, for a Base card — the target hex must already have one of the player's own
-        // armies with a Hero present (see TryBuildBase) — founding a base needs a Hero on-site,
-        // not just empty ground. The hex itself must be either bare or already host a hero-built
-        // resource site with few enough occupied Facility slots to fit inside a fresh Base (see
-        // CanMergeIntoResourceSite) — anything else (a citadel, another player's Base) blocks it.
-        // No ownership/territory restriction beyond that, since no borders/zone-of-control
-        // system exists in the game yet. A visible enemy army on the hex blocks it too, same as
-        // extraction facilities (see RefreshResourceActionRow) — building requires an
-        // uncontested hex.
-        private bool IsValidBaseDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
-        {
-            if (hexSelection?.Map == null || !hexSelection.Map.CanEnter(hex)
-                || definition == null || definition.cardType != CardType.Base)
-                return false;
-            if (!HexSelectionController.HasOwnHeroArmyAt(hex, player))
-                return false;
-            if (BattleInitiator.FindEnemyAt(hex, player) != null)
-                return false;
-            BuildingData existing = BuildingRegistry.FindAt(hex);
-            return existing == null || InfrastructureActions.CanMergeIntoResourceSite(existing);
-        }
-
-        // A Facility card dropped straight onto a hex (not the open modal) — valid wherever the
-        // player owns a Base-tagged building, regardless of whether it currently has a free
-        // slot (that's checked, with its own hint, in TryDeployFacilityToHex — this is only the
-        // "is this even the right kind of hex" check shared with the hover preview).
-        private static bool IsValidFacilityHexDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
-        {
-            if (definition == null || definition.cardType != CardType.Facility)
-                return false;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == player && building.IsBase;
         }
 
         private bool IsWithinDragBand(float localY)
@@ -927,310 +883,48 @@ namespace Game.UI
             RestoreSiblingOrder();
         }
 
-        // Dispatches by CardType — each has its own valid-target rule and destination (a
-        // garrison, a brand-new building, or an open modal's grid). Anything else (there is
-        // nothing else right now) falls through to the normal snap-back-to-hand behaviour.
+        // Resolve the screen surface only. The application command owns target legality,
+        // effective payment, materialization and source-card consumption for every route.
         private bool TryPlayCard(CardUI card, Vector2 screenPosition)
         {
-            CardDefinition definition = card.Data?.Definition;
-            if (definition == null || turnController == null)
-                return false;
-
-            switch (definition.cardType)
+            if (card?.Data?.Definition == null || !CanDragCards()) return false;
+            var data = card.Data;
+            CardPlayTarget target;
+            if (IsUnitOrHero(data.Definition) && armyViewerModal != null && armyViewerModal.IsShowing)
             {
-                case CardType.Unit:
-                case CardType.Hero:
-                    return TryDeployUnitOrHero(card, definition, screenPosition);
-                case CardType.Base:
-                    return TryBuildBase(card, definition, screenPosition);
-                case CardType.Facility:
-                    // Dropped onto the open Base Viewer takes over the whole flow (exact slot
-                    // under the cursor) — otherwise, dropped straight onto a hex with the
-                    // player's own Base, it lands in the first free slot (see
-                    // TryDeployFacilityToHex).
-                    if (baseViewerModal != null && baseViewerModal.IsShowing)
-                        return TryDeployIntoBaseModal(card, definition, screenPosition);
-                    return TryDeployFacilityToHex(card, definition, screenPosition);
-                default:
-                    return false;
+                if (!armyViewerModal.ContainsScreenPoint(screenPosition)) return false;
+                target = CardPlayTarget.InArmy(armyViewerModal.CurrentArmy);
             }
-        }
-
-        private bool TryDeployUnitOrHero(CardUI card, CardDefinition definition, Vector2 screenPosition)
-        {
-            // Dropped onto the open Army Viewer takes over the whole flow — see
-            // TryDeployIntoArmyModal.
-            if (armyViewerModal != null && armyViewerModal.IsShowing)
-                return TryDeployIntoArmyModal(card, definition, screenPosition);
-
-            if (hexSelection == null)
-                return false;
-
-            HexCoord? hex = hexSelection.RaycastHex(screenPosition);
-            if (!hex.HasValue)
-                return false; // dropped somewhere with no hex under it — treat as a cancelled drag
-
-            PlayerSetupData human = FindHumanPlayer();
-            if (human == null)
-                return false;
-
-            // Aircraft never pass through the ordinary garrison deployment path: it would make
-            // a valid card temporarily mix with heroes/ground units and bypass airfield capacity.
-            if (definition.isAviation)
+            else if (data.Definition.cardType == CardType.Facility && baseViewerModal != null && baseViewerModal.IsShowing)
             {
-                if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
-                        hex.Value, out string aviationFailReason, card.Data?.Equipment, card.Data))
-                {
-                    turnController.ShowSpawnHint(aviationFailReason);
-                    return false;
-                }
-                RemoveCard(card);
-                return true;
+                if (!baseViewerModal.ContainsScreenPoint(screenPosition) || !baseViewerModal.CanManageCurrentBuilding) return false;
+                target = CardPlayTarget.InBuilding(baseViewerModal.CurrentBuilding);
             }
-
-            if (!IsValidDropTarget(definition, human, hex.Value))
+            else
             {
-                turnController.ShowSpawnHint($"Requires your building with {definition.requiredBuildingAbility} on this hex.");
-                return false;
+                var hex = hexSelection?.RaycastHex(screenPosition);
+                if (!hex.HasValue) return false;
+                target = CardPlayTarget.AtHex(hex.Value);
             }
-
-            // Deployed cards land in the player's garrison first (see ArmyData.IsGarrison) —
-            // guaranteed to exist here since IsValidDropTarget already required a Barracks-abled
-            // building the player owns, and every such building gets a garrison the moment it's
-            // placed (see CitadelSetupController.CreateGarrison). Capacity is a hard cap (see
-            // ArmyData.Capacity) — a full garrison blocks the deploy, same popup as the
-            // no-Barracks case, checked before any AP/resources are spent.
-            ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex.Value, human);
-            if (garrison == null || !garrison.CanFitAdditionalCard(definition))
-            {
-                turnController.ShowSpawnHint($"Not enough garrison capacity for {definition.displayName}.");
-                return false;
-            }
-
-            if (!DeployUnit(definition, human, garrison, PlayerRootRegistry.FindFor(human), card.Data?.Equipment, card.Data))
-                return false;
-
-            // A Hero landing here can change the hex's contextual actions (Research/Production)
-            // without a fresh hex click — refresh the selected hex if it's this one.
-            hexSelection.RefreshSelectedHexIf(hex.Value);
-            RemoveCard(card);
+            var result = CardHandCommands.TryPlay(HumanPlayer, _humanHand, data, target, hexSelection?.Map, hexSelection);
+            if (!result.Ok) { turnController?.ShowSpawnHint(result.FailReason); return false; }
+            RecordPlayedCard(data);
+            if (target.Kind == CardPlayTargetKind.Army) armyViewerModal?.RefreshAfterExternalDeploy();
+            if (target.Kind == CardPlayTargetKind.Building) baseViewerModal?.RefreshAfterExternalFacilityPlacement();
+            var changedHex = target.Kind == CardPlayTargetKind.Army ? target.Army.Hex
+                : target.Kind == CardPlayTargetKind.Building ? target.Building.Hex : target.Hex;
+            hexSelection?.RefreshSelectedHexIf(changedHex);
             return true;
         }
 
-        // A Base card builds a brand-new building — the target hex must either be bare or
-        // already host a hero-built resource site with few enough Facilities to fit inside the
-        // new Base (see IsValidBaseDropTarget/CanMergeIntoResourceSite), AND already have one of
-        // the player's own armies with a Hero present — founding a base needs a Hero on-site,
-        // not just empty ground. Checked as separate steps so the hint always names the actual
-        // reason instead of a generic "invalid" message.
-        private bool TryBuildBase(CardUI card, CardDefinition definition, Vector2 screenPosition)
+        private static void RecordPlayedCard(CardData data)
         {
-            if (hexSelection == null)
-                return false;
-
-            HexCoord? hex = hexSelection.RaycastHex(screenPosition);
-            if (!hex.HasValue)
-                return false;
-
-            PlayerSetupData human = FindHumanPlayer();
-            if (human == null)
-                return false;
-
-            // The whole spend + create + refund sequence is the shared authoritative transaction
-            // (Game.Map.InfrastructureActions) — the AI plays a Base through the exact same door.
-            // Effective instance cost: a Research/Production-created card pays activationApCost and
-            // no ResourceCost.
-            InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
-                hexSelection, definition, hex.Value, human,
-                card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
-            if (!outcome.Ok)
-            {
-                turnController.ShowSpawnHint($"{definition.displayName}: {outcome.FailReason}");
-                return false;
-            }
-
-            // Founding/merging a Base here can enable Research/Production on the selected hex.
-            hexSelection.RefreshSelectedHexIf(hex.Value);
-            RemoveCard(card);
-            return true;
-        }
-
-        // Dropped onto the open Army Viewer instead of a hex — deploys straight into whichever
-        // army it's currently showing (garrison or a named one). An army can move away from the
-        // Barracks that created it, so its current hex still needs the same check the hex-drop
-        // path applies (see IsValidDropTarget) — deploy must stay consistent regardless of which
-        // path is used to reach it.
-        private bool TryDeployIntoArmyModal(CardUI card, CardDefinition definition, Vector2 screenPosition)
-        {
-            if (!armyViewerModal.ContainsScreenPoint(screenPosition))
-                return false;
-
-            ArmyData targetArmy = armyViewerModal.CurrentArmy;
-            PlayerSetupData human = FindHumanPlayer();
-            if (targetArmy == null || human == null || targetArmy.Owner != human)
-                return false;
-
-            // Captured heroes "just lie there" (see ArmyData.IsPrison) — a Prison is reachable
-            // from the modal's own in-modal button row same as any other army, but it's not
-            // somewhere a fresh Unit/Hero card can ever land, per the user's own call.
-            if (targetArmy.IsPrison)
-                return false;
-
-            if (definition.isAviation)
-            {
-                if (!targetArmy.IsAirfield)
-                {
-                    turnController.ShowSpawnHint("Deploy aircraft to your airfield first.");
-                    return false;
-                }
-                if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
-                        targetArmy.Hex, out string aviationFailReason, card.Data?.Equipment, card.Data, targetArmy))
-                {
-                    turnController.ShowSpawnHint(aviationFailReason);
-                    return false;
-                }
-                armyViewerModal.RefreshAfterExternalDeploy();
-                RemoveCard(card);
-                return true;
-            }
-
-            if (!IsValidDropTarget(definition, human, targetArmy.Hex))
-            {
-                turnController.ShowSpawnHint($"Move {targetArmy.Name} to your building with {definition.requiredBuildingAbility}.");
-                return false;
-            }
-
-            if (!targetArmy.CanFitAdditionalCard(definition))
-            {
-                turnController.ShowSpawnHint($"Not enough capacity in {targetArmy.Name} for {definition.displayName}.");
-                return false;
-            }
-
-            if (!DeployUnit(definition, human, targetArmy, PlayerRootRegistry.FindFor(human), card.Data?.Equipment, card.Data))
-                return false;
-
-            armyViewerModal.RefreshAfterExternalDeploy();
-            // A Researcher/Assembler Hero dropped straight into this army changes the hex's
-            // contextual actions behind the still-open modal — refresh if it's the selected hex.
-            hexSelection.RefreshSelectedHexIf(targetArmy.Hex);
-            RemoveCard(card);
-            return true;
-        }
-
-        // Dropped onto the open Base Viewer instead of a hex — deploys straight into whichever
-        // unlocked+empty Facility slot it lands on (see BaseViewerModalUI.TryPlaceFacility).
-        // AP/resources are only spent once that call actually succeeds — a locked or
-        // already-filled slot costs nothing, same as every other invalid-drop case.
-        private bool TryDeployIntoBaseModal(CardUI card, CardDefinition definition, Vector2 screenPosition)
-        {
-            if (!baseViewerModal.ContainsScreenPoint(screenPosition))
-                return false;
-
-            BuildingData targetBuilding = baseViewerModal.CurrentBuilding;
-            PlayerSetupData human = FindHumanPlayer();
-            if (targetBuilding == null || human == null || targetBuilding.Owner != human
-                || !baseViewerModal.CanManageCurrentBuilding)
-                return false;
-
-            // The modal is only a drop surface. Slot selection, legality, affordability, spend
-            // and mutation all go through the same authoritative transaction as direct hex drops
-            // and AI execution. InfrastructureActions deterministically selects the first free
-            // unlocked slot, so any point inside the owned Base modal is a valid drop surface.
-            InfrastructureBuildOutcome outcome = InfrastructureActions.TryPlaceFacility(
-                definition, targetBuilding.Hex, human,
-                card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
-            if (!outcome.Ok)
-            {
-                turnController?.ShowSpawnHint($"{definition.displayName}: {outcome.FailReason}");
-                return false;
-            }
-
-            baseViewerModal.RefreshAfterExternalFacilityPlacement();
-            if (hexSelection != null)
-                hexSelection.RefreshSelectedHexIf(targetBuilding.Hex);
-            RemoveCard(card);
-            return true;
-        }
-
-        // Dropped straight onto a hex carrying the player's own Base — no need to open the
-        // modal first. Lands in the first free (unlocked + empty) Facility slot; a full or
-        // fully-locked Base, or unaffordable AP/resources, each get their own specific hint
-        // rather than a generic failure, same layered pattern as every other deploy path here.
-        private bool TryDeployFacilityToHex(CardUI card, CardDefinition definition, Vector2 screenPosition)
-        {
-            if (hexSelection == null)
-                return false;
-
-            HexCoord? hex = hexSelection.RaycastHex(screenPosition);
-            if (!hex.HasValue)
-                return false; // dropped somewhere with no hex under it — treat as a cancelled drag
-
-            PlayerSetupData human = FindHumanPlayer();
-            if (human == null)
-                return false;
-
-            if (!IsValidFacilityHexDropTarget(definition, human, hex.Value))
-                return false; // not the player's own Base — nothing to say, same as any other irrelevant drop
-
-            // Same shared authoritative transaction the AI uses. Effective instance cost — a
-            // Research/Production-created card pays activationApCost and no ResourceCost.
-            InfrastructureBuildOutcome outcome = InfrastructureActions.TryPlaceFacility(
-                definition, hex.Value, human,
-                card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
-            if (!outcome.Ok)
-            {
-                turnController.ShowSpawnHint($"{definition.displayName}: {outcome.FailReason}");
-                return false;
-            }
-
-            // A Lab/Factory Facility dropped straight onto the hex can enable Research/Production.
-            hexSelection.RefreshSelectedHexIf(hex.Value);
-            RemoveCard(card);
-            return true;
-        }
-
-        // Shared by both drop paths above — thin wrapper over Game.Map.ArmyActions.
-        // DeployUnitFromCard (the same player-agnostic core Game.Ai.AiTurnController calls for
-        // an AI player), just turning a failure into this player's own hint popup.
-        // attachedEquipment: a CardType.Equipment card hung on this card while it was in hand
-        // (see EquipmentSystem) — carried onto the spawned unit by DeployUnitFromCard.
-        private bool DeployUnit(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy, PlayerRoot root,
-            CardDefinition attachedEquipment = null, CardData sourceCard = null)
-        {
-            if (hexSelection == null || root == null)
-                return false;
-
-            if (!ArmyActions.DeployUnitFromCard(definition, owner, targetArmy, root, hexSelection, out string failReason,
-                    attachedEquipment, sourceCard))
-            {
-                if (failReason != null)
-                    turnController.ShowSpawnHint(failReason);
-                return false;
-            }
-            return true;
-        }
-
-        // Removes a played card from the hand entirely — unlike a failed drop, this one never
-        // comes back.
-        private void RemoveCard(CardUI card)
-        {
-            // All successful play/attach paths converge here; rejected drops never reach it.
-            switch (card.Data?.Definition?.cardType)
+            switch (data?.Definition?.cardType)
             {
                 case CardType.Base: TutorialHintController.Learned(TutorialHintId.BuildBase); break;
                 case CardType.Facility: TutorialHintController.Learned(TutorialHintId.BuildFacility); break;
                 case CardType.Equipment: TutorialHintController.Learned(TutorialHintId.Upgrade); break;
             }
-            _humanHand.RemoveCard(card.Data);
-        }
-
-        // Same, addressed by the CardData rather than its CardUI — used by the equipment attach
-        // flow, which only holds the pending _pendingAttachment CardData.
-        private void RemoveCardData(CardData data)
-        {
-            CardUI card = _cards.Find(c => c != null && c.Data == data);
-            if (card != null)
-                RemoveCard(card);
         }
 
         // --- equipment attach mode (see _pendingAttachment) ---------------------------------
@@ -1283,14 +977,16 @@ namespace Game.UI
         {
             if (_pendingAttachment == null || targetCard == null || targetCard == _pendingAttachment)
                 return;
-            PlayerRoot root = PlayerRootRegistry.FindFor(FindHumanPlayer());
             CardData equipment = _pendingAttachment;
-            bool attached = EquipmentSystem.TryAttach(equipment, targetCard, root, out string reason);
+            var result = CanDragCards() ? CardHandCommands.TryPlay(HumanPlayer, _humanHand, equipment,
+                CardPlayTarget.OnCard(targetCard), hexSelection?.Map) : CardCommandResult.Fail("Your turn is no longer active.");
+            bool attached = result.Ok;
+            string reason = result.FailReason;
             EndAttachMode();
             if (attached)
             {
                 _cards.Find(c => c != null && c.Data == targetCard)?.RefreshEquipmentToggle();
-                RemoveCardData(equipment);
+                RecordPlayedCard(equipment);
             }
             else
             {
@@ -1305,22 +1001,14 @@ namespace Game.UI
         {
             if (_pendingAttachment == null)
                 return false;
-            PlayerSetupData human = FindHumanPlayer();
             CardData equipment = _pendingAttachment;
-            bool attached = false;
-            string failHint;
-            if (unit == null || unit.Owner != human)
-                failHint = "You can only attach cards to your own units.";
-            else if (EquipmentSystem.TryAttach(equipment, unit, PlayerRootRegistry.FindFor(human), out string reason))
-            {
-                attached = true;
-                failHint = null;
-            }
-            else
-                failHint = reason;
+            var result = CanDragCards() ? CardHandCommands.TryPlay(HumanPlayer, _humanHand, equipment,
+                CardPlayTarget.OnUnit(unit), hexSelection?.Map) : CardCommandResult.Fail("Your turn is no longer active.");
+            bool attached = result.Ok;
+            string failHint = result.FailReason;
             EndAttachMode();
             if (attached)
-                RemoveCardData(equipment);
+                RecordPlayedCard(equipment);
             else
                 turnController?.ShowSpawnHint(failHint);
             return true;
@@ -1440,23 +1128,10 @@ namespace Game.UI
 
         private void OnDrawClicked()
         {
-            if (_humanHand.RemainingDeckCount == 0 || !CanDragCards())
-                return;
-            if (!_humanHand.HasFreeSlot)
-            {
-                turnController.ShowSpawnHint($"Hand full ({maxHandSize}). Play or discard a card before drawing.");
-                return;
-            }
-            PlayerRoot root = FindHumanRoot();
-            if (root == null || !root.CanSpendActionPoints(drawApCost))
-                return;
-
-            CardData card = _humanHand.DrawOne();
-            if (card == null)
-                return;
-
+            if (!CanDragCards()) return;
+            var result = CardHandCommands.TryDraw(HumanPlayer, _humanHand, drawApCost);
+            if (!result.Ok) { turnController?.ShowSpawnHint(result.FailReason); return; }
             RefreshDeckCountText();
-            root.SpendActionPoints(drawApCost);
             TutorialHintController.Complete(TutorialHintId.Draw);
         }
 

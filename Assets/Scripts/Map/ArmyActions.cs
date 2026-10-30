@@ -80,7 +80,10 @@ namespace Game.Map
             if (controller != null) controller.CancelMovement();
             army.Controller = null; army.PendingAirStrikePolicy = null;
             ArmyRegistry.Unregister(army, actualHex);
-            if (controller != null) UnityEngine.Object.Destroy(controller.gameObject);
+            // A composed operation may compensate this removal before publishing. Keep the
+            // old marker available until commit; discarded notifications must not destroy it.
+            if (controller != null)
+                VisionSystem.PublishAfterMutation(() => UnityEngine.Object.Destroy(controller.gameObject));
         }
         public static bool RemoveMember(ArmyData army, UnitData unit, bool cleanup = true, bool publish = true)
             => RemoveMembers(army, new[] { unit }, cleanup, publish) > 0;
@@ -139,7 +142,8 @@ namespace Game.Map
         }
         public static bool ReorderMembers(ArmyData army, IReadOnlyList<UnitData> order, out string failReason)
         {
-            if (!CanReorderMembers(army, order, out failReason)) return false;
+            failReason = "This army is no longer available.";
+            if (!ArmyRegistry.IsRegistered(army) || !CanReorderMembers(army, order, out failReason)) return false;
             if (army.Members.SequenceEqual(order)) return true;
             using var mutation = VisionSystem.BeginMutation();
             var final = order.ToArray(); army.Members.Clear(); army.Members.AddRange(final);
@@ -208,7 +212,7 @@ namespace Game.Map
             { failReason = "Ground armies cannot occupy this terrain."; return null; }
             if (owner == null || catalog == null || source == null || members == null || members.Count == 0
                 || members.Any(u => u == null || u.IsAviation) || source.Owner != owner || source.IsPrison
-                || source.Id < 0 || !source.Hex.Equals(hex))
+                || !ArmyRegistry.IsRegistered(source) || !source.Hex.Equals(hex))
             { failReason = "Cannot create an army with these units."; return null; }
             ArmyData prospective = ArmyData.CreateVisualSnapshot();
             prospective.Owner = owner; prospective.Hex = hex;
@@ -267,7 +271,7 @@ namespace Game.Map
         public static bool TryPayActivation(ArmyData army, PlayerRoot root)
         {
             using var mutation = VisionSystem.BeginMutation();
-            if (army == null || army.Id < 0 || !CanAffordActivation(army, root))
+            if (!ArmyRegistry.IsRegistered(army) || !CanAffordActivation(army, root))
                 return false;
             if (army.RequiresActivationPayment)
             {
@@ -362,17 +366,32 @@ namespace Game.Map
                 targetArmy.Hex, null, root, hexSelectionController, card, out _, out _, out _);
         }
 
+        // Domain entrypoint used by hand commands; presentation is optional.
+        internal static bool TryDeployCard(CardData card, PlayerSetupData owner, ArmyData army,
+            PlayerRoot root, HexMap map, HexSelectionController presentation, out string reason)
+            => DeployUnitFromCardCore(card?.Definition, owner, army, army != null ? army.Hex : default,
+                null, root, presentation, out _, out reason, null, card, map);
+
+        internal static bool CanDeployCard(CardData card, PlayerSetupData owner, ArmyData army,
+            PlayerRoot root, HexMap map, out string reason)
+        {
+            reason = "This army is no longer available.";
+            return army != null && ArmyRegistry.IsRegistered(army)
+                && ValidateDeployUnitFromCard(card?.Definition, owner, army, army.Hex, null, root,
+                    null, card, out _, out _, out reason, map);
+        }
+
         private static bool ValidateDeployUnitFromCard(CardDefinition definition, PlayerSetupData owner,
             ArmyData targetArmy, HexCoord deploymentHex, FactionCardCatalog newArmyCatalog,
             PlayerRoot root, HexSelectionController hexSelectionController, CardData sourceCard,
-            out ArmyData destination, out int totalAp, out string failReason)
+            out ArmyData destination, out int totalAp, out string failReason, HexMap map = null)
         {
             destination = targetArmy;
             totalAp = 0;
             failReason = null;
             bool creatingArmy = targetArmy == null;
 
-            if (definition == null || owner == null || root == null || hexSelectionController == null
+            if (definition == null || owner == null || root == null
                 || (creatingArmy && newArmyCatalog == null))
             {
                 failReason = "Cannot deploy this card here.";
@@ -407,7 +426,8 @@ namespace Game.Map
                 deploymentHex = targetArmy.Hex;
             }
 
-            if (hexSelectionController.Map == null || !hexSelectionController.Map.CanEnter(deploymentHex))
+            map = map ?? hexSelectionController?.Map;
+            if (map == null || !map.CanEnter(deploymentHex))
             { failReason = "Units cannot deploy on this terrain."; return false; }
 
             // Ground deployment requires an OWN building with the card's declared ability.
@@ -446,7 +466,7 @@ namespace Game.Map
                 failReason = $"Airfield at {deploymentHex} is full.";
                 return false;
             }
-            if (!destination.IsAirfield && !destination.CanFitAdditionalCard(definition))
+            if (!destination.IsAirfield && !destination.CanFitAdditionalCard(definition, sourceCard?.Equipment, sourceCard?.Mutator))
             {
                 string targetName = creatingArmy ? "a fresh army" : destination.Name;
                 failReason = $"Not enough capacity in {targetName} for {definition.displayName}.";
@@ -470,20 +490,22 @@ namespace Game.Map
                 return false;
             }
 
+            if (!new PaymentQuote(totalAp, alreadyPaidResources ? null : definition.resourceCost).CanDebit(root, out _))
+            { failReason = "Invalid or unaffordable deployment cost."; return false; }
             return true;
         }
 
         private static bool DeployUnitFromCardCore(CardDefinition definition, PlayerSetupData owner,
             ArmyData targetArmy, HexCoord deploymentHex, FactionCardCatalog newArmyCatalog,
             PlayerRoot root, HexSelectionController hexSelectionController, out ArmyData resultingArmy,
-            out string failReason, CardDefinition attachedEquipment, CardData sourceCard)
+            out string failReason, CardDefinition attachedEquipment, CardData sourceCard, HexMap map = null)
         {
             using var mutation = VisionSystem.BeginMutation();
             resultingArmy = targetArmy;
-            if (targetArmy != null && targetArmy.Id < 0)
+            if (targetArmy != null && (targetArmy.Id < 0 || !ArmyRegistry.IsRegistered(targetArmy)))
             { failReason = "Cannot deploy into a display snapshot."; return false; }
             if (!ValidateDeployUnitFromCard(definition, owner, targetArmy, deploymentHex, newArmyCatalog,
-                    root, hexSelectionController, sourceCard, out ArmyData destination, out int totalAp, out failReason))
+                    root, hexSelectionController, sourceCard, out ArmyData destination, out int totalAp, out failReason, map))
                 return false;
             bool creatingArmy = targetArmy == null;
             deploymentHex = destination.Hex;
@@ -492,24 +514,13 @@ namespace Game.Map
             // SpawnUnit only materializes UnitData; it does not publish it to ArmyRegistry. Do it
             // before the irreversible debit so an unexpected spawn refusal cannot consume AP or
             // resources. Equipment mutates this unpublished body for the same reason.
-            bool isHero = definition.cardType == CardType.Hero;
-            UnitData spawned = hexSelectionController.SpawnUnit(definition.displayName, owner, definition.moveMax,
-                definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,
-                definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
-                definition.defenseRating, definition.unitTypeTags, definition.detailArt,
-                definition.apCost, definition.resourceCost, definition.isAviation, definition.launchEnergyCost,
-                definition.turnsWithoutRefuel, definition.antiAirRadius, definition);
-            if (spawned == null)
-            {
-                failReason = $"Could not spawn {definition.displayName}.";
-                return false;
-            }
-            EquipmentSystem.ApplyAttachments(spawned,
+            UnitData spawned = UnitData.FromDefinition(definition, owner,
                 sourceCard != null ? sourceCard.Equipment : attachedEquipment, sourceCard?.Mutator);
-
-            root.SpendActionPoints(totalAp);
-            if (!alreadyPaidResources && definition.resourceCost != null)
-                definition.resourceCost.PayFrom(root);
+            if (spawned == null)
+            { failReason = $"Could not spawn {definition.displayName}."; return false; }
+            var quote = new PaymentQuote(totalAp, alreadyPaidResources ? null : definition.resourceCost);
+            if (!quote.TryDebit(root, out _, out _))
+            { failReason = "The deployment cost is no longer affordable."; return false; }
 
             if (creatingArmy)
             {
@@ -524,7 +535,8 @@ namespace Game.Map
 
             resultingArmy.RefreshTransport();
             AviationActions.RefreshCarrierContainers(resultingArmy);
-            hexSelectionController.RestackArmiesOn(deploymentHex, null);
+            // Visual failures cannot turn a committed deployment into a rejected hand play.
+            VisionSystem.PublishAfterMutation(() => hexSelectionController?.RestackArmiesOn(deploymentHex, null));
             if (AbilityParams.GetBestRecceRadius(spawned) > 0)
                 VisionSystem.RecomputeFor(owner);
             StealthSystem.RunChecksForNewVisionSource(resultingArmy, spawned);
@@ -694,8 +706,8 @@ namespace Game.Map
             UnitData promoteToCommander = null, IReadOnlyList<UnitData> displaced = null)
         {
             using var mutation = VisionSystem.BeginMutation();
-            if (source == null || target == null || source.Id < 0 || target.Id < 0)
-            { failReason = "Cannot transfer a display snapshot."; return false; }
+            if (!ArmyRegistry.IsRegistered(source) || !ArmyRegistry.IsRegistered(target))
+            { failReason = "The source or destination army is no longer available."; return false; }
             if (promoteToCommander != null
                 && (!promoteToCommander.IsHero || units == null || !units.Contains(promoteToCommander)))
             {
@@ -758,7 +770,7 @@ namespace Game.Map
             failReason = "Invalid air-wing preparation.";
             if (ground == null || garrison == null || airfield == null || aircraft == null
                 || aircraft.Count == 0 || ground == garrison || ground == airfield
-                || ground.Id < 0 || garrison.Id < 0 || airfield.Id < 0
+                || !ArmyRegistry.IsRegistered(ground) || !ArmyRegistry.IsRegistered(garrison) || !ArmyRegistry.IsRegistered(airfield)
                 || !garrison.IsGarrison || !airfield.IsAirfield || ground.IsGarrison
                 || ground.IsPrison || ground.IsAirfield || AviationRules.IsAirArmy(ground)
                 || ground.Owner != garrison.Owner || ground.Owner != airfield.Owner

@@ -15,6 +15,21 @@ namespace Game.Map
     // for armies.
     public class BuildingData
     {
+        public static BuildingData FromDefinition(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
+        {
+            if (definition == null || owner == null) return null;
+            var building = new BuildingData
+            {
+                Name = definition.displayName, Hex = hex, Owner = owner, IsBase = true,
+                Art = definition.art, DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
+                Level = 1, StructurePointsMax = definition.hitPoints, StructurePointsCurrent = definition.hitPoints,
+                Defense = definition.defenseRating, Fate = definition.fate,
+                AirfieldCapacity = Mathf.Max(0, definition.airfieldCapacity),
+            };
+            if (definition.grantedAbilities != null) building.Abilities.UnionWith(definition.grantedAbilities);
+            return building;
+        }
+
         public string Name;
         public HexCoord Hex;
         public PlayerSetupData Owner;

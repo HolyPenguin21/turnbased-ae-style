@@ -64,7 +64,7 @@ namespace Game.Aviation
             using var mutation = VisionSystem.BeginMutation();
             launchedArmy = null;
             failReason = null;
-            if (airfield == null || airfield.Id < 0 || !AviationRules.IsAirfield(airfield) || aircraft == null || aircraft.Count == 0)
+            if (!ArmyRegistry.IsRegistered(airfield) || !AviationRules.IsAirfield(airfield) || aircraft == null || aircraft.Count == 0)
             {
                 failReason = "Select aircraft from an airfield to launch.";
                 return false;

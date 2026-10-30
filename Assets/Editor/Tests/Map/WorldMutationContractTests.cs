@@ -411,6 +411,18 @@ namespace Game.EditorTests
             finally { VisionSystem.VisibilityChanged -= changed; }
             Assert.That(calls, Is.Zero); Assert.That(ArmyRegistry.AllAt(new HexCoord(4, 4)), Does.Contain(army));
         }
+
+        [TestCase(false)] [TestCase(true)]
+        public void TransferRejectsUnregisteredEndpointWithoutLosingCanonicalMember(bool removeSource)
+        {
+            var unit = Unit(); var source = Army(owner, unit); var target = Army(owner);
+            ArmyRegistry.Unregister(removeSource ? source : target);
+            var beforeSource = source.Members.ToArray(); var beforeTarget = target.Members.ToArray();
+            bool changed = ArmyActions.TransferMember(unit, source, target, null, out _);
+            Assert.That(changed, Is.False);
+            Assert.That(source.Members, Is.EqualTo(beforeSource)); Assert.That(target.Members, Is.EqualTo(beforeTarget));
+            Assert.That(ArmyRegistry.FindArmyContaining(unit), Is.SameAs(removeSource ? null : source));
+        }
     }
 }
 #endif
