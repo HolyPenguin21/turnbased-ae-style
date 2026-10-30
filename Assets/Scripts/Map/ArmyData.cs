@@ -366,13 +366,15 @@ namespace Game.Map
             return hasExisting ? existingMaxCommandRating : addedMaxCommandRating;
         }
 
-        public bool CanFitAdditionalCard(CardDefinition incoming)
+        public bool CanFitAdditionalCard(CardDefinition incoming) => CanFitAdditionalCard(incoming, null, null);
+
+        public bool CanFitAdditionalCard(CardDefinition incoming, CardDefinition equipment, CardDefinition mutator)
         {
             if (incoming == null) return false;
             bool hero = incoming.cardType == CardType.Hero;
             var prospective = UnitData.CreateProjection();
             prospective.IsHero = hero;
-            prospective.CommandRating = hero ? incoming.commandRating : 0;
+            prospective.CommandRating = hero ? EquipmentSystem.Project(incoming, equipment, mutator).Stats[EquipmentStat.CommandRating] : 0;
             return RosterFits(ProjectAdd(Members, prospective, IsGarrison), IsGarrison);
         }
 

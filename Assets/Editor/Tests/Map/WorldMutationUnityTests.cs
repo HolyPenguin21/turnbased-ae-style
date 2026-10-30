@@ -9,6 +9,7 @@ using Game.Core;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Setup;
 using Game.Terrain;
 using Game.UI;
 using Game.Units;
@@ -341,6 +342,49 @@ namespace Game.EditorTests
             field.Members.Add(new UnitData { Owner = owner, IsAviation = true, OriginatingCard = new CardDefinition() }); ArmyRegistry.Register(field);
             BuildingRegistry.CaptureOrDestroy(building, new PlayerSetupData(), selection);
             Assert.That(owner.Hand.Hand.Count, Is.EqualTo(1)); Assert.That(ArmyRegistry.IsRegistered(field), Is.False);
+        }
+
+        [Test] public void DeclinedFoundingRestoresRetiredCarrierWingController()
+        {
+            var carrier = new UnitData { Owner = owner, HitPointsCurrent = 4, AirfieldCapacity = 2 };
+            source.Members.Add(carrier); AviationActions.EnsureCarrierContainers(source);
+            var plane = new UnitData { Owner = owner, IsAviation = true, HitPointsCurrent = 3, SortieLaunchPaid = true };
+            var wing = new ArmyData { Owner = owner, Hex = hex, IsAirArmy = true, LaunchCarrier = carrier };
+            wing.Members.Add(plane); ArmyRegistry.Register(wing);
+            var wingMarker = new GameObject("retired-sortie-marker"); wingMarker.SetActive(false);
+            wingMarker.transform.SetParent(scene.transform);
+            var controller = wingMarker.AddComponent<ArmyController>(); controller.SetData(wing); wing.Controller = controller;
+            int landed = 0;
+            var result = InfrastructureActions.TryFoundBase(selection, BaseCard(), hex, owner, 2, new ResourceCost(), _ =>
+            { landed = AviationActions.LandInSlotOrder(wing, null); return false; });
+            Assert.That(landed, Is.EqualTo(1)); Assert.That(result.Ok, Is.False);
+            Assert.That(ArmyRegistry.FindArmyContaining(plane), Is.SameAs(wing));
+            Assert.That(wing.Controller, Is.SameAs(controller)); Assert.That(controller.Data, Is.SameAs(wing));
+            Assert.That(wingMarker, Is.Not.Null);
+        }
+
+        [Test] public void StartingCitadelUsesAuthoredBaseStatsAndKeepsItsSetupIdentity()
+        {
+            var definition = BaseCard(); definition.displayName = "Authored base"; definition.hitPoints = 9;
+            definition.defenseRating = 4; definition.fate = 2; definition.airfieldCapacity = 7;
+            catalog.cards.Add(definition); catalog.citadelPrefab = catalog.basePrefab;
+            var setup = scene.AddComponent<CitadelSetupController>();
+            Bind(setup, "map", selection.Map); Bind(setup, "startingDeckCatalog", decks); Bind(setup, "gameConfig", config);
+            typeof(CitadelSetupController).GetMethod("SpawnCitadelMarker", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(setup, new object[] { owner, hex, Vector2.zero });
+            var citadel = BuildingRegistry.FindAt(hex);
+            var played = BuildingData.FromDefinition(definition, hex, owner);
+            foreach (var building in new[] { citadel, played })
+            {
+                Assert.That(building.StructurePointsMax, Is.EqualTo(9)); Assert.That(building.StructurePointsCurrent, Is.EqualTo(9));
+                Assert.That(building.Defense, Is.EqualTo(4)); Assert.That(building.Fate, Is.EqualTo(2));
+                Assert.That(building.AirfieldCapacity, Is.EqualTo(7)); Assert.That(building.IsBase, Is.True);
+                Assert.That(building.HasAbility(UnitAbilities.Barracks), Is.True);
+            }
+            Assert.That(citadel.Name, Is.EqualTo("Citadel")); Assert.That(citadel.IsStartingCitadel, Is.True);
+            Assert.That(citadel.Visual.PersistenceSourcePrefab, Is.SameAs(catalog.citadelPrefab));
+            Assert.That(played.Name, Is.EqualTo("Authored base")); Assert.That(played.IsStartingCitadel, Is.False);
+            definition.grantedAbilities.Clear(); Assert.That(citadel.HasAbility(UnitAbilities.Barracks), Is.True);
         }
     }
 }

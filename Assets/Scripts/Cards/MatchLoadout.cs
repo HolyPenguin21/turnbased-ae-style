@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Game.Progression;
 using Game.Players;
+using Game.Map;
 
 namespace Game.Cards
 {
@@ -105,13 +106,34 @@ namespace Game.Cards
         private readonly BlueprintQuota quota;
         private readonly CardDefinition output;
         private bool finished;
-        internal ProductionAttempt(CardDefinition card, BlueprintQuota quota, CardDefinition output = null)
-        { this.card = card; this.quota = quota; this.output = output ?? card; }
+        private readonly PlayerSetupData owner;
+        private readonly PlayerRoot account;
+        private readonly PlayerHandData destination;
+        private readonly string blueprintKey;
+        internal ProductionAttempt(CardDefinition card, BlueprintQuota quota, CardDefinition output = null,
+            PlayerSetupData owner = null, PlayerRoot account = null, PlayerHandData destination = null)
+        {
+            this.card = card; this.quota = quota; this.output = output ?? card;
+            this.owner = owner; this.account = account; this.destination = destination;
+            blueprintKey = card.authoredKey;
+        }
+        private bool IsCurrent => owner == null || (!owner.IsEliminated
+            && ReferenceEquals(PlayerRootRegistry.FindFor(owner), account)
+            && (destination == null || ReferenceEquals(owner.Hand, destination)));
         public CardData Complete(bool success)
         {
             if (finished) return null;
-            finished = true; quota?.Release(card.authoredKey);
-            return success ? ResearchProductionSystem.MintCard(output) : null;
+            finished = true; quota?.Release(blueprintKey);
+            return success && IsCurrent ? ResearchProductionSystem.MintCard(output) : null;
+        }
+        // Application completion owns both terminal mint and delivery. Legacy Complete keeps
+        // its return-a-card contract for existing callers; the same terminal flag gates both.
+        public CardData CompleteToHand(bool success)
+        {
+            using var mutation = VisionSystem.BeginMutation();
+            if (destination == null) { Complete(false); return null; }
+            var produced = Complete(success);
+            return produced != null && destination.TryAddCard(produced) ? produced : null;
         }
         public void Dispose() { Complete(false); }
     }

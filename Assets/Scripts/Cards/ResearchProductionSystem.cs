@@ -195,9 +195,7 @@ namespace Game.Cards
             => card != null ? Mathf.Max(0, card.apCost) : 0;
 
         public static bool CanAffordCard(PlayerRoot root, CardDefinition card)
-            => root != null && card != null
-                && root.CanSpendActionPoints(AttemptApCost(card))
-                && (card.resourceCost == null || card.resourceCost.CanAfford(root));
+            => card != null && new PaymentQuote(AttemptApCost(card), card.resourceCost).CanDebit(root, out _);
 
         // Single irreversible attempt-start transaction shared by the human animated Challenge
         // and AI headless Challenge. Every condition that can reject an attempt is checked before
@@ -218,8 +216,30 @@ namespace Game.Cards
             HexCoord hex, ResearchProductionMode mode, CardDefinition card,
             ResearchProductionCatalog catalog, out string reason, out ProductionAttempt attempt)
         {
+            using var mutation = VisionSystem.BeginMutation();
             attempt = null;
-            reason = null;
+            if (!PrepareAttempt(player, root, hero, hex, mode, card, catalog,
+                    out var quote, out var quota, out var output, out reason)) return false;
+            if (quota != null && !quota.TryReserve(card.authoredKey))
+            { reason = "Finish this blueprint's current challenge first."; return false; }
+            if (!quote.TryDebit(root, out _, out _))
+            { quota?.Release(card.authoredKey); reason = "The challenge cost is no longer affordable."; return false; }
+            attempt = new ProductionAttempt(card, quota, output, player, root, player.Hand);
+            ApplyResearchReveal(mode, hero);
+            return true;
+        }
+
+        public static bool TryQuoteAttempt(PlayerSetupData player, PlayerRoot root, UnitData hero,
+            HexCoord hex, ResearchProductionMode mode, CardDefinition card, ResearchProductionCatalog catalog,
+            out PaymentQuote quote, out string reason)
+            => PrepareAttempt(player, root, hero, hex, mode, card, catalog, out quote, out _, out _, out reason);
+
+        private static bool PrepareAttempt(PlayerSetupData player, PlayerRoot root, UnitData hero,
+            HexCoord hex, ResearchProductionMode mode, CardDefinition card, ResearchProductionCatalog catalog,
+            out PaymentQuote quote, out BlueprintQuota quota, out CardDefinition output, out string reason)
+        {
+            reason = null; quota = null; output = null;
+            quote = new PaymentQuote(AttemptApCost(card), card?.resourceCost);
             if (player == null || root == null || hero == null || card == null || catalog == null)
             {
                 reason = "Cannot start this challenge. Reopen the window.";
@@ -249,35 +269,24 @@ namespace Game.Cards
                 reason = "This hero can no longer perform this action here.";
                 return false;
             }
-            CardDefinition output = catalog.ResolveResult(card);
+            output = catalog.ResolveResult(card);
             if (output == null)
             { reason = "This card cannot be produced."; return false; }
-            if (!CanAffordCard(root, card))
+            if (!quote.CanDebit(root, out _))
             {
                 reason = !root.CanSpendActionPoints(AttemptApCost(card))
                     ? $"Need {AttemptApCost(card)} AP to start this challenge." : "Not enough resources for this challenge.";
                 return false;
             }
 
-            var quota = player.IsHuman && player.MatchLoadout != null ? player.BlueprintQuota : null;
-            if (player.IsHuman && player.MatchLoadout != null && (quota == null || !quota.TryReserve(card.authoredKey)))
+            quota = player.IsHuman && player.MatchLoadout != null ? player.BlueprintQuota : null;
+            if (player.IsHuman && (quota == null || !quota.Available(card.authoredKey)))
             {
                 reason = quota == null || !quota.Unlocked(card.authoredKey)
                     ? "This blueprint is not in your selected deck." : "Finish this blueprint's current challenge first.";
                 return false;
             }
-            attempt = new ProductionAttempt(card, quota, output);
-            try { ApplyResearchReveal(mode, hero); PayCardCost(root, card); }
-            catch { attempt.Dispose(); throw; }
             return true;
-        }
-
-        // Payment is private so no caller can debit an attempt while bypassing the canonical
-        // eligibility/catalog/actor/root checks above.
-        private static void PayCardCost(PlayerRoot root, CardDefinition card)
-        {
-            root.SpendActionPoints(AttemptApCost(card));
-            card.resourceCost?.PayFrom(root);
         }
 
         // ---- consequences -----------------------------------------------------------------

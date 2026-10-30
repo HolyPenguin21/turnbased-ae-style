@@ -48,10 +48,20 @@ namespace Game.Cards
     public class ResourceCost { public int human, energy, materials, tech; }
     public class FactionCardCatalog { public static CardDefinition ResolveAcross(object catalogs, string key, bool warn, object owner) => null; }
     public class ArmyTagAttribute : Attribute {}
-    public struct PredictedEquipmentState {}
+    public struct PredictedEquipmentState { public Dictionary<EquipmentStat, int> Stats; }
     public struct AttachmentResourceState {}
-    public enum EquipmentStat { MoveMax, Fate }
-    public static class EquipmentSystem { public static void ReconcileResourceRefill(UnitData unit, EquipmentStat stat) {} }
+    public enum EquipmentStat { MoveMax, Fate, CommandRating }
+    public static class EquipmentSystem
+    {
+        public static void ReconcileResourceRefill(UnitData unit, EquipmentStat stat) {}
+        // Only unattached capacity is part of this focused world/identity harness.
+        // Attachment-adjusted deployment is exercised against the real EquipmentSystem.
+        public static PredictedEquipmentState Project(CardDefinition host, CardDefinition equipment, CardDefinition mutator)
+        {
+            if (equipment != null || mutator != null) throw new NotSupportedException("Use the real attachment contract fixture.");
+            return new PredictedEquipmentState { Stats = new Dictionary<EquipmentStat, int> { [EquipmentStat.CommandRating] = host.commandRating } };
+        }
+    }
     public static class UnitAbilities { public const string Transport = "Transport", Barracks = "Barracks"; }
     public static class AbilityParams
     {

@@ -39,31 +39,12 @@ namespace Game.Cards
             }
         }
 
-        private static readonly ResourceType[] AllTypes =
-        {
-            ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
-        };
+        public bool CanAfford(PlayerRoot root) => new PaymentQuote(0, this).CanDebit(root, out _);
 
-        public bool CanAfford(PlayerRoot root)
-        {
-            if (root == null)
-                return false;
-            foreach (ResourceType type in AllTypes)
-                if (root.GetResource(type) < Get(type))
-                    return false;
-            return true;
-        }
+        public bool TryPayFrom(PlayerRoot root, out PaymentReceipt receipt)
+            => new PaymentQuote(0, this).TryDebit(root, out receipt, out _);
 
-        public void PayFrom(PlayerRoot root)
-        {
-            if (!CanAfford(root))
-                return;
-            foreach (ResourceType type in AllTypes)
-            {
-                int amount = Get(type);
-                if (amount > 0)
-                    root.AddResource(type, -amount);
-            }
-        }
+        // Compatibility adapter. Application commands use TryDebit/TryPayFrom and act on failure.
+        public void PayFrom(PlayerRoot root) => TryPayFrom(root, out _);
     }
 }

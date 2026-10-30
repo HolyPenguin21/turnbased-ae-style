@@ -68,6 +68,7 @@ namespace Game.Cards
             PredictedEquipmentState next = MergeRuntimeState(host, change.After);
             host.Equipment = null;
             WriteStats(host, next.Stats);
+            ReconcileTemporaryDefenseLoss(host, change.After);
             host.Abilities.Clear();
             host.Abilities.UnionWith(next.Abilities);
             host.AttachmentApplied = change.After;
@@ -98,12 +99,28 @@ namespace Game.Cards
             if (mutator != null) Install(mutator, unit);
         }
 
+        // Called before temporary combat effects can touch a freshly materialized body.
+        internal static void InitializeBaseline(UnitData unit)
+        {
+            if (unit.AttachmentBase.HasValue) return;
+            var stats = ReadStats(unit);
+            // Compatibility for old/unarmed bodies without a recorded baseline. Only the two
+            // temporary battle stats need an authored fallback; current HP/Fate/MP stay live.
+            if (unit.OriginatingCard != null)
+            {
+                if (unit.DrillAttackBonus != 0 || unit.BerserkStacks != 0)
+                    stats[EquipmentStat.Attack] = unit.OriginatingCard.attack;
+                if (unit.BerserkDefenseLost != 0)
+                    stats[EquipmentStat.Defense] = unit.OriginatingCard.defenseRating;
+            }
+            unit.AttachmentBase = new PredictedEquipmentState(stats, new List<string>(unit.Abilities));
+            unit.AttachmentApplied = unit.AttachmentBase;
+        }
+
         private static void Install(CardDefinition attachment, UnitData unit)
         {
-            bool hadBaseline = unit.AttachmentBase.HasValue;
-            if (!unit.AttachmentBase.HasValue)
-                unit.AttachmentBase = new PredictedEquipmentState(ReadStats(unit), new List<string>(unit.Abilities));
-            bool first = !hadBaseline && unit.Equipment == null && unit.Mutator == null;
+            InitializeBaseline(unit);
+            bool first = !unit.AttachmentResources.HasValue && unit.Equipment == null && unit.Mutator == null;
             if (first)
                 unit.AttachmentResources = new AttachmentResourceState(unit.HitPointsMax - unit.HitPointsCurrent,
                     unit.MovementSpent, unit.FateMax - unit.Fate, unit);
@@ -113,8 +130,18 @@ namespace Game.Cards
             if (first)
             {
                 // Preserve the existing one-Equipment gameplay, including current/max semantics.
+                // Apply retains first-attachment HP/Fate clamp history. Stat overrides operate
+                // on the permanent base, then restore temporary deltas within their floors.
+                int attackDelta = unit.Attack - unit.AttachmentBase.Value.Stats[EquipmentStat.Attack];
+                int defenseDelta = unit.Defense - unit.AttachmentBase.Value.Stats[EquipmentStat.Defense];
+                unit.Attack -= attackDelta; unit.Defense -= defenseDelta;
                 Apply(attachment.equipment, unit);
                 unit.AttachmentApplied = new PredictedEquipmentState(ReadStats(unit), new List<string>(unit.Abilities));
+                unit.Attack += attackDelta;
+                unit.Defense += defenseDelta;
+                if (unit.BerserkDefenseLost > 0)
+                    unit.Defense = Mathf.Max(FloorFor(EquipmentStat.Defense), unit.Defense);
+                ReconcileTemporaryDefenseLoss(unit, unit.AttachmentApplied.Value);
                 var usage = unit.AttachmentResources.Value;
                 unit.AttachmentResources = new AttachmentResourceState(usage.HpSpent, usage.MoveSpent, usage.FateSpent, unit);
                 return;
@@ -124,6 +151,7 @@ namespace Game.Cards
                 unit.Equipment, unit.Mutator);
             PredictedEquipmentState next = MergeRuntimeState(unit, projected);
             WriteStats(unit, next.Stats);
+            ReconcileTemporaryDefenseLoss(unit, projected);
             unit.Abilities.Clear();
             unit.Abilities.UnionWith(next.Abilities);
             unit.AttachmentApplied = projected;
@@ -247,7 +275,18 @@ namespace Game.Cards
             PredictedEquipmentState previous = unit.AttachmentApplied.Value;
             foreach (EquipmentStat stat in new List<EquipmentStat>(stats.Keys))
                 stats[stat] += next.Stats[stat] - previous.Stats[stat];
+            if (unit.BerserkDefenseLost > 0)
+                stats[EquipmentStat.Defense] = Mathf.Max(FloorFor(EquipmentStat.Defense), stats[EquipmentStat.Defense]);
             return new PredictedEquipmentState(stats, MergeAbilities(previous.Abilities, next.Abilities, unit.Abilities));
+        }
+
+        // Berserk's ledger records actual Defense removed, as does ApplyBerserkOnHit.
+        // A permanent override/removal can bring that loss under the floor: retain only
+        // the loss still realized, so battle-end reversal cannot grant phantom Defense.
+        private static void ReconcileTemporaryDefenseLoss(UnitData unit, PredictedEquipmentState permanent)
+        {
+            unit.BerserkDefenseLost = Mathf.Min(unit.BerserkDefenseLost,
+                Mathf.Max(0, permanent.Stats[EquipmentStat.Defense] - unit.Defense));
         }
 
         // Live attachments and asset-free forecasts preserve the same temporary ability changes.
@@ -472,7 +511,7 @@ namespace Game.Cards
 
             if (!checkBudget) return true;
 
-            if (owner == null || !owner.CanSpendActionPoints(apCost))
+            if (owner == null || apCost < 0 || !owner.CanSpendActionPoints(apCost))
             {
                 reason = $"Not enough AP to attach {equipment.displayName}.";
                 return false;
@@ -489,10 +528,11 @@ namespace Game.Cards
 
         public static bool TryAttach(CardDefinition equipment, UnitData target, PlayerRoot owner, out string reason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!CanAttach(equipment, target, owner, out reason))
                 return false;
-            PayCost(equipment, equipment != null ? equipment.apCost : 0,
-                equipment != null ? equipment.resourceCost : null, owner);
+            if (!TryPayCost(equipment != null ? equipment.apCost : 0,
+                equipment != null ? equipment.resourceCost : null, owner, out reason)) return false;
             Install(equipment, target);
             RefreshLiveHostObservation(target, equipment);
             return true;
@@ -500,10 +540,11 @@ namespace Game.Cards
 
         public static bool TryAttach(CardDefinition equipment, CardData targetCard, PlayerRoot owner, out string reason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!CanAttach(equipment, targetCard, owner, out reason))
                 return false;
-            PayCost(equipment, equipment != null ? equipment.apCost : 0,
-                equipment != null ? equipment.resourceCost : null, owner);
+            if (!TryPayCost(equipment != null ? equipment.apCost : 0,
+                equipment != null ? equipment.resourceCost : null, owner, out reason)) return false;
             // Not applied now — the grant is stashed on the card and applied to the spawned
             // UnitData by ArmyActions.DeployUnitFromCard when this card is finally played.
             SetAttachment(targetCard, equipment);
@@ -516,11 +557,12 @@ namespace Game.Cards
         // exactly as the CardDefinition overloads above.
         public static bool TryAttach(CardData equipmentCard, UnitData target, PlayerRoot owner, out string reason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             CardDefinition equipment = equipmentCard?.Definition;
             if (!CanAttach(equipmentCard, target, owner, out reason))
                 return false;
-            PayCost(equipment, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
-                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
+            if (!TryPayCost(equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
+                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner, out reason)) return false;
             Install(equipment, target);
             RefreshLiveHostObservation(target, equipment);
             return true;
@@ -528,11 +570,12 @@ namespace Game.Cards
 
         public static bool TryAttach(CardData equipmentCard, CardData targetCard, PlayerRoot owner, out string reason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             CardDefinition equipment = equipmentCard?.Definition;
             if (!CanAttach(equipmentCard, targetCard, owner, out reason))
                 return false;
-            PayCost(equipment, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
-                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
+            if (!TryPayCost(equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
+                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner, out reason)) return false;
             SetAttachment(targetCard, equipment);
             return true;
         }
@@ -549,13 +592,15 @@ namespace Game.Cards
             army.RefreshTransport();
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(army.Hex);
-            if (attachment != null) LiveAttachmentReceived?.Invoke(army, target, attachment);
+            if (attachment != null) VisionSystem.PublishAfterMutation(LiveAttachmentReceived, army, target, attachment);
         }
 
-        private static void PayCost(CardDefinition equipment, int apCost, ResourceCost resourceCost, PlayerRoot owner)
+        private static bool TryPayCost(int apCost, ResourceCost resourceCost, PlayerRoot owner, out string reason)
         {
-            owner.SpendActionPoints(apCost);
-            resourceCost?.PayFrom(owner);
+            reason = null;
+            if (new PaymentQuote(apCost, resourceCost).TryDebit(owner, out _, out _)) return true;
+            reason = "Invalid or unaffordable attachment cost.";
+            return false;
         }
 
         // --- effect application --------------------------------------------------------------
