@@ -203,8 +203,14 @@ namespace Game.EditorTests
             RadarAssessment assessed = StrategyLayer.Evaluate(snapshot, new AiRadarState());
 
             Assert.That(ForceNeedModel.JustifiedForceNeed(snapshot).Total, Is.Zero);
+            // Since 2026-10-06 idle surplus alone may fund upgrades of existing targets
+            // (ForceNeedModel.DevelopmentNeed); without targets it is still no need.
+            Assert.That(assessed.Desires.Raw[DesireAxis.Development], Is.GreaterThan(0f));
+            WorldSnapshot nothingToUpgrade = Snapshot(ReadyOffering(), witnessedNeed: false);
+            nothingToUpgrade.Development.UpgradeTargetCount = 0;
+            assessed = StrategyLayer.Evaluate(nothingToUpgrade, new AiRadarState());
             Assert.That(assessed.Desires.Raw[DesireAxis.Development], Is.Zero,
-                "full budget, a staffed facility and ten upgrade targets are not a need");
+                "full budget and a staffed facility with nothing to upgrade are not a need");
         }
 
         [Test]

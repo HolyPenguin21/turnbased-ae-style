@@ -112,7 +112,9 @@ namespace Game.EditorTests
                 var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
                 output.apCost = 1; output.activationApCost = 5;
                 var generation = new GenerationStep { CardDef = output, ProducesEquipment = true };
-                var opportunity = new DevelopmentOpportunity { Card = output, Generation = generation };
+                // An upgrade plan exists only for a concrete recipient.
+                var opportunity = new DevelopmentOpportunity { Card = output, Generation = generation,
+                    RecipientCard = new CardData(new CardDefinition { cardType = CardType.Unit }) };
                 var demand = new AxisDemand { Capability = CapabilityKind.CardUpgrade };
                 var plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(opportunity, generation, DesireAxis.Development);
                 void Hold(float amount) => StrategicResourceReservationLedger.Upsert(player, 5,
@@ -593,7 +595,10 @@ namespace Game.EditorTests
                 cardType = CardType.Equipment,
                 resourceCost = new ResourceCost { energy = 4, materials = 3 },
             };
-            var recipient = new CardData(new CardDefinition { cardType = CardType.Unit });
+            // Scarcity is the rest of the hand/deck's pending demand against supply (2026-09-27):
+            // the hand card itself still needs Energy, so the stockpile decides the price.
+            var recipient = new CardData(new CardDefinition { cardType = CardType.Unit,
+                resourceCost = new ResourceCost { energy = 4 } });
             var scarce = Evaluate(0f, 1f, equipment, recipient);
             var abundant = Evaluate(0f, 100f, equipment, recipient);
 

@@ -583,6 +583,8 @@ namespace Game.EditorTests
             {
                 MissionIntentRegistry.GetOrCreate(player).Put(intent);
                 var snap = PolicyWorld(); snap.Observer = player;
+                // The preparation picks its roster copies from physical units and hand cards.
+                snap.Self.Hand = new[] { body };
                 snap.Intents = MissionIntentRegistry.GetOrCreate(player);
                 snap.Known = new KnownSnapshot { EventGuards = new[] {
                     new KnownEventGuardSnapshot(firstHex, new AiMapMemory.GuardStrength(4, 4, new[] { bio }), "bio", 1),

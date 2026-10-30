@@ -47,7 +47,8 @@ namespace Game.EditorTests
         public void OnlyANonCommanderHeroOfALedFieldArmyIsDetachedForDelivery()
         {
             var player = new PlayerSetupData();
-            var lead = new UnitData { Owner = player, IsHero = true, Name = "lead" };
+            // The commander's CommandRating is the army's capacity; the rest must still fit it.
+            var lead = new UnitData { Owner = player, IsHero = true, Name = "lead", CommandRating = 4 };
             var support = new UnitData { Owner = player, IsHero = true, Name = "support" };
             var army = new ArmyData { Owner = player };
             army.Members.Add(lead); army.Members.Add(support); army.Members.Add(new UnitData { Owner = player });
@@ -454,7 +455,9 @@ namespace Game.EditorTests
                 { (DevelopmentPreparationKind?)DevelopmentPreparationKind.Facility, DevelopmentPreparationKind.Operator }));
             Assert.That(steps.All(o => o.Card == null && o.RecipientCard == null && o.RecipientUnit == null), Is.True);
             Assert.That(steps.Single(o => o.PreparationKind == DevelopmentPreparationKind.Facility).StageResourceCost.tech, Is.Zero);
-            Assert.That(steps.Single(o => o.PreparationKind == DevelopmentPreparationKind.Operator).StageResourceCost, Is.Null);
+            // The operator card's effective play cost: present but empty for a free card.
+            Assert.That(StrategicCardEvaluator.ResourceCostSum(steps.Single(o =>
+                o.PreparationKind == DevelopmentPreparationKind.Operator).StageResourceCost), Is.Zero);
         }
 
         [TestCase(false, false)]
@@ -688,7 +691,8 @@ namespace Game.EditorTests
             var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production);
             _base.FacilitySlots[0] = facility;
             _hand.RemoveCard(_operator); _hand.RemoveCard(_facility);
-            var hero = new UnitData { Owner = _player, IsHero = true, Name = "remote" };
+            // Movement to walk the one hex; a 0-MP hero has no route to the site.
+            var hero = new UnitData { Owner = _player, IsHero = true, Name = "remote", MoveMax = 2, MoveCurrent = 2 };
             hero.Abilities.Add(UnitAbilities.Assembler);
             var far = new ArmyData { Owner = _player, Hex = farHex, IsGarrison = true };
             far.Members.Add(hero); far.Members.Add(new UnitData { Owner = _player });
@@ -841,7 +845,10 @@ namespace Game.EditorTests
                 var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
                     Capability = CapabilityKind.Hero, TargetHex = target, Value = 1000f,
                     EconomySiteValue = 1000f, EconomyBuildApCost = 1,
-                    EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Base }) };
+                    // An extraction build: founding a Base also needs a ground escort body
+                    // (2026-10-18), which would reject the solo hero for a different reason.
+                    EconomyResourceType = Game.Economy.ResourceType.Materials,
+                    EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Facility }) };
                 int apBefore = _root.ActionPoints;
                 var result = MaterializationDeliveryPolicy.AssessDemandOperationally(plan, demand,
                     _snapshot, _player, _ctx);
