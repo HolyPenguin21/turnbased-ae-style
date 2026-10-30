@@ -545,8 +545,10 @@ namespace Game.Ai.V2
             bool arrived = actor.Hex.Equals(target.TargetHex);
             if (arrived && completesOnArrival)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied("economy actor already protected"));
-            if (!arrived && (actor.CurrentMovement <= 0
-                || !SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.TargetHex).HasValue
+            if (!arrived && actor.CurrentMovement <= 0)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"economy actor #{actor.Id} has no movement"));
+            if (!arrived && (!SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.TargetHex).HasValue
                 || SafeStepPathing.FindSafePathCost(ctx.Map, actor, target.TargetHex) == int.MaxValue))
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"economy actor #{actor.Id} has no safe executable step"));
