@@ -752,7 +752,7 @@
         "readOnly": true
       }
     ],
-    "file": "Assets/Scripts/Combat/WorthIt.cs",
+    "file": "Assets/Scripts/Combat/WorthIt.Profiles.cs",
     "insert": 84940,
     "name": "DefenderProfile",
     "originalFields": [
@@ -960,7 +960,7 @@
         "readOnly": true
       }
     ],
-    "file": "Assets/Scripts/Combat/WorthIt.cs",
+    "file": "Assets/Scripts/Combat/WorthIt.Profiles.cs",
     "insert": 11851,
     "name": "SideCommander",
     "originalFields": [
@@ -5011,7 +5011,7 @@
     "kind": "roles",
     "isValue": true,
     "fields": [],
-    "file": "Assets/Scripts/Ai/V2/Evaluation/Effects/StrategicEffectRegistry.cs",
+    "file": "Assets/Scripts/Ai/V2/Evaluation/Effects/StrategicEffect.cs",
     "insert": 14072,
     "name": "RoleCoverage",
     "originalFields": []
@@ -5132,7 +5132,7 @@
         "readOnly": true
       }
     ],
-    "file": "Assets/Scripts/Ai/V2/Evaluation/Effects/StrategicEffectRegistry.cs",
+    "file": "Assets/Scripts/Ai/V2/Evaluation/Effects/StrategicEffect.cs",
     "insert": 5443,
     "name": "StrategicEffect",
     "originalFields": [
