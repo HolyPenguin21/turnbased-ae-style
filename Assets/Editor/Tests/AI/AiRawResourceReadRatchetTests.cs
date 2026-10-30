@@ -20,7 +20,7 @@ namespace Game.EditorTests
     public class AiRawResourceReadRatchetTests
     {
         private static readonly Regex RawRead =
-            new Regex(@"(?<!StrategicReservedResource)\.ActionPoints\b|\.GetResource\(|\.Stockpile\b|\bCanAfford\(");
+            new Regex(@"(?<!StrategicReservedResource|GlobalResourceKind)\.ActionPoints\b|\.GetResource\(|\.Stockpile\b|\bCanAfford\(");
 
         private static readonly Dictionary<string, int> Allowed = new Dictionary<string, int>
         {
@@ -35,7 +35,12 @@ namespace Game.EditorTests
             ["Diagnostics/TurnResourceTelemetry.cs"] = 15,
             ["Evaluation/ActionPrice.cs"] = 1,
             ["Evaluation/Cards/StrategicCardEvaluator.cs"] = 1,
-            ["Evaluation/Effects/StrategicEffectRegistry.cs"] = 2,
+            // Valuation (ece0211c): the operator forecast falls back to the snapshot AP when no
+            // Development forecast exists; it prices output, it does not spend.
+            ["Evaluation/Cards/EquipmentUpgradeValuation.cs"] = 1,
+            // Moved, not new: the snapshot AP/stockpile reads left StrategicEffectRegistry.cs with
+            // the context type they belong to.
+            ["Evaluation/Effects/EffectEvaluationContext.cs"] = 2,
             ["Execution/CardPlayExecutor.cs"] = 3,
             // Moved, not new (2026-10-15): the executions that left Evaluation / Strategy with
             // their physical before/after reads (NonCombatCardPlayer 5 -> 0;
@@ -59,6 +64,8 @@ namespace Game.EditorTests
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
             // Pipeline.cs 6 -> 2: the admission-key reads moved with their owners (see the two files below).
             ["Orchestration/AiStrategyV2Pipeline.cs"] = 2,
+            // Admission-key digest (ece0211c): the snapshot AP is one input of the Development key.
+            ["Orchestration/DevelopmentAdmission.cs"] = 1,
             // Moved, not new: the Economy key reads the physical AP (it was inline in RunTurn).
             ["Orchestration/EconomyAdmission.cs"] = 1,
             // Moved, not new: the physical-stock digest and AP shared by the Development / Economy keys.
@@ -75,6 +82,8 @@ namespace Game.EditorTests
             ["Provisioning/ProvisioningManager.Development.cs"] = 1,
             ["Provisioning/ProvisioningManager.Economy.cs"] = 4,
             ["Provisioning/ProvisioningManager.cs"] = 1,
+            // Moved, not new (519f6893): the shared physical turn-AP-left pool of every lane.
+            ["Provisioning/ProvisioningSession.cs"] = 1,
             ["Reaction/ReactionRoundExecutor.cs"] = 2,
             ["Reaction/StrategicReactionPass.cs"] = 1,
             ["Recon/AiAirSortiePlanner.cs"] = 1,
@@ -103,6 +112,7 @@ namespace Game.EditorTests
         public void ResourceEnumMembersAreNotPhysicalPoolReads()
         {
             Assert.That(RawRead.Matches("StrategicReservedResource.ActionPoints").Count, Is.Zero);
+            Assert.That(RawRead.Matches("GlobalResourceKind.ActionPoints").Count, Is.Zero);
             Assert.That(RawRead.Matches("root.ActionPoints").Count, Is.EqualTo(1));
             Assert.That(RawRead.Matches("root.GetResource(type)").Count, Is.EqualTo(1));
         }
