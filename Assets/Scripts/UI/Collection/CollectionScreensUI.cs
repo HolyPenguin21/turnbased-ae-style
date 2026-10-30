@@ -29,7 +29,9 @@ namespace Game.UI
         [SerializeField] private RectTransform gridContent;
         [SerializeField] private CollectionCardCellView cellPrefab;
         [SerializeField] private ScrollRect detailsScroll;
+        // Selected card's art (Image_Card); hidden while the faction logo (Image_FactionLogo, found by name) is shown.
         [SerializeField] private Image detailsArt;
+        [SerializeField] private Image detailsFactionLogo;
         // Frame around the selected card's art; hidden while the faction logo is shown instead.
         [SerializeField] private GameObject detailsCardFrame;
         [SerializeField] private TMP_Text detailsText;
@@ -296,12 +298,26 @@ namespace Game.UI
         }
         private void RefreshDetails()
         {
-            var sprite = selected == null ? collection.Rules.Starting.GetCatalog(faction)?.logo
-                : selected.detailArt != null ? selected.detailArt : selected.art;
-            detailsArt.sprite = sprite; detailsArt.enabled = sprite != null;
+            if (detailsFactionLogo == null)
+                foreach (var t in GetComponentsInChildren<Image>(true))
+                    if (t.name == "Image_FactionLogo") { detailsFactionLogo = t; break; }
             if (detailsCardFrame == null)
                 foreach (var t in GetComponentsInChildren<Transform>(true))
                     if (t.name == "Image_CardFrame") { detailsCardFrame = t.gameObject; break; }
+            // No card selected: the faction logo replaces the card art and its frame.
+            if (selected == null)
+            {
+                var logo = collection.Rules.Starting.GetCatalog(faction)?.logo;
+                if (detailsFactionLogo != null) { detailsFactionLogo.sprite = logo; detailsFactionLogo.enabled = logo != null; }
+                detailsArt.gameObject.SetActive(false);
+            }
+            else
+            {
+                var sprite = selected.detailArt != null ? selected.detailArt : selected.art;
+                detailsArt.gameObject.SetActive(true);
+                detailsArt.sprite = sprite; detailsArt.enabled = sprite != null;
+            }
+            if (detailsFactionLogo != null) detailsFactionLogo.gameObject.SetActive(selected == null);
             if (detailsCardFrame != null) detailsCardFrame.SetActive(selected != null);
             RefreshAddButton();
             string title = selected == null ? LabelFaction(faction) : CollectionCardDetail.Title(selected);
