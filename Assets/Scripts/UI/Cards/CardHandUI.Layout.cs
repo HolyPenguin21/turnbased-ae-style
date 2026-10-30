@@ -11,6 +11,7 @@ namespace Game.UI
         private Vector3 lastLayoutWorldScale;
         private RectTransform[] slotRects;
         private Vector2[] scrollButtonDesignPosition;
+        private Vector2[] scrollButtonDesignSize;
         private RectTransform separatorLayer;
         private float[] separatorDesignY;
         private float PreferredSlotStep => cardSize.x * (1f - overlapFraction) + cardSpacing;
@@ -48,6 +49,7 @@ namespace Game.UI
             if (scrollButtonDesignPosition == null)
             {
                 scrollButtonDesignPosition = new Vector2[buttons.Length];
+                scrollButtonDesignSize = new Vector2[buttons.Length];
                 // These buttons are siblings of the hand. Capture their authored offsets
                 // once, before replacing the independently stretching canvas anchors.
                 Vector2 span = handContainer.anchorMax - handContainer.anchorMin;
@@ -66,7 +68,10 @@ namespace Game.UI
                         Mathf.Lerp(rect.anchorMin.y, rect.anchorMax.y, rect.pivot.y));
                     Vector2 position = rect.anchoredPosition + Vector2.Scale(anchor, panelSize);
                     scrollButtonDesignPosition[i] = new Vector2(position.x - handCentre.x, position.y);
+                    // Stretched anchors carry the button's size; a point anchor needs it as sizeDelta.
+                    scrollButtonDesignSize[i] = Vector2.Scale(rect.anchorMax - rect.anchorMin, panelSize) + rect.sizeDelta;
                     rect.anchorMin = rect.anchorMax = new Vector2(.5f, 0f);
+                    rect.sizeDelta = scrollButtonDesignSize[i];
                 }
             }
             for (int i = 0; i < buttons.Length; i++)
