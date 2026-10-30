@@ -16,12 +16,163 @@ namespace Game.Map
         public static event System.Action<ArmyData, UnitData> UnitDeployed;
         public const int CreateArmyApCost = 2;
 
+        public static void DisbandEmptyArmiesOf(PlayerSetupData owner)
+        {
+            if (owner == null) return;
+            using var mutation = VisionSystem.BeginMutation();
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(owner).Where(a => a.Members.Count == 0 && !a.IsPrison))
+                DeleteArmyIfEmptied(army);
+        }
+
+        // Elimination releases prisoners under the existing capacity/no-activation-charge rule.
+        // Ordinary roster transfer never releases a prisoner or changes its ownership.
+        internal static void ReleasePrisoners(PlayerSetupData defeatedOwner, HexCoord citadelHex)
+        {
+            ArmyData prison = ArmyRegistry.At(citadelHex).FirstOrDefault(a => a.IsPrison && a.Owner == defeatedOwner);
+            if (prison == null) return;
+            using var mutation = VisionSystem.BeginMutation();
+            foreach (UnitData hero in prison.Members.ToArray())
+            {
+                PlayerSetupData originalOwner = hero.CapturedFrom;
+                ArmyData garrison = originalOwner?.CitadelHexQ.HasValue == true && originalOwner.CitadelHexR.HasValue
+                    ? ArmyRegistry.FindGarrisonAt(new HexCoord(originalOwner.CitadelHexQ.Value, originalOwner.CitadelHexR.Value), originalOwner)
+                    : null;
+                if (garrison == null)
+                {
+                    RemoveMember(prison, hero);
+                    continue;
+                }
+                if (!ArmyData.RosterFits(ArmyData.ProjectAdd(garrison.Members, hero, garrison.IsGarrison), garrison.IsGarrison))
+                    continue;
+                prison.Members.Remove(hero);
+                hero.Owner = originalOwner; hero.IsPrisoner = false; hero.CapturedFrom = null;
+                garrison.AddMemberSorted(hero);
+                PublishRosterChange(prison, garrison, true);
+            }
+        }
+
+        // Battle summons deliberately bypass normal capacity, as before. The command owns
+        // canonical membership/reconciliation; the engine owns the tactical grid and summon rule.
+        internal static bool AddBattleSummon(ArmyData army, UnitData unit)
+        {
+            if (army == null || army.Id < 0 || unit == null || unit.RuntimeId <= 0 || !unit.IsSummoned
+                || unit.Owner != army.Owner || army.IsPrison || army.Members.Contains(unit)
+                || ArmyRegistry.AllArmies().Any(a => a.Members.Any(m => m.RuntimeId == unit.RuntimeId))) return false;
+            using var mutation = VisionSystem.BeginMutation();
+            army.AddMemberSorted(unit);
+            PublishRosterChange(army, army, true);
+            return true;
+        }
+
+        public static void DeleteArmyIfEmptied(ArmyData army, bool force = false)
+        {
+            if (army == null || army.Members.Count > 0) return;
+            using var mutation = VisionSystem.BeginMutation();
+            if (!force && (army.IsCarrierContainer || army.IsPrison)) return;
+            ArmyController controller = army.Controller;
+            var actualHex = controller != null ? controller.CurrentHex : army.Hex;
+            BuildingData building = BuildingRegistry.FindAt(army.Hex);
+            if (!force && !army.WasCarrierWing && (controller == null || !controller.IsMoving)
+                && building != null && building.Owner == army.Owner
+                && (building.HasAbility(UnitAbilities.Barracks)
+                    || army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner)))
+            { VisionSystem.NotifyContentChanged(army.Hex); return; }
+            if (controller != null) controller.CancelMovement();
+            army.Controller = null; army.PendingAirStrikePolicy = null;
+            ArmyRegistry.Unregister(army, actualHex);
+            if (controller != null) UnityEngine.Object.Destroy(controller.gameObject);
+        }
+        public static bool RemoveMember(ArmyData army, UnitData unit, bool cleanup = true, bool publish = true)
+            => RemoveMembers(army, new[] { unit }, cleanup, publish) > 0;
+        public static int RemoveMembers(ArmyData army, IEnumerable<UnitData> units, bool cleanup = true, bool publish = true)
+        {
+            if (army == null || units == null) return 0;
+            using var mutation = VisionSystem.BeginMutation();
+            var removed = units.Where(u => u != null && army.Members.Contains(u)).Distinct().ToArray();
+            foreach (UnitData unit in removed) army.Members.Remove(unit);
+            if (removed.Length == 0) return 0;
+            army.NormalizeGarrisonOrder(); army.RefreshTransport();
+            if (cleanup) foreach (UnitData unit in removed)
+                StealthSystem.OnUnitRemoved(unit, deferNotifications: army.Controller != null && army.Controller.IsMoving);
+            AviationActions.RefreshCarrierContainers(army);
+            if (publish)
+            {
+                VisionSystem.RecomputeFor(army.Owner);
+                // A moving army is indexed at its origin until relocation finishes. Publishing
+                // that origin now would expose distant casualties as a false local sighting.
+                if (army.Controller == null || !army.Controller.IsMoving)
+                    VisionSystem.NotifyContentChanged(army.Hex);
+            }
+            return removed.Length;
+        }
+        public static void ClearMembers(ArmyData army, bool cleanup = true) => RemoveMembers(army, army?.Members.ToArray(), cleanup);
+        internal static void ImprisonMember(UnitData hero, ArmyData source, ArmyData prison)
+        {
+            using var mutation = VisionSystem.BeginMutation();
+            if (hero == null || source == null || prison == null || !prison.IsPrison
+                || !source.Members.Contains(hero) || prison.Members.Contains(hero)) return;
+            source.Members.Remove(hero);
+            hero.CapturedFrom = hero.Owner; hero.Owner = prison.Owner; hero.IsPrisoner = true;
+            prison.Members.Add(hero); PublishRosterChange(source, prison, true);
+        }
+        public static void ChangeOwner(ArmyData army, PlayerSetupData owner)
+        {
+            if (army == null || army.Owner == owner) return;
+            using var mutation = VisionSystem.BeginMutation();
+            PlayerSetupData previous = army.Owner; army.SetOwner(owner);
+            foreach (UnitData unit in army.Members)
+            {
+                unit.Owner = owner;
+                foreach (ArmyData container in new[] { unit.CarrierAirfield, unit.CarrierFlightDeck })
+                    if (container != null) ChangeOwner(container, owner);
+            }
+            if (Game.Setup.MatchRestoreScope.IsRestoring) return;
+            army.RefreshTransport(); AviationActions.RefreshCarrierContainers(army);
+            VisionSystem.RecomputeFor(previous); VisionSystem.RecomputeFor(owner); VisionSystem.NotifyContentChanged(army.Hex);
+        }
+        public static bool CanReorderMembers(ArmyData army, IReadOnlyList<UnitData> order, out string failReason)
+        {
+            failReason = "Cannot reorder this army.";
+            if (army == null || army.Id < 0 || army.IsPrison || order == null || order.Count != army.Members.Count
+                || order.Distinct().Count() != order.Count || order.Any(u => !army.Members.Contains(u))) return false;
+            return ValidateProjectedRoster(army, order, out failReason);
+        }
+        public static bool ReorderMembers(ArmyData army, IReadOnlyList<UnitData> order, out string failReason)
+        {
+            if (!CanReorderMembers(army, order, out failReason)) return false;
+            if (army.Members.SequenceEqual(order)) return true;
+            using var mutation = VisionSystem.BeginMutation();
+            var final = order.ToArray(); army.Members.Clear(); army.Members.AddRange(final);
+            PublishRosterChange(army, army, false); return true;
+        }
+        private static bool ValidateProjectedRoster(ArmyData army, IReadOnlyList<UnitData> roster, out string failure)
+        {
+            failure = "Invalid projected roster.";
+            if (army == null || army.IsPrison || roster == null || roster.Any(u => u == null || u.IsPrisoner || u.Owner != army.Owner)
+                || roster.Distinct().Count() != roster.Count) return false;
+            bool regularSeen = false;
+            foreach (UnitData unit in roster)
+            {
+                if (unit.IsHero && regularSeen) { failure = "Heroes must precede regular units."; return false; }
+                if (!unit.IsHero) regularSeen = true;
+            }
+            if (army.IsGarrison && !roster.SequenceEqual(ArmyData.NormalizeRoster(roster)))
+            { failure = "Garrison heroes are ordered by command rating."; return false; }
+            if (!army.IsAirfield && !army.IsCarrierFlightDeck && !ArmyData.RosterFits(roster, army.IsGarrison))
+            { failure = $"Not enough capacity in {army.Name}."; return false; }
+            if (roster.Any(u => u.IsAviation) && (army.IsGarrison || roster.Any(u => !u.IsAviation))
+                || (army.IsAirfield || army.IsCarrierFlightDeck) && roster.Any(u => !u.IsAviation))
+            { failure = "Aircraft and ground units cannot share this container."; return false; }
+            failure = null; return true;
+        }
+
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog, HexSelectionController hexSelectionController)
             => CreateArmy(owner, hex, catalog, hexSelectionController, out _);
 
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog,
             HexSelectionController hexSelectionController, out string failReason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             failReason = null;
             if (owner == null || catalog == null || hexSelectionController?.Map == null)
             { failReason = "Cannot create an army here."; return null; }
@@ -51,12 +202,13 @@ namespace Game.Map
             FactionCardCatalog catalog, ArmyData source, IReadOnlyList<UnitData> members,
             HexSelectionController hexSelectionController, out string failReason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             failReason = null;
             if (hexSelectionController?.Map == null || !hexSelectionController.Map.CanEnter(hex))
             { failReason = "Ground armies cannot occupy this terrain."; return null; }
             if (owner == null || catalog == null || source == null || members == null || members.Count == 0
                 || members.Any(u => u == null || u.IsAviation) || source.Owner != owner || source.IsPrison
-                || !source.Hex.Equals(hex))
+                || source.Id < 0 || !source.Hex.Equals(hex))
             { failReason = "Cannot create an army with these units."; return null; }
             ArmyData prospective = ArmyData.CreateVisualSnapshot();
             prospective.Owner = owner; prospective.Hex = hex;
@@ -64,6 +216,7 @@ namespace Game.Map
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
             { failReason = $"Need {CreateArmyApCost} AP to create an army."; return null; }
+            members = members.ToArray();
             root.SpendActionPoints(CreateArmyApCost);
             foreach (UnitData unit in members) source.Members.Remove(unit);
             ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController, members);
@@ -113,7 +266,8 @@ namespace Game.Map
 
         public static bool TryPayActivation(ArmyData army, PlayerRoot root)
         {
-            if (!CanAffordActivation(army, root))
+            using var mutation = VisionSystem.BeginMutation();
+            if (army == null || army.Id < 0 || !CanAffordActivation(army, root))
                 return false;
             if (army.RequiresActivationPayment)
             {
@@ -324,7 +478,10 @@ namespace Game.Map
             PlayerRoot root, HexSelectionController hexSelectionController, out ArmyData resultingArmy,
             out string failReason, CardDefinition attachedEquipment, CardData sourceCard)
         {
+            using var mutation = VisionSystem.BeginMutation();
             resultingArmy = targetArmy;
+            if (targetArmy != null && targetArmy.Id < 0)
+            { failReason = "Cannot deploy into a display snapshot."; return false; }
             if (!ValidateDeployUnitFromCard(definition, owner, targetArmy, deploymentHex, newArmyCatalog,
                     root, hexSelectionController, sourceCard, out ArmyData destination, out int totalAp, out failReason))
                 return false;
@@ -372,115 +529,18 @@ namespace Game.Map
                 VisionSystem.RecomputeFor(owner);
             StealthSystem.RunChecksForNewVisionSource(resultingArmy, spawned);
             VisionSystem.NotifyContentChanged(deploymentHex);
-            UnitDeployed?.Invoke(resultingArmy, spawned);
+            ArmyData deployedArmy = resultingArmy;
+            VisionSystem.PublishAfterMutation(UnitDeployed, deployedArmy, spawned);
             return true;
         }
 
         public static bool TransferMember(UnitData unit, ArmyData source, ArmyData target,
             HexSelectionController hexSelectionController, out string failReason)
         {
-            if (!CanTransferMember(unit, source, target, out PlayerRoot targetRoot,
-                    out bool requiresCharge, out failReason)) return false;
-
-            source.Members.Remove(unit);
-            source.NormalizeGarrisonOrder();
-            target.AddMemberSorted(unit);
-            if (target.IsAirfield)
-                AviationRules.ResetAfterLanding(unit);
-            AviationRules.SyncAirArmyShell(source, hexSelectionController);
-            AviationRules.SyncAirArmyShell(target, hexSelectionController);
-            if (target.IsCarrierFlightDeck && target.Controller == null)
-                hexSelectionController?.CreateArmyMarker(target);
-            if (requiresCharge)
-                targetRoot?.SpendActionPoints(unit.ActivationApCost);
-            target.MarkUnitActivationPaid(unit);
-            hexSelectionController?.RestackArmiesOn(source.Hex, null);
-            if (!target.Hex.Equals(source.Hex))
-                hexSelectionController?.RestackArmiesOn(target.Hex, null);
-            PublishRosterChange(source, target, AbilityParams.GetBestRecceRadius(unit) > 0);
-            if (target.IsAirfield) AviationActions.NotifyLandingCompleted(source, target, unit);
-            return true;
+            return TransferMembersAtomic(new[] { unit }, source, target, hexSelectionController, out failReason);
         }
-
-        // Read-only preview of the single-unit UI transaction, including empty air-wing
-        // promotion. The multi-unit exchange preview has different aviation rules.
         public static bool CanTransferMember(UnitData unit, ArmyData source, ArmyData target, out string failReason)
-            => CanTransferMember(unit, source, target, out _, out _, out failReason);
-
-        private static bool CanTransferMember(UnitData unit, ArmyData source, ArmyData target,
-            out PlayerRoot targetRoot, out bool requiresCharge, out string failReason)
-        {
-            targetRoot = null;
-            requiresCharge = false;
-            failReason = null;
-            if (unit == null || source == null || target == null || source == target || target.IsPrison)
-            {
-                failReason = "Cannot transfer this unit between these armies.";
-                return false;
-            }
-            if (!source.Members.Contains(unit))
-            {
-                failReason = $"{unit.Name} is not a member of {source.Name}.";
-                return false;
-            }
-            if ((source.IsCarrierContainer || target.IsCarrierContainer) && !source.Hex.Equals(target.Hex))
-            {
-                failReason = "Aircraft must share the carrier's hex to board or leave.";
-                return false;
-            }
-            bool promoteToAirArmy = source.IsAirfield && unit.IsAviation && !AviationRules.IsAirArmy(target)
-                && !target.IsGarrison && !target.IsAirfield && target.Members.Count == 0;
-            if (!promoteToAirArmy && !AviationRules.CanContain(target, unit))
-            {
-                failReason = unit.IsAviation
-                    ? "Transfer aircraft between an airfield and an air wing."
-                    : "Ground units and heroes cannot join an air wing.";
-                return false;
-            }
-            if (target.IsAirfield && unit.IsAviation && !source.Hex.Equals(target.Hex))
-            {
-                failReason = $"{unit.Name} must be at the airfield to land there.";
-                return false;
-            }
-            if ((target.IsAirfield || target.IsCarrierFlightDeck)
-                && AviationRules.FreeContainerCapacity(target, source) < 1)
-            {
-                failReason = $"Airfield at {target.Hex} is full.";
-                return false;
-            }
-            if (!target.IsAirfield && !target.IsCarrierFlightDeck)
-            {
-                // Judged on the roster AddMemberSorted will actually produce (garrison: normalized).
-                if (!ArmyData.RosterFits(ArmyData.ProjectAdd(target.Members, unit, target.IsGarrison),
-                        target.IsGarrison))
-                {
-                    failReason = $"Not enough capacity in {target.Name} for {unit.Name}.";
-                    return false;
-                }
-            }
-            if (!source.CanLeaveWithoutOvercrowding(unit))
-            {
-                failReason = $"Moving {unit.Name} would leave {source.Name} over capacity.";
-                return false;
-            }
-
-            // Aviation never pays on a transfer: an aircraft that has not yet paid its sortie
-            // launch (UnitData.SortieLaunchPaid) is charged by its stack's next flight action
-            // (TryPayActivation), and storing an aircraft in its airfield is a landing.
-            requiresCharge = !unit.IsAviation && target.RequiresActivationCharge(unit);
-            if (requiresCharge)
-            {
-                targetRoot = PlayerRootRegistry.FindFor(target.Owner);
-                if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost))
-                {
-                    failReason = targetRoot == null ? "Your resources are unavailable. Try again."
-                        : $"Need {unit.ActivationApCost} AP to join {target.Name}; this army already activated.";
-                    return false;
-                }
-            }
-
-            return true;
-        }
+            => CanTransferMembers(new[] { unit }, source, target, out failReason);
 
         public static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, out string failReason)
@@ -525,6 +585,10 @@ namespace Game.Map
                 return false;
             }
 
+            if (source.Owner != target.Owner
+                || units.Any(u => u == null || u.IsPrisoner || u.Owner != source.Owner)
+                || promoteToCommander != null && (!promoteToCommander.IsHero || !units.Contains(promoteToCommander)))
+            { failReason = "Units must belong to the same owner and an editable army."; return false; }
             var distinct = units.Where(u => u != null).Distinct().ToList();
             if ((source.IsCarrierContainer || target.IsCarrierContainer) && !source.Hex.Equals(target.Hex))
             {
@@ -538,7 +602,7 @@ namespace Game.Map
             }
             foreach (UnitData unit in distinct)
             {
-                if (!source.Members.Contains(unit))
+                if (!source.Members.Contains(unit) || target.Members.Contains(unit))
                 {
                     failReason = $"{unit.Name} is not a member of {source.Name}.";
                     return false;
@@ -550,7 +614,9 @@ namespace Game.Map
                 }
             }
 
-            var back = (displaced ?? System.Array.Empty<UnitData>()).Where(u => u != null).Distinct().ToList();
+            var back = (displaced ?? System.Array.Empty<UnitData>()).ToList();
+            if (back.Any(u => u == null || u.IsPrisoner || u.Owner != target.Owner) || back.Distinct().Count() != back.Count)
+            { failReason = "Select each available unit only once."; return false; }
             foreach (UnitData unit in back)
             {
                 if (!target.Members.Contains(unit) || distinct.Contains(unit)
@@ -566,7 +632,7 @@ namespace Game.Map
             var projectedSource = source.Members.Where(u => !distinct.Contains(u)).ToList();
             foreach (UnitData unit in back)
                 projectedSource = ArmyData.ProjectAdd(projectedSource, unit, source.IsGarrison);
-            if (!source.IsCarrierFlightDeck && !ArmyData.RosterFits(projectedSource, source.IsGarrison))
+            if (!ValidateProjectedRoster(source, projectedSource, out failReason))
             {
                 failReason = $"This transfer would leave {source.Name} over capacity.";
                 return false;
@@ -577,7 +643,7 @@ namespace Game.Map
             // An explicit promotion is a field-army choice; a garrison keeps its CommandRating order.
             if (promoteToCommander != null && !target.IsGarrison && projectedTarget.Remove(promoteToCommander))
                 projectedTarget.Insert(0, promoteToCommander);
-            if (!target.IsAirfield && !target.IsCarrierFlightDeck && !ArmyData.RosterFits(projectedTarget, target.IsGarrison))
+            if (!ValidateProjectedRoster(target, projectedTarget, out failReason))
             {
                 failReason = $"Not enough capacity in {target.Name} for these units.";
                 return false;
@@ -594,8 +660,10 @@ namespace Game.Map
                 return false;
             }
 
-            if (!requireChargeNow)
-                return true;
+            if ((source.IsAirfield || source.IsCarrierFlightDeck)
+                && back.Count - distinct.Count > AviationRules.FreeContainerCapacity(source, target))
+            { failReason = $"Airfield at {source.Hex} is full."; return false; }
+            if (!requireChargeNow) return true;
             // Aviation is never charged on a transfer (see TransferMember): its launch is paid by
             // the stack's next flight action through TryPayActivation.
             var chargeable = distinct.Where(u => !u.IsAviation && target.RequiresActivationCharge(u)).ToList();
@@ -625,6 +693,9 @@ namespace Game.Map
             ArmyData target, HexSelectionController hexSelectionController, out string failReason,
             UnitData promoteToCommander = null, IReadOnlyList<UnitData> displaced = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
+            if (source == null || target == null || source.Id < 0 || target.Id < 0)
+            { failReason = "Cannot transfer a display snapshot."; return false; }
             if (promoteToCommander != null
                 && (!promoteToCommander.IsHero || units == null || !units.Contains(promoteToCommander)))
             {
@@ -635,6 +706,7 @@ namespace Game.Map
                     out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost, out failReason))
                 return false;
 
+            units = units.ToArray();
             List<UnitData> back = (displaced ?? System.Array.Empty<UnitData>())
                 .Where(u => u != null).Distinct().ToList();
             foreach (UnitData unit in units)
@@ -682,9 +754,11 @@ namespace Game.Map
             ArmyData airfield, IReadOnlyList<UnitData> aircraft,
             HexSelectionController hexSelection, out string failReason)
         {
+            using var mutation = VisionSystem.BeginMutation();
             failReason = "Invalid air-wing preparation.";
             if (ground == null || garrison == null || airfield == null || aircraft == null
                 || aircraft.Count == 0 || ground == garrison || ground == airfield
+                || ground.Id < 0 || garrison.Id < 0 || airfield.Id < 0
                 || !garrison.IsGarrison || !airfield.IsAirfield || ground.IsGarrison
                 || ground.IsPrison || ground.IsAirfield || AviationRules.IsAirArmy(ground)
                 || ground.Owner != garrison.Owner || ground.Owner != airfield.Owner
@@ -703,6 +777,7 @@ namespace Game.Map
                     : "The aircraft do not fit in the emptied shell.";
                 return false;
             }
+            aircraft = aircraft.ToArray();
             ground.Members.Clear();
             foreach (UnitData unit in roster)
             {
@@ -727,121 +802,18 @@ namespace Game.Map
         public static bool CanSwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
             out string failReason)
         {
-            failReason = null;
-            if (unitA == null || armyA == null || unitB == null || armyB == null || armyA == armyB
-                || armyA.IsPrison || armyB.IsPrison)
-            {
-                failReason = "Cannot swap these units.";
-                return false;
-            }
-            if (armyA.IsAirfield || AviationRules.IsAirArmy(armyA) || armyB.IsAirfield || AviationRules.IsAirArmy(armyB)
-                || unitA.IsAviation || unitB.IsAviation)
-            {
-                failReason = "Aircraft cannot swap with ground units or heroes.";
-                return false;
-            }
-            if (!armyA.Members.Contains(unitA))
-            {
-                failReason = $"{unitA.Name} is not a member of {armyA.Name}.";
-                return false;
-            }
-            if (!armyB.Members.Contains(unitB))
-            {
-                failReason = $"{unitB.Name} is not a member of {armyB.Name}.";
-                return false;
-            }
-
-            var remainingA = new List<UnitData>(armyA.Members);
-            remainingA.Remove(unitA);
-            remainingA = ArmyData.ProjectAdd(remainingA, unitB, armyA.IsGarrison);
-            if (!ArmyData.RosterFits(remainingA, armyA.IsGarrison))
-            {
-                failReason = $"Not enough capacity in {armyA.Name} after the swap.";
-                return false;
-            }
-            var remainingB = new List<UnitData>(armyB.Members);
-            remainingB.Remove(unitB);
-            remainingB = ArmyData.ProjectAdd(remainingB, unitA, armyB.IsGarrison);
-            if (!ArmyData.RosterFits(remainingB, armyB.IsGarrison))
-            {
-                failReason = $"Not enough capacity in {armyB.Name} after the swap.";
-                return false;
-            }
-
-            bool chargeAIncoming = armyA.RequiresActivationCharge(unitB);
-            bool chargeBIncoming = armyB.RequiresActivationCharge(unitA);
-            PlayerRoot rootA = chargeAIncoming ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
-            PlayerRoot rootB = chargeBIncoming ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
-            if (chargeAIncoming && rootA == null)
-            {
-                failReason = "Your resources are unavailable. Try again.";
-                return false;
-            }
-            if (chargeBIncoming && rootB == null)
-            {
-                failReason = "Your resources are unavailable. Try again.";
-                return false;
-            }
-            if (rootA != null && rootA == rootB)
-            {
-                int combinedCost = (chargeAIncoming ? unitB.ActivationApCost : 0)
-                    + (chargeBIncoming ? unitA.ActivationApCost : 0);
-                if (!rootA.CanSpendActionPoints(combinedCost))
-                {
-                    failReason = $"Need {combinedCost} AP to swap {unitA.Name} and {unitB.Name}.";
-                    return false;
-                }
-            }
-            else
-            {
-                if (chargeAIncoming && !rootA.CanSpendActionPoints(unitB.ActivationApCost))
-                {
-                    failReason = $"Need {unitB.ActivationApCost} AP to join {armyA.Name}; this army already activated.";
-                    return false;
-                }
-                if (chargeBIncoming && !rootB.CanSpendActionPoints(unitA.ActivationApCost))
-                {
-                    failReason = $"Need {unitA.ActivationApCost} AP to join {armyB.Name}; this army already activated.";
-                    return false;
-                }
-            }
-            return true;
+            if (unitA == null || unitB == null || unitA.IsAviation || unitB.IsAviation
+                || armyA == null || armyB == null || armyA.IsAirfield || armyB.IsAirfield
+                || AviationRules.IsAirArmy(armyA) || AviationRules.IsAirArmy(armyB))
+            { failReason = "Aircraft cannot swap with ground units or heroes."; return false; }
+            return CanExchangeMembers(new[] { unitA }, armyA, armyB, null, new[] { unitB }, out failReason);
         }
-
         public static bool SwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
             HexSelectionController hexSelectionController, out string failReason)
         {
-            if (!CanSwapMembers(unitA, armyA, unitB, armyB, out failReason))
-                return false;
-
-            bool chargeAIncoming = armyA.RequiresActivationCharge(unitB);
-            bool chargeBIncoming = armyB.RequiresActivationCharge(unitA);
-            PlayerRoot rootA = chargeAIncoming ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
-            PlayerRoot rootB = chargeBIncoming ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
-
-            armyA.Members.Remove(unitA);
-            armyB.Members.Remove(unitB);
-            armyA.AddMemberSorted(unitB);
-            armyB.AddMemberSorted(unitA);
-            if (rootA != null && rootA == rootB)
-            {
-                int combinedCost = (chargeAIncoming ? unitB.ActivationApCost : 0)
-                    + (chargeBIncoming ? unitA.ActivationApCost : 0);
-                rootA.SpendActionPoints(combinedCost);
-            }
-            else
-            {
-                rootA?.SpendActionPoints(unitB.ActivationApCost);
-                rootB?.SpendActionPoints(unitA.ActivationApCost);
-            }
-            armyA.MarkUnitActivationPaid(unitB);
-            armyB.MarkUnitActivationPaid(unitA);
-            hexSelectionController?.RestackArmiesOn(armyA.Hex, null);
-            if (!armyB.Hex.Equals(armyA.Hex))
-                hexSelectionController?.RestackArmiesOn(armyB.Hex, null);
-            PublishRosterChange(armyA, armyB,
-                AbilityParams.GetBestRecceRadius(unitA) > 0 || AbilityParams.GetBestRecceRadius(unitB) > 0);
-            return true;
+            if (!CanSwapMembers(unitA, armyA, unitB, armyB, out failReason)) return false;
+            return TransferMembersAtomic(new[] { unitA }, armyA, armyB, hexSelectionController,
+                out failReason, displaced: new[] { unitB });
         }
 
         // Only completed roster transactions publish visibility. One content notification
@@ -849,16 +821,14 @@ namespace Game.Map
         // changes the owner's vision footprint. This is gameplay ownership, not AI policy.
         private static void PublishRosterChange(ArmyData source, ArmyData target, bool recceTransferred)
         {
+            using var mutation = VisionSystem.BeginMutation();
             source.RefreshTransport();
             target.RefreshTransport();
             AviationActions.RefreshCarrierContainers(source);
             AviationActions.RefreshCarrierContainers(target);
-            if (recceTransferred)
-            {
-                VisionSystem.RecomputeFor(source.Owner);
-                if (source.Owner != target.Owner)
-                    VisionSystem.RecomputeFor(target.Owner);
-            }
+            // Empty/non-empty transitions add or remove vision even without Recce.
+            VisionSystem.RecomputeFor(source.Owner);
+            if (source.Owner != target.Owner) VisionSystem.RecomputeFor(target.Owner);
             VisionSystem.NotifyContentChanged(source.Hex);
             if (!target.Hex.Equals(source.Hex))
                 VisionSystem.NotifyContentChanged(target.Hex);

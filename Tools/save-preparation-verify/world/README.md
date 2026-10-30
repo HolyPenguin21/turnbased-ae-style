@@ -17,3 +17,9 @@ The default suite adds four registry boundary checks: resource bonus copies on c
 `PortableAdapters.cs` supplies only dependencies outside this focused compile: native visuals/GameObjects, authored card catalogs, equipment effects, AI statistics, combat challenges, carrier actions and initiative rules. The registry owners, fog and stealth state, movement/activation data, identity allocation and restore methods are the production implementations. The carrier creation adapter exposes a side effect so a scope-registration regression can be detected. Reflection in `Program.cs` only discovers/invokes test methods; it never snapshots private production state.
 
 This suite is a managed contract check, **not a Unity build or full gameplay test**. Native scene behavior, actual carrier actions, visuals, editor serialization and the full EditMode suite still need the project's Unity version. Keep adapters under `Tools/`; do not add them to `Assets/`.
+
+Package 1 adds the real synchronous notification-batch partial to this compile. Its existing
+preparation cases do not execute gameplay roster commands; the corresponding explicit
+`NotSupportedException` adapters fail on unexpected use. Actual command contracts are tested
+by `WorldMutationContractTests` and native integration by `WorldMutationUnityTests`. This
+runner also reports unexpected notification exceptions instead of hiding them.

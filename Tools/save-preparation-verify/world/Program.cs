@@ -34,6 +34,7 @@ internal static class WorldStateChecks
                     count++;
                 }
             }
+        failed += UnityEngine.Debug.NotificationFailures;
         Console.WriteLine(count + " checks, " + failed + " failures");
         return failed == 0 && count > 0 ? 0 : 1;
     }

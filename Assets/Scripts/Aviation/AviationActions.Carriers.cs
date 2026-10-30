@@ -22,6 +22,7 @@ namespace Game.Aviation
 
         public static void EnsureCarrierContainers(ArmyData host)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (host == null || host.IsCarrierContainer || host.IsAirfield || host.IsPrison
                 || host.Owner == null || !ArmyRegistry.IsRegistered(host)) return;
             foreach (UnitData unit in host.Members.Where(IsCarrier).ToList())
@@ -51,6 +52,7 @@ namespace Game.Aviation
         // Called after a completed roster transaction, never between its remove and add halves.
         public static void RefreshCarrierContainers(ArmyData host)
         {
+            using var mutation = VisionSystem.BeginMutation();
             EnsureCarrierContainers(host);
             if (host == null || host.IsCarrierContainer) return;
             foreach (UnitData unit in host.Members.Where(IsCarrier).ToList())
@@ -63,6 +65,7 @@ namespace Game.Aviation
         // still travel on the deck until then; an airborne wing never follows the carrier.
         public static void DetachCarrierWing(ArmyData wing)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (wing?.IsCarrierFlightDeck != true || wing.Members.Count == 0) return;
             UnitData carrier = wing.CarrierUnit;
             wing.CarrierUnit = null;
@@ -74,6 +77,7 @@ namespace Game.Aviation
 
         public static void RemoveCarrierContainers(UnitData carrier, HexSelectionController selection = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (carrier == null) return;
             ArmyData hangar = carrier.CarrierAirfield;
             ArmyData deck = carrier.CarrierFlightDeck;
@@ -94,19 +98,8 @@ namespace Game.Aviation
         public static void DeleteReturnedWing(ArmyData wing, HexSelectionController selection)
         {
             if (wing == null || wing.Members.Count > 0 || wing.IsCarrierContainer) return;
-            if (selection != null) selection.DeleteArmyIfEmptied(wing, force: true);
-            else if (ReturnedWingDeletionRequested != null) ReturnedWingDeletionRequested(wing);
-            else
-            {
-                ArmyController controller = wing.Controller;
-                wing.Controller = null;
-                if (controller != null)
-                {
-                    controller.CancelMovement();
-                    UnityEngine.Object.Destroy(controller.gameObject);
-                }
-                ArmyRegistry.Unregister(wing);
-            }
+            ArmyActions.DeleteArmyIfEmptied(wing, force: true);
+            VisionSystem.PublishAfterMutation(ReturnedWingDeletionRequested, wing);
         }
 
         // A carrier hex is an airfield only while the carrier stands on it, but landing happens at

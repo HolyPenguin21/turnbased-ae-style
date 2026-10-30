@@ -235,8 +235,6 @@ namespace Game.Map
         private ArmyData SpawnEventGuard(HexCoord hex, HexEventRegistry.Entry entry)
         {
             var guard = new ArmyData { Name = entry.GuardArmyName, Hex = hex, Owner = entry.GuardOwner };
-            ArmyRegistry.Register(guard);
-
             foreach ((CardDefinition card, int count) in entry.ResolvedGuardMembers)
             {
                 if (card == null)
@@ -258,7 +256,7 @@ namespace Game.Map
                 ArmyRegistry.Unregister(guard);
                 return null;
             }
-            guard.RefreshTransport();
+            guard.RefreshTransport(); ArmyRegistry.Register(guard);
             return guard;
         }
 
@@ -293,7 +291,7 @@ namespace Game.Map
                 foreach (ArmyData resident in new List<ArmyData>(ArmyRegistry.AllAt(hex)))
                     if (resident.Owner == entry.GuardOwner && resident.Name == entry.GuardArmyName)
                     {
-                        resident.Members.Clear();
+                        ArmyActions.ClearMembers(resident);
                         ArmyRegistry.Unregister(resident);
                     }
             RestackArmiesOn(hex, null);

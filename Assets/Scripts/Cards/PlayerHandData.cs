@@ -90,7 +90,7 @@ namespace Game.Cards
         private void NotifyChanged()
         {
             MutationVersion++;
-            HandChanged?.Invoke();
+            Game.Map.VisionSystem.PublishAfterMutation(HandChanged);
         }
 
         public HandState CaptureState()

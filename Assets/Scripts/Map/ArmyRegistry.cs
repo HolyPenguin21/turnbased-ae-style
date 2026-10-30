@@ -15,7 +15,7 @@ namespace Game.Map
     public static class ArmyRegistry
     {
         private static readonly Dictionary<HexCoord, List<ArmyData>> ByHex = new Dictionary<HexCoord, List<ArmyData>>();
-        private static readonly List<ArmyData> Empty = new List<ArmyData>();
+        private static readonly IReadOnlyList<ArmyData> Empty = Array.AsReadOnly(Array.Empty<ArmyData>());
 
         public static void Clear()
         {
@@ -35,8 +35,14 @@ namespace Game.Map
 
         public static void Register(ArmyData army)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (army == null)
                 return;
+            if (IsRegistered(army)) return;
+            if (army.Id < 0 || AllArmies().Any(a => a.Id == army.Id)
+                || army.Members.Where(u => u != null).Select(u => u.RuntimeId).Distinct().Count() != army.Members.Count
+                || army.Members.Any(u => u == null || u.RuntimeId <= 0 || AllArmies().Any(a => a.Members.Any(m => m.RuntimeId == u.RuntimeId))))
+                throw new InvalidOperationException("A live unit can belong to only one registered army.");
             if (!ByHex.TryGetValue(army.Hex, out List<ArmyData> list))
             {
                 list = new List<ArmyData>();
@@ -60,35 +66,39 @@ namespace Game.Map
         // Every notification sees the final, absent state; a repeated removal is a no-op.
         public static void Unregister(ArmyData army, HexCoord? finalHex = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!IsRegistered(army))
                 return;
             HexCoord origin = army.Hex;
             ByHex[origin].Remove(army);
             if (Game.Setup.MatchRestoreScope.IsRestoring)
             {
-                if (finalHex.HasValue) army.Hex = finalHex.Value;
+                if (finalHex.HasValue) army.SetHex(finalHex.Value);
                 return;
             }
             foreach (var unit in army.Members.ToList())
                 AviationActions.RemoveCarrierContainers(unit);
             army.ClearTransport();
-            if (finalHex.HasValue) army.Hex = finalHex.Value;
+            if (finalHex.HasValue) army.SetHex(finalHex.Value);
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(origin);
             if (!army.Hex.Equals(origin))
                 VisionSystem.NotifyContentChanged(army.Hex);
+            VisionSystem.PublishAfterMutation(ArmyRemoved, army);
         }
 
-        // Never null — callers can foreach this directly without a null check.
-        public static List<ArmyData> AllAt(HexCoord hex)
-        {
-            return ByHex.TryGetValue(hex, out List<ArmyData> list) ? list : Empty;
-        }
+        // Protected, detached query with canonical entity references.
+        public static IReadOnlyList<ArmyData> At(HexCoord hex) =>
+            ByHex.TryGetValue(hex, out List<ArmyData> list) ? list.ToList().AsReadOnly() : Empty;
+
+        // Compatibility adapter for List helpers; never exposes registry storage.
+        public static List<ArmyData> AllAt(HexCoord hex) =>
+            ByHex.TryGetValue(hex, out List<ArmyData> list) ? new List<ArmyData>(list) : new List<ArmyData>();
 
         // Every hex currently holding at least one army — for a scan that needs to consider the
         // whole map at once (see GameTurnController's own end-of-turn contested-hex sweep)
         // rather than one hex at a time.
-        public static IEnumerable<HexCoord> AllOccupiedHexes() => ByHex.Keys;
+        public static IEnumerable<HexCoord> AllOccupiedHexes() => ByHex.Where(kv => kv.Value.Count > 0).Select(kv => kv.Key).ToArray();
 
         // The one army every citadel hex starts with (see CitadelSetupController) — this is
         // where deployed Unit/Hero cards land (see CardHandUI.TryPlayCard) before the player
@@ -120,6 +130,7 @@ namespace Game.Map
         // subscriber that wants "this army just moved" instead of two separate content-changed
         // notifications for oldHex/newHex can use this; nothing in this project subscribes yet.
         public static event Action<ArmyData, HexCoord, HexCoord> ArmyRelocated;
+        public static event Action<ArmyData> ArmyRemoved;
 
         // Re-keys `army` from wherever it's currently filed to `newHex` — the only way
         // ArmyData.Hex ever changes after creation. Needed now that whole armies move (see
@@ -144,6 +155,7 @@ namespace Game.Map
         // state any more.
         public static void MoveArmy(ArmyData army, HexCoord newHex)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!IsRegistered(army) || army.Hex.Equals(newHex))
                 return;
 
@@ -160,13 +172,13 @@ namespace Game.Map
             VisionSystem.NotifyContentChanged(oldHex);
             VisionSystem.NotifyContentChanged(newHex);
             if (!Game.Setup.MatchRestoreScope.IsRestoring)
-                ArmyRelocated?.Invoke(army, oldHex, newHex);
+                VisionSystem.PublishAfterMutation(ArmyRelocated, army, oldHex, newHex);
         }
 
         private static void RelocateInIndex(ArmyData army, HexCoord hex)
         {
             if (ByHex.TryGetValue(army.Hex, out List<ArmyData> oldList)) oldList.Remove(army);
-            army.Hex = hex;
+            army.SetHex(hex);
             if (!ByHex.TryGetValue(hex, out List<ArmyData> list)) ByHex[hex] = list = new List<ArmyData>();
             list.Add(army);
         }
@@ -174,18 +186,8 @@ namespace Game.Map
         // Every army belonging to one player, across every hex — used to reset
         // HasActivatedThisTurn (and replenish every member's move points) for all of them at
         // the start of that player's turn (see GameTurnController.ReplenishMoveForOwner).
-        public static IEnumerable<ArmyData> AllForOwner(Players.PlayerSetupData owner)
-        {
-            foreach (List<ArmyData> list in ByHex.Values)
-                foreach (ArmyData army in list)
-                    if (army.Owner == owner)
-                        yield return army;
-        }
-        internal static IEnumerable<ArmyData> AllArmies()
-        {
-            foreach (var list in ByHex.Values)
-                foreach (var army in list) yield return army;
-        }
+        public static IEnumerable<ArmyData> AllForOwner(Players.PlayerSetupData owner) =>
+            ByHex.Values.SelectMany(list => list).Where(army => army.Owner == owner).ToArray();
+        internal static IEnumerable<ArmyData> AllArmies() => ByHex.Values.SelectMany(list => list).ToArray();
     }
 }
-
