@@ -534,15 +534,30 @@ namespace Game.EditorTests
                 root.ActionPoints = 2;
                 root.AddResource(ResourceType.Energy, 2);
                 var ctx = new AiTurnContext { Map = map, TurnNumber = 1 };
+                // Only an AirSweep is an air-serviceable recon job (2026-09-24).
                 var objective = new ReconObjective
                 {
-                    Kind = ReconObjectiveKind.Explore,
+                    Kind = ReconObjectiveKind.AirSweep,
                     FocusHex = new HexCoord(3, 0),
                     TaskScore = new TaskScore(strategicRelevance: 10f),
                 };
 
+                // The air step planner reads the observer's own bases and map knowledge; an empty
+                // snapshot has no Self and offers no recon step at all.
+                WorldSnapshot Snap() => new WorldSnapshot
+                {
+                    Observer = owner, TurnNumber = ctx.TurnNumber,
+                    Self = new SelfSnapshot { BaseHexes = new[] { sourceHex, forwardHex },
+                        Armies = System.Array.Empty<ArmySnapshot>() },
+                    MapKnowledge = new MapKnowledgeSnapshot
+                    {
+                        AllHexes = new[] { sourceHex, new HexCoord(1, 0), forwardHex, new HexCoord(3, 0) },
+                        VisitedHexSet = new HashSet<HexCoord> { sourceHex, forwardHex },
+                    },
+                };
+
                 AviationRebasePlan plan = AviationRebasePlanner.BuildPlan(
-                    new WorldSnapshot(), owner, root, ctx, new[] { objective });
+                    Snap(), owner, root, ctx, new[] { objective });
 
                 Assert.That(plan, Is.Not.Null);
                 Assert.That(plan.SourceHex, Is.EqualTo(sourceHex));
@@ -559,7 +574,7 @@ namespace Game.EditorTests
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
                 Assert.That(AviationRebasePlanner.BuildPlan(
-                    new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null,
+                    Snap(), owner, root, ctx, new[] { objective }), Is.Null,
                     "Phase B must leave the bank's Energy for its owner");
                 Assert.That(AviationRebaseExecutor.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
                     Is.False, "a previously selected plan must recheck the bank before launch");
@@ -575,7 +590,7 @@ namespace Game.EditorTests
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
                 Assert.That(AviationRebasePlanner.BuildPlan(
-                    new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null,
+                    Snap(), owner, root, ctx, new[] { objective }), Is.Null,
                     "the same guard applies to reserved AP");
                 Assert.That(AviationRebaseExecutor.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
                     Is.False);
@@ -585,17 +600,17 @@ namespace Game.EditorTests
 
                 root.ActionPoints = 0;
                 Assert.That(AviationRebasePlanner.BuildPlan(
-                    new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null);
+                    Snap(), owner, root, ctx, new[] { objective }), Is.Null);
 
                 root.ActionPoints = 2;
                 root.AddResource(ResourceType.Energy, -2);
                 Assert.That(AviationRebasePlanner.BuildPlan(
-                    new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null);
+                    Snap(), owner, root, ctx, new[] { objective }), Is.Null);
 
                 root.AddResource(ResourceType.Energy, 2);
                 objective.FocusHex = new HexCoord(1, 0); // equal two-hex round trips
                 Assert.That(AviationRebasePlanner.BuildPlan(
-                    new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null);
+                    Snap(), owner, root, ctx, new[] { objective }), Is.Null);
             }
             finally
             {

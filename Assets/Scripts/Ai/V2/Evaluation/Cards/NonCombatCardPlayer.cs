@@ -686,6 +686,13 @@ namespace Game.Ai.V2
                 TaskScore candidate = CopyReconScoreWithAirDelivery(snap, objective.TaskScore,
                     eta, routeCost, moveMax, activationAp, launchEnergy,
                     TaskScoreEvaluator.HexThreatRisk(airfieldThreat));
+                // A sweep that stops short of the anchor serves the objective only by the share
+                // of the way it closes: a forward airfield reaching the anchor serves more than a
+                // rear one making the first step (owner decision 2026-10-30, Rebase valuation).
+                float reach = SweepReach(airfield, sweepPoint, objective.FocusHex, projected, ctx);
+                candidate = TaskScore.FromSlots(slot =>
+                    TaskScoreEvaluator.CategoryOf(slot) == TaskSlotCategory.Benefit
+                        ? candidate[slot] * reach : candidate[slot]);
                 if (candidate.Value > bestValue)
                 {
                     bestValue = candidate.Value;
@@ -715,6 +722,20 @@ namespace Game.Ai.V2
             int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                 + projected.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
             return ReconAirStepPlanner.MakesGenuineProgress(airfield, step.Value.Hex, focus, vision);
+        }
+
+        // 1 when the sweep endpoint sees the anchor; otherwise the share of the airfield's
+        // distance to the anchor the sweep closes.
+        private static float SweepReach(HexCoord airfield, HexCoord sweepPoint, HexCoord anchor,
+            IReadOnlyList<UnitData> projected, AiTurnContext ctx)
+        {
+            int vision = (ctx?.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                + projected.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
+            int start = HexGridMath.Distance(airfield, anchor);
+            int left = HexGridMath.Distance(sweepPoint, anchor);
+            if (start <= 0 || left <= vision)
+                return 1f;
+            return Mathf.Clamp01((start - left) / (float)start);
         }
 
         private static TaskScore CopyReconScoreWithAirDelivery(WorldSnapshot snap, TaskScore s,
