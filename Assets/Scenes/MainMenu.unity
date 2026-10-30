@@ -10986,7 +10986,7 @@ MonoBehaviour:
   campaignOverwriteReplaceButton: {fileID: 1631348527}
   campaignOverwriteCancelButton: {fileID: 1259306142}
   continueCampaignButton: {fileID: 1970000104}
-  saveSlots: {fileID: 0}
+  saveSlots: {fileID: 1466938195068277997}
 --- !u!4 &1007785364
 Transform:
   m_ObjectHideFlags: 0
@@ -23026,6 +23026,17 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 2100000001, guid: 7a879ba362e449b18fd92c44e337f229, type: 3}
   m_PrefabInstance: {fileID: 1466938195068277995}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &1466938195068277997 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2100000006, guid: 7a879ba362e449b18fd92c44e337f229, type: 3}
+  m_PrefabInstance: {fileID: 1466938195068277995}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 815997d9d43d4a83807d7815f13d07dd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.MatchSaveSlotsUI
 --- !u!1 &8106000000000007450
 GameObject:
   m_ObjectHideFlags: 0
