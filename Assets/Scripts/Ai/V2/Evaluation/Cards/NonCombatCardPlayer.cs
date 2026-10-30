@@ -139,7 +139,7 @@ namespace Game.Ai.V2
         {
             var card = source?.CardDef;
             var player = snap?.Observer;
-            var root = PlayerRootRegistry.FindFor(player);
+            var root = OwnWorld.Of(player).Root;
             if (card?.isAviation != true || snap?.Map == null || root == null) return 0f;
             var ctx = new AiTurnContext { Map = snap.Map, TurnNumber = snap.TurnNumber };
             var objectives = ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList();
@@ -166,7 +166,7 @@ namespace Game.Ai.V2
             MaterializationReservation reservation = null)
         {
             var player = snap?.Observer;
-            var root = PlayerRootRegistry.FindFor(player);
+            var root = OwnWorld.Of(player).Root;
             hand = hand ?? AiHandRegistry.Peek(player);
             if (player == null || root == null || snap.Map == null || hand == null || !hand.HasFreeSlot)
                 return false;

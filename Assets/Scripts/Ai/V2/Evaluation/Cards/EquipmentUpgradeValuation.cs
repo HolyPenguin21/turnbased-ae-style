@@ -468,7 +468,7 @@ namespace Game.Ai.V2
                 .GroupBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal)
                 .Select(g => g.First()).OrderBy(g => g.CardDef.authoredKey, System.StringComparer.Ordinal);
             var player = snap.Observer;
-            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            PlayerRoot root = OwnWorld.Of(player).Root;
             var options = new List<(DevelopmentOpportunity Op, CardDefinition Challenge, float Utility, float Before, float After)>();
             foreach (GenerationStep source in sources)
             {

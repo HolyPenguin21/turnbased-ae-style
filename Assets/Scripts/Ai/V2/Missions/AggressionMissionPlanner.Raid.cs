@@ -331,7 +331,7 @@ namespace Game.Ai.V2
                     snap, primaryId, opposition, committed,
                     KnownOpposition.RaidDefenceBonus(snap, ri.Target),
                     rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
-                        AiV2Util.ResolveArmy(snap.Observer, primaryId), ri.LastKnownHex,
+                        OwnWorld.Of(snap.Observer).Army(primaryId), ri.LastKnownHex,
                         SafeRouteProfile.Combat));
                 if (candidates.Count == 0)
                 {

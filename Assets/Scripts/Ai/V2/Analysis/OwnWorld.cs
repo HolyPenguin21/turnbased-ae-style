@@ -39,6 +39,9 @@ namespace Game.Ai.V2
 
         public ArmyData Army(int armyId) => Armies.FirstOrDefault(a => a != null && a.Id == armyId);
 
+        // The observer's own resource account (exactly PlayerRootRegistry.FindFor(Player)).
+        public PlayerRoot Root => PlayerRootRegistry.FindFor(Player);
+
         public IEnumerable<ArmyData> ArmiesAt(HexCoord hex) =>
             ArmyRegistry.AllAt(hex).Where(a => a != null && a.Owner == Player);
 

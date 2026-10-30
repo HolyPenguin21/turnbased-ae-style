@@ -67,7 +67,7 @@ namespace Game.Ai.V2
                 snap, primaryId, opposition, commitments?.ClaimedArmyIdSet, hexBonus,
                 allowCommandHandover: consumerKind == MissionKind.Attack,
                 rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
-                    AiV2Util.ResolveArmy(snap.Observer, primaryId),
+                    OwnWorld.Of(snap.Observer).Army(primaryId),
                     consumerKind == MissionKind.Attack ? intent.Attack.Target.Hex : intent.Raid.LastKnownHex,
                     consumerKind == MissionKind.Attack ? SafeRouteProfile.Attack : SafeRouteProfile.Combat));
             if (existing.Count > 0)

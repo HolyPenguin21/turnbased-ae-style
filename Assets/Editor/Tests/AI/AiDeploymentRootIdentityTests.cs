@@ -34,12 +34,6 @@ namespace Game.EditorTests
             _controllerObject.SetActive(false);
             _selector = _controllerObject.AddComponent<HexSelectionController>();
             _army = new ArmyData { Owner = _player, Hex = new HexCoord(75, -16) };
-            // Deployment checks the destination terrain before the building requirement.
-            var map = _controllerObject.AddComponent<HexMap>();
-            map.SetData(1, 1f, new System.Collections.Generic.Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
-                { [_army.Hex] = new Game.Terrain.TerrainTypeEntry() });
-            typeof(HexSelectionController).GetField("map", System.Reflection.BindingFlags.Instance
-                | System.Reflection.BindingFlags.NonPublic).SetValue(_selector, map);
             ArmyRegistry.Register(_army);
             _card = new CardDefinition
             {
@@ -72,6 +66,13 @@ namespace Game.EditorTests
             Assert.That(_registered.ActionPoints, Is.EqualTo(10));
             Assert.That(_alternate.ActionPoints, Is.EqualTo(10));
             Assert.That(_army.Members, Is.Empty);
+
+            // Deployment checks the destination terrain before the building requirement.
+            var map = _controllerObject.AddComponent<HexMap>();
+            map.SetData(1, 1f, new System.Collections.Generic.Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
+                { [_army.Hex] = new Game.Terrain.TerrainTypeEntry() });
+            typeof(HexSelectionController).GetField("map", System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic).SetValue(_selector, map);
 
             // Positive identity witness: the canonical account advances to the next existing
             // domain prerequisite. No building is installed, so it must fail on the barracks

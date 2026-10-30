@@ -414,7 +414,7 @@ namespace Game.Ai.V2
                     afterSnap, primaryId, opposition, null, hexBonus,
                     allowCommandHandover: ri == null,
                     rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(afterSnap.Map,
-                        AiV2Util.ResolveArmy(afterSnap.Observer, primaryId),
+                        OwnWorld.Of(afterSnap.Observer).Army(primaryId),
                         ri == null ? ai.Target.Hex : ri.LastKnownHex,
                         ri == null ? SafeRouteProfile.Attack : SafeRouteProfile.Combat)));
             int? support = leased
