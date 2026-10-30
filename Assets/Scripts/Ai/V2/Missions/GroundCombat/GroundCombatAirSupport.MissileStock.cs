@@ -237,7 +237,12 @@ namespace Game.Ai.V2
                     + $"{s.Owner == player}:{s.Owner?.IsNeutral}:{s.Owner?.IsEliminated}:"
                     + $"garrison={snap.Known.EnemySightings?.Any(e => e.ArmyId == s.ArmyId && e.IsGarrison)}:"
                     + $"{s.Roster.CommanderIndex}:{string.Join(",", s.Roster.CurrentFates)}:{Profiles(s.Roster.Units)}"));
-            string own = string.Join("|", (snap?.Self?.Armies ?? Array.Empty<ArmySnapshot>()).OrderBy(a => a.ArmyId)
+            // Own armies matter only as collateral on a target hex (MissileStockValue); any other
+            // own move must not re-admit Development (owner decision 2026-10-30).
+            var targetHexes = new HashSet<HexCoord>((snap?.Known?.AirSightings
+                ?? Array.Empty<AiMapMemory.KnownAirSighting>()).Select(s => s.Hex));
+            string own = string.Join("|", (snap?.Self?.Armies ?? Array.Empty<ArmySnapshot>())
+                .Where(a => targetHexes.Contains(a.Hex)).OrderBy(a => a.ArmyId)
                 .Select(a => $"{a.ArmyId}:{a.Hex}:" + Profiles(a.MembersWithHeroes?.Count > 0 ? a.MembersWithHeroes : a.Members)));
             string structures = string.Join("|", (snap?.Known?.Buildings ?? Array.Empty<AiMapMemory.KnownBuilding>())
                 .OrderBy(b => b.Hex.Q).ThenBy(b => b.Hex.R).Select(b =>
