@@ -24,38 +24,7 @@ namespace Game.Map
     public partial class HexSelectionController
     {
         public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null)
-        {
-            if (owner == null)
-                return null;
-
-            var data = new UnitData
-            {
-                Name = unitName, Owner = owner,
-                MoveMax = moveMax, MoveCurrent = moveMax,
-                ActivationApCost = activationApCost,
-                IsHero = isHero, CommandRating = commandRating,
-                Art = art, DetailArt = detailArt != null ? detailArt : art,
-                Attack = attack, Defense = defense, Range = range, HitPointsMax = hitPoints, HitPointsCurrent = hitPoints,
-                Initiative = initiative, Fate = fate, FateMax = fate,
-                ApCost = apCost, OriginalResourceCost = resourceCost,
-                IsAviation = isAviation,
-                LaunchEnergyCost = launchEnergyCost,
-                TurnsWithoutRefuel = Mathf.Max(0, turnsWithoutRefuel),
-                AntiAirRadius = Mathf.Max(1, antiAirRadius),
-                AirfieldCapacity = !isAviation && !isHero ? Mathf.Max(0, sourceDefinition?.airfieldCapacity ?? 0) : 0,
-                OriginatingCard = sourceDefinition,
-            };
-            if (grantedAbilities != null)
-                foreach (string ability in grantedAbilities)
-                    data.Abilities.Add(ability);
-            if (typeTags != null)
-                foreach (UnitTypeTag tag in typeTags)
-                    data.TypeTags.Add(tag);
-            if (data.Abilities.Contains(UnitAbilities.RapidReaction))
-                data.ActivationApCost = 0;
-            UnitRepair.InitializeRepairCost(data);
-            return data;
-        }
+            => UnitData.Materialize(unitName, owner, moveMax, activationApCost, isHero, commandRating, art, grantedAbilities, attack, range, hitPoints, initiative, fate, defense, typeTags, detailArt, apCost, resourceCost, isAviation, launchEnergyCost, turnsWithoutRefuel, antiAirRadius, sourceDefinition);
 
         public ArmyController CreateArmyMarker(ArmyData army)
         {
@@ -107,6 +76,7 @@ namespace Game.Map
 
         private void DeleteReturnedWing(ArmyData wing)
         {
+            if (_selectedArmy != null && _selectedArmy.Data == wing) SetSelectedArmy(null);
             DeleteArmyIfEmptied(wing, force: true);
             RestackArmiesOn(wing.Hex, null);
         }
@@ -117,77 +87,31 @@ namespace Game.Map
         // DeleteArmyIfEmptied keeps what persists empty: any army on its owner's own Barracks hex,
         // an airfield container, a carrier deck. A Prison is a fixed container, never disbanded.
         public void DisbandEmptyArmiesOf(PlayerSetupData owner)
-        {
-            if (owner == null)
-                return;
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(owner)
-                         .Where(a => a.Members.Count == 0 && !a.IsPrison).ToList())
-                DeleteArmyIfEmptied(army);
-        }
+            => ArmyActions.DisbandEmptyArmiesOf(owner);
 
         public void DeleteArmyIfEmptied(ArmyData army, bool force = false)
         {
-            if (army == null || army.Members.Count > 0)
-                return;
-            if (!force && army.IsCarrierContainer)
-                return;
-            ArmyController controller = army.Controller;
-            HexCoord actualHex = controller != null ? controller.CurrentHex : army.Hex;
-            // Persistent containers survive at their indexed building. A travelling army
-            // killed over another building is not a new empty container at either endpoint.
-            BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (!force && !army.WasCarrierWing && (controller == null || !controller.IsMoving) && building != null && building.Owner == army.Owner
-                && (building.HasAbility(UnitAbilities.Barracks)
-                    || (army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner))))
-            {
-                VisionSystem.NotifyContentChanged(army.Hex);
-                return;
-            }
-            if (controller != null) controller.CancelMovement();
-            if (_selectedArmy == controller)
-                SetSelectedArmy(null);
-            // Detach before publishing removal so subscribers cannot see a live controller
-            // for the deleted army. Cancellation never executes the arrival callback.
-            army.Controller = null;
-            army.PendingAirStrikePolicy = null;
-            ArmyRegistry.Unregister(army, actualHex);
-            if (controller != null)
-                Destroy(controller.gameObject);
+            ArmyController controller = army?.Controller;
+            ArmyActions.DeleteArmyIfEmptied(army, force);
+            if (controller != null && !ArmyRegistry.IsRegistered(army) && _selectedArmy == controller) SetSelectedArmy(null);
         }
 
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
-        {
-            if (map == null || !map.CanEnter(hex) || owner == null || definition == null)
-                return null;
-            FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
-                ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
-                : null;
-            if (ownerCatalog == null || ownerCatalog.basePrefab == null)
-                return null;
+            => InfrastructureActions.SpawnBaseDefinition(definition, hex, owner, map, this, runVisionChecks: true);
 
-            var building = new BuildingData
-            {
-                Name = definition.displayName, Hex = hex, Owner = owner,
-                Visual = CreateBuildingMarker(hex, owner, ownerCatalog.basePrefab, ownerCatalog.citadelIcon),
-                Art = definition.art,
-                DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
-                Level = 1,
-                StructurePointsMax = definition.hitPoints,
-                StructurePointsCurrent = definition.hitPoints,
-                Defense = definition.defenseRating,
-                Fate = definition.fate,
-                AirfieldCapacity = Mathf.Max(0, definition.airfieldCapacity),
-            };
-            building.IsBase = true;
-            foreach (string ability in definition.grantedAbilities)
-                building.Abilities.Add(ability);
-            BuildingRegistry.Register(hex, building);
-            BuildingRegistry.EnsureGarrisonForBuilding(building, this);
-            if (building.AirfieldCapacity > 0)
-                AviationActions.EnsureAirfield(this, owner, hex);
-            RestackArmiesOn(hex, null);
-            StealthSystem.RunChecksForNewVisionSource(building);
-            return building;
+        // Presentation adapters never own placement, payment, slots or builder consequences.
+        internal void BindBaseVisual(BuildingData building)
+        {
+            FactionCardCatalog catalog = cardHandUI?.StartingDeckCatalog?.GetCatalog(building.Owner.Faction);
+            if (catalog?.basePrefab != null)
+                building.Visual = CreateBuildingMarker(building.Hex, building.Owner, catalog.basePrefab, catalog.citadelIcon);
+        }
+        internal GameConfig ExtractionConfig => gameConfig;
+        internal void BindExtractionVisual(BuildingData building)
+        {
+            FactionCardCatalog catalog = cardHandUI?.StartingDeckCatalog?.GetCatalog(building.Owner.Faction);
+            if (gameConfig?.facilityMarkerPrefab != null)
+                building.Visual = CreateBuildingMarker(building.Hex, building.Owner, gameConfig.facilityMarkerPrefab, catalog?.facilityIcon);
         }
 
         private MapObjectVisual CreateBuildingMarker(HexCoord hex, PlayerSetupData owner, MapObjectVisual prefab, Sprite icon = null)
@@ -226,113 +150,10 @@ namespace Game.Map
 
         public bool TryBuildExtractionFacility(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
-            if (map == null || !map.CanEnter(hex) || definition == null || owner == null || gameConfig == null || turnController == null)
-                return false;
-            if (!HasOwnHeroArmyAt(hex, owner))
-            {
-                NotifyBuildBlocked(owner, $"Move your army with a hero here to build {definition.displayName}.");
-                return false;
-            }
-
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            bool isNewSite = building == null;
-            if (isNewSite)
-            {
-                building = new BuildingData(totalFacilitySlots: 4)
-                {
-                    Name = "Resource Site", Hex = hex, Owner = owner,
-                    StructurePointsMax = gameConfig.resourceSiteStructurePoints,
-                    StructurePointsCurrent = gameConfig.resourceSiteStructurePoints,
-                    Defense = gameConfig.resourceSiteDefense,
-                    Fate = gameConfig.resourceSiteFate,
-                    HasTieredUnlock = false,
-                };
-            }
-            else if (building.Owner != owner)
-            {
-                return false;
-            }
-
-            string ability = definition.grantedAbilities?.Find(
-                a => System.Array.IndexOf(UnitAbilities.CollectAbilities, a) >= 0);
-            int resourceIndex = System.Array.IndexOf(UnitAbilities.CollectAbilities, ability);
-            if (resourceIndex < 0)
-                return false;
-            if (building.HasFacilityWithAbility(ability))
-            {
-                NotifyBuildBlocked(owner, $"{building.Name} already has a {definition.displayName}.");
-                return false;
-            }
-
-            ResourceType resourceType = (ResourceType)resourceIndex;
-            if (map == null || !map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain))
-                return false;
-            int effectiveYield = HexResourceBonusRegistry.EffectiveYield(terrain, hex).Get(resourceType);
-            int ownerArmyCollectors = ArmyRegistry.AllAt(hex)
-                .Where(army => army != null && army.Owner == owner && army.Members != null)
-                .Sum(army => army.Members.Count(member => member != null
-                    && member.HasAbility(ability)));
-            bool armiesCanCollect = BattleInitiator.FindEnemyAt(hex, owner) == null;
-            int marginalGain = IncomeProjection.MarginalOwnerCollectionAtHex(
-                effectiveYield, building.CollectedAmount(resourceType), 1,
-                ownerArmyCollectors, armiesCanCollect);
-            if (marginalGain <= 0)
-            {
-                NotifyBuildBlocked(owner,
-                    $"{definition.displayName} adds no {resourceType} income here.");
-                return false;
-            }
-
-            int slotIndex = building.FindFirstAvailableFacilitySlot();
-            if (slotIndex < 0)
-            {
-                NotifyBuildBlocked(owner, $"No free facility slots in {building.Name}.");
-                return false;
-            }
-            PlayerRoot root = PlayerRootRegistry.FindFor(owner);
-            if (root == null)
-                return false;
-            if (!root.CanSpendActionPoints(definition.apCost))
-            {
-                NotifyBuildBlocked(owner, $"Not enough AP to build {definition.displayName}.");
-                return false;
-            }
-            if (!definition.resourceCost.CanAfford(root))
-            {
-                NotifyBuildBlocked(owner, $"Not enough resources to build {definition.displayName}.");
-                return false;
-            }
-
-            ArmyData actingHeroArmy = ArmyRegistry.AllAt(hex)
-                .Where(army => army != null && army.Owner == owner
-                    && army.Members.Exists(member => member != null && member.IsHero))
-                .OrderBy(army => army.CurrentMovement)
-                .ThenBy(army => army.Id)
-                .FirstOrDefault();
-            FacilityData facility = FacilityData.FromDefinition(definition);
-
-            root.SpendActionPoints(definition.apCost);
-            definition.resourceCost.PayFrom(root);
-            building.FacilitySlots[slotIndex] = facility;
-            if (isNewSite)
-            {
-                FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
-                    ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
-                    : null;
-                building.Visual = CreateBuildingMarker(hex, owner, gameConfig.facilityMarkerPrefab, ownerCatalog?.facilityIcon);
-                // The facility is already in the slot when Register publishes this site.
-                BuildingRegistry.Register(hex, building);
-                RestackArmiesOn(hex, null);
-            }
-            if (_selectedHex.HasValue && _selectedHex.Value.Equals(hex))
-                SelectHex(hex, preserveSelection: true);
-            StealthSystem.RunChecksForNewVisionSource(building, facility);
-            ApplyExtractionBuilderConsequences(actingHeroArmy);
-            // A newly registered site was already published with its facility in place.
-            // Adding to an existing building changes its slots/income without registration.
-            if (!isNewSite)
-                VisionSystem.NotifyContentChanged(hex);
-            return true;
+            var result = InfrastructureActions.TryBuildExtractionSite(this, definition, hex, owner);
+            if (!result.Ok) NotifyBuildBlocked(owner, result.FailReason);
+            else RefreshSelectedHexIf(hex);
+            return result.Ok;
         }
 
         internal static void ApplyExtractionBuilderConsequences(ArmyData actingHeroArmy)

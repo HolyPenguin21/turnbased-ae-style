@@ -467,46 +467,7 @@ namespace Game.Turns
         // chain — BuildingRegistry.Unregister (which raises BuildingDestroyed at all) has no
         // caller yet, since nothing can destroy a building's StructurePoints today.
         private static void ReleasePrisoners(PlayerSetupData defeatedOwner, HexCoord citadelHex)
-        {
-            ArmyData prison = ArmyRegistry.AllAt(citadelHex).Find(a => a.IsPrison && a.Owner == defeatedOwner);
-            if (prison == null || prison.Members.Count == 0)
-                return;
-
-            foreach (UnitData hero in new List<UnitData>(prison.Members))
-            {
-                PlayerSetupData originalOwner = hero.CapturedFrom;
-                if (originalOwner == null || !originalOwner.CitadelHexQ.HasValue || !originalOwner.CitadelHexR.HasValue)
-                {
-                    prison.Members.Remove(hero);
-                    continue;
-                }
-
-                var originalCitadelHex = new HexCoord(originalOwner.CitadelHexQ.Value, originalOwner.CitadelHexR.Value);
-                ArmyData garrison = ArmyRegistry.FindGarrisonAt(originalCitadelHex, originalOwner);
-                if (garrison == null)
-                {
-                    prison.Members.Remove(hero);
-                    continue;
-                }
-
-                // Same projected-roster capacity rule every other join path enforces (see
-                // ArmyActions.TransferMember) — a garrison already at its (possibly
-                // hero-reduced) cap must not silently take a member over EffectiveCapacity.
-                // Left imprisoned rather than released into an invariant violation; it'll be
-                // reconsidered the next time ReleasePrisoners runs (e.g. after the garrison
-                // frees up room some other way).
-                if (!ArmyData.RosterFits(ArmyData.ProjectAdd(garrison.Members, hero, garrison.IsGarrison),
-                        garrison.IsGarrison))
-                    continue;
-
-                prison.Members.Remove(hero);
-                hero.Owner = originalOwner;
-                hero.IsPrisoner = false;
-                hero.CapturedFrom = null;
-                garrison.AddMemberSorted(hero);
-                garrison.RefreshTransport();
-            }
-        }
+            => ArmyActions.ReleasePrisoners(defeatedOwner, citadelHex);
 
         // Set true by CardHandUI for the duration of the human's equipment-attach mode (see
         // BeginAttachMode). That mode is deliberately non-blocking — the player keeps navigating
@@ -1265,7 +1226,7 @@ namespace Game.Turns
 
             if (CurrentPlayer != null)
             {
-                hexSelectionController?.DisbandEmptyArmiesOf(CurrentPlayer);
+                ArmyActions.DisbandEmptyArmiesOf(CurrentPlayer);
                 RegenerateForOwner(CurrentPlayer);
                 _completedTurns[CurrentPlayer] = CompletedTurnsFor(CurrentPlayer) + 1;
                 Game.Map.StealthSystem.PurgeExpiredFor(CurrentPlayer);

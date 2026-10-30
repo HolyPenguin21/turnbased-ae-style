@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
+using Game.Core;
 using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
 using Game.Units;
+using Game.Terrain;
 using UnityEngine;
 
 namespace Game.Map
@@ -105,10 +107,17 @@ namespace Game.Map
         public static InfrastructureBuildOutcome TryFoundBase(HexSelectionController hexSelection,
             CardDefinition definition, HexCoord hex, PlayerSetupData owner, int apCost, ResourceCost resourceCost,
             Func<BuildingData, bool> completeBeforeCommit = null)
+            => TryFoundBaseOnMap(hexSelection?.Map, definition, hex, owner, apCost, resourceCost,
+                hexSelection, completeBeforeCommit);
+
+        public static InfrastructureBuildOutcome TryFoundBaseOnMap(HexMap map,
+            CardDefinition definition, HexCoord hex, PlayerSetupData owner, int apCost, ResourceCost resourceCost,
+            HexSelectionController hexSelection = null, Func<BuildingData, bool> completeBeforeCommit = null)
         {
-            if (hexSelection == null || hexSelection.Map == null || !hexSelection.Map.CanEnter(hex))
+            using var mutation = VisionSystem.BeginMutation();
+            if (map == null || !map.CanEnter(hex))
                 return InfrastructureBuildOutcome.Fail("Buildings cannot be placed on this terrain.");
-            if (!CanFoundBase(definition, hex, owner, apCost, resourceCost, out string reason, hexSelection.Map))
+            if (!CanFoundBase(definition, hex, owner, apCost, resourceCost, out string reason, map))
                 return InfrastructureBuildOutcome.Fail(reason);
 
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
@@ -120,20 +129,27 @@ namespace Game.Map
             bool ownerAirfieldExistedBefore = AviationRules.AirfieldsAt(hex, owner).Any(a => !a.IsCarrierContainer);
 
             int[] resourcesBefore = completeBeforeCommit == null ? null : SnapshotResources(root);
-            var rostersBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllAt(hex)
-                .Where(a => a != null && a.Owner == owner)
+            var rostersBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllForOwner(owner)
+                .Where(a => a != null)
                 .ToDictionary(a => a, a => a.Members.ToArray());
+            var placementBefore = rostersBefore?.Keys.ToDictionary(a => a,
+                a => (a.Hex, a.IsAirArmy, a.AirWingLanded, a.Controller, a.PendingAirStrikePolicy));
+            var armiesBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllArmies().ToHashSet();
             UnitData[] unitsBefore = rostersBefore?.Values.SelectMany(u => u).Distinct().ToArray();
+            var sortiesBefore = unitsBefore?.Where(u => u.IsAviation).ToDictionary(u => u,
+                u => (u.SortieLaunchPaid, u.ConsecutiveUnlandedEnds, u.HasEmergencyFlightPenalty));
+            var transportBefore = unitsBefore?.ToDictionary(u => u, u => (Carrier: u.AssignedTransportCarrier, Army: u.TransportArmy));
             var coverageBefore = rostersBefore?.Keys.ToDictionary(a => a,
                 a => unitsBefore.Where(a.HasActivationCoverageFor).ToHashSet());
+            Action restoreDetection = completeBeforeCommit == null ? null : StealthSystem.CaptureDetectionRollback();
             int apBefore = root.ActionPoints;
-            root.SpendActionPoints(apCost);
-            resourceCost?.PayFrom(root);
+            if (!new PaymentQuote(apCost, resourceCost).TryDebit(root, out var payment, out _))
+                return InfrastructureBuildOutcome.Fail("The building cost is no longer affordable.");
             BuildingData building = null;
             bool threw = false;
             try
             {
-                building = hexSelection.SpawnBuilding(definition, hex, owner);
+                building = SpawnBaseDefinition(definition, hex, owner, map, hexSelection, false);
             }
             catch (Exception e)
             {
@@ -143,11 +159,11 @@ namespace Game.Map
 
             if (building == null)
             {
-                if (threw)
+                if (threw || !ReferenceEquals(BuildingRegistry.FindAt(hex), existing))
                     RollbackPartialSpawn(hexSelection, hex, owner, existing,
                         ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
-                root.ActionPoints = apBefore;
-                Refund(root, resourceCost);
+                payment.TryCompensate();
+                mutation.Discard();
                 return InfrastructureBuildOutcome.Fail("Could not build the base. Costs refunded.");
             }
 
@@ -163,8 +179,7 @@ namespace Game.Map
                     building.FacilitySlots[slot] = facility;
                     slot++;
                 }
-                // SpawnBuilding already notified on registration, before inherited slots
-                // were copied. Publish the final merged building only if slots moved.
+                // Registration is batched; publish the completed inherited slots together.
                 if (slot > 0)
                     VisionSystem.NotifyContentChanged(hex);
             }
@@ -181,9 +196,9 @@ namespace Game.Map
             }
             if (!completionAccepted)
             {
-                // Transfers may have published a member before a vision/UI callback threw.
-                // Restore every original recipient/source; discard only this transaction's additions.
-                foreach (ArmyData army in ArmyRegistry.AllAt(hex).Where(a => a != null && a.Owner == owner).ToArray())
+                // Success is still unpublished. Restore every canonical source/recipient,
+                // including same-owner transfers arriving from another indexed hex.
+                foreach (ArmyData army in rostersBefore.Keys.Concat(ArmyRegistry.AllForOwner(owner)).Distinct().ToArray())
                 {
                     foreach (UnitData unit in unitsBefore)
                         army.MarkUnitActivationPaid(unit,
@@ -193,15 +208,59 @@ namespace Game.Map
                         army.Members.AddRange(members);
                     army.RefreshTransport();
                 }
+                using (Game.Setup.MatchRestoreScope.Begin())
+                    foreach (ArmyData added in ArmyRegistry.AllArmies().Where(a => !armiesBefore.Contains(a)).ToArray())
+                    {
+                        added.ClearTransport();
+                        if (added.CarrierUnit != null)
+                        {
+                            if (added.CarrierUnit.CarrierAirfield == added) added.CarrierUnit.CarrierAirfield = null;
+                            if (added.CarrierUnit.CarrierFlightDeck == added) added.CarrierUnit.CarrierFlightDeck = null;
+                            added.CarrierUnit = null;
+                        }
+                        ArmyRegistry.Unregister(added);
+                        if (added.Controller != null) UnityEngine.Object.Destroy(added.Controller.gameObject);
+                        added.Controller = null;
+                    }
+                // Transfer reconciliation can relocate an existing carrier's containers, and a
+                // landing closes a sortie. Restoring lists alone would leave both inconsistent.
+                using (Game.Setup.MatchRestoreScope.Begin())
+                    foreach (var entry in placementBefore)
+                    {
+                        if (ArmyRegistry.IsRegistered(entry.Key))
+                            ArmyRegistry.MoveArmy(entry.Key, entry.Value.Hex);
+                        else
+                        {
+                            // Full carrier-sortie landing retires its empty shell. Restoring
+                            // only Members would strand the aircraft outside the world index.
+                            entry.Key.SetHex(entry.Value.Hex);
+                            ArmyRegistry.Register(entry.Key);
+                        }
+                        entry.Key.Controller = entry.Value.Controller;
+                        entry.Key.PendingAirStrikePolicy = entry.Value.PendingAirStrikePolicy;
+                        entry.Key.IsAirArmy = entry.Value.IsAirArmy;
+                        entry.Key.AirWingLanded = entry.Value.AirWingLanded;
+                    }
+                foreach (var entry in sortiesBefore)
+                {
+                    entry.Key.SortieLaunchPaid = entry.Value.SortieLaunchPaid;
+                    entry.Key.ConsecutiveUnlandedEnds = entry.Value.ConsecutiveUnlandedEnds;
+                    entry.Key.HasEmergencyFlightPenalty = entry.Value.HasEmergencyFlightPenalty;
+                }
+                foreach (var entry in transportBefore) entry.Key.SetTransportCarrier(entry.Value.Carrier, entry.Value.Army);
+                foreach (ArmyData original in rostersBefore.Keys) original.RebindRestoredTransportRecipients();
                 root.ActionPoints = apBefore;
                 RestoreResources(root, resourcesBefore);
                 RollbackPartialSpawn(hexSelection, hex, owner, existing,
                     ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
+                restoreDetection?.Invoke();
+                mutation.Discard();
                 return InfrastructureBuildOutcome.Fail("Could not finish building the base. Costs refunded.");
             }
             if (oldVisual != null)
                 UnityEngine.Object.Destroy(oldVisual.gameObject);
-            BaseFounded?.Invoke(building);
+            StealthSystem.RunChecksForNewVisionSource(building);
+            VisionSystem.PublishAfterMutation(BaseFounded, building);
             return InfrastructureBuildOutcome.Success(building, -1, apBefore - root.ActionPoints);
         }
 
@@ -209,6 +268,7 @@ namespace Game.Map
             PlayerSetupData owner, BuildingData siteBefore, bool ownerGarrisonExistedBefore,
             bool ownerAirfieldExistedBefore)
         {
+            using var restore = Game.Setup.MatchRestoreScope.Begin();
             BuildingData now = BuildingRegistry.FindAt(hex);
             if (now != null && now != siteBefore)
             {
@@ -271,6 +331,8 @@ namespace Game.Map
             { reason = $"Need {next.apCost} AP to upgrade this base."; return false; }
             if (next.cost != null && !next.cost.CanAfford(root))
             { reason = "Not enough resources."; return false; }
+            if (!new PaymentQuote(next.apCost, next.cost).CanDebit(root, out _))
+            { reason = "Invalid or unaffordable upgrade cost."; return false; }
             tier = next;
             return true;
         }
@@ -279,13 +341,14 @@ namespace Game.Map
         public static BaseUpgradeOutcome TryUpgradeBase(BuildingData building, BaseUpgradeTier[] tiers,
             int? expectedLevel = null)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!CanUpgradeBase(building, tiers, expectedLevel, out BaseUpgradeTier tier, out string reason))
                 return BaseUpgradeOutcome.Fail(reason);
             PlayerRoot root = PlayerRootRegistry.FindFor(building.Owner);
             int levelBefore = building.Level;
             int apBefore = root.ActionPoints;
-            root.SpendActionPoints(tier.apCost);
-            tier.cost?.PayFrom(root);
+            if (!new PaymentQuote(tier.apCost, tier.cost).TryDebit(root, out _, out _))
+                return BaseUpgradeOutcome.Fail("Invalid or unaffordable upgrade cost.");
             building.Level++;
             building.Defense += tier.defenseGain;
             // Level changes UnlockedFacilitySlots while the hex and its owner's vision stay the same:
@@ -317,6 +380,7 @@ namespace Game.Map
         public static InfrastructureBuildOutcome TryPlaceFacility(CardDefinition definition, HexCoord baseHex,
             PlayerSetupData owner, int apCost, ResourceCost resourceCost)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (!CanPlaceFacility(definition, baseHex, owner, apCost, resourceCost, out string reason))
                 return InfrastructureBuildOutcome.Fail(reason);
 
@@ -335,8 +399,8 @@ namespace Game.Map
             }
 
             int apBefore = root.ActionPoints;
-            root.SpendActionPoints(apCost);
-            resourceCost?.PayFrom(root);
+            if (!new PaymentQuote(apCost, resourceCost).TryDebit(root, out _, out _))
+                return InfrastructureBuildOutcome.Fail("Invalid or unaffordable facility cost.");
             building.FacilitySlots[slotIndex] = facility;
             // The building stays registered at the same visible hex; neither Register
             // nor RecomputeFor fires. Notify once after the slot and its income change.
@@ -344,112 +408,97 @@ namespace Game.Map
             return InfrastructureBuildOutcome.Success(building, slotIndex, apBefore - root.ActionPoints);
         }
 
+        // Scripted spawn by definition is separate from playing an exact hand instance.
+        internal static BuildingData SpawnBaseDefinition(CardDefinition definition, HexCoord hex,
+            PlayerSetupData owner, HexMap map, HexSelectionController presentation, bool runVisionChecks)
+        {
+            if (map == null || !map.CanEnter(hex) || owner == null || definition == null) return null;
+            using var mutation = VisionSystem.BeginMutation();
+            var building = BuildingData.FromDefinition(definition, hex, owner);
+            presentation?.BindBaseVisual(building);
+            BuildingRegistry.Register(hex, building);
+            BuildingRegistry.EnsureGarrisonForBuilding(building, presentation);
+            if (building.AirfieldCapacity > 0) AviationActions.EnsureAirfield(presentation, owner, hex);
+            presentation?.RestackArmiesOn(hex, null);
+            if (runVisionChecks) StealthSystem.RunChecksForNewVisionSource(building);
+            return building;
+        }
+
         public static InfrastructureBuildOutcome TryBuildExtractionSite(HexSelectionController hexSelection,
             CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
+            => TryBuildExtractionSiteOnMap(hexSelection?.Map, hexSelection?.ExtractionConfig,
+                facilityDefinition, hex, owner, hexSelection);
+
+        public static bool CanBuildExtractionSite(HexMap map, GameConfig config, CardDefinition definition,
+            HexCoord hex, PlayerSetupData owner, out PaymentQuote quote, out string reason,
+            bool requireCurrentBudget = true)
+            => PrepareExtraction(map, config, definition, hex, owner, out _, out _, out _, out quote, out reason, requireCurrentBudget);
+
+        private static bool PrepareExtraction(HexMap map, GameConfig config, CardDefinition definition,
+            HexCoord hex, PlayerSetupData owner, out BuildingData building, out int slot,
+            out ArmyData actor, out PaymentQuote quote, out string reason, bool requireCurrentBudget = true)
         {
-            if (hexSelection == null || facilityDefinition == null || owner == null)
-                return InfrastructureBuildOutcome.Fail("Cannot build this resource facility here.");
-            if (!HexSelectionController.HasOwnHeroArmyAt(hex, owner))
-                return InfrastructureBuildOutcome.Fail("Move one of your armies with a hero onto this resource hex.");
-            PlayerRoot root = PlayerRootRegistry.FindFor(owner);
-            if (root == null)
-                return InfrastructureBuildOutcome.Fail("Your resources are unavailable. Try again.");
-
-            int apBefore = root.ActionPoints;
-            int[] resBefore = SnapshotResources(root);
-            BuildingData siteBefore = BuildingRegistry.FindAt(hex);
-            bool wasNewSite = siteBefore == null;
-            FacilityData[] slotsBefore = siteBefore != null
-                ? (FacilityData[])siteBefore.FacilitySlots.Clone()
-                : null;
-            List<(UnitData Member, int Move)> moveBefore = SnapshotHeroArmyMovement(hex, owner);
-
-            bool ok;
-            bool threw = false;
-            try
+            building = null; slot = -1; actor = null;
+            quote = new PaymentQuote(definition?.apCost ?? 0, definition?.resourceCost);
+            reason = "Cannot build this resource facility here.";
+            if (map == null || config == null || definition == null || definition.cardType != CardType.Facility
+                || owner == null || !map.CanEnter(hex) || !HexSelectionController.HasOwnHeroArmyAt(hex, owner)) return false;
+            building = BuildingRegistry.FindAt(hex);
+            if (building != null && building.Owner != owner) return false;
+            building = building ?? new BuildingData(totalFacilitySlots: 4)
             {
-                ok = hexSelection.TryBuildExtractionFacility(facilityDefinition, hex, owner);
-            }
-            catch (Exception e)
-            {
-                ok = false;
-                threw = true;
-                Debug.LogError($"[Infra] TryBuildExtractionFacility threw: {e.Message}");
-            }
-
-            int apSpent = apBefore - root.ActionPoints;
-            if (!ok)
-            {
-                if (threw || apSpent != 0 || ResourcesMoved(resBefore, root))
-                {
-                    root.ActionPoints = apBefore;
-                    RestoreResources(root, resBefore);
-                    RestoreHeroArmyMovement(moveBefore);
-                    if (wasNewSite)
-                        RollbackPartialExtractionSite(hexSelection, hex, siteBefore);
-                    else
-                        RestoreFacilitySlots(siteBefore, slotsBefore);
-                }
-                return InfrastructureBuildOutcome.Fail(threw
-                    ? "Could not build this resource facility. Costs refunded."
-                    : "Cannot build this resource facility on this hex.");
-            }
-            // HexSelectionController.TryBuildExtractionFacility is also called directly by
-            // human UI. That primitive owns its content notification; do not double it here.
-            return InfrastructureBuildOutcome.Success(BuildingRegistry.FindAt(hex), -1, apSpent);
+                Name = "Resource Site", Hex = hex, Owner = owner,
+                StructurePointsMax = config.resourceSiteStructurePoints, StructurePointsCurrent = config.resourceSiteStructurePoints,
+                Defense = config.resourceSiteDefense, Fate = config.resourceSiteFate, HasTieredUnlock = false,
+            };
+            string ability = definition.grantedAbilities?.Find(a => Array.IndexOf(UnitAbilities.CollectAbilities, a) >= 0);
+            int resourceIndex = Array.IndexOf(UnitAbilities.CollectAbilities, ability);
+            if (resourceIndex < 0) return false;
+            if (building.HasFacilityWithAbility(ability))
+            { reason = $"{building.Name} already has a {definition.displayName}."; return false; }
+            if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain)) return false;
+            var resource = (ResourceType)resourceIndex;
+            int collectors = ArmyRegistry.At(hex).Where(a => a.Owner == owner)
+                .Sum(a => a.Members.Count(m => m != null && m.HasAbility(ability)));
+            int marginal = IncomeProjection.MarginalOwnerCollectionAtHex(
+                HexResourceBonusRegistry.EffectiveYield(terrain, hex).Get(resource),
+                building.CollectedAmount(resource), 1, collectors, BattleInitiator.FindEnemyAt(hex, owner) == null);
+            if (marginal <= 0)
+            { reason = $"{definition.displayName} adds no {resource} income here."; return false; }
+            slot = building.FindFirstAvailableFacilitySlot();
+            if (slot < 0) { reason = $"No free facility slots in {building.Name}."; return false; }
+            if (requireCurrentBudget && !quote.CanDebit(PlayerRootRegistry.FindFor(owner), out PaymentFailure failure))
+            { reason = failure == PaymentFailure.ActionPoints ? $"Not enough AP to build {definition.displayName}." : $"Not enough resources to build {definition.displayName}."; return false; }
+            actor = ArmyRegistry.At(hex).Where(a => a.Owner == owner && a.Members.Any(m => m != null && m.IsHero))
+                .OrderBy(a => a.CurrentMovement).ThenBy(a => a.Id).FirstOrDefault();
+            reason = null; return true;
         }
 
-        private static void RollbackPartialExtractionSite(HexSelectionController hexSelection,
-            HexCoord hex, BuildingData siteBefore)
+        public static InfrastructureBuildOutcome TryBuildExtractionSiteOnMap(HexMap map, GameConfig config,
+            CardDefinition definition, HexCoord hex, PlayerSetupData owner, HexSelectionController presentation = null)
         {
-            BuildingData now = BuildingRegistry.FindAt(hex);
-            if (now != null && now != siteBefore)
+            using var mutation = VisionSystem.BeginMutation();
+            if (!PrepareExtraction(map, config, definition, hex, owner, out var building, out int slot,
+                    out var actor, out var quote, out string reason)) return InfrastructureBuildOutcome.Fail(reason);
+            FacilityData facility;
+            try { facility = FacilityData.FromDefinition(definition); }
+            catch (Exception e) { return InfrastructureBuildOutcome.Fail("Could not build this facility: " + e.Message); }
+            bool newSite = BuildingRegistry.FindAt(hex) == null;
+            // Prepare optional visuals before debit; a presentation failure cannot charge a failed action.
+            if (newSite)
             {
-                if (now.Visual != null)
-                    UnityEngine.Object.Destroy(now.Visual.gameObject);
-                BuildingRegistry.Unregister(hex);
+                try { presentation?.BindExtractionVisual(building); }
+                catch (Exception e) { return InfrastructureBuildOutcome.Fail("Could not display this resource site: " + e.Message); }
             }
-            hexSelection?.RestackArmiesOn(hex, null);
-        }
-
-        private static void RestoreFacilitySlots(BuildingData building, FacilityData[] before)
-        {
-            if (building == null || before == null) return;
-            int n = Math.Min(building.FacilitySlots.Length, before.Length);
-            for (int i = 0; i < n; i++)
-                building.FacilitySlots[i] = before[i];
-        }
-
-        private static List<(UnitData Member, int Move)> SnapshotHeroArmyMovement(HexCoord hex, PlayerSetupData owner)
-        {
-            var snap = new List<(UnitData, int)>();
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-            {
-                if (army == null || army.Owner != owner || !army.Members.Exists(m => m.IsHero))
-                    continue;
-                foreach (UnitData member in army.Members)
-                    snap.Add((member, member.MovementSpent));
-            }
-            return snap;
-        }
-
-        private static void RestoreHeroArmyMovement(List<(UnitData Member, int Move)> before)
-        {
-            if (before == null) return;
-            foreach ((UnitData member, int move) in before)
-                if (member != null)
-                    member.RestoreMovementSpent(move);
-        }
-
-        private static void Refund(PlayerRoot root, ResourceCost cost)
-        {
-            if (root == null || cost == null) return;
-            foreach (ResourceType t in Res)
-            {
-                int amount = cost.Get(t);
-                if (amount > 0)
-                    root.AddResource(t, amount);
-            }
+            if (!quote.TryDebit(PlayerRootRegistry.FindFor(owner), out _, out _))
+                return InfrastructureBuildOutcome.Fail("The resource facility cost is no longer affordable.");
+            building.FacilitySlots[slot] = facility;
+            if (newSite) BuildingRegistry.Register(hex, building);
+            HexSelectionController.ApplyExtractionBuilderConsequences(actor);
+            StealthSystem.RunChecksForNewVisionSource(building, facility);
+            VisionSystem.NotifyContentChanged(hex);
+            VisionSystem.PublishAfterMutation(() => presentation?.RestackArmiesOn(hex, null));
+            return InfrastructureBuildOutcome.Success(building, slot, quote.Ap);
         }
 
         private static int[] SnapshotResources(PlayerRoot root)
@@ -458,13 +507,6 @@ namespace Game.Map
             for (int i = 0; i < Res.Length; i++)
                 v[i] = root.GetResource(Res[i]);
             return v;
-        }
-
-        private static bool ResourcesMoved(int[] before, PlayerRoot root)
-        {
-            for (int i = 0; i < Res.Length; i++)
-                if (before[i] != root.GetResource(Res[i])) return true;
-            return false;
         }
 
         private static void RestoreResources(PlayerRoot root, int[] before)

@@ -81,7 +81,7 @@ namespace Game.Aviation
             {
                 airArmy.PendingAirStrikePolicy = null;
                 outcome.StopMovement = true;
-                hexSelection?.DeleteArmyIfEmptied(airArmy);
+                ArmyActions.DeleteArmyIfEmptied(airArmy);
                 yield break;
             }
 
@@ -160,7 +160,7 @@ namespace Game.Aviation
                 yield return RunAaReaction(reaction);
                 if (reaction.AirArmy.Members.Count == 0
                     && (reaction.AirArmy.Controller == null || !reaction.AirArmy.Controller.IsMoving))
-                    hexSelection?.DeleteArmyIfEmptied(reaction.AirArmy);
+                    ArmyActions.DeleteArmyIfEmptied(reaction.AirArmy);
             }
         }
 
@@ -216,6 +216,7 @@ namespace Game.Aviation
             attackPopup.Begin(reaction.AaUnit, aaHero, target, null, null, null,
                 onResolved: roll =>
                 {
+                    using var mutation = VisionSystem.BeginMutation();
                     BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
                         reaction.AaUnit, target, roll,
                         attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
@@ -223,8 +224,9 @@ namespace Game.Aviation
                     resolved = true;
                     if (application.DefenderDied)
                     {
-                        airArmy.Members.Remove(target);
-                        Game.Map.StealthSystem.OnUnitRemoved(target);
+                        ArmyActions.RemoveMember(airArmy, target);
+                        if (airArmy.Controller == null || !airArmy.Controller.IsMoving)
+                            ArmyActions.DeleteArmyIfEmptied(airArmy);
                     }
                 },
                 attackerPoolSize: reaction.AaUnit.Attack * 2,
@@ -235,7 +237,7 @@ namespace Game.Aviation
             yield return new WaitUntil(() => resolved);
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
             if (reaction.AaArmy != null)
-                hexSelection?.DeleteArmyIfEmptied(reaction.AaArmy);
+                ArmyActions.DeleteArmyIfEmptied(reaction.AaArmy);
 
             // An AA hit on a stationary wing changes HP/roster without an Unregister.
             // During flight CurrentHex has advanced, but ArmyRegistry still indexes the
@@ -298,6 +300,7 @@ namespace Game.Aviation
                 bool resolved = false;
                 void Apply(BattleChallengeRollResult roll)
                 {
+                    using var mutation = VisionSystem.BeginMutation();
                     BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
                         aircraft, target, roll,
                         attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
@@ -307,9 +310,8 @@ namespace Game.Aviation
                         result.DamageDealt += Mathf.Max(0, application.Damage);
                     if (application.DefenderDied)
                     {
-                        targetArmy.Members.Remove(target);
-                        targetArmy.RefreshTransport();
-                        Game.Map.StealthSystem.OnUnitRemoved(target);
+                        ArmyActions.RemoveMember(targetArmy, target);
+                        ArmyActions.DeleteArmyIfEmptied(targetArmy);
                     }
                 }
                 if (attackPopup != null)
@@ -338,9 +340,9 @@ namespace Game.Aviation
 
                 hexSelection?.RestackArmiesOn(targetArmy.Hex, null);
                 if (targetArmy.Members.Count == 0)
-                    hexSelection?.DeleteArmyIfEmptied(targetArmy);
+                    ArmyActions.DeleteArmyIfEmptied(targetArmy);
             }
-            hexSelection?.DeleteArmyIfEmptied(airArmy);
+            ArmyActions.DeleteArmyIfEmptied(airArmy);
         }
 
         internal static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> targetArmies, PlayerSetupData striker)

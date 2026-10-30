@@ -25,7 +25,40 @@ namespace Game.Core
         private static GameAssetCatalog _instance;
         private Dictionary<string, UnityEngine.Object[]> _lookup;
 
-        public List<Entry> Entries => entries;
+        // Copy the nested arrays as well: Entry is a value type, but its assets are mutable.
+        // Object references themselves keep their authored identity and resolution order.
+        public IReadOnlyList<Entry> Entries => Array.AsReadOnly(CopyEntries(entries).ToArray());
+
+        public void ReplaceEntries(IEnumerable<Entry> values)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            var replacement = new List<Entry>();
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in values)
+            {
+                if (string.IsNullOrWhiteSpace(entry.key))
+                    throw new ArgumentException("GameAssetCatalog entry key must not be empty or whitespace.", nameof(values));
+                if (!keys.Add(entry.key))
+                    throw new ArgumentException($"GameAssetCatalog duplicate entry key '{entry.key}'.", nameof(values));
+                replacement.Add(CopyEntry(entry));
+            }
+            // A failed validation or enumeration leaves both the authored data and lookup intact.
+            entries = replacement;
+            _lookup = null;
+        }
+
+        private static List<Entry> CopyEntries(IEnumerable<Entry> values)
+        {
+            var copy = new List<Entry>();
+            foreach (var entry in values) copy.Add(CopyEntry(entry));
+            return copy;
+        }
+
+        private static Entry CopyEntry(Entry entry) => new Entry
+        {
+            key = entry.key,
+            assets = entry.assets == null ? Array.Empty<UnityEngine.Object>() : (UnityEngine.Object[])entry.assets.Clone()
+        };
 
         private static GameAssetCatalog Instance
         {

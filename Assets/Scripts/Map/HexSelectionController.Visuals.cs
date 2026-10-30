@@ -56,13 +56,17 @@ namespace Game.Map
         private readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>> _rememberedArmyVisualsByHex =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>>();
 
+        private static List<ArmyData> ObservedEnemyArmiesAt(PlayerSetupData viewer, HexCoord hex) =>
+            // Memory follows map visibility, including flying wings. Ground-contact rules
+            // exclude aviation and cannot decide which observed rosters remain remembered.
+            NonEmptyArmiesAt(hex).FindAll(army => army.Owner != viewer && army.Owner != null && !army.Owner.IsNeutral
+                && !StealthSystem.ArmyFullyHiddenFrom(army, viewer));
+
         private void RememberCurrentlyVisibleContent(PlayerSetupData viewer)
         {
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(viewer))
             {
-                List<ArmyData> enemies = ArmyRegistry.AllAt(hex)
-                    .FindAll(army => army.Owner != viewer && army.Owner != null && !army.Owner.IsNeutral
-                        && BattleInitiator.IsEngageable(army, viewer));
+                List<ArmyData> enemies = ObservedEnemyArmiesAt(viewer, hex);
                 HumanVisualMemory.ReconcileVisibleHex(viewer, hex, enemies.ConvertAll(army => army.Id));
                 foreach (ArmyData army in enemies)
                 {

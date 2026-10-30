@@ -40,7 +40,7 @@ namespace Game.Map
                 if (_actionPoints == value)
                     return;
                 _actionPoints = value;
-                ResourcesChanged?.Invoke();
+                VisionSystem.PublishAfterMutation(ResourcesChanged);
             }
         }
 
@@ -67,7 +67,7 @@ namespace Game.Map
         public void SetLastApFromApBonus(int amount) => LastApFromApBonus = amount;
         public void SetLastApBonusSources(string breakdown) => LastApBonusSources = breakdown ?? string.Empty;
 
-        public bool CanSpendActionPoints(int amount) => ActionPoints >= amount;
+        public bool CanSpendActionPoints(int amount) => amount >= 0 && ActionPoints >= amount;
 
         public void SpendActionPoints(int amount)
         {
@@ -188,7 +188,7 @@ namespace Game.Map
             if (amount == 0)
                 return;
             _resources[type] += amount;
-            ResourcesChanged?.Invoke();
+            VisionSystem.PublishAfterMutation(ResourcesChanged);
         }
     }
 }

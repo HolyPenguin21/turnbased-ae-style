@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
@@ -40,7 +41,7 @@ namespace Game.Map
         internal static void RaiseStructureLost(HexCoord hex, PlayerSetupData formerOwner)
         {
             if (formerOwner != null)
-                StructureLost?.Invoke(hex, formerOwner);
+                VisionSystem.PublishAfterMutation(StructureLost, hex, formerOwner);
         }
 
         public static void Clear()
@@ -52,7 +53,7 @@ namespace Game.Map
         {
             ByHex[hex] = building;
             if (Game.Setup.MatchRestoreScope.IsRestoring) return;
-            AiMatchStats.RecordBuilt(building);
+            VisionSystem.PublishAfterMutation(() => AiMatchStats.RecordBuilt(building));
             VisionSystem.RecomputeFor(building?.Owner);
             VisionSystem.NotifyContentChanged(hex);
         }
@@ -71,10 +72,13 @@ namespace Game.Map
         {
             if (!ByHex.TryGetValue(hex, out BuildingData building))
                 return;
+            using var mutation = VisionSystem.BeginMutation();
             ByHex.Remove(hex);
             if (Game.Setup.MatchRestoreScope.IsRestoring) return;
-            VisualStateChanged?.Invoke(hex, null);
-            BuildingDestroyed?.Invoke(building);
+            AviationActions.ReturnStaleAviationAt(hex, null);
+            foreach (ArmyData army in ArmyRegistry.At(hex)) ArmyActions.DeleteArmyIfEmptied(army);
+            PublishVisualTransition(hex, null);
+            VisionSystem.PublishAfterMutation(BuildingDestroyed, building);
             VisionSystem.RecomputeFor(building.Owner);
             VisionSystem.NotifyContentChanged(hex);
         }
@@ -97,8 +101,9 @@ namespace Game.Map
         // line per event.
         public static void CaptureOrDestroy(BuildingData building, PlayerSetupData newOwner, HexSelectionController hexSelection)
         {
-            if (building == null)
-                return;
+            if (building == null || !ReferenceEquals(FindAt(building.Hex), building)
+                || building.IsBase && building.Owner == newOwner) return;
+            using var mutation = VisionSystem.BeginMutation();
             PlayerSetupData ownerBefore = building.Owner;
             if (building.IsBase)
             {
@@ -119,7 +124,9 @@ namespace Game.Map
                 // garrison ownership.
                 if (newOwner != null)
                     EnsureGarrisonForBuilding(building, hexSelection);
-                VisualStateChanged?.Invoke(building.Hex, building);
+                AviationActions.ReturnStaleAviationAt(building.Hex, building);
+                foreach (ArmyData army in ArmyRegistry.At(building.Hex)) ArmyActions.DeleteArmyIfEmptied(army);
+                PublishVisualTransition(building.Hex, building);
                 // Both sides of the handover lose/gain vision from this specific building —
                 // Unregister/Register (the Destroy branch below) already cover that on their
                 // own, but a capture never calls either, so both recomputes are done explicitly
@@ -155,8 +162,8 @@ namespace Game.Map
             // OWN base or facility) is
             // the very last thing PerformRetreat does — nothing downstream ever restacks this hex
             // again afterward. EnsureGarrisonForBuilding above may just have spawned a brand-new
-            // empty garrison for the new owner, and VisualStateChanged's own ReturnStaleAviationAt
-            // subscriber may just have returned the previous owner's own stale airfield/air-army
+            // empty garrison for the new owner, and the shared ReturnStaleAviationAt
+            // operation may just have returned the previous owner's own stale airfield/air-army
             // cards to hand (per the project owner's own spec, both containers now empty out on
             // capture the same way) — with no restack, every marker still resting on this hex kept
             // whatever offset it had BEFORE this roster change, which read as markers hovering in
@@ -166,7 +173,16 @@ namespace Game.Map
             hexSelection?.RestackArmiesOn(building.Hex, null);
             if (building.IsBase && newOwner != null && ownerBefore != newOwner && building.Owner == newOwner
                 && ReferenceEquals(FindAt(building.Hex), building))
-                BaseCaptured?.Invoke(building, ownerBefore);
+                VisionSystem.PublishAfterMutation(BaseCaptured, building, ownerBefore);
+        }
+
+        private static void PublishVisualTransition(HexCoord hex, BuildingData building)
+        {
+            VisionSystem.PublishAfterMutation(() =>
+            {
+                foreach (PlayerSetupData viewer in VisionSystem.ViewersOf(hex)) HumanVisualMemory.ObserveBuilding(viewer, hex, building != null);
+                VisionSystem.PublishAfterMutation(VisualStateChanged, hex, building);
+            }, beforeVision: true);
         }
 
         // A defeated owner's non-base buildings (resource facilities) are razed; its Bases and
@@ -263,7 +279,7 @@ namespace Game.Map
             }
 
             PlayerSetupData previousGarrisonOwner = garrison.Owner;
-            garrison.Owner = building.Owner;
+            ArmyActions.ChangeOwner(garrison, building.Owner);
             if (garrison.Controller != null && garrison.Controller.Visual != null)
                 garrison.Controller.Visual.SetColor(PlayerColorPalette.Colors[building.Owner.ColorIndex]);
             AiDebugLog.Write($"[BUILDING] Base \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) garrison transferred: "

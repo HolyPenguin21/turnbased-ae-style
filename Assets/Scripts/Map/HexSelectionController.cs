@@ -159,14 +159,16 @@ namespace Game.Map
             StealthSystem.StealthChanged += OnStealthChanged;
             StealthSystem.ResidentRevealed += OnResidentRevealed;
             BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
-            AviationActions.AircraftReturnedToHand += GrantCard;
+
             AviationActions.ReturnedWingDeletionRequested += DeleteReturnedWing;
+            ArmyRegistry.ArmyRemoved += OnArmyRemoved;
+            if (!ReferenceEquals(_selectedArmy, null) && !ArmyRegistry.IsRegistered(_selectedArmy.Data)) SetSelectedArmy(null);
             RefreshAllVisibility();
         }
 
         private void OnDisable()
         {
-            _rpAttempt?.Dispose(); _rpAttempt = null; _rpTransactionActive = false;
+            CancelResearchProduction();
             if (turnController != null)
             {
                 turnController.TurnChanging -= Deselect;
@@ -188,8 +190,9 @@ namespace Game.Map
             StealthSystem.ResidentRevealed -= OnResidentRevealed;
             _revealedArmyContacts.Clear();
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
-            AviationActions.AircraftReturnedToHand -= GrantCard;
+
             AviationActions.ReturnedWingDeletionRequested -= DeleteReturnedWing;
+            ArmyRegistry.ArmyRemoved -= OnArmyRemoved;
             SetRememberedBuildingVisualsVisible(false);
             SetRememberedArmyVisualsVisible(false);
         }
@@ -324,34 +327,13 @@ namespace Game.Map
 
         // Moved to HexSelectionController.Visuals.cs — see that file.
 
-        // VisualStateChanged fires for both a capture (building != null, already re-owned) and a
-        // destruction (building == null — see BuildingRegistry.Unregister) — either way, any
-        // aviation (an IsAirfield container OR a real IsAirArmy formation still parked right
-        // here) under a DIFFERENT owner than the building's new one (or any owner at all, once
-        // the building is simply gone) has lost the base that gave it a right to be here. Every
-        // one of its aircraft goes back to its own owner's hand rather than just disappearing —
-        // or, for an air army, than being left stranded hovering over what's now enemy ground
-        // (project owner's own report, 2026-08-26: two air armies stuck over a just-captured
-        // base — the old "an airborne IsAirArmy is untouched" rule left them exactly there).
-        private void ReturnStaleAviationAt(HexCoord hex, BuildingData building)
+        private void OnArmyRemoved(ArmyData army)
         {
-            var staleAviation = new List<ArmyData>();
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                if ((AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
-                    && !army.IsCarrierContainer
-                    && (army.IsAirfield ? !AviationRules.IsAirfieldBuilding(building, army.Owner)
-                        : !AviationRules.IsOwnedAirfieldAt(hex, army.Owner)))
-                    staleAviation.Add(army);
-            foreach (ArmyData army in staleAviation)
-            {
-                AviationActions.ReturnAircraftToDeck(army, this);
-                if (army.IsAirfield) AviationActions.DeleteReturnedWing(army, this);
-            }
+            if (!ReferenceEquals(_selectedArmy, null) && ReferenceEquals(_selectedArmy.Data, army)) SetSelectedArmy(null);
         }
 
         private void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
         {
-            ReturnStaleAviationAt(hex, building);
             if (GameSession.Players == null)
                 return;
             foreach (PlayerSetupData viewer in GameSession.Players)
@@ -802,7 +784,7 @@ namespace Game.Map
             if (observerInspection)
                 infoPanel?.SetResourceActions(null, null);
             else
-                RefreshResourceActionRow(coord, buildingHere, effectiveYields);
+                RefreshResourceActionRow(coord);
 
             // The panel shows exactly the actions offered above, and hides itself when there are none.
             // Resource yield alone is not an available construction action.
@@ -872,58 +854,27 @@ namespace Game.Map
             ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
         };
 
-        // The selected hex's contextual first-level actions: up to 4 "build an extraction
-        // Facility" buttons — one per resource type `coord` actually yields that ISN'T ALREADY
-        // FULLY COLLECTED (building's own baked-in ability + whatever Facilities are already
-        // placed, see BuildingData.CollectedAmount — e.g. a citadel alone already fully covers a
-        // 1-of-each hex, only a richer hex still needs a button), and that doesn't already have
-        // a Facility built for it (only one per resource type per building — see
-        // HasFacilityWithAbility; closing the remaining gap on a richer hex is done by upgrading
-        // that Facility, not building a second one) — while one of the current player's own Hero
-        // armies stands here. Independent of who owns whatever building already sits on the hex
-        // being shown elsewhere — TryBuildExtractionFacility itself rejects a foreign building
-        // silently, same as any other irrelevant target. Every entry shown is a genuinely
-        // available action; there is no paging — the row is sized for all 4 at once. Research/
-        // Production moved out of this row into their own fixed buttons on HexInfoPanelUI's nav
-        // row (see SelectHex) — this row is extraction-only now.
-        private void RefreshResourceActionRow(HexCoord coord, BuildingData buildingHere, ResourceYields effectiveYields)
+        // UI selects configured definitions and retains turn/contact interaction guards.
+        // Extraction legality and marginal income come from the same query as execution.
+        // Unaffordable legal actions remain visible so clicking can explain their cost.
+        private void RefreshResourceActionRow(HexCoord coord)
         {
             PlayerSetupData human = turnController?.CurrentPlayer;
             var actions = new List<HexActionDescriptor>();
-
-            // No building here — regardless of who it belongs to — can be worked while a
-            // combat-capable enemy army stands on the hex (see Game.Combat.BattleInitiator).
             if (human != null && human.IsHuman && gameConfig != null && gameConfig.extractionFacilityCards != null
-                && (buildingHere == null || buildingHere.Owner == human)
-                && BattleInitiator.FindEnemyAt(coord, human) == null
-                && map.CanEnter(coord) && HasOwnHeroArmyAt(coord, human))
+                && BattleInitiator.FindEnemyAt(coord, human) == null)
             {
                 foreach (ResourceType type in AllResourceTypes)
                 {
-                    int yield = effectiveYields.Get(type);
-                    if (yield <= 0)
-                        continue;
-                    string ability = UnitAbilities.CollectAbilityFor(type);
-                    if (buildingHere != null && buildingHere.HasFacilityWithAbility(ability))
-                        continue;
-                    int alreadyCollected = buildingHere != null ? buildingHere.CollectedAmount(type) : 0;
-                    if (alreadyCollected >= yield)
-                        continue;
                     int index = (int)type;
                     CardDefinition definition = index < gameConfig.extractionFacilityCards.Length ? gameConfig.extractionFacilityCards[index] : null;
-                    if (definition == null)
-                        continue;
+                    if (!InfrastructureActions.CanBuildExtractionSite(map, gameConfig, definition, coord, human,
+                            out _, out _, requireCurrentBudget: false)) continue;
                     CardDefinition captured = definition;
-                    // Route through the shared infrastructure transaction (same door the AI's
-                    // BuildingPlayExecutor uses) rather than the world primitive directly — the
-                    // primitive still runs and still shows its own rejection hints, but a throw
-                    // after the spend now rolls the whole transaction back (AP, resources,
-                    // facility slot, hero move points, a half-registered new site).
                     actions.Add(new HexActionDescriptor(definition.displayName,
-                        () => InfrastructureActions.TryBuildExtractionSite(this, captured, coord, human), captured));
+                        () => TryBuildExtractionFacility(captured, coord, human), captured));
                 }
             }
-
             infoPanel?.SetResourceActions(actions, gameConfig != null ? gameConfig.resourceActionButtonPrefab : null);
         }
 
@@ -1000,12 +951,23 @@ namespace Game.Map
         private ResearchProductionMode _rpMode;
         private UnitData _rpHero;
 
+        private void CancelResearchProduction()
+        {
+            var attempt = _rpAttempt;
+            bool active = _rpTransactionActive || attempt != null;
+            _rpAttempt = null; _rpTransactionActive = false;
+            attempt?.Dispose();
+            if (!active) return;
+            // Detach before popup teardown invokes its old completion. That callback cannot
+            // mint, unlock a replacement attempt, or leave this cancelled picker busy.
+            try { attackPopup?.Hide(); }
+            finally { researchProductionModal?.SetBusy(false); }
+        }
+
         private void OnResearchProductionVisibilityChanged()
         {
             if (researchProductionModal.IsShowing || !_rpTransactionActive) return;
-            // Existing popup teardown restores Fate and reports failure exactly once.
-            attackPopup?.Hide();
-            _rpAttempt?.Dispose(); _rpAttempt = null; _rpTransactionActive = false;
+            CancelResearchProduction();
         }
 
         private void OpenResearchProductionModal(HexCoord hex, ResearchProductionMode mode)
@@ -1079,6 +1041,8 @@ namespace Game.Map
                 return;
             }
 
+            // An account observer may have disabled this presenter during the completed debit.
+            if (_rpAttempt == null) return;
             // Lock the presentation only after the shared transaction commits.
             _rpTransactionActive = true;
             TutorialHintController.Learned(TutorialHintId.AttemptCost);
@@ -1086,8 +1050,10 @@ namespace Game.Map
 
             // Start the animated Challenge through its dedicated presentation entry point.
             Sprite logo = ResolveFactionLogo(human);
-            try { attackPopup.BeginResearchProduction(_rpHero, card, _rpMode, logo, card.art, OnResearchProductionResolved); }
-            catch { _rpAttempt?.Dispose(); _rpAttempt = null; _rpTransactionActive = false; researchProductionModal.SetBusy(false); throw; }
+            var startedAttempt = _rpAttempt;
+            try { attackPopup.BeginResearchProduction(_rpHero, card, _rpMode, logo, card.art,
+                success => OnResearchProductionResolved(startedAttempt, success)); }
+            catch { CancelResearchProduction(); throw; }
         }
 
         private Sprite ResolveFactionLogo(PlayerSetupData player) =>
@@ -1098,14 +1064,13 @@ namespace Game.Map
         // 9/10. Challenge finished (Fate was already restored inside the popup). On success mint
         // a produced CardData and hand it over; on failure do nothing (AP/resources stay spent).
         // Either way the modal reopens for interaction and stays open — the player closes it.
-        private void OnResearchProductionResolved(bool success)
+        private void OnResearchProductionResolved(ProductionAttempt attempt, bool success)
         {
-            var attempt = _rpAttempt;
+            if (!ReferenceEquals(_rpAttempt, attempt)) { attempt?.Dispose(); return; }
             _rpAttempt = null;
             _rpTransactionActive = false;
 
-            var produced = attempt?.Complete(success);
-            if (produced != null) cardHandUI?.AddProducedCardToHand(produced);
+            attempt?.CompleteToHand(success);
 
             researchProductionModal?.SetBusy(false);
         }
@@ -1234,7 +1199,7 @@ namespace Game.Map
         // player's own army — selecting an enemy's (or nobody's) just shows its info.
         private void SetSelectedArmy(ArmyController controller)
         {
-            if (_selectedArmy == controller)
+            if (ReferenceEquals(_selectedArmy, controller))
                 return;
 
             if (_selectedArmy != null)

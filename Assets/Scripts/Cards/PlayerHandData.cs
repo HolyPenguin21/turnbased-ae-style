@@ -48,7 +48,7 @@ namespace Game.Cards
         // the shared exception; ordinary draws, rewards and returning aircraft remain capped.
         public bool TryAddCard(CardData card, bool allowOverflow = false)
         {
-            if (card?.Definition == null || HandCards.Contains(card)
+            if (card?.Definition == null || HandCards.Exists(c => c.RuntimeId == card.RuntimeId)
                 || (!allowOverflow && !card.ResearchProductionCreated && !HasFreeSlot)) return false;
             OnAcquired(card);
             HandCards.Add(card);
@@ -90,7 +90,7 @@ namespace Game.Cards
         private void NotifyChanged()
         {
             MutationVersion++;
-            HandChanged?.Invoke();
+            Game.Map.VisionSystem.PublishAfterMutation(HandChanged);
         }
 
         public HandState CaptureState()

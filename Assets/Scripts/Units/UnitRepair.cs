@@ -139,15 +139,16 @@ namespace Game.Units
                 return false;
             }
 
-            root.SpendActionPoints(apCost);
-            cost.PayFrom(root);
+            using var mutation = VisionSystem.BeginMutation();
+            if (!new PaymentQuote(apCost, cost).TryDebit(root, out _, out _))
+            { failReason = "The repair cost is no longer affordable."; return false; }
             unit.HitPointsCurrent = unit.HitPointsMax;
             EquipmentSystem.ReconcileResourceRefill(unit, EquipmentStat.HitPoints);
             // Repair does not move the army or alter its vision footprint. Its visible HP does
             // change, however: publish the finished mutation at the unit's actual live hex so
             // an already-watching AI refreshes EnemySightings without a full vision recompute.
             VisionSystem.NotifyContentChanged(army.Hex);
-            Repaired?.Invoke(army, unit);
+            VisionSystem.PublishAfterMutation(Repaired, army, unit);
             return true;
         }
     }

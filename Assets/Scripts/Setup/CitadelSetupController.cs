@@ -237,6 +237,7 @@ namespace Game.Setup
 
         private void FinalizePlayer(PlayerSetupData player, HexCoord hex)
         {
+            using var mutation = VisionSystem.BeginMutation();
             if (map == null || !map.CanEnter(hex)) return;
             player.CitadelHexQ = hex.Q;
             player.CitadelHexR = hex.R;
@@ -309,40 +310,16 @@ namespace Game.Setup
 
             CardDefinition citadelCard = catalog != null ? catalog.ForType(CardType.Base).FirstOrDefault() : null;
 
-            // Same stats source as a "Concord Citadel" card played later (see
-            // HexSelectionController.SpawnBuilding) — both read the citadel card's own
-            // hitPoints/defenseRating/fate now, so the two can never drift
-            // apart the way the old GameConfig.startingStructurePoints-and-friends baseline
-            // once could. 1 is just a safe non-zero fallback for a misconfigured scene with no
-            // catalog assigned — same defensive spirit as citadelCard's own null checks below.
-            int structurePoints = citadelCard != null ? citadelCard.hitPoints : 1;
-            var building = new BuildingData
+            // Starting and played bases share one authored-field materializer. Setup adds
+            // only its presentation/name and match-ending identity, plus the legacy fallback.
+            var building = BuildingData.FromDefinition(citadelCard, hex, player) ?? new BuildingData
             {
-                Name = "Citadel", Hex = hex, Owner = player, Visual = marker,
-                Art = citadelCard != null ? citadelCard.art : null,
-                DetailArt = citadelCard != null ? (citadelCard.detailArt != null ? citadelCard.detailArt : citadelCard.art) : null,
-                Level = 1,
-                StructurePointsMax = structurePoints,
-                StructurePointsCurrent = structurePoints,
-                Defense = citadelCard != null ? citadelCard.defenseRating : 1,
-                Fate = citadelCard != null ? citadelCard.fate : 1,
-                // Starting citadel must read the same airfield configuration as a later Base
-                // card; otherwise the first aircraft has no valid deployment target.
-                AirfieldCapacity = citadelCard != null ? Mathf.Max(0, citadelCard.airfieldCapacity) : 0,
-                // The one and only difference from a "Concord Citadel" card played later (see
-                // HexSelectionController.SpawnBuilding) — same card, same abilities below, but
-                // only THIS building's destruction ends the game for this player (see
-                // BuildingRegistry.BuildingDestroyed).
-                IsStartingCitadel = true,
+                Hex = hex, Owner = player, IsBase = true,
+                StructurePointsMax = 1, StructurePointsCurrent = 1, Defense = 1, Fate = 1,
             };
-            building.IsBase = true;
-            // Abilities come from the card itself (Barracks, Citadel, the 4 CollectX — see the
-            // catalog) rather than being hardcoded here a second time — a card played later
-            // reads the exact same list (see SpawnBuilding), so the two can never drift apart
-            // again the way Supply/CollectX once did.
-            if (citadelCard != null)
-                foreach (string ability in citadelCard.grantedAbilities)
-                    building.Abilities.Add(ability);
+            building.Name = "Citadel";
+            building.Visual = marker;
+            building.IsStartingCitadel = true;
             BuildingRegistry.Register(hex, building);
 
             // The bonus belongs to the hex the player chose, permanently — not to the citadel's
