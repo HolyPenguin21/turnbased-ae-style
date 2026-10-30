@@ -1837,9 +1837,14 @@ namespace Game.EditorTests
                 Assert.That(forward.Launches, Is.EqualTo(2));
                 Assert.That(forward.FirstRoute.LandingHex, Is.EqualTo(forward.FirstHop));
                 BuildingRegistry.FindAt(new HexCoord(4, 0)).Owner = new PlayerSetupData();
-                Assert.That(AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner)
-                    .Any(s => s.Hex.Equals(new HexCoord(8, 0))), Is.False,
-                    "capturing the connecting base invalidates the chain");
+                var afterCapture = AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner)
+                    .Where(s => s.Hex.Equals(new HexCoord(8, 0))).ToList();
+                if (endurance == 0)
+                    Assert.That(afterCapture, Is.Empty, "capturing the connecting base invalidates the chain");
+                else
+                    // One turn of endurance spends the night airborne over the lost base instead
+                    // of landing there: a single direct launch, no connecting base needed.
+                    Assert.That(afterCapture.Single().Launches, Is.EqualTo(1));
                 BuildingRegistry.FindAt(new HexCoord(4, 0)).Owner = _owner;
                 carrier.AirfieldCapacity = 0;
                 Assert.That(AviationRebasePlanner.DeliveryStops(default, new[] { missile }, map, _owner)

@@ -52,6 +52,19 @@ namespace Game.EditorTests
             DevelopmentInvestmentGate.Clear(); StrategicTempoBudget.ClearAll();
         }
 
+        // Analysis publishes every known non-garrison enemy army as a threat contact
+        // (WorldAnalysis.BuildThreat); air support resolves its opposition from those.
+        private static ThreatModel ContactsOf(IEnumerable<AiMapMemory.KnownEnemySighting> sightings) => new ThreatModel
+        {
+            Contacts = (sightings ?? Array.Empty<AiMapMemory.KnownEnemySighting>()).Where(s => !s.IsGarrison)
+                .Select(s => new EnemyContactSnapshot { Knowledge = ContactKnowledge.LastKnown, Position = s.Hex,
+                    Confidence = 1f, LastObservedTurn = s.SeenTurn,
+                    Army = new ArmySnapshot { ArmyId = s.ArmyId, Owner = s.Owner, Hex = s.Hex,
+                        MemberCount = s.MemberCount, Commander = s.Commander,
+                        Members = s.Defenders?.ToList() ?? new List<WorthIt.DefenderProfile>() } }).ToList(),
+            Threats = new List<AssetThreatSnapshot>(),
+        };
+
         private WorthIt.DefenderProfile[] Infantry(int count) => Enumerable.Range(0, count)
             .Select(_ => WorthIt.FromLiveUnit(AttachmentSlotTests.Body(Read(
                 "Assets/Cards/IronConcord/CardCatalog_IronConcord.asset", "concord.card.light-infantry")))).ToArray();
@@ -65,7 +78,7 @@ namespace Game.EditorTests
             var bodies = contacts.FirstOrDefault().Roster.Units ?? Array.Empty<WorthIt.DefenderProfile>();
             float power = AiPower.EffectiveArmyPowerFromProfiles(bodies);
             var stock = new ResourceBundle { Human = 50, Energy = 50, Materials = 50, Tech = 50 };
-            return new WorldSnapshot { Observer = owner, TurnNumber = 10,
+            var snap = new WorldSnapshot { Observer = owner, TurnNumber = 10,
                 Self = new SelfSnapshot { Hand = Array.Empty<CardData>(), Deck = Array.Empty<CardDefinition>(),
                     ActionPoints = 20, Stockpile = stock, FieldPower = power, BestStackPotential = power, TotalPower = power,
                     Armies = new[] { new ArmySnapshot { ArmyId = 7, Owner = owner, MemberCount = bodies.Count,
@@ -80,6 +93,8 @@ namespace Game.EditorTests
                 Economy = new EconomyStanding { SpendableStockpile = stock },
                 Development = new DevelopmentReadiness(),
             };
+            snap.Threat = ContactsOf(snap.Known.EnemySightings);
+            return snap;
         }
 
         [Test]
@@ -151,8 +166,10 @@ namespace Game.EditorTests
                 float net = GroundCombatAirSupport.MissileStockValue(snap, Aircraft(), target);
                 Assert.That(net, Is.EqualTo(ExplosionAttack.ExpectedNetValue(Aircraft()[0], bodies)).Within(.001f));
                 Assert.That(net, Is.GreaterThanOrEqualTo(previous));
-                Assert.That(Gaps(snap).Count, Is.EqualTo(count < 7 ? 0 : 1));
                 TestContext.WriteLine($"infantry={count}; net={net:R}");
+                // The gap follows the live blast value across the configured floor; the army size
+                // where it crosses moves with unit content and the explosion model.
+                Assert.That(Gaps(snap).Count, Is.EqualTo(net >= AiConfigV2.missileStockMinNetValue ? 1 : 0));
                 previous = net;
             }
             float ten = GroundCombatAirSupport.MissileStockValue(Snapshot(Sighting(Infantry(10))), Aircraft(), target);
@@ -644,6 +661,7 @@ namespace Game.EditorTests
             var snap = Snapshot();
             snap.Map = world.Map;
             snap.Known = WorldAnalysis.BuildKnown(owner, Array.Empty<HexCoord>());
+            snap.Threat = ContactsOf(snap.Known.EnemySightings);
             snap.Self.Armies = OwnWorld.Of(owner).Armies
                 .Select(a => WorldAnalysis.ToArmySnapshot(a, owner, true, 0, null, world.Context)).ToList();
             return snap;
@@ -653,7 +671,7 @@ namespace Game.EditorTests
         public void StoredMissileGetsFundedProvisionedAndClaimedOnceBeforeAnyAssault()
         {
             using var world = new EngineWorld(owner);
-            var field = world.Airfield(owner, 0); field.Members.Add(Aircraft()[0]);
+            var field = world.Airfield(owner, 0); field.Members.Add(LiveAircraft());
             EnemyArmy();
             var snap = LiveMissileWorld(world);
             Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty);
@@ -687,7 +705,7 @@ namespace Game.EditorTests
         public void PreparationRechecksBlastValueAndOtherOwnersEnergyHoldBeforePayment()
         {
             using var world = new EngineWorld(owner);
-            var field = world.Airfield(owner, 0); field.Members.Add(Aircraft()[0]);
+            var field = world.Airfield(owner, 0); field.Members.Add(LiveAircraft());
             ArmyData enemyArmy = EnemyArmy();
             var snap = LiveMissileWorld(world);
             var proposal = AirProposals(snap).Single();
@@ -823,7 +841,7 @@ namespace Game.EditorTests
         {
             using var world = new EngineWorld(owner);
             var snap = Snapshot(Sighting(MixedArmy(), hex: new HexCoord(12, 0))); snap.Map = world.Map;
-            var source = world.Airfield(owner, 0); source.Members.Add(Aircraft()[0]);
+            var source = world.Airfield(owner, 0); source.Members.Add(LiveAircraft());
             world.Airfield(owner, 4);
             var carrierArmy = new ArmyData { Owner = owner, Hex = new HexCoord(8, 0) };
             var carrier = new UnitData { Owner = owner, AirfieldCapacity = 2, HitPointsCurrent = 10, HitPointsMax = 10 };
