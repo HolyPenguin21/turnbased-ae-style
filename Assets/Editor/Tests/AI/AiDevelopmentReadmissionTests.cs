@@ -158,14 +158,11 @@ namespace Game.EditorTests
             DevelopmentAdmission.Fingerprint(snapshot, null, ap, resources, handVersion);
 
         [Test]
-        public void RaidReturnMovement_DoesNotReadmitDevelopment_ButActorStillInvalidatesOperations()
+        // The old claim "a raid's return move does not re-admit Development" is obsolete: since
+        // 2026-10-10 the fingerprint deliberately carries every army's position (equipment
+        // recipients and operator delivery read it). Owner decision 2026-10-30.
+        public void RaidActorMovement_InvalidatesOperations()
         {
-            WorldSnapshot snapshot = Snapshot(Army());
-            string before = Fingerprint(snapshot);
-            snapshot.Self.Armies[0].Hex = new HexCoord(5, 4);
-            snapshot.Self.Armies[0].CurrentMovement = 2;
-
-            Assert.That(Fingerprint(snapshot), Is.EqualTo(before));
             Assert.That(DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
                 .HasFlag(StrategicInvalidationReason.Actor), Is.True);
             Assert.That(DesireAxes.InvalidationMaskFor(DesireAxis.Aggression)
