@@ -23,6 +23,7 @@ namespace Game.EditorTests
         {
             PlayerRootRegistry.Clear();
             BuildingRegistry.Clear();
+            ArmyRegistry.Clear();
             _player = new PlayerSetupData();
             _registered = PlayerRoot.Create(_player, "registered deployment account");
             _alternate = PlayerRoot.Create(_player, "unregistered duplicate deployment account");
@@ -33,6 +34,7 @@ namespace Game.EditorTests
             _controllerObject.SetActive(false);
             _selector = _controllerObject.AddComponent<HexSelectionController>();
             _army = new ArmyData { Owner = _player, Hex = new HexCoord(75, -16) };
+            ArmyRegistry.Register(_army);
             _card = new CardDefinition
             {
                 cardType = CardType.Unit,
@@ -46,6 +48,7 @@ namespace Game.EditorTests
         public void TearDown()
         {
             BuildingRegistry.Clear();
+            ArmyRegistry.Clear();
             PlayerRootRegistry.Clear();
             if (_controllerObject != null) Object.DestroyImmediate(_controllerObject);
             if (_alternate != null) Object.DestroyImmediate(_alternate.gameObject);

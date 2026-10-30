@@ -495,6 +495,7 @@ namespace Game.EditorTests
             var unit = new UnitData { Owner = _owner };
             ground.AddMemberSorted(unit);
             var garrison = new ArmyData { Owner = _owner, Hex = home, IsGarrison = true };
+            ArmyRegistry.Register(ground); ArmyRegistry.Register(garrison);
             Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield,
                 new[] { plane }, null, out string why), Is.True, why);
             Assert.That(garrison.Members, Is.EqualTo(new[] { unit }));

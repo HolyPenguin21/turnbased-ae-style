@@ -321,6 +321,7 @@ namespace Game.EditorTests
         {
             var hex = new HexCoord(88, -31);
             var army = new ArmyData { Owner = _owner, Hex = hex, IsGarrison = garrison };
+            ArmyRegistry.Register(army);
             var building = new BuildingData { Owner = _owner, Hex = hex };
             building.Abilities.Add(UnitAbilities.Barracks);
             BuildingRegistry.Register(hex, building);
@@ -370,9 +371,11 @@ namespace Game.EditorTests
             EquipmentSystem.ApplyAttachments(unit, equipment, mutator);
             var army = new ArmyData { Owner = _owner, IsAirfield = true, Hex = new HexCoord(88, -31) };
             army.Members.Add(unit);
-            AviationActions.ReturnAircraftToDeck(army, _selector);
+            // An AI's match hand exists before any of its aircraft can return.
             var hand = AiHandRegistry.GetOrCreate(_owner, null, 0);
+            AviationActions.ReturnAircraftToDeck(army, _selector);
             Assert.That(hand.Hand.Count, Is.EqualTo(1));
+            Assert.That(_owner.Hand, Is.Null, "an AI keeps one hand owner, or the match cannot be saved");
             Assert.That(hand.Hand[0].Equipment, Is.SameAs(equipment));
             Assert.That(hand.Hand[0].Mutator, Is.SameAs(mutator));
             Assert.That(hand.Hand[0].ResearchProductionCreated, Is.False);
