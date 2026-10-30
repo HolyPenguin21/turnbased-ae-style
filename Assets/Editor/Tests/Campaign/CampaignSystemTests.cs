@@ -29,6 +29,7 @@ public sealed class CampaignSystemTests
     private static string Properties(CampaignState s) => string.Join("|", s.Regions.OrderBy(r => r.RegionId)
         .Select(r => $"{r.RegionId}:{r.Biome}:{r.Specialization}:{r.Richness}"));
 
+    [Category("Extended")]
     [TestCase(Faction.IronConcord)]
     [TestCase(Faction.Ashen)]
     [TestCase(Faction.Vessels)]
@@ -239,7 +240,7 @@ public sealed class CampaignSystemTests
         var s = Planet(31, count); Assert.AreEqual(count, s.Regions.Count); CampaignGeometry.Validate(s.Regions, true);
         foreach (var f in s.Factions) Assert.That(s.Regions.Count(r => r.OwnerFaction == f.Faction), Is.InRange(count / 3, (count + 2) / 3));
     }
-    [Test] public void G12_ThousandSeedsHaveValidSharedGeometryAndConnectedBalancedTerritories()
+    [Test, Category("Extended")] public void G12_ThousandSeedsHaveValidSharedGeometryAndConnectedBalancedTerritories()
     { for (int seed = 0; seed < 1000; seed++) { var s = Planet(seed, 33); CampaignGeometry.Validate(s.Regions, true); } }
     [Test] public void InvalidGeometryAndAdjacencyAreRejected()
     {
@@ -607,6 +608,7 @@ public sealed class CampaignSystemTests
         int wins = Enumerable.Range(0, 1000).Count(i => r.Resolve(a, b, CampaignRandom.Derive(71, i)).Outcome == CampaignOutcome.AttackerVictory);
         Assert.That(wins / 1000.0, Is.InRange(chance - .06, chance + .06)); Assert.That(wins, Is.InRange(1, 999));
     }
+    [Category("Extended")]
     [TestCase(true)] [TestCase(false)]
     public void FullCampaignRulesReachHumanVictoryAndDefeat(bool humanWins)
     {

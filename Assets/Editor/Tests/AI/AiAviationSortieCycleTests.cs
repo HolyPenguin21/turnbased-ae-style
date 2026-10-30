@@ -495,6 +495,7 @@ namespace Game.EditorTests
             var unit = new UnitData { Owner = _owner };
             ground.AddMemberSorted(unit);
             var garrison = new ArmyData { Owner = _owner, Hex = home, IsGarrison = true };
+            ArmyRegistry.Register(ground); ArmyRegistry.Register(garrison);
             Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield,
                 new[] { plane }, null, out string why), Is.True, why);
             Assert.That(garrison.Members, Is.EqualTo(new[] { unit }));
@@ -1101,7 +1102,7 @@ namespace Game.EditorTests
                 Airfield(default, 2);
                 UnitData aircraft = Plane(1, 1);
                 ArmyData wing = Wing(default, aircraft);
-                wing.Controller = actorObject.AddComponent<ArmyController>();
+                wing.Controller = actorObject.AddComponent<ArmyController>(); wing.Controller.SetData(wing);
                 var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
                     AirSightings = System.Array.Empty<AiMapMemory.KnownAirSighting>() } };
                 var request = new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(7),
@@ -1126,7 +1127,7 @@ namespace Game.EditorTests
                 UnitData aircraft = Plane(1, 1);
                 aircraft.TurnsWithoutRefuel = 1;
                 ArmyData wing = Wing(default, aircraft);
-                wing.Controller = actorObject.AddComponent<ArmyController>();
+                wing.Controller = actorObject.AddComponent<ArmyController>(); wing.Controller.SetData(wing);
                 var target = new HexCoord(1, 0);
                 var enemy = new PlayerSetupData();
                 var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
@@ -1169,7 +1170,7 @@ namespace Game.EditorTests
                 var target = new HexCoord(2, 0);
                 UnitData aircraft = Plane(1, 1); aircraft.SortieLaunchPaid = launchPaid;
                 ArmyData wing = Wing(new HexCoord(1, 0), aircraft);
-                wing.Controller = actorObject.AddComponent<ArmyController>();
+                wing.Controller = actorObject.AddComponent<ArmyController>(); wing.Controller.SetData(wing);
                 var flight = new AirSortie { Army = wing, Kind = AirSortieKind.Recon,
                     TargetHex = target, LandingHex = default, Outbound = true };
                 AirSortieRegistry.Add(_owner, flight);
@@ -1282,7 +1283,7 @@ namespace Game.EditorTests
                 {
                     var actor = new GameObject("air-coverage-actor"); actors.Add(actor);
                     var wing = Wing(new HexCoord(1, 0), Plane(1, 1));
-                    wing.Controller = actor.AddComponent<ArmyController>(); wings.Add(wing);
+                    wing.Controller = actor.AddComponent<ArmyController>(); wing.Controller.SetData(wing); wings.Add(wing);
                 }
                 Root().ActionPoints = 10; _root.AddResource(ResourceType.Energy, 10);
                 var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
@@ -1585,7 +1586,7 @@ namespace Game.EditorTests
                 {
                     var actor = new GameObject("rebase-actor"); actors.Add(actor);
                     ArmyData wing = Wing(new HexCoord(1, 0), Plane(1, 1));
-                    wing.Controller = actor.AddComponent<ArmyController>();
+                    wing.Controller = actor.AddComponent<ArmyController>(); wing.Controller.SetData(wing);
                     AirSortieRegistry.Add(_owner, new AirSortie
                         { Army = wing, Kind = AirSortieKind.Rebase, LandingHex = default });
                     wings.Add(wing);
@@ -1641,7 +1642,7 @@ namespace Game.EditorTests
                     plane.TurnsWithoutRefuel = endurance;
                     ArmyData wing = Wing(hex, plane);
                     var actor = new GameObject("recon-actor"); actors.Add(actor);
-                    wing.Controller = actor.AddComponent<ArmyController>();
+                    wing.Controller = actor.AddComponent<ArmyController>(); wing.Controller.SetData(wing);
                     ReconPatrolStateRegistry.GetOrCreate(_owner, wing.Id, hex, new HexCoord(8, 0),
                         ReconMode.Refresh, ctx.TurnNumber);
                     ReconAirSortieRegistry.GetOrCreate(_owner, wing.Id, new HexCoord(0, 0)).Phase =

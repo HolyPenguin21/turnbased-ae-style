@@ -175,6 +175,11 @@ namespace Game.Setup
             // the analytic exchange memo, keyed by its full numeric input (constant magnitudes)
             new MatchStateEntry("Game.Combat.BattleSimulationKernel", MatchStateKind.Cache),
             new MatchStateEntry("Game.Combat.AviationCombatEstimator", MatchStateKind.Cache),
+            // verdict-key text rows in weak tables keyed by the profile/roster/deck objects themselves
+            new MatchStateEntry("Game.Ai.V2.DevelopmentAdmission", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Ai.V2.ProfileRowCache", MatchStateKind.Cache),
+            // a thread-static re-entrancy flag set and cleared inside one forecast call
+            new MatchStateEntry("Game.Ai.V2.EquipmentUpgradeValuation", MatchStateKind.Scoped),
 
             // --- wiring, presentation, profile, constants -------------------------------------------
             new MatchStateEntry("Game.Ai.V2.AiConfigV2", MatchStateKind.Wiring),
@@ -189,6 +194,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Map.HexMapGenerator", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Map.ResourceIconVisual", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.BattleHealEffect", MatchStateKind.Presentation),
+            new MatchStateEntry("Game.UI.BattleDamageFlipbook", MatchStateKind.Presentation),
+            new MatchStateEntry("Game.UI.TutorialHintController", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.CollectionMessageUI", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.CollectionScreensUI", MatchStateKind.Presentation),
             new MatchStateEntry("Game.UI.CollectionUIElements", MatchStateKind.Presentation),

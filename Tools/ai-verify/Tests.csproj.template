@@ -37,5 +37,7 @@
     <Reference Include="$(UnityLibrary)/Unity.InputSystem.dll" />
     <Reference Include="$(UnityLibrary)/UnityEngine.UI.dll" />
     <Reference Include="$(UnityLibrary)/UnityEditor.UI.dll" />
+    <!-- LogAssert (UnityEngine.TestTools); its calls only run inside Unity. -->
+    <Reference Include="$(UnityLibrary)/UnityEngine.TestRunner.dll" />
   </ItemGroup>
 </Project>

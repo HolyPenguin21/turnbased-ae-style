@@ -40,9 +40,11 @@ namespace Game.EditorTests
             _ownerRoot = PlayerRoot.Create(_owner, "visible-hex-test-root");
             _ownerRoot.ActionPoints = 10;
             PlayerRootRegistry.Register(_owner, _ownerRoot);
-            // An empty army is still a valid vision source; zero-radius vision on this
-            // same hex is stable throughout each test.
-            ArmyRegistry.Register(new ArmyData { Owner = _observer, Hex = _hex });
+            // A one-unit army is the vision source (empty shells do not see); zero-radius
+            // vision on this same hex is stable throughout each test.
+            var watcher = new ArmyData { Owner = _observer, Hex = _hex };
+            watcher.Members.Add(new UnitData { Owner = _observer });
+            ArmyRegistry.Register(watcher);
             Assert.That(VisionSystem.IsVisible(_observer, _hex), Is.True);
         }
 

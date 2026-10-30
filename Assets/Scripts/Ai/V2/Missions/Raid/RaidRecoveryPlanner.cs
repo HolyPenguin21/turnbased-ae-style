@@ -335,7 +335,7 @@ namespace Game.Ai.V2
             float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost,
             int? fixedSupportArmyId = null, HexCoord? destination = null)
         {
-            ArmyData livePrimary = AiV2Util.ResolveArmy(snap.Observer, primary.ArmyId);
+            ArmyData livePrimary = OwnWorld.Of(snap.Observer).Army(primary.ArmyId);
             var rosterAdmissible = destination.HasValue
                 ? GroundCombatReinforcement.PreserveTaskRoute(snap.Map, livePrimary,
                     destination.Value, SafeRouteProfile.Combat) : null;
@@ -358,7 +358,7 @@ namespace Game.Ai.V2
                     .Select(m => m.CurrentProfile).ToList();
                 List<WorthIt.DefenderProfile> projected;
                 WorthIt.SideCommander commander = primary.Commander;
-                ArmyData liveSupport = AiV2Util.ResolveArmy(snap.Observer, id);
+                ArmyData liveSupport = OwnWorld.Of(snap.Observer).Army(id);
                 if (livePrimary != null && liveSupport != null)
                 {
                     HandoffPlan handoff = GroundCombatReinforcement.PlanHandoff(livePrimary, liveSupport,

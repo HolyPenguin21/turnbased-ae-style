@@ -22,7 +22,7 @@ actual compiled routing policy for all four combinations; it does not simulate s
 The binding gate uses older reference DLLs and adapters, so it proves C# binding against
 that set, not native Unity 6000.5.4f1 compilation or execution.
 
-In Unity, run the complete EditMode suite, including `MatchSaveSlotsUiTests`. Check MainMenu
+In Unity, run the complete EditMode suite (the slot-window UI tests were removed on 2026-10-30). Check MainMenu
 and Game at 1280x720, 1920x1080, 4K, narrow and wide Free Aspect; arrow/Enter navigation,
 Delete confirmation/Escape, repeated reopening, deleting the last save, backup-only and
 corrupt saves, save/overwrite eligibility, actual load, and normal campaign continuation.

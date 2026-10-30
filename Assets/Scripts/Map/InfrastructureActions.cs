@@ -219,7 +219,7 @@ namespace Game.Map
                             added.CarrierUnit = null;
                         }
                         ArmyRegistry.Unregister(added);
-                        if (added.Controller != null) UnityEngine.Object.Destroy(added.Controller.gameObject);
+                        if (added.Controller != null) Game.Core.UnityObjectLifetime.Destroy(added.Controller.gameObject);
                         added.Controller = null;
                     }
                 // Transfer reconciliation can relocate an existing carrier's containers, and a
@@ -258,7 +258,7 @@ namespace Game.Map
                 return InfrastructureBuildOutcome.Fail("Could not finish building the base. Costs refunded.");
             }
             if (oldVisual != null)
-                UnityEngine.Object.Destroy(oldVisual.gameObject);
+                Game.Core.UnityObjectLifetime.Destroy(oldVisual.gameObject);
             StealthSystem.RunChecksForNewVisionSource(building);
             VisionSystem.PublishAfterMutation(BaseFounded, building);
             return InfrastructureBuildOutcome.Success(building, -1, apBefore - root.ActionPoints);
@@ -273,7 +273,7 @@ namespace Game.Map
             if (now != null && now != siteBefore)
             {
                 if (now.Visual != null)
-                    UnityEngine.Object.Destroy(now.Visual.gameObject);
+                    Game.Core.UnityObjectLifetime.Destroy(now.Visual.gameObject);
                 BuildingRegistry.Unregister(hex);
             }
             if (siteBefore != null && BuildingRegistry.FindAt(hex) == null)
@@ -286,7 +286,7 @@ namespace Game.Map
                 if (orphan != null)
                 {
                     if (orphan.Controller != null)
-                        UnityEngine.Object.Destroy(orphan.Controller.gameObject);
+                        Game.Core.UnityObjectLifetime.Destroy(orphan.Controller.gameObject);
                     ArmyRegistry.Unregister(orphan);
                 }
             }
@@ -298,7 +298,7 @@ namespace Game.Map
                 if (orphan != null)
                 {
                     if (orphan.Controller != null)
-                        UnityEngine.Object.Destroy(orphan.Controller.gameObject);
+                        Game.Core.UnityObjectLifetime.Destroy(orphan.Controller.gameObject);
                     ArmyRegistry.Unregister(orphan);
                 }
             }

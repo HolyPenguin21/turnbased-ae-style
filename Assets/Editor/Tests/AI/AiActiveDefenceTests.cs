@@ -897,7 +897,7 @@ namespace Game.EditorTests
             Assert.That(AssetObjective(snap).Target.ProtectedAssetHex, Is.EqualTo(Secondary));
             Assert.That(AssetObjective(snap).Target.EnemyEta, Is.EqualTo(2));
             Assert.That(ForceNeedModel.DefensiveReserveForThreats(snap.Threat.Threats), Is.EqualTo(reserve));
-            Assert.That(snap.Threat.Threats, Has.Count.EqualTo(3), "deduplication must not alter Analysis facts");
+            Assert.That(snap.Threat.Threats.Count, Is.EqualTo(3), "deduplication must not alter Analysis facts");
             snap.Self.BaseHexes = Array.Empty<HexCoord>();
             Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty, "remembered ownership is insufficient");
         }
@@ -930,7 +930,7 @@ namespace Game.EditorTests
             Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out int eta), Is.EqualTo(Secondary));
             Assert.That(eta, Is.EqualTo(1));
             Assert.That(snap.Threat.Threats, Is.SameAs(original));
-            Assert.That(snap.Threat.Threats, Has.Count.EqualTo(2));
+            Assert.That(snap.Threat.Threats.Count, Is.EqualTo(2));
         }
 
         [Test]
@@ -953,7 +953,7 @@ namespace Game.EditorTests
             Assert.That(demand.ActiveDefenceEnemyEta, Is.EqualTo(1));
             Assert.That(demand.ConsumerIntentKey, Is.EqualTo(objective.IntentKey));
             Assert.That(demand.Value, Is.EqualTo(objective.TaskScore.Value));
-            Assert.That(snap.Threat.Threats, Has.Count.EqualTo(2));
+            Assert.That(snap.Threat.Threats.Count, Is.EqualTo(2));
         }
 
         [Test]

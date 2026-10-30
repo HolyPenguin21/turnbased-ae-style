@@ -439,6 +439,7 @@ namespace Game.EditorTests
             escort.MoveCurrent = escortMovement;
             var builder = new ArmyData { Owner = p, Hex = Home };
             builder.Members.AddRange(new[] { hero, escort });
+            hero.Owner = escort.Owner = p; // roster transfers require the army's owner
             var garrison = new ArmyData { Owner = p, Hex = Home, IsGarrison = true };
             ArmyRegistry.Register(builder); ArmyRegistry.Register(garrison);
             var mapObject = new UnityEngine.GameObject("projected economy movement");
@@ -493,6 +494,7 @@ namespace Game.EditorTests
             var cheap = Unit(false, 1); var dear = Unit(false, 4);
             var builder = new ArmyData { Owner = p, Hex = Home };
             builder.Members.AddRange(new[] { hero, cheap, dear });
+            hero.Owner = cheap.Owner = dear.Owner = p; // roster transfers require the army's owner
             var garrison = new ArmyData { Owner = p, Hex = Home, IsGarrison = true };
             ArmyRegistry.Register(builder); ArmyRegistry.Register(garrison);
             var a = Builder(2); a.ArmyId = builder.Id;

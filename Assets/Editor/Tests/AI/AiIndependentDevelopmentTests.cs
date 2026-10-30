@@ -310,6 +310,7 @@ namespace Game.EditorTests
     // It does not simulate authoritative Challenge or movement transactions.
     public sealed class AiProductionStagedPreparationTests
     {
+        private GameObject _selectorObject;
         private static readonly HexCoord Site = new HexCoord(91, -17);
         private PlayerSetupData _player;
         private PlayerRoot _root;
@@ -355,7 +356,10 @@ namespace Game.EditorTests
             _cards = ScriptableObject.CreateInstance<FactionCardCatalog>(); _cards.cards.Add(output);
             _catalog = ScriptableObject.CreateInstance<ResearchProductionCatalog>(); _catalog.cardCatalogs.Add(_cards);
             _catalog.productionCards.Add(new ResearchProductionEntry { cardKey = output.authoredKey });
-            _ctx = new AiTurnContext { TurnNumber = 2, ResearchProductionCatalog = _catalog };
+            // The deployment preflight that qualifies a hand operator needs the scene's controller.
+            _selectorObject = new GameObject("staged preparation deployment controller"); _selectorObject.SetActive(false);
+            _ctx = new AiTurnContext { TurnNumber = 2, ResearchProductionCatalog = _catalog,
+                HexSelection = _selectorObject.AddComponent<HexSelectionController>() };
             _snapshot = new WorldSnapshot
             {
                 Observer = _player, TurnNumber = 2,
@@ -375,6 +379,7 @@ namespace Game.EditorTests
             if (_catalog != null) UnityEngine.Object.DestroyImmediate(_catalog);
             if (_cards != null) UnityEngine.Object.DestroyImmediate(_cards);
             if (_root != null) UnityEngine.Object.DestroyImmediate(_root.gameObject);
+            if (_selectorObject != null) UnityEngine.Object.DestroyImmediate(_selectorObject);
         }
 
         private List<DevelopmentOpportunity> Facts(IReadOnlyList<MissionIntent> intents = null) =>
@@ -561,7 +566,8 @@ namespace Game.EditorTests
                 ? "BuildDevelopmentOperatorCandidate" : "BuildDevelopmentCandidate",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
             object[] args = { _snapshot, _player, _root, _hand, _ctx, demand,
-                operatorCard ? (object)new MaterializationReservation() : Array.Empty<MissionIntent>() };
+                operatorCard ? (object)new MaterializationReservation() : Array.Empty<MissionIntent>(),
+                null /* witnessedUsefulApDemand */ };
             Assert.That(candidate.Invoke(null, args), Is.Not.Null, "the original demand has a legal funded candidate");
             int ap = _root.ActionPoints;
             _hand.RemoveCard(host);

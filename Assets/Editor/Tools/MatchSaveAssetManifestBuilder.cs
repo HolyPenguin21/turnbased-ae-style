@@ -17,6 +17,8 @@ using UnityEngine;
 public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreprocessBuildWithReport
 {
     private const string Output = "Assets/Resources/MatchSaveAssetManifest.asset";
+    // Per-machine stamp of the inputs of the last completed rebuild; Library is not versioned.
+    private const string StampPath = "Library/MatchSaveAssetManifest.stamp";
     private static bool building;
     private static bool queued;
     public int callbackOrder => -1000;
@@ -26,7 +28,7 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
         Queue();
         EditorApplication.playModeStateChanged += state =>
         {
-            if (state == PlayModeStateChange.ExitingEditMode) Rebuild();
+            if (state == PlayModeStateChange.ExitingEditMode) RebuildIfInputsChanged();
         };
     }
     public void OnPreprocessBuild(BuildReport report) => Rebuild();
@@ -41,7 +43,19 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
     {
         if (queued) return;
         queued = true;
-        EditorApplication.delayCall += () => { queued = false; if (!EditorApplication.isPlayingOrWillChangePlaymode) Rebuild(); };
+        EditorApplication.delayCall += () => { queued = false; if (!EditorApplication.isPlayingOrWillChangePlaymode) RebuildIfInputsChanged(); };
+    }
+    // Domain reloads and play mode skip the full asset scan while no content file, importer
+    // setting, the manifest itself or the engine version changed since the last rebuild.
+    private static void RebuildIfInputsChanged()
+    {
+        if (building) return;
+        string stamp = InputStamp(ContentPaths());
+        string previous = null;
+        try { if (File.Exists(StampPath)) previous = File.ReadAllText(StampPath); }
+        catch (IOException) { }
+        if (previous == stamp) return;
+        Rebuild();
     }
     [MenuItem("Tools/Match saves/Rebuild content manifest")]
     public static void Rebuild()
@@ -62,16 +76,12 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
             var eventCatalogs = new List<EventCatalog>();
             var prefabs = new SortedDictionary<string, MapObjectVisual>(StringComparer.Ordinal);
             var requiredWorldDependencies = new HashSet<string>(StringComparer.Ordinal);
-            var content = AssetDatabase.GetAllAssetPaths()
-                .Where(p => p.StartsWith("Assets/", StringComparison.Ordinal) && !AssetDatabase.IsValidFolder(p)
-                    && p != Output && !p.StartsWith("Assets/Editor/", StringComparison.Ordinal)
-                    && !p.StartsWith("Assets/Scripts/", StringComparison.Ordinal))
-                .OrderBy(p => p, StringComparer.Ordinal).ToArray();
+            var content = ContentPaths();
             foreach (string path in content)
             {
                 // Scene objects cannot be loaded via LoadAllAssetsAtPath; scenes hold no manifest content.
                 if (path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) continue;
-                foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(path))
+                foreach (var asset in LoadCandidates(path))
                 {
                     if (asset is Sprite sprite) sprites[Key(sprite)] = sprite;
                     if (asset is Material material) materials[Key(material)] = material;
@@ -112,7 +122,7 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
                 && manifest.Sprites.Select(a => (a.Key, a.Asset)).SequenceEqual(newSprites.Select(a => (a.Key, a.Asset)))
                 && manifest.Materials.Select(a => (a.Key, a.Asset)).SequenceEqual(newMaterials.Select(a => (a.Key, a.Asset)))
                 && manifest.Prefabs.Select(a => (a.Key, a.Asset)).SequenceEqual(newPrefabs.Select(a => (a.Key, a.Asset)))
-                && manifest.EventCatalogs.SequenceEqual(eventCatalogs)) return;
+                && manifest.EventCatalogs.SequenceEqual(eventCatalogs)) { WriteStamp(content); return; }
             manifest.Sprites = newSprites;
             manifest.Materials = newMaterials;
             manifest.EventCatalogs = eventCatalogs;
@@ -120,8 +130,57 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
             manifest.ContentFingerprint = fingerprint;
             EditorUtility.SetDirty(manifest);
             AssetDatabase.SaveAssets();
+            WriteStamp(content);
         }
         finally { building = false; }
+    }
+    private static string[] ContentPaths() => AssetDatabase.GetAllAssetPaths()
+        .Where(p => p.StartsWith("Assets/", StringComparison.Ordinal) && !AssetDatabase.IsValidFolder(p)
+            && p != Output && !p.StartsWith("Assets/Editor/", StringComparison.Ordinal)
+            && !p.StartsWith("Assets/Scripts/", StringComparison.Ordinal))
+        .OrderBy(p => p, StringComparer.Ordinal).ToArray();
+    // Only sprites, materials, event catalogs and prefabs enter the manifest. Audio and text never
+    // hold them, and a texture holds sprites only when imported as a Sprite; its
+    // sub-assets are enough, so the texture itself is not loaded.
+    private static UnityEngine.Object[] LoadCandidates(string path)
+    {
+        var type = AssetDatabase.GetMainAssetTypeAtPath(path);
+        if (type == null) return AssetDatabase.LoadAllAssetsAtPath(path);
+        if (typeof(Texture).IsAssignableFrom(type))
+            return AssetImporter.GetAtPath(path) is TextureImporter texture && texture.textureType != TextureImporterType.Sprite
+                ? Array.Empty<UnityEngine.Object>() : AssetDatabase.LoadAllAssetRepresentationsAtPath(path);
+        // Shaders stay: a Shader Graph asset carries its own Material sub-asset.
+        if (typeof(AudioClip).IsAssignableFrom(type) || typeof(TextAsset).IsAssignableFrom(type))
+            return Array.Empty<UnityEngine.Object>();
+        return AssetDatabase.LoadAllAssetsAtPath(path);
+    }
+    // Size and write time of every content file and importer setting, plus the manifest file and
+    // the engine version. A git checkout or an editor import changes the write time. Scenes are
+    // listed without their contents: the rebuild never reads them.
+    private static string InputStamp(string[] content)
+    {
+        var text = new System.Text.StringBuilder(Application.unityVersion).Append('\n');
+        foreach (string path in content.Append(Output))
+        {
+            if (path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) { text.Append(path).Append('\n'); continue; }
+            text.Append(path).Append('|').Append(AssetDatabase.AssetPathToGUID(path));
+            AppendFile(text, path);
+            AppendFile(text, path + ".meta");
+            text.Append('\n');
+        }
+        using (var hash = System.Security.Cryptography.SHA256.Create())
+            return BitConverter.ToString(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text.ToString()))).Replace("-", "");
+    }
+    private static void AppendFile(System.Text.StringBuilder text, string path)
+    {
+        var file = new FileInfo(path);
+        text.Append('|');
+        if (file.Exists) text.Append(file.Length).Append(':').Append(file.LastWriteTimeUtc.Ticks);
+    }
+    private static void WriteStamp(string[] content)
+    {
+        try { File.WriteAllText(StampPath, InputStamp(content)); }
+        catch (IOException exception) { Debug.LogWarning("Match save manifest stamp not written: " + exception.Message); }
     }
     private static string Key(UnityEngine.Object value)
     {

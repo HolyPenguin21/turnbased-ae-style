@@ -88,8 +88,9 @@ namespace Game.EditorTests
         public void HousekeepingCommitsEachCanonicalReorderButNotARejectedNoOp()
         {
             var p = new PlayerSetupData();
-            var first = new UnitData { IsHero = true, Owner = p };
-            var second = new UnitData { IsHero = true, Owner = p };
+            // Either commander must fit the pair: reorder validates the final roster's capacity.
+            var first = new UnitData { IsHero = true, Owner = p, CommandRating = 6 };
+            var second = new UnitData { IsHero = true, Owner = p, CommandRating = 6 };
             var army = new ArmyData { Owner = p, Hex = new HexCoord(177777, 299999) };
             army.Members.Add(first); army.Members.Add(second);
             // Seed the registered-world fixture without unrelated native visibility callbacks.

@@ -11,9 +11,8 @@ geometry at 1280x720, 1920x1080, 2560x1440, 1920x1200, 2560x1080 and 1024x768;
 both YAML validators; the real C# hand-geometry implementation; and C# syntax across Assets.
 This does **not** compile against Unity assemblies or run native interactions.
 
-In Unity also run `RuntimeResponsiveUiTests`, `ResponsiveUiInteractionTests`,
-`TacticHandPresentationTests`, `CollectionScrollPresentationTests` and the full EditMode suite.
-The focused native tests instantiate six player rows, resize/reuse real collection cells,
+In Unity run the full EditMode suite. The native UI tests were removed on 2026-10-30: UI is tuned and checked by hand in the editor.
+Check by hand what those tests covered: six player rows, resize/reuse real collection cells,
 and exercise ordinary/tactic/debug card resizing, hover, interrupted flips and cancelled drags.
 Changing the hand area during a drag deliberately cancels the gesture and returns the card;
 the subsequent pointer-up never plays it using stale geometry. Separators keep their scaled
@@ -53,9 +52,9 @@ manually changed prefab too.
 
 In Unity 6000.5.4f1:
 
-1. Run the full EditMode suite, including `ResponsiveUiInteractionTests` (nested drag scales,
-   four tactic cards in constrained areas, clipped army-grid drop targets and statistics
-   text growth with scroll-position preservation/clamping).
+1. Run the full EditMode suite; check by hand nested drag scales, four tactic cards in
+   constrained areas, clipped army-grid drop targets and statistics text growth with
+   scroll-position preservation/clamping.
 2. Run `Tools > UI > Audit Responsive Layout` in both scenes.
 3. At each listed Game View size, open main menu, six-player setup, audio options, all HUD
    modals, encounter selection, event reward, challenge/result and the battle states.

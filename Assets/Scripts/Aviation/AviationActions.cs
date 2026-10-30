@@ -119,12 +119,16 @@ namespace Game.Aviation
                 StealthSystem.OnUnitRemoved(aircraft);
                 if (aircraft.OriginatingCard == null || army.Owner == null) continue;
                 var card = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment, Mutator = aircraft.Mutator };
-                if ((army.Owner.Hand ??= new PlayerHandData(null, 0)).TryAddCard(card))
+                if (HandOf(army.Owner)?.TryAddCard(card) == true)
                     VisionSystem.PublishAfterMutation(AircraftReturnedToHand, army.Owner, card);
             }
             army.RefreshTransport(); ArmyActions.DeleteArmyIfEmptied(army);
             VisionSystem.RecomputeFor(army.Owner); VisionSystem.NotifyContentChanged(army.Hex);
         }
+        // The match hand a returned card belongs to: the human's PlayerHandData, an AI's registry
+        // hand (an AI player has no PlayerSetupData.Hand; see MatchWorldCapture).
+        private static PlayerHandData HandOf(PlayerSetupData owner) =>
+            owner.IsHuman ? owner.Hand : Game.Ai.AiHandRegistry.Peek(owner);
         internal static void ReturnStaleAviationAt(Game.HexGrid.HexCoord hex, BuildingData building)
         {
             using var mutation = VisionSystem.BeginMutation();

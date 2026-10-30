@@ -28,6 +28,8 @@ namespace Game.EditorTests
 {
     // These Editor-hosted tests explicitly enter PlayMode: Destroy, nested coroutines and
     // WaitUntil must run in the engine. The old ai-verify reference DLLs cannot run this fixture.
+    // Enters Play Mode per test (~20 s each): full suite only (Tools/ai-verify/README.md, "Unity runs").
+    [Category("Extended")]
     public sealed class ArmyMovementLifecyclePlayModeTests
     {
         private readonly List<GameObject> _objects = new List<GameObject>();

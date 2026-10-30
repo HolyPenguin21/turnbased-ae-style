@@ -49,3 +49,17 @@ Limits, know them before trusting a green run:
   `ContinuationWinChanceFloor` 0.40 -> 0.99 passes it; flipping `IsNeutralRaidTarget` fails 13 tests.
   For logic without coverage, add a focused EditMode test (it runs here too) before refactoring it.
 - Still run the full EditMode suite in Unity before merging: the engine-bound tests only run there.
+
+## Unity runs
+
+Routine check after a task — the full EditMode suite without the `Extended` category
+(fixtures that enter Play Mode per test, thousand-seed generators, whole-campaign runs; on
+2026-10-30 they took 50 of ~53 minutes, most of it UI Play Mode fixtures since removed):
+
+```bash
+Unity.exe -batchmode -projectPath <checkout> -runTests -testPlatform EditMode \
+  -testCategory "!Extended" -testResults <out.xml> -logFile <out.log>
+```
+
+Run the full suite (no `-testCategory`) before merging into master or after engine/presentation
+changes. A batch run needs a checkout the open editor does not hold, e.g. a `git worktree`.

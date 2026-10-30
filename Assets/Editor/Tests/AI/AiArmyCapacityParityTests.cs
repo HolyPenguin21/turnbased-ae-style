@@ -144,6 +144,12 @@ namespace Game.EditorTests
                 selectorObject = new GameObject("inactive deployment controller test stub");
                 selectorObject.SetActive(false); // No scene wiring is needed for a pure preflight.
                 ctx.HexSelection = selectorObject.AddComponent<HexSelectionController>();
+                // Deployment validates the destination terrain on the selector's map.
+                var map = selectorObject.AddComponent<HexMap>();
+                map.SetData(1, 1f, new System.Collections.Generic.Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
+                    { [hex] = new Game.Terrain.TerrainTypeEntry() });
+                typeof(HexSelectionController).GetField("map", System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic).SetValue(ctx.HexSelection, map);
                 Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
                     plan, out string noCatalog), Is.False);
                 Assert.That(noCatalog, Does.Contain("faction army catalog"));

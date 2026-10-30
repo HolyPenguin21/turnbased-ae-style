@@ -131,6 +131,8 @@ namespace Game.EditorTests
         }
 
         private List<UnitData> Aircraft() => NonCombatCardPlayer.ProjectedAircraft(missile, owner);
+        // A registered army holds live units only; the projection above has no live identity.
+        private UnitData LiveAircraft() => UnitData.FromDefinition(missile, owner);
         private List<CombatAirSupportRequest> Gaps(WorldSnapshot snap, IReadOnlyList<CardData> hand = null,
             CardData self = null) => GroundCombatAirSupport.UncoveredMissileStock(snap, Aircraft(),
                 GroundCombatAirSupport.MissileStockTargets(snap), hand, snap.Map, self);
@@ -157,6 +159,7 @@ namespace Game.EditorTests
             Assert.That(previous, Is.EqualTo(ten).Within(.001f));
         }
 
+        [Category("Extended")]
         [Test]
         public void StockIsHonestRecentEnemyPlayerDemandAndOneSlotPerHex()
         {
@@ -193,7 +196,7 @@ namespace Game.EditorTests
         public void PhysicalMissileCountsOnceAndConsumptionReopensStock(AirSortieKind kind)
         {
             var snap = Snapshot(Sighting(Infantry(10)));
-            var unit = Aircraft()[0];
+            var unit = LiveAircraft();
             var army = new ArmyData { Owner = owner, Hex = default, IsAirArmy = true };
             army.Members.Add(unit); ArmyRegistry.Register(army);
             AirSortieRegistry.Add(owner, new AirSortie { Army = army, Kind = kind, TargetHex = target, LandingHex = default });
@@ -208,7 +211,7 @@ namespace Game.EditorTests
             var other = new HexCoord(8, 0);
             var snap = Snapshot(Sighting(Infantry(10)), Sighting(Infantry(10), 43, other));
             var army = new ArmyData { Owner = owner, IsAirArmy = true };
-            army.Members.Add(Aircraft()[0]); ArmyRegistry.Register(army);
+            army.Members.Add(LiveAircraft()); ArmyRegistry.Register(army);
             var sortie = new AirSortie { Army = army, Kind = AirSortieKind.Strike, TargetHex = target,
                 StrikePolicy = new AirStrikePolicy(AirStrikePolicyKind.Standard, 42) };
             AirSortieRegistry.Add(owner, sortie);
@@ -325,7 +328,7 @@ namespace Game.EditorTests
             snap.Self.Hand = new[] { ResearchProductionSystem.MintCard(missile) };
             Assert.That(DevelopmentAdmission.OperatorForecastFacts(snap, owner), Is.Not.EqualTo(key));
             var army = new ArmyData { Owner = owner, IsAirArmy = true };
-            army.Members.Add(Aircraft()[0]); ArmyRegistry.Register(army);
+            army.Members.Add(LiveAircraft()); ArmyRegistry.Register(army);
             key = DevelopmentAdmission.OperatorForecastFacts(snap, owner);
             AirSortieRegistry.Add(owner, new AirSortie { Army = army, Kind = AirSortieKind.Rebase,
                 LandingHex = new HexCoord(2, 0) });
@@ -719,8 +722,8 @@ namespace Game.EditorTests
                 world.Airfield(owner, 0);
                 ArmyData enemyArmy = EnemyArmy();
                 var wing = new ArmyData { Owner = owner, Hex = target, IsAirArmy = true };
-                wing.Members.Add(Aircraft()[0]); ArmyRegistry.Register(wing);
-                wing.Controller = actorObject.AddComponent<ArmyController>();
+                wing.Members.Add(LiveAircraft()); ArmyRegistry.Register(wing);
+                wing.Controller = actorObject.AddComponent<ArmyController>(); wing.Controller.SetData(wing);
                 var presenter = presenterObject.AddComponent<AviationCombatPresenter>();
                 typeof(HexSelectionController).GetField("aviationCombatPresenter", System.Reflection.BindingFlags.Instance
                     | System.Reflection.BindingFlags.NonPublic).SetValue(world.Context.HexSelection, presenter);

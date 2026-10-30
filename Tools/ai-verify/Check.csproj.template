@@ -28,6 +28,8 @@
     <Reference Include="$(UnityLibrary)/Unity.InputSystem.dll" />
     <Reference Include="$(UnityLibrary)/UnityEngine.UI.dll" />
     <Reference Include="$(UnityLibrary)/UnityEditor.UI.dll" />
+    <!-- LogAssert (UnityEngine.TestTools); its calls only run inside Unity. -->
+    <Reference Include="$(UnityLibrary)/UnityEngine.TestRunner.dll" />
     <!-- The NUnit the editor compiles the tests against (com.unity.ext.nunit): its API is older
          than NuGet NUnit 3.14, e.g. Does.Not.Contain takes only a string. -->
     <Reference Include="$(UnityNUnit)" />

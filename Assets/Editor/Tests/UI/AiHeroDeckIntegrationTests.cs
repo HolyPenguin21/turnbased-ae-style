@@ -184,7 +184,7 @@ namespace Game.EditorTests
             var failure = typeof(DevelopmentOpportunityEvaluator)
                 .GetMethod("StructuralPreparationBlock", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new object[] { ResearchProductionMode.Research, hex, true, false,
-                    Array.Empty<CardDefinition>(), player, hand, context, null, null });
+                    Array.Empty<CardDefinition>(), player, hand, context, null, null, false, null });
             Assert.That(failure, Is.EqualTo("reason=no_mode_catalog"));
             Assert.That(root.ActionPoints, Is.EqualTo(20));
             foreach (ResourceType resource in Enum.GetValues(typeof(ResourceType)))

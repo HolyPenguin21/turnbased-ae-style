@@ -186,6 +186,10 @@ namespace Game.EditorTests
                 Is.EqualTo(new HexCoord(1, 0)));
 
             scout.Hex = new HexCoord(1, 0);
+            // Moving a registered army recomputes vision, which may clear these fixture sightings;
+            // the case is about both threats still being known after the step.
+            RememberThreat(new HexCoord(-1, 0));
+            RememberThreat(new HexCoord(3, 0), 901);
             scout.Members[0].MoveCurrent = 3;
             patrol.LastEscape = new ReconEscape { FromHex = default,
                 Cause = ReconEscapeCause.Threat, ThreatArmyId = 900, Turn = 1 };

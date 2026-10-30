@@ -797,7 +797,7 @@ namespace Game.Ai.V2
                 snap, a.PrimaryArmyId.Value, opposition, committed, hexBonus,
                 allowCommandHandover: true,
                 rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
-                    AiV2Util.ResolveArmy(snap.Observer, primary.ArmyId), a.Target.Hex,
+                    OwnWorld.Of(snap.Observer).Army(primary.ArmyId), a.Target.Hex,
                     SafeRouteProfile.Attack));
             if (candidates.Count == 0)
             {

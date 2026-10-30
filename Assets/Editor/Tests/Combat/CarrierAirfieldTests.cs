@@ -256,6 +256,7 @@ namespace Game.EditorTests
             UnitData stored = Plane(); stored.OriginatingCard = new CardDefinition { displayName = "Plane" };
             hangar.Members.Add(stored); ArmyData airborne = Wing(Plane());
             UnitData other = Carrier(); int returned = 0;
+            _owner.Hand = new PlayerHandData(null, 0); // the human's match hand receives the card
             System.Action<PlayerSetupData, CardData> onReturned = (owner, card) => returned++;
             AviationActions.AircraftReturnedToHand += onReturned;
             try { c.HitPointsCurrent = 0; ground.Members.Remove(c); StealthSystem.OnUnitRemoved(c); }

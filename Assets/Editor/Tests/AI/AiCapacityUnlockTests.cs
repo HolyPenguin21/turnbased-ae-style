@@ -32,6 +32,7 @@ namespace Game.EditorTests
         private ResearchProductionCatalog _catalog;
         private FactionCardCatalog _cards;
         private GameConfig _config;
+        private GameObject _selectorObject;
 
         [SetUp]
         public void SetUp()
@@ -66,8 +67,9 @@ namespace Game.EditorTests
                 grantedAbilities = new List<string> { UnitAbilities.Assembler },
             });
             _hand.AddCard(_facility); _hand.AddCard(_operator);
+            // A unit output is always applicable (an equipment output would need a fitting host).
             var output = new CardDefinition
-                { cardType = CardType.Equipment, authoredKey = "test-output", resourceCost = new ResourceCost(tech: 99) };
+                { cardType = CardType.Unit, authoredKey = "test-output", resourceCost = new ResourceCost(tech: 99) };
             _cards = ScriptableObject.CreateInstance<FactionCardCatalog>(); _cards.cards.Add(output);
             _catalog = ScriptableObject.CreateInstance<ResearchProductionCatalog>(); _catalog.cardCatalogs.Add(_cards);
             _catalog.productionCards.Add(new ResearchProductionEntry { cardKey = output.authoredKey });
@@ -78,7 +80,10 @@ namespace Game.EditorTests
                 new BaseUpgradeTier { apCost = 4, cost = new ResourceCost(2, 2, 2, 2), defenseGain = 1 },
                 new BaseUpgradeTier { apCost = 6, cost = new ResourceCost(4, 4, 4, 4), defenseGain = 1 },
             };
-            _ctx = new AiTurnContext { TurnNumber = 2, ResearchProductionCatalog = _catalog, GameConfig = _config };
+            // The deployment preflight that qualifies a hand operator needs the scene's controller.
+            _selectorObject = new GameObject("capacity unlock deployment controller"); _selectorObject.SetActive(false);
+            _ctx = new AiTurnContext { TurnNumber = 2, ResearchProductionCatalog = _catalog, GameConfig = _config,
+                HexSelection = _selectorObject.AddComponent<HexSelectionController>() };
             _snapshot = new WorldSnapshot
             {
                 Observer = _player, TurnNumber = 2,
@@ -100,6 +105,7 @@ namespace Game.EditorTests
             if (_catalog != null) UnityEngine.Object.DestroyImmediate(_catalog);
             if (_cards != null) UnityEngine.Object.DestroyImmediate(_cards);
             if (_config != null) UnityEngine.Object.DestroyImmediate(_config);
+            if (_selectorObject != null) UnityEngine.Object.DestroyImmediate(_selectorObject);
             if (_root != null) UnityEngine.Object.DestroyImmediate(_root.gameObject);
         }
 
