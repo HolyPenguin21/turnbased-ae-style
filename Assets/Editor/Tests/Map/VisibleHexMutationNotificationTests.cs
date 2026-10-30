@@ -108,7 +108,10 @@ namespace Game.EditorTests
         {
             var building = new BuildingData { Owner = _owner, Hex = _hex, IsBase = true };
             BuildingRegistry.Register(_hex, building);
-            Assert.That(AiMapMemory.KnownBuildingAt(_observer, _hex).Value.FreeFacilitySlots, Is.EqualTo(2));
+            // A foreign building's slots are private (T08, 2026-09-30); its collection is public.
+            Assert.That(AiMapMemory.KnownBuildingAt(_observer, _hex).Value.FreeFacilitySlots, Is.Zero);
+            Assert.That(AiMapMemory.KnownBuildingAt(_observer, _hex).Value.CollectedAmount(ResourceType.Human),
+                Is.Zero);
             int before = AiMapMemory.KnowledgeVersionFor(_observer);
             var facility = new CardDefinition { cardType = CardType.Facility, displayName = "collector" };
             facility.grantedAbilities.Add(UnitAbilities.CollectHuman);
@@ -117,7 +120,6 @@ namespace Game.EditorTests
                 facility, _hex, _owner, 0, new ResourceCost());
             Assert.That(outcome.Ok, Is.True, outcome.FailReason);
             Assert.That(AiMapMemory.KnowledgeVersionFor(_observer), Is.EqualTo(before + 1));
-            Assert.That(AiMapMemory.KnownBuildingAt(_observer, _hex).Value.FreeFacilitySlots, Is.EqualTo(1));
             Assert.That(AiMapMemory.KnownBuildingAt(_observer, _hex).Value.CollectedAmount(ResourceType.Human),
                 Is.EqualTo(1));
         }

@@ -179,6 +179,14 @@ namespace Game.EditorTools
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
             return new CollectionService(authoredRules, new CollectionProfileStore(directory), profile);
         }
+        // A main card whose extra copy survives the service's one-copy hero clamp: starter decks
+        // now open with their hero leader, which a +1 edit would silently undo.
+        private DeckCardEntry CustomizableEntry(SavedDeck deck, CollectionProfile profile)
+        {
+            DeckRules rules = AuthoredCollection(profile).Rules;
+            return deck.mainCards.First(e => rules.Resolve(e.cardKey) is CardDefinition card
+                && card.cardType != CardType.Hero && e.count < DeckRules.CopyLimit(card));
+        }
         private static void AssertStarterBlueprints(SavedDeck deck, DeckRules rules)
         {
             var expected = new CollectionService(rules, null, new CollectionProfile()).Starter(deck.faction);
@@ -191,7 +199,7 @@ namespace Game.EditorTools
             var ids = legacy.savedDecks.Select(d => d.deckId).ToArray();
             foreach (var deck in legacy.savedDecks) { deck.isStarter = false; deck.equipment.Clear(); deck.mutators.Clear(); }
             var custom = CollectionProfile.CopyDeck(legacy.savedDecks[0]); custom.deckId = "custom"; custom.name = "My deck";
-            custom.mainCards[0].count++; legacy.savedDecks.Add(custom);
+            CustomizableEntry(custom, legacy).count++; legacy.savedDecks.Add(custom);
             string customJson = JsonUtility.ToJson(custom);
             var service = AuthoredCollection(legacy);
             Assert.That(service.EnsureStarterDecks(out _), Is.True);
@@ -225,7 +233,7 @@ namespace Game.EditorTools
         [Test] public void MissingStarterIsRestoredWithoutPromotingCustomizedDeck()
         {
             var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);
-            var modified = legacy.savedDecks[0]; modified.isStarter = false; modified.mainCards[0].count++;
+            var modified = legacy.savedDecks[0]; modified.isStarter = false; CustomizableEntry(modified, legacy).count++;
             var service = AuthoredCollection(legacy);
             Assert.That(service.EnsureStarterDecks(out _), Is.True);
             var starter = service.StarterDeck(modified.faction);

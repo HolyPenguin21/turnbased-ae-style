@@ -195,7 +195,9 @@ namespace Game.EditorTests
             Assert.That(EquipmentCardText.Description(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);
             Assert.That(description, Does.Contain("Defense: +2").And.Contain("HP: +1").And.Contain("Initiative: -1"));
-            Assert.That(description, Does.Not.Contain("=").And.Not.Contain("-"));
+            // No em dash (U+2014); the 2026-10-21 literal sweep turned this check into a hyphen,
+            // which the signed "Initiative: -1" itself contains.
+            Assert.That(description, Does.Not.Contain("=").And.Not.Contain("\u2014"));
         }
 
         [Test]
