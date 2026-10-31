@@ -127,7 +127,7 @@ namespace Game.Map
                     if (!armyVisuals.TryGetValue(entry.Viewer, out var byId))
                         armyVisuals.Add(entry.Viewer, byId = new Dictionary<int, RememberedArmyVisual>());
                     byId.Add(entry.Sighting.SourceArmyId, new RememberedArmyVisual
-                        { Hex = entry.Sighting.Hex, Snapshot = entry.Sighting.Army, Visual = visual });
+                        { Hex = entry.Sighting.Hex, Snapshot = entry.Sighting.Army, Observation = entry.Sighting.Observed, Visual = visual });
                 }
             }
             catch
@@ -178,7 +178,7 @@ namespace Game.Map
             {
                 if (!_rememberedArmyVisuals.TryGetValue(viewer, out var visuals)
                     || !visuals.TryGetValue(sighting.SourceArmyId, out var remembered)
-                    || remembered == null || !remembered.Hex.Equals(sighting.Hex) || !ReferenceEquals(remembered.Snapshot, sighting.Army)
+                    || remembered == null || !remembered.Hex.Equals(sighting.Hex) || !ReferenceEquals(remembered.Observation, sighting.Observed)
                     || remembered.Visual == null || !remembered.Visual.IsFrozenRememberedAppearance)
                     throw new InvalidOperationException("Army sighting has no matching frozen remembered appearance.");
             });

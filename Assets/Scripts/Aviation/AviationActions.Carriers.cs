@@ -118,7 +118,7 @@ namespace Game.Aviation
                 return;
             foreach (ArmyData wing in ArmyRegistry.AllAt(hex).Where(a => a.Owner == host.Owner
                 && !a.IsCarrierContainer && AviationRules.IsValidAirArmy(a)
-                && (a.Controller == null || !a.Controller.IsMoving)).ToList())
+                && !a.IsMovementBusy && (a.Controller == null || !a.Controller.IsMoving)).ToList())
                 LandInSlotOrder(wing, null);
         }
 

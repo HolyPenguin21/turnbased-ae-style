@@ -72,12 +72,13 @@ namespace Game.Map
             ArmyController controller = army.Controller;
             var actualHex = controller != null ? controller.CurrentHex : army.Hex;
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (!force && !army.WasCarrierWing && (controller == null || !controller.IsMoving)
+            if (!force && !army.WasCarrierWing && !army.IsMovementBusy && (controller == null || !controller.IsMoving)
                 && building != null && building.Owner == army.Owner
                 && (building.HasAbility(UnitAbilities.Barracks)
                     || army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner)))
             { VisionSystem.NotifyContentChanged(army.Hex); return; }
             if (controller != null) controller.CancelMovement();
+            army.Movement?.Cancel();
             army.Controller = null; army.PendingAirStrikePolicy = null;
             ArmyRegistry.Unregister(army, actualHex);
             // A composed operation may compensate this removal before publishing. Keep the
@@ -96,15 +97,14 @@ namespace Game.Map
             if (removed.Length == 0) return 0;
             army.NormalizeGarrisonOrder(); army.RefreshTransport();
             if (cleanup) foreach (UnitData unit in removed)
-                StealthSystem.OnUnitRemoved(unit, deferNotifications: army.Controller != null && army.Controller.IsMoving);
+                StealthSystem.OnUnitRemoved(unit);
             AviationActions.RefreshCarrierContainers(army);
             if (publish)
             {
                 VisionSystem.RecomputeFor(army.Owner);
-                // A moving army is indexed at its origin until relocation finishes. Publishing
-                // that origin now would expose distant casualties as a false local sighting.
-                if (army.Controller == null || !army.Controller.IsMoving)
-                    VisionSystem.NotifyContentChanged(army.Hex);
+                // Each legal step is already indexed. Observers of this actual hex must see
+                // the committed post-reaction roster even if the marker is still animating.
+                VisionSystem.NotifyContentChanged(army.Hex);
             }
             return removed.Length;
         }

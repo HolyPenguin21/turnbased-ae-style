@@ -67,13 +67,9 @@ namespace Game.Map
         private void UpdateMovePreview(HexCoord? hoverCoord)
         {
             ArmyData army = GetSelectedArmy();
-            // No army (or it's the garrison, which can never move), or it's already mid-move
-            // (see TryIssueMoveOrder) — nothing to preview. army.Hex only updates once the move
-            // actually finishes (ArmyRegistry.MoveArmy), so without this check the preview would
-            // keep pathfinding from the stale origin hex for the whole animation. Once the move
-            // ends, SelectHex re-runs on the destination and a fresh hover elsewhere shows a new
-            // arrow again, same as any other selection change.
-            if (_selectedArmy == null || _selectedArmy.IsMoving || army == null || army.IsGarrison
+            // Preview another order only after both the domain operation and its animation
+            // settle. The indexed position already follows each legal step while moving.
+            if (_selectedArmy == null || _selectedArmy.IsMoving || army == null || army.IsGarrison || army.IsMovementBusy
                 || !hoverCoord.HasValue || hoverCoord.Value.Equals(army.Hex))
             {
                 if (_lastPreviewedHover.HasValue)
@@ -92,7 +88,7 @@ namespace Game.Map
             _lastPreviewedPathingVersion = map.PathingVersion;
 
             // flatCost for an air army — an aircraft pays a flat 1 MP per hex regardless of
-            // terrain (see AviationRules.MovementCost, what ArmyController.MoveRoutine actually
+            // terrain (see AviationRules.MovementCost, what ArmyMovementOperation actually
             // charges), so the route search must rank routes by hex count too. Without it the
             // ground-weighted search hands back a longer detour AROUND expensive terrain
             // (mountains) that the aircraft would never actually fly, and ShowPathArrow then draws
@@ -191,7 +187,7 @@ namespace Game.Map
             int energyCost = army.PendingActivationEnergyCost;
             // path.TotalCost is always terrain-weighted (see HexPathfinder.FindPath) — an air
             // army actually spends flat 1 MP per hex (see AviationRules.MovementCost, what
-            // ArmyController.MoveRoutine really charges), so the preview must show that instead.
+            // ArmyMovementOperation really charges), so the preview must show that instead.
             _pathArrow.Show(points, AviationRules.PathMoveCost(army, path), apCost, energyCost, color);
         }
 
@@ -210,7 +206,7 @@ namespace Game.Map
         // preview. A visible hero-only mover stops at a ground army for Capture/Kill too.
         // Only ever looks at a hex `mover.Owner` currently has VISION of — fog means an enemy
         // sitting on a not-yet-visible hex can't be pre-emptively routed around/stopped at when
-        // the path is first computed; discovering it is what ArmyController.MoveRoutine's own
+        // the path is first computed; discovering it is what ArmyMovementOperation's own
         // shouldStopEarly callback (see HandleVisionStep below) is for, mid-move, one hex at a
         // time, same as the real game.
         private static HexPath TruncateAtEnemyContact(HexPath path, ArmyData mover, out ArmyData enemyArmy)
@@ -243,60 +239,6 @@ namespace Game.Map
         private static System.Func<HexCoord, bool> AvoidEnemyHex(ArmyData mover)
         {
             return hex => VisionSystem.IsVisible(mover.Owner, hex) && BattleInitiator.FindEnemyAt(hex, mover) != null;
-        }
-
-        // Per-step callback for ArmyController.MoveRoutine's shouldStopEarly — called once per
-        // hex actually entered, right after the army lands there. Recomputes the mover's own
-        // vision from its new position FIRST (so the fog/markers/labels visibly update live as
-        // the army advances, not just once the whole move finishes), then checks whether this
-        // specific hex was previously unknown to the mover's owner: if so and it turns out to
-        // hold an enemy army or a foreign-owned building, the move stops right here instead of
-        // continuing blind toward a destination that was only ever chosen without knowing this
-        // was in the way. A hex the owner could already see (nothing newly revealed) never
-        // interrupts, regardless of what's there — TruncateAtEnemyContact/AvoidEnemyHex already
-        // handled anything visible at path-computation time.
-        private static bool HandleVisionStep(ArmyData mover, HexCoord hex)
-        {
-            bool wasKnown = VisionSystem.IsVisible(mover.Owner, hex);
-            VisionSystem.RecomputeFor(mover.Owner);
-            // Air armies still reveal the map while flying, but strategic ground contact and a
-            // foreign building never halt them; their own step resolver later handles AA/raid.
-            if (AviationRules.IsAirArmy(mover))
-                return false;
-            if (wasKnown)
-                return false;
-
-            if (BattleInitiator.FindEnemyAt(hex, mover) != null)
-                return true;
-
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner != null && building.Owner != mover.Owner;
-        }
-
-        // A pure check (no side effects) for shouldStopEarly: does `hex` carry an active,
-        // un-consumed Hex Event with no engageable enemy also on it — the "clean hex" case (see
-        // HexSelectionController.Events.cs's BeginCleanHexEvent). A Hex Event's own guard is never
-        // a real ArmyRegistry entry until the player actually commits to Explore (see
-        // HexEventRegistry.Entry.ResolvedGuardMembers's own comment), so it can never be what's
-        // found here — only an unrelated pre-existing neutral army (see CitadelSetupController.
-        // MapContent.GenerateNeutralArmies) can. A hex carrying one of those is deliberately NOT
-        // claimed here — that "collision" case is left entirely to the ordinary enemy-contact
-        // handling right below in onComplete, which already stops the move on its own (see
-        // TruncateAtEnemyContact/actualEnemyContact); the event itself only resolves once that
-        // combat is fully done AND the hex is fully clear (see BattleScreenUI.Combat.cs's own
-        // ResolveHexAfterVictory, which hooks into HexSelectionController.TriggerHexEventIfClear),
-        // per the user's own "triggers only after full battle resolution" rule. Vision is
-        // deliberately NOT recomputed here, unlike HandleVisionStep — an event hex isn't gated on
-        // fog/reveal, it triggers whenever entered, known or not.
-        private static bool HasUnclaimedCleanEventHex(ArmyData mover, HexCoord hex)
-        {
-            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) == false)
-                return false;
-            foreach (ArmyData other in ArmyRegistry.AllAt(hex))
-                if (other.Owner != mover.Owner && BattleInitiator.IsEngageable(other, mover.Owner))
-                    return false;
-            return true;
         }
 
         // Extracted out of TryIssueMoveOrder's own onComplete callback (2026-08-24 P0 fix — see
@@ -411,7 +353,7 @@ namespace Game.Map
             bool allowUndefendedBuildingTakeover = true,
             bool allowAiEventExplore = true)
         {
-            if (controller == null || controller.IsMoving)
+            if (controller == null || controller.IsMoving || controller.Data?.IsMovementBusy == true)
                 return MoveOrderResult.AlreadyMoving;
 
             // The garrison specifically can never move at all (it's anchored to its Barracks
@@ -443,7 +385,7 @@ namespace Game.Map
             // flatCost for an air army — see UpdateMovePreview's own comment: an aircraft's real
             // charge is a flat 1 MP/hex, so the route it's actually ordered along must be the
             // shortest hex-count route, not a ground-weighted detour around mountains. The move
-            // itself (ArmyController.MoveRoutine) already charges flat per hex; only the route
+            // itself (ArmyMovementOperation) already charges flat per hex; only the route
             // SELECTION here was still terrain-weighted.
             HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, AvoidEnemyHex(army),
                 flatCost: AviationRules.IsAirArmy(army));
@@ -459,7 +401,7 @@ namespace Game.Map
                 path = TruncateAtEnemyContact(path, army, out _);
 
             // An army only ever stops short of a hex it can't fully afford (see
-            // ArmyController.MoveRoutine) — never enters it partway "in debt" any more. Caught
+            // ArmyMovementOperation) — never enters it partway "in debt" any more. Caught
             // here specifically for the very next step: if that alone is already unaffordable,
             // MoveAlong would do nothing at all and the player would see no feedback for why the
             // order silently failed.
@@ -494,205 +436,41 @@ namespace Game.Map
             if (army.IsCarrierFlightDeck)
                 movingArmy.ResetTransform(map, ResolveArmyOffset(army.Hex, movingArmy));
 
-            // Set true by shouldStopEarly below the instant it claims the stop for a "clean" Hex
-            // Event hex — read inside onComplete to skip the ordinary enemy-contact branch for
-            // this same hex-entry (see HasUnclaimedCleanEventHex's own comment on why a
-            // "collision" hex is deliberately NOT claimed here and falls through to that branch
-            // unmodified instead).
-            bool eventStopClaimed = false;
-
-            // Last hex the per-step stealth arrival check already covered (set in onStepCompleted
-            // below) — so onComplete doesn't run a second, redundant challenge on the final hex
-            // for the same (unit, observer) pairs it just checked one step ago.
-            HexCoord? lastStealthCheckedHex = null;
-
-            // Dedupe set spanning THIS whole movement order — shared by every per-hex
-            // RunChecksForArrival call below so an enemy hidden unit the mover keeps in view
-            // across several steps is challenged once, not once per step (стелс §3). Keyed
-            // (hidden unit, observer, hex); the mover's own hidden members still get one check
-            // per hex entered because their key's hex advances each step.
-            var stealthMoveEventSeen = new HashSet<(UnitData, PlayerSetupData, HexCoord)>();
-
-            // Let the idle hover/pulse animation ease back to its resting pose first — jumping
-            // straight from mid-bob/mid-pulse into the move animation was what made movement
-            // look jerky right as it started. SettleThen already claims IsMoving immediately,
-            // so a second order can't sneak in during that brief wait.
-            movingArmy.SettleThen(() =>
-            {
-                movingArmy.MoveAlong(map, path.Hexes, hex => ResolveArmyOffset(hex, movingArmy), () =>
+            var movement = ArmyMovementOperation.ForOrder(army, map, path.Hexes, ownerRoot, destination, this,
+                arrivalPresentation: result =>
                 {
-                    // shouldStopEarly (below) already recomputed vision for every hex actually
-                    // entered — nothing extra needed here just to catch up on that.
-                    // The army can stop short partway along the path, the moment the next hex
-                    // would cost more than what's left — movingArmy.CurrentHex (tracked live
-                    // during MoveAlong, see ArmyController) reflects wherever it actually ended
-                    // up, which is NOT necessarily `destination`. ArmyRegistry.MoveArmy is the
-                    // one place Data.Hex itself actually changes, once the whole move is
-                    // finished.
-                    if (movingArmy == null || army.Controller != movingArmy
-                        || army.Members.Count == 0 || !ArmyRegistry.IsRegistered(army))
-                        return;
-                    HexCoord actualHex = movingArmy.CurrentHex;
-                    ArmyRegistry.MoveArmy(army, actualHex);
-
-                    // Stealth trigger A (see Game.Map.StealthSystem): both sides' vision has
-                    // just been recomputed for this final position — check this army's own
-                    // hidden members against enemy observers of the hex, and enemy hidden
-                    // units now inside this army's vision against its owner. shouldStopEarly
-                    // below already ran this per ACTUAL hex entered (ground and air alike —
-                    // the design's "check on arrival in each new hex", so a multi-hex order
-                    // can't slip a hidden unit past an intermediate observer); this final call
-                    // only covers a hex shouldStopEarly never got to — no steps ran at all, or
-                    // an air step broke out early via resolveStepAsync (StopMovement / army
-                    // wiped) before shouldStopEarly.
-                    if (!lastStealthCheckedHex.HasValue || !lastStealthCheckedHex.Value.Equals(actualHex))
-                        StealthSystem.RunChecksForArrival(army, actualHex, stealthMoveEventSeen);
-
-                    // No container is created by movement. The Base lifecycle owns creation of its
-                    // persistent airfield container; landing only resets this formed air army in
-                    // place and never transfers its aircraft.
-
-                    // The origin hex's own layout (a building recentring once the last army
-                    // actually leaves, in particular) only reads correctly once MoveArmy above
-                    // has re-keyed `army` away from it — the earlier RestackArmiesOn(originHex,
-                    // ...) call, made when the order was first given, still saw `army`
-                    // registered there and couldn't reflect this.
+                    HexCoord actualHex = result.Hex;
                     RestackArmiesOn(originHex, null);
-
-                    // The user's own Siege spec, undefended case: a building with no engageable
-                    // army of its own owner present at all just changes hands/gets destroyed the
-                    // moment an enemy army finishes moving onto its hex — no fight to trigger,
-                    // nothing to delay, there was never anyone there to put one up (see
-                    // BattleScreenUI.Combat.cs's HandleBuildingOnArmyDefeat for the "army got
-                    // wiped mid-fight" case this doesn't cover). Runs regardless of whether an
-                    // actual army contact ALSO fires below — a third player's building could sit
-                    // on the same hex as someone else's army. Shared with BattleScreenUI.Retreat.
-                    // cs's PerformRetreat, which needs the exact same check for a retreat landing
-                    // on an undefended hex — see BuildingRegistry.CaptureOrDestroyIfUndefended.
-                    if (!AviationRules.IsAirArmy(army) && allowUndefendedBuildingTakeover)
-                        BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner, this, army);
-
-                    // movingArmy's own marker was last positioned by MoveAlong's resolveOffset
-                    // call for actualHex, which ran BEFORE the destroy above — if that undefended
-                    // building was what CaptureOrDestroyIfUndefended just tore down, the offset it
-                    // landed on (beside the now-gone building) is stale. RestackArmiesOn below
-                    // deliberately skips movingArmy (still IsMoving here — see ArmyController.
-                    // MoveAlong's own comment on why onComplete runs before that flips false), so
-                    // nothing else would ever re-snap it to hex centre until the hex was reselected
-                    // (see the user's own report). Cheap/idempotent when nothing actually changed.
                     movingArmy.SetLayoutPosition(map.HexToWorld(actualHex) + ResolveArmyOffset(actualHex, movingArmy), true);
-
-                    // Re-checked fresh against `actualHex`, NOT the `enemyArmy` truncation found
-                    // before the move even started — the army can run out of shared move points
-                    // and stop well short of the hex TruncateAtEnemyContact had in mind (e.g. it
-                    // takes 2 but only 1 remains), in which case there was never any real contact
-                    // and this must stay silent. See TryBeginBattleAt's own comment for what
-                    // MoverCannotFight/Pending/NoContact each mean, and — for Pending specifically
-                    // — why leaving that pairing unresolved here is no longer the end of the story
-                    // (AiTurnController.MoveArmyRoutine's own post-move safety check, and
-                    // GameTurnController's end-of-round sweep, both still eventually force it).
-                    // Hex Events: a "clean" hex claimed by shouldStopEarly below — resolved here,
-                    // AFTER the registry re-keying/RestackArmiesOn(originHex, ...) above, rather
-                    // than synchronously inside shouldStopEarly itself (mid-coroutine, before that
-                    // re-keying), so a popup showing or a battle opening from BeginCleanHexEvent
-                    // never sees the mover still registered at its stale origin hex. Takes over
-                    // this whole branch (see the else below) — the ordinary enemy-contact check
-                    // never even runs for this hex-entry.
-                    if (eventStopClaimed)
+                    if (result.HexEvent) { RestackArmiesOn(actualHex, movingArmy); return; }
+                    if (result.Contact == BattleStartResult.Started)
                     {
-                        BeginCleanHexEvent(army, actualHex, destination, movingArmy,
-                            allowUndefendedBuildingTakeover, allowAiEventExplore);
-                        RestackArmiesOn(actualHex, movingArmy);
-                        return;
-                    }
-
-                    BattleStartResult battleResult = AviationRules.IsAirArmy(army)
-                        ? BattleStartResult.NoContact
-                        : TryBeginBattleAt(actualHex, army);
-
-                    if (battleResult == BattleStartResult.Started)
-                    {
-                        // Not a full Deselect() (that would also clear _selectedArmy, still
-                        // needed below in the general case) — but the ORIGIN hex's own selection
-                        // must still go: the army has already left it, and the general
-                        // re-select-at-actualHex logic below is skipped entirely on contact (see
-                        // the else branch's own comment), so nothing else would ever clear it.
-                        // Left alone, its highlight/info panels — and the multi-army button row,
-                        // if the origin hex still has 2+ of the player's own armies left on it —
-                        // kept pointing at a hex/roster the army no longer occupies/belongs to.
                         _selectedHex = null;
                         if (highlight != null) highlight.Hide();
                         if (infoPanel != null) infoPanel.Hide();
                         if (armyButtonRow != null) armyButtonRow.Hide();
                     }
-                    // Re-arm the hover/pulse animation once the move finishes, if it's still the
-                    // active selection (the player may have selected something else meanwhile) —
-                    // and follow the selection itself to wherever the army actually stopped,
-                    // instead of leaving the highlight/info panels behind on wherever it was
-                    // originally clicked from. Skipped entirely on contact — SelectHex would just
-                    // re-show the very panels just hidden above, right underneath the popup.
                     else if (_selectedArmy == movingArmy)
                     {
                         movingArmy.SetSelected(true);
                         SelectHex(actualHex, preserveSelection: true);
                     }
-
-                    // The army just settled on `actualHex` — anyone else already resting
-                    // there (e.g. it now forms a two-different-owners pair) needs to shift to
-                    // match.
                     RestackArmiesOn(actualHex, movingArmy);
-                }, shouldStopEarly: hex =>
-                {
-                    // An air army still reveals FOW via HandleVisionStep below, but never triggers
-                    // or stops for a Hex Event — only a ground army can Explore one.
-                    if (!AviationRules.IsAirArmy(army) && HasUnclaimedCleanEventHex(army, hex))
-                    {
-                        eventStopClaimed = true;
-                        onHexEventEncountered?.Invoke(hex);
-                        return true;
-                    }
-                    bool stopForContact = HandleVisionStep(army, hex);
-                    // Stealth trigger A, per ACTUAL hex entered (design: a check on arrival in
-                    // each NEW hex, not once for the whole order — a multi-hex move must not let
-                    // a hidden unit slip past an observer sitting on a mid-route hex, and an
-                    // air-recon / r1sX aircraft must get to challenge hidden units all along its
-                    // route, not only in the final hex). Runs here, AFTER HandleVisionStep has
-                    // recomputed the mover's vision for this step and — for an air army — AFTER
-                    // resolveStepAsync's own AA reaction / air strike (MoveRoutine calls that
-                    // before shouldStopEarly): a hidden target revealed by this check must not
-                    // become a target of a strike that already resolved this step.
-                    // SpotPoolAgainst reads the mover's live CurrentHex. The clean-Hex-Event
-                    // stop above returns before this — that hex is covered by onComplete's call.
-                    StealthSystem.RunChecksForArrival(army, hex, stealthMoveEventSeen);
-                    lastStealthCheckedHex = hex;
-                    return stopForContact;
-                },
-                beforeFirstStep: () =>
-                {
-                    if (!army.RequiresActivationPayment && army.HasActivatedThisTurn) return true;
-                    return ArmyActions.TryPayActivation(army, ownerRoot);
-                },
+                }, eventEncountered: onHexEventEncountered,
+                allowUndefendedBuildingTakeover: allowUndefendedBuildingTakeover, allowAiEventExplore: allowAiEventExplore);
+            System.Action reconcile = () =>
+            {
+                if (movingArmy != null && army.Controller == movingArmy && ArmyRegistry.IsRegistered(army))
+                    RestackArmiesOn(army.Hex, null);
+            };
+            movingArmy.PlayMovement(movement, map, hex => ResolveArmyOffset(hex, movingArmy),
                 onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
                 onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true),
                 resolveStepAsync: aviationCombatPresenter != null
                     ? (System.Func<HexCoord, HexCoord, ArmyController.StepResolutionOutcome, System.Collections.IEnumerator>)
-                        ((from, to, outcome) => aviationCombatPresenter.ResolveStep(army, to, outcome))
-                    : null,
-                onSettled: () =>
-                {
-                    if (movingArmy != null && army.Controller == movingArmy && ArmyRegistry.IsRegistered(army))
-                        RestackArmiesOn(army.Hex, null);
-                });
-                // Leaving originHex can just as easily change what's left behind there (e.g. a
-                // pair collapsing back down to one army, which should re-centre).
-                RestackArmiesOn(originHex, movingArmy);
-            }, onCancelled: actualHex =>
-            {
-                // A live interruption records partial movement but performs no arrival actions.
-                // Death is committed by DeleteArmyIfEmptied as an atomic removal instead.
-                if (army.Members.Count > 0 && ArmyRegistry.IsRegistered(army))
-                    ArmyRegistry.MoveArmy(army, actualHex);
-            });
+                        ((from, to, outcome) => aviationCombatPresenter.ResolveStep(army, to, outcome)) : null,
+                onSettled: reconcile, onCancelled: reconcile);
+            RestackArmiesOn(originHex, movingArmy);
 
             HidePathPreview();
             _lastPreviewedHover = null;

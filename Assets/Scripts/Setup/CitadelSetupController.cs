@@ -178,6 +178,7 @@ namespace Game.Setup
             // need to already be known by then, not set afterward.
             if (gameConfig == null || map == null) throw new System.InvalidOperationException("Match configuration or map is missing.");
             VisionSystem.Configure(gameConfig);
+            MapObservationSystem.Configure(map);
             // Stealth detection needs the terrain move-cost at a hidden unit's hex for its
             // hide-tokens bump; hand StealthSystem a lookup into the live map here, same
             // ordering rationale as VisionSystem.Configure above.
