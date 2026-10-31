@@ -108,7 +108,7 @@ namespace Game.Units
         public int DrillAttackBonus;
 
         // Restored at the start of every turn. A move never spends more than what's left — an
-        // army stops short of any hex it can't fully afford (see ArmyController.MoveRoutine) —
+        // army stops short of any hex it can't fully afford (see ArmyMovementOperation) —
         // so this never goes negative; only ever capped from above at Max.
         private int _moveMax;
         private int _moveCurrent;

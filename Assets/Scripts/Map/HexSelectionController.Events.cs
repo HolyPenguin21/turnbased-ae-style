@@ -288,8 +288,8 @@ namespace Game.Map
         // retriggers identically on any future visit (the user's own explicit rule). If the mover
         // was following a multi-hex pathfinder order toward a destination further along, a fresh
         // order is reissued right away so it "continues along the pathfinder" per the spec — this
-        // codebase has no pause/auto-resume primitive for an in-progress MoveRoutine (see
-        // ArmyController.MoveRoutine's own shouldStopEarly contract: an early stop is permanent),
+        // codebase has no pause/auto-resume primitive for an in-progress ArmyMovementOperation (see
+        // its entry-effect stop contract: an early stop is permanent),
         // so this simulates the same effect the way any other early-stopped move already requires
         // a fresh order to continue. A single manual-click move (already at its destination, or
         // out of movement) just leaves the army where it is, same as any other early stop today.

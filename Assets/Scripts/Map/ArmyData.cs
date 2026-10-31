@@ -248,7 +248,7 @@ namespace Game.Map
             : !HasActivatedThisTurn;
 
         // Shared movement — every member advances in lockstep, capped by whichever one has the
-        // least left (see ArmyController.MoveRoutine); Max is the same rule applied to MoveMax,
+        // least left (see ArmyMovementOperation); Max is the same rule applied to MoveMax,
         // i.e. the army's per-turn movement budget before anything's been spent. Both 0 for an
         // empty army rather than throwing on Members[0].
         public int CurrentMovement => VisualSnapshotCurrentMovement ?? ComputeCurrentMovement(Members);

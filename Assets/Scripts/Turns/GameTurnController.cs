@@ -1022,7 +1022,10 @@ namespace Game.Turns
             if (_gameOver)
                 return;
 
+            // Expiry forgets enemies out of view; what is still visible is observed again at
+            // once, so a later loss of vision during other turns cannot erase a stationary army.
             HumanVisualMemory.EndTurn(CurrentPlayer);
+            MapObservationSystem.ObserveVisible(CurrentPlayer);
             TurnChanging?.Invoke();
             _currentPlayerIndex = index;
             TurnConfirmed = false;

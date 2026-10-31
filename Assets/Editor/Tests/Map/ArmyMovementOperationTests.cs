@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections;
+using System.Linq;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -233,6 +234,45 @@ namespace Game.EditorTests
             move = Move(() => Assert.That(army.IsMovementBusy, Is.True));
             move.TryEnterNextStep(out _, out _); move.TryEnterNextStep(out _, out _); move.Settle();
             Assert.That(move.IsBusy, Is.False);
+        }
+        private static void WithMap(Action<HexMap> body)
+        {
+            var host = new UnityEngine.GameObject("ArmyMovementOperationTests");
+            try
+            {
+                var map = host.AddComponent<HexMap>();
+                var plain = new Game.Terrain.TerrainTypeEntry { terrainName = "Plain" };
+                map.SetData(3, 1, HexGridMath.HexesInRange(new HexCoord(0, 0), 3).ToDictionary(h => h, h => plain));
+                body(map);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(host); }
+        }
+        [Test] public void ActivatedArmyOrderDoesNotCoverMembersThatJoinedAfterActivation()
+        {
+            army.MarkActivated();
+            var joined = new UnitData { Owner = army.Owner, MoveMax = 5, MoveCurrent = 5, HitPointsCurrent = 4, ActivationApCost = 2 };
+            army.Members.Add(joined);
+            WithMap(map =>
+            {
+                var move = ArmyMovementOperation.ForOrder(army, map, new[] { origin, first, last }, null, last, null);
+                Drain(move.Run(null));
+                Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Arrived));
+                Assert.That(army.RequiresActivationCharge(joined), Is.True);
+            });
+        }
+        [Test] public void NewlyRevealedEnemyStopsFullyHiddenMover()
+        {
+            army.Members[0].IsHidden = true; army.MarkActivated();
+            var enemy = new ArmyData { Owner = new PlayerSetupData(), Hex = first };
+            enemy.Members.Add(new UnitData { Owner = enemy.Owner, MoveMax = 3, MoveCurrent = 3, HitPointsCurrent = 3, Attack = 1 });
+            ArmyRegistry.Register(enemy);
+            WithMap(map =>
+            {
+                var move = ArmyMovementOperation.ForOrder(army, map, new[] { origin, first, last }, null, last, null);
+                Drain(move.Run(null));
+                Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Interrupted));
+                Assert.That(army.Hex, Is.EqualTo(first));
+            });
         }
         [Test] public void ArrivalAndCompletionAreOneShotAndReleaseBusyBeforeNotification()
         {

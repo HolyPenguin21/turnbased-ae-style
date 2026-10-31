@@ -483,7 +483,7 @@ namespace Game.Ai
                 trace.BattleOccurred = battleObserved;
 
             // A contact-triggered fight has already been kicked off synchronously by this point
-            // (ArmyController.MoveRoutine runs its own onComplete callback — which is where
+            // (ArmyMovementOperation runs its arrival effects — which is where
             // contact detection and battleScreen.Show() live — before IsMoving above ever flips
             // false), but the fight itself, and anything it chains into, resolves asynchronously
             // from here. Wait for all of that to fully close before this army's own turn step

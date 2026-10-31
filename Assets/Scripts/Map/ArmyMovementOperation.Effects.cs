@@ -33,7 +33,11 @@ namespace Game.Map
             var effects = new EntryEffects(army, destination, encounters, arrivalPresentation, eventEncountered,
                 allowUndefendedBuildingTakeover, allowAiEventExplore);
             ArmyMovementOperation operation = null;
-            operation = ForMap(army, map, path, () => ArmyActions.TryPayActivation(army, root), () => effects.Arrive(operation));
+            // An army already activated this turn pays nothing; MarkActivated must not sweep
+            // members that joined since then into its lump coverage for free.
+            operation = ForMap(army, map, path,
+                () => !army.RequiresActivationPayment && army.HasActivatedThisTurn || ArmyActions.TryPayActivation(army, root),
+                () => effects.Arrive(operation));
             operation.entryEffects = hex => effects.Enter(operation, hex);
             operation.defaultStepResolution = (from, to, outcome) => ResolveHeadlessStep(from, to, outcome, army);
             return operation;
@@ -77,8 +81,12 @@ namespace Game.Map
                 if (AviationRules.IsAirArmy(army)) return false;
                 if (BattleInitiator.CanInitiateContact(army) && BattleInitiator.FindDefenderOnArrival(hex, army) != null)
                     return true;
+                if (!newlySeen) return false;
+                // A newly revealed enemy halts even a fully hidden mover, which cannot start
+                // contact: the route was chosen without knowing it stood there.
+                if (BattleInitiator.FindEnemyAt(hex, army) != null) return true;
                 var building = BuildingRegistry.FindAt(hex);
-                return newlySeen && building != null && building.Owner != null && building.Owner != army.Owner;
+                return building != null && building.Owner != null && building.Owner != army.Owner;
             }
             internal void Arrive(ArmyMovementOperation operation)
             {
