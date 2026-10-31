@@ -39,8 +39,8 @@ namespace Game.EditorTests
             int arrivals = 0;
             var move = Move(() => arrivals++);
             Assert.That(move.TryEnterNextStep(out _, out _), Is.True);
-            Assert.That(army.Hex, Is.EqualTo(first)); Assert.That(ArmyRegistry.At(first), Does.Contain(army));
-            Assert.That(ArmyRegistry.At(origin), Does.Not.Contain(army));
+            Assert.That(army.Hex, Is.EqualTo(first)); Assert.That(ArmyRegistry.At(first), Has.Member(army));
+            Assert.That(ArmyRegistry.At(origin), Has.No.Member(army));
             move.Cancel(); move.Settle();
             Assert.That(army.CurrentMovement, Is.EqualTo(4)); Assert.That(arrivals, Is.Zero);
             Assert.That(move.Result.EnteredSteps, Is.EqualTo(1)); Assert.That(move.IsBusy, Is.False);

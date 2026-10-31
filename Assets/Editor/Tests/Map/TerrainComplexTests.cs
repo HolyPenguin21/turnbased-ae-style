@@ -674,18 +674,15 @@ namespace Game.EditorTests
         {
             var army = new ArmyData { Hex = _origin };
             var unit = new UnitData { MoveCurrent = 3, MoveMax = 3 }; army.Members.Add(unit);
-            var controller = _object.AddComponent<ArmyController>(); controller.SetData(army);
-            typeof(ArmyController).GetProperty("IsMoving").SetValue(controller, true);
             var target = new HexCoord(1, 0); _map.SetTerrainAt(target, _lake);
             int activations = 0;
-            var method = typeof(ArmyController).GetMethod("MoveRoutine", BindingFlags.NonPublic | BindingFlags.Instance);
-            var routine = (IEnumerator)method.Invoke(controller, new object[] { _map,
-                new List<HexCoord> { _origin, target }, (Func<HexCoord, Vector3>)(h => Vector3.zero),
-                null, null, null, null, (Func<bool>)(() => { activations++; return true; }) });
-            Assert.That(routine.MoveNext(), Is.False);
+            var move = ArmyMovementOperation.ForMap(army, _map, new List<HexCoord> { _origin, target },
+                () => { activations++; return true; });
+            Assert.That(move.TryEnterNextStep(out _, out _), Is.False);
             Assert.That(unit.MoveCurrent, Is.EqualTo(3));
             Assert.That(activations, Is.EqualTo(0), "A refused first step must not charge activation.");
-            Assert.That(controller.CurrentHex, Is.EqualTo(_origin));
+            Assert.That(army.Hex, Is.EqualTo(_origin));
+            Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Rejected));
         }
     }
 }
