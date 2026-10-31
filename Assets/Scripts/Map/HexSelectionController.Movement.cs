@@ -184,15 +184,24 @@ namespace Game.Map
                 color = enemyArmy != null ? gameConfig.moveArrowAttackColor : gameConfig.moveArrowMoveColor;
             }
 
-            var points = new List<Vector3>(path.Hexes.Count);
-            foreach (HexCoord hex in path.Hexes)
-                points.Add(map.HexToWorld(hex));
-            int apCost = army.PendingActivationApCost;
-            int energyCost = army.PendingActivationEnergyCost;
             // path.TotalCost is always terrain-weighted (see HexPathfinder.FindPath) — an air
             // army actually spends flat 1 MP per hex (see AviationRules.MovementCost, what
             // ArmyController.MoveRoutine really charges), so the preview must show that instead.
-            _pathArrow.Show(points, AviationRules.PathMoveCost(army, path), apCost, energyCost, color);
+            int moveCost = AviationRules.PathMoveCost(army, path);
+            if (moveCost > army.CurrentMovement)
+                color = gameConfig.moveArrowUnreachableColor;
+
+            var points = new List<Vector3>(path.Hexes.Count);
+            foreach (HexCoord hex in path.Hexes)
+                points.Add(map.HexToWorld(hex));
+            // Tail starts halfway between the origin hex's center and its exit edge rather than
+            // on the center itself (owner's spec) — the shared edge's midpoint is the midpoint of
+            // the two neighbouring centers, so halfway to it is a quarter of the first step.
+            if (points.Count >= 2)
+                points[0] = Vector3.Lerp(points[0], points[1], 0.25f);
+            int apCost = army.PendingActivationApCost;
+            int energyCost = army.PendingActivationEnergyCost;
+            _pathArrow.Show(points, moveCost, apCost, energyCost, color);
         }
 
         // Whether ANY member of an air army still has its own attack available this turn — see

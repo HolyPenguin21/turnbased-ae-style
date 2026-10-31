@@ -261,6 +261,9 @@ namespace Game.Core
         // this and reserved out of PlayerColorPalette (see there).
         public Color moveArrowMoveColor = new Color(0.15f, 0.75f, 0.25f);
         public Color moveArrowAttackColor = new Color(0.80f, 0.15f, 0.15f);
+        // Overrides both of the above when the army's remaining MP can't cover the path's full
+        // cost this turn — the move/attack is still orderable, just not reachable right now.
+        public Color moveArrowUnreachableColor = new Color(0.95f, 0.80f, 0.20f);
 
         [Header("Vision / Fog of War")]
         // How many hex steps out an army/building's own hex grants vision — 0 means "only the
