@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 846c7b3c922c4c4fafccdbf0823ce42d
+guid: d9e6c7adaf7d3784498379ab9f65345b
 TextureImporter:
   internalIDToNameTable: []
   externalObjects: {}
@@ -39,11 +39,11 @@ TextureImporter:
     mipBias: 0
     wrapU: 1
     wrapV: 1
-    wrapW: 1
+    wrapW: 0
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -69,7 +69,7 @@ TextureImporter:
   platformSettings:
   - serializedVersion: 4
     buildTarget: DefaultTexturePlatform
-    maxTextureSize: 128
+    maxTextureSize: 2048
     resizeAlgorithm: 0
     textureFormat: -1
     textureCompression: 1
@@ -100,7 +100,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 5247c655dd7e46ec91233a8b59b847fc
+    spriteID: 
     internalID: 0
     vertices: []
     indices: 
@@ -114,4 +114,4 @@ TextureImporter:
   pSDRemoveMatte: 0
   userData: 
   assetBundleName: 
-  assetBundleVariant:
+  assetBundleVariant: 
