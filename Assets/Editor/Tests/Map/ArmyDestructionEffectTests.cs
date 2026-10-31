@@ -105,6 +105,10 @@ namespace Game.EditorTests
         {
             MapObjectVisual marker = CreateMarker();
             _sprite.name = spriteName;
+            // Art is intentionally local-only and not stored in Git. Integration
+            // checks run when a developer has installed the four actual atlases.
+            if (Resources.Load<Texture2D>("ArmyDestruction/" + sheetName) == null)
+                Assert.Ignore("Local flipbook atlas not installed: " + sheetName);
             var captured = ArmyDestructionEffect.Capture(marker);
             Assert.That(captured, Is.Not.Null);
             Object.DestroyImmediate(_marker);
@@ -134,6 +138,8 @@ namespace Game.EditorTests
         {
             MapObjectVisual marker = CreateMarker();
             _sprite.name = "MapObject_Army_FactionAccent";
+            if (Resources.Load<Texture2D>("ArmyDestruction/GroundAccent") == null)
+                Assert.Ignore("Local GroundAccent atlas is not installed.");
             ArmyDestructionEffect.Play(ArmyDestructionEffect.Capture(marker));
             var root = GameObject.Find("Army Marker Destruction");
             var renderer = root.GetComponentInChildren<SpriteRenderer>();
