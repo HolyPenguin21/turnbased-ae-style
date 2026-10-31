@@ -308,6 +308,11 @@ namespace Game.UI
                 return;
             }
 
+            ArmyDestructionEffect.Appearance hunterMarkerAtStart =
+                ArmyDestructionEffect.Capture(hunterArmy.Controller?.Visual);
+            ArmyDestructionEffect.Appearance targetMarkerAtStart =
+                ArmyDestructionEffect.Capture(targetArmy.Controller?.Visual);
+
             // Deliberately does NOT activate panelRoot — no grid/Arrangement/turn-order chrome
             // makes sense for a hero-only encounter, and per the user's own spec this needs to
             // stay a light popup-only interaction, reusable for every future Challenge type
@@ -393,9 +398,10 @@ namespace Game.UI
 
 
                 EncounterResolved?.Invoke(hunterArmy, targetArmy);
-                // Hero-only encounters have no full-screen outcome panel. The last Challenge
-                // has finished, so reveal any already-committed marker destruction now.
-                targetOnlyState.PresentDestroyedArmies();
+                // The last Challenge just closed. The engine has already removed any wiped
+                // army; show its original marker as a detached two-second map effect.
+                PlayDefeatedArmyMarker(hunterArmy, hunterMarkerAtStart);
+                PlayDefeatedArmyMarker(targetArmy, targetMarkerAtStart);
 
                 // Same "what's left on this hex" resolution as a normal battle, but the engine
                 // has already handled Fate, roster cleanup, building transfer, vision and restack.
@@ -487,6 +493,14 @@ namespace Game.UI
             ShowArmyThought(army, survived ? AiThoughtCategory.BattleWon : AiThoughtCategory.BattleLost);
         }
 
+        private static void PlayDefeatedArmyMarker(ArmyData army, ArmyDestructionEffect.Appearance appearance)
+        {
+            // Avoid effects for ordinary transfers, surviving/retreated forces or an empty
+            // garrison that the game rules intentionally preserve in the army registry.
+            if (army != null && army.Members.Count == 0 && !ArmyRegistry.IsRegistered(army))
+                ArmyDestructionEffect.Play(appearance);
+        }
+
         private Action OutcomeAcknowledgment()
         {
             BattleState expected = _battleState;
@@ -502,11 +516,13 @@ namespace Game.UI
 
 
             EncounterResolved?.Invoke(resolvedAttacker, resolvedDefender);
-            BattleState finishedState = _battleState;
+            ArmyDestructionEffect.Appearance attackerMarker = _attackerMarkerAtStart;
+            ArmyDestructionEffect.Appearance defenderMarker = _defenderMarkerAtStart;
             ResetBattlePanel();
-            // Combat deletion already happened before the results popup. Play its detached
-            // map visual on this same frame, after the battle UI has been hidden.
-            finishedState.PresentDestroyedArmies();
+            // CompleteBattle deleted the defeated marker BEFORE showing results. Restore
+            // its appearance on the map now, on the frame the outcome popup disappears.
+            PlayDefeatedArmyMarker(resolvedAttacker, attackerMarker);
+            PlayDefeatedArmyMarker(resolvedDefender, defenderMarker);
 
             ResolveHexAfterVictory(hex, finalization.Survivor);
         }
