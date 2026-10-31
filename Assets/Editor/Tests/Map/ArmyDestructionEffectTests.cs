@@ -96,6 +96,55 @@ namespace Game.EditorTests
             ArmyDestructionEffect.Play(null);
             Assert.That(GameObject.Find("Army Marker Destruction"), Is.Null);
         }
+
+        [TestCase("MapObject_Army_Base", "GroundBase")]
+        [TestCase("MapObject_Army_Air_Base", "AirBase")]
+        [TestCase("MapObject_Army_FactionAccent", "GroundAccent")]
+        [TestCase("MapObject_Army_Air_FactionAccent", "AirAccent")]
+        public void BuiltInGroundAndAirMarkersUseActualBakedFrames(string spriteName, string sheetName)
+        {
+            MapObjectVisual marker = CreateMarker();
+            _sprite.name = spriteName;
+            var captured = ArmyDestructionEffect.Capture(marker);
+            Assert.That(captured, Is.Not.Null);
+            Object.DestroyImmediate(_marker);
+            _marker = null;
+            ArmyDestructionEffect.Play(captured);
+
+            var root = GameObject.Find("Army Marker Destruction");
+            Assert.That(root, Is.Not.Null);
+            var flipbook = root.GetComponent<ArmyDestructionEffect>();
+            var renderer = root.GetComponentInChildren<SpriteRenderer>();
+            Assert.That(renderer.sprite, Is.Not.Null, "missing flipbook: " + sheetName);
+            Assert.That(renderer.sprite, Is.Not.SameAs(_sprite),
+                "built-in marker must use a pre-rendered frame");
+            Assert.That(renderer.sprite.texture.width, Is.EqualTo(1280));
+            Assert.That(renderer.sprite.texture.height, Is.EqualTo(320));
+            Assert.That(renderer.sprite.name, Is.EqualTo(sheetName + "_00"));
+
+            typeof(ArmyDestructionEffect).GetMethod("SetFrame",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(flipbook, new object[] { 8 });
+            Assert.That(renderer.sprite.name, Is.EqualTo(sheetName + "_08"),
+                "frame-by-frame sprite replacement must advance artwork");
+        }
+
+        [Test]
+        public void AccentKeepsFactionColorOnFirstFrameThenTurnsToAsh()
+        {
+            MapObjectVisual marker = CreateMarker();
+            _sprite.name = "MapObject_Army_FactionAccent";
+            ArmyDestructionEffect.Play(ArmyDestructionEffect.Capture(marker));
+            var root = GameObject.Find("Army Marker Destruction");
+            var renderer = root.GetComponentInChildren<SpriteRenderer>();
+            Assert.That(renderer.color, Is.EqualTo(Color.red));
+
+            typeof(ArmyDestructionEffect).GetMethod("SetFrame",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(root.GetComponent<ArmyDestructionEffect>(), new object[] { 6 });
+            Assert.That(renderer.color.r, Is.EqualTo(0.52f).Within(0.001f));
+            Assert.That(renderer.color.g, Is.EqualTo(0.52f).Within(0.001f));
+        }
     }
 }
 #endif
