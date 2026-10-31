@@ -21,9 +21,13 @@ namespace Game.UI
             new Dictionary<string, Texture2D>();
         private static readonly Dictionary<string, Sprite> FallbackSprites =
             new Dictionary<string, Sprite>();
+        // One Sprite per complete atlas cell. Cached so subsequent skill activations
+        // neither re-slice textures nor allocate new sprites.
+        private static readonly Dictionary<string, Sprite[]> AtlasFrames =
+            new Dictionary<string, Sprite[]>();
 
-        private RawImage _atlasImage;
-        private Graphic _graphic;
+        private Image _image;
+        private Sprite[] _frames;
         private RectTransform _rect;
         private RectTransform _cardRect;
         private float _started;
@@ -66,14 +70,37 @@ namespace Game.UI
                 }
             }
 
+            Sprite[] frames = null;
+            if (atlas != null)
+            {
+                if (!AtlasFrames.TryGetValue(atlasPath, out frames) || frames == null)
+                {
+                    // RawImage.uvRect cropped a region of the GPU texture, making
+                    // only the high-contrast rings/streaks legible on the card.
+                    // An Image with a full 256x256 Sprite preserves the complete
+                    // foreground illustration, texture alpha and cell boundaries.
+                    var sliced = new Sprite[FrameCount];
+                    for (int i = 0; i < FrameCount; i++)
+                    {
+                        sliced[i] = Sprite.Create(atlas,
+                            new Rect(i * 256f, 0f, 256f, 256f),
+                            new Vector2(0.5f, 0.5f), 100f, 0,
+                            SpriteMeshType.FullRect);
+                        sliced[i].name = atlasPath + "_frame_" + i;
+                        sliced[i].hideFlags = HideFlags.HideAndDontSave;
+                    }
+                    AtlasFrames[atlasPath] = frames = sliced;
+                }
+            }
+
             Sprite fallback = null;
             // Berserk must never show the Drill fist again when its separate atlas is absent.
-            if (atlas == null && spritePath != BerserkSpritePath)
+            if (frames == null && spritePath != BerserkSpritePath)
             {
                 if (!FallbackSprites.TryGetValue(spritePath, out fallback) || fallback == null)
                     FallbackSprites[spritePath] = fallback = GameAssetCatalog.Load<Sprite>(spritePath);
             }
-            if (atlas == null && fallback == null) return;
+            if (frames == null && fallback == null) return;
 
             string effectName = spritePath.Substring(spritePath.LastIndexOf('/') + 1);
             Transform previous = card.Find(effectName);
@@ -93,28 +120,21 @@ namespace Game.UI
             var effect = go.GetComponent<BattleHealEffect>();
             effect._rect = rect;
             effect._cardRect = card as RectTransform;
-            if (atlas != null)
-            {
-                effect._atlasImage = go.AddComponent<RawImage>();
-                effect._atlasImage.texture = atlas;
-                effect._atlasImage.uvRect = new Rect(0f, 0f, 1f / FrameCount, 1f);
-                effect._graphic = effect._atlasImage;
-            }
-            else
-            {
-                var image = go.AddComponent<Image>();
-                image.sprite = fallback;
-                image.preserveAspect = true;
-                effect._graphic = image;
-            }
-            effect._graphic.raycastTarget = false;
+            // Always render the complete picture as a Sprite, not a RawImage UV crop.
+            // This is a normal Unity UI Image and shares the atlas texture across frames.
+            effect._frames = frames;
+            effect._image = go.AddComponent<Image>();
+            effect._image.sprite = frames != null ? frames[0] : fallback;
+            effect._image.preserveAspect = true;
+            effect._image.raycastTarget = false;
+            effect._image.maskable = false;
             effect._started = started;
             effect.Update();
         }
 
         private void Update()
         {
-            if (_graphic == null) return;
+            if (_image == null) return;
             float elapsed = Time.unscaledTime - _started;
             if (elapsed >= Duration)
             {
@@ -125,19 +145,19 @@ namespace Game.UI
             if (elapsed < 0f) return;
 
             float progress = Mathf.Clamp01(elapsed / Duration);
-            if (_atlasImage != null)
+            if (_frames != null)
             {
                 int frame = Mathf.Min(FrameCount - 1, Mathf.FloorToInt(progress * FrameCount));
-                _atlasImage.uvRect = new Rect(frame / (float)FrameCount, 0f, 1f / FrameCount, 1f);
+                _image.sprite = _frames[frame];
             }
-            _graphic.color = new Color(1f, 1f, 1f, AlphaAt(elapsed));
+            _image.color = new Color(1f, 1f, 1f, AlphaAt(elapsed));
 
             // Keep the artwork square on rectangular 106x155-ish battle cards.
             float width = _cardRect != null ? _cardRect.rect.width : 80f;
             float height = _cardRect != null ? _cardRect.rect.height : 100f;
-            float size = Mathf.Max(1f, Mathf.Min(width * 0.78f, height * 0.65f));
+            float size = Mathf.Max(1f, Mathf.Min(width * 0.88f, height * 0.72f));
             _rect.sizeDelta = Vector2.one * size;
-            if (_atlasImage != null)
+            if (_frames != null)
             {
                 // The eight supplied frames already contain the entire motion. Animating
                 // their container as well introduces visual drift and makes frame changes
