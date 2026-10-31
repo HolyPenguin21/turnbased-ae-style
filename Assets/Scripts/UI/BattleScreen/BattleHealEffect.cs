@@ -137,8 +137,21 @@ namespace Game.UI
             float height = _cardRect != null ? _cardRect.rect.height : 100f;
             float size = Mathf.Max(1f, Mathf.Min(width * 0.78f, height * 0.65f));
             _rect.sizeDelta = Vector2.one * size;
-            _rect.localScale = Vector3.one * Mathf.Lerp(0.94f, 1.03f, Mathf.SmoothStep(0f, 1f, progress));
-            _rect.anchoredPosition = Vector2.up * (height * 0.04f * progress);
+            if (_atlasImage != null)
+            {
+                // The eight supplied frames already contain the entire motion. Animating
+                // their container as well introduces visual drift and makes frame changes
+                // look like jumps. Keep the icon's pivot and card position invariant.
+                _rect.localScale = Vector3.one;
+                _rect.anchoredPosition = Vector2.zero;
+            }
+            else
+            {
+                // Preserve the legacy static-sprite fallback if local PNG atlases
+                // have not yet been installed by the game owner.
+                _rect.localScale = Vector3.one * Mathf.Lerp(0.94f, 1.03f, Mathf.SmoothStep(0f, 1f, progress));
+                _rect.anchoredPosition = Vector2.up * (height * 0.04f * progress);
+            }
         }
     }
 }
