@@ -141,6 +141,10 @@ namespace Game.UI
         // second copy of domain state.
         private BattleState _battleState;
         private BattleEngine _battleEngine;
+        // Map-only presentation. Capture before Deselect/roster casualties can hide the
+        // representative marker; real armies are still finalized immediately by the engine.
+        private ArmyDestructionEffect.Appearance _attackerMarkerAtStart;
+        private ArmyDestructionEffect.Appearance _defenderMarkerAtStart;
         private HexCoord _battleHex => _battleState?.BattleHex ?? default;
         private BattleGrid _grid => _battleState?.Grid;
         private ArmyData _attacker => _battleState?.Attacker;
@@ -350,6 +354,10 @@ namespace Game.UI
 
         public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed, bool fastResolve = false)
         {
+            ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
+            ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
+            _attackerMarkerAtStart = ArmyDestructionEffect.Capture(attacker?.Controller?.Visual);
+            _defenderMarkerAtStart = ArmyDestructionEffect.Capture(defender?.Controller?.Visual);
             CancelAttackPresentation();
             _fastResolve = fastResolve;
             _unpacedBattleFrameStart = -1f;
@@ -365,8 +373,6 @@ namespace Game.UI
             cardHand?.Hide();
             rtsCamera?.SetPanningEnabled(false);
 
-            ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
-            ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
             _tacticsCritical = TacticBattleContext.IsCritical(hex, attacker, defender);
             var tacticHand = GetComponentInChildren<BattleHandUI>(true);
             tacticHand?.Bind((attacker?.Owner?.IsHuman == true ? attacker.Owner
@@ -877,6 +883,8 @@ namespace Game.UI
             _drillEffectStarts.Clear();
             _battleEngine = null;
             _battleState = null;
+            _attackerMarkerAtStart = null;
+            _defenderMarkerAtStart = null;
             _currentActingUnit = null;
             _localArmy = null;
             _fastResolve = false;
