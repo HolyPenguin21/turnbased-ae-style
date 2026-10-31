@@ -12,6 +12,8 @@ namespace Game.UI
     // simplified to art+logo rather than the original's full roll-status iconography.
     public class BattleTurnOrderIconUI : MonoBehaviour
     {
+        private const float InactiveBorderAlpha = 50f;
+
         [SerializeField] private Image factionLogo;
         [SerializeField] private Image artImage;
         [SerializeField] private Image highlightBorder;
@@ -34,8 +36,12 @@ namespace Game.UI
                 titleText.text = unit != null ? unit.Name : string.Empty;
             if (highlightBorder != null)
             {
-                highlightBorder.color = ownerColor;
-                highlightBorder.gameObject.SetActive(isCurrent);
+                // Always shown in the owner's color; dimmed while it isn't this unit's turn.
+                Color borderColor = ownerColor;
+                if (!isCurrent)
+                    borderColor.a = InactiveBorderAlpha / 255f;
+                highlightBorder.color = borderColor;
+                highlightBorder.gameObject.SetActive(true);
             }
         }
     }
