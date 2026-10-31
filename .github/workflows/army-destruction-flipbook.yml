@@ -1,0 +1,30 @@
+name: Build Army Destruction Flipbooks
+on:
+  push:
+    branches: [feature/army-destruction-flipbook]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install image build dependencies
+        run: python -m pip install pillow==11.3.0 numpy==2.3.2
+      - name: Generate 16 frames from original army marker art
+        run: python Tools/army-destruction/generate.py
+      - name: Verify generated artwork and original first frames
+        run: python Tools/army-destruction/generate.py --check
+      - name: Commit baked textures and review GIFs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Assets/Resources/ArmyDestruction.meta Assets/Resources/ArmyDestruction/ Docs/Previews/ArmyDestruction_Ground.gif Docs/Previews/ArmyDestruction_Air.gif
+          if ! git diff --cached --quiet; then
+            git commit -m "Bake original-art army destruction sprite sheets [skip ci]"
+            git push origin HEAD:feature/army-destruction-flipbook
+          fi
