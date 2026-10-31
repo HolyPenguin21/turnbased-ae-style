@@ -115,7 +115,7 @@ namespace Game.UI
                     _battleEngine, _fastResolve, _tacticsCritical, (target, application) =>
                     {
                         foreach (var removal in application.Removals) ShowUnitRemovalThought(removal);
-                    }, map, (target, application) => PresentExplosionHit(attacker, application));
+                    }, map, (target, application) => PresentExplosionHit(application));
             }
             finally
             {
@@ -186,7 +186,7 @@ namespace Game.UI
             {
                 if (generation != _attackPresentationGeneration) return;
                 _isPresentingAttack = false;
-                StartAttackPresentation(attacker, application, Continue);
+                StartAttackPresentation(application, Continue);
             }
             // Acknowledge every result first, then start effects and advance synchronously.
             // Keep the original cells until their effect rectangles have been captured.

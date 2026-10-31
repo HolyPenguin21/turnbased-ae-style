@@ -222,14 +222,9 @@ MonoBehaviour:
     assets:
     - {fileID: 2800000, guid: 00bf205727fc48089dfcf2bccaf50a36, type: 3}
     - {fileID: 21300000, guid: 00bf205727fc48089dfcf2bccaf50a36, type: 3}
-  - key: UI/Effects/DrillFist
+  - key: UI/Effects/Effects
     assets:
-    - {fileID: 2800000, guid: 846c7b3c922c4c4fafccdbf0823ce42d, type: 3}
-    - {fileID: 21300000, guid: 846c7b3c922c4c4fafccdbf0823ce42d, type: 3}
-  - key: UI/Effects/HealCross
-    assets:
-    - {fileID: 2800000, guid: 8bc6f93356dd7174bb59f7fc60005449, type: 3}
-    - {fileID: 21300000, guid: 8bc6f93356dd7174bb59f7fc60005449, type: 3}
+    - {fileID: 2800000, guid: ec94a15d603049d1b1f10d280aeb6712, type: 3}
   - key: UI/Panels/Campaign/ConsoleFrame
     assets:
     - {fileID: 2800000, guid: b34ce1623f6e4d448460d9308d6d4985, type: 3}
@@ -307,35 +302,3 @@ MonoBehaviour:
   - key: UI/TutorialHints/UpgradeHint
     assets:
     - {fileID: 1000, guid: c2b73db557ee58c788b2ae0b28fd4845, type: 3}
-  - key: UI/Effects/BodyguardShield
-    assets:
-    - {fileID: 2800000, guid: 38d99e56281b8a342b76790fb276ebdc, type: 3}
-    - {fileID: 21300000, guid: 38d99e56281b8a342b76790fb276ebdc, type: 3}
-  - key: UI/Effects/ShockImpulse
-    assets:
-    - {fileID: 2800000, guid: 2382e44f354d3de4fbd4b8fc034ec96b, type: 3}
-    - {fileID: 21300000, guid: 2382e44f354d3de4fbd4b8fc034ec96b, type: 3}
-  - key: UI/Effects/Flipbooks/Scorcher_Flipbook
-    assets:
-    - {fileID: 2800000, guid: 59cefb3d338403f4bb38778e9020ff8f, type: 3}
-  - key: UI/Effects/Flipbooks/Splash_Flipbook
-    assets:
-    - {fileID: 2800000, guid: 41df51441eeb5b24e9141e84e4409f51, type: 3}
-  - key: UI/Effects/Flipbooks/HealA
-    assets:
-    - {fileID: 2800000, guid: c7a2d1b93e6f4888a62398d0a0f93b11, type: 3}
-  - key: UI/Effects/Flipbooks/DrillA
-    assets:
-    - {fileID: 2800000, guid: 0c75edb1bb2e44d3b84e5790099b2042, type: 3}
-  - key: UI/Effects/Flipbooks/BerserkA
-    assets:
-    - {fileID: 2800000, guid: 7dd0f83a104f47a39cad507bd1f840ab, type: 3}
-  - key: UI/Effects/Flipbooks/BodyguardA
-    assets:
-    - {fileID: 2800000, guid: 12fa4c6d9b7a46d9bfa1bf004b4b2609, type: 3}
-  - key: UI/Effects/Flipbooks/ShockA
-    assets:
-    - {fileID: 2800000, guid: bcc3a40935e948e69a98ba7931965b57, type: 3}
-  - key: Shaders/BattleSkillFlipbook
-    assets:
-    - {fileID: 4800000, guid: 2990f5a71e354990aeb9e7133855c4ac, type: 3}
