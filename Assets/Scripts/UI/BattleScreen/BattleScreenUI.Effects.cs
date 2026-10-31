@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Game.Cards;
 using Game.Combat;
 using Game.Units;
 using UnityEngine;
@@ -12,10 +11,6 @@ namespace Game.UI
     public partial class BattleScreenUI
     {
         // Locks result acknowledgements and the sequence of Explosion challenges, never playback.
-        // Keep secondary-hit gameplay and result screens; only their visual flipbooks are off.
-        // Change these flags if Splash/Scorcher artwork is approved again.
-        private const bool ShowSplashFlipbook = false;
-        private const bool ShowScorcherFlipbook = false;
         private bool _isPresentingAttack;
         private Coroutine _explosionAttackRoutine;
         private int _attackPresentationGeneration;
@@ -29,35 +24,32 @@ namespace Game.UI
             return null;
         }
 
-        private void StartAttackPresentation(UnitData attacker, BattleAttackApplication application, Action onDone)
+        private void StartAttackPresentation(BattleAttackApplication application, Action onDone)
         {
-            PlayAttackEffects(attacker, application);
+            PlayAttackEffects(application);
             RefreshGrid();
             onDone?.Invoke();
         }
 
-        private void PlayAttackEffects(UnitData attacker, BattleAttackApplication application)
+        private void PlayAttackEffects(BattleAttackApplication application)
         {
             if (!HasInteractiveParticipant || application == null) return;
-            bool secondaryVisual = false;
+            bool secondaryBerserk = false;
             foreach (var hit in application.SecondaryHits)
             {
-                if (hit.BerserkTriggered ||
-                    (hit.Skill == UnitAbilities.Splash && ShowSplashFlipbook) ||
-                    (hit.Skill == UnitAbilities.Scorcher && ShowScorcherFlipbook))
-                {
-                    secondaryVisual = true;
-                    break;
-                }
+                if (hit.BerserkTriggered) { secondaryBerserk = true; break; }
             }
-            if (!secondaryVisual && !application.BerserkTriggered &&
+            if (!secondaryBerserk && !application.BerserkTriggered &&
                 application.InterceptedBy == null && !application.ShockTriggered) return;
             var parent = gridContainer != null ? gridContainer.parent as RectTransform : transform as RectTransform;
             if (parent == null) return;
 
             var go = new GameObject("BattleSkillEffects", typeof(RectTransform), typeof(LayoutElement));
             var layer = (RectTransform)go.transform;
-            BattleDamageFlipbook.Stretch(layer, parent);
+            layer.SetParent(parent, false);
+            layer.anchorMin = Vector2.zero;
+            layer.anchorMax = Vector2.one;
+            layer.offsetMin = layer.offsetMax = Vector2.zero;
             go.GetComponent<LayoutElement>().ignoreLayout = true;
             float duration = 0f;
             var anchors = new Dictionary<UnitData, RectTransform>();
@@ -82,43 +74,29 @@ namespace Game.UI
                 anchors.Add(unit, anchor);
                 return anchor;
             }
-            void Overlay(UnitData unit, string sprite)
+            void Overlay(UnitData unit, BattleSkillEffect.Kind skill)
             {
                 var anchor = Anchor(unit);
                 if (anchor == null) return;
-                BattleHealEffect.Show(anchor, Time.unscaledTime, sprite);
-                duration = Mathf.Max(duration, BattleHealEffect.Duration);
+                BattleSkillEffect.Show(anchor, Time.unscaledTime, skill);
+                duration = Mathf.Max(duration, BattleSkillEffect.Duration);
             }
 
-            if (application.BerserkTriggered) Overlay(application.Victim, BattleHealEffect.BerserkSpritePath);
-            if (application.InterceptedBy != null) Overlay(application.InterceptedBy, BattleHealEffect.BodyguardSpritePath);
-            if (application.ShockTriggered) Overlay(application.Victim, BattleHealEffect.ShockSpritePath);
-            var source = (ShowSplashFlipbook || ShowScorcherFlipbook) && application.SecondaryHits.Count > 0
-                ? Anchor(application.Victim) : null;
-            bool splashSourcePulse = true;
+            if (application.BerserkTriggered) Overlay(application.Victim, BattleSkillEffect.Kind.Berserk);
+            if (application.InterceptedBy != null) Overlay(application.InterceptedBy, BattleSkillEffect.Kind.Bodyguard);
+            if (application.ShockTriggered) Overlay(application.Victim, BattleSkillEffect.Kind.Shock);
+
+            // Splash and Scorcher still deal secondary damage and retain their result
+            // popups. Only Berserk reactions on their secondary victims show VFX.
             foreach (var hit in application.SecondaryHits)
-            {
-                bool fire = hit.Skill == UnitAbilities.Scorcher;
-                bool enabled = fire ? ShowScorcherFlipbook : ShowSplashFlipbook;
-                if (enabled && source != null)
-                {
-                    var target = Anchor(hit.Victim);
-                    if (target != null)
-                    {
-                        BattleDamageFlipbook.Show(layer, source, target, fire, fire || splashSourcePulse);
-                        if (!fire) splashSourcePulse = false;
-                        duration = Mathf.Max(duration, BattleSkillFlipbook.Duration(fire));
-                    }
-                }
-                if (hit.BerserkTriggered) Overlay(hit.Victim, BattleHealEffect.BerserkSpritePath);
-            }
+                if (hit.BerserkTriggered) Overlay(hit.Victim, BattleSkillEffect.Kind.Berserk);
             if (duration > 0f) _attackEffectLayers.Add((layer, Time.unscaledTime + duration));
             else { go.SetActive(false); Destroy(go); }
         }
 
-        private IEnumerator PresentExplosionHit(UnitData attacker, BattleAttackApplication application)
+        private IEnumerator PresentExplosionHit(BattleAttackApplication application)
         {
-            PlayAttackEffects(attacker, application);
+            PlayAttackEffects(application);
             _isPresentingAttack = false;
             RefreshGrid();
             _isPresentingAttack = true;
