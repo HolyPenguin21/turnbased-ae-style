@@ -308,9 +308,9 @@ namespace Game.EditorTests
             var plain = new Game.Units.UnitData { Attack = 2, HitPointsMax = 4, HitPointsCurrent = 4 };
             var target = new[] { new StrikeRosterSlot(StrikeRoster.UnitKey(rostered), false, 8f, ForceSource.Map) };
             List<Game.Units.UnitData> surplus = StrikeRoster.NonTargetBodies(target, new[] { rostered, carrier, plain });
-            Assert.That(surplus, Does.Contain(plain));
-            Assert.That(surplus, Does.Not.Contain(carrier));
-            Assert.That(surplus, Does.Not.Contain(rostered));
+            Assert.That(surplus, Has.Member(plain));
+            Assert.That(surplus, Has.No.Member(carrier));
+            Assert.That(surplus, Has.No.Member(rostered));
         }
 
         private ScoutMissionTarget DeliveryTarget() => new ScoutMissionTarget {
