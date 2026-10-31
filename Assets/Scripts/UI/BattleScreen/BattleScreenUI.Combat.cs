@@ -393,6 +393,9 @@ namespace Game.UI
 
 
                 EncounterResolved?.Invoke(hunterArmy, targetArmy);
+                // Hero-only encounters have no full-screen outcome panel. The last Challenge
+                // has finished, so reveal any already-committed marker destruction now.
+                targetOnlyState.PresentDestroyedArmies();
 
                 // Same "what's left on this hex" resolution as a normal battle, but the engine
                 // has already handled Fate, roster cleanup, building transfer, vision and restack.
@@ -499,7 +502,11 @@ namespace Game.UI
 
 
             EncounterResolved?.Invoke(resolvedAttacker, resolvedDefender);
+            BattleState finishedState = _battleState;
             ResetBattlePanel();
+            // Combat deletion already happened before the results popup. Play its detached
+            // map visual on this same frame, after the battle UI has been hidden.
+            finishedState.PresentDestroyedArmies();
 
             ResolveHexAfterVictory(hex, finalization.Survivor);
         }
