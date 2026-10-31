@@ -65,13 +65,6 @@ namespace Game.Styles
         [Header("Cost Badge")]
         public float badgeRadius = 0.22f;
         public float badgeSpacing = 0.5f;
-        // The badge pair sits at the path's arc-length midpoint (see MoveArrowMarker.
-        // BadgePosition) EXCEPT never closer to the start than this — a short (e.g.
-        // single-hex) path's true midpoint falls right on top of the moving army's own icon,
-        // which is what it's trying to show a cost for. Whichever is farther along the path,
-        // the true midpoint or this minimum, wins; capped at the path's own total length so a
-        // very short hop still places it at the far end rather than overshooting.
-        public float badgeMinDistanceFromStart = 0.9f;
         public Color badgeColor = new Color(0.08f, 0.08f, 0.08f, 0.92f);
         public Color apBadgeColor = new Color(0.5f, 0.08f, 0.08f, 1f);
         public Color badgeTextColor = Color.white;

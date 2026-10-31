@@ -269,10 +269,8 @@ namespace Game.Map
 
         // Where the cost badges sit — the curve's true arc-length midpoint (half the total
         // travelled distance, so it stays centred on the arrow even though the curve bows to
-        // one side), EXCEPT never closer to the start than badgeMinDistanceFromStart (see that
-        // field's own comment) — whichever of the two is farther along the path wins, capped at
-        // the path's own total length so a path shorter than the minimum still places it at the
-        // far end instead of overshooting past the arrowhead.
+        // one side). The tail already starts clear of the army's own icon (see
+        // HexSelectionController.ShowPathArrow), so even a single-hex hop keeps its midpoint.
         private Vector3 BadgePosition(List<Vector3> curve)
         {
             var cumulative = new float[curve.Count];
@@ -283,9 +281,7 @@ namespace Game.Map
                 cumulative[i] = totalLength;
             }
 
-            float minDistance = Mathf.Min(_style.badgeMinDistanceFromStart, totalLength);
-            float distance = Mathf.Max(totalLength * 0.5f, minDistance);
-            ArrowMeshGeometry.SampleCurveAtDistance(curve, cumulative, distance, out Vector3 position, out _);
+            ArrowMeshGeometry.SampleCurveAtDistance(curve, cumulative, totalLength * 0.5f, out Vector3 position, out _);
             return position;
         }
 
