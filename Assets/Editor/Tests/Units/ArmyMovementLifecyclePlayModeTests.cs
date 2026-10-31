@@ -61,7 +61,7 @@ namespace Game.EditorTests
             ReconPatrolStateRegistry.ClearAll();
             PlayerRootRegistry.Clear();
             GameSession.Players = new List<PlayerSetupData>();
-            _owner = new PlayerSetupData { Nickname = "movement-test" };
+            _owner = new PlayerSetupData { PlayerId = "movement-test", Nickname = "movement-test" };
             _root = PlayerRoot.Create(_owner, "movement-test-root");
             _objects.Add(_root.gameObject);
             _root.ActionPoints = 20;
