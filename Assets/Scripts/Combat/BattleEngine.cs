@@ -980,6 +980,11 @@ namespace Game.Combat
 
             ArmyActions.DeleteArmyIfEmptied(state.Attacker);
             ArmyActions.DeleteArmyIfEmptied(state.Defender);
+            // Deletion may already have hidden the source marker, but BattleState captured
+            // its visible art before combat. Only genuinely unregistered, empty armies
+            // produce a map destruction effect; persistent empty garrisons do not.
+            state.QueueDestroyedArmy(state.Attacker);
+            state.QueueDestroyedArmy(state.Defender);
             hexSelectionController?.RestackArmiesOn(hex, null);
 
             var finalization = new BattleEncounterFinalization(survivor, attackerHere, defenderHere);
@@ -1097,6 +1102,8 @@ namespace Game.Combat
             {
                 ArmyActions.ClearMembers(army);
                 ArmyActions.DeleteArmyIfEmptied(army);
+                // A retreat with no legal destination is a battle loss, too.
+                state?.QueueDestroyedArmy(army);
             }
 
             if (retreatingFromOwnBuilding)
