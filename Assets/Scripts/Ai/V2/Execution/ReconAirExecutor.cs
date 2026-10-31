@@ -192,8 +192,8 @@ namespace Game.Ai.V2
                 var group = pm.AircraftRuntimeIds == null ? new List<UnitData>()
                     : pm.AircraftRuntimeIds.Select(id => source?.Members.FirstOrDefault(u => u.RuntimeId == id)).ToList();
                 bool valid = AviationRules.IsAirfield(source) && source.Owner == player
-                    && group.Count > 0 && group.All(u => AviationRules.IsAviation(u)
-                        && AviationRules.EffectiveMoveCurrent(u) > 0);
+                    && ReconAirCapacityPolicy.CanFlyAirSweep(group)
+                    && group.All(u => AviationRules.EffectiveMoveCurrent(u) > 0);
                 float ap = valid ? group.Sum(u => Math.Max(0, u.ActivationApCost)) : float.PositiveInfinity;
                 float energy = valid ? group.Sum(u => Math.Max(0, u.LaunchEnergyCost)) : float.PositiveInfinity;
                 var pick = valid ? ReconAirStepPlanner.PickFromStorage(player, ctx, source.Hex, group, snapshot,

@@ -98,6 +98,16 @@ namespace Game.Ai.V2
                && o.Kind == ReconObjectiveKind.AirSweep
                && !o.NeedsStealth;
 
+        // The ONE rule for "which aircraft may fly an AirSweep" (owner decision 2026-10-31): a
+        // pure observation sortie, with no strike in it, is flown only by Recce aircraft — every
+        // member. Without Recce an aircraft sees only the hexes it crosses (armyVisionRadius 0)
+        // while its strike role sits unused; a mixed group would spend its strike aircraft too.
+        // Launch capacity (IsReadyStandaloneWing), stored launches (Assignment and executor) and
+        // the card/rebase recon service (NonCombatCardPlayer.BestAirfieldServiceTaskScore) read it.
+        internal static bool CanFlyAirSweep(IEnumerable<UnitData> aircraft)
+            => aircraft != null && aircraft.Any()
+               && aircraft.All(u => AviationRules.IsAviation(u) && Game.Cards.AbilityParams.UnitHasAnyRecce(u));
+
         // The farthest point of a sweep from `from` toward `anchor`: walk the straight hex line
         // (each step to the neighbour closest to the anchor, deterministic tie-break) for `reach`
         // steps, stopping at the anchor. Air movement is flat-cost, so this IS the outbound leg.
@@ -126,11 +136,13 @@ namespace Game.Ai.V2
         // recovery), explicitly mutually exclusive by the airfield test:
         //   ReadyStandaloneWing — a formed wing on its own airfield, flying no sortie, MP left.
         //   AirborneReconWing   — off the airfield, controllable, MP left, a durable Recon patrol.
+        //   Only a launch is gated by CanFlyAirSweep: an airborne wing is always flown home.
         internal static bool IsReadyStandaloneWing(PlayerSetupData player, ArmyData a) =>
             a != null && AviationRules.IsValidAirArmy(a)
             && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
             && AirSortieRegistry.ForArmy(player, a) == null
-            && a.CurrentMovement > 0;
+            && a.CurrentMovement > 0
+            && CanFlyAirSweep(a.Members);
 
         internal static bool IsAirborneReconWing(PlayerSetupData player, ArmyData a) =>
             a != null && AviationRules.IsValidAirArmy(a)

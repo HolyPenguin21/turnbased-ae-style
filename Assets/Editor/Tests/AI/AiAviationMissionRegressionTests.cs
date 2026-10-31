@@ -206,7 +206,8 @@ namespace Game.EditorTests
         }
 
         // Native EditMode: real map, landing capacity, actor registry and mission-bound route.
-        // block: 0=legal, 1=wing serving Strike, 2=no safe landing, 3=spent movement.
+        // block: 0=legal, 1=wing serving Strike, 2=no safe landing, 3=spent movement,
+        // 4=no Recce (an AirSweep is flown only by Recce aircraft, owner decision 2026-10-31).
         [TestCase(false, 0)]
         [TestCase(true, 0)]
         [TestCase(false, 1)]
@@ -214,6 +215,8 @@ namespace Game.EditorTests
         [TestCase(true, 2)]
         [TestCase(false, 3)]
         [TestCase(true, 3)]
+        [TestCase(false, 4)]
+        [TestCase(true, 4)]
         public void FreshSweepAdmission_UsesLiveAirCandidateWithoutClaimsOrFormation(bool stored, int block)
         {
             var mapObject = new GameObject("sweep-admission-map");
@@ -232,6 +235,7 @@ namespace Game.EditorTests
                     Hex = default, IsBase = true, IsStartingCitadel = true, AirfieldCapacity = 2 };
                 BuildingRegistry.Register(default, building);
                 UnitData plane = Plane();
+                if (block != 4) plane.Abilities.Add("r1s0");
                 if (block == 3) plane.MoveCurrent = 0;
                 var actor = new ArmyData { Owner = owner, Hex = default,
                     IsAirArmy = !stored, IsAirfield = stored };
@@ -244,7 +248,8 @@ namespace Game.EditorTests
                     CurrentMovement = plane.MoveCurrent, MaxMovement = 6,
                     ActivationApCost = 1, ActivationEnergyCost = 2,
                     PendingActivationApCost = 1, PendingActivationEnergyCost = 2,
-                    StoredAircraft = stored ? new[] { new StoredAircraftLaunchCost(plane.RuntimeId, 1, 2, plane.MoveCurrent) }
+                    // WorldAnalysis lists only hangar aircraft that may fly an AirSweep.
+                    StoredAircraft = stored && block != 4 ? new[] { new StoredAircraftLaunchCost(plane.RuntimeId, 1, 2, plane.MoveCurrent) }
                         : Array.Empty<StoredAircraftLaunchCost>() };
                 var snap = new WorldSnapshot { Observer = owner, TurnNumber = 27, KnowledgeVersion = 1,
                     Self = new SelfSnapshot { Citadel = default, BaseHexes = new[] { default(HexCoord) },

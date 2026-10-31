@@ -639,8 +639,8 @@ namespace Game.Ai.V2
         {
             coverage = 0;
             witness = null;
-            if (ctx?.Map == null || projected == null || projected.Count == 0
-                || projected.Any(u => u == null || !u.IsAviation))
+            // Recon service only for aircraft Recon would launch (ReconAirCapacityPolicy.CanFlyAirSweep).
+            if (ctx?.Map == null || !ReconAirCapacityPolicy.CanFlyAirSweep(projected))
                 return default;
             // A fixed airfield is threatened as its Base/Citadel; a mobile one as its carrier's army.
             bool fixedAirfield = snap?.Self?.BaseHexes?.Contains(airfield) == true;

@@ -491,7 +491,7 @@ namespace Game.Ai.V2
                 RepairSourceCount = isOwn ? UnitRepair.RepairSourceCount(a) : 0,
                 CanServeReconAir = reconAir,
                 StoredAircraft = isOwn && a.IsAirfield
-                    ? a.Members.Where(AviationRules.IsAviation).Select(u => new StoredAircraftLaunchCost(
+                    ? a.Members.Where(u => ReconAirCapacityPolicy.CanFlyAirSweep(new[] { u })).Select(u => new StoredAircraftLaunchCost(
                         u.RuntimeId, Mathf.Max(0, u.ActivationApCost), Mathf.Max(0, u.LaunchEnergyCost),
                         AviationRules.EffectiveMoveCurrent(u))).ToList()
                     : (IReadOnlyList<StoredAircraftLaunchCost>)System.Array.Empty<StoredAircraftLaunchCost>(),

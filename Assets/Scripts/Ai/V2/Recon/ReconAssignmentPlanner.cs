@@ -500,7 +500,7 @@ namespace Game.Ai.V2
                     .OrderBy(u => u.Ap + u.Energy * AiConfigV2.actionPriceResourceAp).ThenBy(u => u.RuntimeId))
                 {
                     UnitData aircraft = live.Members.FirstOrDefault(u => u.RuntimeId == planned.RuntimeId);
-                    if (!AviationRules.IsAviation(aircraft)) continue;
+                    if (!ReconAirCapacityPolicy.CanFlyAirSweep(new[] { aircraft })) continue;
                     var pickDiag = new List<string>();
                     var choice = ReconAirStepPlanner.PickFromStorage(player, ctx, live.Hex, new[] { aircraft },
                         snap, mode, snap.TurnNumber, missionFocusHex: target.FocusHex, diagnostics: pickDiag);

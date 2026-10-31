@@ -234,6 +234,7 @@ namespace Game.Ai.V2
         public float CarrierCargoPower;
         // Frozen through the canonical Recon actor/lifecycle policy, excluding strike and recovery wings.
         public bool CanServeReconAir;
+        // Hangar aircraft Recon may launch an AirSweep with (ReconAirCapacityPolicy.CanFlyAirSweep).
         public IReadOnlyList<StoredAircraftLaunchCost> StoredAircraft = System.Array.Empty<StoredAircraftLaunchCost>();
         public int MemberCount;
         public bool HasHero;
