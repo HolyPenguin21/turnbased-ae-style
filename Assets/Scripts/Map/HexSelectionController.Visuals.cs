@@ -71,7 +71,7 @@ namespace Game.Map
                 foreach (ArmyData army in enemies)
                 {
                     HumanVisualMemory.ObserveArmy(viewer, army, hex);
-                    UpdateRememberedArmyVisual(viewer, army, hex);
+                    UpdateRememberedArmyVisual(viewer, army);
                 }
 
                 BuildingData building = BuildingRegistry.FindAt(hex);
@@ -85,11 +85,17 @@ namespace Game.Map
             RemoveUnrememberedArmyVisuals(viewer);
         }
 
-        private void UpdateRememberedArmyVisual(PlayerSetupData viewer, ArmyData source, HexCoord hex)
+        // The ghost is placed where HumanVisualMemory says the army was last seen, never at the
+        // caller's step hex: ObserveArmy refuses a fully hidden mover, so its sighting stays put
+        // while the army walks on. Following the step instead parked the ghost on a hex the
+        // memory never named — ReconcileVisibleHex could not clear it there, and it came back
+        // every time the viewer looked away (and tracked a hidden army for free).
+        private void UpdateRememberedArmyVisual(PlayerSetupData viewer, ArmyData source)
         {
             if (source?.Controller?.Visual == null
                 || !HumanVisualMemory.TryGetArmySighting(viewer, source.Id, out HumanVisualMemory.ArmySighting sighting))
                 return;
+            HexCoord hex = sighting.Hex;
             if (!_rememberedArmyVisuals.TryGetValue(viewer, out Dictionary<int, RememberedArmyVisual> visuals))
             {
                 visuals = new Dictionary<int, RememberedArmyVisual>();
@@ -214,10 +220,14 @@ namespace Game.Map
         {
             if (!_rememberedArmyVisuals.TryGetValue(viewer, out Dictionary<int, RememberedArmyVisual> visuals))
                 return;
+            // A ghost is stale when its sighting is gone or names another hex (the sighting moved
+            // but no live marker was there to re-clone from): a marker must never outlive the
+            // memory it shows — the same invariant RestoreRememberedVisuals enforces on load.
             var stale = new List<int>();
-            foreach (int armyId in visuals.Keys)
-                if (!HumanVisualMemory.TryGetArmySighting(viewer, armyId, out _))
-                    stale.Add(armyId);
+            foreach (KeyValuePair<int, RememberedArmyVisual> entry in visuals)
+                if (!HumanVisualMemory.TryGetArmySighting(viewer, entry.Key, out HumanVisualMemory.ArmySighting sighting)
+                    || entry.Value == null || !sighting.Hex.Equals(entry.Value.Hex))
+                    stale.Add(entry.Key);
             foreach (int armyId in stale)
             {
                 RememberedArmyVisual remembered = visuals[armyId];

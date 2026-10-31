@@ -212,7 +212,9 @@ namespace Game.Map
         private void OnTurnChangingForVisualMemory()
         {
             PlayerSetupData outgoing = turnController != null ? turnController.CurrentPlayer : null;
-            if (outgoing != null && outgoing.IsHuman)
+            // Every tracked viewer (an AI in an observer match too) forgets moving enemies at its
+            // own turn end, exactly like a human — otherwise observer ghosts never expired.
+            if (HumanVisualMemory.Tracks(outgoing))
             {
                 HumanVisualMemory.EndTurn(outgoing);
                 RemoveUnrememberedArmyVisuals(outgoing);
@@ -307,7 +309,7 @@ namespace Game.Map
                 if (!completed)
                     continue;
                 HumanVisualMemory.ObserveArmy(viewer, army, to);
-                UpdateRememberedArmyVisual(viewer, army, to);
+                UpdateRememberedArmyVisual(viewer, army);
             }
 
             if (completed)
