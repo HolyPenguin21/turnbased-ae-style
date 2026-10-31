@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b1a2dfb732cc490d8be10be7bb35ce8a, type: 3}
   m_Name: MatchSaveAssetManifest
   m_EditorClassIdentifier: 
-  ContentFingerprint: 7650b74adcc17a92d4eb1297d806948b06d63789630ec80782729f8882c3549f
+  ContentFingerprint: e64dea12cf503f1d81725c7924cbc5d52b1264f82c64664e09e010f8ba77760b
   Sprites:
   - Key: 0035d98d54df422a88012e7c18be63ab:21300000
     Asset: {fileID: 21300000, guid: 0035d98d54df422a88012e7c18be63ab, type: 3}
