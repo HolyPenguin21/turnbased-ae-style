@@ -1,4 +1,5 @@
 using Game.Units;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,6 +15,7 @@ namespace Game.UI
         [SerializeField] private Image factionLogo;
         [SerializeField] private Image artImage;
         [SerializeField] private Image highlightBorder;
+        [SerializeField] private TMP_Text titleText;
 
         public void Setup(UnitData unit, Sprite ownerFactionLogo, Color ownerColor, bool isCurrent)
         {
@@ -28,6 +30,8 @@ namespace Game.UI
                 artImage.sprite = unitDetailArt;
                 artImage.gameObject.SetActive(unitDetailArt != null);
             }
+            if (titleText != null)
+                titleText.text = unit != null ? unit.Name : string.Empty;
             if (highlightBorder != null)
             {
                 highlightBorder.color = ownerColor;
