@@ -97,6 +97,7 @@ namespace Game.Setup
             World("Game.Ai.AiHandRegistry", AiHandRegistry.Clear),
             World("Game.Map.VisionSystem", VisionSystem.Clear),
             new MatchStateEntry("Game.Map.HumanVisualMemory", MatchStateKind.World, resetBy: ByVision),
+            new MatchStateEntry("Game.Map.MapObservationSystem", MatchStateKind.Wiring, resetBy: ByVision),
             World("Game.Map.StealthSystem", StealthSystem.ResetForMatch),
             World("Game.Turns.InitiativePublicHistory", InitiativePublicHistory.Clear),
             new MatchStateEntry("Game.Core.GameSession", MatchStateKind.World,

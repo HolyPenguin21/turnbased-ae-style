@@ -38,7 +38,7 @@ namespace Game.Map
         // called synchronously from shouldStopEarly (mid-coroutine, before that re-keying), so a
         // popup showing or a battle opening here never sees the mover still registered at its
         // stale origin hex.
-        private void BeginCleanHexEvent(ArmyData mover, HexCoord hex, HexCoord finalDestination, ArmyController moverController,
+        internal void BeginCleanHexEvent(ArmyData mover, HexCoord hex, HexCoord finalDestination, ArmyController moverController,
             bool allowUndefendedBuildingTakeover = true, bool allowAiEventExplore = true)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
@@ -298,9 +298,35 @@ namespace Game.Map
         private void ResolveEventSkip(ArmyData mover, HexCoord finalDestination, ArmyController moverController,
             bool allowUndefendedBuildingTakeover = true, bool allowAiEventExplore = true)
         {
-            if (!mover.Hex.Equals(finalDestination) && mover.CurrentMovement > 0)
-                IssueMoveOrder(moverController, finalDestination, null,
-                    allowUndefendedBuildingTakeover, allowAiEventExplore);
+            if (mover == null || moverController == null || !moverController.isActiveAndEnabled
+                || mover.Hex.Equals(finalDestination) || mover.CurrentMovement <= 0) return;
+            if (mover.IsMovementBusy && !moverController.PresentsMovement(mover.Movement)) return;
+            if (mover.IsMovementBusy || moverController.IsMoving)
+            {
+                // AI Skip and popup fallbacks are synchronous inside arrival. Transfer the
+                // existing intent at settlement, before an AI waiter can observe idle state.
+                var preceding = mover.Movement;
+                int generation = moverController.MovementGeneration;
+                var owner = mover.Owner;
+                HexCoord eventHex = mover.Hex;
+                moverController.ContinueAfterMovement(preceding, () => ContinueAfterEventSkip(mover,
+                    finalDestination, moverController, preceding, generation, owner, eventHex,
+                    allowUndefendedBuildingTakeover, allowAiEventExplore));
+                return;
+            }
+            IssueMoveOrder(moverController, finalDestination, null, allowUndefendedBuildingTakeover, allowAiEventExplore);
+        }
+        private void ContinueAfterEventSkip(ArmyData mover, HexCoord destination,
+            ArmyController marker, ArmyMovementOperation preceding, int generation, PlayerSetupData owner, HexCoord eventHex,
+            bool takeover, bool explore)
+        {
+            if (marker == null || !marker.isActiveAndEnabled || marker.MovementGeneration != generation
+                || !ReferenceEquals(mover.Movement, preceding) || !ReferenceEquals(marker.Data, mover)
+                || !ArmyRegistry.IsRegistered(mover) || mover.Owner != owner || !mover.Hex.Equals(eventHex)
+                || preceding?.Result == null || preceding.Result.Kind == ArmyMovementEnd.Cancelled
+                || preceding.Result.Kind == ArmyMovementEnd.Dead || preceding.Result.Kind == ArmyMovementEnd.Rejected)
+                return;
+            IssueMoveOrder(marker, destination, null, takeover, explore);
         }
 
         // The one place a Hex Event's reward is ever actually paid out — called both for the

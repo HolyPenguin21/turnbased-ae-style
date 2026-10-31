@@ -155,7 +155,7 @@ namespace Game.EditorTests
             Assert.That(new ArmyData().Id, Is.GreaterThan(12000));
         }
 
-        [Test] public void HumanMemoryRestoreUsesObservedSnapshotAndReservesDestroyedSourceIdentity()
+        [Test] public void HumanMemoryRestoreUsesObservedSnapshotWithoutAdvancingLiveIdentity()
         {
             var viewer = new PlayerSetupData { PlayerId = "p1", IsHuman = true };
             var enemy = new PlayerSetupData { PlayerId = "p2" };
@@ -171,7 +171,7 @@ namespace Game.EditorTests
             HumanVisualMemory.RestoreState(state, id => id == "p1" ? viewer : enemy, key => display);
             Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, rememberedId, out var sighting), Is.True);
             Assert.That(sighting.Army.Members[0].HitPointsCurrent, Is.EqualTo(3));
-            Assert.That(new ArmyData().Id, Is.GreaterThan(rememberedId));
+            Assert.That(new ArmyData().Id, Is.Zero, "Historical restore must leave live identity restoration to MatchIdentityState.");
             Assert.Throws<ArgumentException>(() => HumanVisualMemory.RestoreState(state, _ => viewer, _ => live));
             Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, rememberedId, out sighting), Is.True);
         }

@@ -22,8 +22,7 @@ namespace Game.Turns
                 GameOver = _gameOver,
                 Restoring = MatchRestoreScope.IsRestoring || GameSession.PendingRestore != null,
                 Combat = IsCombatPresentationActive || (hexSelectionController != null && hexSelectionController.IsBattleActive),
-                Moving = ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
-                    .Any(a => a?.Controller != null && a.Controller.IsMoving),
+                Moving = ArmyRegistry.HasMovementInProgress,
                 Production = hexSelectionController != null && hexSelectionController.HasProductionTransaction,
                 BlockingDecision = UIFocusUtility.HasOverlay || UIFocusUtility.IsTextFieldFocused()
                     || (popupPanel != null && popupPanel.IsShowing)

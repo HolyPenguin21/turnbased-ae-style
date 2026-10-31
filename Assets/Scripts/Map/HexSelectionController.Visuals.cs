@@ -49,6 +49,7 @@ namespace Game.Map
         {
             public HexCoord Hex;
             public ArmyData Snapshot;
+            public ObservedArmy Observation;
             public MapObjectVisual Visual;
         }
         private readonly Dictionary<PlayerSetupData, Dictionary<int, RememberedArmyVisual>> _rememberedArmyVisuals =
@@ -56,33 +57,44 @@ namespace Game.Map
         private readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>> _rememberedArmyVisualsByHex =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>>();
 
-        private static List<ArmyData> ObservedEnemyArmiesAt(PlayerSetupData viewer, HexCoord hex) =>
-            // Memory follows map visibility, including flying wings. Ground-contact rules
-            // exclude aviation and cannot decide which observed rosters remain remembered.
-            NonEmptyArmiesAt(hex).FindAll(army => army.Owner != viewer && army.Owner != null && !army.Owner.IsNeutral
-                && !StealthSystem.ArmyFullyHiddenFrom(army, viewer));
-
+        // Compatibility name for callers/tests; this is projection only. World observation
+        // has already committed before public visibility/content notifications are delivered.
         private void RememberCurrentlyVisibleContent(PlayerSetupData viewer)
         {
-            foreach (HexCoord hex in VisionSystem.VisibleHexesFor(viewer))
-            {
-                List<ArmyData> enemies = ObservedEnemyArmiesAt(viewer, hex);
-                HumanVisualMemory.ReconcileVisibleHex(viewer, hex, enemies.ConvertAll(army => army.Id));
-                foreach (ArmyData army in enemies)
-                {
-                    HumanVisualMemory.ObserveArmy(viewer, army, hex);
-                    UpdateRememberedArmyVisual(viewer, army);
-                }
-
-                BuildingData building = BuildingRegistry.FindAt(hex);
-                bool exists = building != null && building.Visual != null;
-                HumanVisualMemory.ObserveBuilding(viewer, hex, exists);
-                if (exists)
-                    UpdateRememberedBuildingVisual(viewer, hex, building.Visual);
-                else
-                    RemoveRememberedBuildingVisual(viewer, hex);
-            }
+            foreach (HexCoord hex in VisionSystem.VisibleHexesFor(viewer)) ProjectObservedHex(viewer, hex);
             RemoveUnrememberedArmyVisuals(viewer);
+        }
+        private void ProjectObservedHex(PlayerSetupData viewer, HexCoord hex)
+        {
+            if (!HumanVisualMemory.Tracks(viewer)) return;
+            // Hidden endpoint projection consumes only the already observed payload and the
+            // viewer's frozen clone. It cannot inspect current occupants or renderer appearance.
+            if (!VisionSystem.IsVisible(viewer, hex))
+            {
+                HumanVisualMemory.ForEachRememberedArmy((owner, sighting) =>
+                {
+                    if (owner == viewer && sighting.Hex.Equals(hex)) ProjectHistoricalArmy(viewer, sighting);
+                });
+                return;
+            }
+            foreach (var army in ArmyRegistry.At(hex))
+                if (!StealthSystem.ArmyFullyHiddenFrom(army, viewer)
+                    && HumanVisualMemory.TryGetArmySighting(viewer, army.Id, out var sighting) && sighting.Hex.Equals(hex))
+                    UpdateRememberedArmyVisual(viewer, army);
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (HumanVisualMemory.IsBuildingKnown(viewer, hex) && building?.Visual != null)
+                UpdateRememberedBuildingVisual(viewer, hex, building.Visual);
+            else RemoveRememberedBuildingVisual(viewer, hex);
+        }
+        private void ProjectHistoricalArmy(PlayerSetupData viewer, HumanVisualMemory.ArmySighting sighting)
+        {
+            if (!_rememberedArmyVisuals.TryGetValue(viewer, out var visuals)
+                || !visuals.TryGetValue(sighting.SourceArmyId, out var remembered) || remembered.Visual == null) return;
+            HexCoord oldHex = remembered.Hex;
+            RemoveRememberedArmyFromHexIndex(viewer, remembered);
+            remembered.Hex = sighting.Hex; remembered.Observation = sighting.Observed; remembered.Snapshot = sighting.Army;
+            AddRememberedArmyToHexIndex(viewer, remembered);
+            ReapplyRememberedLayout(viewer, oldHex); ReapplyRememberedLayout(viewer, sighting.Hex);
         }
 
         // The ghost is placed where HumanVisualMemory says the army was last seen, never at the
@@ -119,15 +131,8 @@ namespace Game.Map
                 visuals[source.Id] = remembered;
             }
             remembered.Hex = hex;
+            remembered.Observation = sighting.Observed;
             remembered.Snapshot = sighting.Army;
-            bool isAirArmy = AviationRules.IsAirArmy(remembered.Snapshot);
-            int terrainDefense = 0;
-            if (!isAirArmy && map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) && terrain != null)
-                terrainDefense = terrain.defenseModifier;
-            BuildingData observedBuilding = BuildingRegistry.FindAt(hex);
-            int constructionDefense = !isAirArmy && observedBuilding != null && observedBuilding.IsBase ? observedBuilding.Defense : 0;
-            remembered.Snapshot.VisualSnapshotConstructionDefense = constructionDefense;
-            remembered.Snapshot.VisualSnapshotDefenseBonus = terrainDefense + constructionDefense;
             remembered.Visual.transform.rotation = source.Controller.transform.rotation;
             remembered.Visual.transform.localScale = source.Controller.transform.localScale;
             remembered.Visual.CopyAppearanceFrom(source.Controller.Visual);
@@ -542,17 +547,12 @@ namespace Game.Map
                 if (controller == null)
                     continue;
 
-                // A neutral army never moves on its own (see SpawnNeutralArmy/SpawnEventGuard —
-                // both place it once and never relocate it again), so once a viewer has actually
-                // seen it, remembering it there can never go stale the way remembering a real
-                // player's army would — same "remembered once seen" exception the resource row
-                // already gets (see VisionSystem.HasEverSeenByCurrentViewer, MapResourceDisplay).
-                bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral && VisionSystem.HasEverSeenByCurrentViewer(hex);
+                // Previously seen neutrals use frozen memory too: a stationary army can lose
+                // members or die behind fog, so everSeen never authorizes its live marker.
                 bool visible = visibleArmies.Contains(army)
                     && ((representativeForOwner.TryGetValue(army.Owner, out ArmyData representative)
                             && representative == army) || controller.IsMoving)
-                    && (army.Owner == VisionSystem.CurrentViewer || CurrentViewerCanRenderLiveHex(hex)
-                        || everSeenNeutral)
+                    && (army.Owner == VisionSystem.CurrentViewer || CurrentViewerCanRenderLiveHex(hex))
                     // An enemy army every member of which is hidden from the current viewer
                     // (and undetected) shows no marker at all (see Game.Map.StealthSystem). A
                     // mixed army still shows — its visible members are real.
@@ -737,10 +737,8 @@ namespace Game.Map
         //  - an enemy army counts only if the viewer has vision of the hex AND not every member
         //    is hidden from them (StealthSystem) — a fully-hidden enemy contributes nothing, so
         //    the viewer's own army never shifts to make room for a phantom (project owner's own
-        //    report, кейс 4);
-        //  - a neutral army the viewer has EVER seen counts even without current vision — the
-        //    same "remembered once seen" exception ReconcileHexVisualState already grants its
-        //    marker (neutrals never relocate).
+        //    report, кейс 4). Previously seen neutrals belong to the historical layout, not
+        //    this live query; hidden casualties must not change another marker's position.
         // With no hot-seat perspective set (CurrentViewer == null — AI-only / pre-game) nothing
         // is filtered, exactly as before this method existed.
         private static List<ArmyData> VisibleForLayout(List<ArmyData> armies, HexCoord hex)
@@ -754,9 +752,7 @@ namespace Game.Map
             {
                 bool own = army.Owner == viewer;
                 bool visibleEnemy = hexVisible && !StealthSystem.ArmyFullyHiddenFrom(army, viewer);
-                bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral
-                    && VisionSystem.HasEverSeenByCurrentViewer(hex);
-                if (own || visibleEnemy || (everSeenNeutral && !StealthSystem.ArmyFullyHiddenFrom(army, viewer)))
+                if (own || visibleEnemy)
                     result.Add(army);
             }
             return result;

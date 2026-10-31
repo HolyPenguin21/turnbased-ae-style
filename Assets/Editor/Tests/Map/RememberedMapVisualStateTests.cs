@@ -135,6 +135,33 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void HiddenDepartureProjectsFrozenAppearanceWithoutReadingChangedLiveMarker()
+        {
+            ArmyRegistry.Clear(); BuildingRegistry.Clear(); VisionSystem.Configure(null);
+            try
+            {
+                var from = new HexCoord(0, 0); var to = new HexCoord(1, 0);
+                var watcher = new ArmyData { Owner = viewer, Hex = from };
+                watcher.Members.Add(new UnitData { Owner = viewer }); ArmyRegistry.Register(watcher);
+                var marker = Marker("departing", Color.yellow);
+                var controller = marker.gameObject.AddComponent<ArmyController>(); Call(controller, "Awake");
+                var army = new ArmyData { Owner = enemy, Hex = from, Controller = controller };
+                army.Members.Add(new UnitData { Owner = enemy, Name = "observed", HitPointsCurrent = 3 });
+                controller.SetData(army); ArmyRegistry.Register(army);
+                Call(selection, "UpdateRememberedArmyVisual", viewer, army);
+                ArmyRegistry.MoveArmy(army, to);
+                marker.SetColor(Color.blue); marker.transform.Find("flag").GetComponent<SpriteRenderer>().sprite = changedFlag;
+                Call(selection, "ProjectObservedHex", viewer, to);
+                MapObjectVisual ghost = null;
+                var saved = selection.CaptureRememberedVisuals(visual => { ghost = visual; return Encode(visual); });
+                Assert.That(saved.Armies.Count, Is.EqualTo(1)); Assert.That(saved.Armies[0].Hex, Is.EqualTo(to));
+                Assert.That(ghost.GetComponent<SpriteRenderer>().color, Is.EqualTo(Color.yellow));
+                Assert.That(ghost.transform.Find("flag").GetComponent<SpriteRenderer>().sprite, Is.SameAs(observedFlag));
+            }
+            finally { ArmyRegistry.Clear(); BuildingRegistry.Clear(); }
+        }
+
+        [Test]
         public void MissingOrLiveAppearanceIsRejectedWithoutInventingKnowledge()
         {
             var hex = new HexCoord(1, 0);

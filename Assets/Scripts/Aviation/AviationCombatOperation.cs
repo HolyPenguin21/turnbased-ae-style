@@ -196,8 +196,7 @@ namespace Game.Aviation
                         ArmyActions.DeleteArmyIfEmptied(airArmy);
                 }
                 if (reaction.AaArmy != null) ArmyActions.DeleteArmyIfEmptied(reaction.AaArmy);
-                if (airArmy.Controller == null || !airArmy.Controller.IsMoving)
-                    VisionSystem.NotifyContentChanged(airArmy.Hex);
+                VisionSystem.NotifyContentChanged(airArmy.Hex);
             }
         }
 

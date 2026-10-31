@@ -100,6 +100,7 @@ namespace Game.Map
             (battleScreen != null && battleScreen.IsShowing) ||
             (battleContactPopup != null && battleContactPopup.IsShowing);
 
+        private Coroutine _residentContactPump;
         private readonly List<(ArmyData Army, HexCoord Hex)> _revealedArmyContacts
             = new List<(ArmyData Army, HexCoord Hex)>();
 
@@ -125,6 +126,25 @@ namespace Game.Map
         private void Reset()
         {
             targetCamera = Camera.main;
+        }
+
+        private void Awake()
+        {
+            StealthSystem.ResidentRevealed += OnResidentRevealed;
+            MapObservationSystem.Observed += OnWorldObserved;
+            MapObservationSystem.ArmyMemoryExpired += RemoveUnrememberedArmyVisuals;
+        }
+        private void OnDestroy()
+        {
+            StealthSystem.ResidentRevealed -= OnResidentRevealed;
+            StopResidentContactPump();
+            MapObservationSystem.Observed -= OnWorldObserved;
+            MapObservationSystem.ArmyMemoryExpired -= RemoveUnrememberedArmyVisuals;
+        }
+        private void OnWorldObserved(PlayerSetupData viewer, HexCoord hex)
+        {
+            ProjectObservedHex(viewer, hex);
+            RemoveUnrememberedArmyVisuals(viewer);
         }
 
         private void Start()
@@ -157,7 +177,6 @@ namespace Game.Map
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             StealthSystem.StealthChanged += OnStealthChanged;
-            StealthSystem.ResidentRevealed += OnResidentRevealed;
             BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
 
             AviationActions.ReturnedWingDeletionRequested += DeleteReturnedWing;
@@ -187,8 +206,7 @@ namespace Game.Map
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
             VisionSystem.VisibleContentChanged -= OnVisibleContentChanged;
             StealthSystem.StealthChanged -= OnStealthChanged;
-            StealthSystem.ResidentRevealed -= OnResidentRevealed;
-            _revealedArmyContacts.Clear();
+            if (!gameObject.activeInHierarchy) StopResidentContactPump();
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
 
             AviationActions.ReturnedWingDeletionRequested -= DeleteReturnedWing;
@@ -216,7 +234,6 @@ namespace Game.Map
             // own turn end, exactly like a human — otherwise observer ghosts never expired.
             if (HumanVisualMemory.Tracks(outgoing))
             {
-                HumanVisualMemory.EndTurn(outgoing);
                 RemoveUnrememberedArmyVisuals(outgoing);
                 RefreshAllVisibility();
             }
@@ -256,9 +273,29 @@ namespace Game.Map
 
         private void OnResidentRevealed(ArmyData army)
         {
+            if (!gameObject.activeInHierarchy || !ArmyRegistry.IsRegistered(army)) return;
             var contact = (Army: army, Hex: army.Hex);
             if (!_revealedArmyContacts.Contains(contact))
                 _revealedArmyContacts.Add(contact);
+            if (_residentContactPump == null) _residentContactPump = StartCoroutine(PumpResidentContacts());
+        }
+        // Disabling map input does not disable a committed world consequence. Wait one frame
+        // so the action which revealed the resident finishes before the shared encounter entry.
+        private System.Collections.IEnumerator PumpResidentContacts()
+        {
+            yield return null;
+            while (_revealedArmyContacts.Count > 0)
+            {
+                ResolveRevealedArmyContacts();
+                if (_revealedArmyContacts.Count > 0) yield return null;
+            }
+            _residentContactPump = null;
+        }
+        private void StopResidentContactPump()
+        {
+            if (_residentContactPump != null) StopCoroutine(_residentContactPump);
+            _residentContactPump = null;
+            _revealedArmyContacts.Clear();
         }
 
         private void ResolveRevealedArmyContacts()
@@ -276,7 +313,7 @@ namespace Game.Map
                 _revealedArmyContacts.RemoveAt(0);
                 ArmyData army = contact.Army;
                 if (!ArmyRegistry.IsRegistered(army) || !army.Hex.Equals(contact.Hex)
-                    || (army.Controller != null && army.Controller.IsMoving)
+                    || army.IsMovementBusy || (army.Controller != null && army.Controller.IsMoving)
                     || !BattleInitiator.CanInitiateContact(army)
                     || DelayedBattleRegistry.IsHexPending(contact.Hex)
                     || BattleInitiator.FindDefenderOnArrival(contact.Hex, army) == null)
@@ -308,8 +345,6 @@ namespace Game.Map
                 startsInCurrentView |= viewer == VisionSystem.CurrentViewer && VisionSystem.IsVisible(viewer, from);
                 if (!completed)
                     continue;
-                HumanVisualMemory.ObserveArmy(viewer, army, to);
-                UpdateRememberedArmyVisual(viewer, army);
             }
 
             if (completed)
@@ -346,7 +381,6 @@ namespace Game.Map
                 if (!HumanVisualMemory.Tracks(viewer) || !VisionSystem.IsVisible(viewer, hex))
                     continue;
                 bool exists = building != null && building.Visual != null;
-                HumanVisualMemory.ObserveBuilding(viewer, hex, exists);
                 if (exists)
                     UpdateRememberedBuildingVisual(viewer, hex, building.Visual);
                 else
@@ -582,7 +616,7 @@ namespace Game.Map
                     ShowArmyModalReadOnly(representative);
                     return true;
                 }
-                return false;
+                return TryHandleRememberedArmyMarkerClick(hex, screenPosition, VisionSystem.CurrentViewer);
             }
 
             PlayerSetupData human = turnController.CurrentPlayer;
@@ -642,7 +676,12 @@ namespace Game.Map
                 ShowArmyModalReadOnly(army);
                 return true;
             }
-            if (_rememberedArmyVisualsByHex.TryGetValue(human,
+            return TryHandleRememberedArmyMarkerClick(hex, screenPosition, human);
+        }
+
+        private bool TryHandleRememberedArmyMarkerClick(HexCoord hex, Vector2 screenPosition, PlayerSetupData viewer)
+        {
+            if (viewer != null && _rememberedArmyVisualsByHex.TryGetValue(viewer,
                 out Dictionary<HexCoord, List<RememberedArmyVisual>> rememberedByHex)
                 && rememberedByHex.TryGetValue(hex, out List<RememberedArmyVisual> rememberedAtHex))
                 foreach (RememberedArmyVisual remembered in rememberedAtHex)

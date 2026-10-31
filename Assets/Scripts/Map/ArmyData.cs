@@ -50,6 +50,11 @@ namespace Game.Map
         internal static ArmyData CreateVisualSnapshot() => new ArmyData(assignIdentity: false);
         // Populated only on CreateVisualSnapshot instances so the read-only last-seen modal
         // never consults a building that may have changed later behind fog.
+        internal void SetVisualActivation(bool activated)
+        {
+            if (Id != -1) throw new System.InvalidOperationException("Expected display-only army.");
+            HasActivatedThisTurn = activated;
+        }
         public int? VisualSnapshotDefenseBonus;
         public int? VisualSnapshotConstructionDefense;
         public int? VisualSnapshotCurrentMovement;
@@ -103,6 +108,8 @@ namespace Game.Map
         // CreateArmyMarker) — created once, alongside the ArmyData itself, and kept for its
         // whole lifetime. A unit has no marker of its own any more; this is the only one.
         public ArmyController Controller;
+        public ArmyMovementOperation Movement { get; internal set; }
+        public bool IsMovementBusy => Movement?.IsBusy == true;
 
         // A unit never moves on its own any more — only its army does (see
         // HexSelectionController.TryIssueMoveOrder), and the garrison specifically can never

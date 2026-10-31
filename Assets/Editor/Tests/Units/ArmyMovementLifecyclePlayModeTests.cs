@@ -39,6 +39,7 @@ namespace Game.EditorTests
         private PlayerSetupData _owner;
         private PlayerRoot _root;
         private System.Random _savedHeadlessRng;
+        private string _savedMatchId;
         private readonly HexCoord _origin = new HexCoord(0, 0);
         private readonly HexCoord _first = new HexCoord(1, 0);
         private readonly HexCoord _last = new HexCoord(2, 0);
@@ -48,6 +49,7 @@ namespace Game.EditorTests
         {
             yield return new EnterPlayMode();
             _savedHeadlessRng = AviationCombatPresenter.HeadlessRng;
+            _savedMatchId = GameSession.MatchId;
             ArmyRegistry.Clear();
             BuildingRegistry.Clear();
             VisionSystem.Clear();
@@ -79,6 +81,9 @@ namespace Game.EditorTests
         public IEnumerator TearDown()
         {
             AviationCombatPresenter.HeadlessRng = _savedHeadlessRng;
+            typeof(GameSession).GetField("<MatchId>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic)
+                .SetValue(null, _savedMatchId);
+            AntiAirState.Clear();
             foreach (GameObject go in _objects)
                 if (go != null) Object.Destroy(go);
             _objects.Clear();
@@ -585,6 +590,335 @@ namespace Game.EditorTests
             Assert.That(army.Hex, Is.EqualTo(_origin));
             Assert.That(_root.ActionPoints, Is.EqualTo(20));
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator CancelledMoveNeverRunsArrivalOrChargesUnstartedStep()
+        {
+            ArmyData army = Army(air: false);
+            army.Controller.SetSelected(true);
+            Field(army.Controller, "settleDuration", 10f);
+            Assert.That(_selection.IssueMoveOrder(army.Controller, _last), Is.EqualTo(MoveOrderResult.Started));
+            Assert.That(army.IsMovementBusy, Is.True);
+            army.Controller.CancelMovement();
+            yield return null;
+            Assert.That(army.Hex, Is.EqualTo(_origin)); Assert.That(army.CurrentMovement, Is.EqualTo(5));
+            Assert.That(_root.ActionPoints, Is.EqualTo(20));
+            Assert.That(army.Movement.Result.Kind, Is.EqualTo(ArmyMovementEnd.Cancelled));
+        }
+
+        [UnityTest]
+        public IEnumerator SynchronousAiEventSkipContinuesOnlyAfterPreviousMoveSettles()
+        {
+            var army = Army(air: false);
+            HexEventRegistry.Set(_first, new EventDefinition { name = "skip-test" }, null, null, null, null);
+            try
+            {
+                var trace = new AiMoveExecutionTrace();
+                bool completed = false;
+                IEnumerator Execute()
+                {
+                    yield return AiTurnController.MoveArmyRoutine(_owner, AiDecision.Move(army, _last, "skip-test", 0f), Context(), trace);
+                    completed = true;
+                }
+                var driver = _map.StartCoroutine(Execute());
+                for (int frame = 0; frame < 120 && !completed; frame++) yield return null;
+                if (!completed) _map.StopCoroutine(driver);
+                Assert.That(completed, Is.True); Assert.That(trace.ReachedDestination, Is.True);
+                Assert.That(trace.EndHex, Is.EqualTo(_last));
+                Assert.That(army.Hex, Is.EqualTo(_last)); Assert.That(army.Controller.IsMoving, Is.False);
+                Assert.That(army.CurrentMovement, Is.EqualTo(3)); Assert.That(_root.ActionPoints, Is.EqualTo(19));
+                Assert.That(HexEventRegistry.FindAt(_first).Skipped, Is.True);
+            }
+            finally { HexEventRegistry.Clear(); }
+        }
+
+        [UnityTest]
+        public IEnumerator SettlementContinuationRemainsBusyAndCancellationDropsIt()
+        {
+            foreach (bool cancel in new[] { false, true })
+            {
+                var army = Army(air: false);
+                Field(army.Controller, "stepDuration", 10f);
+                var operation = ArmyMovementOperation.ForMap(army, _map, new[] { _origin, _first });
+                int continued = 0;
+                army.Controller.PlayMovement(operation, _map, _ => Vector3.zero, onSettled: () =>
+                {
+                    Assert.That(ArmyRegistry.HasMovementInProgress, Is.True);
+                    if (cancel) army.Controller.CancelMovement();
+                });
+                Assert.That(army.Controller.ContinueAfterMovement(operation, () =>
+                {
+                    Assert.That(ArmyRegistry.HasMovementInProgress, Is.True);
+                    continued++;
+                }), Is.True);
+                Field(army.Controller, "stepDuration", 0f);
+                yield return Settled(army);
+                Assert.That(continued, Is.EqualTo(cancel ? 0 : 1));
+                Assert.That(ArmyRegistry.HasMovementInProgress, Is.False);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CancellationDuringEventSkipCannotReviveMoveContinuation()
+        {
+            var army = Army(air: false);
+            HexEventRegistry.Set(_first, new EventDefinition { name = "cancel-skip-test" }, null, null, null, null);
+            Action<HexCoord> cancel = _ => army.Controller.CancelMovement();
+            HexEventRegistry.EventSkipped += cancel;
+            try
+            {
+                _selection.IssueMoveOrder(army.Controller, _last, allowAiEventExplore: false);
+                for (int frame = 0; frame < 12; frame++) yield return null;
+                Assert.That(army.Hex, Is.EqualTo(_first)); Assert.That(army.Controller.IsMoving, Is.False);
+                Assert.That(army.CurrentMovement, Is.EqualTo(4));
+            }
+            finally { HexEventRegistry.EventSkipped -= cancel; HexEventRegistry.Clear(); }
+        }
+
+        [UnityTest]
+        public IEnumerator DisabledInputStillCapturesFrozenDepartureThroughRealSubscription()
+        {
+            _owner.IsHuman = true; Army(air: false);
+            var enemy = new PlayerSetupData();
+            var go = NewObject("observed enemy"); var renderer = go.AddComponent<SpriteRenderer>();
+            var visual = go.AddComponent<MapObjectVisual>(); Field(visual, "innerCircle", renderer); visual.SetColor(Color.red);
+            var marker = go.AddComponent<ArmyController>();
+            var source = new ArmyData { Owner = enemy, Hex = _origin, Controller = marker };
+            source.Members.Add(new UnitData { Owner = enemy, HitPointsCurrent = 3 }); marker.SetData(source);
+            ArmyRegistry.Register(source);
+            Assert.That(_selection.enabled, Is.False);
+            ArmyRegistry.MoveArmy(source, _first);
+            visual.SetColor(Color.blue);
+            source.Owner = new PlayerSetupData(); ArmyRegistry.Unregister(source);
+            MapObjectVisual frozen = null;
+            var appearances = _selection.CaptureRememberedVisuals(value =>
+            {
+                frozen = value;
+                return new MapVisualSnapshotReference { TypeKey = "test-frozen", SnapshotKey = "one" };
+            });
+            Assert.That(appearances.Armies.Count, Is.EqualTo(1)); Assert.That(appearances.Armies[0].Hex, Is.EqualTo(_first));
+            Assert.That(frozen.GetComponent<SpriteRenderer>().color, Is.EqualTo(Color.red));
+            Assert.That(HumanVisualMemory.TryGetArmySighting(_owner, source.Id, out var seen), Is.True);
+            Assert.That(seen.Army.Owner, Is.SameAs(enemy));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator NeutralFogProjectionSurvivesHiddenDeathAndTurnChange()
+        {
+            _owner.IsHuman = true;
+            VisionSystem.CurrentViewer = _owner;
+            var watcher = Army(air: false);
+            var neutral = new PlayerSetupData { PlayerId = "neutral-observed", IsNeutral = true };
+            var go = NewObject("neutral"); var renderer = go.AddComponent<SpriteRenderer>();
+            var visual = go.AddComponent<MapObjectVisual>(); Field(visual, "innerCircle", renderer); visual.SetColor(Color.red);
+            var marker = go.AddComponent<ArmyController>();
+            var source = new ArmyData { Owner = neutral, Hex = _origin, Controller = marker };
+            source.Members.Add(new UnitData { Owner = neutral, HitPointsCurrent = 3 }); marker.SetData(source);
+            ArmyRegistry.Register(source);
+            var texture = new Texture2D(2, 2);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 2, 2), new Vector2(.5f, .5f));
+            renderer.sprite = sprite;
+            // Refresh the legitimately visible appearance before entering fog.
+            VisionSystem.NotifyContentChanged(_origin);
+            var config = ScriptableObject.CreateInstance<GameConfig>();
+            Field(_selection, "gameConfig", config);
+            try
+            {
+                ArmyRegistry.MoveArmy(watcher, _last);
+                _selection.RestackArmiesOn(_origin, null);
+                Assert.That(visual.IsVisible, Is.False, "EverSeen must not authorize the live neutral marker.");
+                visual.SetColor(Color.blue);
+                ArmyActions.ClearMembers(source); ArmyActions.DeleteArmyIfEmptied(source, force: true);
+                HumanVisualMemory.EndTurn(_owner);
+                _selection.RestackArmiesOn(_origin, null);
+                MapObjectVisual frozen = null;
+                var state = _selection.CaptureRememberedVisuals(value => {
+                    frozen = value;
+                    return new MapVisualSnapshotReference { TypeKey = "neutral", SnapshotKey = "historical" };
+                });
+                Assert.That(state.Armies.Count, Is.EqualTo(1)); Assert.That(frozen.IsVisible, Is.True);
+                Assert.That(frozen.GetComponent<SpriteRenderer>().color, Is.EqualTo(Color.red));
+                var host = NewObject("observer inspection"); host.SetActive(false);
+                var turns = host.AddComponent<GameTurnController>();
+                Field(turns, "_aiObserverMatch", true); Field(turns, "_aiObserverPauseEngaged", true);
+                var modal = host.AddComponent<ArmyViewerModalUI>();
+                var camera = NewObject("inspection camera").AddComponent<Camera>();
+                camera.transform.position = new Vector3(0, 0, -10);
+                Field(_selection, "armyViewerModal", modal); Field(_selection, "turnController", turns);
+                Field(_selection, "targetCamera", camera);
+                Assert.That(frozen.TryGetScreenAnchor(camera, out var point, out _), Is.True);
+                bool handled = (bool)typeof(HexSelectionController).GetMethod("TryHandleArmyMarkerClick",
+                    BindingFlags.Instance | BindingFlags.NonPublic).Invoke(_selection, new object[] { _origin, point });
+                Assert.That(handled, Is.True); Assert.That(modal.IsReadOnly, Is.True);
+                var displayed = (ArmyData)typeof(ArmyViewerModalUI).GetField("_currentArmy",
+                    BindingFlags.Instance | BindingFlags.NonPublic).GetValue(modal);
+                Assert.That(displayed.Id, Is.EqualTo(-1)); Assert.That(displayed.Members[0].HitPointsCurrent, Is.EqualTo(3));
+                ArmyRegistry.MoveArmy(watcher, _origin);
+                Assert.That(HumanVisualMemory.TryGetArmySighting(_owner, source.Id, out _), Is.False);
+                Assert.That(_selection.CaptureRememberedVisuals(_ => throw new AssertionException("Stale neutral ghost")).Armies, Is.Empty);
+                yield return null;
+            }
+            finally
+            {
+                Field(_selection, "gameConfig", null); Field(_selection, "turnController", null);
+                Object.Destroy(config); Object.Destroy(sprite); Object.Destroy(texture);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator FullTurnCycleReobservesStationaryEnemyWithInputDisabled()
+        {
+            var host = NewObject("turn observation"); host.SetActive(false);
+            var turns = host.AddComponent<GameTurnController>();
+            var other = new PlayerSetupData { IsHuman = true };
+            _owner.IsHuman = true;
+            GameSession.Players = new List<PlayerSetupData> { _owner, other };
+            var watcher = Army(air: false);
+            var enemy = new ArmyData { Owner = other, Hex = _origin };
+            enemy.Members.Add(new UnitData { Owner = other, Name = "stationary", HitPointsCurrent = 3 }); ArmyRegistry.Register(enemy);
+            Field(turns, "<CurrentPlayer>k__BackingField", _owner);
+            Field(turns, "<CurrentTurnOrder>k__BackingField", new List<PlayerSetupData> { _owner, other });
+            var begin = typeof(GameTurnController).GetMethod("BeginPlayerTurn", BindingFlags.Instance | BindingFlags.NonPublic);
+            begin.Invoke(turns, new object[] { 1 }); begin.Invoke(turns, new object[] { 0 });
+            Assert.That(_selection.enabled, Is.False);
+            Assert.That(HumanVisualMemory.TryGetArmySighting(_owner, enemy.Id, out _), Is.True);
+            ArmyRegistry.MoveArmy(watcher, _last);
+            Assert.That(HumanVisualMemory.TryGetArmySighting(_owner, enemy.Id, out var seen), Is.True);
+            Assert.That(seen.Hex, Is.EqualTo(_origin));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ReactionCasualtyUpdatesBystanderMemoryBeforeMoveEnds()
+        {
+            var viewer = new PlayerSetupData { IsHuman = true };
+            var watcher = new ArmyData { Owner = viewer, Hex = _first };
+            watcher.Members.Add(new UnitData { Owner = viewer, HitPointsCurrent = 3 }); ArmyRegistry.Register(watcher);
+            var wing = Army(count: 2);
+            Field(wing.Controller, "stepDuration", 10f);
+            _selection.IssueMoveOrder(wing.Controller, _last);
+            yield return null;
+            Assert.That(wing.Hex, Is.EqualTo(_first));
+            ArmyActions.RemoveMember(wing, wing.Members[0]);
+            Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, wing.Id, out var seen), Is.True);
+            Assert.That(seen.Army.Members.Count, Is.EqualTo(1));
+            wing.Controller.CancelMovement();
+        }
+
+        [UnityTest]
+        public IEnumerator CancellationNeverInvokesSettledArrivalCallback()
+        {
+            var army = Army(air: false); var controller = army.Controller;
+            Field(controller, "stepDuration", 10f);
+            int arrivals = 0, settled = 0, cancelled = 0;
+            controller.SettleThen(() => controller.MoveAlong(_map, new List<HexCoord> { _origin, _first, _last },
+                _ => Vector3.zero, () => arrivals++, onSettled: () => settled++), _ => cancelled++);
+            yield return null;
+            controller.CancelMovement();
+            Assert.That(arrivals, Is.Zero); Assert.That(settled, Is.Zero); Assert.That(cancelled, Is.EqualTo(1));
+        }
+
+        [UnityTest]
+        public IEnumerator OldCancellationDoesNotClobberReplacementPresentation()
+        {
+            foreach (bool domainCancellation in new[] { true, false })
+            {
+                var army = Army(air: false); var controller = army.Controller;
+                Field(controller, "stepDuration", 10f);
+                var old = ArmyMovementOperation.ForMap(army, _map, new[] { _origin, _first });
+                ArmyMovementOperation replacement = null;
+                int oldCancelled = 0, replacementCancelled = 0;
+                old.Completed += _ =>
+                {
+                    replacement = ArmyMovementOperation.ForMap(army, _map, new[] { _first, _last });
+                    army.PendingAirStrikePolicy = AirStrikePolicy.Transit;
+                    controller.PlayMovement(replacement, _map, hex => Vector3.zero, settle: false,
+                        onCancelled: () => replacementCancelled++);
+                };
+                controller.PlayMovement(old, _map, hex => Vector3.zero, settle: false, onCancelled: () => oldCancelled++);
+                yield return null;
+                if (domainCancellation) old.Cancel(); else controller.CancelMovement();
+                Assert.That(replacement, Is.Not.Null); Assert.That(replacement.IsBusy, Is.True);
+                Assert.That(controller.IsMoving, Is.True);
+                Assert.That(army.PendingAirStrikePolicy, Is.EqualTo(AirStrikePolicy.Transit));
+                int oldCancellationCount = oldCancelled;
+                yield return null;
+                controller.CancelMovement();
+                Assert.That(replacement.Result.Kind, Is.EqualTo(ArmyMovementEnd.Cancelled));
+                Assert.That(oldCancelled, Is.EqualTo(oldCancellationCount), "The replacement must not inherit the old cancellation callback.");
+                Assert.That(replacementCancelled, Is.EqualTo(1));
+                Assert.That(controller.transform.position, Is.EqualTo(_map.HexToWorld(army.Hex)));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CancelledAnimationSnapsToLegalHexWithoutAnotherOrder()
+        {
+            ArmyData army = Army(air: false);
+            Field(army.Controller, "stepDuration", 10f);
+            _selection.IssueMoveOrder(army.Controller, _last);
+            yield return null;
+            Assert.That(army.Hex, Is.EqualTo(_first));
+            army.Controller.CancelMovement();
+            Assert.That(army.Controller.transform.position, Is.EqualTo(_map.HexToWorld(_first)));
+            yield return null;
+            Assert.That(army.Controller.IsMoving, Is.False);
+            Assert.That(army.Movement.Result.Kind, Is.EqualTo(ArmyMovementEnd.Cancelled));
+        }
+
+        [UnityTest]
+        public IEnumerator HeadlessOrderUsesAntiAirWithoutPresentationResolver()
+        {
+            ArmyData wing = Army();
+            wing.Controller.gameObject.SetActive(false); wing.Controller = null;
+            var enemy = new PlayerSetupData();
+            var battery = new ArmyData { Owner = enemy, Hex = _first };
+            var aa = new UnitData { Owner = enemy, AntiAirRadius = 2, Attack = 1, HitPointsCurrent = 4, HitPointsMax = 4 };
+            aa.Abilities.Add(UnitAbilities.AntiAir); battery.Members.Add(aa); ArmyRegistry.Register(battery);
+            var operation = ArmyMovementOperation.ForOrder(wing, _map, new[] { _origin, _first }, _root, _first, _selection);
+            yield return operation.Run(null);
+            Assert.That(AntiAirState.CanReact(aa, wing.Id), Is.False, "Domain order must resolve AA even without an animation/presentation adapter.");
+            Assert.That(operation.IsBusy, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator PendingHeadlessOrderBlocksExistingSaveApi()
+        {
+            var host = NewObject("save turns"); host.SetActive(false);
+            var turns = host.AddComponent<GameTurnController>();
+            _owner.IsHuman = true;
+            typeof(GameSession).GetField("<MatchId>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic)
+                .SetValue(null, "movement-save-test");
+            Field(turns, "<CurrentPlayer>k__BackingField", _owner);
+            Field(turns, "<TurnConfirmed>k__BackingField", true); Field(turns, "<TurnNumber>k__BackingField", 1);
+            ArmyData army = Army(air: false);
+            var operation = ArmyMovementOperation.ForMap(army, _map, new[] { _origin, _first });
+            Assert.That(army.Controller.IsMoving, Is.False);
+            Assert.That(_selection.IssueMoveOrder(army.Controller, _last), Is.EqualTo(MoveOrderResult.AlreadyMoving));
+            Assert.That(turns.CanSaveMatch(out var reason), Is.False);
+            Assert.That(reason, Is.EqualTo("Wait for every army to finish moving."));
+            operation.Cancel(); yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator CancelledOldAnimationCannotMoveOrArriveAfterNewOrder()
+        {
+            ArmyData army = Army(air: false);
+            Field(army.Controller, "stepDuration", 10f);
+            _selection.IssueMoveOrder(army.Controller, _last);
+            yield return null;
+            Assert.That(army.Hex, Is.EqualTo(_first));
+            var old = army.Movement;
+            army.Controller.CancelMovement();
+            Field(army.Controller, "stepDuration", 0f);
+            _selection.IssueMoveOrder(army.Controller, _origin);
+            yield return Settled(army);
+            yield return null;
+            Assert.That(army.Hex, Is.EqualTo(_origin));
+            Assert.That(old.Result.Kind, Is.EqualTo(ArmyMovementEnd.Cancelled));
+            Assert.That(army.Controller.transform.position, Is.EqualTo(_map.HexToWorld(_origin)));
         }
 
         [UnityTest]

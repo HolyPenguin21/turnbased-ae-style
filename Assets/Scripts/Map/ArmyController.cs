@@ -1,32 +1,24 @@
 using System.Collections;
 using System.Collections.Generic;
-using Game.Aviation;
 using Game.HexGrid;
-using Game.Terrain;
-using Game.Units;
 using UnityEngine;
 
 namespace Game.Map
 {
-    // Sits on the same GameObject as an army's MapObjectVisual — the map-level presence for
-    // one ArmyData (see ArmyData.Controller). A unit has no independent map presence any more
-    // (see the project's own history: it used to be one MonoBehaviour/marker per UNIT, with
-    // N-1 hidden per hex to fake "one army" — this replaces that with one real marker per army,
-    // full stop). Holds no data of its own beyond the ArmyData reference; movement advances
-    // every member's MoveCurrent in lockstep by reading Data.Members directly.
+    // Map marker presentation. ArmyMovementOperation owns legal movement and world effects.
     public class ArmyController : MonoBehaviour
     {
-        // Unity coroutines can't return a value the ordinary way — a resolveStepAsync callback
-        // (see MoveAlong) mutates this scratch instance instead, and MoveRoutine reads it back
-        // the instant the coroutine that callback returned actually finishes.
+        // Compatibility outcome shared with aviation. ArmyMovementOperation evaluates it
+        // after the suspended resolver has completed.
         public sealed class StepResolutionOutcome
         {
-            // Supplied by MoveRoutine and evaluated by the resolver after any entry reaction has
+            // Supplied by the operation and evaluated by the resolver after any entry reaction has
             // mutated the roster. This keeps terminality based on the actual surviving formation:
             // losing the previous slowest aircraft to AA can change whether the next step is legal.
             public System.Func<bool> CanContinueMovement;
             public bool IsTerminalStep => CanContinueMovement == null || !CanContinueMovement();
             public bool StopMovement;
+            public bool Cancelled;
             // Explicit ownership bridge for a suspended per-step operation; Unity stopping a
             // coroutine alone does not guarantee disposal of its nested iterators.
             public System.Action CancelResolution;
@@ -43,23 +35,35 @@ namespace Game.Map
         public MapObjectVisual Visual { get; private set; }
         public bool IsMoving { get; private set; }
 
-        // Where this army actually is right now, updated per-step during MoveAlong — separate
-        // from Data.Hex, which stays the registry-authoritative value (only changed once, by
-        // ArmyRegistry.MoveArmy, after the whole move finishes) so ArmyRegistry's hex->army
-        // lookup is never out of sync mid-animation. Initialised from Data.Hex whenever a move
-        // isn't in progress.
-        public HexCoord CurrentHex => IsMoving ? _currentHex : Data.Hex;
-        private HexCoord _currentHex;
+        // Legal position is owned by the operation and registry, including during animation.
+        public HexCoord CurrentHex => Data?.Movement?.IsBusy == true ? Data.Movement.CurrentHex : Data.Hex;
+        private ArmyMovementOperation _presentedMovement;
+        private System.Action<ArmyMovementResult> _movementTermination;
+        internal int MovementGeneration => _motionEpoch;
+        internal bool PresentsMovement(ArmyMovementOperation operation) => operation != null && IsMoving && ReferenceEquals(_presentedMovement, operation);
 
         private Vector3 _baseScale;
         private Vector3 _defaultScale;
         private Coroutine _selectionAnimation;
         private Coroutine _settling;
         private Coroutine _movement;
-        private System.Action _onComplete;
+        private int _motionEpoch;
+        private HexMap _movementMap;
+        private System.Func<HexCoord, Vector3> _movementOffset;
         private System.Action _onSettled;
         private System.Action<HexCoord> _onCancelled;
-        private StepResolutionOutcome _stepResolution;
+        private System.Action _afterMovement;
+        private int _continuationsInProgress;
+        internal bool HasPendingMovementContinuation => _afterMovement != null || _continuationsInProgress > 0;
+
+        // An entry effect may synchronously decide to continue (event Skip). Transfer that
+        // intent after this presentation settles, before a waiting caller sees an idle marker.
+        internal bool ContinueAfterMovement(ArmyMovementOperation expected, System.Action continuation)
+        {
+            if (!PresentsMovement(expected) || continuation == null || _afterMovement != null) return false;
+            _afterMovement = continuation;
+            return true;
+        }
 
         private const float LayoutDuration = 0.18f;
         private bool _layoutTransition;
@@ -116,28 +120,44 @@ namespace Game.Map
         // when Unity stops a coroutine without running its tail (disable / Destroy).
         public void CancelMovement()
         {
-            if (Data != null) Data.PendingAirStrikePolicy = null;
+            _afterMovement = null;
+            // A raw SettleThen reservation has no domain owner yet. Real operations clear
+            // their own policy before Completed; an old presenter must not clear a new order's.
+            if (_presentedMovement == null && Data != null && !Data.IsMovementBusy) Data.PendingAirStrikePolicy = null;
             _layoutTransition = false;
             _arrivalLayoutPosition = null;
-            if (!IsMoving) return;
-            HexCoord finalHex = _currentHex;
+            if (!IsMoving) { Data?.Movement?.Cancel(); return; }
+            HexCoord finalHex = CurrentHex;
             var cancelled = _onCancelled;
-            _onComplete = null;
-            _onSettled = null;
-            _onCancelled = null;
-            IsMoving = false;
-            var resolution = _stepResolution;
-            _stepResolution = null;
+            var operation = _presentedMovement;
             var settling = _settling;
             var movement = _movement;
-            _settling = null;
-            _movement = null;
-            try { resolution?.CancelResolution?.Invoke(); }
+            var movementMap = _movementMap;
+            var movementOffset = _movementOffset;
+            _onSettled = null; _onCancelled = null;
+            _settling = null; _movement = null;
+            _movementMap = null; _movementOffset = null;
+            if (operation != null && _movementTermination != null) operation.Completed -= _movementTermination;
+            _movementTermination = null; _presentedMovement = null;
+            IsMoving = false;
+            _motionEpoch++;
+            // Release this presentation before publishing the domain result. A Completed
+            // subscriber may immediately bind a replacement move on the same marker.
+            try
+            {
+                if (movementMap != null && movementOffset != null && Data != null
+                    && Data.Members.Count > 0 && ArmyRegistry.IsRegistered(Data))
+                    SetLayoutPosition(movementMap.HexToWorld(finalHex) + movementOffset(finalHex), false);
+                cancelled?.Invoke(finalHex);
+            }
             finally
             {
-                if (settling != null) StopCoroutine(settling);
-                if (movement != null) StopCoroutine(movement);
-                cancelled?.Invoke(finalHex);
+                try { operation?.Cancel(); }
+                finally
+                {
+                    if (settling != null) StopCoroutine(settling);
+                    if (movement != null) StopCoroutine(movement);
+                }
             }
         }
 
@@ -153,31 +173,35 @@ namespace Game.Map
         private void CompleteMovement()
         {
             if (!IsMoving) return;
-            var completed = _onComplete;
             var settled = _onSettled;
-            _onComplete = null;
+            var continuation = _afterMovement;
             _onSettled = null;
             _onCancelled = null;
             _settling = null;
             _movement = null;
-            try
+            _movementMap = null; _movementOffset = null;
+            IsMoving = false;
+            if (_arrivalLayoutPosition.HasValue)
             {
-                // Existing arrival callbacks read CurrentHex while IsMoving is still true.
-                completed?.Invoke();
+                Vector3 position = _arrivalLayoutPosition.Value;
+                _arrivalLayoutPosition = null;
+                SetLayoutPosition(position, true);
             }
+            if (continuation != null) _continuationsInProgress++;
+            try { settled?.Invoke(); }
             finally
             {
-                IsMoving = false;
-                if (Data != null) Data.PendingAirStrikePolicy = null;
-                if (_arrivalLayoutPosition.HasValue)
+                try
                 {
-                    Vector3 position = _arrivalLayoutPosition.Value;
-                    _arrivalLayoutPosition = null;
-                    SetLayoutPosition(position, true);
+                    // A settlement callback may cancel or replace the order. In that case
+                    // its old continuation has been cleared by CancelMovement/PlayMovement.
+                    if (ReferenceEquals(_afterMovement, continuation))
+                    {
+                        _afterMovement = null;
+                        continuation?.Invoke();
+                    }
                 }
-                // Arrival needs CurrentHex while moving; resting visuals must be reconciled
-                // only after that transient exception and the deferred layout have settled.
-                settled?.Invoke();
+                finally { if (continuation != null) _continuationsInProgress--; }
             }
         }
 
@@ -190,7 +214,6 @@ namespace Game.Map
         public void SetData(ArmyData data)
         {
             Data = data;
-            _currentHex = data.Hex;
         }
 
         // Only meant to be called for the current player's own army — HexSelectionController is
@@ -241,9 +264,8 @@ namespace Game.Map
         // second order can't sneak in while this one is still easing out.
         public void SettleThen(System.Action onSettled, System.Action<HexCoord> onCancelled = null)
         {
-            if (IsMoving)
+            if (IsMoving || Data?.IsMovementBusy == true)
                 return;
-            _currentHex = Data.Hex;
             _layoutTransition = false;
             _arrivalLayoutPosition = null;
             _onCancelled = onCancelled;
@@ -254,38 +276,32 @@ namespace Game.Map
                 onSettled?.Invoke();
                 return;
             }
-            _settling = StartCoroutine(SettleRoutine(onSettled));
+            int epoch = ++_motionEpoch;
+            var settling = StartCoroutine(SettleRoutine(onSettled, epoch));
+            if (_motionEpoch == epoch && IsMoving) _settling = settling;
         }
 
-        private IEnumerator SettleRoutine(System.Action onSettled)
+        private IEnumerator SettleRoutine(System.Action onSettled, int epoch)
         {
             StopCoroutine(_selectionAnimation);
             _selectionAnimation = null;
 
             Vector3 startScale = transform.localScale;
             float elapsed = 0f;
-            while (elapsed < settleDuration)
+            while (IsMoving && epoch == _motionEpoch && elapsed < settleDuration)
             {
                 elapsed += Time.deltaTime;
                 float t = elapsed / settleDuration;
                 transform.localScale = Vector3.Lerp(startScale, _baseScale, t);
                 yield return null;
             }
+            if (!IsMoving || epoch != _motionEpoch) yield break;
             transform.localScale = _baseScale;
             _settling = null;
             if (IsMoving) onSettled?.Invoke();
         }
 
-        // path[0] is this army's current hex (not entered — no cost, already there); each later
-        // entry is walked to in turn, in world-space order, as long as the army's shared move
-        // budget can afford that hex's full cost. Stops short the moment the next hex would cost
-        // more than what's left — never enters a hex it can't fully pay for. resolveOffset is
-        // called fresh for every hex entered
-        // (including the starting one, via ResetTransform below) since a hex's correct icon
-        // offset depends on what else is on it (see HexObjectLayout), not just at the final
-        // destination. SettleThen claims IsMoving before the easing animation, preventing
-        // another order during that phase. MoveAlong retains that claim until completion
-        // or explicit cancellation, including direct callers without an easing animation.
+        // Compatibility adapter for callers supplying an explicit route and callbacks.
         public void MoveAlong(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
             System.Action onComplete = null, System.Func<HexCoord, bool> shouldStopEarly = null,
             System.Action<HexCoord, HexCoord> onStepStarted = null,
@@ -294,148 +310,90 @@ namespace Game.Map
             System.Func<bool> beforeFirstStep = null, System.Action onSettled = null)
         {
             if (map == null || path == null || path.Count < 2 || resolveOffset == null || Data == null || Data.Members.Count == 0)
-            {
-                CancelMovement();
-                return;
-            }
+            { CancelMovement(); return; }
+            PlayMovement(ArmyMovementOperation.ForMap(Data, map, path, beforeFirstStep, onComplete),
+                map, resolveOffset, shouldStopEarly, onStepStarted, onStepCompleted, resolveStepAsync, onSettled, settle: false);
+        }
 
-            _onComplete = onComplete;
+        // Normal order entry already owns a Pending operation before any easing animation.
+        // The compatibility MoveAlong adapter above uses exactly the same operation and driver.
+        public void PlayMovement(ArmyMovementOperation operation, HexMap map,
+            System.Func<HexCoord, Vector3> resolveOffset, System.Func<HexCoord, bool> shouldStopEarly = null,
+            System.Action<HexCoord, HexCoord> onStepStarted = null,
+            System.Action<HexCoord, HexCoord> onStepCompleted = null,
+            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync = null,
+            System.Action onSettled = null, bool settle = true, System.Action onCancelled = null)
+        {
+            if (operation == null || !operation.IsBusy || Data == null || !ReferenceEquals(Data.Movement, operation)) return;
+            if (_presentedMovement?.IsBusy == true) return;
+            if (map == null || resolveOffset == null || !isActiveAndEnabled) { operation.Cancel(); return; }
+            if (_presentedMovement != null)
+            {
+                if (_movementTermination != null) _presentedMovement.Completed -= _movementTermination;
+                // A Completed subscriber can replace a terminal operation before its old
+                // presentation tail. Cancellation callbacks belong to that old order only.
+                // A raw SettleThen reservation has no presented operation and keeps its hook.
+                _onCancelled = null;
+            }
+            int epoch = ++_motionEpoch;
+            _afterMovement = null;
+            _presentedMovement = operation;
+            System.Action<ArmyMovementResult> terminated = null;
+            terminated = result =>
+            {
+                operation.Completed -= terminated;
+                if (!ReferenceEquals(_presentedMovement, operation)) return;
+                _movementTermination = null;
+                if (result.Kind == ArmyMovementEnd.Cancelled || result.Kind == ArmyMovementEnd.Dead) CancelMovement();
+            };
+            _movementTermination = terminated;
+            operation.Completed += terminated;
             _onSettled = onSettled;
+            if (onCancelled != null) _onCancelled += _ => onCancelled();
+            _movementMap = map; _movementOffset = resolveOffset;
             IsMoving = true;
-            _currentHex = Data.Hex;
             _layoutTransition = false;
             _arrivalLayoutPosition = null;
-            SetSelected(false);
-            transform.localScale = _defaultScale;
-            _movement = StartCoroutine(MoveRoutine(map, path, resolveOffset, shouldStopEarly,
-                onStepStarted, onStepCompleted, resolveStepAsync, beforeFirstStep));
+            var movement = StartCoroutine(PresentMovement(operation, map, resolveOffset, shouldStopEarly,
+                onStepStarted, onStepCompleted, resolveStepAsync, settle));
+            if (_motionEpoch == epoch && ReferenceEquals(_presentedMovement, operation)) _movement = movement;
         }
-
-        // shouldStopEarly is called once per hex actually entered (never the origin), AFTER this
-        // army has visually landed there and _currentHex/vision have been updated for it — same
-        // "stop short" idea as running out of shared move points below, just driven by the
-        // caller instead (see HexSelectionController.Movement.cs's own reveal-on-entry check:
-        // fog hides what a hex holds until the mover is actually standing on it, so a path
-        // computed from the fogged-out start can't already know to stop there on its own).
-        //
-        // resolveStepAsync (optional) is the ONE place this whole shared pipeline can actually
-        // PAUSE an in-progress animated move — an AA reaction or air strike (see Game.Aviation.
-        // AviationCombatPresenter) needs the exact same army sitting still while its own popup
-        // resolves, rather than kicking off a second, nested move of its own. Existing ground
-        // callers simply never pass one and keep today's fire-and-forget onStepCompleted timing.
-        private IEnumerator MoveRoutine(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
-            System.Func<HexCoord, bool> shouldStopEarly,
-            System.Action<HexCoord, HexCoord> onStepStarted,
-            System.Action<HexCoord, HexCoord> onStepCompleted,
-            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync,
-            System.Func<bool> beforeFirstStep)
+        private IEnumerator PresentMovement(ArmyMovementOperation operation, HexMap map,
+            System.Func<HexCoord, Vector3> resolveOffset, System.Func<HexCoord, bool> shouldStopEarly,
+            System.Action<HexCoord, HexCoord> onStepStarted, System.Action<HexCoord, HexCoord> onStepCompleted,
+            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync, bool settle)
         {
-            List<UnitData> members = Data.Members;
-            bool started = false;
-            for (int i = 1; IsMoving && members.Count > 0 && i < path.Count; i++)
+            try
             {
-                HexCoord next = path[i];
-                if (!map.CanEnter(next, Data) || HexGridMath.Distance(_currentHex, next) != 1)
-                    break;
-                map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
-                int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
-                int cost = AviationRules.MovementCost(Data, terrainCost);
-
-                int sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[0]);
-                for (int m = 1; m < members.Count; m++)
-                    if (AviationRules.EffectiveMoveCurrent(members[m]) < sharedMoveCurrent)
-                        sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[m]);
-                if (sharedMoveCurrent < cost)
-                    break;
-                // Activation is committed only once a legal, affordable first entry exists.
-                if (!started && beforeFirstStep != null && !beforeFirstStep()) break;
-                started = true;
-
-                foreach (UnitData member in members)
-                {
-                    // A fuel-penalised aircraft exposes half its raw MP as usable MP. Spend
-                    // two raw points per entered hex so that displayed usable MP falls by one
-                    // every step instead of every second step.
-                    int rawCost = member.HasEmergencyFlightPenalty ? cost * 2 : cost;
-                    member.MoveCurrent = Mathf.Max(0, member.MoveCurrent - rawCost);
-                }
-                HexCoord previous = _currentHex;
-                _currentHex = next;
-                onStepStarted?.Invoke(previous, next);
-                if (!IsMoving) yield break;
-
-                Vector3 targetPosition = map.HexToWorld(next) + resolveOffset(next);
-                yield return StepTo(targetPosition);
-                if (!IsMoving) yield break;
-                onStepCompleted?.Invoke(previous, next);
-                if (!IsMoving) yield break;
-
-                if (resolveStepAsync != null)
-                {
-                    int resolvedStepIndex = i;
-                    var outcome = new StepResolutionOutcome
-                    {
-                        CanContinueMovement = () => CanAffordNextMovementStep(
-                            map, path, resolvedStepIndex, Data, Data.Members)
-                    };
-                    _stepResolution = outcome;
-                    yield return resolveStepAsync(previous, next, outcome);
-                    if (ReferenceEquals(_stepResolution, outcome)) _stepResolution = null;
-                    if (!IsMoving) yield break;
-                    // Data.Members is the SAME list `members` already points at — a reaction that
-                    // destroyed every member (e.g. AA/air-strike wiping this army out) shrinks it
-                    // in place, so the next loop iteration's members[0] lookup above must never
-                    // run against an empty roster.
-                    if (Data.Members.Count == 0 || outcome.StopMovement)
-                        break;
-                }
-
-                if (shouldStopEarly != null && shouldStopEarly(next))
-                    break;
+                if (settle && _selectionAnimation != null) yield return SettleRoutine(null, _motionEpoch);
+                if (!operation.IsBusy || !ReferenceEquals(_presentedMovement, operation)) yield break;
+                SetSelected(false);
+                transform.localScale = _defaultScale;
+                yield return operation.Run(hex => StepTo(map.HexToWorld(hex) + resolveOffset(hex), operation),
+                    onStepStarted, onStepCompleted, resolveStepAsync, shouldStopEarly);
             }
-
-            // onComplete (see HexSelectionController.TryIssueMoveOrder) reads CurrentHex to find
-            // out where the army actually ended up — that property falls back to the stale
-            // Data.Hex once IsMoving is false, so IsMoving must still read true for the whole
-            // duration of this call. Nothing else runs between here and onComplete returning
-            // (no yield in between), so deferring the flip costs nothing.
-            CompleteMovement();
+            finally
+            {
+                if (operation.IsBusy) operation.Cancel();
+                if (ReferenceEquals(_presentedMovement, operation))
+                {
+                    _presentedMovement = null;
+                    CompleteMovement();
+                }
+            }
         }
 
-        // Computes the endpoint from the same path, terrain and shared movement rules the next
-        // loop iteration would use. Kept here, at the movement owner, so aviation does not
-        // duplicate terrain/fuel-penalty accounting merely to decide whether it may strike.
-        private static bool CanAffordNextMovementStep(HexMap map, List<HexCoord> path, int currentIndex,
-            ArmyData army, List<UnitData> members)
-        {
-            if (map == null || path == null || currentIndex >= path.Count - 1
-                || army == null || members == null || members.Count == 0)
-                return false;
-
-            HexCoord next = path[currentIndex + 1];
-            if (!map.CanEnter(next, army)) return false;
-            map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
-            int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
-            int nextCost = AviationRules.MovementCost(army, terrainCost);
-
-            int sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[0]);
-            for (int i = 1; i < members.Count; i++)
-                if (AviationRules.EffectiveMoveCurrent(members[i]) < sharedMoveCurrent)
-                    sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[i]);
-            return sharedMoveCurrent >= nextCost;
-        }
-
-        private IEnumerator StepTo(Vector3 targetPosition)
+        private IEnumerator StepTo(Vector3 targetPosition, ArmyMovementOperation operation)
         {
             Vector3 start = transform.position;
             float elapsed = 0f;
-            while (elapsed < stepDuration)
+            while (operation.IsBusy && ReferenceEquals(_presentedMovement, operation) && elapsed < stepDuration)
             {
                 elapsed += Time.deltaTime;
                 transform.position = Vector3.Lerp(start, targetPosition, elapsed / stepDuration);
                 yield return null;
             }
-            transform.position = targetPosition;
+            if (operation.IsBusy && ReferenceEquals(_presentedMovement, operation)) transform.position = targetPosition;
         }
     }
 }
