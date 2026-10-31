@@ -724,6 +724,7 @@ MonoBehaviour:
     - r1s4
     - RapidReaction
     - Stealth4
+    - Disruption
     resourceYield:
       human: 0
       energy: 0
@@ -1307,6 +1308,7 @@ MonoBehaviour:
     unitTypeTags: 0000000003000000
     grantedAbilities:
     - ShockAttack
+    - Disruption
     resourceYield:
       human: 0
       energy: 0
@@ -1501,7 +1503,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 010000000200000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Disruption
     resourceYield:
       human: 0
       energy: 0
@@ -2657,7 +2660,7 @@ MonoBehaviour:
       materials: 5
       tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 1
+    moveMax: 2
     activationApCost: 2
     commandRating: 0
     fate: 0
@@ -2672,7 +2675,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 010000000200000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Disruption
     resourceYield:
       human: 0
       energy: 0
@@ -2805,7 +2809,7 @@ MonoBehaviour:
       materials: 4
       tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 1
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
