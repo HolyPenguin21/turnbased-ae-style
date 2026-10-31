@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Map
@@ -16,12 +17,14 @@ namespace Game.Map
             internal readonly Layer[] Layers;
             internal readonly Vector3 Centre;
             internal readonly float Radius;
+            internal readonly PlayerSetupData Viewer;
 
-            internal Appearance(Layer[] layers, Vector3 centre, float radius)
+            internal Appearance(Layer[] layers, Vector3 centre, float radius, PlayerSetupData viewer)
             {
                 Layers = layers;
                 Centre = centre;
                 Radius = radius;
+                Viewer = viewer;
             }
         }
 
@@ -101,12 +104,14 @@ namespace Game.Map
                 return null;
 
             return new Appearance(layers.ToArray(), bounds.center,
-                Mathf.Max(0.01f, Mathf.Max(bounds.extents.x, bounds.extents.z)));
+                Mathf.Max(0.01f, Mathf.Max(bounds.extents.x, bounds.extents.z)),
+                VisionSystem.CurrentViewer);
         }
 
         public static void Play(Appearance appearance)
         {
-            if (appearance == null || appearance.Layers.Length == 0)
+            if (appearance == null || appearance.Layers.Length == 0
+                || !ReferenceEquals(appearance.Viewer, VisionSystem.CurrentViewer))
                 return;
 
             var root = new GameObject("Army Marker Destruction");
