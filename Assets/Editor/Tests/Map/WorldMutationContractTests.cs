@@ -85,6 +85,14 @@ namespace Game.EditorTests
             Assert.That(ArmyRegistry.IsRegistered(field), Is.False);
             Assert.That(owner.Hand.Hand.Count, Is.EqualTo(1)); Assert.That(owner.Hand.Hand[0].Equipment, Is.SameAs(equipment));
         }
+        [Test] public void CapturedAirfieldBaseGivesCapturerAnAirfieldContainer()
+        {
+            var building = Building(); var field = Army(owner, Unit(true)); field.IsAirfield = true;
+            BuildingRegistry.CaptureOrDestroy(building, capturer, null);
+            ArmyData captured = AviationRules.FindAirfieldAt(hex, capturer);
+            Assert.That(captured, Is.Not.Null); Assert.That(captured, Is.Not.SameAs(field));
+            Assert.That(ArmyRegistry.IsRegistered(captured), Is.True); Assert.That(captured.Members, Is.Empty);
+        }
         [Test] public void CaptureObserversSeeFinalRosterAndReturnedCards()
         {
             var building = Building(); var field = Army(owner, Unit(true)); field.IsAirfield = true; int calls = 0; bool final = false;

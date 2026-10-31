@@ -126,6 +126,10 @@ namespace Game.Map
                     EnsureGarrisonForBuilding(building, hexSelection);
                 AviationActions.ReturnStaleAviationAt(building.Hex, building);
                 foreach (ArmyData army in ArmyRegistry.At(building.Hex)) ArmyActions.DeleteArmyIfEmptied(army);
+                // The previous owner's airfield container was just removed; the new owner gets
+                // its own, as on founding, so aircraft can deploy to the captured base.
+                if (newOwner != null && building.AirfieldCapacity > 0)
+                    AviationActions.EnsureAirfield(hexSelection, newOwner, building.Hex);
                 PublishVisualTransition(building.Hex, building);
                 // Both sides of the handover lose/gain vision from this specific building —
                 // Unregister/Register (the Destroy branch below) already cover that on their

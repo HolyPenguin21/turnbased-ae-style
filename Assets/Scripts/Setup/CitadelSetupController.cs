@@ -254,6 +254,9 @@ namespace Game.Setup
             HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, hasBuilding: true, new List<PlayerSetupData>());
             SpawnCitadelMarker(player, hex, layout.BuildingOffset);
             CreateGarrison(player, hex);
+            // Same as a played Base (InfrastructureActions.SpawnBase): the airfield container
+            // exists from the start, so aircraft cards can deploy here immediately.
+            AviationActions.EnsureAirfield(hexSelectionController, player, hex);
             CreatePrison(player, hex);
             GrantCampaignLeader(player, hex);
 
