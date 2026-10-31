@@ -281,7 +281,7 @@ namespace Game.Saves
                 foreach (int tag in entry.TypeTags) unit.TypeTags.Add((UnitTypeTag)tag);
                 army.Members.Add(unit);
             }
-            if (data.Activated) army.MarkActivated();
+            army.SetVisualActivation(data.Activated);
             return army;
         }
     }

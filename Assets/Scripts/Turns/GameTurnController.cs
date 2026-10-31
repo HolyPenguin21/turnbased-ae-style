@@ -539,6 +539,7 @@ namespace Game.Turns
         public void BeginGame()
         {
             InitializeMatchPresentation();
+            MapObservationSystem.ObserveAllViewers();
             TurnNumber = 0;
             _completedTurns.Clear();
             _matchGreetingsShown.Clear();
@@ -1021,6 +1022,7 @@ namespace Game.Turns
             if (_gameOver)
                 return;
 
+            HumanVisualMemory.EndTurn(CurrentPlayer);
             TurnChanging?.Invoke();
             _currentPlayerIndex = index;
             TurnConfirmed = false;
@@ -1186,6 +1188,7 @@ namespace Game.Turns
 
         private static void ReplenishMoveForOwner(PlayerSetupData player)
         {
+            using var mutation = VisionSystem.BeginMutation();
             AntiAirRules.SyncFacilityGunnerOwners();
             AntiAirState.ResetForOwner(player);
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
@@ -1199,7 +1202,11 @@ namespace Game.Turns
                 }
                 army.ResetActivationForNewTurn();
                 army.RefreshTransport();
+                VisionSystem.NotifyContentChanged(army.Hex);
             }
+            // Memory may have expired at this player's preceding turn end even when no enemy
+            // moved. Re-observe the complete visible area after turn mutations, before UI refresh.
+            VisionSystem.PublishAfterMutation(() => MapObservationSystem.ObserveVisible(player));
         }
 
         private IEnumerator PassAfterDelay(Action onDone)

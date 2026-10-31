@@ -303,23 +303,34 @@ namespace Game.EditorTests
             typeof(Game.Turns.GameTurnController).GetMethod("AdvanceToNextPlayer", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(turn, null);
             Assert.That(ArmyRegistry.IsRegistered(shell), Is.False);
         }
-        [Test] public void MovingCasualtyDoesNotPublishTheDistantLossAtTheIndexedOrigin()
+        [Test] public void MovingCasualtyPublishesOnlyAtTheCommittedStepHex()
         {
-            var first = new UnitData { Owner = owner, IsAviation = true }; var last = new UnitData { Owner = owner, IsAviation = true };
+            var first = new UnitData { Owner = owner, IsAviation = true, MoveCurrent = 5, MoveMax = 5, HitPointsCurrent = 3 };
+            var last = new UnitData { Owner = owner, IsAviation = true, MoveCurrent = 5, MoveMax = 5, HitPointsCurrent = 3 };
+            var destination = new HexCoord(hex.Q + 1, hex.R);
             var wing = new ArmyData { Owner = owner, Hex = hex, IsAirArmy = true }; wing.Members.Add(first); wing.Members.Add(last); ArmyRegistry.Register(wing);
-            // The marker factory needs the ordinary army prefab before it picks the air variant.
             catalog.armyPrefab = catalog.airArmyPrefab = marker.GetComponent<MapObjectVisual>();
             var controller = selection.CreateArmyMarker(wing);
-            Bind(controller, "<IsMoving>k__BackingField", true); Bind(controller, "_currentHex", new HexCoord(9, 9));
-            var viewer = new PlayerSetupData { PlayerId = "origin-viewer" };
-            VisionSystem.RestoreState(new VisionState { Players = new List<PlayerVisionState> { new PlayerVisionState {
-                PlayerId = viewer.PlayerId, Visible = new List<HexCoord> { hex } } } }, _ => viewer);
-            int observations = 0; Action<PlayerSetupData, HexCoord> changed = (who, at) => { if (who == viewer && at.Equals(hex)) observations++; };
+            var movement = new ArmyMovementOperation(wing, new[] { hex, destination }, _ => 1);
+            Assert.That(movement.TryEnterNextStep(out _, out _), Is.True);
+            Bind(controller, "<IsMoving>k__BackingField", true);
+            var originViewer = new PlayerSetupData { PlayerId = "origin-viewer" };
+            var destinationViewer = new PlayerSetupData { PlayerId = "destination-viewer" };
+            VisionSystem.RestoreState(new VisionState { Players = new List<PlayerVisionState> {
+                new PlayerVisionState { PlayerId = originViewer.PlayerId, Visible = new List<HexCoord> { hex } },
+                new PlayerVisionState { PlayerId = destinationViewer.PlayerId, Visible = new List<HexCoord> { destination } }
+            } }, id => id == originViewer.PlayerId ? originViewer : destinationViewer);
+            int originObservations = 0, destinationObservations = 0;
+            Action<PlayerSetupData, HexCoord> changed = (who, at) => {
+                if (who == originViewer && at.Equals(hex)) originObservations++;
+                if (who == destinationViewer && at.Equals(destination)) destinationObservations++;
+            };
             VisionSystem.VisibleContentChanged += changed;
             try { ArmyActions.RemoveMember(wing, first); }
             finally { VisionSystem.VisibleContentChanged -= changed; }
-            Assert.That(observations, Is.Zero); Assert.That(wing.Members, Is.EqualTo(new[] { last }));
-            Bind(controller, "<IsMoving>k__BackingField", false);
+            Assert.That(originObservations, Is.Zero); Assert.That(destinationObservations, Is.EqualTo(1));
+            Assert.That(wing.Hex, Is.EqualTo(destination)); Assert.That(wing.Members, Is.EqualTo(new[] { last }));
+            Bind(controller, "<IsMoving>k__BackingField", false); movement.Cancel();
         }
 
         [TestCase(true)] [TestCase(false)]

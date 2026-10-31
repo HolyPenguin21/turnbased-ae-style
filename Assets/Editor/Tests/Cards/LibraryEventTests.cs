@@ -258,7 +258,7 @@ namespace Game.EditorTests
                 var hex = new HexCoord(3, 1);
                 HexEventRegistry.Set(hex, new EventDefinition { grantsRandomCollectionCard = true }, "Library guard",
                     new System.Collections.Generic.List<(CardDefinition, int)> { (card, 1) }, new PlayerSetupData { IsNeutral = true }, null);
-                var clean = typeof(HexSelectionController).GetMethod("HasUnclaimedCleanEventHex", BindingFlags.NonPublic | BindingFlags.Static);
+                var clean = typeof(ArmyMovementOperation).GetMethod("HasUnclaimedCleanEventHex", BindingFlags.NonPublic | BindingFlags.Static);
                 Assert.That(clean.Invoke(null, new object[] { army, hex }), Is.False);
                 Assert.That(selector.TriggerAiEventExplore(army, hex), Is.False);
                 Assert.That(selector.TriggerHexEventIfClear(hex, army), Is.False);

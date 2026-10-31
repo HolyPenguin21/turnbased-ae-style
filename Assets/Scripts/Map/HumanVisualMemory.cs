@@ -8,21 +8,22 @@ namespace Game.Map
 {
     // Player-facing fog memory only (humans, and every player in an AI-vs-AI observer match). This deliberately does not feed AI decisions; AiMapMemory
     // remains the sole source for those. A moving enemy is stored as an immutable last-observed
-    // position/roster until the observing human's own next turn ends; stationary buildings
-    // remain known until the same hex is observed again and found empty.
+    // position/roster until the observing human's own next turn ends. Stationary neutrals and
+    // buildings remain known until corrected by another observation, never by hidden live data.
     public static partial class HumanVisualMemory
     {
         public sealed class ArmySighting
         {
             public int SourceArmyId { get; }
             public HexCoord Hex { get; }
-            public ArmyData Army { get; }
+            public ObservedArmy Observed { get; }
+            public ArmyData Army => Observed.CreateDisplayArmy();
 
-            internal ArmySighting(int sourceArmyId, HexCoord hex, ArmyData army)
+            internal ArmySighting(int sourceArmyId, HexCoord hex, ObservedArmy army)
             {
                 SourceArmyId = sourceArmyId;
                 Hex = hex;
-                Army = army;
+                Observed = army;
             }
         }
 
@@ -56,12 +57,14 @@ namespace Game.Map
             // it would plant an empty-roster "last seen" marker once it walks into fog.
             if (StealthSystem.ArmyFullyHiddenFrom(army, viewer))
                 return;
+            StoreObservation(viewer, army.Id, ObservedArmy.Capture(army, observedHex, viewer));
+        }
+        internal static void StoreObservation(PlayerSetupData viewer, int sourceArmyId, ObservedArmy observed)
+        {
+            if (Game.Setup.MatchRestoreScope.IsRestoring || !Tracks(viewer) || observed == null) return;
             if (!ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings))
-            {
-                sightings = new Dictionary<int, ArmySighting>();
-                ArmySightings[viewer] = sightings;
-            }
-            sightings[army.Id] = new ArmySighting(army.Id, observedHex, SnapshotArmy(army, observedHex, viewer));
+                ArmySightings[viewer] = sightings = new Dictionary<int, ArmySighting>();
+            sightings[sourceArmyId] = new ArmySighting(sourceArmyId, observed.Hex, observed);
         }
 
         public static bool TryGetArmySighting(PlayerSetupData viewer, int armyId, out ArmySighting sighting)
@@ -90,48 +93,20 @@ namespace Game.Map
         public static void EndTurn(PlayerSetupData viewer)
         {
             if (viewer != null)
-                ArmySightings.Remove(viewer);
-        }
-
-        private static ArmyData SnapshotArmy(ArmyData source, HexCoord observedHex, PlayerSetupData viewer)
-        {
-            ArmyData snapshot = ArmyData.CreateVisualSnapshot();
-            snapshot.Name = source.Name;
-            snapshot.Hex = observedHex;
-            snapshot.Owner = source.Owner;
-            snapshot.IsGarrison = source.IsGarrison;
-            snapshot.IsPrison = source.IsPrison;
-            // IsAirfield has no composition to recover it from (unlike IsAirArmy, which
-            // AviationRules derives fresh from every member's own IsAviation flag below) — an
-            // airfield can be empty, so it must be copied explicitly or a remembered one would
-            // read back as a plain empty army.
-            snapshot.IsAirfield = source.IsAirfield;
-            // Individual stealth (see Game.Map.StealthSystem): the "last seen" roster only
-            // remembers the members this viewer could actually see — a member still hidden
-            // from them was never part of what they observed.
-            foreach (UnitData member in source.Members)
-                if (!StealthSystem.IsHiddenFrom(member, viewer))
-                    snapshot.Members.Add(SnapshotUnit(member));
-            // These display-only units already contain their observed effective speed. Do not
-            // run Transport again over that frozen roster, granting a second passenger a bonus.
-            snapshot.VisualSnapshotCurrentMovement = snapshot.Members.Count == 0 ? 0 : int.MaxValue;
-            snapshot.VisualSnapshotMaxMovement = snapshot.Members.Count == 0 ? 0 : int.MaxValue;
-            foreach (UnitData member in snapshot.Members)
             {
-                snapshot.VisualSnapshotCurrentMovement = System.Math.Min(snapshot.VisualSnapshotCurrentMovement.Value,
-                    Game.Aviation.AviationRules.EffectiveMoveCurrent(member));
-                snapshot.VisualSnapshotMaxMovement = System.Math.Min(snapshot.VisualSnapshotMaxMovement.Value, member.MoveMax);
+                if (ArmySightings.TryGetValue(viewer, out var sightings))
+                {
+                    var expired = new List<int>();
+                    foreach (var entry in sightings)
+                        if (entry.Value.Observed.Owner?.IsNeutral != true) expired.Add(entry.Key);
+                    foreach (int id in expired) sightings.Remove(id);
+                    if (sightings.Count == 0) ArmySightings.Remove(viewer);
+                }
+                MapObservationSystem.ExpireArmies(viewer);
             }
-            // HasActivatedThisTurn has no public setter any more (see ArmyData's own per-unit
-            // activation ledger) — MarkActivated is the read-only display equivalent here: this
-            // snapshot is never fed through ArmyActions, so the per-unit coverage it also seeds
-            // is inert, only the flag itself is ever read back off a "last seen" army.
-            if (source.HasActivatedThisTurn)
-                snapshot.MarkActivated();
-            return snapshot;
         }
 
-        private static UnitData SnapshotUnit(UnitData source)
+        internal static UnitData CopyObservedUnit(UnitData source)
         {
             var snapshot = UnitData.CreateProjection(source.RuntimeId);
             CopySnapshotUnit(source, snapshot);
@@ -147,7 +122,9 @@ namespace Game.Map
             snapshot.BerserkDefenseLost = source.BerserkDefenseLost;
             snapshot.DrillAttackBonus = source.DrillAttackBonus;
             snapshot.MoveMax = source.MoveMax;
-            snapshot.MoveCurrent = source.MoveCurrent;
+            // Display projections store usable MP directly; no live sortie/transport links
+            // are replayed when this historical unit is read or restored.
+            snapshot.MoveCurrent = Game.Aviation.AviationRules.EffectiveMoveCurrent(source);
             snapshot.ActivationApCost = source.ActivationApCost;
             snapshot.ApCost = source.ApCost;
             snapshot.OriginalResourceCost = SnapshotResourceCost(source.OriginalResourceCost);
@@ -171,8 +148,8 @@ namespace Game.Map
             snapshot.CapturedFrom = source.CapturedFrom;
             // AviationRules.IsAirArmy reads this per member to classify the containing
             // ArmyData snapshot — without it a remembered air army's own members would all
-            // read as ordinary ground units under fog (see SnapshotArmy's own IsAirfield
-            // comment for the other half of this: that flag can't self-heal from composition).
+            // read as ordinary ground units under fog. ObservedArmy separately captures
+            // container flags that cannot be derived from composition.
             snapshot.IsAviation = source.IsAviation;
             snapshot.AirfieldCapacity = source.AirfieldCapacity;
 

@@ -17,18 +17,22 @@ namespace Game.Map
         private static readonly Dictionary<HexCoord, List<ArmyData>> ByHex = new Dictionary<HexCoord, List<ArmyData>>();
         private static readonly IReadOnlyList<ArmyData> Empty = Array.AsReadOnly(Array.Empty<ArmyData>());
 
+        public static bool HasMovementInProgress => AllArmies().Any(a => a.IsMovementBusy
+            || a.Controller != null && (a.Controller.IsMoving || a.Controller.HasPendingMovementContinuation));
+
         public static void Clear()
         {
-            foreach (List<ArmyData> armies in ByHex.Values)
-                foreach (ArmyData army in armies)
+            foreach (ArmyData army in AllArmies())
+            {
+                army.Controller?.CancelMovement();
+                army.Movement?.Cancel();
+                army.ClearTransport();
+                foreach (var unit in army.Members)
                 {
-                    army.ClearTransport();
-                    foreach (var unit in army.Members)
-                    {
-                        unit.CarrierAirfield = null;
-                        unit.CarrierFlightDeck = null;
-                    }
+                    unit.CarrierAirfield = null;
+                    unit.CarrierFlightDeck = null;
                 }
+            }
             ByHex.Clear();
             ArmyData.ResetIdentitySequence();
         }
@@ -71,6 +75,7 @@ namespace Game.Map
                 return;
             HexCoord origin = army.Hex;
             ByHex[origin].Remove(army);
+            army.Movement?.Cancel();
             if (Game.Setup.MatchRestoreScope.IsRestoring)
             {
                 if (finalHex.HasValue) army.SetHex(finalHex.Value);
@@ -162,12 +167,14 @@ namespace Game.Map
             if (!Game.Setup.MatchRestoreScope.IsRestoring)
                 AviationActions.LandWingsBeforeCarrierDeparts(army);
             HexCoord oldHex = army.Hex;
+            var departure = MapObservationSystem.CaptureDeparture(army, oldHex, newHex);
             RelocateInIndex(army, newHex);
             // The whole indexed group is in its final position before observers are notified.
             foreach (var unit in army.Members)
                 foreach (ArmyData attached in new[] { unit.CarrierAirfield, unit.CarrierFlightDeck })
                     if (attached != null && IsRegistered(attached)) RelocateInIndex(attached, newHex);
 
+            VisionSystem.PublishAfterMutation(departure, beforeVision: true);
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(oldHex);
             VisionSystem.NotifyContentChanged(newHex);

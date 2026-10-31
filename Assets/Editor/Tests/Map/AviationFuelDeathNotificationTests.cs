@@ -252,7 +252,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void HumanMemoryQueryIncludesAircraftButExcludesHiddenOwnNeutralAndContainerRosters()
+        public void HumanMemoryQueryIncludesAircraftAndNeutralsButExcludesHiddenOwnAndContainerRosters()
         {
             var visibleAir = new ArmyData { Owner = _owner, Hex = _hex };
             visibleAir.Members.Add(Aircraft("visible", 4));
@@ -275,9 +275,9 @@ namespace Game.EditorTests
                 foreach (ArmyData army in new[] { visibleAir, hiddenAir, own, neutral, airfield, deck, prison, empty })
                     ArmyRegistry.Register(army);
 
-            Assert.That(ObservedEnemyArmies(_observer, _hex), Is.EqualTo(new[] { visibleAir }));
+            Assert.That(ObservedEnemyArmies(_observer, _hex), Is.EquivalentTo(new[] { visibleAir, neutral }));
             StealthSystem.MarkDetected(hiddenAir.Members[0], _observer);
-            Assert.That(ObservedEnemyArmies(_observer, _hex), Is.EquivalentTo(new[] { visibleAir, hiddenAir }));
+            Assert.That(ObservedEnemyArmies(_observer, _hex), Is.EquivalentTo(new[] { visibleAir, hiddenAir, neutral }));
         }
 
         [TestCase(4)]
@@ -292,17 +292,13 @@ namespace Game.EditorTests
             using (MatchRestoreScope.Begin()) ArmyRegistry.Register(wing);
             var root = new UnityEngine.GameObject("fuel-memory-disabled-selection");
             root.SetActive(false);
-            Action<PlayerSetupData, HexCoord> changed = null;
             try
             {
-                var selection = root.AddComponent<HexSelectionController>();
-                MethodInfo callback = typeof(HexSelectionController)
-                    .GetMethod("OnVisibleContentChanged", BindingFlags.Instance | BindingFlags.NonPublic);
-                changed = (viewer, hex) => callback.Invoke(selection, new object[] { viewer, hex });
-                changed(_observer, _hex);
+                var selection = root.AddComponent<HexSelectionController>(); selection.enabled = false;
+                // The world fact, rather than a UI refresh callback, owns this observation.
+                VisionSystem.NotifyContentChanged(_hex);
                 Assert.That(HumanVisualMemory.TryGetArmySighting(_observer, wing.Id, out var before), Is.True);
                 Assert.That(before.Army.Members.Count, Is.EqualTo(2));
-                VisionSystem.VisibleContentChanged += changed;
                 AviationTurnLifecycle.ResolveEndOfTurn(_owner, null);
                 Assert.That(HumanVisualMemory.TryGetArmySighting(_observer, wing.Id, out var after), Is.EqualTo(firstHp == 4));
                 if (firstHp == 4)
@@ -313,13 +309,12 @@ namespace Game.EditorTests
             }
             finally
             {
-                if (changed != null) VisionSystem.VisibleContentChanged -= changed;
                 UnityEngine.Object.DestroyImmediate(root);
             }
         }
 
         private static List<ArmyData> ObservedEnemyArmies(PlayerSetupData viewer, HexCoord hex) =>
-            (List<ArmyData>)typeof(HexSelectionController)
+            (List<ArmyData>)typeof(MapObservationSystem)
                 .GetMethod("ObservedEnemyArmiesAt", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new object[] { viewer, hex });
 

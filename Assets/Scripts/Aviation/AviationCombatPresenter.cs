@@ -83,7 +83,7 @@ namespace Game.Aviation
             {
                 if (_disposed) return;
                 IsCancelled = true;
-                if (_outcome != null) _outcome.StopMovement = true;
+                if (_outcome != null) { _outcome.StopMovement = true; _outcome.Cancelled = true; }
                 Dispose();
             }
             public void Dispose()
@@ -93,7 +93,7 @@ namespace Game.Aviation
                 if (!_finished)
                 {
                     IsCancelled = true;
-                    if (_outcome != null) _outcome.StopMovement = true;
+                    if (_outcome != null) { _outcome.StopMovement = true; _outcome.Cancelled = true; }
                 }
                 _owner._presentations.Remove(this);
                 if (_outcome != null) _outcome.CancelResolution = null;

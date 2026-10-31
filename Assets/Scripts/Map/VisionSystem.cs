@@ -67,6 +67,7 @@ namespace Game.Map
         public static void Configure(GameConfig config)
         {
             _config = config;
+            MapObservationSystem.EnsureSubscribed();
         }
 
         public static void Clear()
@@ -76,8 +77,20 @@ namespace Game.Map
             Visited.Clear();
             EverSeen.Clear();
             HumanVisualMemory.Clear();
+            MapObservationSystem.Reset();
             CurrentViewer = null;
         }
+
+        internal static IEnumerable<PlayerSetupData> KnownViewers() => new List<PlayerSetupData>(Visible.Keys);
+
+        // A witnessed step endpoint is historical sight, never a new ongoing vision source or
+        // a ground visit. This keeps remembered positions consistent with presentation saves.
+        internal static bool RecordObservedHex(PlayerSetupData viewer, HexCoord hex)
+        {
+            if (!EverSeen.TryGetValue(viewer, out var seen)) EverSeen[viewer] = seen = new HashSet<HexCoord>();
+            return seen.Add(hex);
+        }
+        internal static void NotifyObservationChanged(PlayerSetupData viewer) => PublishAfterMutation(VisibilityChanged, viewer);
 
         public static bool IsVisible(PlayerSetupData player, HexCoord hex)
         {
@@ -137,8 +150,8 @@ namespace Game.Map
         // Rebuilds `player`'s own visible set from scratch — every one of their armies and
         // buildings, expanded by its own radius (HexGridMath.HexesInRange) and unioned together.
         // Called from the one places those actually change (ArmyRegistry/BuildingRegistry's own
-        // Register/Unregister/MoveArmy/CaptureOrDestroy, and per-step during army movement — see
-        // ArmyController.MoveRoutine's shouldStopEarly callback) rather than polled.
+        // Register/Unregister/MoveArmy/CaptureOrDestroy, including each legal movement step)
+        // rather than polled from animation or selection.
         public static void RecomputeFor(PlayerSetupData player)
         {
             if (player == null || Game.Setup.MatchRestoreScope.IsRestoring)
@@ -162,13 +175,8 @@ namespace Game.Map
                 // player after the building changed hands.
                 if (army.IsPrison || army.IsCarrierContainer || army.Members.Count == 0)
                     continue;
-                // ArmyData.Hex only updates once a whole move finishes (see ArmyRegistry.
-                // MoveArmy's own comment) — mid-move, ArmyController.CurrentHex is the live,
-                // per-step position instead (see ArmyController's own comment on the two), which
-                // is what a per-step recompute (see HexSelectionController.Movement.cs's
-                // HandleVisionStep) actually needs: vision has to track where the army really is
-                // RIGHT NOW as it walks, not jump all at once once the whole path is done.
-                HexCoord origin = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
+                // Every legal step is already indexed, independently of marker animation.
+                HexCoord origin = army.Hex;
                 // Aircraft reveal every crossed hex but never "visit" it: only their visibility
                 // is remembered, preserving the ground exploration distinction in FOW.
                 if (!AviationRules.IsAirArmy(army))
@@ -215,6 +223,8 @@ namespace Game.Map
             }
             everSeen.UnionWith(fresh);
 
+            MapObservationSystem.ObserveVisible(player);
+
             if (newGround != null)
                 foreach (var hex in newGround)
                     if (epoch == mutationEpoch) PublishAfterMutation(GroundHexVisited, player, hex);
@@ -243,7 +253,10 @@ namespace Game.Map
             int epoch = mutationEpoch;
             foreach (KeyValuePair<PlayerSetupData, HashSet<HexCoord>> entry in new List<KeyValuePair<PlayerSetupData, HashSet<HexCoord>>>(Visible))
                 if (epoch == mutationEpoch && entry.Value.Contains(hex))
+                {
+                    MapObservationSystem.ObserveHex(entry.Key, hex);
                     PublishAfterMutation(VisibleContentChanged, entry.Key, hex);
+                }
         }
     }
 }

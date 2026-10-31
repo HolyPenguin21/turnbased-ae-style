@@ -284,9 +284,7 @@ namespace Game.EditorTests
         {
             UnitData carrier = Unit(5, true), first = Unit(2, infantry: true), second = Unit(2, infantry: true);
             ArmyData army = Army(carrier, first, second);
-            var method = typeof(HumanVisualMemory).GetMethod("SnapshotArmy",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            var snapshot = (ArmyData)method.Invoke(null, new object[] { army, army.Hex, null });
+            var snapshot = ObservedArmy.Capture(army, army.Hex, null).CreateDisplayArmy();
             Assert.That(snapshot.MaxMovement, Is.EqualTo(2));
             Assert.That(snapshot.CurrentMovement, Is.EqualTo(2));
             army.Members.Remove(second); army.RefreshTransport();

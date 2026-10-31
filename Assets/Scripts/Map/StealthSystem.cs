@@ -158,13 +158,13 @@ namespace Game.Map
             _detected.Remove(unit);
             // Arrival intentionally does nothing for a fully hidden army. Revealing a resident
             // must resolve the same undefended-building contact even without another move.
-            // Moving armies resolve their actual terminal hex in the movement transaction;
-            // ArmyData.Hex still names their origin until that transaction completes.
+            // Moving armies resolve entry/arrival in their operation. This also covers a
+            // marker-free operation whose current legal hex is already indexed.
             ArmyData army = ArmyRegistry.FindArmyContaining(unit);
             bool resident = army != null && army.Owner != null
                 && !Game.Aviation.AviationRules.IsAirArmy(army)
                 && !Game.Aviation.AviationRules.IsAirfield(army)
-                && (army.Controller == null || !army.Controller.IsMoving);
+                && !army.IsMovementBusy && (army.Controller == null || !army.Controller.IsMoving);
             if (resident)
                 BuildingRegistry.CaptureOrDestroyIfUndefended(army.Hex, army.Owner, null, army);
             Notify(unit, null);
@@ -398,12 +398,8 @@ namespace Game.Map
             {
                 if (army.IsCarrierContainer || army.Members.Count == 0)
                     continue;
-                // ArmyData.Hex only updates once a whole move finishes (ArmyRegistry.MoveArmy) —
-                // mid-move the live per-step position is ArmyController.CurrentHex instead, same
-                // read VisionSystem.RecomputeFor already uses. Matters for the per-step arrival
-                // checks: a moving Recce source must challenge from where it actually is on THIS
-                // step, not from its stale origin hex (project owner's own P1).
-                HexCoord fromHex = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
+                // Observation reads the indexed legal step, never an animation transform.
+                HexCoord fromHex = army.Hex;
                 int pool = SourcePool(fromHex, hiddenHex,
                     AbilityParams.GetBestRecceSpotStrength(army),
                     AbilityParams.GetBestRecceRadius(army) > 0);
@@ -518,8 +514,7 @@ namespace Game.Map
                         ResolveDetection(member, observer, arrivalHex);
             }
 
-            HexCoord sourceHex = movedArmy.Controller != null
-                ? movedArmy.Controller.CurrentHex : arrivalHex;
+            HexCoord sourceHex = arrivalHex;
             int sourceSpot = AbilityParams.GetBestRecceSpotStrength(movedArmy);
             bool sourceHasRadius = AbilityParams.GetBestRecceRadius(movedArmy) > 0;
             foreach (HexCoord hex in DetectionHexes(sourceHex, sourceHasRadius))
@@ -541,7 +536,7 @@ namespace Game.Map
         {
             if (army?.Owner == null || army.IsCarrierContainer || unit == null)
                 return;
-            HexCoord sourceHex = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
+            HexCoord sourceHex = army.Hex;
             RunChecksForNewVisionSource(army.Owner, sourceHex,
                 AbilityParams.GetBestRecceSpotStrength(unit),
                 AbilityParams.GetBestRecceRadius(unit) > 0);

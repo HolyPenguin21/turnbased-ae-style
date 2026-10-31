@@ -64,7 +64,7 @@ namespace Game.Map
         {
             if (state?.Players == null || resolveDisplaySnapshot == null) throw new ArgumentException("Missing visual memory state or codec.");
             var armies = new Dictionary<PlayerSetupData, Dictionary<int, ArmySighting>>();
-            var buildings = new Dictionary<PlayerSetupData, HashSet<HexCoord>>(); int high = -1;
+            var buildings = new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
             foreach (var entry in state.Players)
             {
                 if (entry?.ArmySightings == null || entry.KnownBuildings == null) throw new ArgumentException("Invalid visual memory player.");
@@ -78,8 +78,7 @@ namespace Game.Map
                     if (snapshot == null || snapshot.Id != -1 || ArmyRegistry.IsRegistered(snapshot) || !snapshot.Hex.Equals(sighting.Hex))
                         throw new ArgumentException("Visual memory requires a frozen display-only snapshot at its observed hex.");
                     if (sightings.ContainsKey(sighting.SourceArmyId)) throw new ArgumentException("Duplicate army sighting.");
-                    sightings.Add(sighting.SourceArmyId, new ArmySighting(sighting.SourceArmyId, sighting.Hex, snapshot));
-                    high = Math.Max(high, sighting.SourceArmyId);
+                    sightings.Add(sighting.SourceArmyId, new ArmySighting(sighting.SourceArmyId, sighting.Hex, ObservedArmy.FromDisplay(snapshot)));
                 }
                 armies.Add(viewer, sightings); buildings.Add(viewer, new HashSet<HexCoord>(entry.KnownBuildings));
             }
@@ -87,7 +86,6 @@ namespace Game.Map
             foreach (var pair in armies) ArmySightings.Add(pair.Key, pair.Value);
             foreach (var pair in buildings) KnownBuildingHexes.Add(pair.Key, pair.Value);
             ObserverMatch = state.ObserverMatch;
-            if (high >= 0) ArmyData.ReserveIdentity(high);
         }
     }
 }
