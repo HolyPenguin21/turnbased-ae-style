@@ -115,7 +115,8 @@ namespace Game.Ai.V2
             }
 
             HandoffPlan first = PlanHandoff(primary, support, opposition, hexBonus,
-                out string firstWhy, requireChargeNow: requireChargeNow, rosterAdmissible: rosterAdmissible);
+                out string firstWhy, requireChargeNow: requireChargeNow, rosterAdmissible: rosterAdmissible,
+                siteOpposition: opposition);
             string commandJudged = null;
             if (first != null)
             {
@@ -131,7 +132,8 @@ namespace Game.Ai.V2
                 commandJudged = judged;
             }
             HandoffPlan bodies = PlanHandoff(primary, support, null, 0f, out string bodiesWhy,
-                requireChargeNow: requireChargeNow, rosterAdmissible: rosterAdmissible);
+                requireChargeNow: requireChargeNow, rosterAdmissible: rosterAdmissible,
+                siteOpposition: opposition);
             string bodiesJudged = null;
             if (bodies != null)
             {
@@ -146,13 +148,16 @@ namespace Game.Ai.V2
 
         // Does `after` (the primary's roster once the exchange ran) raise the primary: more power,
         // or — a zero-power exchange — the only weapon able to hurt a known defender it could not
-        // damage before? The one rule of the Attack handoff and of the gather projection's
-        // command handover.
+        // damage before, or the first Disruption carrier against a known structure defence
+        // (GroundCombatDonorPolicy.DisruptionHelps)? The one rule of the Attack handoff and of the
+        // gather projection's command handover.
         internal static bool RaisesPrimary(IReadOnlyList<UnitData> before, IReadOnlyList<UnitData> after,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus) =>
             AiPower.EffectiveArmyPower(after) > AiPower.EffectiveArmyPower(before)
             || !WorthIt.CanDamageAll(before.Select(WorthIt.FromLiveUnit).ToList(), opposition, hexBonus)
-                && WorthIt.CanDamageAll(after.Select(WorthIt.FromLiveUnit).ToList(), opposition, hexBonus);
+                && WorthIt.CanDamageAll(after.Select(WorthIt.FromLiveUnit).ToList(), opposition, hexBonus)
+            || GroundCombatDonorPolicy.DisruptionHelps(before, opposition)
+                && !GroundCombatDonorPolicy.DisruptionHelps(after, opposition);
 
         // Strike force — THE "hand the support's hero over to lead the primary" rule, exchanges
         // included. A field hero of the support (never a SupportOperator) moves when, joined to the
@@ -271,10 +276,15 @@ namespace Game.Ai.V2
         // support's sparable bodies into the primary's free slots; else, the primary being full,
         // one fresh support body for the primary's most wounded / weakest body (the first fresh
         // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
+        // `siteOpposition` (Attack lane only) — the fight the primary is heading for: when its
+        // known structure defence makes a first Disruption carrier worth a slot
+        // (GroundCombatDonorPolicy.DisruptionHelps), the support's carrier is offered first and may
+        // replace the weakest body even though its own combat value is lower.
         internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
             out string why, bool requireChargeNow = true,
-            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null)
+            System.Func<IReadOnlyList<UnitData>, bool> rosterAdmissible = null,
+            IReadOnlyList<WorthIt.DefendingArmy> siteOpposition = null)
         {
             why = "";
             if (primary == null || support == null)
@@ -293,6 +303,13 @@ namespace Game.Ai.V2
             {
                 why += "support has no sparable body";
                 return null;
+            }
+            UnitData carrier = GroundCombatDonorPolicy.DisruptionHelps(primary.Members, siteOpposition)
+                ? sparable.FirstOrDefault(Game.Combat.DisruptionRules.IsCarrier) : null;
+            if (carrier != null)
+            {
+                sparable.Remove(carrier);
+                sparable.Insert(0, carrier);
             }
             int freeSlots = System.Math.Max(0,
                 ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison) - primary.Members.Count);
@@ -320,7 +337,7 @@ namespace Game.Ai.V2
             foreach (UnitData weakest in WeakestBodies(primary.Members))
             foreach (UnitData fresh in sparable)
             {
-                if (GroundCombatDonorPolicy.UnitCombatValue(fresh)
+                if (fresh != carrier && GroundCombatDonorPolicy.UnitCombatValue(fresh)
                     <= GroundCombatDonorPolicy.UnitCombatValue(weakest))
                     continue;
                 var candidate = new HandoffPlan(new[] { fresh }, new[] { weakest }, null,
@@ -406,10 +423,14 @@ namespace Game.Ai.V2
         }
 
         // The primary's ground bodies, most wounded first, then weakest (the one "who gives way"
-        // order of every exchange).
+        // order of every exchange). An army support carrier (Disruption, Heal, Drill, Transport…)
+        // never gives way: its value is not in its own power, which is all an exchange compares —
+        // a wounded Disruption carrier swapped for a stronger body handed the target its whole
+        // structure defence back (StrategicEffectRegistry.IsArmySupportCarrier's own contract).
         private static IEnumerable<UnitData> WeakestBodies(IEnumerable<UnitData> members) =>
             (members ?? Enumerable.Empty<UnitData>())
-                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u)
+                    && !StrategicEffectRegistry.IsArmySupportCarrier(u))
                 .OrderBy(u => u.HitPointsMax > 0 ? (float)u.HitPointsCurrent / u.HitPointsMax : 1f)
                 .ThenBy(u => GroundCombatDonorPolicy.UnitCombatValue(u))
                 .ThenBy(u => u.Name);

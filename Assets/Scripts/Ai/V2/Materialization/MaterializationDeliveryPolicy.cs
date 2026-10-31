@@ -602,6 +602,9 @@ namespace Game.Ai.V2
                 case CapabilityKind.ScoutCapability:
                     if (!army.IsSoloRecce || army.CurrentMovement <= 0)
                         return false;
+                    if ((requiredTraits & TraitPreference.Disruption) != 0
+                        && !Game.Combat.DisruptionRules.HasCarrier(army.MembersWithHeroes))
+                        return false;
                     return (requiredTraits & TraitPreference.Stealth) == 0
                         || army.IsHidden || army.CanEnterStealth;
                 default:

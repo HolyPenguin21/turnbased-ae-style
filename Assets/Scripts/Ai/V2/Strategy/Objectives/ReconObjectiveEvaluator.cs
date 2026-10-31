@@ -178,32 +178,65 @@ namespace Game.Ai.V2
 
         // A durable operation, or a nearby battle-ready fist, is a concrete support customer.
         // No enemy registry is read and no new strategic axis is introduced.
+        // A fist that already carries its own carrier removes the defence itself: the scout
+        // delivery (and its production) is then redundant.
         internal static bool AssaultNeedsDisruption(WorldSnapshot snap, HexCoord hex)
         {
-            if (snap?.Observer == null || snap.Known?.Buildings == null) return false;
-            var site = snap.Known.Buildings.FirstOrDefault(b => b.Hex.Equals(hex));
-            if (site.Owner == null || site.Owner == snap.Observer || site.Owner.IsNeutral
-                || (!site.IsBase && !site.IsStartingCitadel) || site.Defense <= 0) return false;
-            if ((snap.AllIntents ?? System.Array.Empty<MissionIntent>()).Any(i => i?.Status == IntentStatus.Active && i.Attack != null
+            if (HostileStructureDefense(snap, hex) <= 0f) return false;
+            ArmySnapshot OwnArmy(int? id) => id.HasValue
+                ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == id.Value) : null;
+            bool CarriesOwn(ArmySnapshot a) => a != null
+                && Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes);
+            MissionIntent assault = (snap.AllIntents ?? System.Array.Empty<MissionIntent>()).FirstOrDefault(i =>
+                i?.Status == IntentStatus.Active && i.Attack != null
                 && i.Attack.Target.Hex.Equals(hex)
                 && (i.Attack.Phase == AttackMissionPhase.Assault || i.Attack.Phase == AttackMissionPhase.Gather
-                    || i.Attack.Phase == AttackMissionPhase.Reinforcement))) return true;
+                    || i.Attack.Phase == AttackMissionPhase.Reinforcement));
+            if (assault != null)
+                return !CarriesOwn(OwnArmy(assault.Attack.PrimaryArmyId ?? assault.PreferredMoverArmyId));
             // A nearby field fist may need the carrier BEFORE its assault clears the defence gate.
             return (snap.Self?.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(a => a != null
                 && !a.IsAir && !a.IsPrison && !a.IsGarrison && !a.IsSoloRecce && a.MemberCount > 1
                 && a.IsStructuralRaidActor && AttackForceReadiness.ForceReady(a.EffectiveArmyPower, snap.Self.AttackPeak)
                 && a.MaxMovement > 0
-                && HexGridMath.Distance(a.Hex, hex) <= 2 * a.MaxMovement);
+                && HexGridMath.Distance(a.Hex, hex) <= 2 * a.MaxMovement
+                && !CarriesOwn(a));
         }
 
+        // THE known structure defence a Disruption carrier removes at `hex`: a known hostile
+        // (non-neutral) Base or starting Citadel's positive Defense, else 0. Read by the need rule
+        // above and by the BuildingDisruption card valuation (EffectEvaluationContext).
+        internal static float HostileStructureDefense(WorldSnapshot snap, HexCoord hex)
+        {
+            if (snap?.Observer == null || snap.Known?.Buildings == null) return 0f;
+            var site = snap.Known.Buildings.FirstOrDefault(b => b.Hex.Equals(hex));
+            if (site.Owner == null || site.Owner == snap.Observer || site.Owner.IsNeutral
+                || (!site.IsBase && !site.IsStartingCitadel)) return 0f;
+            return Mathf.Max(0f, site.Defense);
+        }
+
+        // The target of the active Attack an own army serves — its primary/commander, a support or
+        // gather support, or its bound mover. Null when the army serves no Attack.
+        internal static HexCoord? AttackSiteOf(WorldSnapshot snap, int armyId)
+        {
+            MissionIntent attack = (snap?.AllIntents ?? System.Array.Empty<MissionIntent>()).FirstOrDefault(i =>
+                i?.Status == IntentStatus.Active && i.Attack != null
+                && (i.PreferredMoverArmyId == armyId || i.Attack.PrimaryArmyId == armyId
+                    || i.Attack.CommanderArmyId == armyId || i.Attack.SupportArmyId == armyId
+                    || i.Attack.GatherSupportArmyIds?.Contains(armyId) == true));
+            return attack?.Attack.Target.Hex;
+        }
+
+        // requireMover false — the Recon demand's own read (DemandLayer.Recon): the same objective
+        // priced with a notional mover, so a missing stealth carrier can be asked for.
         internal static ReconObjective DisruptAt(WorldSnapshot snap, HexCoord hex,
-            int? preferredMoverArmyId = null)
+            int? preferredMoverArmyId = null, bool requireMover = true)
         {
             if (!AssaultNeedsDisruption(snap, hex)) return null;
             var target = new ScoutMissionTarget { Kind = ScoutTargetKind.DisruptStructure,
                 FocusHex = hex, Stealth = StealthRequirement.Required };
             ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, target, preferredMoverArmyId);
-            if (!cost.MoverKnown) return null;
+            if (requireMover && !cost.MoverKnown) return null;
             TaskScore score = new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(1f),
                 cardPrice: TaskScoreEvaluator.Price(cost.ActivationApNow),

@@ -70,6 +70,9 @@ namespace Game.Ai.V2
             if (required == TraitPreference.None) return true;
             if ((required & TraitPreference.Stealth) != 0 && !AbilityParams.AbilitiesHaveAnyStealth(abilities))
                 return false;
+            if ((required & TraitPreference.Disruption) != 0
+                && (abilities == null || !abilities.Contains(UnitAbilities.Disruption)))
+                return false;
             if ((required & (TraitPreference.AntiArmour | TraitPreference.Ranged | TraitPreference.Melee)) != 0)
                 return false;
             return true;
@@ -79,6 +82,7 @@ namespace Game.Ai.V2
         {
             TraitPreference t = TraitPreference.None;
             if (AbilityParams.AbilitiesHaveAnyStealth(abilities)) t |= TraitPreference.Stealth;
+            if (abilities != null && abilities.Contains(UnitAbilities.Disruption)) t |= TraitPreference.Disruption;
             return t;
         }
 

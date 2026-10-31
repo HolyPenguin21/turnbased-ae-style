@@ -63,6 +63,8 @@ namespace Game.Ai.V2
         AntiArmour = 1 << 1,
         Ranged     = 1 << 2,
         Melee      = 1 << 3,
+        // Carries Disruption (Game.Combat.DisruptionRules.IsCarrier): removes a structure defence.
+        Disruption = 1 << 4,
     }
 
     public enum CapabilityConsumerPurpose { Mission, HeldBaseGarrison }

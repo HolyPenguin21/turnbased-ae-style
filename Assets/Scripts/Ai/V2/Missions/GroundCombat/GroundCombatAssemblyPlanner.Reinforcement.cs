@@ -77,8 +77,11 @@ namespace Game.Ai.V2
                     primary.MemberCount, primary.Commander, opponents, out var projected,
                     out _, out _, out _, out _, defenderHexDefenseBonus,
                     requireWinGain: false)
-                    && AiPower.EffectiveArmyPowerFromProfiles(projected)
-                        > AiPower.EffectiveArmyPowerFromProfiles(before);
+                    && (AiPower.EffectiveArmyPowerFromProfiles(projected)
+                            > AiPower.EffectiveArmyPowerFromProfiles(before)
+                        // GroundCombatReinforcement.RaisesPrimary's carrier clause.
+                        || GroundCombatDonorPolicy.DisruptionHelps(before, opponents)
+                            && !GroundCombatDonorPolicy.DisruptionHelps(projected, opponents));
             }
 
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
@@ -144,11 +147,20 @@ namespace Game.Ai.V2
                 return false;
             }
 
+            // The live handoff's carrier rule (GroundCombatReinforcement.PlanHandoff siteOpposition):
+            // a first Disruption carrier against a known structure defence is offered first and
+            // may replace the weakest body regardless of its own combat value.
+            int carrier = GroundCombatDonorPolicy.DisruptionHelps(before, opposition)
+                ? Enumerable.Range(0, sparableSupportBodies.Count).Where(i =>
+                    Game.Combat.DisruptionRules.HasCarrier(new[] { sparableSupportBodies[i] }))
+                    .DefaultIfEmpty(-1).First()
+                : -1;
             int freeSlots = System.Math.Max(0, primaryCapacity - primaryMemberCount);
             if (freeSlots > 0)
             {
                 int take = System.Math.Min(freeSlots, sparableSupportBodies.Count);
-                for (int i = 0; i < take; i++)
+                foreach (int i in Enumerable.Range(0, sparableSupportBodies.Count)
+                    .OrderBy(i => i == carrier ? 0 : 1).ThenBy(i => i).Take(take))
                 {
                     projected.Add(sparableSupportBodies[i]);
                     incoming.Add(i);
@@ -161,12 +173,22 @@ namespace Game.Ai.V2
                     why = "primary is full and has no swappable non-hero body";
                     return false;
                 }
+                // Same "who gives way" rule as the live handoff (GroundCombatReinforcement.
+                // WeakestBodies): an army support carrier is never swapped out. Its effects are
+                // all ability-scoped, so the profile's abilities decide it exactly.
                 int weakest = Enumerable.Range(0, before.Count)
+                    .Where(i => !StrategicEffectRegistry.HasArmySupportEffect(before[i].Abilities, 0))
                     .OrderBy(i => before[i].MaxHitPoints > 0f ? before[i].HitPoints / before[i].MaxHitPoints : 1f)
                     .ThenBy(i => ProfileCombatValue(before[i]))
+                    .DefaultIfEmpty(-1)
                     .First();
+                if (weakest < 0)
+                {
+                    why = "primary is full and every body is an army support carrier";
+                    return false;
+                }
                 float weakestValue = ProfileCombatValue(before[weakest]);
-                int fresh = Enumerable.Range(0, sparableSupportBodies.Count)
+                int fresh = carrier >= 0 ? carrier : Enumerable.Range(0, sparableSupportBodies.Count)
                     .OrderByDescending(i => ProfileCombatValue(sparableSupportBodies[i]))
                     .Where(i => ProfileCombatValue(sparableSupportBodies[i]) > weakestValue)
                     .DefaultIfEmpty(-1)

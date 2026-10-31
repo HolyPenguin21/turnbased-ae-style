@@ -116,5 +116,19 @@ namespace Game.Ai.V2
                     && donor.Members[0] != null && donor.Members[0].IsHero));
 
         internal static float UnitCombatValue(UnitData u) => AiPower.SkilledCombatValue(u);
+
+        // THE "a first Disruption carrier is worth a slot" rule of every Attack roster choice
+        // (same-hex assembly, gather bound, reinforcement handoff and its projection): the known
+        // opposition stands on a positive structure defence and the roster carries no carrier yet.
+        // A carrier's value is that removed defence, which its own combat value never shows.
+        internal static bool DisruptionHelps(IEnumerable<WorthIt.DefenderProfile> roster,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            opposition != null && opposition.Any(d => d.BuildingDefenseBonus > 0f)
+            && !Game.Combat.DisruptionRules.HasCarrier(roster ?? Enumerable.Empty<WorthIt.DefenderProfile>());
+
+        internal static bool DisruptionHelps(IEnumerable<UnitData> roster,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            DisruptionHelps((roster ?? Enumerable.Empty<UnitData>()).Where(u => u != null)
+                .Select(WorthIt.FromLiveUnit), opposition);
     }
 }

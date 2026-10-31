@@ -55,8 +55,7 @@ namespace Game.Ai.V2
             // adds no power of its own. A lone-hero army may hand its hero over (preparation only).
             bool garrisonHeroTaken = false;
             bool CarrierHelps(IEnumerable<UnitData> roster) =>
-                opposition != null && opposition.Any(d => d.BuildingDefenseBonus > 0f)
-                && !Game.Combat.DisruptionRules.HasCarrier(roster.Select(WorthIt.FromLiveUnit));
+                GroundCombatDonorPolicy.DisruptionHelps(roster, opposition);
             bool disruptionAdded = false;
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {

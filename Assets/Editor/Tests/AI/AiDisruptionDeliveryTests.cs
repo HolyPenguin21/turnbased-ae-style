@@ -196,6 +196,82 @@ namespace Game.EditorTests
                 "the real estimate must value the low-power carrier through the building component");
         }
 
+        // 2026-10-31 — a fist that carries its own carrier removes the defence itself: neither a
+        // scout delivery nor its purchase is needed.
+        [Test]
+        public void FistCarryingItsOwnCarrier_NeedsNoDisruptionDelivery()
+        {
+            WorldSnapshot snap = Snapshot();
+            ArmySnapshot fist = snap.Self.Armies.First(a => a.ArmyId == 10);
+            Assert.That(ReconObjectiveEvaluator.AssaultNeedsDisruption(snap, Site), Is.True);
+            fist.MembersWithHeroes = new[] { Profile(true) };
+            Assert.That(ReconObjectiveEvaluator.AssaultNeedsDisruption(snap, Site), Is.False);
+            var attack = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                Objective = new AttackIntent { Phase = AttackMissionPhase.Gather, PrimaryArmyId = 10,
+                    Target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Citadel) } };
+            attack.IntentKey = MissionIntentKey.For(attack);
+            MissionIntentRegistry.GetOrCreate(_player).Put(attack);
+            Assert.That(ReconObjectiveEvaluator.AssaultNeedsDisruption(snap, Site), Is.False);
+            fist.MembersWithHeroes = Array.Empty<WorthIt.DefenderProfile>();
+            Assert.That(ReconObjectiveEvaluator.AssaultNeedsDisruption(snap, Site), Is.True);
+            Assert.That(ReconObjectiveEvaluator.AttackSiteOf(snap, 10), Is.EqualTo(Site));
+            Assert.That(ReconObjectiveEvaluator.AttackSiteOf(snap, 11), Is.Null);
+        }
+
+        // 2026-10-31 — no stealth carrier anywhere: Recon asks for one (Stealth AND Disruption
+        // required); a fielded carrier — even a busy one — is Assignment's to bind.
+        [Test]
+        public void MissingStealthCarrier_RaisesOneDisruptionScoutDemand()
+        {
+            WorldSnapshot ordinaryOnly = Snapshot(Scout(1, false));
+            AxisDemand demand = DemandLayer.DisruptionCarrierDemand(ordinaryOnly,
+                Array.Empty<MissionIntent>(), _player);
+            Assert.That(demand, Is.Not.Null);
+            Assert.That(demand.Capability, Is.EqualTo(CapabilityKind.ScoutCapability));
+            Assert.That(demand.RequiredTraits, Is.EqualTo(TraitPreference.Stealth | TraitPreference.Disruption));
+            Assert.That(demand.TargetHex, Is.EqualTo(Site));
+            Assert.That(DemandLayer.DisruptionCarrierDemand(Snapshot(Scout(2, true)),
+                Array.Empty<MissionIntent>(), _player), Is.Null);
+            ordinaryOnly.Self.Armies.First(a => a.ArmyId == 10).MembersWithHeroes = new[] { Profile(true) };
+            Assert.That(DemandLayer.DisruptionCarrierDemand(ordinaryOnly,
+                Array.Empty<MissionIntent>(), _player), Is.Null, "the fist already carries one");
+            Assert.That(MaterializationChainMatching.MeetsRequiredTraits(
+                new[] { "r1s4", "Stealth4", UnitAbilities.Disruption }, demand.RequiredTraits), Is.True);
+            Assert.That(MaterializationChainMatching.MeetsRequiredTraits(
+                new[] { "r1s4", "Stealth4" }, demand.RequiredTraits), Is.False);
+        }
+
+        // 2026-10-31 — reinforcement never swaps the fist's carrier out for a stronger body, and a
+        // first carrier may replace the weakest body although its own combat value is lower.
+        [Test]
+        public void ReinforcementKeepsAndBringsTheFirstCarrierAgainstASiteDefence()
+        {
+            var site = new[] { new WorthIt.DefendingArmy(new[] {
+                new WorthIt.DefenderProfile(4f, false, attack: 6f, hitPoints: 12f) },
+                default, 2f, buildingDefenseBonus: 2f) };
+            var woundedCarrier = new WorthIt.DefenderProfile(1f, false, attack: 3f, hitPoints: 1f,
+                abilities: new[] { UnitAbilities.Disruption }, maxHitPoints: 6f);
+            var weakBody = new WorthIt.DefenderProfile(1f, false, attack: 2f, hitPoints: 4f, maxHitPoints: 4f);
+            var strong = new WorthIt.DefenderProfile(4f, false, attack: 12f, hitPoints: 20f, maxHitPoints: 20f);
+            Assert.That(GroundCombatAssemblyPlanner.TryProjectReinforcement(new[] { woundedCarrier, weakBody },
+                new[] { strong }, 2, 2, default, site, out var kept, out _, out _, out _, out int displaced,
+                0f, requireWinGain: false), Is.True);
+            Assert.That(displaced, Is.EqualTo(1), "the wounded carrier never gives way");
+            Assert.That(Game.Combat.DisruptionRules.HasCarrier(kept), Is.True);
+
+            var carrier = new WorthIt.DefenderProfile(1f, false, attack: 1f, hitPoints: 3f,
+                abilities: new[] { UnitAbilities.Disruption }, maxHitPoints: 3f);
+            Assert.That(GroundCombatAssemblyPlanner.TryProjectReinforcement(new[] { weakBody, strong },
+                new[] { strong, carrier }, 2, 2, default, site, out var brought, out _, out _, out _, out _,
+                0f, requireWinGain: false), Is.True);
+            Assert.That(Game.Combat.DisruptionRules.HasCarrier(brought), Is.True);
+            Assert.That(GroundCombatDonorPolicy.DisruptionHelps(new[] { weakBody }, site), Is.True);
+            Assert.That(GroundCombatDonorPolicy.DisruptionHelps(new[] { carrier }, site), Is.False);
+            Assert.That(GroundCombatDonorPolicy.DisruptionHelps(new[] { weakBody },
+                new[] { new WorthIt.DefendingArmy(site[0].Units, default, 2f) }), Is.False,
+                "terrain alone is not a structure defence");
+        }
+
         private ScoutMissionTarget DeliveryTarget() => new ScoutMissionTarget {
             Kind = ScoutTargetKind.DisruptStructure, FocusHex = Site, Stealth = StealthRequirement.Required };
 

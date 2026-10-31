@@ -116,6 +116,20 @@ namespace Game.Ai.V2
             }
         }
 
+        // The structure defence a Disruption carrier deployed by this plan would remove: the known
+        // site of the Attack its destination army serves (an Attack refit's fight first). Zero for
+        // any other destination — a carrier in a garrison or an economy army removes nothing.
+        public float DisruptionSiteDefense
+        {
+            get
+            {
+                HexCoord? site = Plan?.AttackRefitTargetHex
+                    ?? (Plan?.Deploy.Army != null
+                        ? ReconObjectiveEvaluator.AttackSiteOf(Snap, Plan.Deploy.Army.Id) : null);
+                return site.HasValue ? ReconObjectiveEvaluator.HostileStructureDefense(Snap, site.Value) : 0f;
+            }
+        }
+
         public float MobileRepairService
         {
             get

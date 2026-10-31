@@ -25,6 +25,9 @@ namespace Game.Ai.V2
                 AiDebugLog.WriteRepeatSuppressed("[AI][V2][Demand][Recon] decision=NONE reason=no_self_army_snapshot");
                 yield break;
             }
+            AxisDemand disruption = DisruptionCarrierDemand(snap, activeIntents, player);
+            if (disruption != null)
+                yield return disruption;
             if (objectives == null || objectives.Count == 0)
             {
                 AiDebugLog.WriteRepeatSuppressed("[AI][V2][Demand][Recon] decision=NONE reason=no_frozen_recon_objectives");
@@ -411,6 +414,56 @@ namespace Game.Ai.V2
                         + $"want {matObs}; blocked {blocked}",
                 };
             }
+        }
+
+        // Disruption lane (owner decision 2026-10-31). An Attack whose known site defence a carrier
+        // would remove (ReconObjectiveEvaluator.AssaultNeedsDisruption — a fist that carries one
+        // already needs none) with no stealth Disruption scout anywhere — free or busy, binding an
+        // existing one is Assignment's job — asks for one: Stealth AND Disruption are required, so
+        // only such a card can answer. The fielded scout then serves the ordinary DisruptStructure
+        // objective. One demand per turn, the most valuable site; never through the generic lanes.
+        internal static AxisDemand DisruptionCarrierDemand(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, PlayerSetupData player)
+        {
+            if (snap?.Known?.Buildings == null || player == null)
+                return null;
+            AiAllocatorState cooldownState = AiAllocatorStateRegistry.GetOrCreate(player);
+            ReconObjective best = null;
+            foreach (AiMapMemory.KnownBuilding building in snap.Known.Buildings)
+            {
+                var target = new ScoutMissionTarget { Kind = ScoutTargetKind.DisruptStructure,
+                    FocusHex = building.Hex, Stealth = StealthRequirement.Required };
+                if (ScoutMoverSelector.HasStructuralCandidate(snap, target)
+                    || (activeIntents ?? System.Array.Empty<MissionIntent>()).Any(i => i?.Scout != null
+                        && ReconScoutKinds.IsDisruption(i.Scout.Kind) && i.Scout.FocusHex.Equals(building.Hex)))
+                    continue;
+                ReconObjective o = ReconObjectiveEvaluator.DisruptAt(snap, building.Hex, requireMover: false);
+                if (o == null || o.BaseValue <= 0f
+                    || cooldownState.TryGetCooldown(ReconKey(o), snap.TurnNumber, out _))
+                    continue;
+                if (best == null || o.BaseValue > best.BaseValue)
+                    best = o;
+            }
+            if (best == null)
+                return null;
+            AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
+                + $"profile=disruption desired=1 reason=assault_site_defence_without_carrier "
+                + $"target=({best.FocusHex.Q},{best.FocusHex.R}) defence={ReconObjectiveEvaluator.HostileStructureDefense(snap, best.FocusHex):0.#}");
+            return new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Recon,
+                Capability = CapabilityKind.ScoutCapability,
+                DesiredAmount = 1,
+                RequiredTraits = TraitPreference.Stealth | TraitPreference.Disruption,
+                MinimumFollowupAp = 0f,
+                TargetHex = best.FocusHex,
+                WorldTaskScore = best.TaskScore,
+                Value = best.TaskScore.Value,
+                ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
+                Explain = $"assault on ({best.FocusHex.Q},{best.FocusHex.R}) faces structure defence "
+                    + $"{ReconObjectiveEvaluator.HostileStructureDefense(snap, best.FocusHex):0.#} and no "
+                    + "stealth Disruption carrier exists",
+            };
         }
 
         // Recon cooldown identity must be exactly the same typed ScoutTarget encoding used by the

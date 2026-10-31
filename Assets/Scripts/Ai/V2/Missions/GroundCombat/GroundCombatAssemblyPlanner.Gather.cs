@@ -217,14 +217,32 @@ namespace Game.Ai.V2
 
             // One Monte-Carlo bound before the greedy loop: the host's slots filled with the
             // strongest bodies the whole pool holds. If even that misses the gate, skip this host.
-            List<WorthIt.DefenderProfile> bound = bodies
+            List<WorthIt.DefenderProfile> pooled = bodies
                 .Concat(pool.Where(x => x != heroDonor).SelectMany(x => x.Bodies))
                 .OrderByDescending(ProfileCombatValue)
+                .ToList();
+            List<WorthIt.DefenderProfile> bound = pooled
                 .Take(bodies.Count + System.Math.Max(0, capacity - memberCount))
                 .ToList();
+            // Combat value never shows a carrier's removed structure defence, so the strongest
+            // roster is not the best one against a defended site: the same slots with the best
+            // pooled carrier in place of the weakest body are the other bound candidate.
+            List<WorthIt.DefenderProfile> carrierBound = null;
+            if (bound.Count > 0 && GroundCombatDonorPolicy.DisruptionHelps(bound, opposition))
+            {
+                int carrierAt = pooled.FindIndex(bound.Count,
+                    p => Game.Combat.DisruptionRules.HasCarrier(new[] { p }));
+                if (carrierAt >= 0)
+                {
+                    carrierBound = new List<WorthIt.DefenderProfile>(bound);
+                    carrierBound[carrierBound.Count - 1] = pooled[carrierAt];
+                }
+            }
             if (minimumArmyPower <= 0f
                 && !GroundCombatFeasibility.Clears(bound, commander, opposition, winChanceGate,
-                    defenderHexDefenseBonus, out _, out _))
+                    defenderHexDefenseBonus, out _, out _)
+                && (carrierBound == null || !GroundCombatFeasibility.Clears(carrierBound, commander,
+                    opposition, winChanceGate, defenderHexDefenseBonus, out _, out _)))
                 return GroundCombatGatherPlan.Infeasible(
                     $"gather host #{host.Id}: even the strongest pooled roster misses the "
                     + $"{winChanceGate:0.00} gate");
@@ -260,7 +278,8 @@ namespace Game.Ai.V2
                     // Ask the same live-unit handoff solver as execution. It can select a fast
                     // escort instead of discarding a donor whose strongest tank blocks the route.
                     HandoffPlan handoff = GroundCombatReinforcement.PlanHandoff(gathered, s.Live,
-                        null, 0f, out _, requireChargeNow: false, rosterAdmissible: taskRoute);
+                        null, 0f, out _, requireChargeNow: false, rosterAdmissible: taskRoute,
+                        siteOpposition: opposition);
                     if (handoff == null) continue;
                     var candidate = GroundCombatReinforcement.FinalRoster(gathered, handoff);
                     List<WorthIt.DefenderProfile> projected = candidate
