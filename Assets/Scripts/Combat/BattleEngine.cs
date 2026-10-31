@@ -92,6 +92,7 @@ namespace Game.Combat
 
     public sealed class BattleAttackApplication
     {
+        public bool Applied;
         public BattleRules.GroundAttackOutcome Outcome;
         public int Damage;
         public bool DefenderDied;
@@ -211,6 +212,17 @@ namespace Game.Combat
             return true;
         }
 
+        public bool TryResolveCurrent(BattleCaptureKillTarget expected, BattleChallengeRollResult roll,
+            HexMap map, HexSelectionController selection, out BattleCaptureKillStep result)
+        {
+            result = default;
+            if (_pending.Count == 0 || !ReferenceEquals(_pending.Peek().Hero, expected.Hero)
+                || !ReferenceEquals(_pending.Peek().HeroArmy, expected.HeroArmy)
+                || !ReferenceEquals(_pending.Peek().HunterArmy, expected.HunterArmy)) return false;
+            result = ResolveCurrent(roll, map, selection);
+            return true;
+        }
+
         public BattleCaptureKillStep ResolveCurrent(BattleChallengeRollResult roll,
             HexMap map, HexSelectionController hexSelectionController)
         {
@@ -280,7 +292,7 @@ namespace Game.Combat
 
     // Domain owner for one tactical encounter. It mutates BattleState/ArmyData/UnitData and
     // returns presentation-neutral result objects. BattleScreenUI only renders those results.
-    public sealed class BattleEngine
+    public sealed partial class BattleEngine
     {
         public static event Action<BattleState> EncounterStarted;
         public static event Action<BattleState, BattleEncounterFinalization> EncounterFinalized;
@@ -303,12 +315,16 @@ namespace Game.Combat
 
         public BattleState State => _state;
         // This round's spent Bodyguard reactions (cleared by StartRound).
-        public BattleReactionState Reactions => _reactions;
+        public BattleReactionState Reactions { get { var copy = new BattleReactionState(); copy.BodyguardsUsed.UnionWith(_reactions.BodyguardsUsed); return copy; } }
 
-        public BattleEngine(BattleState state, AbilityMagnitudes magnitudes, System.Random random = null)
+        public BattleEngine(BattleState state, AbilityMagnitudes magnitudes, System.Random random = null, HexMap map = null)
         {
             _state = state ?? throw new ArgumentNullException(nameof(state));
+            if (state.Engine != null) throw new InvalidOperationException("An encounter already has its engine.");
+            state.Engine = this;
+            state.EncounterMagnitudes = magnitudes;
             _magnitudes = magnitudes;
+            _rules = BattleRulesSnapshot.Capture(state, magnitudes, map);
             _random = random ?? new System.Random(state.BattleSeed);
             BattleDebugLog.Write($"[Encounter] seed={state.BattleSeed} hex=({state.BattleHex.Q},{state.BattleHex.R}) "
                 + $"attacker={state.Attacker?.Id} defender={state.Defender?.Id} "
@@ -332,7 +348,7 @@ namespace Game.Combat
 
         public void StartRound()
         {
-            if (_startedRound == _state.Round) return;
+            if (_state.FinalizationApplied || (Phase != BattleCommandPhase.Deployment && Phase != BattleCommandPhase.RoundReady) || _startedRound == _state.Round) return;
             _startedRound = _state.Round;
             _plannedSecondaryTargets = null;
             _plannedSecondaryAttacker = _plannedSecondaryVictim = null;
@@ -343,13 +359,14 @@ namespace Game.Combat
             ApplyRoundDrill(_state.Defender);
             HealRoundHeroes(_state.Attacker);
             HealRoundHeroes(_state.Defender);
-            _state.TurnOrder = BattleTurnOrder.BuildOrder(_state.Grid, _state.Attacker, _state.Defender,
+            _state.MutableTurnOrder = BattleTurnOrder.BuildOrder(_state.Grid, _state.Attacker, _state.Defender,
                 unchecked(_state.BattleSeed * 31 + _state.Round));
             if (_state.RetreatingArmy != null)
-                _state.TurnOrder = _state.TurnOrder
+                _state.MutableTurnOrder = _state.MutableTurnOrder
                     .Where(u => _state.OwningArmy(u) != _state.RetreatingArmy)
                     .ToList();
             _state.TurnIndex = 0;
+            Phase = BattleCommandPhase.Acting;
             BeginCurrentUnitTurn();
         }
 
@@ -398,8 +415,9 @@ namespace Game.Combat
 
         private void BeginCurrentUnitTurn()
         {
-            if (_state.TurnIndex < 0 || _state.TurnIndex >= _state.TurnOrder.Count) return;
-            UnitData actor = _state.TurnOrder[_state.TurnIndex];
+            if (_state.TurnIndex < 0 || _state.TurnIndex >= _state.MutableTurnOrder.Count) return;
+            UnitData actor = _state.MutableTurnOrder[_state.TurnIndex];
+            _actingUnit = actor;
             if (_startedTurns.Add(actor)) ApplyHeal(actor, _state.OwningArmy(actor));
         }
 
@@ -425,20 +443,23 @@ namespace Game.Combat
 
         public BattleTurnAdvance AdvanceTurn()
         {
-            if (_state.TurnOrder == null || _state.TurnOrder.Count == 0)
+            if (Phase != BattleCommandPhase.AwaitingAdvance || _state.FinalizationApplied || _state.MutableTurnOrder == null || _state.MutableTurnOrder.Count == 0)
                 return BattleTurnAdvance.NoTurn;
 
+            _activeAttackPlan = null;
             _state.TurnIndex++;
-            if (_state.TurnIndex < _state.TurnOrder.Count)
+            if (_state.TurnIndex < _state.MutableTurnOrder.Count)
             {
+                Phase = BattleCommandPhase.Acting;
                 BeginCurrentUnitTurn();
                 return BattleTurnAdvance.NextUnit;
             }
 
             if (_state.RetreatingArmy != null)
-                return BattleTurnAdvance.ResolveRetreat;
+            { Phase = BattleCommandPhase.RetreatReady; return BattleTurnAdvance.ResolveRetreat; }
 
             _state.Round++;
+            Phase = BattleCommandPhase.RoundReady;
             return BattleTurnAdvance.NextRound;
         }
 
@@ -446,7 +467,9 @@ namespace Game.Combat
             CardDefinition template, int perSummoner,
             Func<CardDefinition, PlayerSetupData, UnitData> spawn)
         {
-            if (army == null || template == null || spawn == null || _state.Grid == null)
+            if (_state.FinalizationApplied || Phase != BattleCommandPhase.Deployment
+                || (army != _state.Attacker && army != _state.Defender) || army == null
+                || template == null || spawn == null || _state.Grid == null || !_summonedArmies.Add(army))
                 return default;
             using var mutation = VisionSystem.BeginMutation();
 
@@ -473,19 +496,14 @@ namespace Game.Combat
 
         public int GetDefenderHexDefenseBonus(HexMap map)
         {
-            int bonus = 0;
-            if (map != null && map.TryGetTerrainAt(_state.BattleHex,
-                out Game.Terrain.TerrainTypeEntry terrain) && terrain != null)
-                bonus += terrain.defenseModifier;
-
-            bonus += _state.DefenderBuildingDefenseBonus;
-            return bonus;
+            return _rules.TerrainDefenseBonus + _rules.BuildingDefenseBonus;
         }
 
         public void ArrangeAiArmy(ArmyData army, ArmyData enemyArmy, int frontRow, int backRow,
             HexMap map)
         {
-            if (army == null)
+            if (_state.FinalizationApplied || Phase != BattleCommandPhase.Deployment
+                || (army != _state.Attacker && army != _state.Defender) || army == null)
                 return;
             BattleAi.ArrangeArmy(_state.Grid, army, frontRow, backRow, enemyArmy,
                 _magnitudes, _state.Defender, GetDefenderHexDefenseBonus(map));
@@ -531,11 +549,8 @@ namespace Game.Combat
             if (defenderArmy != null && defenderArmy == _state.Defender
                 && !Game.Aviation.AviationRules.IsAirArmy(defenderArmy))
             {
-                if (map != null && map.TryGetTerrainAt(_state.BattleHex, out Game.Terrain.TerrainTypeEntry terrainEntry)
-                    && terrainEntry != null)
-                    terrain = terrainEntry.defenseModifier;
-
-                construction = _state.DefenderBuildingDefenseBonus;
+                terrain = _rules.TerrainDefenseBonus;
+                construction = _rules.BuildingDefenseBonus;
             }
 
             return new BattleDefenseBreakdown(terrain, construction, formation);
@@ -544,7 +559,7 @@ namespace Game.Combat
         public void CommitGroundAttack(UnitData attacker)
         {
             ArmyData army = _state.OwningArmy(attacker);
-            if (army == null)
+            if (army == null || _attackRequest?.Attacker != attacker || Phase != BattleCommandPhase.AwaitingAttack)
                 return;
             foreach (UnitData member in army.Members)
                 member.MoveCurrent = 0;
@@ -552,7 +567,7 @@ namespace Game.Combat
 
         public bool CanMoveUnit(UnitData unit, int toRow, int toCol)
         {
-            if (unit == null || _state.Grid == null
+            if (!CanAct(unit) || _state.Grid == null
                 || !_state.Grid.TryFindPosition(unit, out int fromRow, out int fromCol)
                 || !BattleGrid.InBounds(toRow, toCol)
                 || _state.Grid.Get(toRow, toCol) != null)
@@ -562,8 +577,8 @@ namespace Game.Combat
 
         public bool CanGroundAttack(UnitData attacker, UnitData defender)
         {
-            if (attacker == null || defender == null
-                || attacker.Owner == defender.Owner || _state.Grid == null
+            if (!CanAct(attacker) || defender == null || defender.HitPointsCurrent <= 0
+                || _state.OwningArmy(defender) == null || attacker.Owner == defender.Owner || _state.Grid == null
                 || !_state.Grid.TryFindPosition(attacker, out int ar, out int ac)
                 || !_state.Grid.TryFindPosition(defender, out int dr, out int dc))
                 return false;
@@ -580,13 +595,14 @@ namespace Game.Combat
 
             _state.Grid.Set(fromRow, fromCol, null);
             _state.Grid.Set(toRow, toCol, unit);
+            Phase = BattleCommandPhase.AwaitingAdvance;
             return true;
         }
 
         public bool TrySwapDeployment(int fromRow, int fromCol, int toRow, int toCol,
             int frontRow, int backRow)
         {
-            if (!BattleRules.CanSwap(_state.Grid, fromRow, fromCol, toRow, toCol,
+            if (Phase != BattleCommandPhase.Deployment || !BattleRules.CanSwap(_state.Grid, fromRow, fromCol, toRow, toCol,
                 frontRow, backRow))
                 return false;
             _state.Grid.Swap(fromRow, fromCol, toRow, toCol);
@@ -595,6 +611,9 @@ namespace Game.Combat
 
         public void CommitRetreat(ArmyData army)
         {
+            if (_state.FinalizationApplied || (Phase != BattleCommandPhase.Deployment && Phase != BattleCommandPhase.RoundReady)
+                || _state.RetreatingArmy != null || army == null || army.IsGarrison
+                || army.Owner?.IsEliminated == true || (army != _state.Attacker && army != _state.Defender)) return;
             _state.RetreatingArmy = army;
         }
 
@@ -609,6 +628,7 @@ namespace Game.Combat
             // are tactical-grid skills and never apply; Ionic is already in outcome.Damage.
             var application = new BattleAttackApplication
             {
+                Applied = true,
                 Outcome = outcome,
                 Damage = outcome.Damage,
                 Victim = defender,
@@ -633,44 +653,7 @@ namespace Game.Combat
             BattleChallengeRollResult roll, UnitData attackerHero = null, UnitData defenderHero = null,
             bool isCounterattack = false)
         {
-            using var mutation = VisionSystem.BeginMutation();
-            ApplyFateState(attackerHero, defenderHero, roll);
-            BattleRules.GroundAttackOutcome outcome = BattleRules.ResolveGroundAttack(
-                roll.AttackerTokens, roll.DefenderTokens, attacker, defender, _magnitudes, roll.AttackerModifier, roll.DefenderModifier);
-
-            UnitData victim = defender;
-            int damage = outcome.Damage;
-            UnitData guard = !isCounterattack && damage > 0
-                ? FindInterceptingBodyguard(attacker, defender) : null;
-            if (guard != null)
-            {
-                _reactions.BodyguardsUsed.Add(guard);
-                victim = guard;
-                damage = BattleSimulationKernel.InterceptedDamage(outcome.RawDamage,
-                    attacker.Abilities, guard.TypeTags, guard.Abilities, _magnitudes);
-                BattleDebugLog.Write($"[Bodyguard] {guard.Name} intercepts {attacker?.Name} -> {defender?.Name}: {damage} damage");
-            }
-
-            BattleAttackApplication application = ApplyGroundAttack(attacker, victim, damage);
-            application.Outcome = outcome;
-            application.InterceptedBy = guard;
-            application.ShockTriggered |= !isCounterattack && !application.DefenderDied
-                && _state.OwningArmy(victim) != _state.RetreatingArmy
-                && BattleSimulationKernel.SuppressesTurn(application.Damage, attacker.Abilities)
-                && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
-                    victim.HitPointsCurrent, 0);
-            if (!isCounterattack && !application.DefenderDied
-                && _state.OwningArmy(victim) != _state.RetreatingArmy
-                && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
-                    victim.HitPointsCurrent, application.Damage))
-            {
-                application.Counterattacker = victim;
-            }
-            // All modifiers, collateral and the counterattack decision used the armed state.
-            // An actual answer now faces the already spent host, including on a missed shot.
-            ExplosionAttack.CompleteLauncher(attacker, this);
-            if (attacker.HitPointsCurrent <= 0) application.Counterattacker = null;
-            return application;
+            return ApplyAttackPlan(PrepareGroundAttack(attacker, defender, roll, attackerHero, defenderHero, isCounterattack));
         }
 
         // The Bodyguard that would take a hit `attacker` lands on `defender` right now (null: none).
@@ -679,10 +662,18 @@ namespace Game.Combat
             BattleRules.FindBodyguard(_state.Grid, defender, attacker,
                 u => u.HitPointsCurrent, _reactions);
 
+        // Compatibility fixed-damage command: same action/reaction/launcher lifecycle as rolls.
         public BattleAttackApplication ApplyGroundAttack(UnitData attacker, UnitData defender, int damage)
         {
+            bool counter = Phase == BattleCommandPhase.AwaitingAttack && _attackRequest?.IsCounterattack == true;
+            var request = AdmitOrGetAttack(attacker, defender, counter);
+            return ApplyAttackPlan(PrepareGroundAttackCore(request, default, null, null, Mathf.Max(0, damage)));
+        }
+
+        private BattleAttackApplication ApplyGroundHit(UnitData attacker, UnitData defender, int damage)
+        {
             using var mutation = VisionSystem.BeginMutation();
-            var application = new BattleAttackApplication { Damage = Mathf.Max(0, damage), Victim = defender };
+            var application = new BattleAttackApplication { Applied = true, Damage = Mathf.Max(0, damage), Victim = defender };
             if (attacker == null || defender == null)
                 return application;
 
@@ -711,12 +702,12 @@ namespace Game.Combat
 
         public bool SkipPendingTurn(UnitData unit)
         {
-            if (_state.TurnOrder == null)
+            if (_state.MutableTurnOrder == null)
                 return false;
-            int index = _state.TurnOrder.IndexOf(unit);
+            int index = _state.MutableTurnOrder.IndexOf(unit);
             if (index <= _state.TurnIndex)
                 return false;
-            _state.TurnOrder.RemoveAt(index);
+            _state.MutableTurnOrder.RemoveAt(index);
             return true;
         }
 
@@ -734,12 +725,12 @@ namespace Game.Combat
             _state.Defender?.RefreshTransport();
             StealthSystem.OnUnitRemoved(unit, deferCarrierCleanup, deferNotifications: deferCarrierCleanup);
 
-            if (_state.TurnOrder != null)
+            if (_state.MutableTurnOrder != null)
             {
-                int index = _state.TurnOrder.IndexOf(unit);
+                int index = _state.MutableTurnOrder.IndexOf(unit);
                 if (index >= 0)
                 {
-                    _state.TurnOrder.RemoveAt(index);
+                    _state.MutableTurnOrder.RemoveAt(index);
                     if (index <= _state.TurnIndex)
                         _state.TurnIndex--;
                 }
@@ -767,22 +758,30 @@ namespace Game.Combat
         public BattleCaptureKillSequence CreateCaptureKillSequence(
             bool attackerAlive, bool defenderAlive)
         {
+            if (_captureSequence != null) return _captureSequence;
+            var status = EvaluateBattleEnd();
+            // Compatibility flags cannot authorize an early/provisional empty queue.
+            if (!status.Ended) return new BattleCaptureKillSequence(_state, null);
+            attackerAlive = status.AttackerAlive; defenderAlive = status.DefenderAlive;
             var targets = new List<BattleCaptureKillTarget>();
             foreach ((UnitData hero, ArmyData heroArmy, ArmyData hunterArmy) entry
                 in BuildCaptureKillQueue(_state.Attacker, _state.Defender, attackerAlive, defenderAlive))
             {
                 targets.Add(new BattleCaptureKillTarget(entry.hero, entry.heroArmy, entry.hunterArmy));
             }
-            return new BattleCaptureKillSequence(_state, targets);
+            return _captureSequence = new BattleCaptureKillSequence(_state, targets);
         }
 
         public static BattleCaptureKillSequence CreateTargetOnlyCaptureKillSequence(
             BattleState state, ArmyData hunterArmy, ArmyData targetArmy)
         {
+            if (state?.Engine?._captureSequence != null) return state.Engine._captureSequence;
             var targets = new List<BattleCaptureKillTarget>();
             foreach (UnitData hero in HeroesOnly(targetArmy))
                 targets.Add(new BattleCaptureKillTarget(hero, targetArmy, hunterArmy));
-            return new BattleCaptureKillSequence(state, targets);
+            var sequence = new BattleCaptureKillSequence(state, targets);
+            if (state?.Engine != null) state.Engine._captureSequence = sequence;
+            return sequence;
         }
 
         public static List<(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)> BuildCaptureKillQueue(
@@ -856,6 +855,9 @@ namespace Game.Combat
         public void CompleteBattle(bool attackerAlive, bool defenderAlive,
             HexSelectionController hexSelectionController)
         {
+            if (_battleCompleted || !CanFinalize) return;
+            _battleCompleted = true;
+            Phase = BattleCommandPhase.Completed;
             RevertTemporaryBattleStats(_state.Attacker, _magnitudes);
             RevertTemporaryBattleStats(_state.Defender, _magnitudes);
             AiMatchStats.RecordBattle(_state.Attacker?.Owner, _state.Defender?.Owner,
@@ -864,18 +866,16 @@ namespace Game.Combat
                 + $"{DescribeForLog(_state.Attacker)} {(attackerAlive ? "alive" : "wiped")}; defender "
                 + $"{DescribeForLog(_state.Defender)} {(defenderAlive ? "alive" : "wiped")}");
 
-            bool attackerEmpty = _state.Attacker != null && _state.Attacker.Members.Count == 0;
-            bool defenderEmpty = _state.Defender != null && _state.Defender.Members.Count == 0;
-            if (attackerEmpty != defenderEmpty)
-                HandleBuildingOnArmyDefeat(
-                    attackerEmpty ? _state.Defender : _state.Attacker,
-                    attackerEmpty ? _state.Attacker : _state.Defender,
-                    hexSelectionController);
+            BattleEncounterCoordinator.Apply(_state, hexSelectionController);
         }
 
         public BattleRetreatApplication CompleteRetreat(ArmyData army, ArmyData survivingArmy,
             HexMap map, HexSelectionController hexSelectionController)
         {
+            if (_retreatCompleted) return _retreatResult;
+            if (Phase != BattleCommandPhase.RetreatReady || army != _state.RetreatingArmy) return default;
+            _retreatCompleted = true;
+            Phase = BattleCommandPhase.Completed;
             RevertTemporaryBattleStats(army, _magnitudes);
             RevertTemporaryBattleStats(survivingArmy, _magnitudes);
             BattleRetreatApplication result = PerformRetreat(
@@ -885,6 +885,8 @@ namespace Game.Combat
                 + $"{DescribeForLog(army)} gave way to {DescribeForLog(survivingArmy)}"
                 + (result.Destroyed ? " (destroyed while retreating)" : ""));
             _state.RetreatingArmy = null;
+            _retreatResult = result;
+            BattleEncounterCoordinator.Apply(_state, hexSelectionController);
             return result;
         }
 
@@ -916,12 +918,25 @@ namespace Game.Combat
         }
 
         public static BattleEncounterFinalization FinalizeEncounter(BattleState state,
+            HexSelectionController hexSelectionController) => BattleEncounterCoordinator.Apply(state, hexSelectionController);
+
+        internal static void PublishFinalization(BattleState state, BattleEncounterFinalization result)
+            => VisionSystem.PublishAfterMutation(EncounterFinalized, state, result);
+
+        internal static BattleEncounterFinalization ApplyEncounterResult(BattleState state,
             HexSelectionController hexSelectionController)
         {
             using var mutation = VisionSystem.BeginMutation();
             if (state == null)
                 return default;
 
+            RevertTemporaryBattleStats(state.Attacker, state.EncounterMagnitudes);
+            RevertTemporaryBattleStats(state.Defender, state.EncounterMagnitudes);
+            bool attackerEmpty = state.Attacker != null && state.Attacker.Members.Count == 0;
+            bool defenderEmpty = state.Defender != null && state.Defender.Members.Count == 0;
+            if (attackerEmpty != defenderEmpty)
+                HandleBuildingOnArmyDefeat(attackerEmpty ? state.Defender : state.Attacker,
+                    attackerEmpty ? state.Attacker : state.Defender, hexSelectionController);
             ReplenishFate(state.Attacker);
             ReplenishFate(state.Defender);
 
@@ -949,7 +964,7 @@ namespace Game.Combat
                 : null;
 
             ArmyData defeatedArmy = survivor == state.Attacker ? state.Defender : state.Attacker;
-            if (hexSelectionController?.DismissLibraryGuardAfterFailedExplore(hex, survivor, defeatedArmy) == true)
+            if (BattleEncounterCoordinator.DismissLibraryGuardAfterFailedExplore(hex, survivor, defeatedArmy))
             {
                 survivor = null;
                 attackerHere = defenderHere = false;
@@ -968,38 +983,19 @@ namespace Game.Combat
             hexSelectionController?.RestackArmiesOn(hex, null);
 
             var finalization = new BattleEncounterFinalization(survivor, attackerHere, defenderHere);
-            VisionSystem.PublishAfterMutation(EncounterFinalized, state, finalization);
             return finalization;
         }
 
         public static BattleEncounterFinalization FinalizeStandaloneCaptureKill(
             ArmyData hunterArmy, ArmyData targetArmy, HexSelectionController hexSelectionController)
         {
-            using var mutation = VisionSystem.BeginMutation();
             if (hunterArmy == null)
                 return default;
-
-            HexCoord hunterHex = hunterArmy.Hex;
-            ReplenishFate(hunterArmy);
-            ReplenishFate(targetArmy);
-            HandleBuildingOnArmyDefeat(hunterArmy, targetArmy, hexSelectionController);
-            hexSelectionController?.DismissLibraryGuardAfterFailedExplore(hunterHex, hunterArmy, targetArmy);
-
-            var changedHexes = new HashSet<HexCoord> { hunterHex };
-            if (targetArmy != null)
-                changedHexes.Add(targetArmy.Hex);
-            foreach (HexCoord changedHex in changedHexes)
-                VisionSystem.NotifyContentChanged(changedHex);
-
-            ArmyActions.DeleteArmyIfEmptied(targetArmy);
-            if (targetArmy != null)
-                hexSelectionController?.RestackArmiesOn(targetArmy.Hex, null);
-            hexSelectionController?.RestackArmiesOn(hunterHex, null);
-
-            bool hunterHere = hunterArmy.Hex.Equals(hunterHex)
-                && BattleInitiator.IsCombatCapable(hunterArmy);
-            return new BattleEncounterFinalization(hunterHere ? hunterArmy : null,
-                attackerHere: hunterHere, defenderHere: false);
+            var state = BattleEncounterCoordinator.GetLegacyEncounter(hunterArmy, targetArmy);
+            var result = BattleEncounterCoordinator.Apply(state, hexSelectionController);
+            return state?.Defender == hunterArmy
+                ? new BattleEncounterFinalization(result.Survivor, result.DefenderHere, result.AttackerHere)
+                : result;
         }
 
         public static void HandleBuildingOnArmyDefeat(ArmyData winnerArmy, ArmyData loserArmy,
@@ -1107,7 +1103,7 @@ namespace Game.Combat
                 TryHandoverOrDestroyVacatedBuilding(battleHex, defendedBuilding, previousOwner,
                     survivingArmy, hexSelectionController);
 
-            hexSelectionController?.HandleRetreatFromHexEvent(battleHex, army.Owner);
+            BattleEncounterCoordinator.HandleRetreatFromHexEvent(battleHex, army.Owner);
 
             var application = new BattleRetreatApplication(!relocated, relocated, destination, contactParticipants);
             VisionSystem.PublishAfterMutation(ArmyRetreated, state, army, application);
@@ -1126,7 +1122,7 @@ namespace Game.Combat
                     continue;
                 if (state?.Grid != null && state.Grid.TryFindPosition(member, out int row, out int col))
                     state.Grid.Set(row, col, null);
-                state?.TurnOrder?.Remove(member);
+                state?.MutableTurnOrder?.Remove(member);
                 ArmyActions.RemoveMember(army, member, cleanup: false);
                 StealthSystem.OnUnitRemoved(member);
             }
@@ -1174,8 +1170,8 @@ namespace Game.Combat
                 _plannedSecondaryTargets = SelectSecondarySkills(attacker, victim, damage);
             }
             bool survives = victim.HitPointsCurrent > damage;
-            bool pendingTurn = _state.TurnOrder != null
-                && _state.TurnOrder.IndexOf(victim) > _state.TurnIndex;
+            bool pendingTurn = _state.MutableTurnOrder != null
+                && _state.MutableTurnOrder.IndexOf(victim) > _state.TurnIndex;
             bool wouldCounter = !isCounterattack && _state.OwningArmy(victim) != _state.RetreatingArmy
                 && BattleRules.CanCounterattack(_state.Grid, victim, attacker,
                     victim.HitPointsCurrent - damage, 0);
@@ -1268,7 +1264,7 @@ namespace Game.Combat
                 return;
             if (state?.Grid != null && state.Grid.TryFindPosition(hero, out int row, out int col))
                 state.Grid.Set(row, col, null);
-            state?.TurnOrder?.Remove(hero);
+            state?.MutableTurnOrder?.Remove(hero);
             ArmyActions.RemoveMember(army, hero, cleanup: false);
             army?.RefreshTransport();
             StealthSystem.OnUnitRemoved(hero);
@@ -1289,7 +1285,7 @@ namespace Game.Combat
 
             if (state?.Grid != null && state.Grid.TryFindPosition(hero, out int row, out int col))
                 state.Grid.Set(row, col, null);
-            state?.TurnOrder?.Remove(hero);
+            state?.MutableTurnOrder?.Remove(hero);
             ArmyActions.ImprisonMember(hero, heroArmy, prison);
             heroArmy.RefreshTransport();
             prison.RefreshTransport();

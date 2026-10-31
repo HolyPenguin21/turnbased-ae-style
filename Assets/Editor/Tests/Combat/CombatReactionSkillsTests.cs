@@ -66,7 +66,7 @@ namespace Game.EditorTests
             var attacker = Body(Own);
             var victim = Body(Foe, abilities: new[] { UnitAbilities.Berserk });
             var engine = Engine(Army(Own, attacker), Army(Foe, victim), (attacker, 2, 1), (victim, 1, 1));
-            var hit = engine.ApplyGroundAttack(attacker, victim, damage);
+            var hit = BattleEngineTestDriver.ApplyHit(engine, attacker, victim, damage);
             Assert.That(hit.BerserkTriggered, Is.EqualTo(expected));
         }
 
@@ -76,7 +76,7 @@ namespace Game.EditorTests
             var attacker = Body(Own, abilities: new[] { UnitAbilities.ShockAttack });
             var victim = Body(Foe, abilities: new[] { UnitAbilities.Counterattack });
             var engine = Engine(Army(Own, attacker), Army(Foe, victim), (attacker, 2, 1), (victim, 1, 1));
-            var hit = engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(1));
+            var hit = BattleEngineTestDriver.ResolveHit(engine, attacker, victim, Roll(1));
             Assert.That(hit.Shocked, Is.False);
             Assert.That(hit.ShockTriggered, Is.True);
             Assert.That(hit.Counterattacker, Is.Null);
@@ -89,7 +89,7 @@ namespace Game.EditorTests
             var attacker = Body(Own, abilities: new[] { UnitAbilities.ShockAttack });
             var victim = Body(Foe, abilities: new[] { UnitAbilities.Counterattack });
             var engine = Engine(Army(Own, attacker), Army(Foe, victim), (attacker, 2, 1), (victim, 1, 1));
-            var hit = engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(raw));
+            var hit = BattleEngineTestDriver.ResolveHit(engine, attacker, victim, Roll(raw));
             Assert.That(hit.ShockTriggered, Is.False);
         }
 
@@ -101,7 +101,7 @@ namespace Game.EditorTests
             var neighbour = Body(Foe, abilities: new[] { UnitAbilities.Berserk, UnitAbilities.CeramicArmor });
             var engine = Engine(Army(Own, attacker), Army(Foe, victim, neighbour),
                 (attacker, 2, 1), (victim, 1, 1), (neighbour, 1, 2));
-            var hit = engine.ApplyGroundAttack(attacker, victim, 2);
+            var hit = BattleEngineTestDriver.ApplyHit(engine, attacker, victim, 2);
             Assert.That(hit.SecondaryHits.Count, Is.EqualTo(1));
             Assert.That(hit.SecondaryHits[0].Damage, Is.Zero);
             Assert.That(hit.SecondaryHits[0].BerserkTriggered, Is.False);
@@ -158,7 +158,7 @@ namespace Game.EditorTests
             BattleEngine engine = Engine(Army(Own, attacker), Army(Foe, victim),
                 (attacker, 0, 0), (victim, 2, 2));
             Assert.That(engine.PreviewGroundHitEffects(attacker, victim, 2), Is.Empty);
-            engine.State.TurnOrder = new List<UnitData> { attacker, victim };
+            BattleEngineTestDriver.Queue(engine.State, new List<UnitData> { attacker, victim });
             CollectionAssert.AreEqual(new[] { UnitAbilities.ShockAttack },
                 engine.PreviewGroundHitEffects(attacker, victim, 2));
             Assert.That(engine.PreviewGroundHitEffects(attacker, victim, 0), Is.Empty);
@@ -180,7 +180,7 @@ namespace Game.EditorTests
             var random = new CountingRandom();
             var engine = new BattleEngine(new BattleState(default, Army(Own, attacker),
                 Army(Foe, victim, left, right, above), grid, 42), AbilityMagnitudes.Default, random);
-            engine.State.TurnOrder = new List<UnitData> { attacker, victim };
+            BattleEngineTestDriver.Queue(engine.State, new List<UnitData> { attacker, victim });
             var effects = engine.PreviewGroundHitEffects(attacker, victim, 2);
             int draws = random.Draws;
             Assert.That(draws, Is.GreaterThan(0));
@@ -191,7 +191,7 @@ namespace Game.EditorTests
             Assert.That(engine.State.TurnOrder.Count, Is.EqualTo(2));
             CollectionAssert.AreEqual(effects, engine.PreviewGroundHitEffects(attacker, victim, 2));
             Assert.That(random.Draws, Is.EqualTo(draws), "Repeated presentation must not reroll collateral.");
-            BattleAttackApplication applied = engine.ApplyGroundAttack(attacker, victim, 2);
+            BattleAttackApplication applied = BattleEngineTestDriver.ApplyHit(engine, attacker, victim, 2);
             Assert.That(random.Draws, Is.EqualTo(draws), "Acknowledgement must use the displayed plan.");
             Assert.That(applied.Shocked, Is.True);
             CollectionAssert.AreEquivalent(new[] { UnitAbilities.Splash, UnitAbilities.Splash,
@@ -209,7 +209,7 @@ namespace Game.EditorTests
             CollectionAssert.AreEqual(new[] { UnitAbilities.Splash },
                 engine.PreviewGroundHitEffects(attacker, victim, 2));
             // Finish the existing plan before the next challenge changes the actor's skills.
-            engine.ApplyGroundAttack(attacker, victim, 2);
+            BattleEngineTestDriver.ApplyHit(engine, attacker, victim, 2);
             attacker.Abilities.Remove(UnitAbilities.Splash);
             Assert.That(engine.PreviewGroundHitEffects(attacker, victim, 2), Is.Empty);
         }
@@ -239,17 +239,17 @@ namespace Game.EditorTests
                 (target, 3, 1), (guard, 3, 2), (attacker, 2, 1));
             engine.StartRound();
 
-            BattleAttackApplication first = engine.ResolveAndApplyGroundAttack(attacker, target, Roll(3));
+            BattleAttackApplication first = BattleEngineTestDriver.ResolveHit(engine, attacker, target, Roll(3));
             Assert.That(first.InterceptedBy, Is.SameAs(guard));
             Assert.That(first.Victim, Is.SameAs(guard));
             Assert.That(target.HitPointsCurrent, Is.EqualTo(6));
             Assert.That(guard.HitPointsCurrent, Is.EqualTo(8), "3 raw - 1 CeramicArmor of the guard");
 
-            BattleAttackApplication second = engine.ResolveAndApplyGroundAttack(attacker, target, Roll(2));
+            BattleAttackApplication second = BattleEngineTestDriver.ResolveHit(engine, attacker, target, Roll(2));
             Assert.That(second.InterceptedBy, Is.Null, "spent for this round");
             Assert.That(target.HitPointsCurrent, Is.EqualTo(4));
 
-            engine.State.Round++;
+            BattleEngineTestDriver.NextRound(engine);
             engine.StartRound();
             Assert.That(engine.FindInterceptingBodyguard(attacker, target), Is.SameAs(guard));
         }
@@ -267,8 +267,8 @@ namespace Game.EditorTests
             UnitData guard = Body(Own, abilities: new[] { UnitAbilities.Bodyguard });
             engine.State.Attacker.Members.Add(guard);
             engine.State.Grid.Set(3, 0, guard);
-            Assert.That(engine.ResolveAndApplyGroundAttack(attacker, target, Roll(0)).InterceptedBy, Is.Null);
-            Assert.That(engine.ResolveAndApplyGroundAttack(attacker, target, Roll(1), isCounterattack: true)
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, attacker, target, Roll(0)).InterceptedBy, Is.Null);
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, attacker, target, Roll(1), isCounterattack: true)
                 .InterceptedBy, Is.Null);
             Assert.That(engine.FindInterceptingBodyguard(attacker, target), Is.SameAs(guard), "still unspent");
         }
@@ -283,17 +283,17 @@ namespace Game.EditorTests
                 (victim, 3, 1), (attacker, 2, 2), (shooter, 1, 1));
             engine.StartRound();
 
-            Assert.That(engine.ResolveAndApplyGroundAttack(shooter, victim, Roll(1)).Counterattacker, Is.Null,
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, shooter, victim, Roll(1)).Counterattacker, Is.Null,
                 "two cells away");
-            Assert.That(engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(1)).Counterattacker,
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, attacker, victim, Roll(1)).Counterattacker,
                 Is.SameAs(victim), "diagonal neighbour is within 1 cell");
-            Assert.That(engine.ResolveAndApplyGroundAttack(attacker, victim, Roll(1)).Counterattacker,
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, attacker, victim, Roll(1)).Counterattacker,
                 Is.SameAs(victim), "another attack in the same round must also be answered");
 
             UnitData answerTarget = Body(Own, abilities: new[] { UnitAbilities.Counterattack });
             engine.State.Attacker.Members.Add(answerTarget);
             engine.State.Grid.Set(3, 2, answerTarget);
-            Assert.That(engine.ResolveAndApplyGroundAttack(attacker, answerTarget, Roll(1), isCounterattack: true)
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, attacker, answerTarget, Roll(1), isCounterattack: true)
                 .Counterattacker, Is.Null, "a counterattack is never answered");
         }
 
@@ -314,7 +314,7 @@ namespace Game.EditorTests
             for (int hit = 1; hit <= 2; hit++)
             {
                 CollectionAssert.Contains(engine.PreviewGroundHitEffects(attacker, target, 4, counterattack), skill);
-                BattleAttackApplication result = engine.ResolveAndApplyGroundAttack(attacker, target,
+                BattleAttackApplication result = BattleEngineTestDriver.ResolveHit(engine, attacker, target,
                     Roll(4), isCounterattack: counterattack);
                 Assert.That(result.SecondaryHits.Count, Is.EqualTo(1));
                 Assert.That(result.SecondaryHits[0].Victim, Is.SameAs(neighbour));
@@ -339,11 +339,11 @@ namespace Game.EditorTests
 
             foreach (UnitData attacker in new[] { first, second })
             {
-                BattleAttackApplication attack = engine.ResolveAndApplyGroundAttack(attacker, carrier, Roll(1));
+                BattleAttackApplication attack = BattleEngineTestDriver.ResolveHit(engine, attacker, carrier, Roll(1));
                 Assert.That(attack.Counterattacker, Is.SameAs(carrier));
                 CollectionAssert.Contains(engine.PreviewGroundHitEffects(carrier, attacker, 4,
                     isCounterattack: true), UnitAbilities.Splash);
-                BattleAttackApplication answer = engine.ResolveAndApplyGroundAttack(carrier, attacker,
+                BattleAttackApplication answer = BattleEngineTestDriver.ResolveHit(engine, carrier, attacker,
                     Roll(4), isCounterattack: true);
                 Assert.That(answer.Counterattacker, Is.Null, "a counterattack must never start a reaction loop");
                 Assert.That(answer.SecondaryHits.Count, Is.EqualTo(1));
@@ -385,15 +385,15 @@ namespace Game.EditorTests
             UnitData shocker = Body(Foe, abilities: new[] { UnitAbilities.ShockAttack });
             BattleEngine engine = Engine(Army(Own, victim), Army(Foe, shocker), (victim, 3, 1), (shocker, 2, 1));
             engine.StartRound();
-            Assert.That(engine.ResolveAndApplyGroundAttack(shocker, victim, Roll(1)).Counterattacker, Is.Null);
-            Assert.That(engine.ResolveAndApplyGroundAttack(shocker, victim, Roll(0)).Counterattacker,
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, shocker, victim, Roll(1)).Counterattacker, Is.Null);
+            Assert.That(BattleEngineTestDriver.ResolveHit(engine, shocker, victim, Roll(0)).Counterattacker,
                 Is.SameAs(victim), "a Shock miss does not cancel it");
 
             UnitData doomed = Body(Own, hp: 1, abilities: new[] { UnitAbilities.Counterattack });
             UnitData plain = Body(Foe);
             BattleEngine second = Engine(Army(Own, doomed), Army(Foe, plain), (doomed, 3, 1), (plain, 2, 1));
             second.StartRound();
-            Assert.That(second.ResolveAndApplyGroundAttack(plain, doomed, Roll(1)).Counterattacker, Is.Null);
+            Assert.That(BattleEngineTestDriver.ResolveHit(second, plain, doomed, Roll(1)).Counterattacker, Is.Null);
         }
 
         [Test]
@@ -414,7 +414,7 @@ namespace Game.EditorTests
             Assert.That(weak.Attack, Is.EqualTo(1));
             Assert.That(drillA.Attack, Is.EqualTo(2), "a hero is never drilled");
 
-            engine.State.Round++;
+            BattleEngineTestDriver.NextRound(engine);
             engine.StartRound();
             Assert.That(strong.Attack, Is.EqualTo(5), "re-dealt each round, never stacked");
             Assert.That(mid.Attack, Is.EqualTo(4));

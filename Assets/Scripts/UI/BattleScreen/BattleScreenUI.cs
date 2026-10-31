@@ -159,7 +159,7 @@ namespace Game.UI
         private ArmyData _retreatingArmy
         {
             get => _battleState?.RetreatingArmy;
-            set { if (_battleState != null) _battleState.RetreatingArmy = value; }
+
         }
 
         // Enqueued by PerformRetreat whenever a retreating army lands on a hex held by an
@@ -217,18 +217,18 @@ namespace Game.UI
         private bool _arrangeInteractive;
         private List<UnitData> _turnOrder
         {
-            get => _battleState?.TurnOrder;
-            set { if (_battleState != null) _battleState.TurnOrder = value ?? new List<UnitData>(); }
+            get => _battleState?.TurnOrder?.ToList();
+
         }
         private int _turnIndex
         {
             get => _battleState?.TurnIndex ?? 0;
-            set { if (_battleState != null) _battleState.TurnIndex = value; }
+
         }
         private int _round
         {
             get => _battleState?.Round ?? 1;
-            set { if (_battleState != null) _battleState.Round = value; }
+
         }
         // Whoever's currently up in the turn order (see RefreshTurnOrder) — null during
         // Arrangement/Round-start, before any round has actually begun.
@@ -393,7 +393,7 @@ namespace Game.UI
             _healEffectStarts.Clear();
             _drillEffectStarts.Clear();
             _battleEngine = new BattleEngine(_battleState, battleMagnitudes,
-                new System.Random(battleSeed));
+                new System.Random(battleSeed), map);
             _battleEngine.UnitHealed += OnUnitHealed;
             _battleEngine.UnitDrilled += OnUnitDrilled;
 
@@ -414,7 +414,6 @@ namespace Game.UI
             Game.Map.StealthSystem.RevealArmy(_attacker);
             Game.Map.StealthSystem.RevealArmy(_defender);
 
-            _round = 1;
 
             // UnitAbilities.RaiseTheRots — conjure each side's summoner-granted extra units onto
             // the grid now, BEFORE either the AI's own arrangement pass below or the human's
@@ -443,7 +442,6 @@ namespace Game.UI
             // this fight, while the actual current opponent's own retreat never got a chance to
             // engage the mechanic at all (see the user's own report: retreat announced again and
             // again, never actually taking effect).
-            _retreatingArmy = null;
             _aiWaitStreak.Clear();
             _aiPreviousPositions.Clear();
             _aiFavorableThisRound.Clear();
@@ -639,7 +637,6 @@ namespace Game.UI
             }
             if (assessment.ShouldRetreat)
             {
-                _retreatingArmy = army;
                 if (_battleEngine != null)
                 {
                     _battleEngine.CommitRetreat(army);
@@ -667,7 +664,6 @@ namespace Game.UI
         {
             if (!HasInteractiveParticipant || _localArmy.IsGarrison)
                 return;
-            _retreatingArmy = _localArmy;
             if (_battleEngine != null)
             {
                 _battleEngine.CommitRetreat(_localArmy);
@@ -678,7 +674,7 @@ namespace Game.UI
         private void OnPassClicked()
         {
             if (_isPresentingAttack) return;
-            EndTurn();
+            if (_battleEngine?.TryPass(_currentActingUnit) == true) EndTurn();
         }
 
         // Advances past the current unit's turn — shared by Pass, a successful Move, and a
@@ -853,8 +849,11 @@ namespace Game.UI
             // them out of both armies while _grid/_turnOrder are still valid, so nothing summoned
             // ever survives back onto the strategic map (the retreat path strips the retreating
             // army earlier, in PerformRetreat, before it relocates).
-            BattleEngine.StripSummonedUnits(_battleState, _attacker);
-            BattleEngine.StripSummonedUnits(_battleState, _defender);
+            if (_battleState != null && !_battleState.FinalizationApplied)
+            {
+                BattleEngine.StripSummonedUnits(_battleState, _attacker);
+                BattleEngine.StripSummonedUnits(_battleState, _defender);
+            }
 
             if (panelRoot != null)
                 panelRoot.SetActive(false);
@@ -869,8 +868,6 @@ namespace Game.UI
             outcomePopup?.Hide();
             UIUtility.DestroyAndClear(_cells);
             UIUtility.DestroyAndClear(_queueIcons);
-            _turnOrder = null;
-            _retreatingArmy = null;
             if (_battleEngine != null)
             {
                 _battleEngine.UnitHealed -= OnUnitHealed;

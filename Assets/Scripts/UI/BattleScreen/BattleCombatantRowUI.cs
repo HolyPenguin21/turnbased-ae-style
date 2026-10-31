@@ -67,8 +67,16 @@ namespace Game.UI
                     g.raycastTarget = false;
         }
 
+        private int _presentationVersion;
+        public void CancelPendingRolls()
+        {
+            ++_presentationVersion;
+            foreach (var slot in _tokenSlots) if (slot != null) slot.StopAllCoroutines();
+        }
+
         public void Setup(UnitData unit, UnitData sideHero, Sprite factionLogo)
         {
+            CancelPendingRolls();
             ClearFatePreview();
             _sideHero = sideHero;
 
@@ -151,9 +159,7 @@ namespace Game.UI
             RefreshFate();
         }
 
-        // Ground/Capture Kill duel presentation uses a local Fate counter owned by the popup.
-        // Research/Production still uses OnFateSpent() above because that challenge deliberately
-        // snapshots/restores the live hero Fate in its own isolated flow.
+        // Challenge sessions own local Fate counters, including temporary R/P Fate.
         public void SetFateDisplay(int fate)
         {
             if (fateText != null)
@@ -192,6 +198,7 @@ namespace Game.UI
         // no Fate row, no Spend button. Follow with SetFixedSuccesses.
         public void SetupCardDefender(string displayName, Sprite factionLogo)
         {
+            CancelPendingRolls();
             ClearFatePreview();
             _sideHero = null;
             if (logoImage != null)
@@ -254,6 +261,7 @@ namespace Game.UI
         // refreshes _lastTokens / the success counter. onComplete fires when the new die lands.
         public void AppendToken(bool hit, System.Action onComplete = null)
         {
+            int version = ++_presentationVersion;
             if (tokenContainer == null || tokenSlotPrefab == null)
             {
                 if (_lastTokens != null)
@@ -294,6 +302,7 @@ namespace Game.UI
 
             void Done()
             {
+                if (version != _presentationVersion) return;
                 if (successText != null)
                 {
                     int successes = 0;
@@ -347,6 +356,7 @@ namespace Game.UI
 
         public void SetTokens(bool[] tokens, int rerolledIndex = -1, System.Action onComplete = null)
         {
+            int version = ++_presentationVersion;
             if (tokens == null)
             {
                 onComplete?.Invoke();
@@ -388,6 +398,7 @@ namespace Game.UI
             // animation has actually finished).
             void ShowResults()
             {
+                if (version != _presentationVersion) return;
                 if (successText != null)
                 {
                     int successes = 0;

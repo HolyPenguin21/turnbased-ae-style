@@ -35,7 +35,7 @@ namespace Game.EditorTests
             BattleEngine engine = Engine(own, enemy); int events = 0; engine.UnitHealed += _ => events++;
             engine.StartRound(); engine.StartRound();
             Assert.That(target.HitPointsCurrent, Is.EqualTo(2)); Assert.That(events, Is.EqualTo(1));
-            engine.State.Round++;
+            BattleEngineTestDriver.NextRound(engine);
             engine.StartRound(); Assert.That(target.HitPointsCurrent, Is.EqualTo(3));
             Assert.That(WorthIt.SideCommander.Of(own.Members).SupportHeroes.Count, Is.EqualTo(1));
         }
@@ -48,6 +48,7 @@ namespace Game.EditorTests
             var enemy = new ArmyData(); UnitData foe = Body(3, 3, false); foe.Initiative = 0; enemy.Members.Add(foe);
             BattleEngine engine = Engine(own, enemy); engine.StartRound();
             Assert.That(target.HitPointsCurrent, Is.EqualTo(1));
+            Assert.That(engine.TryPass(engine.CurrentActor), Is.True);
             engine.AdvanceTurn(); Assert.That(target.HitPointsCurrent, Is.EqualTo(2));
         }
         [Test]
@@ -128,7 +129,7 @@ namespace Game.EditorTests
             hero.Abilities.Add(UnitAbilities.Heal); unit.Abilities.Add(UnitAbilities.Heal);
             var own = new ArmyData(); own.Members.AddRange(new[] { hero, unit });
             var enemy = new ArmyData(); enemy.Members.Add(Body(3, 3, false));
-            BattleEngine engine = Engine(own, enemy); engine.State.RetreatingArmy = own; engine.StartRound();
+            BattleEngine engine = Engine(own, enemy); BattleEngineTestDriver.Retreat(engine.State, own); engine.StartRound();
             Assert.That(unit.HitPointsCurrent, Is.EqualTo(1));
         }
     }

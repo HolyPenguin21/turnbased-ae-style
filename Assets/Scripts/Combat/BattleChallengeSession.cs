@@ -12,7 +12,7 @@ namespace Game.Combat
 
     // Presentation-neutral mutable state for one tokens/Fate challenge. The popup may animate and
     // ask a human what to do, but tokens, remaining Fate and rerolls live here.
-    public sealed class BattleChallengeSession
+    public sealed class BattleChallengeSession : IDisposable
     {
         private readonly UnitData _attacker;
         private readonly UnitData _defender;
@@ -22,6 +22,10 @@ namespace Game.Combat
         private FateDuelOrder _fateOrder;
         private bool? _decisionSide;
         private bool _attackerTacticUsed, _defenderTacticUsed;
+        private bool _rolled, _cancelled, _accepted, _duelComplete, _windowSpent;
+        public bool IsAccepted => _accepted;
+        public bool IsCancelled => _cancelled;
+        private bool Closed => _accepted || _cancelled;
         public int AttackerModifier { get; private set; }
         public int DefenderModifier { get; private set; }
         public bool TacticsCritical { get; }
@@ -29,8 +33,10 @@ namespace Game.Combat
         public BattleChallengeMode Mode { get; }
         public int AttackerPoolSize { get; }
         public int DefenderPoolSize { get; }
-        public bool[] AttackerTokens { get; private set; }
-        public bool[] DefenderTokens { get; private set; }
+        private bool[] _attackerTokens;
+        public bool[] AttackerTokens => _attackerTokens == null ? null : (bool[])_attackerTokens.Clone();
+        private bool[] _defenderTokens;
+        public bool[] DefenderTokens => _defenderTokens == null ? null : (bool[])_defenderTokens.Clone();
         public int AttackerFateRemaining { get; private set; }
         public int DefenderFateRemaining { get; private set; }
         public bool LastSpendHit { get; private set; }
@@ -57,9 +63,15 @@ namespace Game.Combat
 
         public void Roll()
         {
-            AttackerTokens = _rollTokens(AttackerPoolSize) ?? Array.Empty<bool>();
-            DefenderTokens = _rollTokens(DefenderPoolSize) ?? Array.Empty<bool>();
-            LastSpendHit = false;
+            if (_rolled || Closed) return;
+            _rolled = true;
+            try
+            {
+                _attackerTokens = (bool[])(_rollTokens(AttackerPoolSize) ?? Array.Empty<bool>()).Clone();
+                _defenderTokens = (bool[])(_rollTokens(DefenderPoolSize) ?? Array.Empty<bool>()).Clone();
+                LastSpendHit = false;
+            }
+            catch { Dispose(); throw; }
         }
 
         // Headless presentation runs the same Fate/tactic state machine as the popup.
@@ -80,17 +92,18 @@ namespace Game.Combat
         }
 
         public bool HasAnyFate => AttackerFateRemaining > 0 || DefenderFateRemaining > 0;
-        public bool HasAnyDecision => HasAnyFate || HasTactic(false) || HasTactic(true);
+        public bool HasAnyDecision => !Closed && (HasAnyFate || HasTactic(false) || HasTactic(true));
         public ChallengeResult CurrentResult => new ChallengeResult(
-            AttackerTokens ?? Array.Empty<bool>(), DefenderTokens ?? Array.Empty<bool>(),
+            _attackerTokens ?? Array.Empty<bool>(), _defenderTokens ?? Array.Empty<bool>(),
             AttackerModifier, DefenderModifier);
 
         private TacticHand HandOf(bool defenderSide) => (defenderSide ? _defender : _attacker)?.Owner?.Tactics;
 
         public string TacticUnavailableReason(bool defenderSide, CardData card)
         {
+            if (Closed) return "This challenge is closed.";
             string reason = TacticRules.SideUnavailableReason(HandOf(defenderSide), card,
-                AttackerTokens != null && DefenderTokens != null, defenderSide ? _defenderTacticUsed : _attackerTacticUsed);
+                _attackerTokens != null && _defenderTokens != null, defenderSide ? _defenderTacticUsed : _attackerTacticUsed);
             if (reason != null) return reason;
             var result = CurrentResult;
             return TacticRules.UnavailableReason(card.Definition,
@@ -115,7 +128,9 @@ namespace Game.Combat
                 defenderSide ? result.AttackerSuccesses : result.DefenderSuccesses, ref a, ref d);
             if (defenderSide) _defenderTacticUsed = true; else _attackerTacticUsed = true;
             AttackerModifier = a; DefenderModifier = d;
-            HandOf(defenderSide).Consume(card);
+            _windowSpent = true;
+            try { HandOf(defenderSide).Consume(card); }
+            catch { Dispose(); throw; }
             return true;
         }
 
@@ -151,7 +166,7 @@ namespace Game.Combat
         private int ScoreCaptureKillTactic(bool defenderSide, int a, int d)
         {
             var oldOutcome = ResolveCaptureKillOutcome();
-            var next = BattleRules.ResolveCaptureKill(AttackerTokens, DefenderTokens, a, d);
+            var next = BattleRules.ResolveCaptureKill(_attackerTokens, _defenderTokens, a, d);
             if (next == oldOutcome) return 0;
             if (defenderSide) return next == CaptureKillOutcome.Escaped ? 100 : 0;
             return next == CaptureKillOutcome.Captured ? 100
@@ -173,7 +188,7 @@ namespace Game.Combat
 
         private int ProjectDamage(int a, int d, UnitData interceptor, out UnitData victim)
         {
-            var outcome = BattleRules.ResolveGroundAttack(AttackerTokens, DefenderTokens,
+            var outcome = BattleRules.ResolveGroundAttack(_attackerTokens, _defenderTokens,
                 _attacker, _defender, _magnitudes, a, d);
             victim = outcome.Damage > 0 && interceptor != null ? interceptor : _defender;
             return victim == interceptor && interceptor != null
@@ -183,7 +198,7 @@ namespace Game.Combat
 
         public bool HasMiss(bool defenderSide)
         {
-            bool[] tokens = defenderSide ? DefenderTokens : AttackerTokens;
+            bool[] tokens = defenderSide ? _defenderTokens : _attackerTokens;
             if (tokens == null)
                 return false;
             foreach (bool value in tokens)
@@ -193,7 +208,7 @@ namespace Game.Combat
         }
 
         public bool CanSpend(bool defenderSide)
-            => (defenderSide ? DefenderFateRemaining : AttackerFateRemaining) > 0
+            => !Closed && (defenderSide ? DefenderFateRemaining : AttackerFateRemaining) > 0
                 && HasMiss(defenderSide);
 
         public bool ShouldAiSpend(bool defenderSide)
@@ -203,7 +218,7 @@ namespace Game.Combat
                 return false;
 
             return FateDuelAi.ShouldSpendFate(
-                AttackerTokens, DefenderTokens, fate, defenderSide,
+                _attackerTokens, _defenderTokens, fate, defenderSide,
                 _attacker, _defender, _magnitudes,
                 defenderSide && _defenderIsRetreating,
                 _defender != null ? _defender.HitPointsCurrent : int.MaxValue,
@@ -214,20 +229,22 @@ namespace Game.Combat
         {
             rerolledIndex = -1;
             rerolledHit = false;
-            if (!CanSpend(defenderSide))
+            if (_decisionSide != defenderSide || !CanSpend(defenderSide))
                 return false;
 
-            bool[] tokens = defenderSide ? DefenderTokens : AttackerTokens;
+            bool[] tokens = defenderSide ? _defenderTokens : _attackerTokens;
             for (int i = 0; i < tokens.Length; i++)
             {
                 if (tokens[i])
                     continue;
-                bool[] reroll = _rollTokens(1);
+                bool[] reroll;
+                try { reroll = _rollTokens(1); } catch { Dispose(); throw; }
                 bool hit = reroll != null && reroll.Length > 0 && reroll[0];
                 tokens[i] = hit;
                 rerolledIndex = i;
                 rerolledHit = hit;
                 LastSpendHit = hit;
+                _windowSpent = true;
                 if (defenderSide)
                     DefenderFateRemaining--;
                 else
@@ -239,37 +256,58 @@ namespace Game.Combat
 
         public bool TryNextFateTurn(out bool defenderTurn)
         {
+            defenderTurn = false;
+            if (!_rolled || Closed || _duelComplete) return false;
+            if (_decisionSide.HasValue) { defenderTurn = _decisionSide.Value; return true; }
             bool hasTurn = _fateOrder.TryNext(out defenderTurn);
             _decisionSide = hasTurn ? defenderTurn : (bool?)null;
+            _windowSpent = false;
+            if (!hasTurn) _duelComplete = true;
             return hasTurn;
         }
 
         public void ReportFateTurn(bool spent)
         {
+            if (Closed || !_decisionSide.HasValue) return;
             _decisionSide = null;
-            _fateOrder.Report(spent);
+            _fateOrder.Report(_windowSpent);
+        }
+
+        public bool TryAccept(out BattleChallengeRollResult result)
+        {
+            result = default;
+            if (!_rolled || Closed || _decisionSide.HasValue || (!_duelComplete && HasAnyDecision)) return false;
+            _accepted = true;
+            result = ToRollResult();
+            return true;
+        }
+
+        public void Dispose()
+        {
+            if (!_accepted) _cancelled = true;
+            _decisionSide = null;
         }
 
         public BattleRules.GroundAttackOutcome ResolveGroundOutcome() =>
             BattleRules.ResolveGroundAttack(
-                AttackerTokens ?? Array.Empty<bool>(),
-                DefenderTokens ?? Array.Empty<bool>(),
+                _attackerTokens ?? Array.Empty<bool>(),
+                _defenderTokens ?? Array.Empty<bool>(),
                 _attacker, _defender, _magnitudes, AttackerModifier, DefenderModifier);
 
         public CaptureKillOutcome ResolveCaptureKillOutcome() =>
             BattleRules.ResolveCaptureKill(
-                AttackerTokens ?? Array.Empty<bool>(),
-                DefenderTokens ?? Array.Empty<bool>(), AttackerModifier, DefenderModifier);
+                _attackerTokens ?? Array.Empty<bool>(),
+                _defenderTokens ?? Array.Empty<bool>(), AttackerModifier, DefenderModifier);
 
         public int RawDamage =>
             new ChallengeResult(
-                AttackerTokens ?? Array.Empty<bool>(),
-                DefenderTokens ?? Array.Empty<bool>(), AttackerModifier, DefenderModifier).Damage;
+                _attackerTokens ?? Array.Empty<bool>(),
+                _defenderTokens ?? Array.Empty<bool>(), AttackerModifier, DefenderModifier).Damage;
 
         public BattleChallengeRollResult ToRollResult() =>
             new BattleChallengeRollResult(
-                AttackerTokens ?? Array.Empty<bool>(),
-                DefenderTokens ?? Array.Empty<bool>(),
+                (bool[])(_attackerTokens ?? Array.Empty<bool>()).Clone(),
+                (bool[])(_defenderTokens ?? Array.Empty<bool>()).Clone(),
                 AttackerFateRemaining, DefenderFateRemaining, AttackerModifier, DefenderModifier);
     }
 }

@@ -1061,7 +1061,7 @@ namespace Game.Map
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(player.Faction)?.logo
                 : null;
 
-        // 9/10. Challenge finished (Fate was already restored inside the popup). On success mint
+        // 9/10. Challenge finished (the session never spent live hero Fate). On success mint
         // a produced CardData and hand it over; on failure do nothing (AP/resources stay spent).
         // Either way the modal reopens for interaction and stays open — the player closes it.
         private void OnResearchProductionResolved(ProductionAttempt attempt, bool success)
@@ -1070,9 +1070,8 @@ namespace Game.Map
             _rpAttempt = null;
             _rpTransactionActive = false;
 
-            attempt?.CompleteToHand(success);
-
-            researchProductionModal?.SetBusy(false);
+            try { attempt?.CompleteToHand(success); }
+            finally { researchProductionModal?.SetBusy(false); }
         }
 
         // Re-runs the full SelectHex pipeline for `changedHex` ONLY if it's the hex currently

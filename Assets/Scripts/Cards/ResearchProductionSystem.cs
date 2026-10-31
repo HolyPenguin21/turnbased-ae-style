@@ -312,55 +312,21 @@ namespace Game.Cards
             public int FateAvailable; // hero.Fate at roll time (never mutated by the roll)
         }
 
-        // Headless equivalent of BattleAttackPopupUI.RunResearchProductionChallenge — same tokens
-        // pool, same Fate-spend moves (reroll a miss; else, still short of target, append one
-        // overflow die), with no UI and no animation. The Hero's real Fate is NOT mutated: the
-        // interactive popup restores it verbatim on the way out (RestoreResearchProductionFate),
-        // so a headless roll matches simply by never touching it.
+        // Headless adapter for the same session commands used by the popup. Both presentations
+        // spend a local Fate budget; the hero's real Fate is never mutated.
         //
         // `maxFateSpend` caps how much of the Hero's pool the roll is willing to burn (default:
         // as much as it takes). The policy only ever spends while still BELOW target — an AI
         // never wastes Fate re-rolling a cosmetic miss once the card is already made.
-        public static ChallengeOutcome RollChallenge(UnitData hero, CardDefinition card, int maxFateSpend = int.MaxValue)
+        public static ChallengeOutcome RollChallenge(UnitData hero, CardDefinition card, int maxFateSpend = int.MaxValue,
+            Func<int, bool[]> rollTokens = null)
         {
-            int required = RequiredSuccesses(card);
-            int fateAvail = hero != null ? Mathf.Max(0, hero.Fate) : 0;
-            int fateBudget = Mathf.Clamp(maxFateSpend, 0, fateAvail);
-            int fateSpent = 0;
-
-            bool[] tokens = ChallengeResolver.RollTokens(TokenPoolSizeFor(hero));
-            while (fateSpent < fateBudget && CountHits(tokens) < required)
-            {
-                // Same move order as the interactive loop: a miss is always rerolled before any
-                // overflow die is appended.
-                if (HasMiss(tokens))
-                {
-                    for (int i = 0; i < tokens.Length; i++)
-                        if (!tokens[i])
-                        {
-                            tokens[i] = ChallengeResolver.RollTokens(1)[0];
-                            break;
-                        }
-                }
-                else
-                {
-                    var grown = new bool[tokens.Length + 1];
-                    Array.Copy(tokens, grown, tokens.Length);
-                    grown[tokens.Length] = ChallengeResolver.RollTokens(1)[0];
-                    tokens = grown;
-                }
-                fateSpent++;
-            }
-
-            int hits = CountHits(tokens);
-            return new ChallengeOutcome
-            {
-                Success = hits >= required,
-                Successes = hits,
-                Required = required,
-                FateSpent = fateSpent,
-                FateAvailable = fateAvail,
-            };
+            using var session = new ResearchProductionChallengeSession(hero, card, rollTokens);
+            session.Roll();
+            int budget = Mathf.Clamp(maxFateSpend, 0, session.FateAvailable);
+            while (session.FateSpent < budget && !session.Success && session.CanSpend)
+                session.TrySpend(out _, out _);
+            return session.Accept();
         }
 
         // A deterministic estimate of RollChallenge's success probability, for AI card-value

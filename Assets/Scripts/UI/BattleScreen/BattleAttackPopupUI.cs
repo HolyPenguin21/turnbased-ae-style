@@ -185,20 +185,19 @@ namespace Game.UI
         // separate from the Ground Combat / Capture Kill duel plumbing above. Only ever touched
         // on the ResearchProduction code path; the shared Begin/RunDuel/Resolve never read these.
         // The defender is a CardDefinition, never a fake UnitData (per the spec). ----
+        private Func<BattleChallengeRollResult, BattleAttackPlan> _groundAttackPlan;
         private UnitData _rpHero;
         private CardDefinition _rpCard;
         private int _rpRequiredSuccesses;
         private bool[] _rpTokens;
-        // hero.Fate as it was the instant BeginResearchProduction ran — restored verbatim once
-        // the Challenge ends, win or lose, so a Research/Production attempt never permanently
-        // costs Fate (spec §3/§15). NOT hero.FateMax — a hero that walked in on 2/4 leaves on
-        // 2/4, and battle Fate replenishment (ReplenishFateForNewBattle) is never called here.
-        private int _rpFateSnapshot;
+        private int _presentationGeneration;
         private bool _rpActive;
         private bool _rpResultSuccess;
         private Action<bool> _onResearchProductionResolved;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+        internal bool PresentsSession(BattleChallengeSession session)
+            => ReferenceEquals(_challengeSession, session) && IsShowing;
 
         // Lets GameTurnController fold this popup into InputBlocked the same way every other
         // map-level popup already is — needed now that Game.Aviation.AviationCombatPresenter can
@@ -273,8 +272,10 @@ namespace Game.UI
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
             int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0,
             bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false, bool tacticsCritical = false,
-            string challengeTitle = null, Func<UnitData, int, IReadOnlyList<string>> groundHitEffects = null)
+            string challengeTitle = null, Func<UnitData, int, IReadOnlyList<string>> groundHitEffects = null,
+            Func<BattleChallengeRollResult, BattleAttackPlan> groundAttackPlan = null, BattleChallengeSession session = null)
         {
+            int generation = ++_presentationGeneration;
             _tacticsCritical = tacticsCritical;
             CloseTacticPresentation();
             int defenderBonusTokens = defenderTerrainBonus + defenderConstructionBonus + defenderFormationBonus;
@@ -282,16 +283,27 @@ namespace Game.UI
             // this same (pooled/reused) popup instance — otherwise its delayed WaitUntil callbacks
             // could fire against the fields this call is about to overwrite.
             StopAllCoroutines();
-            // If a Research/Production Challenge was somehow torn down without resolving, put its
-            // hero's Fate back before this popup is reused for anything else (spec §15).
+            // Release any abandoned production attempt before this popup is reused.
             CleanupResearchProduction();
+            if (generation != _presentationGeneration)
+            {
+                if (!ReferenceEquals(_challengeSession, session)) session?.Dispose();
+                return;
+            }
 
             _automateHumanSides = automateHumanSides;
-            _kind = ChallengeKind.GroundCombat;
+            _kind = session?.Mode == BattleChallengeMode.CaptureKill
+                ? ChallengeKind.CaptureKill : ChallengeKind.GroundCombat;
+            if (_kind == ChallengeKind.CaptureKill)
+            {
+                _onCaptureKillResolved = onResolved;
+                _hunterTokenPool = session.AttackerPoolSize;
+            }
             _attacker = attacker;
             _defender = defender;
             _interceptor = interceptor;
             _groundHitEffects = groundHitEffects;
+            _groundAttackPlan = groundAttackPlan;
             _attackerHero = attackerHero;
             _defenderHero = defenderHero;
             _attackerFateRemaining = Mathf.Max(0, attackerHero?.Fate ?? 0);
@@ -299,7 +311,8 @@ namespace Game.UI
             _defenderIsRetreating = defenderIsRetreating;
             _onResolved = onResolved;
             _onAiThought = onAiThought;
-            _challengeSession = null;
+            if (!ReferenceEquals(_challengeSession, session)) _challengeSession?.Dispose();
+            _challengeSession = session;
             _attackerTokens = null;
             _defenderTokens = null;
             _phase = Phase.NotRolled;
@@ -314,6 +327,7 @@ namespace Game.UI
                 panelRoot.transform.SetAsLastSibling();
             }
             VisibilityChanged?.Invoke();
+            if (generation != _presentationGeneration) return;
             if (rollStateRoot != null)
                 rollStateRoot.SetActive(true);
             if (resultStateRoot != null)
@@ -427,28 +441,30 @@ namespace Game.UI
         //     hero skills exist.
         public void BeginCaptureKill(ArmyData hunterArmy, UnitData targetHero, Sprite hunterLogo, Sprite targetLogo,
             Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
-            bool automateHumanSides = false, bool tacticsCritical = false)
+            bool automateHumanSides = false, bool tacticsCritical = false, AbilityMagnitudes? magnitudes = null)
         {
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
             UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
             int hunterUnits = hunterArmy?.Members.FindAll(m => !m.IsHero).Count ?? 0;
-            _hunterTokenPool = BattleRules.CaptureKillHunterPool(hunterUnits);
-            _onCaptureKillResolved = onResolved;
+            int hunterTokenPool = BattleRules.CaptureKillHunterPool(hunterUnits);
+            var captureSession = new BattleChallengeSession(BattleChallengeMode.CaptureKill, hunterFace,
+                targetHero, hunterTokenPool, targetHero?.FateMax ?? 0,
+                hunterHero?.Fate ?? 0, targetHero?.Fate ?? 0, magnitudes ?? Magnitudes, tacticsCritical: tacticsCritical);
 
             // The manual: "the target hero receives a tokens pool equal to his fate" — his FULL
             // Fate stat, not whatever he happens to have left after spending some earlier this
             // same battle (see the user's own correction; RunRollAndDuel below reads the same
             // FateMax for the actual roll).
-            Begin(hunterFace, hunterHero, targetHero, targetHero, hunterLogo, targetLogo, null, onAiThought,
-                attackerPoolSize: _hunterTokenPool, defenderPoolSize: targetHero?.FateMax ?? 0,
-                automateHumanSides: automateHumanSides, tacticsCritical: tacticsCritical);
-            _kind = ChallengeKind.CaptureKill;
-            if (titleText != null)
-                titleText.text = "CAPTURE/KILL CHALLENGE";
+            Begin(hunterFace, hunterHero, targetHero, targetHero, hunterLogo, targetLogo, onResolved, onAiThought,
+                attackerPoolSize: hunterTokenPool, defenderPoolSize: targetHero?.FateMax ?? 0,
+                automateHumanSides: automateHumanSides, tacticsCritical: tacticsCritical,
+                challengeTitle: "CAPTURE/KILL CHALLENGE", session: captureSession);
         }
 
         public void Hide()
         {
+            if (_rpActive) { FinalizeResearchProduction(false); return; }
+            _challengeSession?.Dispose();
             CloseTacticPresentation();
             _automateHumanSides = false;
             if (panelRoot == null || !panelRoot.activeSelf)
@@ -456,8 +472,7 @@ namespace Game.UI
             // Any close that ISN'T the normal R/P Result -> OK (an explicit Hide() from
             // HexSelectionController, this popup being reused for another Challenge, any other
             // teardown) still has to finalize an in-flight Research/Production Challenge:
-            // restore the Hero's Fate to snapshot, clear R/P state and report the attempt as a
-            // FAILURE exactly once — so no card is minted and the caller unwinds its own
+            // clear R/P state and report the attempt as a FAILURE exactly once — so no card is minted and the caller unwinds its own
             // transaction (_rpTransactionActive, _rpPendingCard) and drops the modal's Busy
             // state. No-op once OnOkClicked already finalized. ResourceCost stays spent (§4).
             FinalizeResearchProduction(false);

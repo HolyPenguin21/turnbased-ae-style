@@ -9,6 +9,7 @@ using Game.Ai.V2;
 using Game.Aviation;
 using Game.Cards;
 using Game.Core;
+using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -37,6 +38,7 @@ namespace Game.EditorTests
         private HexSelectionController _selection;
         private PlayerSetupData _owner;
         private PlayerRoot _root;
+        private System.Random _savedHeadlessRng;
         private readonly HexCoord _origin = new HexCoord(0, 0);
         private readonly HexCoord _first = new HexCoord(1, 0);
         private readonly HexCoord _last = new HexCoord(2, 0);
@@ -45,6 +47,7 @@ namespace Game.EditorTests
         public IEnumerator SetUp()
         {
             yield return new EnterPlayMode();
+            _savedHeadlessRng = AviationCombatPresenter.HeadlessRng;
             ArmyRegistry.Clear();
             BuildingRegistry.Clear();
             VisionSystem.Clear();
@@ -75,6 +78,7 @@ namespace Game.EditorTests
         [UnityTearDown]
         public IEnumerator TearDown()
         {
+            AviationCombatPresenter.HeadlessRng = _savedHeadlessRng;
             foreach (GameObject go in _objects)
                 if (go != null) Object.Destroy(go);
             _objects.Clear();
@@ -369,15 +373,56 @@ namespace Game.EditorTests
                 // Inject the post-AA roster, then run the real presenter's terminal deletion branch.
                 // Tokens/popup interaction is deliberately outside this lifecycle fixture.
                 army.Members.Clear();
-                yield return (IEnumerator)typeof(AviationCombatPresenter)
-                    .GetMethod("ResolveAirArmyStep", BindingFlags.Instance | BindingFlags.NonPublic)
-                    .Invoke(presenter, new object[] { army, to, outcome });
+                yield return presenter.ResolveStep(army, to, outcome);
             }
             controller.SettleThen(() => controller.MoveAlong(_map, new List<HexCoord> { _origin, _first },
                 _ => Vector3.zero, resolveStepAsync: Resolve));
             yield return Settled(army);
             Assert.That(army.Hex, Is.EqualTo(_first));
             Assert.That(ArmyRegistry.IsRegistered(army), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator CancelMovementDisposesPendingAviationExplosionAndConsumesLauncherOnce()
+        {
+            ArmyData wing = Army();
+            UnitData missile = wing.Members[0];
+            missile.Abilities.Add(UnitAbilities.Explosion3); missile.Abilities.Add(UnitAbilities.SingleUse);
+            var enemy = new PlayerSetupData();
+            var targets = new ArmyData { Owner = enemy, Hex = _first };
+            targets.Members.Add(new UnitData { Owner = enemy, HitPointsCurrent = 30, HitPointsMax = 30 });
+            targets.Members.Add(new UnitData { Owner = enemy, HitPointsCurrent = 30, HitPointsMax = 30 });
+            ArmyRegistry.Register(targets);
+            _owner.IsHuman = true;
+            var presenter = NewObject("explosion presenter").AddComponent<AviationCombatPresenter>();
+            var popup = NewObject("explosion popup").AddComponent<BattleAttackPopupUI>();
+            var panel = NewObject("explosion panel"); panel.SetActive(false);
+            Field(popup, "panelRoot", panel); Field(presenter, "attackPopup", popup);
+            Field(_selection, "aviationCombatPresenter", presenter);
+            AviationCombatPresenter.HeadlessRng = new System.Random(1);
+            Assert.That(_selection.IssueMoveOrder(wing.Controller, _first), Is.EqualTo(MoveOrderResult.Started));
+            for (int frame = 0; frame < 120 && !popup.IsShowing; frame++) yield return null;
+            Assert.That(popup.IsShowing, Is.True);
+            var first = (BattleChallengeSession)typeof(BattleAttackPopupUI)
+                .GetField("_challengeSession", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(popup);
+            first.Roll(); first.ResolveAiDecisions(); Assert.That(first.TryAccept(out var roll), Is.True);
+            ((Action<BattleChallengeRollResult>)typeof(BattleAttackPopupUI)
+                .GetField("_onResolved", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(popup))(roll);
+            for (int frame = 0; frame < 120 && ReferenceEquals(first, typeof(BattleAttackPopupUI)
+                    .GetField("_challengeSession", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(popup)); frame++)
+                yield return null;
+            var second = (BattleChallengeSession)typeof(BattleAttackPopupUI)
+                .GetField("_challengeSession", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(popup);
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(targets.Members.Sum(u => u.HitPointsCurrent), Is.LessThan(60));
+            wing.Controller.CancelMovement();
+            Assert.That(second.IsCancelled, Is.True);
+            Assert.That(popup.IsShowing, Is.False);
+            Assert.That(missile.HitPointsCurrent, Is.Zero);
+            Assert.That(wing.Members, Is.Empty);
+            Assert.That(ArmyRegistry.IsRegistered(wing), Is.False);
+            yield return null;
+            Assert.That(missile.HitPointsCurrent, Is.Zero);
         }
 
         [UnityTest]

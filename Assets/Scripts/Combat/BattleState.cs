@@ -17,10 +17,16 @@ namespace Game.Combat
         // One encounter snapshot shared by damage, tactical AI and defence presentation.
         public int DefenderBuildingDefenseBonus { get; }
 
-        public int Round { get; set; } = 1;
-        public List<UnitData> TurnOrder { get; set; } = new List<UnitData>();
-        public int TurnIndex { get; set; }
-        public ArmyData RetreatingArmy { get; set; }
+        internal BattleEngine Engine;
+        internal AbilityMagnitudes EncounterMagnitudes = AbilityMagnitudes.Default;
+        internal bool FinalizationApplied, Acknowledged;
+        internal BattleEncounterFinalization Finalization;
+        public int Round { get; internal set; } = 1;
+        private List<UnitData> _turnOrder = new List<UnitData>();
+        public IReadOnlyList<UnitData> TurnOrder => _turnOrder.AsReadOnly();
+        internal List<UnitData> MutableTurnOrder { get => _turnOrder; set => _turnOrder = value ?? new List<UnitData>(); }
+        public int TurnIndex { get; internal set; }
+        public ArmyData RetreatingArmy { get; internal set; }
 
         public BattleState(HexCoord battleHex, ArmyData attacker, ArmyData defender, BattleGrid grid, int battleSeed)
         {
@@ -31,6 +37,7 @@ namespace Game.Combat
             BattleSeed = battleSeed;
             DefenderBuildingDefenseBonus = DisruptionRules.BuildingDefenseAtEncounterStart(
                 battleHex, defender, attacker);
+            BattleEncounterCoordinator.RegisterEncounter(this);
         }
 
         public ArmyData OwningArmy(UnitData unit)

@@ -21,29 +21,43 @@ namespace Game.UI
         // rules. Attacker = the producing Hero, rolling its full Fate stat (see ChallengeResolver.
         // RollTokens) with unchanged per-die success probability. Defender = the chosen card: a
         // fixed CardDefinition.fate guaranteed successes, no tokens, no Fate. Win = attacker
-        // successes >= card.fate. The Fate the Hero spends here is temporary — restored to its
-        // pre-Challenge value on the way out (RestoreResearchProductionFate).
+        // successes >= card.fate. The session spends its local Fate budget; live hero Fate is unchanged.
         //
         // The caller (HexSelectionController) has already: revalidated eligibility, checked hand
         // capacity, and PAID the card's ResourceCost. This method only runs the roll and reports
         // success/failure through onResolved.
         public void BeginResearchProduction(UnitData hero, CardDefinition card, ResearchProductionMode mode,
-            Sprite heroLogo, Sprite cardLogo, Action<bool> onResolved)
+            Sprite heroLogo, Sprite cardLogo, Action<bool> onResolved,
+            ResearchProductionChallengeSession session = null)
         {
+            int generation = ++_presentationGeneration;
             StopAllCoroutines();
+            _challengeSession?.Dispose();
+            _challengeSession = null;
             // A prior R/P state that never resolved (should not happen — the modal blocks input
             // for the whole Challenge — but be safe, per spec §15).
-            CleanupResearchProduction();
+            try { CleanupResearchProduction(); }
+            catch
+            {
+                if (!ReferenceEquals(_rpTactics, session)) session?.Dispose();
+                onResolved?.Invoke(false);
+                throw;
+            }
+            if (generation != _presentationGeneration)
+            {
+                if (!ReferenceEquals(_rpTactics, session)) session?.Dispose();
+                onResolved?.Invoke(false);
+                return;
+            }
 
             CloseTacticPresentation();
-            _rpTactics = new ResearchProductionChallengeSession(hero, card);
+            _rpTactics = session ?? new ResearchProductionChallengeSession(hero, card);
             _kind = ChallengeKind.ResearchProduction;
             _automateHumanSides = false;
             _rpHero = hero;
             _rpCard = card;
-            _rpRequiredSuccesses = ResearchProductionSystem.RequiredSuccesses(card);
-            _rpFateSnapshot = hero != null ? hero.Fate : 0;
-            _attackerTokenPoolSize = ResearchProductionSystem.TokenPoolSizeFor(hero);
+            _rpRequiredSuccesses = _rpTactics.BaseRequired;
+            _attackerTokenPoolSize = _rpTactics.TokenPoolSize;
             _rpActive = true;
             _rpResultSuccess = false;
             _rpTokens = null;
@@ -65,31 +79,59 @@ namespace Game.UI
             _humanSpent = false;
             _humanDeclined = false;
 
-            if (panelRoot != null)
+            var presentationSession = _rpTactics;
+            try
             {
-                panelRoot.SetActive(true);
-                panelRoot.transform.SetAsLastSibling();
+                if (panelRoot != null)
+                {
+                    panelRoot.SetActive(true);
+                    panelRoot.transform.SetAsLastSibling();
+                }
+                VisibilityChanged?.Invoke();
+                if (generation != _presentationGeneration) return;
+                if (rollStateRoot != null)
+                    rollStateRoot.SetActive(true);
+                if (resultStateRoot != null)
+                    resultStateRoot.SetActive(false);
+                if (titleText != null)
+                    titleText.text = mode == ResearchProductionMode.Research
+                        ? "RESEARCH CHALLENGE" : "PRODUCTION CHALLENGE";
+
+                attackerRow?.Setup(hero, hero, heroLogo);
+                attackerRow?.SetTokenPoolSize(_attackerTokenPoolSize);
+                attackerRow?.SetSpendInteractable(false);
+                defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, null);
+
+                if (rollButton != null)
+                    rollButton.interactable = false;
+                if (acceptButton != null)
+                    acceptButton.interactable = false;
+
+                StartCoroutine(RunResearchProductionSafely(_rpTactics));
             }
-            VisibilityChanged?.Invoke();
-            if (rollStateRoot != null)
-                rollStateRoot.SetActive(true);
-            if (resultStateRoot != null)
-                resultStateRoot.SetActive(false);
-            if (titleText != null)
-                titleText.text = mode == ResearchProductionMode.Research
-                    ? "RESEARCH CHALLENGE" : "PRODUCTION CHALLENGE";
+            catch
+            {
+                if (ReferenceEquals(_rpTactics, presentationSession)) FinalizeResearchProduction(false);
+                throw;
+            }
+        }
 
-            attackerRow?.Setup(hero, hero, heroLogo);
-            attackerRow?.SetTokenPoolSize(_attackerTokenPoolSize);
-            attackerRow?.SetSpendInteractable(false);
-            defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, null);
-
-            if (rollButton != null)
-                rollButton.interactable = false;
-            if (acceptButton != null)
-                acceptButton.interactable = false;
-
-            StartCoroutine(RunResearchProductionChallenge());
+        // Catch iterator failures at MoveNext (Unity does not reliably dispose an abandoned coroutine).
+        private IEnumerator RunResearchProductionSafely(ResearchProductionChallengeSession session)
+        {
+            var routine = RunResearchProductionChallenge(session);
+            while (ReferenceEquals(_rpTactics, session))
+            {
+                bool next;
+                try { next = routine.MoveNext(); }
+                catch
+                {
+                    if (ReferenceEquals(_rpTactics, session)) FinalizeResearchProduction(false);
+                    throw;
+                }
+                if (!next) yield break;
+                yield return routine.Current;
+            }
         }
 
         // Defender shows its fixed successes up front; attacker rolls its Fate pool; then it
@@ -97,18 +139,20 @@ namespace Game.UI
         // RerollOneMiss, unchanged); otherwise, if still short of target → append and roll ONE new
         // die (overflow). Loop ends on Accept, on Fate == 0, or when there's no miss AND the
         // target is already met.
-        private IEnumerator RunResearchProductionChallenge()
+        private IEnumerator RunResearchProductionChallenge(ResearchProductionChallengeSession session)
         {
             defenderRow?.SetFixedSuccesses(_rpRequiredSuccesses);
             bool spentAtLeastOnce = false;
 
-            _rpTokens = ChallengeResolver.RollTokens(_attackerTokenPoolSize);
-            _rpTactics.Tokens = _rpTokens;
+            session.Roll();
+            _rpTokens = session.Tokens;
             PrepareTacticPresentation(_rpHero?.Owner);
             bool animDone = attackerRow == null;
             attackerRow?.SetTokens(_rpTokens, onComplete: () =>
             {
-                attackerRow.SetFatePreview(_rpHero?.Fate ?? 0);
+                if (!ReferenceEquals(_rpTactics, session)) return;
+                attackerRow.SetFateDisplay(session.FateRemaining);
+                attackerRow.SetFatePreview(session.FateRemaining);
                 animDone = true;
             });
             yield return new WaitUntil(() => animDone);
@@ -117,7 +161,7 @@ namespace Game.UI
             BattleDebugLog.Write($"[RollDiag] ResearchProduction: {_rpHero?.Name} -> {_rpCard?.displayName} " +
                 $"target={_rpRequiredSuccesses}, roll={BattleDebugLog.TokenString(_rpTokens)} ({CountHits(_rpTokens)} hits)");
 
-            while (true)
+            while (ReferenceEquals(_rpTactics, session))
             {
                 bool canSpend = CanSpendResearchProductionFate();
                 if (!canSpend && !_rpTactics.HasTactic && _pendingTactic == null)
@@ -160,7 +204,7 @@ namespace Game.UI
                 && aiAcceptDelay > 0f)
                 yield return new WaitForSeconds(aiAcceptDelay);
 
-            ResolveResearchProduction();
+            if (ReferenceEquals(_rpTactics, session)) ResolveResearchProduction();
         }
 
         internal static bool NeedsResearchProductionAutoAcceptDelay(
@@ -172,49 +216,58 @@ namespace Game.UI
         // No miss but still short of target → overflow: append + roll one new die.
         private void OnResearchProductionSpend()
         {
-            if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || _rpHero == null || _rpHero.Fate <= 0)
-                return;
-
-            bool hasMiss = ChallengeResolver.HasMiss(_rpTokens);
-            if (!hasMiss && !CanSpendResearchProductionFate())
-                return; // nothing Fate can do
-
-            attackerRow?.SetSpendInteractable(false);
-            if (acceptButton != null)
-                acceptButton.interactable = false;
-            _rpHero.Fate--;
-            TutorialHintController.Complete(TutorialHintId.Fate);
-            _rerollAnimDone = attackerRow == null;
-
-            if (hasMiss)
+            var session = _rpTactics;
+            if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || session == null) return;
+            try
             {
-                RerollOneMiss(ref _rpTokens, out int rerolledIndex);
-                attackerRow?.SetTokens(_rpTokens, rerolledIndex, OnResearchProductionRollLanded);
-                attackerRow?.OnFateSpent();
-                BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
-                    $"rerolled slot {rerolledIndex} -> {_rpTokens[rerolledIndex]}");
+                GetTacticPreview(out int a, out int d);
+                if (!session.TrySpendWithModifiers(a, d, out int index, out bool appended)) return;
+                _rpTokens = session.Tokens;
+                attackerRow?.SetSpendInteractable(false);
+                if (acceptButton != null) acceptButton.interactable = false;
+                TutorialHintController.Complete(TutorialHintId.Fate);
+                _rerollAnimDone = attackerRow == null;
+                Action landed = () =>
+                {
+                    if (!ReferenceEquals(_rpTactics, session)) return;
+                    attackerRow?.SetFateDisplay(session.FateRemaining);
+                    attackerRow?.SetFatePreview(session.FateRemaining);
+                    _rerollAnimDone = true;
+                };
+                if (appended)
+                {
+                    attackerRow?.SetTokenPoolSize(_rpTokens.Length);
+                    attackerRow?.AppendToken(_rpTokens[index], landed);
+                }
+                else attackerRow?.SetTokens(_rpTokens, index, landed);
+                attackerRow?.SetFateDisplay(session.FateRemaining);
+                attackerRow?.SetFatePreview(session.FateRemaining);
+                _humanSpent = true;
             }
-            else
+            catch
             {
-                bool hit = ChallengeResolver.RollTokens(1)[0];
-                var grown = new bool[_rpTokens.Length + 1];
-                System.Array.Copy(_rpTokens, grown, _rpTokens.Length);
-                grown[grown.Length - 1] = hit;
-                _rpTokens = grown;
-                attackerRow?.SetTokenPoolSize(_rpTokens.Length);
-                attackerRow?.AppendToken(hit, OnResearchProductionRollLanded);
-                attackerRow?.OnFateSpent();
-                BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
-                    $"added overflow die #{_rpTokens.Length} -> {hit}");
+                if (ReferenceEquals(_rpTactics, session)) FinalizeResearchProduction(false);
+                throw;
             }
-            _rpTactics.Tokens = _rpTokens;
-            _humanSpent = true;
         }
 
-        private void OnResearchProductionRollLanded()
+        private void OnResearchProductionAccept()
         {
-            attackerRow?.SetFatePreview(_rpHero?.Fate ?? 0);
-            _rerollAnimDone = true;
+            var session = _rpTactics;
+            if (session == null) return;
+            try
+            {
+                if (!CommitPendingTactic()) return;
+                _humanDeclined = true;
+                defenderRow?.SetSpendInteractable(false);
+                attackerRow?.SetSpendInteractable(false);
+                if (acceptButton != null) acceptButton.interactable = false;
+            }
+            catch
+            {
+                if (ReferenceEquals(_rpTactics, session)) FinalizeResearchProduction(false);
+                throw;
+            }
         }
 
         private void ResolveResearchProduction()
@@ -225,17 +278,10 @@ namespace Game.UI
                 acceptButton.interactable = false;
 
             CloseTacticDecision();
-            int successes = _rpTactics.Successes;
-            _rpRequiredSuccesses = _rpTactics.Required;
-            _rpResultSuccess = _rpTactics.Success;
-
-            // Central, unconditional Fate restore — success or failure, before the result screen
-            // or any callback (spec §3/§15).
-            RestoreResearchProductionFate();
-
-            BattleDebugLog.Write($"[ResolveDiag] ResearchProduction {_rpHero?.Name} -> {_rpCard?.displayName}: " +
-                $"{successes} successes vs required {_rpRequiredSuccesses} -> {(_rpResultSuccess ? "SUCCESS" : "FAILURE")}; " +
-                $"hero Fate restored to {_rpFateSnapshot}");
+            var result = _rpTactics.Accept();
+            int successes = result.Successes;
+            _rpRequiredSuccesses = result.Required;
+            _rpResultSuccess = result.Success;
 
             ShowResearchProductionResult(_rpResultSuccess, successes);
         }
@@ -285,63 +331,34 @@ namespace Game.UI
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
-        // R/P ONLY. Puts the Hero's Fate back to its pre-Challenge value. Idempotent (the
-        // snapshot isn't cleared, but re-assigning the same value is harmless) and gated so it
-        // can NEVER run for a Ground Combat / Capture Kill / Aviation resolve (spec §15/§33).
-        private void RestoreResearchProductionFate()
-        {
-            if (_kind != ChallengeKind.ResearchProduction && !_rpActive)
-                return;
-            if (_rpHero != null)
-                _rpHero.Fate = _rpFateSnapshot;
-        }
-
-        // THE single teardown/finalization path for a Research/Production Challenge — used by
-        // BOTH the normal Result -> OK flow (OnOkClicked) and every abnormal exit: a forced
-        // Hide() from elsewhere, this popup being grabbed for another Challenge (Begin /
-        // BeginCaptureKill / ShowSecondaryAttackResult / a fresh BeginResearchProduction), any other
-        // teardown of an active R/P state. Idempotent: the pending callback is captured-then-
-        // nulled and _rpActive cleared on the first call, so any later call (e.g. Hide()
-        // running right after OnOkClicked already finalized) is a no-op — the R/P callback can
-        // never fire twice.
-        //
-        //   - stops the running R/P coroutine (roll / reroll waits),
-        //   - restores the Hero's Fate to its pre-Challenge snapshot (spec §3/§15) — always,
-        //     success or failure,
-        //   - clears this popup's R/P state,
-        //   - invokes the R/P callback exactly once with `success`.
-        //
-        // Does NOT refund the card's ResourceCost — that was paid by HexSelectionController
-        // before the Challenge and is deliberately never returned (spec §4). An interrupted
-        // Challenge is finalized with success == false, so the caller
-        // (HexSelectionController.OnResearchProductionResolved) mints no card and unwinds its
-        // own _rpTransactionActive / _rpPendingCard and the modal's Busy state.
+        // Detach and close the old presentation before invoking arbitrary caller code. A callback
+        // may open a new challenge synchronously, or throw; neither can strand this attempt.
         private void FinalizeResearchProduction(bool success)
         {
-            if (!_rpActive && _onResearchProductionResolved == null)
-                return;
-
-            if (_kind == ChallengeKind.ResearchProduction)
-                StopAllCoroutines();
-
-            RestoreResearchProductionFate();
-
+            if (!_rpActive && _onResearchProductionResolved == null) return;
+            StopAllCoroutines();
             Action<bool> callback = _onResearchProductionResolved;
+            var session = _rpTactics;
+            bool accepted = success && session?.IsAccepted == true && session.Result.Success;
             _onResearchProductionResolved = null;
             _rpActive = false;
-            _rpResultSuccess = success;
-            _awaitingHumanDecision = false;
+            _rpTactics = null;
             _rpHero = null;
             _rpCard = null;
             _rpTokens = null;
-            _rpTactics = null;
-
-            callback?.Invoke(success);
+            _awaitingHumanDecision = false;
+            session?.Dispose();
+            try
+            {
+                attackerRow?.CancelPendingRolls();
+                defenderRow?.CancelPendingRolls();
+                CloseTacticPresentation();
+                if (panelRoot != null) panelRoot.SetActive(false);
+                VisibilityChanged?.Invoke();
+            }
+            finally { callback?.Invoke(accepted); }
         }
 
-        // Popup-reuse call sites (Begin / BeginCaptureKill via Begin / ShowSecondaryAttackResult /
-        // BeginResearchProduction): a reused popup abandons any in-flight R/P Challenge as a
-        // failure — no card minted, Fate restored, callback fired exactly once.
         private void CleanupResearchProduction() => FinalizeResearchProduction(false);
 
         private static int CountHits(bool[] tokens)

@@ -23,7 +23,7 @@ namespace Game.UI
             BattleChallengeMode mode = _kind == ChallengeKind.CaptureKill
                 ? BattleChallengeMode.CaptureKill
                 : BattleChallengeMode.GroundCombat;
-            _challengeSession = new BattleChallengeSession(
+            _challengeSession ??= new BattleChallengeSession(
                 mode, _attacker, _defender,
                 _attackerTokenPoolSize, _defenderTokenPoolSize,
                 _attackerFateRemaining, _defenderFateRemaining,
@@ -345,6 +345,11 @@ namespace Game.UI
         {
             if (!_awaitingHumanDecision || _humanSpent || _humanDeclined || TacticInputBlocked)
                 return;
+            if (_kind == ChallengeKind.ResearchProduction)
+            {
+                OnResearchProductionAccept();
+                return;
+            }
             if (!CommitPendingTactic()) return;
             // See RunHumanTurn's own OPEN log — the matching close, for the same diagnostics.
             BattleDebugLog.Write($"[FateDuelDiag] Accept clicked for {(_defenderTurnActive ? "defender" : "attacker")} " +
@@ -358,6 +363,7 @@ namespace Game.UI
 
         private void Resolve()
         {
+            if (_challengeSession != null && !_challengeSession.IsAccepted && !_challengeSession.TryAccept(out _)) return;
             _phase = Phase.Resolved;
             CloseTacticDecision();
             if (_kind == ChallengeKind.CaptureKill)

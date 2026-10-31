@@ -273,46 +273,15 @@ namespace Game.Map
         // manual's "retriggers identically on any future visit" rule for a skipped event.
         public void HandleRetreatFromHexEvent(HexCoord hex, PlayerSetupData retreater)
         {
-            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            // entry.Skipped is deliberately NOT a bail-out here — an event Skipped on an earlier
-            // pass can be Explored again later, and abandoning THAT guard fight has to tear it
-            // down just the same. entry.Triggered (a guard fight is in progress) is the real gate.
-            if (entry == null || entry.Consumed || !entry.Triggered)
-                return;
-            // The GUARD itself pulling back means the explorer WON the hex — ResolveHexAfterVictory
-            // is about to run GrantEventReward off entry.Triggered, so leave the entry untouched.
-            if (retreater == null || retreater == entry.GuardOwner)
-                return;
-
-            // Tear the just-abandoned guard back out of ArmyRegistry (it never had a marker — see
-            // SpawnEventGuard) and empty it so BattleScreenUI.OnBattleOutcomeAcknowledged's own
-            // DeleteArmyIfEmptied(_defender)/survivor pick both resolve to a clean no-op.
-            if (!string.IsNullOrEmpty(entry.GuardArmyName))
-                foreach (ArmyData resident in new List<ArmyData>(ArmyRegistry.AllAt(hex)))
-                    if (resident.Owner == entry.GuardOwner && resident.Name == entry.GuardArmyName)
-                    {
-                        ArmyActions.ClearMembers(resident);
-                        ArmyRegistry.Unregister(resident);
-                    }
+            BattleEncounterCoordinator.HandleRetreatFromHexEvent(hex, retreater);
             RestackArmiesOn(hex, null);
-
-            entry.Triggered = false;
-            HexEventRegistry.MarkSkipped(hex, retreater);
         }
 
-        // A victorious Library guard must never become a persistent neutral army that an AI
-        // could collide with. Failed human exploration resets it exactly like a retreat.
         public bool DismissLibraryGuardAfterFailedExplore(HexCoord hex, ArmyData survivor, ArmyData explorer)
         {
-            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry?.Definition?.grantsRandomCollectionCard != true || !entry.Triggered
-                || entry.CollectionRewardPending || explorer?.Owner?.IsHuman != true
-                // A surviving hero still faces the ordinary Capture/Kill continuation first.
-                || (explorer.Hex.Equals(hex) && explorer.Members.Count > 0)
-                || !HexEventRegistry.IsEventGuardArmy(hex, survivor))
-                return false;
-            HandleRetreatFromHexEvent(hex, explorer.Owner);
-            return true;
+            bool dismissed = BattleEncounterCoordinator.DismissLibraryGuardAfterFailedExplore(hex, survivor, explorer);
+            if (dismissed) RestackArmiesOn(hex, null);
+            return dismissed;
         }
 
         // "Пропустить" — the event stays un-consumed and untouched, exactly as it was, so it

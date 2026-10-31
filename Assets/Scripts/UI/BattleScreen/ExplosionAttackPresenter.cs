@@ -20,6 +20,8 @@ namespace Game.UI
             Func<ExplosionAttack.Target, BattleAttackApplication, IEnumerator> presentHit = null)
         {
             int index = 0;
+            AbilityMagnitudes magnitudes = battle != null ? battle.Magnitudes
+                : popup != null ? popup.Magnitudes : AbilityMagnitudes.Default;
             try
             {
                 foreach (ExplosionAttack.Target target in attack.Targets)
@@ -37,31 +39,35 @@ namespace Game.UI
                     BattleAttackApplication resolvedApplication = null;
                     void Apply(BattleChallengeRollResult roll)
                     {
+                        if (resolved) return;
+                        resolved = true;
                         var application = attack.Resolve(target, defender, roll,
-                            popup != null ? popup.Magnitudes : AbilityMagnitudes.Default,
+                            magnitudes,
                             attackerHero, defenderHero, battle);
                         resolvedApplication = application;
                         onHit?.Invoke(target, application);
                         resolved = true;
                     }
                     int defensePool = (defender.IsHero ? defender.FateMax : defender.Defense) + defense.TotalBonus;
+                    using var challenge = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
+                        attack.Actor, defender, ExplosionAttack.AttackTokens, defensePool,
+                        attackerHero?.Fate ?? 0, defenderHero?.Fate ?? 0, magnitudes,
+                        rollTokens: battle != null ? (Func<int, bool[]>)battle.RollChallengeTokens
+                            : n => BattleSimulationKernel.RollTokens(n, AviationCombatPresenter.HeadlessRng),
+                        tacticsCritical: tacticsCritical);
                     if (popup != null)
                     {
                         popup.Begin(attack.Actor, attackerHero, defender, defenderHero, null, null, Apply,
                             attackerPoolSize: ExplosionAttack.AttackTokens, defenderPoolSize: defensePool,
                             automateHumanSides: fastResolve, tacticsCritical: tacticsCritical,
-                            challengeTitle: $"EXPLOSION ({index}/{attack.Targets.Count})");
+                            challengeTitle: $"EXPLOSION ({index}/{attack.Targets.Count})", session: challenge);
                         yield return new WaitUntil(() => resolved);
                     }
                     else
                     {
-                        var challenge = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
-                            attack.Actor, defender, ExplosionAttack.AttackTokens, defensePool,
-                            attackerHero?.Fate ?? 0, defenderHero?.Fate ?? 0, AbilityMagnitudes.Default,
-                            rollTokens: n => BattleSimulationKernel.RollTokens(n, AviationCombatPresenter.HeadlessRng),
-                            tacticsCritical: tacticsCritical);
                         challenge.Roll();
                         challenge.ResolveAiDecisions();
+                        challenge.TryAccept(out _);
                         Apply(challenge.ToRollResult());
                     }
                     if (presentHit != null) yield return presentHit(target, resolvedApplication);

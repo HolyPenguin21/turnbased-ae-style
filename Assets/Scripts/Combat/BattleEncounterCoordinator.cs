@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -35,6 +37,87 @@ namespace Game.Combat
     // FindEnemyAt probe, or anything that might not actually turn into a fight.
     public static class BattleEncounterCoordinator
     {
+        // Legacy finish signatures have no state argument. Bind them to the current encounter,
+        // replacing the binding when a new BattleState is created for either participant.
+        private static readonly ConditionalWeakTable<ArmyData, BattleState> CurrentEncounters =
+            new ConditionalWeakTable<ArmyData, BattleState>();
+        internal static void RegisterEncounter(BattleState state)
+        {
+            foreach (var army in new[] { state.Attacker, state.Defender })
+                if (army != null) { CurrentEncounters.Remove(army); CurrentEncounters.Add(army, state); }
+        }
+        internal static BattleState GetLegacyEncounter(ArmyData hunter, ArmyData target)
+        {
+            if (CurrentEncounters.TryGetValue(hunter, out var state))
+            {
+                bool samePair = (state.Attacker == hunter && state.Defender == target)
+                    || (state.Defender == hunter && state.Attacker == target);
+                bool sameContext = target == null || (CurrentEncounters.TryGetValue(target, out var other)
+                    && ReferenceEquals(state, other));
+                return samePair && sameContext ? state : null;
+            }
+            if (target != null && CurrentEncounters.TryGetValue(target, out _)) return null;
+            return new BattleState(hunter.Hex, hunter, target, new BattleGrid(), 0);
+        }
+
+        public static BattleEncounterFinalization Apply(BattleState state, HexSelectionController selection = null)
+        {
+            if (state == null) return default;
+            if (state.FinalizationApplied) return state.Finalization;
+            if (state.Engine != null)
+            {
+                if (!state.Engine.CanFinalize) return default;
+            }
+            else
+            {
+                bool attackerAlive = state.Attacker != null && state.Attacker.Hex.Equals(state.BattleHex)
+                    && BattleInitiator.IsCombatCapable(state.Attacker);
+                bool defenderAlive = state.Defender != null && state.Defender.Hex.Equals(state.BattleHex)
+                    && BattleInitiator.IsCombatCapable(state.Defender);
+                if ((attackerAlive && defenderAlive) || BattleEngine.BuildCaptureKillQueue(
+                    state.Attacker, state.Defender, attackerAlive, defenderAlive)
+                    .Any(t => t.heroArmy.Hex.Equals(state.BattleHex))) return default;
+            }
+            using var mutation = VisionSystem.BeginMutation();
+            state.FinalizationApplied = true;
+            state.Finalization = BattleEngine.ApplyEncounterResult(state, selection);
+            BattleEngine.PublishFinalization(state, state.Finalization);
+            return state.Finalization;
+        }
+
+        public static bool TryAcknowledge(BattleState state, out BattleEncounterFinalization result,
+            HexSelectionController selection = null)
+        {
+            result = Apply(state, selection);
+            if (state == null || !state.FinalizationApplied || state.Acknowledged) return false;
+            state.Acknowledged = true;
+            return true;
+        }
+
+        public static void HandleRetreatFromHexEvent(HexCoord hex, PlayerSetupData retreater)
+        {
+            var entry = HexEventRegistry.FindAt(hex);
+            if (entry == null || entry.Consumed || !entry.Triggered || retreater == null || retreater == entry.GuardOwner) return;
+            using var mutation = VisionSystem.BeginMutation();
+            if (!string.IsNullOrEmpty(entry.GuardArmyName))
+                foreach (var resident in ArmyRegistry.AllAt(hex))
+                    if (resident.Owner == entry.GuardOwner && resident.Name == entry.GuardArmyName)
+                    { ArmyActions.ClearMembers(resident); ArmyRegistry.Unregister(resident); }
+            entry.Triggered = false;
+            HexEventRegistry.MarkSkipped(hex, retreater);
+        }
+
+        public static bool DismissLibraryGuardAfterFailedExplore(HexCoord hex, ArmyData survivor, ArmyData explorer)
+        {
+            var entry = HexEventRegistry.FindAt(hex);
+            if (entry?.Definition?.grantsRandomCollectionCard != true || !entry.Triggered
+                || entry.CollectionRewardPending || explorer?.Owner?.IsHuman != true
+                || (explorer.Hex.Equals(hex) && explorer.Members.Count > 0)
+                || !HexEventRegistry.IsEventGuardArmy(hex, survivor)) return false;
+            HandleRetreatFromHexEvent(hex, explorer.Owner);
+            return true;
+        }
+
         // Reveals every hidden member of the REAL participants of this encounter (see
         // StealthSystem.RevealForBattle — one consolidated notification, not one ExitStealth
         // per unit), then builds the context. Never reveals anything else on the hex: other
