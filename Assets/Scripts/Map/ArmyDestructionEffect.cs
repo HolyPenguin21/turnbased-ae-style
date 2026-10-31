@@ -1,29 +1,36 @@
+using System;
 using System.Collections.Generic;
 using Game.Players;
 using UnityEngine;
 
 namespace Game.Map
 {
-    // A detached, non-interactive visual echo of an army marker. The battle can delete the
-    // original ArmyController immediately; the map plays this effect only after its outcome
-    // window closes. No army/vision/selection state is retained or modified here.
+    // Purely visual replay. The encounter may delete its ArmyController immediately;
+    // the captured marker is replayed only once the outcome UI closes.
+    // The destruction artwork is pre-rendered into four flipbook sheets, not generated
+    // or fragmented at runtime. Two layers preserve the owning faction's accent.
     public sealed class ArmyDestructionEffect : MonoBehaviour
     {
         private const float DurationSeconds = 2f;
-        private const int AshCount = 12;
+        private const int FrameCount = 16;
+        private const int Columns = 8;
+        private const int Rows = 2;
+        private const int FramePixels = 160;
+        // The four source army marker sprites all import at 100 pixels per unit.
+        private const float PixelsPerUnit = 100f;
+
+        private const string ResourceRoot = "ArmyDestruction/";
+        private static readonly Dictionary<string, Sprite[]> FrameCache =
+            new Dictionary<string, Sprite[]>();
 
         public sealed class Appearance
         {
             internal readonly Layer[] Layers;
-            internal readonly Vector3 Centre;
-            internal readonly float Radius;
             internal readonly PlayerSetupData Viewer;
 
-            internal Appearance(Layer[] layers, Vector3 centre, float radius, PlayerSetupData viewer)
+            internal Appearance(Layer[] layers, PlayerSetupData viewer)
             {
                 Layers = layers;
-                Centre = centre;
-                Radius = radius;
                 Viewer = viewer;
             }
         }
@@ -42,45 +49,31 @@ namespace Game.Map
             public bool FlipY;
         }
 
-        private struct Piece
+        private struct FlipbookLayer
         {
             public SpriteRenderer Renderer;
-            public Vector3 Position;
-            public Quaternion Rotation;
-            public Vector3 Scale;
-            public Vector3 Drift;
-            public float Spin;
-            public Color Color;
+            public Sprite[] Frames;
+            public Color OriginalColor;
+            public bool FactionAccent;
         }
 
-        private struct Ash
-        {
-            public SpriteRenderer Renderer;
-            public Vector3 Origin;
-            public Vector3 Drift;
-            public Color Color;
-        }
-
-        private static Sprite _ashSprite;
-        private Piece[] _pieces;
-        private Ash[] _ash;
+        private FlipbookLayer[] _layers;
+        private PlayerSetupData _viewer;
         private float _elapsed;
-        private float _radius;
+        private int _frame = -1;
 
-        // Capture BEFORE the battle removes or hides its last unit. In particular, an army
-        // hidden by FOW or by another representative of the same owner must not leave a
-        // destruction effect that reveals its existence to the map viewer.
+        // Capture before combat removes or hides the marker's last living unit.
+        // Never create an effect for a marker already hidden by FoW/stacking.
         public static Appearance Capture(MapObjectVisual visual)
         {
             if (visual == null || !visual.IsVisible || !visual.gameObject.activeInHierarchy)
                 return null;
 
             var layers = new List<Layer>();
-            Bounds bounds = default;
             foreach (SpriteRenderer renderer in visual.GetComponentsInChildren<SpriteRenderer>(true))
             {
-                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy
-                    || renderer.sprite == null)
+                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                    renderer.sprite == null)
                     continue;
 
                 layers.Add(new Layer
@@ -96,22 +89,16 @@ namespace Game.Map
                     FlipX = renderer.flipX,
                     FlipY = renderer.flipY
                 });
-                if (layers.Count == 1) bounds = renderer.bounds;
-                else bounds.Encapsulate(renderer.bounds);
             }
 
-            if (layers.Count == 0)
-                return null;
-
-            return new Appearance(layers.ToArray(), bounds.center,
-                Mathf.Max(0.01f, Mathf.Max(bounds.extents.x, bounds.extents.z)),
-                VisionSystem.CurrentViewer);
+            return layers.Count == 0 ? null :
+                new Appearance(layers.ToArray(), VisionSystem.CurrentViewer);
         }
 
         public static void Play(Appearance appearance)
         {
-            if (appearance == null || appearance.Layers.Length == 0
-                || !ReferenceEquals(appearance.Viewer, VisionSystem.CurrentViewer))
+            if (appearance == null || appearance.Layers.Length == 0 ||
+                !ReferenceEquals(appearance.Viewer, VisionSystem.CurrentViewer))
                 return;
 
             var root = new GameObject("Army Marker Destruction");
@@ -120,133 +107,133 @@ namespace Game.Map
 
         private void Initialize(Appearance appearance)
         {
-            _radius = appearance.Radius;
-            _pieces = new Piece[appearance.Layers.Length];
-            int topSortingOrder = int.MinValue;
-            int topSortingLayer = 0;
+            _viewer = appearance.Viewer;
+            _layers = new FlipbookLayer[appearance.Layers.Length];
+
             for (int i = 0; i < appearance.Layers.Length; i++)
             {
-                Layer layer = appearance.Layers[i];
-                var partObject = new GameObject("Marker Layer");
-                partObject.transform.SetParent(transform, false);
-                partObject.transform.SetPositionAndRotation(layer.Position, layer.Rotation);
-                partObject.transform.localScale = layer.Scale;
+                Layer source = appearance.Layers[i];
+                var part = new GameObject("Marker Flipbook Layer");
+                part.transform.SetParent(transform, false);
+                part.transform.SetPositionAndRotation(source.Position, source.Rotation);
+                part.transform.localScale = source.Scale;
 
-                var renderer = partObject.AddComponent<SpriteRenderer>();
-                renderer.sprite = layer.Sprite;
-                renderer.sharedMaterial = layer.Material;
-                renderer.color = layer.Color;
-                renderer.sortingLayerID = layer.SortingLayer;
-                renderer.sortingOrder = layer.SortingOrder;
-                renderer.flipX = layer.FlipX;
-                renderer.flipY = layer.FlipY;
+                var renderer = part.AddComponent<SpriteRenderer>();
+                renderer.sharedMaterial = source.Material;
+                renderer.sortingLayerID = source.SortingLayer;
+                renderer.sortingOrder = source.SortingOrder;
+                renderer.flipX = source.FlipX;
+                renderer.flipY = source.FlipY;
 
-                float angle = (i + 0.5f) * 2.39996f;
-                _pieces[i] = new Piece
+                string sheetName = SheetFor(source.Sprite);
+                Sprite[] frames = sheetName == null ? null : LoadFrames(sheetName);
+                _layers[i] = new FlipbookLayer
                 {
                     Renderer = renderer,
-                    Position = partObject.transform.localPosition,
-                    Rotation = partObject.transform.localRotation,
-                    Scale = partObject.transform.localScale,
-                    Drift = new Vector3(Mathf.Cos(angle), -0.28f, Mathf.Sin(angle)) * _radius * 0.28f,
-                    Spin = i % 2 == 0 ? -16f : 17f,
-                    Color = layer.Color
+                    Frames = frames,
+                    OriginalColor = source.Color,
+                    FactionAccent = sheetName != null && sheetName.EndsWith("Accent", StringComparison.Ordinal)
                 };
-                if (layer.SortingOrder > topSortingOrder)
-                {
-                    topSortingOrder = layer.SortingOrder;
-                    topSortingLayer = layer.SortingLayer;
-                }
+                // Unknown custom marker layers remain unchanged for compatibility;
+                // the built-in Ground/Air art uses the pre-baked flipbooks.
+                renderer.sprite = frames != null ? frames[0] : source.Sprite;
+                renderer.color = source.Color;
             }
 
-            Sprite ashSprite = GetAshSprite();
-            _ash = new Ash[AshCount];
-            for (int i = 0; i < _ash.Length; i++)
-            {
-                float angle = 2f * Mathf.PI * (i + 0.37f) / AshCount;
-                float variation = 0.65f + 0.35f * (i % 3);
-                var particleObject = new GameObject("Ash");
-                particleObject.transform.SetParent(transform, false);
-                particleObject.transform.position = appearance.Centre;
-                particleObject.transform.rotation = appearance.Layers[0].Rotation;
-                particleObject.transform.localScale = Vector3.one * _radius * (0.055f + 0.018f * (i % 3));
-                var renderer = particleObject.AddComponent<SpriteRenderer>();
-                renderer.sprite = ashSprite;
-                renderer.sortingLayerID = topSortingLayer;
-                renderer.sortingOrder = topSortingOrder + 1;
-                renderer.enabled = false;
-                _ash[i] = new Ash
-                {
-                    Renderer = renderer,
-                    Origin = particleObject.transform.localPosition,
-                    Drift = new Vector3(Mathf.Cos(angle), 0.12f + 0.14f * variation,
-                        Mathf.Sin(angle)) * _radius * variation,
-                    Color = new Color(0.39f + 0.05f * (i % 3), 0.38f + 0.05f * (i % 3),
-                        0.35f + 0.05f * (i % 3), 0.75f)
-                };
-            }
+            SetFrame(0);
         }
 
         private void Update()
         {
-            if (_pieces == null) return;
+            if (_layers == null)
+                return;
+
+            // Do not expose an old viewer's marker if ownership/vision changes during playback.
+            if (!ReferenceEquals(_viewer, VisionSystem.CurrentViewer))
+            {
+                Destroy(gameObject);
+                return;
+            }
 
             _elapsed += Time.unscaledDeltaTime;
-            float t = Mathf.Clamp01(_elapsed / DurationSeconds);
-            float desaturate = Ease(t, 0f, 0.3f);
-            float crumble = Ease(t, 0.35f, 0.95f);
-            float fade = 1f - Ease(t, 0.63f, 1f);
-
-            foreach (Piece piece in _pieces)
+            if (_elapsed >= DurationSeconds)
             {
-                var grey = new Color(0.40f, 0.40f, 0.39f, piece.Color.a);
-                Color color = Color.Lerp(piece.Color, grey, desaturate);
-                color.a *= fade;
-                piece.Renderer.color = color;
-                Transform part = piece.Renderer.transform;
-                part.localPosition = piece.Position + piece.Drift * crumble
-                    + Vector3.down * (_radius * 0.22f * crumble);
-                part.localRotation = piece.Rotation * Quaternion.Euler(0f, 0f, piece.Spin * crumble);
-                part.localScale = piece.Scale * (1f - 0.52f * crumble);
-            }
-
-            float ashProgress = Mathf.Clamp01((t - 0.29f) / 0.71f);
-            float ashOpacity = Mathf.Sin(ashProgress * Mathf.PI);
-            foreach (Ash particle in _ash)
-            {
-                bool active = ashOpacity > 0.001f;
-                particle.Renderer.enabled = active;
-                if (!active) continue;
-                particle.Renderer.transform.localPosition = particle.Origin
-                    + particle.Drift * ashProgress
-                    + Vector3.down * (_radius * 0.36f * ashProgress * ashProgress);
-                Color color = particle.Color;
-                color.a *= ashOpacity;
-                particle.Renderer.color = color;
-            }
-
-            if (t >= 1f)
                 Destroy(gameObject);
+                return;
+            }
+
+            SetFrame(Mathf.Clamp(Mathf.FloorToInt(_elapsed * FrameCount / DurationSeconds),
+                0, FrameCount - 1));
         }
 
-        private static float Ease(float t, float start, float end) =>
-            Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(start, end, t));
-
-        private static Sprite GetAshSprite()
+        // Kept separate from Update so EditMode tests can verify deterministic sampling.
+        private void SetFrame(int index)
         {
-            if (_ashSprite != null) return _ashSprite;
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+            if (_frame == index)
+                return;
+            _frame = index;
+
+            for (int i = 0; i < _layers.Length; i++)
             {
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp,
-                hideFlags = HideFlags.DontSave
-            };
-            texture.SetPixels(new[] { Color.white, Color.white, Color.white, Color.white });
-            texture.Apply();
-            _ashSprite = Sprite.Create(texture, new Rect(0, 0, 2, 2),
-                new Vector2(0.5f, 0.5f), 2f);
-            _ashSprite.hideFlags = HideFlags.DontSave;
-            return _ashSprite;
+                FlipbookLayer layer = _layers[i];
+                if (layer.Frames != null)
+                    layer.Renderer.sprite = layer.Frames[index];
+
+                // The source faction accent is colored at runtime. Its pre-rendered
+                // damage mask stays separate; only its tint becomes ash-grey.
+                if (layer.FactionAccent && layer.Frames != null)
+                {
+                    Color grey = new Color(0.52f, 0.52f, 0.51f, layer.OriginalColor.a);
+                    layer.Renderer.color = Color.Lerp(layer.OriginalColor, grey,
+                        Mathf.Clamp01((index - 1) / 3f));
+                }
+            }
+        }
+
+        internal static string SheetFor(Sprite sprite)
+        {
+            if (sprite == null)
+                return null;
+            switch (sprite.name)
+            {
+                case "MapObject_Army_Base": return "GroundBase";
+                case "MapObject_Army_FactionAccent": return "GroundAccent";
+                case "MapObject_Army_Air_Base": return "AirBase";
+                case "MapObject_Army_Air_FactionAccent": return "AirAccent";
+                default: return null;
+            }
+        }
+
+        private static Sprite[] LoadFrames(string sheetName)
+        {
+            if (FrameCache.TryGetValue(sheetName, out Sprite[] cached))
+                return cached;
+
+            Texture2D texture = Resources.Load<Texture2D>(ResourceRoot + sheetName);
+            if (texture == null || texture.width != Columns * FramePixels ||
+                texture.height != Rows * FramePixels)
+            {
+                Debug.LogError("[ArmyDestructionEffect] Missing/invalid flipbook " +
+                    ResourceRoot + sheetName + " (expected 1280x320 RGBA PNG).");
+                return null;
+            }
+
+            var frames = new Sprite[FrameCount];
+            for (int index = 0; index < FrameCount; index++)
+            {
+                int column = index % Columns;
+                int rowFromTop = index / Columns;
+                var rect = new Rect(column * FramePixels,
+                    (Rows - 1 - rowFromTop) * FramePixels, FramePixels, FramePixels);
+                Sprite frame = Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f),
+                    PixelsPerUnit, 0, SpriteMeshType.FullRect);
+                frame.name = sheetName + "_" + index.ToString("D2");
+                frame.hideFlags = HideFlags.DontSave;
+                frames[index] = frame;
+            }
+
+            FrameCache.Add(sheetName, frames);
+            return frames;
         }
     }
 }
