@@ -146,11 +146,11 @@ namespace Game.UI
                     Game.Audio.SceneUIAudioBinder.BindCreatedRoot(cell);
                     cell.Setup(this, unit, row, col, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
                     if (unit != null && _healEffectStarts.TryGetValue(unit, out float started)
-                        && Time.unscaledTime - started < BattleHealEffect.Duration)
-                        BattleHealEffect.Show(cell.transform, started);
+                        && Time.unscaledTime - started < BattleSkillEffect.Duration)
+                        BattleSkillEffect.Show(cell.transform, started, BattleSkillEffect.Kind.Heal);
                     if (unit != null && _drillEffectStarts.TryGetValue(unit, out float drillStarted)
-                        && Time.unscaledTime - drillStarted < BattleHealEffect.Duration)
-                        BattleHealEffect.Show(cell.transform, drillStarted, BattleHealEffect.DrillSpritePath);
+                        && Time.unscaledTime - drillStarted < BattleSkillEffect.Duration)
+                        BattleSkillEffect.Show(cell.transform, drillStarted, BattleSkillEffect.Kind.Drill);
                     _cells.Add(cell);
                 }
         }

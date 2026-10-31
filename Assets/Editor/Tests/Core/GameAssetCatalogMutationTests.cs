@@ -134,11 +134,11 @@ namespace Game.EditorTests
         [Test]
         public void RepeatedReplacementFromSnapshotRetainsAuthoredKeysAndEmptyInputClearsLookup()
         {
-            Replace(new[] { Entry("Effects/Overlay", _oldAsset), Entry("Shaders/BattleSkillFlipbook", _newAsset) });
+            Replace(new[] { Entry("Effects/Overlay", _oldAsset), Entry("Shaders/ScreenWear", _newAsset) });
             Assert.That(GameAssetCatalog.Load<Texture2D>("Effects/Overlay"), Is.SameAs(_oldAsset));
             Replace(_catalog.Entries);
             Replace(_catalog.Entries);
-            Assert.That(_catalog.Entries.Select(e => e.key), Is.EqualTo(new[] { "Effects/Overlay", "Shaders/BattleSkillFlipbook" }));
+            Assert.That(_catalog.Entries.Select(e => e.key), Is.EqualTo(new[] { "Effects/Overlay", "Shaders/ScreenWear" }));
             Assert.That(GameAssetCatalog.Load<Texture2D>("Effects/Overlay"), Is.SameAs(_oldAsset));
             Replace(Array.Empty<GameAssetCatalog.Entry>());
             Assert.That(_catalog.Entries, Is.Empty);
