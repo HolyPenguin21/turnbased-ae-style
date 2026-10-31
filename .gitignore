@@ -43,3 +43,11 @@ sysinfo.txt
 *.stackdump
 
 .claude/settings.local.json
+
+# Army destruction flipbook art is provided locally by the artist, never via Git.
+# Keep Unity importer .meta files versioned; only the image data is local.
+# WARNING: Back up these four PNGs before pulling the commit that untracks them.
+/Assets/Resources/ArmyDestruction/*.png
+
+# This downloadable archive embeds those local-only PNG atlases.
+/Docs/Exports/ArmyDestruction_Images.zip
