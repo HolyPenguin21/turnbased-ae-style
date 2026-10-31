@@ -327,7 +327,7 @@ namespace Game.Ai.V2
             {
                 if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
                     need[u.StrikeKey] = n - 1;
-                else
+                else if (!u.IsArmySupportCarrier) // never surplus (StrikeRoster.NonTargetBodies)
                     nonTarget++;
             }
             foreach (ReorgUnit u in hostUnits.Where(u => u != null && u.IsHero))

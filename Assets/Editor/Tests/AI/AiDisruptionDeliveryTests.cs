@@ -272,6 +272,47 @@ namespace Game.EditorTests
                 "terrain alone is not a structure defence");
         }
 
+        // 2026-10-31 — a carrier's card/attachment value is the defence of ITS fight: the demand's
+        // Attack site, the destination's Attack, or the attachment's own opposition — never the
+        // strongest hostile base anywhere.
+        [Test]
+        public void DisruptionValueReadsOnlyTheFightItServes()
+        {
+            WorldSnapshot snap = Snapshot();
+            Assert.That(new EffectEvaluationContext(snap, null, null, Site).DisruptionSiteDefense, Is.EqualTo(10f));
+            Assert.That(new EffectEvaluationContext(snap, null, null, null).DisruptionSiteDefense, Is.Zero,
+                "no Attack served: a carrier removes nothing");
+            Assert.That(ReconObjectiveEvaluator.HostileStructureDefense(snap, new HexCoord(0, 0)), Is.Zero);
+
+            var stats = new Dictionary<EquipmentStat, int>();
+            foreach (EquipmentStat stat in Enum.GetValues(typeof(EquipmentStat))) stats[stat] = 1;
+            var defended = new[] { new WorthIt.DefendingArmy(new[] { Profile(false) }, default, 2f,
+                buildingDefenseBonus: 2f) };
+            var open = new[] { new WorthIt.DefendingArmy(new[] { Profile(false) }, default, 2f) };
+            float vsSite = StrategicEffectRegistry.AttachmentValue(stats, new[] { UnitAbilities.Disruption },
+                Array.Empty<UnitTypeTag>(), defended, null, false, snap);
+            float vsField = StrategicEffectRegistry.AttachmentValue(stats, new[] { UnitAbilities.Disruption },
+                Array.Empty<UnitTypeTag>(), open, null, false, snap);
+            Assert.That(vsSite, Is.GreaterThan(0f));
+            Assert.That(vsField, Is.Zero);
+        }
+
+        // 2026-10-31 — a preparation host never releases a Disruption body as roster surplus: the
+        // power-greedy target roster cannot see the structure defence it removes.
+        [Test]
+        public void PreparationHostNeverReleasesACarrierBodyAsRosterSurplus()
+        {
+            var rostered = new Game.Units.UnitData { Attack = 8, HitPointsMax = 8, HitPointsCurrent = 8 };
+            var carrier = new Game.Units.UnitData { Attack = 2, HitPointsMax = 4, HitPointsCurrent = 4 };
+            carrier.Abilities.Add(UnitAbilities.Disruption);
+            var plain = new Game.Units.UnitData { Attack = 2, HitPointsMax = 4, HitPointsCurrent = 4 };
+            var target = new[] { new StrikeRosterSlot(StrikeRoster.UnitKey(rostered), false, 8f, ForceSource.Map) };
+            List<Game.Units.UnitData> surplus = StrikeRoster.NonTargetBodies(target, new[] { rostered, carrier, plain });
+            Assert.That(surplus, Does.Contain(plain));
+            Assert.That(surplus, Does.Not.Contain(carrier));
+            Assert.That(surplus, Does.Not.Contain(rostered));
+        }
+
         private ScoutMissionTarget DeliveryTarget() => new ScoutMissionTarget {
             Kind = ScoutTargetKind.DisruptStructure, FocusHex = Site, Stealth = StealthRequirement.Required };
 

@@ -70,6 +70,11 @@ namespace Game.Ai.V2
         // destination) — what a hero card's Command is compared against (HeroCommandMarginalValue).
         public readonly WorthIt.SideCommander DestCommander;
         public readonly int DestHeroCount;
+        // The destination army ResolveDestination found (null for a new/unresolved destination),
+        // and the Attack site the requesting demand serves (AxisDemand.AttackObjectiveHex) — the
+        // two inputs of DisruptionSiteDefense.
+        public readonly int? DestArmyId;
+        public readonly HexCoord? ConsumerAttackSite;
         // final closure §3.3 (army -> candidate direction) — the value the DEST ARMY's already-
         // present auras add specifically to THIS incoming candidate's projected profile. The
         // candidate does not carry the aura ability itself, so this cannot come from Resolve(card);
@@ -117,15 +122,15 @@ namespace Game.Ai.V2
         }
 
         // The structure defence a Disruption carrier deployed by this plan would remove: the known
-        // site of the Attack its destination army serves (an Attack refit's fight first). Zero for
-        // any other destination — a carrier in a garrison or an economy army removes nothing.
+        // site of the Attack it serves — an Attack refit's fight, else the requesting demand's
+        // Attack (an unbound fist has no intent yet), else the Attack the destination army serves.
+        // Zero for any other destination — a carrier in a garrison or an economy army removes nothing.
         public float DisruptionSiteDefense
         {
             get
             {
-                HexCoord? site = Plan?.AttackRefitTargetHex
-                    ?? (Plan?.Deploy.Army != null
-                        ? ReconObjectiveEvaluator.AttackSiteOf(Snap, Plan.Deploy.Army.Id) : null);
+                HexCoord? site = Plan?.AttackRefitTargetHex ?? ConsumerAttackSite
+                    ?? (DestArmyId.HasValue ? ReconObjectiveEvaluator.AttackSiteOf(Snap, DestArmyId.Value) : null);
                 return site.HasValue ? ReconObjectiveEvaluator.HostileStructureDefense(Snap, site.Value) : 0f;
             }
         }
@@ -177,10 +182,11 @@ namespace Game.Ai.V2
             : this(snap, null, witnessedUsefulApDemand) { }
 
         public EffectEvaluationContext(WorldSnapshot snap, MaterializationPlan plan,
-            float? witnessedUsefulApDemand = null)
+            float? witnessedUsefulApDemand = null, HexCoord? consumerAttackSite = null)
         {
             Snap = snap;
             Plan = plan;
+            ConsumerAttackSite = consumerAttackSite;
             TurnNumber = snap?.TurnNumber ?? 0;
             ApEconomy = snap?.Self?.ApEconomy;
             EffectiveUsefulApDemand = ResolveUsefulApDemand(snap, witnessedUsefulApDemand);
@@ -229,6 +235,7 @@ namespace Game.Ai.V2
 
             DestCommander = destArmy?.Commander ?? default;
             DestHeroCount = destArmy?.HeroCount ?? 0;
+            DestArmyId = destArmy?.ArmyId;
 
             IncomingAuraSynergy = ComputeIncomingAuraSynergy(
                 destArmy, ProjectedLine, plan, ExpectedCombatRounds);

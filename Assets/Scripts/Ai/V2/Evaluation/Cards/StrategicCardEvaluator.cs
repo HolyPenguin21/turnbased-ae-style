@@ -360,7 +360,8 @@ namespace Game.Ai.V2
             // off the SAME EffectEvaluationContext.ResolveDestination walk the ability registry uses
             // below, instead of re-walking snap.Self.Armies a second time (single-count invariant
             // extended to the destination-army lookup, not just the score terms).
-            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
+            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand,
+                demand?.AttackObjectiveHex);
             float roleFitCore = RoleFitCore(role, plan, inv, recceCard, heroCard,
                 pabil, ectx, 0f, equipUpgrade,
                 demand, referenceMoveMax, hasCompetingHeroDemand, projectedLegalFillers,
@@ -479,7 +480,8 @@ namespace Game.Ai.V2
                 requiredRecipient: deliveredDemand != null && deliveredDemand.Capability != CapabilityKind.CardUpgrade) : 0f;
 
             // Built before RoleFitCore — see ScoreForDemand's comment on the same ordering.
-            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
+            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand,
+                deliveredDemand?.AttackObjectiveHex);
             float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, ectx, versatility,
                 equipmentUpgrade, null, 0, false, projectedLegalFillers, out _, out string heroCmdDetail);
             // P1 ARCH — every ability-derived value comes from the registry as a per-axis

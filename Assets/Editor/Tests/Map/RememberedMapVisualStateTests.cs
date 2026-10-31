@@ -117,7 +117,7 @@ namespace Game.EditorTests
             army.Members.Add(new UnitData { Owner = enemy, Name = "Observed scout", HitPointsCurrent = 3 });
             controller.SetData(army);
             HumanVisualMemory.ObserveArmy(viewer, army, hex);
-            Call(selection, "UpdateRememberedArmyVisual", viewer, army, hex);
+            Call(selection, "UpdateRememberedArmyVisual", viewer, army);
             ArmyData frozenRoster = null;
             var memory = HumanVisualMemory.CaptureState(snapshot => { frozenRoster = snapshot; return "roster"; });
             var state = selection.CaptureRememberedVisuals(Encode);

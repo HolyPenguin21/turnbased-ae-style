@@ -186,7 +186,8 @@ namespace Game.Ai.V2
                         stacking: EffectStacking.Unique, stackingKey: "Bodyguard", bodyOnly: true),
                 },
                 // Structure suppression is an army support capability, with no generic field
-                // power bump. Its value requires a known hostile positive building defence.
+                // power bump. Its value is the known defence of the site the destination's Attack
+                // targets (EffectEvaluationContext.DisruptionSiteDefense; a live attachment: its fight).
                 [UnitAbilities.Disruption] = new[]
                 {
                     new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectDrillFit,

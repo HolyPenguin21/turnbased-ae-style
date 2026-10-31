@@ -148,7 +148,9 @@ namespace Game.Ai.V2
         }
 
         // Host bodies the target roster does not contain (multiset), weakest first. Heroes are
-        // the ATK-F03 excess-hero rule's business, never listed here.
+        // the ATK-F03 excess-hero rule's business, never listed here. An army support carrier
+        // (a Disruption body, StrategicEffectRegistry.IsArmySupportCarrier) still fills its own
+        // position but is never surplus: the power roster cannot see what it is worth.
         public static List<UnitData> NonTargetBodies(IReadOnlyList<StrikeRosterSlot> target,
             IEnumerable<UnitData> members)
         {
@@ -166,7 +168,7 @@ namespace Game.Ai.V2
                 string k = UnitKey(u);
                 if (k != null && need.TryGetValue(k, out int n) && n > 0)
                     need[k] = n - 1;
-                else
+                else if (!StrategicEffectRegistry.IsArmySupportCarrier(u))
                     surplus.Add(u);
             }
             surplus.Reverse();

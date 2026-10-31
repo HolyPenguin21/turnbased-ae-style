@@ -310,6 +310,16 @@ namespace Game.Ai.V2
                             * (targets.Count > 0 ? recovery / targets.Count : recovery);
                     }
                 }
+                else if (e.Context == StrategicEffectContext.BuildingDisruption && deployment == null)
+                {
+                    // A live attachment is priced against its own fight (`opposition`): that
+                    // fight's structure defence, unless another member of the host's army
+                    // already carries Disruption (the host's own is the "before" side).
+                    bool carried = army?.Members?.Any(u => u != host && DisruptionRules.IsCarrier(u)) == true;
+                    value = carried ? 0f : e.BaseFit * e.Magnitude * e.Probability
+                        * (opposition ?? System.Array.Empty<WorthIt.DefendingArmy>())
+                            .Select(o => Mathf.Max(0f, o.BuildingDefenseBonus)).DefaultIfEmpty(0f).Max();
+                }
                 else if (e.Context == StrategicEffectContext.FreeBattleSlots)
                     value = e.BaseFit * e.Magnitude * e.Probability * Mathf.Clamp01(
                         (deployment != null ? ctx.FreeBattleSlots

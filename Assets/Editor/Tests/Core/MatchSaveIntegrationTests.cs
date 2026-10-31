@@ -216,7 +216,7 @@ namespace Game.EditorTests
             var controller = armyArt.gameObject.AddComponent<ArmyController>(); Call(controller, "Awake");
             hiddenArmy.Controller = controller; controller.SetData(hiddenArmy);
             Call(oldSelection, "UpdateRememberedBuildingVisual", human, Hidden, buildingArt);
-            Call(oldSelection, "UpdateRememberedArmyVisual", human, hiddenArmy, Hidden);
+            Call(oldSelection, "UpdateRememberedArmyVisual", human, hiddenArmy);
             // Hidden world changes after the observation. The source captures the changed live
             // facts and the old renderer/sighting facts through their different owner APIs.
             building.Owner = ai; // Captured while hidden: retain the old owner's frozen flag.
