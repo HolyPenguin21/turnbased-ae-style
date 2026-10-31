@@ -167,8 +167,8 @@ def meta_for(source_name: str, output_name: str) -> bytes:
     guid = hashlib.md5(("army-destruction-" + output_name).encode()).hexdigest()
     text = re.sub(r"(?m)^guid: [0-9a-f]{32}$", "guid: " + guid, text)
     # Sheets are 1280x320: never downscale them to the marker's 256px import cap.
-    text = re.sub(r"(?m)^    maxTextureSize: \\d+$", "    maxTextureSize: 2048", text)
-    text = re.sub(r"(?m)^    textureCompression: \\d+$", "    textureCompression: 0", text)
+    text = re.sub(r"(?m)^    maxTextureSize: \d+$", "    maxTextureSize: 2048", text)
+    text = re.sub(r"(?m)^    textureCompression: \d+$", "    textureCompression: 0", text)
     return text.encode()
 
 
