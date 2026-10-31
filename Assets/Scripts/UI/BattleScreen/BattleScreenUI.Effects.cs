@@ -12,6 +12,10 @@ namespace Game.UI
     public partial class BattleScreenUI
     {
         // Locks result acknowledgements and the sequence of Explosion challenges, never playback.
+        // Keep secondary-hit gameplay and result screens; only their visual flipbooks are off.
+        // Change these flags if Splash/Scorcher artwork is approved again.
+        private const bool ShowSplashFlipbook = false;
+        private const bool ShowScorcherFlipbook = false;
         private bool _isPresentingAttack;
         private Coroutine _explosionAttackRoutine;
         private int _attackPresentationGeneration;
@@ -35,8 +39,19 @@ namespace Game.UI
         private void PlayAttackEffects(UnitData attacker, BattleAttackApplication application)
         {
             if (!HasInteractiveParticipant || application == null) return;
-            if (application.SecondaryHits.Count == 0 && !application.BerserkTriggered
-                && application.InterceptedBy == null && !application.ShockTriggered) return;
+            bool secondaryVisual = false;
+            foreach (var hit in application.SecondaryHits)
+            {
+                if (hit.BerserkTriggered ||
+                    (hit.Skill == UnitAbilities.Splash && ShowSplashFlipbook) ||
+                    (hit.Skill == UnitAbilities.Scorcher && ShowScorcherFlipbook))
+                {
+                    secondaryVisual = true;
+                    break;
+                }
+            }
+            if (!secondaryVisual && !application.BerserkTriggered &&
+                application.InterceptedBy == null && !application.ShockTriggered) return;
             var parent = gridContainer != null ? gridContainer.parent as RectTransform : transform as RectTransform;
             if (parent == null) return;
 
@@ -75,22 +90,27 @@ namespace Game.UI
                 duration = Mathf.Max(duration, BattleHealEffect.Duration);
             }
 
-            if (application.BerserkTriggered) Overlay(application.Victim, BattleHealEffect.DrillSpritePath);
+            if (application.BerserkTriggered) Overlay(application.Victim, BattleHealEffect.BerserkSpritePath);
             if (application.InterceptedBy != null) Overlay(application.InterceptedBy, BattleHealEffect.BodyguardSpritePath);
-            if (application.ShockTriggered) Overlay(attacker, BattleHealEffect.ShockSpritePath);
-            var source = application.SecondaryHits.Count > 0 ? Anchor(application.Victim) : null;
+            if (application.ShockTriggered) Overlay(application.Victim, BattleHealEffect.ShockSpritePath);
+            var source = (ShowSplashFlipbook || ShowScorcherFlipbook) && application.SecondaryHits.Count > 0
+                ? Anchor(application.Victim) : null;
             bool splashSourcePulse = true;
             foreach (var hit in application.SecondaryHits)
             {
-                var target = Anchor(hit.Victim);
-                if (source != null && target != null)
+                bool fire = hit.Skill == UnitAbilities.Scorcher;
+                bool enabled = fire ? ShowScorcherFlipbook : ShowSplashFlipbook;
+                if (enabled && source != null)
                 {
-                    bool fire = hit.Skill == UnitAbilities.Scorcher;
-                    BattleDamageFlipbook.Show(layer, source, target, fire, fire || splashSourcePulse);
-                    if (!fire) splashSourcePulse = false;
-                    duration = Mathf.Max(duration, BattleSkillFlipbook.Duration(fire));
+                    var target = Anchor(hit.Victim);
+                    if (target != null)
+                    {
+                        BattleDamageFlipbook.Show(layer, source, target, fire, fire || splashSourcePulse);
+                        if (!fire) splashSourcePulse = false;
+                        duration = Mathf.Max(duration, BattleSkillFlipbook.Duration(fire));
+                    }
                 }
-                if (hit.BerserkTriggered) Overlay(hit.Victim, BattleHealEffect.DrillSpritePath);
+                if (hit.BerserkTriggered) Overlay(hit.Victim, BattleHealEffect.BerserkSpritePath);
             }
             if (duration > 0f) _attackEffectLayers.Add((layer, Time.unscaledTime + duration));
             else { go.SetActive(false); Destroy(go); }
