@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Reflection;
 using Game.Map;
+using Game.Players;
 using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -64,6 +65,26 @@ namespace Game.EditorTests
             Assert.That(System.Array.Exists(renderers, r => r.sprite == _sprite), Is.True);
             Assert.That(effect.GetComponent<ArmyController>(), Is.Null,
                 "the visual echo must never become a selectable army");
+        }
+
+        [Test]
+        public void ViewerChangeBetweenBattleAndOutcomeCannotRevealOldMarker()
+        {
+            MapObjectVisual marker = CreateMarker();
+            var previousViewer = VisionSystem.CurrentViewer;
+            try
+            {
+                VisionSystem.CurrentViewer = new PlayerSetupData { PlayerId = "first" };
+                var captured = ArmyDestructionEffect.Capture(marker);
+                Assert.That(captured, Is.Not.Null);
+                VisionSystem.CurrentViewer = new PlayerSetupData { PlayerId = "second" };
+                ArmyDestructionEffect.Play(captured);
+                Assert.That(GameObject.Find("Army Marker Destruction"), Is.Null);
+            }
+            finally
+            {
+                VisionSystem.CurrentViewer = previousViewer;
+            }
         }
 
         [Test]
