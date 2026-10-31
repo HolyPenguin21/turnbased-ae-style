@@ -75,10 +75,9 @@ namespace Game.UI
             {
                 if (!AtlasFrames.TryGetValue(atlasPath, out frames) || frames == null)
                 {
-                    // RawImage.uvRect cropped a region of the GPU texture, making
-                    // only the high-contrast rings/streaks legible on the card.
-                    // An Image with a full 256x256 Sprite preserves the complete
-                    // foreground illustration, texture alpha and cell boundaries.
+                    // Render a complete 256x256 Sprite rather than sampling the
+                    // raw atlas through a scrolling UV rectangle. This makes each
+                    // frame's illustration and alpha a single stable UI graphic.
                     var sliced = new Sprite[FrameCount];
                     for (int i = 0; i < FrameCount; i++)
                     {
