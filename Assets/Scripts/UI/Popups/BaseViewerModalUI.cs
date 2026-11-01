@@ -197,7 +197,8 @@ namespace Game.UI
 
         private string FormatAbilities(IEnumerable<string> abilities)
         {
-            return gameConfig != null ? gameConfig.FormatAbilitiesDetailed(abilities) : string.Join(" ", abilities);
+            // Own text box: drop the leading blank line that separates blocks in the shared detail panels.
+            return gameConfig != null ? gameConfig.FormatAbilitiesDetailed(abilities).TrimStart('\n') : string.Join(" ", abilities);
         }
 
         public BaseUpgradeTier PeekNextUpgradeTier(BuildingData building)

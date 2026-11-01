@@ -168,7 +168,7 @@ MonoBehaviour:
   - tag: Scorcher
     title: 'Scorcher'
     abbreviation: ''
-    description: 'On a damaging hit, one random adjacent unit takes half the damage if it is Bio.'
+    description: 'On a damaging hit, one random orthogonally adjacent unit takes half the damage if it is Bio.'
   - tag: ShockAttack
     title: 'Shock Attack'
     abbreviation: 'Shock'
@@ -180,7 +180,7 @@ MonoBehaviour:
   - tag: Splash
     title: 'Splash'
     abbreviation: ''
-    description: 'On a damaging hit, up to 2 random adjacent units, allies included, take half the damage.'
+    description: 'On a damaging hit, up to 2 random orthogonally adjacent units, allies included, take half the damage.'
   - tag: Stealth4
     title: 'Stealth4'
     abbreviation: 'Stealth'

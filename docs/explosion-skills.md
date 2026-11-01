@@ -34,8 +34,8 @@ disposable. Innate Explosion abilities remain after a bomb's equipment-only abil
 are removed. EquipmentSystem's existing slot recomposition remains the only equipment
 consumption implementation.
 
-The tags are in the existing ability dropdown, ability catalog descriptions and
-GameConfig abbreviations. No scene/prefab wiring or image assets are required.
+The tags are in the existing ability dropdown, ability catalog (abbreviations and
+descriptions). No scene/prefab wiring or image assets are required.
 
 ## Resolution
 

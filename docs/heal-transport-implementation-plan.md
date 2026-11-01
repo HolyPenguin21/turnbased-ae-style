@@ -12,7 +12,7 @@ Approved behavior (2026-10-12):
 
 ## Implementation boundaries
 
-1. `UnitAbilities`, ability catalog, GameConfig abbreviations and authored faction cards.
+1. `UnitAbilities`, ability catalog (abbreviations, descriptions) and authored faction cards.
 2. `BattleEngine` owns live healing; shared `BattleSimulationKernel` owns eligibility selection and HP arithmetic. No gameplay mutation in UI refresh.
 3. `BattleAi` shadow HP and `WorthIt` roster simulations include the same ticks. Body-only commander snapshots carry passive healers, including secondary heroes; exact cache keys and combat viability fingerprints include them.
 4. `UnitData` keeps native speed separate from a transport pair and tracks spending across maximum changes. `ArmyData.Transport` owns stable assignment and read-only projected rosters. Transfer, deployment, death, imprisonment, attachment, registry and rollback boundaries refresh affected pairs.
