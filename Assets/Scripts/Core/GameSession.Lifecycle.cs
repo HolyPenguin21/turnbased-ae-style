@@ -17,7 +17,7 @@ namespace Game.Core
         public static MatchSessionStage Stage { get; private set; }
         public static MatchLaunchRequest PreparedLaunch { get; private set; }
         public static long Generation { get; private set; }
-        private static int? initializedScene;
+        private static ulong? initializedScene;
         public static bool IsCurrent(long generation) => Generation == generation && Stage != MatchSessionStage.Exiting;
         private static void CommitNewLaunch(List<PlayerSetupData> players, bool rewardsEligible)
         {
@@ -27,7 +27,7 @@ namespace Game.Core
         }
         // Generator and setup share this entry; repeated component activation does not reset
         // a world. A newly prepared request can reconstruct even in the same native scene.
-        public static void InitializeWorld(int sceneHandle)
+        public static void InitializeWorld(ulong sceneHandle)
         {
             if (initializedScene == sceneHandle && Stage != MatchSessionStage.Prepared) return;
             if (Stage == MatchSessionStage.Running || Stage == MatchSessionStage.Exiting
