@@ -659,7 +659,7 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 2
     defenseRating: 1
     range: 2
     hitPoints: 4
@@ -672,7 +672,6 @@ MonoBehaviour:
     unitTypeTags: 000000000300000007000000
     grantedAbilities:
     - CollectTech
-    - Repair
     resourceYield:
       human: 0
       energy: 0
@@ -814,7 +813,7 @@ MonoBehaviour:
     attack: 4
     defenseRating: 1
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
@@ -1008,7 +1007,7 @@ MonoBehaviour:
     attack: 4
     defenseRating: 2
     range: 2
-    hitPoints: 5
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -1016,7 +1015,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000005000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Hyperkinetic
     resourceYield:
       human: 0
       energy: 0
@@ -1552,7 +1552,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 010000000200000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - AA
     resourceYield:
       human: 0
       energy: 0
@@ -1793,7 +1794,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - ShockAttack
     resourceYield:
       human: 0
       energy: 0
@@ -2079,7 +2081,7 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 5
-    defenseRating: 3
+    defenseRating: 4
     range: 2
     hitPoints: 6
     initiative: 1
@@ -2520,7 +2522,7 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 6
-    defenseRating: 4
+    defenseRating: 2
     range: 2
     hitPoints: 9
     initiative: 1
@@ -2578,7 +2580,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Disruption
     resourceYield:
       human: 0
       energy: 0
@@ -2763,10 +2766,10 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 5
+    attack: 5
+    defenseRating: 3
     range: 1
-    hitPoints: 10
+    hitPoints: 12
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
@@ -2965,7 +2968,7 @@ MonoBehaviour:
     attack: 8
     defenseRating: 4
     range: 3
-    hitPoints: 12
+    hitPoints: 15
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
