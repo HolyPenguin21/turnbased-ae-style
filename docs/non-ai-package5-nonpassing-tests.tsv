@@ -1,0 +1,418 @@
+test	status	first_message
+Game.EditorTests.AiHeroDeckContentTests.ApprovedConcordThemesHaveTheirActualRequiredBodies	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.AiHeroDeckContentTests.BlueprintsHaveNoAiPointChargeAndEveryDeckKeepsTheFullFactionSet	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.AiHeroDeckContentTests.EveryHeroHasExactlyOneLegalNamedDeckWithEconomyAndRecon	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ArmyDestructionEffectTests.AccentKeepsFactionColorOnFirstFrameThenTurnsToAsh	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyDestructionEffectTests.BuiltInGroundAndAirMarkersUseActualBakedFrames("MapObject_Army_Air_Base","AirBase")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyDestructionEffectTests.BuiltInGroundAndAirMarkersUseActualBakedFrames("MapObject_Army_Air_FactionAccent","AirAccent")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyDestructionEffectTests.BuiltInGroundAndAirMarkersUseActualBakedFrames("MapObject_Army_Base","GroundBase")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyDestructionEffectTests.BuiltInGroundAndAirMarkersUseActualBakedFrames("MapObject_Army_FactionAccent","GroundAccent")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyDestructionEffectTests.CapturedArtStillPlaysAfterLiveArmyMarkerIsDestroyed	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyDestructionEffectTests.HiddenArmyCannotLeaveAnInformationLeakingDestructionEffect	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyDestructionEffectTests.ViewerChangeBetweenBattleAndOutcomeCannotRevealOldMarker	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyMovementOperationTests.ActivatedArmyOrderDoesNotCoverMembersThatJoinedAfterActivation	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ArmyMovementOperationTests.NewlyRevealedEnemyStopsFullyHiddenMover	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.AircraftReturnPreservesBothSlotsWithoutReattachingOrPayment	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.ConsumingEquipmentDoesNotSpendOrRefundBankResourcesOrReservedFunds	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(False,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(False,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(True,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(True,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.DevelopmentPortfolioProtectsAnotherOwnersHoldAcrossRecipientAlternatives	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.DevelopmentRecomputesMarginalValueAfterAnAttachmentInTheOtherSlot	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.DevelopmentRetainsRecipientAlternativesAndRefreshesBothSlots	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.HandAndLiveTransactionsAllowBothSlotsAndRejectOnlyTheOccupiedOne	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.HandCardRebindDuringAttachmentPreviewKeepsNewHostNameAndArt(Equipment)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.HandCardRebindDuringAttachmentPreviewKeepsNewHostNameAndArt(Mutator)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.LiveMutatorPublishesVisibilityAndContentThroughExistingRefreshPath	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.RepairAfterMaximumClampClearsOnlyHitPointConsumption	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,False,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,False,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,True,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,True,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,False,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,False,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,True,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,True,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentDoesNotPayForARecipientRemovedAfterPlanning(Equipment)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentDoesNotPayForARecipientRemovedAfterPlanning(Mutator)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Equipment,ActionPoints,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Equipment,Tech,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Equipment,Tech,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Mutator,ActionPoints,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Mutator,Tech,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Mutator,Tech,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.AttachmentSlotTests.AuthoredTwinSmgOverridesBeforeMutatorAttackAndPreservesWounds	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.AttachmentSlotTests.EveryPublishedAttachmentProjectsTheLiveResultWithWoundsAndEitherOtherSlot	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.BattleFastResolveTests.ClosingAutomaticChallenge_RestoresHumanDecisionRouting	Error	System.TypeLoadException : Runtime-implemented method with non-zero RVA.
+Game.EditorTests.BattleSkillEffectAtlasTests.AllFortyFramesTileThe1536By1024AtlasWithoutGaps	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleSkillEffectAtlasTests.AtlasRowsMatchApprovedTopDownLayout(Berserk,410,204)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleSkillEffectAtlasTests.AtlasRowsMatchApprovedTopDownLayout(Bodyguard,205,205)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleSkillEffectAtlasTests.AtlasRowsMatchApprovedTopDownLayout(Drill,614,205)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleSkillEffectAtlasTests.AtlasRowsMatchApprovedTopDownLayout(Heal,819,205)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleSkillEffectAtlasTests.AtlasRowsMatchApprovedTopDownLayout(Shock,0,205)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.BlockedShooter_UsesSideStepToReachFiringPosition	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.LiveAndProjectedMovement_ChooseTheSameCell(1)	Error	System.Reflection.TargetInvocationException : Exception has been thrown by the target of an invocation.
+Game.EditorTests.BattleTacticalParticipationTests.LiveAndProjectedMovement_ChooseTheSameCell(2)	Error	System.Reflection.TargetInvocationException : Exception has been thrown by the target of an invocation.
+Game.EditorTests.BattleTacticalParticipationTests.LiveAndProjectedMovement_ChooseTheSameCell(3)	Error	System.Reflection.TargetInvocationException : Exception has been thrown by the target of an invocation.
+Game.EditorTests.BattleTacticalParticipationTests.PureRangeThreeArtilleryCanDeployIntoOpeningRange	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TacticalProjections_DoNotMutateLiveStats	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(0)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(1)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(2)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(3)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(4)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(5)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(6)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.BattleTacticalParticipationTests.TwoEqualRangeTwoShooters_BothJoinTheOpeningLine(7)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.DisruptionTests.TerrainFormationAndOwnDefense_RemainInBreakdown	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.AuthoringValidationStillInvalidatesPreviouslyLoadedLookup	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.CallerOwnedListAndAssetArrayCannotMutateAcceptedEntries	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.EntrySnapshotsProtectTheListAndNestedArraysAndRemainHistorical	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.InvalidKeyOrDuplicateRejectsWholeReplacement("  ")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.InvalidKeyOrDuplicateRejectsWholeReplacement("")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.InvalidKeyOrDuplicateRejectsWholeReplacement("stable")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.InvalidKeyOrDuplicateRejectsWholeReplacement(null)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.NullOrThrowingInputLeavesLoadedAndSerializedStateIntact	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.ProgrammaticReplacementRefreshesLoadedKeysOnSameInstance	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.RepeatedReplacementFromSnapshotRetainsAuthoredKeysAndEmptyInputClearsLookup	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.GameAssetCatalogMutationTests.ReplacementPreservesTypedResolutionNullAssetsAndExactKeyIdentity	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.FogOverlayCoversTheSavedDecorativeCellsWithoutUsingCurrentSizeDefaults	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.GeneratedMapRetainsItsVisualLayoutAfterGeneratorIsRemoved	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.LayoutSnapshotsDoNotExposeTheirNestedArraysToCallers	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.RestoreDoesNotFallBackToAnotherBiomeWhenTheSavedPaletteIsMissing	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.RestoreRejectsIncompleteOrDuplicatedPlayableFootprints	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.RestoreRejectsMissingContentBeforeReplacingTheCurrentMap	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.RestoreRetainsComplexPartOrderRotationAndAnimationPhase	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.RestoreUsesCapturedMeshValuesAndDoesNotConsumeRandomNumbers	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.TextureKeysPreserveActualCellTexturesWhenVariantsAreReordered	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexMapLayoutTests.UnityJsonRoundTripPreservesPrimitiveLayoutForRestore	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexPathfinderAStarTests.AStarCostEqualsDijkstraCost_OnRandomTerrainWithWalls	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexPathfinderAStarTests.CachedRoutes_AfterBlockersAppearAndExpire_EqualFreshSearches	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexPathfinderAStarTests.CostTree_MatchesPointToPointRoutes_WithTheDestinationExemption	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexPathfinderAStarTests.MaxStepCost_NeverEntersCostlierTerrain_AndEqualsTheBlockedDijkstra	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexPathfinderTurnsTests.AvoidsWastingAPointBeforeACostTwoHex	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexPathfinderTurnsTests.ImpassableForThisMoverIsRoutedAround	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.HexPathfinderTurnsTests.NeverNeedsMoreTurnsThanTheCheapestRoute	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.AiEntryPointsDoNotStopMoveSpawnGuardOrConsumeLibrary	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.AuthoredLibraryHasThreeRealGuardVariantsAndNoFixedRewards	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.FailedDiskSaveDoesNotPublishReward	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.FailedHumanExplorationRemovesOnlyLibraryGuardBeforeAiArrival(False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.FailedHumanExplorationRemovesOnlyLibraryGuardBeforeAiArrival(True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.ForeignFactionCardIsPermanentlySavedWithoutChangingSavedDeck	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.FullCardsAndSystemCardsCannotBeChosen	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.HeroAndBlueprintUseExistingOneCopyLimits	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.HeroOnlyLibraryVisitorIsTheCaptureKillTarget	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.LibraryDoesNotConsumeOrRewriteMatchReward	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.LibraryGrantAddsSameCardToFullHandAndCollectionOnlyOnce	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.PendingLibraryClaimUsesExploreActionWithoutRespawningGuard	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.ReplayedLibraryVisitRestoresOriginalHandCardWithoutPermanentDuplicate	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.SharedNeutralCardIsEligibleAndCannotExceedItsLimit	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryCollectionRewardTests.SurvivingExplorerHeroStillFacesLibraryGuard	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.BackupRecoveryKeepsReceiptAndPermanentCopyTogether	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.CurrentSchemaMissingLedgerRecoversReceiptFromBackup	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.DuplicateReceiptsAndMalformedIdentitiesAreRejected	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.EmptyRewardIdentityCannotGrantOrCreateProfile(" ","3:1")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.EmptyRewardIdentityCannotGrantOrCreateProfile("","3:1")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.EmptyRewardIdentityCannotGrantOrCreateProfile("match"," ")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.EmptyRewardIdentityCannotGrantOrCreateProfile("match","")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.EmptyRewardIdentityCannotGrantOrCreateProfile("match",null)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.EmptyRewardIdentityCannotGrantOrCreateProfile(null,"3:1")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.EventReceiptDoesNotConsumeOrRepeatTheMatchReward	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.ExhaustedResultSurvivesReloadAndNewEligibleContent	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.FailedDiskWriteDoesNotPublishReceiptAndRetryGrantsOnce	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.FutureSchemaNeverFallsBackToAnOlderReceiptLedger	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.LegacyProfileMigrationRetainsOwnershipAndStartsAnEmptyLedger	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.MatchAndEventIdentitiesBothScopeTheReceipt	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.OverlongRewardIdentitiesAreRejectedBeforeAnyGrant	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.OversizedProfileWriteLeavesKnownGoodProfileIntact	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.ReceiptLimitRejectsNewGrantWithoutDiscardingOldReplay	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.ReplayKeepsExactResultAfterLimitAndEligibilityChange	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.ReplayingPreEventSaveReturnsExactCardWithoutSecondPermanentCopy	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.LibraryRewardReceiptTests.UnavailableSavedCardFailsWithoutRerollAndCanRetryWhenRestored	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MapPresentationRestoreTests.EventRebuildRemovesConsumedUnskippedAndMissingMarkers	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MapPresentationRestoreTests.EventRebuildRetainsMarkersWithoutLearningAnotherPlayersDiscovery	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MapPresentationRestoreTests.ResourceRebuildUsesRestoredBonusesIncludingPreviouslyEmptyHexes	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchCarrierDeckRestoreAuditTests.DecodeRejectsCarrierContainerLinkToAnUnrelatedEnemyArmy	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchCarrierDeckRestoreAuditTests.DecodeRejectsTransportArmyThatDoesNotContainItsPassenger	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchCarrierDeckRestoreAuditTests.RestoredReadyCarrierDeckRetainsControllerRequiredForFlightOrders	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchLoadoutStateTests.RestoredLoadoutUsesItsOwnStartingCardsAndBlueprintsAfterProfileDeckChanges	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchLoadoutStateTests.RestoringHumanAndAiHandsDoesNotDealOrConsumeRandomness	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchPresentationCodecTests.FrozenRendererRoundtrip_ReobservationRefreshesOriginalRendererRoles	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchPresentationCodecTests.FrozenRendererRoundtrip_UsesClonePoseTintSortingAndFlagFrame	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchPresentationCodecTests.JsonRoundtrip_RetainsIndependentHistoricalRosterAfterHiddenCapture	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchPresentationCodecTests.Validate_RejectsMissingAndDuplicateAppearanceBeforeKnowledgeMutation	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchPresentationCodecTests.Validate_RejectsNonfinitePoseAndUnissuedHistoricalIdentity	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.ActualStartGeometryCanLimitAnOrdinarySmallFourPlayerMapToThreeFarPoints	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.CrowdedMapReturnsOnlyLegalPointsAndTechNeverAddsExtraHexes	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.JointPlannerRetainsCompleteRichLayoutWhenIndependentFarQualityWouldBlockNearBands	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.NeutralProposalsImproveCoverageSpacingAndStartBalanceAtTheSameCount	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.PartialPlanRebuildsTypesForActualCountInsteadOfTruncatingQuotas	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.RegionalBudgetsAndActualQuotasPreserveEveryRareType	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.ResourcePassStampsExactRegionalPlanAndPreservesCitadelYields	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.ResourceWriteRefreshesVisibleKnowledgeWithoutVisionChangeOrHiddenLeak	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.SameTerrainAndCitadelsProduceManyDifferentLayouts	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.SingletonTypeAccessibilityImprovesAfterTypedAssignment	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchResourcePlacementTests.UnreachableAndAlreadyBonusedHexesAreExcludedWithoutMutation	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchRestoreIntegrationTests.FullInMemoryRestoreRebindsOwnersAndResumesWithoutNewTurnSideEffects	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchRestoreIntegrationTests.PrevalidationRejectsDetachedSourceWithoutReplacingTheOutgoingMatch	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchRestoreIntegrationTests.SceneFailureUsesActualCleanupRouteAndRetainsPermanentRewardReceipt(Knowledge)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchRestoreIntegrationTests.SceneFailureUsesActualCleanupRouteAndRetainsPermanentRewardReceipt(Presentation)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchRestoreIntegrationTests.SceneFailureUsesActualCleanupRouteAndRetainsPermanentRewardReceipt(Resume)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchRestoreIntegrationTests.SceneFailureUsesActualCleanupRouteAndRetainsPermanentRewardReceipt(World)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchRestorePreparationTests.ResumeKeepsRoundAndCompletedTurnsWithoutStartingNewTurn	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.BusyOperationsBlockSaveEvenWhenPresenterHidden	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.CaptureRejectsPendingOwnerOperationsBeforeWritingAnySlot("attachment")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.CaptureRejectsPendingOwnerOperationsBeforeWritingAnySlot("hand transition")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.CaptureRejectsPendingOwnerOperationsBeforeWritingAnySlot("movement")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.CaptureRejectsPendingOwnerOperationsBeforeWritingAnySlot("production")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.CaptureRejectsPendingOwnerOperationsBeforeWritingAnySlot("tactic challenge")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(ArmyOutsideMap)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(BadChecksum)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(BattleOutsideMap)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(BonusOutsideMap)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(BuildingOutsideMap)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(DanglingMember)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(DuplicateArmy)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(DuplicateCard)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(DuplicateJsonField)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(DuplicatePlayer)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(DuplicateUnit)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(EventOutsideMap)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(FutureVersion)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(InvalidHighWater)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(InvalidUtf8)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(LoadoutFactionMismatch)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(MissingAiEconomy)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(MissingCurrentViewer)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(MissingHumanEconomy)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(MissingHumanLoadout)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(MissingHumanQuota)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(MissingLivingOrder)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(MissingVisualCoverage)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(OldVersion)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(OnlyOneLivingPlayer)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(OverflowGeometry)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(PendingBlueprint)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(QuotaMismatch)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(Truncated)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(UnknownCard)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(UnknownTerrain)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(Unsettled)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(WrongContent)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(WrongCurrentPlayer)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedFilesFailBeforeReplacingSessionOrIssuingIds(WrongCurrentViewer)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DamagedPrimaryLoadsActualBackupButFutureVersionDoesNotFallBack	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.DetachedSourceExposesCopiesOfMapTurnAndIdentityRecords	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.FileRoundtripRestoresFreshGraphAndHistoricalVisualsThenContinues(False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.FileRoundtripRestoresFreshGraphAndHistoricalVisualsThenContinues(True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.SameRoundEliminatedPlayerRetainsItsOrderSlotAcrossActualFileCapture	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchSaveIntegrationTests.StaleCampaignDoesNotRecoverAnotherMatchOrQuarantineAnIntactPrimary	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchStateInventoryTests.NewGameBootstrapResetsOldWorldBeforeDefaultOrderMapVisuals	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchWorldCodecTests.HistoricalOnlyNeutralOwnerRetainsCanonicalIdentityWithoutWorldEntities	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchWorldCodecTests.JsonRoundTripKeepsAbsentAiHandAbsentAndRejectsDanglingOrDuplicateIdentities	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchWorldCodecTests.JsonRoundTripRetainsCanonicalHandsCardEvidenceActivationAndDetachedShells	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchWorldCodecTests.JsonRoundTripRetainsRawMovementCarrierGraphAndAttachmentAccounting	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchWorldCodecTests.LateValidationFailureDoesNotIssueIdsOrAlterLiveRegistries	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MatchWorldCodecTests.WorldImportRestoresQueuedReferencesBonusAaAndStealthWithoutRefills	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.MutatorContentTests.AllTwentyEnforceBioHostKindLimitsAndEconomy	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("adrenal-surge","MoveMax:2,HitPoints:1,Defense:-1","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("chameleon-tissue","MoveMax:-1,Defense:1,HitPoints:1","Stealth4")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("dermal-plating","Defense:1,HitPoints:1","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("enhanced-senses","Initiative:2,MoveMax:-1","r1s4,CeramicArmor")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("fortunate-genome","Fate:2","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("ghost-genome","Fate:1","Stealth4")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("hunter-genome","Fate:1","r1s4")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("hunter-glands","Defense:-1,Initiative:1","r1s4")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("hyper-regeneration","HitPoints:2","Regeneration")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("metabolic-overdrive","MoveMax:2,Defense:-1","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("neural-accelerator","Initiative:1,Defense:1,Attack:1","Counterattack")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("pain-suppression","HitPoints:3,Defense:1,MoveMax:-1","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("predator-reflexes","Range:1,HitPoints:1,MoveMax:-1","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("rapid-synapse","Defense:-1,MoveMax:1","RapidReaction")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("reactive-marrow","HitPoints:3","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("reflex-genome","Fate:1","RapidReaction")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("regenerative-culture","","Regeneration")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("reinforced-skeleton","Defense:2,HitPoints:1,Initiative:-1","")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("survivor-strain","Defense:2,MoveMax:-1,HitPoints:2","Regeneration,Berserk")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("wanderer-strain","MoveMax:2,Defense:-1,Attack:1","r1s4")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.AuthoredOrganicHeroesAcceptGenomeAndMechanicalHeroesRejectIt	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.FormatterShowsHostKindHiddenStatsAndCompleteResearchDescription	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.NeuralAcceleratorAddsDefenseAndInitiativeWithoutChangingActivation(0)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.NeuralAcceleratorAddsDefenseAndInitiativeWithoutChangingActivation(1)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.RealProductionEquipmentAndMutatorCoexistInEitherOrder(False)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.RealProductionEquipmentAndMutatorCoexistInEitherOrder(True)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("enhanced-senses")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("hunter-genome")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("hunter-glands")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("wanderer-strain")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.ResearchHasOnlyTwentySharedMutatorsAndProductionContainsPhysicalEquipment	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.MutatorContentTests.UnityImportsActualDefinitionsAndResolvesAllPlayableFactions	Error	System.NotSupportedException : Asset loading requires Unity Editor.
+Game.EditorTests.ProductionEquipmentContentTests.AntiAirAttachmentProvidesRadiusAndARealEntryReaction("AA Launcher")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AntiAirAttachmentProvidesRadiusAndARealEntryReaction("AA Mount")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Ceramic Vest","CeramicArmor")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Double Barrel","CriticalDamage")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Flame Projector","Scorcher")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Grenade Launcher","Splash")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Incendiary Rifle","Pyrokinetic")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Rail Rifle","Hyperkinetic")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Shock Rifle","ShockAttack")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredEquipmentCreatesANewCombatCacheEntryAndRepeatReadsIt("Ceramic Vest")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredEquipmentCreatesANewCombatCacheEntryAndRepeatReadsIt("Heavy MG")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredEquipmentCreatesANewCombatCacheEntryAndRepeatReadsIt("Mortar Rack")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.AuthoredProjectionMatchesLiveApplyAndDoesNotMutateTheDefinition()	Invalid	System.Reflection.TargetInvocationException : Exception has been thrown by the target of an invocation.
+Game.EditorTests.ProductionEquipmentContentTests.CatalogContainsAllPhysicalEquipmentAndNoResearchMutators	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.DisposableWeaponCannotInheritAnOldWarheadAndConsumptionRestoresBothSlots("Air Bomb 5")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.DisposableWeaponCannotInheritAnOldWarheadAndConsumptionRestoresBothSlots("Air Missile")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.DisposableWeaponCannotInheritAnOldWarheadAndConsumptionRestoresBothSlots("Infantry Missile")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.DisposableWeaponCannotInheritAnOldWarheadAndConsumptionRestoresBothSlots("Vehicle Missile")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.EquipmentAndMutatorCoexistInBothInstallationOrders(False)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.EquipmentAndMutatorCoexistInBothInstallationOrders(True)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.EveryWeaponHasOwnAttackAndRangeOnEveryCompatibleHostAndMutator	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("AA Mount")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Dozer Blade")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Flame Projector")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Mortar Rack")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Rail Cannon")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Siege Ram")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.HeavyMgOverridesAttackAndEvaluatorPreservesTheSignedDelta(3,True)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.HeavyMgOverridesAttackAndEvaluatorPreservesTheSignedDelta(7,False)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.InfantryAddonsPreserveExistingWeaponAndUtilityAbilities("Assault Conversion Kit")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.InfantryAddonsPreserveExistingWeaponAndUtilityAbilities("Dozer Blade")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.InfantryAddonsPreserveExistingWeaponAndUtilityAbilities("Mobility Harness")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.InfantryAddonsPreserveExistingWeaponAndUtilityAbilities("Optical Scope")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.LateWeaponReferenceUtilityPricesTheFirstAttackOnly	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.LateWeaponsUseExistingExplosionAndConsumptionRulesWithDistinctHosts	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.MintedEquipmentPaysNoSecondResourceStakeAndReservesOnlyItsPlayAp()	Invalid	System.Reflection.TargetInvocationException : Exception has been thrown by the target of an invocation.
+Game.EditorTests.ProductionEquipmentContentTests.NuclearEngineKeepsAircraftCompatibility	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Assault Conversion Kit",5,4,12,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Assault Rifle Kit",6,3,10,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Ballistic Shield",5,4,10,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Dozer Blade",6,4,10,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Flame Projector",6,3,10,6,1)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Heavy MG",5,3,10,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Marksman Rifle",4,3,10,6,3)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Mobility Harness",5,3,10,7,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Mortar Rack",5,3,10,5,3)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Optical Scope",5,3,10,6,3)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Plasma Gun",8,3,10,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Portable Mortar",4,3,10,5,3)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Reactive Armor",5,5,10,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Recoil Cannon",7,3,10,5,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Reinforced Chassis",5,3,12,6,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Shotgun",6,3,10,6,1)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Siege Ram",7,3,10,6,1)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Turbocharger",5,3,10,7,2)	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.TwinSmgUsesCanonicalCriticalMultiplierAndRetainsItsMeleeTradeoff	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.UnityCatalogResolvesFortySevenCardsWithBothSpriteReferencesForAllFactions	Error	System.NotSupportedException : Asset loading requires Unity Editor.
+Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Heavy MG")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Marksman Rifle")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Plasma Cannon")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Plasma Gun")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Rail Rifle")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Shotgun")	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.RememberedMapVisualStateTests.DestroyedHiddenArmyRestoresItsFrozenRosterAndPerHexMarkerIndex	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.RememberedMapVisualStateTests.HiddenBuildingRestoresHistoricalColorAndFlagAfterUnseenChangeOrDestruction(False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.RememberedMapVisualStateTests.HiddenBuildingRestoresHistoricalColorAndFlagAfterUnseenChangeOrDestruction(True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.RememberedMapVisualStateTests.HiddenDepartureProjectsFrozenAppearanceWithoutReadingChangedLiveMarker	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.RememberedMapVisualStateTests.MissingOrLiveAppearanceIsRejectedWithoutInventingKnowledge	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.AlternateSameOwnerRootCannotFundAttempt	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.ExpectedCostCannotFundAnUnaffordableSuccessfulChain	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.FreeLostAttachmentAttemptStillInvalidatesTheDecisionSnapshot	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.GeneratedNonCombatAlsoRequiresTheFullChainBeforePayment	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.GenerationRechecksApReservationsBeforePayment(EconomyBuildCompletion,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.GenerationRechecksApReservationsBeforePayment(EconomyBuildCompletion,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.GenerationRechecksApReservationsBeforePayment(StrategicReactionPass,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.GenerationRechecksApReservationsBeforePayment(StrategicReactionPass,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.HumanBlueprintQuotaRejectsDirectBypassAndAllowsUnlimitedRealAttempts	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.HumanWithoutSelectedLoadoutHasNoOffersAndCannotPay(Production)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.HumanWithoutSelectedLoadoutHasNoOffersAndCannotPay(Research)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.PaidAiAttachmentAttemptEntersHistoryOnceOnWinOrLoss(Equipment,0,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.PaidAiAttachmentAttemptEntersHistoryOnceOnWinOrLoss(Equipment,6,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.PaidAiAttachmentAttemptEntersHistoryOnceOnWinOrLoss(Mutator,0,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.PaidAiAttachmentAttemptEntersHistoryOnceOnWinOrLoss(Mutator,6,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.RecipientAttachmentIdentityIsAnExactStableAdmissionInput(Equipment)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.RecipientAttachmentIdentityIsAnExactStableAdmissionInput(Mutator)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.RejectedAiAttachmentAttemptDoesNotEnterHistory	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.RemovedCatalogOfferRejectsBeforePayment	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.ResearchAttemptRevalidatesRevealsAndPaysAsOneCommit	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.StaleGeneratedAttachmentRejectsBeforePaymentOrHistory(Equipment,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.StaleGeneratedAttachmentRejectsBeforePaymentOrHistory(Equipment,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.StaleGeneratedAttachmentRejectsBeforePaymentOrHistory(Mutator,False)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.StaleGeneratedAttachmentRejectsBeforePaymentOrHistory(Mutator,True)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.UnaffordableAttemptDoesNotPartiallyRevealOrPay	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.UnselectedBlueprintCannotBeOfferedOrPaidInEitherFacility(Production)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.ResearchProductionAttemptTransactionTests.UnselectedBlueprintCannotBeOfferedOrPaidInEitherFacility(Research)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.CheapestScoutIsGuaranteedAndEverySlotCanReceiveIt	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.EmptyAndScoutFreeDecksRemainSafeAndDoNotInventCards	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.EqualApPrefersLowerResourceCost	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.EqualCostScoutsAreBothEligible	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.EveryAuthoredAiOpeningRespectsPoolCapacityAndBlueprints(Ashen,"ashen.card.hooded")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.EveryAuthoredAiOpeningRespectsPoolCapacityAndBlueprints(IronConcord,"concord.card.scout")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.EveryAuthoredAiOpeningRespectsPoolCapacityAndBlueprints(Vessels,"vessels.10.whisper-scout")	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.HeroesAircraftBuildingsAndImmobileUnitsCannotReplaceTheOpeningGroundScout	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.NonPositiveHandSizeDoesNotConsumeAnyCards(-1)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.NonPositiveHandSizeDoesNotConsumeAnyCards(0)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.RapidReactionUsesTheActualDeployApRule	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.ReserveRapidHeroAddsOneRapidHeroOnlyWhenRequested	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.ScoutSelectionDoesNotIssueCardRuntimeIdentities	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.SelectedHumanLoadoutAndEveryAiFactionUseTheOpeningScoutRule(Ashen)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.SelectedHumanLoadoutAndEveryAiFactionUseTheOpeningScoutRule(IronConcord)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.SelectedHumanLoadoutAndEveryAiFactionUseTheOpeningScoutRule(Vessels)	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.ShortDeckPreservesDuplicateCopies	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.StartingHandTests.VisionOnlyGroundScoutIsEligible	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TacticChallengeTests.AuthoredCards_AreFreeEventRewardsOutsideTheDeck_AndLoadWithExistingContent	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.TerrainComplexTests.AirCostDoesNotReuseGroundRouteCache	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.AnimatedPartsStaySynchronousWithoutChangingMapRevision	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.AnimationClockLoopsSevenFramesAndSupportsPhaseOffset	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.AuthoredFootprintIsTranslatedWithoutRotation	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.CenterBandKeepsEveryCellInsideItAndOffTheEdgeMargin	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.CloseGroundPassRestoresSiegeAndDefenderPin	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ComplexThatCutsNarrowBridgeIsRejected	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ComplexTotalIsSplitByTemplateShares	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.CurrentGroundContactAcrossSnakeIsNotSiegeButAirIs	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.DisabledTemplateRemainsStructurallyValidButCannotBePlaced	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.EmptyAndOversizedFootprintsRemainInvalid	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ExclusiveGroupKeepsExactlyOneAlternativeAtEvenOdds	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ForbiddenDestinationCannotBeExemptedByThreatBlocker	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ForwardAndReverseGroundFieldsExcludeObstacles	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.GeneratorPublishesMatchingRotatedTerrainAndMeshUsingOriginalTextures	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.GroundCannotEnterButAirCan	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.GroundPathDetoursButAirPathRemainsFlat	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.GroundRetreatFailsWhenEveryNeighborIsImpassable	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.GroundRouteCacheInvalidatesWhenTerrainChanges	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.HistoricalContactMayAdvanceAndUnreachableOriginDoesNotRemoveRisk	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ImpassableComplexesNeverTouchEachOther	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ImpassableTerrainProducesNoResourcesEvenWithBonus	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.InvalidDisconnectedOrDuplicateShapesRejected	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.LakeDoesNotKeepHomeGapOrShoreInformationAlive	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.MeshRotationChangesOnlyUvsAndKeepsGlobalPartAlignment	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.MissingComplexListsResolveToEmptyForBothBiomes	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.MovementFactsSurviveReconHistoryAndChangeThreatRefreshKey	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.OldTerrainIncludingMountainsRemainsPassable	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.OutOfMapPairRejectedAtomically	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.OverlapRejectsWholeComplex	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.PairAcceptedAndValidationDoesNotMutateData	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ProtectedTerrainIsNotOverwritten	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.PublishedLayoutRejectsDataOnlyTerrainMutation	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ReservedCellRejectsWholeComplex	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.RotatedFootprintChecksProtectedCellsAndRejectsAtomically	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.RotationChoiceIsUniformAndDoesNotChangeFamilyWeights	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ScoutEstimatorDoesNotReplaceUnreachableRouteWithStraightDistance	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.SingleHexAcceptedWithoutChangingAssignment	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.SingleHexBubbleAnimationUsesOneMaterialAndLoops	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.SingleHexStillRejectsProtectedCellsAndBrokenConnectivity	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.SixRotationsPreservePartOrderAndReturnToAuthoredFootprint	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.StaleMovementRouteDoesNotSpendMovementOrEnterObstacle	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.TerrainMutationBumpsRevisionIncludingMutatedSharedEntry	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.UnequalAnimationSequencesRejected	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.WallMakesGroundTargetUnreachable	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.TerrainComplexTests.ZeroComplexCountPlacesNoComplexes	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.UnitAbilityCatalogTests.AuthoredCatalog_CoversEveryTag_SortedByTitle_WithDescriptions	Error	System.InvalidOperationException : Sequence contains no matching element
+Game.EditorTests.UnitAbilityCatalogTests.Format_UsesAbbreviationOrTitle_AndDetailedBlocks	Error	System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.VisibleHexMutationNotificationTests.FacilityPlacementRefreshesVisibleBuildingSlotsWithoutVisionChange	Error	TearDown : System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.VisibleHexMutationNotificationTests.RepairOnVisibleHexRefreshesObservedHpWithoutRevealingOthers	Error	TearDown : System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.VisibleHexMutationNotificationTests.TransferWithinVisibleHexPublishesFinalRosterOnce	Error	TearDown : System.NullReferenceException : Object reference not set to an instance of an object.
+Game.EditorTests.WorldMutationContractTests.BadSubscriberDoesNotStarveLaterWitnesses	Error	System.NotSupportedException : Native log expectations require Unity Test Framework.
+Game.EditorTests.WorldMutationContractTests.SubscriberExceptionCannotLeaveCapturedBaseVisionUncommitted	Error	System.NotSupportedException : Native log expectations require Unity Test Framework.
+Game.EditorTests.WorldStatePreparationTests.EconomyRestorePreservesContributionOrderWithoutBuyingOrPublishingChanges	Error	System.NullReferenceException : Object reference not set to an instance of an object.

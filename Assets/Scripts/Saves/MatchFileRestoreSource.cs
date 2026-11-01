@@ -20,7 +20,7 @@ namespace Game.Saves
         private readonly MatchWorldGraph graph;
         private readonly GameConfig config;
         private HexMap restoredMap;
-        private bool worldRestored, knowledgeRestored, presentationRestored;
+        private bool consumed,worldRestored,knowledgeRestored,presentationRestored;
         internal MatchFileRestoreSource(MatchSaveData data, GameConfig config)
         {
             this.data = data;
@@ -41,13 +41,14 @@ namespace Game.Saves
         public void Validate(GameConfig requestedConfig)
         {
             if (requestedConfig != config) throw new ArgumentException("Saved match configuration changed after validation.");
-            if (worldRestored) throw new InvalidOperationException("This saved match source has already been consumed.");
+            if (consumed) throw new InvalidOperationException("This saved match source has already been consumed.");
             // Revalidate current campaign/profile compatibility before replacing the scene.
             if (!CampaignMatchBridge.CanRestoreContext(CampaignContext, out var error)) throw new ArgumentException(error);
         }
         public void RestoreWorld(HexMap map)
         {
-            if (!MatchRestoreScope.IsRestoring || worldRestored) throw new InvalidOperationException("Invalid world restore stage.");
+            if (!MatchRestoreScope.IsRestoring || consumed) throw new InvalidOperationException("Invalid world restore stage.");
+            consumed=true;
             graph.RestoreWorld(map); restoredMap = map; worldRestored = true;
         }
         public void RestoreKnowledge()
@@ -61,6 +62,7 @@ namespace Game.Saves
         public void RestorePresentation(HexSelectionController selection)
         {
             if (!knowledgeRestored || presentationRestored || !MatchRestoreScope.IsRestoring) throw new InvalidOperationException("Invalid presentation restore stage.");
+            graph.BindPresentation(restoredMap);
             MatchPresentationCodec.RestorePresentation(data.presentation, selection, config, graph.Player);
             presentationRestored = true;
         }

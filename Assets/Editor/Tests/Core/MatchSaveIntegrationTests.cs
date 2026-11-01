@@ -505,7 +505,10 @@ namespace Game.EditorTests
             var players = GameSession.Players; var hand = outgoingHuman.Hand;
             var before = MatchIdentityState.Capture();
             store.Save(0, DamageFile(saved, damage));
-            Assert.That(() => store.Load(0, bytes => MatchSaveCodec.Decode(bytes, config), out _), Throws.Exception);
+            int navigations=0;
+            var application=new MatchSaveApplication(Path.Combine(profileDirectory,"matches"),config,outgoingMap,outgoingTurns,outgoingSelection,_=>navigations++);
+            Assert.That(()=>application.Load(0),Throws.Exception);Assert.That(navigations,Is.Zero);
+            Assert.That(outgoingTurns.CanSaveMatch(out _),Is.True);
             Assert.That(GameSession.Players, Is.SameAs(players)); Assert.That(GameSession.FindHumanPlayer().Hand, Is.SameAs(hand));
             Assert.That(GameSession.MatchId, Is.EqualTo("native-file-match")); Assert.That(GameSession.PendingRestore, Is.Null);
             Assert.That(ArmyRegistry.AllAt(Home).Single(), Is.SameAs(outgoingArmy));
@@ -588,6 +591,14 @@ namespace Game.EditorTests
             Assert.That(File.ReadAllBytes(SlotPath(0) + ".bak"), Is.EqualTo(backup));
             Assert.That(GameSession.FindHumanPlayer(), Is.SameAs(outgoingHuman));
             Assert.That(GameSession.PendingRestore, Is.Null); AssertCounters(before);
+        }
+
+        [Test] public void BusyOperationsBlockSaveEvenWhenPresenterHidden()
+        {
+            CaptureFile();var popup=Child("hidden event choice").AddComponent<EventChoicePopupUI>();Set(outgoingTurns,"eventChoicePopup",popup);
+            popup.Show(outgoingArmy,new HexEventRegistry.Entry{Definition=new EventDefinition()},()=>{},()=>{});popup.enabled=false;
+            Assert.That(popup.IsShowing,Is.False);Assert.That(outgoingTurns.CanSaveMatch(out _),Is.False);
+            popup.Hide();Assert.That(outgoingTurns.CanSaveMatch(out _),Is.True);
         }
 
         [TestCase("attachment")]

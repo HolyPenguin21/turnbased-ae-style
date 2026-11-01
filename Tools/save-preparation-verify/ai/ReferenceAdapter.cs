@@ -26,6 +26,12 @@ static class ReferenceAdapter
                     int offset = table + row * size;
                     int rva = BitConverter.ToInt32(bytes, offset);
                     ushort flags = BitConverter.ToUInt16(bytes, offset + 4);
+                    ushort methodFlags=BitConverter.ToUInt16(bytes,offset+6);
+                    if(rva!=0&&(methodFlags&(ushort)MethodAttributes.Abstract)!=0)
+                    {
+                        ushort managed=(ushort)(methodFlags&~(ushort)MethodAttributes.Abstract);
+                        bytes[offset+6]=(byte)managed;bytes[offset+7]=(byte)(managed>>8);
+                    }
                     if (rva != 0 && (flags & (ushort)MethodImplAttributes.InternalCall) != 0)
                     {
                         ushort managed = (ushort)(flags & ~(ushort)MethodImplAttributes.InternalCall);

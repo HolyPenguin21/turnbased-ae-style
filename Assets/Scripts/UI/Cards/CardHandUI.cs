@@ -458,6 +458,8 @@ namespace Game.UI
         // Hide()/Show() cycle mid-AI-turn used to null it, leaving the debug hand and both
         // counters frozen for the rest of that player's turn. Released in HideAiHandDebug /
         // OnDestroy / the next ShowAiHandDebug instead.
+        internal void CancelForExit()
+        { CancelAttachMode();ResetTacticPresentation();StopAllCoroutines(); }
         private void OnDisable()
         {
             _handEnabled = false;

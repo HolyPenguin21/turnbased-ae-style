@@ -20,7 +20,7 @@ namespace Game.Turns
         {
             HasMatch=!string.IsNullOrWhiteSpace(GameSession.MatchId)&&TurnNumber>0,
             HumanTurn=CurrentPlayer!=null&&CurrentPlayer.IsHuman&&!CurrentPlayer.IsEliminated,
-            TurnConfirmed=TurnConfirmed&&!_turnConfirmationInProgress,
+            TurnConfirmed=TurnConfirmed&&!_turnConfirmationInProgress&&Phase==StrategicTurnPhase.Ready,
             GameOver=_gameOver,Restoring=MatchRestoreScope.IsRestoring||GameSession.PendingRestore!=null,
             Combat=(battleScreen!=null&&battleScreen.HasUnsettledEncounter)||(battleContactPopup!=null&&battleContactPopup.HasPendingDecision)
                 ||(hexSelectionController!=null&&(hexSelectionController.IsBattleActive||
@@ -60,7 +60,8 @@ namespace Game.Turns
             state.Validate(players.Select(p => p.PlayerId), human?.PlayerId);
             if (human.IsEliminated) throw new ArgumentException("Cannot resume an eliminated human player.");
             var byId = players.ToDictionary(p => p.PlayerId, StringComparer.Ordinal);
-            matchStarted = true; matchGeneration = GameSession.Generation;
+            if(exiting)throw new InvalidOperationException("Cannot resume an outgoing scene controller.");
+            matchStarted = true;Phase=StrategicTurnPhase.Ready; matchGeneration = GameSession.Generation;
             TurnNumber = state.Round;
             CurrentTurnOrder = state.PlayerOrder.Select(id => byId[id]).ToList();
             _currentPlayerIndex = state.CurrentPlayerIndex;

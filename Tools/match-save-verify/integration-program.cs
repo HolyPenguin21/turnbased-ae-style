@@ -119,7 +119,9 @@ internal static class IntegrationProgram
             var source=store.Load(3,data=>MatchSaveCodec.Decode(data,config),out string notice);SameIds(identity);
             Check(notice==null && ReferenceEquals(GameSession.FindHumanPlayer(),human),"read modified current session");
             Check(!ReferenceEquals(source.Players.Single(p=>p.IsHuman),human),"decoded player aliases current graph");
-            Check(GameSession.TryPrepareRestore(source,config,out string error),error);
+            int transitions=0;
+            new MatchSaveApplication(directory,config,map,turns,selection,scene=>{Check(scene==SceneNames.Game,"wrong scene");transitions++;}).Load(3);
+            source=GameSession.PendingRestore;Check(transitions==1&&source!=null,"load request/transition mismatch");
             var incoming=Map(config,source.Map);var incomingSelection=IntegrationNative.New<HexSelectionController>();Set(incomingSelection,"map",incoming);Set(incomingSelection,"gameConfig",config);
             var incomingTurns=Turns(config,incomingSelection);
             var setup=IntegrationNative.New<CitadelSetupController>();Set(setup,"map",incoming);Set(setup,"gameConfig",config);Set(setup,"turnController",incomingTurns);Set(setup,"hexSelectionController",incomingSelection);
@@ -145,6 +147,7 @@ internal static class IntegrationProgram
             human.Hand.RemoveCard(human.Hand.Hand.Single());unit.RestoreMovementSpent(0);
             OperationContinuationWindow.HoldMobilization(restoredAi,99);
             oldHuman=human;oldHand=human.Hand;oldArmy=army;
+            turns=incomingTurns;selection=incomingSelection;map=incoming;
         }
         Check(File.ReadAllBytes(Path.Combine(directory,"slot-3.json")).SequenceEqual(bytes),"live continuation rewrote immutable saved file");
         // A valid file can become unavailable because the durable campaign moved on.
@@ -192,9 +195,28 @@ internal static class IntegrationProgram
             store.Save(10,damaged); // no valid backup can mask a bad primary
             string backup=Path.Combine(directory,"slot-10.json.bak");if(File.Exists(backup))File.Delete(backup);
             var currentPlayers=GameSession.Players;identity=MatchIdentityState.Capture();bool rejected=false;
-            try{store.Load(10,b=>MatchSaveCodec.Decode(b,config),out _);}catch{rejected=true;}
+            int navigations=0;
+            try{new MatchSaveApplication(directory,config,map,turns,selection,_=>navigations++).Load(10);}catch{rejected=true;}
+            Check(navigations==0&&turns.CanSaveMatch(out _),"failed preflight stopped live turn");
             Check(rejected,"accepted "+damage);Check(ReferenceEquals(GameSession.Players,currentPlayers) && ArmyRegistry.IsRegistered(army) && GameSession.PendingRestore==null,"rejection replaced current session");SameIds(identity);checks++;Console.WriteLine("PASS reject "+damage+" before session and ID changes");
         }
+        var slotsApp=new MatchSaveApplication(directory,config,map,turns,selection,_=>{});
+        store.Save(21,bytes);store.Save(21,bytes);File.Delete(Path.Combine(directory,"slot-21.json"));
+        var backupSlot=slotsApp.ListSlots().Single(s=>s.Id==21);
+        Check(backupSlot.Occupied&&backupSlot.Notice!=null&&backupSlot.Error==null,"backup-only DTO lost metadata");
+        slotsApp.Delete(21);Check(!slotsApp.Exists(21),"backup-only delete retained slot");
+        checks++;Console.WriteLine("PASS backup-only application DTO/delete");
+        var savedQuota=human.BlueprintQuota;
+        human.BlueprintQuota=BlueprintQuota.FromState(new BlueprintQuotaState{unlockedKeys=new List<string>{"pending"},pendingKeys=new List<string>{"pending"}});
+        Check(!turns.CanSaveMatch(out _),"pending model blueprint permitted capture");human.BlueprintQuota=savedQuota;
+        checks++;Console.WriteLine("PASS model-owned blueprint blocks capture");
+        var modal=IntegrationNative.New<Game.UI.ArmyViewerModalUI>();Set(modal,"_draggingCard",IntegrationNative.New<Game.UI.ArmyUnitCardUI>());
+        Set(turns,"armyViewerModal",modal);Check(!turns.CanSaveMatch(out _),"hidden roster drag permitted capture");Set(turns,"armyViewerModal",null);
+        checks++;Console.WriteLine("PASS hidden roster card operation blocks capture");
+        var choice=IntegrationNative.New<Game.UI.EventChoicePopupUI>();
+        choice.Show(army,new HexEventRegistry.Entry{Definition=new EventDefinition()},()=>{},()=>{});
+        Set(turns,"eventChoicePopup",choice);Check(!turns.CanSaveMatch(out _),"hidden decision permitted capture");Set(turns,"eventChoicePopup",null);
+        checks++;Console.WriteLine("PASS hidden decision blocks capture");
         var phaseTurns=Turns(config,selection);
         var dead=new PlayerSetupData {PlayerId="skipped",IsEliminated=true};
         var next=new PlayerSetupData {PlayerId="next-human",IsHuman=true};

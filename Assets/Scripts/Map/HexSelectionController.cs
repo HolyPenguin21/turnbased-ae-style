@@ -185,6 +185,12 @@ namespace Game.Map
             RefreshAllVisibility();
         }
 
+        internal void CancelForExit()
+        {
+            CancelResearchProduction();StopResidentContactPump();_revealedArmyContacts.Clear();
+            AviationCombatPresenter?.CancelForExit();
+            StopAllCoroutines();
+        }
         private void OnDisable()
         {
             CancelResearchProduction();

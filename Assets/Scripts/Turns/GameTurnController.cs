@@ -308,17 +308,24 @@ namespace Game.Turns
         // HandleBuildingOnArmyDefeat — rather than destroyed; see the user's own Siege spec).
         // Blocks any further turn advancement once true.
         private bool _gameOver;
+        private bool exiting;
+        public StrategicTurnPhase Phase {get;private set;}
 
         // Scene loading completes later. Disable the outgoing scene before its static world
         // is cleared: owners cancel movement/transactions in OnDisable and Unity stops their
         // coroutines. PlayerRoot data stays alive for the final statistics snapshot.
         internal void PrepareForExit()
         {
+            if(exiting)return;exiting=true;GameSession.BeginExit();Phase=StrategicTurnPhase.Exiting;
             _gameOver = true;
             TurnConfirmed = false;
             CurrentPlayer = null;
             _inputBlocked = true;
             _cardDraggingBlocked = true;
+            StopAllCoroutines();
+            Game.Setup.MatchStateInventory.CancelWorldOperations();
+            hexSelectionController?.CancelForExit();battleScreen?.CancelForExit();cardHand?.CancelForExit();
+            popupPanel?.Hide();eventChoicePopup?.Hide();eventRewardPopup?.Hide();battleContactPopup?.Hide();
             foreach (GameObject root in gameObject.scene.GetRootGameObjects())
                 root.SetActive(false);
         }
@@ -410,7 +417,7 @@ namespace Game.Turns
             if (survivors.Count > 1)
                 return;
 
-            _gameOver = true;
+            _gameOver = true;Phase=StrategicTurnPhase.Finished;
             // Result/reward subscribers can return to another scene synchronously. Finish
             // metrics before publishing the result so exit cleanup cannot label it stopped.
             Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);
@@ -512,7 +519,7 @@ namespace Game.Turns
             if (matchStarted) return;
             InitializeNewMatchState();
             matchStarted = true; matchGeneration = GameSession.Generation;
-            GameSession.MarkRunning();
+            GameSession.MarkRunning();Phase=StrategicTurnPhase.PreparingRound;
             InitializeMatchPresentation();
             MapObservationSystem.ObserveAllViewers();
             TurnNumber = 0;
@@ -586,6 +593,7 @@ namespace Game.Turns
             if (_gameOver)
                 return;
 
+            Phase=StrategicTurnPhase.ResolvingDelayedBattles;
             // BeginPlayerTurn's own ShowForOther(null) ("Current turn: Neutral") is still up
             // from Neutral's pass and has no Confirm button to dismiss it — left showing, it
             // sits on top of (or blocks input behind) whatever ResolveDelayedBattlesThen is
@@ -763,8 +771,10 @@ namespace Game.Turns
             if (_gameOver)
                 return;
 
+            Phase=StrategicTurnPhase.PreparingRound;
             TurnNumber++;
             TurnStarted?.Invoke(TurnNumber);
+            if(_gameOver||!GameSession.IsCurrent(matchGeneration))return;
             Game.Ai.AiMatchStats.OnRoundStarted(TurnNumber);
             CurrentPlayer = null; // no one's turn during the tokens-off itself
             TurnStateChanged?.Invoke();
@@ -790,11 +800,12 @@ namespace Game.Turns
             Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
                 activePlayers, map, startingDeckCatalog, TurnNumber);
 
+            Phase=StrategicTurnPhase.AwaitingOrder;
             long generation = matchGeneration;
             bool resolved = false;
             turnOrderPopup.Show(activePlayers, order =>
             {
-                if (resolved || _gameOver || !GameSession.IsCurrent(generation)) return;
+                if (resolved || _gameOver || Phase!=StrategicTurnPhase.AwaitingOrder || !GameSession.IsCurrent(generation)) return;
                 resolved = true; OnTurnOrderResolved(order);
             });
         }
@@ -816,6 +827,7 @@ namespace Game.Turns
             if (_gameOver)
                 return;
 
+            Phase=StrategicTurnPhase.StartingPlayer;
             // Expiry forgets enemies out of view; what is still visible is observed again at
             // once, so a later loss of vision during other turns cannot erase a stationary army.
             HumanVisualMemory.EndTurn(CurrentPlayer);
@@ -828,7 +840,7 @@ namespace Game.Turns
 
             if (index >= CurrentTurnOrder.Count)
             {
-                CurrentPlayer = null;
+                CurrentPlayer = null;Phase=StrategicTurnPhase.NeutralTurn;
                 StrategicTurnEffects.BeginPlayer(null);
                 if (popupPanel != null && !_aiObserverMatch)
                     popupPanel.ShowForOther(null);
@@ -851,6 +863,7 @@ namespace Game.Turns
 
             if (player.IsHuman)
             {
+                Phase=StrategicTurnPhase.AwaitingConfirmation;
                 cardHand?.HideAiHandDebug();
                 resourceBar?.HideRootDebug();
                 if (popupPanel != null)
@@ -861,6 +874,7 @@ namespace Game.Turns
             }
             else
             {
+                Phase=StrategicTurnPhase.ExternalTurn;
                 StealthSystem.TakeDetectionNotices(player);
                 if (popupPanel != null && !_aiObserverMatch)
                     popupPanel.ShowForOther(player);
@@ -886,7 +900,12 @@ namespace Game.Turns
                 yield return presenter.ResolveTurnStartAntiAir(player);
             if (_gameOver)
                 yield break;
-            StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
+            long generation=matchGeneration;bool completed=false;
+            StartCoroutine(AiTurnController.RunTurn(player,ctx,()=>
+            {
+                if(completed||_gameOver||CurrentPlayer!=player||!GameSession.IsCurrent(generation))return;
+                completed=true;AdvanceToNextPlayer();
+            }));
         }
 
         // First acknowledge the greeting, then resolve the existing turn-start AA prompts.
@@ -896,7 +915,7 @@ namespace Game.Turns
             PlayerSetupData player = CurrentPlayer;
             if (_gameOver || player == null || !player.IsHuman || TurnConfirmed || _turnConfirmationInProgress)
                 return;
-            _turnConfirmationInProgress = true;
+            _turnConfirmationInProgress = true;Phase=StrategicTurnPhase.OpeningTurn;
             AviationCombatPresenter presenter = hexSelectionController != null
                 ? hexSelectionController.AviationCombatPresenter : null;
             if (popupPanel != null)
@@ -961,7 +980,7 @@ namespace Game.Turns
 
         private void CompleteTurnConfirmation()
         {
-            TurnConfirmed = true;
+            TurnConfirmed = true;Phase=StrategicTurnPhase.Ready;
             _turnConfirmedFrame = Time.frameCount;
             // OnTurnConfirmed already hid the handoff. Do not hide a report that may have
             // opened since then, and respect any still-open modal when enabling End Turn.
@@ -988,7 +1007,7 @@ namespace Game.Turns
             yield return new WaitForSeconds(aiStepDelay);
             if (_aiObserverMatch)
                 yield return PauseAtAiActionBoundary();
-            onDone();
+            if(!_gameOver&&GameSession.IsCurrent(matchGeneration))onDone();
         }
 
         private void OnEndTurnClicked()
@@ -999,8 +1018,8 @@ namespace Game.Turns
 
         private void AdvanceToNextPlayer()
         {
-            if (_gameOver)
-                return;
+            if(_gameOver||(Phase!=StrategicTurnPhase.Ready&&Phase!=StrategicTurnPhase.ExternalTurn))return;
+            Phase=StrategicTurnPhase.EndingPlayer;
             var aviationMessages = StrategicTurnEffects.EndPlayer(CurrentPlayer, hexSelectionController);
             if (aviationMessages.Count > 0)
                 _pendingAviationMessages[CurrentPlayer] = aviationMessages;

@@ -963,6 +963,10 @@ namespace Game.UI
             return true;
         }
 
+        internal void CancelForExit()
+        {
+            _onClosed=null;_pendingRetreatContacts.Clear();ResetBattlePanel();StopAllCoroutines();
+        }
         public void Hide()
         {
             ResetBattlePanel();

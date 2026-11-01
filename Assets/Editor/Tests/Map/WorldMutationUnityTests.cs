@@ -299,6 +299,7 @@ namespace Game.EditorTests
             var shell = new ArmyData { Owner = owner, Hex = hex }; ArmyRegistry.Register(shell);
             var turn = scene.AddComponent<Game.Turns.GameTurnController>();
             Bind(turn, "<CurrentPlayer>k__BackingField", owner);
+            Bind(turn,"<Phase>k__BackingField",Game.Turns.StrategicTurnPhase.Ready);
             Bind(turn, "<CurrentTurnOrder>k__BackingField", new List<PlayerSetupData> { owner, new PlayerSetupData { IsHuman = true } });
             typeof(Game.Turns.GameTurnController).GetMethod("AdvanceToNextPlayer", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(turn, null);
             Assert.That(ArmyRegistry.IsRegistered(shell), Is.False);
