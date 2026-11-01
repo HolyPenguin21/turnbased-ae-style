@@ -96,8 +96,7 @@ namespace Game.Campaign
                 enemyPlayer.AiDeckName = CampaignDeck.AiSource(enemy, collection.Rules, op.RandomSeed, savedEnemyName)?.deckName;
                 if (!GameSession.TryPrepareMatch(players, config, out error)) return false;
                 // A retry reuses the saved MatchId, only a fresh tactical world is created.
-                Controller.RegisterMatch(deckId, deck.name, enemyPlayer.AiDeckName ?? collection.Rules.Starting.GetDeck(enemy)?.deckName ?? "Standard " + enemy);
-                GameSession.Players = players;
+                Controller.RegisterMatch(deckId, deck.name, GameSession.Players.Find(p => !p.IsHuman).AiDeckName ?? collection.Rules.Starting.GetDeck(enemy)?.deckName ?? "Standard " + enemy);
                 GameSession.SetCampaignContext(new CampaignMatchContext { CampaignId = s.CampaignId, OperationId = op.OperationId,
                     MatchId = op.MatchId, AttackerFaction = op.AttackerFaction, DefenderFaction = op.DefenderFaction, HumanFaction = s.HumanFaction,
                     SourceRegionId = op.SourceRegionId, TargetRegionId = op.TargetRegionId, SelectedHumanDeckId = deckId });

@@ -70,8 +70,12 @@ namespace Game.Cameras
         // scroll-wheel zoom, all player-driven input.
         public void SetPanningEnabled(bool enabled) => _panningEnabled = enabled;
 
-        private void Start()
+        private bool initialized;
+        private void Start() => InitializeForMatch();
+        public void InitializeForMatch()
         {
+            if (initialized) return;
+            initialized = true;
             _camera = GetComponent<Camera>();
             if (_camera != null)
             {
@@ -100,6 +104,7 @@ namespace Game.Cameras
         // has arrived, instead of at the same time it starts moving.
         public void PanTo(Vector3 worldPosition, float duration = 1.5f, Action onComplete = null)
         {
+            InitializeForMatch();
             if (_panRoutine != null)
                 StopCoroutine(_panRoutine);
             _panRoutine = StartCoroutine(PanRoutine(worldPosition, duration, onComplete));

@@ -15,17 +15,7 @@ namespace Game.Core
             try
             {
                 ValidateRestore(source, config);
-                // Commit only after the entire detached input is accepted. No reset, deck
-                // validation against today's profile, new MatchId or reward transaction here.
-                Players = source.Players.ToList();
-                MatchId = source.MatchId;
-                RewardsEligible = source.RewardsEligible;
-                CampaignContext = source.CampaignContext;
-                FinalResult = null;
-                SetupError = null;
-                RestoreNotice = null;
-                ClearMapConditions();
-                PendingRestore = source;
+                CommitPreparedRestore(source);
                 error = null;
                 return true;
             }
@@ -34,6 +24,23 @@ namespace Game.Core
                 error = "Could not prepare the saved match: " + ex.Message;
                 return false;
             }
+        }
+
+        internal static void CommitPreparedRestore(IMatchRestoreSource source)
+        {
+            // Commit only after the entire detached input is accepted. No reset, deck
+            // validation against today's profile, new MatchId or reward transaction here.
+            Players = source.Players.ToList();
+            MatchId = source.MatchId;
+            RewardsEligible = source.RewardsEligible;
+            CampaignContext = source.CampaignContext;
+            FinalResult = null;
+            SetupError = null;
+            RestoreNotice = null;
+            ClearMapConditions();
+            PendingRestore = source;
+            PreparedLaunch = null;
+            Stage = MatchSessionStage.Prepared;
         }
 
         internal static void ValidateRestore(IMatchRestoreSource source, GameConfig config)

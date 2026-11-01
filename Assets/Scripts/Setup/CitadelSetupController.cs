@@ -97,13 +97,15 @@ namespace Game.Setup
         private HexCoord? _placedHex;
         private int _currentPlayerIndex = -1;
         private bool _canPlace;
+        private long setupGeneration;
 
         private void Awake()
         {
             // HexMapGenerator builds fog and resource visuals in OnEnable. Clear the previous
             // match before those default-order components run, including direct Game loads.
             // Prepared GameSession players, map choices and campaign context stay intact.
-            MatchStateInventory.ResetForNewMatch();
+            GameSession.InitializeWorld(gameObject.scene.handle);
+            setupGeneration = GameSession.Generation;
         }
 
         private IEnumerator Start()
@@ -121,10 +123,9 @@ namespace Game.Setup
 
             if (GameSession.PendingRestore != null)
             {
-                // Default-order HUD/camera startup completes before binding restored objects.
-                yield return null;
                 try
                 {
+                    cameraController?.InitializeForMatch();
                     if (TryRestorePreparedMatch())
                     {
                         if (popupCanvas != null) Destroy(popupCanvas);
@@ -153,43 +154,29 @@ namespace Game.Setup
                 confirmButton.onClick.AddListener(OnConfirmClicked);
             }
 
-            if (gameConfig == null || map == null || GameSession.Players == null || GameSession.Players.Count == 0)
-                yield break;
-
-            ConfigureWorldSystems();
-            AssignStartingHexes(GameSession.Players);
-
-            _allPlayers.Clear();
-            _allPlayers.AddRange(GameSession.Players);
-            if (_allPlayers.Count == 0)
-                yield break;
-
-            // Our Awake runs early to reset the world before generation. Let default-order
-            // Start methods initialize the camera/HUD before placement can pan or start a game.
-            yield return null;
-            BeginPlayerTurn(0);
+            try
+            {
+                if (gameConfig == null || map == null || GameSession.Players == null || GameSession.Players.Count == 0)
+                    throw new System.InvalidOperationException("No prepared match or scene configuration.");
+                if (!string.IsNullOrEmpty(GameSession.SetupError)) throw new System.InvalidOperationException(GameSession.SetupError);
+                if (turnController == null) throw new System.InvalidOperationException("The match turn owner is missing.");
+                turnController.InitializeNewMatchState();
+                cameraController?.InitializeForMatch();
+                ConfigureWorldSystems(); AssignStartingHexes(GameSession.Players);
+                _allPlayers.Clear(); _allPlayers.AddRange(GameSession.Players);
+                BeginPlayerTurn(0);
+            }
+            catch (System.Exception ex)
+            {
+                FailMatchRestore(ex);
+                UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
+            }
+            yield break;
         }
 
         private void ConfigureWorldSystems()
         {
-            // Configure before AssignStartingHexes/the per-player loop below ever registers an
-            // army or building — both registries recompute vision the moment something is
-            // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii
-            // need to already be known by then, not set afterward.
-            if (gameConfig == null || map == null) throw new System.InvalidOperationException("Match configuration or map is missing.");
-            VisionSystem.Configure(gameConfig);
-            MapObservationSystem.Configure(map);
-            // Stealth detection needs the terrain move-cost at a hidden unit's hex for its
-            // hide-tokens bump; hand StealthSystem a lookup into the live map here, same
-            // ordering rationale as VisionSystem.Configure above.
-            StealthSystem.TerrainMoveCostProvider = hex =>
-                map.TryGetTerrainAt(hex, out TerrainTypeEntry terrainEntry) && terrainEntry != null
-                    ? Mathf.Max(1, terrainEntry.moveCost)
-                    : 1;
-            // Same ordering requirement as VisionSystem.Configure above — AiMapMemory listens to
-            // VisionSystem.VisibilityChanged, which the very first Register call below can
-            // already fire, so the subscription needs to be in place before that happens.
-            AiMapMemory.EnsureSubscribed(map);
+            MatchSceneAssembly.ConfigureWorld(gameConfig, map);
         }
 
         // --- Per-player turn sequencing --------------------------------------------------
@@ -370,6 +357,7 @@ namespace Game.Setup
 
         private void ShowPopup()
         {
+            if (!GameSession.IsCurrent(setupGeneration) || !isActiveAndEnabled) return;
             _canPlace = true;
             if (popupCanvas != null)
                 popupCanvas.SetActive(true);
@@ -635,8 +623,9 @@ namespace Game.Setup
 
         private void OnConfirmClicked()
         {
-            if (!_placedHex.HasValue)
-                return;
+            if (!GameSession.IsCurrent(setupGeneration) || !_placedHex.HasValue || !_canPlace) return;
+            _canPlace = false;
+            if (confirmButton != null) confirmButton.interactable = false;
 
             if (_regionHighlights.TryGetValue(_allPlayers[_currentPlayerIndex], out GameObject region) && region != null)
                 region.SetActive(false);
@@ -645,6 +634,15 @@ namespace Game.Setup
         }
 
         private void FinishAllPlacements()
+        {
+            try { CompleteNewMatchAssembly(); }
+            catch (System.Exception ex)
+            {
+                FailMatchRestore(ex);
+                UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
+            }
+        }
+        private void CompleteNewMatchAssembly()
         {
             if (popupCanvas != null)
                 Destroy(popupCanvas);
@@ -685,8 +683,8 @@ namespace Game.Setup
                 VisionSystem.RecomputeFor(viewer);
             }
 
-            if (turnController != null)
-                turnController.BeginGame();
+            GameSession.BeginPresentationBinding();
+            if (turnController != null) turnController.BeginGame();
 
             // Removes this controller AND every highlight it spawned as a child in one shot.
             // Citadel markers aren't affected — SpawnCitadelMarker never parented them here,

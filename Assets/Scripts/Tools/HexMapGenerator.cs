@@ -47,17 +47,18 @@ namespace Game.Map
 
         private void OnEnable()
         {
-            if (Application.isPlaying && GameSession.PendingRestore != null)
+            if (!Application.isPlaying) { Generate(); return; }
+            GameSession.InitializeWorld(gameObject.scene.handle);
+            try
             {
-                try { BuildFromLayout(GameSession.PendingRestore.Map); }
-                catch (System.Exception ex)
-                {
-                    GameSession.SetupError = "Could not restore the saved map: " + ex.Message;
-                    Debug.LogError(GameSession.SetupError);
-                }
-                return;
+                if (GameSession.PendingRestore != null) BuildFromLayout(GameSession.PendingRestore.Map);
+                else Generate();
             }
-            Generate();
+            catch (System.Exception ex)
+            {
+                GameSession.SetupError = "Could not initialize the match map: " + ex.Message;
+                Debug.LogError(GameSession.SetupError);
+            }
         }
 
         [ContextMenu("Generate Map")]

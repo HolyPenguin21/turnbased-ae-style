@@ -536,8 +536,17 @@ namespace Game.Turns
         }
 
         // Called once, right after every player has placed their citadel.
+        internal void InitializeNewMatchState()
+        {
+            if (startingDeckCatalog == null && gameConfig != null) startingDeckCatalog = gameConfig.collectionDeckCatalog;
+            if (startingDeckCatalog == null && cardHand != null) startingDeckCatalog = cardHand.StartingDeckCatalog;
+            GameSession.InitializeNewMatchHands(startingDeckCatalog, cardHand != null ? cardHand.StartingHandSize : 7,
+                cardHand != null ? cardHand.MaxHandSize : 10);
+        }
         public void BeginGame()
         {
+            InitializeNewMatchState();
+            GameSession.MarkRunning();
             InitializeMatchPresentation();
             MapObservationSystem.ObserveAllViewers();
             TurnNumber = 0;

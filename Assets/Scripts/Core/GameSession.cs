@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Map;
 using Game.Players;
 using Game.Terrain;
@@ -23,10 +24,9 @@ namespace Game.Core
         public static bool TryPrepareMatch(List<PlayerSetupData> players, GameConfig config, out string error)
         {
             error = null;
-            PendingRestore = null;
-            RestoreNotice = null;
-            CampaignContext = null; FinalResult = null;
-            ClearMapConditions();
+            if (players == null || players.Count == 0 || players.Any(p => p == null || p.IsNeutral))
+            { error = "Configure at least one non-neutral player."; return false; }
+            players = players.Select(p => p.CopySetupDraft()).ToList();
             if (players.FindAll(p => p.IsHuman).Count > 1)
             { error = "Only one human player is supported. Set other players to AI."; return false; }
             if (!players.Exists(p => p.IsHuman))
@@ -34,7 +34,7 @@ namespace Game.Core
                 AssignAiDecks(players, config?.collectionDeckCatalog);
                 foreach (var player in players) { player.Tactics.Clear(); player.MatchLoadout = null; player.BlueprintQuota = null; }
                 AssignPlayerIdentities(players);
-                MatchId = System.Guid.NewGuid().ToString("N"); RewardsEligible = false;
+                CommitNewLaunch(players, false);
                 return true;
             }
             if (!Game.Progression.ProgressionContext.Initialize(config))
@@ -68,8 +68,7 @@ namespace Game.Core
             // leave the setup row's Random choice intact instead of pinning the next attempt.
             AssignAiDecks(players, config?.collectionDeckCatalog);
             AssignPlayerIdentities(players);
-            MatchId = System.Guid.NewGuid().ToString("N");
-            RewardsEligible = players.Exists(p => p.IsHuman);
+            CommitNewLaunch(players, players.Exists(p => p.IsHuman));
             return true;
         }
         // Each AI player plays one random AI deck of its faction; a choice already made (shown on
@@ -102,7 +101,11 @@ namespace Game.Core
         // collection/reward profile have independent persistence and must survive this reset.
         public static void ClearMatch()
         {
+            BeginExit();
             PendingRestore = null;
+            PreparedLaunch = null;
+            Stage = MatchSessionStage.Inactive;
+            initializedScene = null;
             RestoreNotice = null;
             Players = new List<PlayerSetupData>();
             ClearMapConditions();

@@ -17,6 +17,7 @@ namespace Game.Setup
                 source.Identity.Reserve();
                 source.RestoreWorld(map);
                 source.RestoreKnowledge();
+                GameSession.BeginPresentationBinding();
                 source.RestorePresentation(selection);
                 selection.ValidateRememberedVisualCoverage();
                 // Generation ran before restored bonuses/events existed. Rebuild their derived
@@ -28,6 +29,7 @@ namespace Game.Setup
             // turn rather than performing any of the new-game / new-round side effects.
             turns.ResumeGame(source.Turn);
             GameSession.CompleteRestore(source);
+            GameSession.MarkRunning();
         }
     }
 }
