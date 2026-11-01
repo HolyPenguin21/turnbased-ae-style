@@ -15,6 +15,7 @@ MonoBehaviour:
   faction: 3
   displayName: Neutral
   logo: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
+  matchGreetings: []
   cards:
   - id: 0
     authoredKey: neutral.card.scav
@@ -281,7 +282,7 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 6
-    defenseRating: 4
+    defenseRating: 3
     range: 1
     hitPoints: 12
     initiative: 1

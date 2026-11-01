@@ -103,7 +103,7 @@ public static class CampaignScreenBuilder
         var humanName = Text(noSelection, "HumanFactionName", "Faction", 30, 694, 370, 34, 24, Cream, false, TextAlignmentOptions.Center);
 
         var regionPanel = Rect(sidebar, "RegionPanel"); Stretch(regionPanel);
-        var preview = Rect(regionPanel, "RegionTerrainPreview"); Place(preview, 20, 353, 135, 135);
+        var preview = Rect(regionPanel, "RegionTerrainPreview"); Place(preview, 20, 353, 170, 170);
         var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.raycastTarget = false;
         preview.gameObject.AddComponent<Mask>();
         Frame(preview, frame);
@@ -259,9 +259,9 @@ public static class CampaignScreenBuilder
             Set("regionConditionsText", text);
             // Older builder layouts had a full-width preview occupying the new text area.
             var preview = Get<RawImage>("terrainPreview");
-            if (preview != null && preview.rectTransform.rect.width > 135)
+            if (preview != null && preview.rectTransform.rect.width > 170)
             {
-                Undo.RecordObject(preview.rectTransform, "Add region conditions"); Place(preview.rectTransform, 20, 353, 135, 135);
+                Undo.RecordObject(preview.rectTransform, "Add region conditions"); Place(preview.rectTransform, 20, 353, 170, 170);
                 var ownerLogo = Get<Image>("ownerLogo");
                 if (ownerLogo != null) { Undo.RecordObject(ownerLogo.rectTransform, "Add region conditions"); Place(ownerLogo.rectTransform, 160, 353, 36, 36); }
                 var ownerName = Get<TMP_Text>("ownerName");
@@ -281,21 +281,6 @@ public static class CampaignScreenBuilder
             }
             var empty = Get<TMP_Text>("deckEmptyLabel");
             if (empty != null) { Undo.RecordObject(empty.rectTransform, "Add region conditions"); empty.rectTransform.anchoredPosition = new Vector2(empty.rectTransform.anchoredPosition.x, -330); }
-        }
-        if (regionPanel != null && Missing("neighborEmblemsContent"))
-        {
-            var row = Created(Rect(regionPanel.transform, "NeighborEmblemsRow")); Place(row, 28, 528, 374, 40);
-            Text(row, "Caption", "NEIGHBORS", 2, 8, 130, 26, 18, Cream);
-            var content = Rect(row, "Emblems"); Place(content, 140, 2, 234, 36);
-            var layout = content.gameObject.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 6; layout.childAlignment = TextAnchor.MiddleLeft;
-            layout.childControlWidth = layout.childControlHeight = false; layout.childForceExpandWidth = layout.childForceExpandHeight = false;
-            Set("neighborEmblemsContent", content);
-            Set("neighborEmblemPrefab", LoadOrCreatePrefab("CampaignNeighborEmblem", BuildNeighborEmblem).GetComponent<Image>());
-            var neighbors = Get<RectTransform>("neighborsContent");
-            // Content -> Viewport -> scroll root; the plaque is its sibling.
-            if (neighbors != null && neighbors.parent != null) Hide(neighbors.parent.parent);
-            var plaque = regionPanel.transform.Find("NeighborsPlaque"); if (plaque != null) Hide(plaque);
         }
         if (regionPanel != null && Missing("attacksContent"))
         {
@@ -384,11 +369,6 @@ public static class CampaignScreenBuilder
         var so = new SerializedObject(view);
         so.FindProperty("dot").objectReferenceValue = dot.GetComponent<Image>(); so.FindProperty("label").objectReferenceValue = label;
         so.ApplyModifiedPropertiesWithoutUndo();
-        return root.gameObject;
-    }
-    private static GameObject BuildNeighborEmblem()
-    {
-        var root = LogoImage(null, "CampaignNeighborEmblem", 0, 0, 32);
         return root.gameObject;
     }
     private static GameObject BuildAttackRow()

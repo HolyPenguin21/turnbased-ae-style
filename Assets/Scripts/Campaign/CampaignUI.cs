@@ -52,9 +52,6 @@ namespace Game.Campaign
         [SerializeField] private TMP_Text ownerName, regionConditionsText;
         [SerializeField] private RectTransform neighborsContent;
         [SerializeField] private CampaignNeighborRowView neighborRowPrefab;
-        [Header("Region information (optional)")]
-        [SerializeField] private RectTransform neighborEmblemsContent;
-        [SerializeField] private Image neighborEmblemPrefab;
         // When assigned, replaces the single Attack Region button with one row per legal attack.
         [SerializeField] private RectTransform attacksContent;
         [SerializeField] private CampaignAttackRowView attackRowPrefab;
@@ -281,6 +278,7 @@ namespace Game.Campaign
             if (playerEmblem != null) SetLogo(playerEmblem, s.HumanFaction);
             if (playerFactionName != null) playerFactionName.text = FactionName(s.HumanFaction).ToUpperInvariant();
         }
+        private const float RegionPreviewUvPerPixel = .12f / 135f; // the original 135 px preview showed .12 of the map width
         private void ShowTerrain(RawImage preview, RegionState region, float width = .32f)
         {
             preview.texture = map.SurfaceTexture;
@@ -292,22 +290,26 @@ namespace Game.Campaign
         }
         private void RenderRegion(CampaignState s, RegionState region)
         {
-            ShowTerrain(terrainPreview, region, .12f); // ~ the zoom of the former 370 px wide preview at .32
             var size = terrainPreview.rectTransform.rect.size;
+            ShowTerrain(terrainPreview, region, size.x * RegionPreviewUvPerPixel); // fixed zoom: resizing the element reveals more map, not a bigger picture
             if (consoleMaterial != null)
             {
                 if (regionPreviewMaterial == null)
                 {
                     regionPreviewMaterial = new Material(consoleMaterial) { name = "CampaignRegionPreview (runtime)" };
                     regionPreviewMaterial.SetFloat("_CornerRadius", 16);
-                    regionPreviewMaterial.SetVector("_SurfaceSize", new Vector4(size.x, size.y, 0, 0));
                     terrainPreview.material = regionPreviewMaterial;
                 }
+                regionPreviewMaterial.SetVector("_SurfaceSize", new Vector4(size.x, size.y, 0, 0));
                 var uv = terrainPreview.uvRect; var uvRect = new Vector4(uv.x, uv.y, uv.width, uv.height);
                 regionPreviewMaterial.SetVector("_UVRect", uvRect);
                 // The preview's Mask renders a cached stencil copy of this material; update the copy too,
                 // otherwise its rounded mask keeps the first region's UV rect and crops the picture.
-                if (terrainPreview.materialForRendering != regionPreviewMaterial) terrainPreview.materialForRendering.SetVector("_UVRect", uvRect);
+                if (terrainPreview.materialForRendering != regionPreviewMaterial)
+                {
+                    terrainPreview.materialForRendering.SetVector("_UVRect", uvRect);
+                    terrainPreview.materialForRendering.SetVector("_SurfaceSize", new Vector4(size.x, size.y, 0, 0));
+                }
             }
             SetLogo(ownerLogo, region.OwnerFaction); ownerName.text = FactionName(region.OwnerFaction);
             regionConditionsText.text = $"Biome: {BiomeName(region.Biome)}\nSpecialization: {region.Specialization}\nRichness: {region.Richness}";
@@ -321,12 +323,6 @@ namespace Game.Campaign
                 view.Dot.color = CampaignMapView.ColorFor(neighbor.OwnerFaction); view.Label.text = neighbor.Name; row++;
             }
             neighborsContent.sizeDelta = new Vector2(neighborsContent.sizeDelta.x, Math.Max(106, row * 30));
-            if (neighborEmblemsContent != null && neighborEmblemPrefab != null)
-            {
-                ClearChildren(neighborEmblemsContent);
-                foreach (int id in region.NeighborIds)
-                    SetLogo(Instantiate(neighborEmblemPrefab, neighborEmblemsContent, false), s.Regions.Find(r => r.RegionId == id).OwnerFaction);
-            }
             if (attacksContent != null && attackRowPrefab != null)
                 RenderAttacks(s, region, region.OwnerFaction == s.HumanFaction ? "No attacks available from this region." : "Attack unavailable this turn.");
         }
