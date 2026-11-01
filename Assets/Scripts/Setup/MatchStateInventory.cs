@@ -175,6 +175,9 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.Initiative.InitiativeOutcomeEvaluator", MatchStateKind.Cache),
             // the analytic exchange memo, keyed by its full numeric input (constant magnitudes)
             new MatchStateEntry("Game.Combat.BattleSimulationKernel", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Combat.BattleEncounterCoordinator", MatchStateKind.Cache, BattleEncounterCoordinator.ResetForMatch),
+            new MatchStateEntry("Game.Map.ArmyDestructionEffect", MatchStateKind.Cache,
+                resetNote: "Content-only frames; no match entities or subscriptions."),
             new MatchStateEntry("Game.Combat.AviationCombatEstimator", MatchStateKind.Cache),
             // verdict-key text rows in weak tables keyed by the profile/roster/deck objects themselves
             new MatchStateEntry("Game.Ai.V2.DevelopmentAdmission", MatchStateKind.Cache),
@@ -212,6 +215,7 @@ namespace Game.Setup
         // Clears every per-match holder in table order. Wiring is the caller's next step.
         public static void ResetForNewMatch()
         {
+            CancelWorldOperations();
             foreach (MatchStateEntry entry in All)
                 entry.Reset?.Invoke();
         }
@@ -220,10 +224,15 @@ namespace Game.Setup
         // outgoing world is still alive. Campaign/profile state is outside this inventory.
         public static void EndMatch(GameTurnController outgoingMatch = null)
         {
-            if (outgoingMatch != null)
-                outgoingMatch.PrepareForExit();
-            ResetForNewMatch();
-            Game.Core.GameSession.ClearMatch();
+            Game.Core.GameSession.BeginExit();
+            try { if(outgoingMatch!=null)outgoingMatch.PrepareForExit(); }
+            finally { try {ResetForNewMatch();} finally {Game.Core.GameSession.ClearMatch();} }
+        }
+
+        internal static void CancelWorldOperations()
+        {
+            foreach(var army in ArmyRegistry.AllArmies().ToArray())
+            { army.Controller?.CancelMovement(); army.Movement?.Cancel(); }
         }
 
         private static MatchStateEntry World(string type, Action reset) =>

@@ -42,7 +42,7 @@ namespace Game.Saves
         private readonly MatchIdentityState identity;
         private readonly GameConfig config;
         private readonly MatchContentResolver content;
-        private bool worldRestored;
+        private bool worldRestored,presentationBound;
         internal IReadOnlyList<PlayerSetupData> Players { get; }
         internal PlayerSetupData Player(string id) => id != null && players.TryGetValue(id, out var p) ? p : null;
         internal ArmyData Army(int id) => armies.TryGetValue(id, out var a) ? a : null;
@@ -365,7 +365,6 @@ namespace Game.Saves
                 HexResourceBonusRegistry.RestoreState(bonuses);
                 HexEventRegistry.RestoreEntries(events, (hex, entry) => entry);
                 DelayedBattleRegistry.RestoreState(battles, NeedArmy);
-                CreateMarkers(map);
                 worldRestored = true;
             }
         }
@@ -406,6 +405,11 @@ namespace Game.Saves
             if (!worldRestored) throw Invalid("World must be restored before knowledge.");
             using (MatchRestoreScope.Begin())
             { AntiAirState.RestoreState(aa, NeedUnit); StealthSystem.RestoreState(stealth, NeedUnit, NeedPlayer); }
+        }
+        internal void BindPresentation(HexMap map)
+        {
+            if(!worldRestored||presentationBound||!MatchRestoreScope.IsRestoring)throw Invalid("Invalid restored marker binding stage.");
+            CreateMarkers(map);presentationBound=true;
         }
         private void CreateMarkers(HexMap map)
         {

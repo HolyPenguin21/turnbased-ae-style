@@ -68,21 +68,8 @@ namespace Game.EditorTests
             if (_root != null) Object.DestroyImmediate(_root.gameObject);
         }
 
-        private void CollectPhysical()
-        {
-            MethodInfo collect = typeof(GameTurnController).GetMethod("CollectResourceIncome",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(collect, Is.Not.Null);
-            collect.Invoke(_turn, null);
-        }
-
-        private void GrantProduce()
-        {
-            MethodInfo grant = typeof(GameTurnController).GetMethod("GrantProduceResourceIncome",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(grant, Is.Not.Null);
-            grant.Invoke(_turn, null);
-        }
+        private void CollectPhysical() => StrategicTurnEffects.CollectResourceIncome(_map, _config);
+        private void GrantProduce() => StrategicTurnEffects.GrantProduceResourceIncome(GameSession.Players);
 
         [Test]
         public void BuildingTakesFirstSliceThenOwnArmyTakesOnlyRemainder()

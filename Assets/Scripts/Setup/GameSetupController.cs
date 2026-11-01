@@ -95,7 +95,6 @@ namespace Game.Setup
                 foreach (var row in _rows) row.RefreshResolvedFaction();
                 return;
             }
-            GameSession.Players = _model.Players;
             GameSession.SelectedMapSize = _model.MapSize;
             GameSession.SelectedBiome = _model.Biome;
             SceneManager.LoadScene(SceneNames.Game);

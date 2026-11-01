@@ -39,8 +39,9 @@ namespace Game.Combat
     {
         // Legacy finish signatures have no state argument. Bind them to the current encounter,
         // replacing the binding when a new BattleState is created for either participant.
-        private static readonly ConditionalWeakTable<ArmyData, BattleState> CurrentEncounters =
+        private static ConditionalWeakTable<ArmyData, BattleState> CurrentEncounters =
             new ConditionalWeakTable<ArmyData, BattleState>();
+        internal static void ResetForMatch() => CurrentEncounters = new ConditionalWeakTable<ArmyData, BattleState>();
         internal static void RegisterEncounter(BattleState state)
         {
             foreach (var army in new[] { state.Attacker, state.Defender })

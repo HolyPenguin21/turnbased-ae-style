@@ -24,6 +24,8 @@ namespace Game.UI
         [SerializeField] private Button exploreButton;
         [SerializeField] private Button skipButton;
 
+        private Game.Core.MatchDecision decision;
+        public bool HasPendingDecision => decision?.IsPending == true;
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
         // Lets GameTurnController react to this popup opening/closing instead of polling
@@ -45,8 +47,8 @@ namespace Game.UI
         public void Show(ArmyData mover, HexEventRegistry.Entry entry, Action onExplore, Action onSkip)
         {
             EventDefinition definition = entry?.Definition;
-            if (definition == null)
-                return;
+            if (definition == null) return;
+            decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
 
             if (heroOrUnitArtImage != null)
             {
@@ -66,12 +68,12 @@ namespace Game.UI
             if (exploreButton != null)
             {
                 Game.UI.UIUtility.ResetRuntimeListeners(exploreButton);
-                exploreButton.onClick.AddListener(() => { Hide(); onExplore?.Invoke(); });
+                exploreButton.onClick.AddListener(() => { if(!request.TryComplete())return; Hide(); onExplore?.Invoke(); });
             }
             if (skipButton != null)
             {
                 Game.UI.UIUtility.ResetRuntimeListeners(skipButton);
-                skipButton.onClick.AddListener(() => { Hide(); onSkip?.Invoke(); });
+                skipButton.onClick.AddListener(() => { if(!request.TryComplete())return; Hide(); onSkip?.Invoke(); });
             }
 
             if (panelRoot != null)
@@ -105,6 +107,7 @@ namespace Game.UI
 
         public void Hide()
         {
+            decision?.Cancel();
             if (panelRoot == null || !panelRoot.activeSelf)
                 return;
             panelRoot.SetActive(false);

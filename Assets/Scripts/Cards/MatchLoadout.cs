@@ -89,6 +89,7 @@ namespace Game.Cards
             return quota;
         }
         // A blueprint in the deck unlocks unlimited production; only one attempt per card may be in flight.
+        public bool HasPendingOperations => pending.Count > 0;
         public bool Unlocked(string key) => unlocked.Contains(key ?? "");
         public bool Available(string key) => Unlocked(key) && !pending.Contains(key);
         internal bool TryReserve(string key) { if (!Available(key)) return false; return pending.Add(key); }
@@ -110,6 +111,7 @@ namespace Game.Cards
         private readonly PlayerRoot account;
         private readonly PlayerHandData destination;
         private readonly string blueprintKey;
+        private readonly long generation=Game.Core.GameSession.Generation;
         internal ProductionAttempt(CardDefinition card, BlueprintQuota quota, CardDefinition output = null,
             PlayerSetupData owner = null, PlayerRoot account = null, PlayerHandData destination = null)
         {
@@ -117,9 +119,9 @@ namespace Game.Cards
             this.owner = owner; this.account = account; this.destination = destination;
             blueprintKey = card.authoredKey;
         }
-        private bool IsCurrent => owner == null || (!owner.IsEliminated
+        private bool IsCurrent => Game.Core.GameSession.IsCurrent(generation) && (owner == null || (!owner.IsEliminated
             && ReferenceEquals(PlayerRootRegistry.FindFor(owner), account)
-            && (destination == null || ReferenceEquals(owner.Hand, destination)));
+            && (destination == null || ReferenceEquals(owner.Hand, destination))));
         public CardData Complete(bool success)
         {
             if (finished) return null;

@@ -5,6 +5,12 @@ namespace Game.Players
     // serializer doesn't support Nullable<T>).
     public class PlayerSetupData
     {
+        public PlayerSetupData CopySetupDraft() => new PlayerSetupData
+        {
+            Nickname = Nickname, ColorIndex = ColorIndex, Faction = Faction,
+            IsHuman = IsHuman, SelectedDeckId = SelectedDeckId, AiDeckName = AiDeckName,
+        };
+
         // Stable match-local key, assigned by setup and preserved by a future save envelope.
         // Names, colors and turn-order positions are deliberately not identities.
         public string PlayerId;

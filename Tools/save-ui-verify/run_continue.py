@@ -15,4 +15,11 @@ args=['-nologo','-target:exe','-out:'+str(work/'ContinueCheck.dll'),*['-r:'+str(
 rsp=work/'compile.rsp';rsp.write_text('\n'.join('"'+x+'"' for x in args));subprocess.run([str(dotnet),str(sdk/'Roslyn/bincore/csc.dll'),'@'+str(rsp)],check=True)
 for p in [*engine.glob('*.dll'),ui,assembly]:shutil.copy2(p,work/p.name)
 (work/'ContinueCheck.runtimeconfig.json').write_text(json.dumps({'runtimeOptions':{'tfm':'net8.0','framework':{'name':'Microsoft.NETCore.App','version':'8.0.0'}}}))
+# Normalize only incompatible placeholder metadata in disposable reference DLL copies.
+root=Path(__file__).resolve().parents[2]
+adapter_args=['-nologo','-target:exe','-out:'+str(work/'Adapter.dll'),*['-r:'+str(p) for p in ref.glob('*.dll')],str(root/'Tools/save-preparation-verify/ai/ReferenceAdapter.cs')]
+adapter_rsp=work/'adapter.rsp';adapter_rsp.write_text('\n'.join('"'+x+'"' for x in adapter_args))
+subprocess.run([str(dotnet),str(sdk/'Roslyn/bincore/csc.dll'),'@'+str(adapter_rsp)],check=True)
+(work/'Adapter.runtimeconfig.json').write_text((work/'ContinueCheck.runtimeconfig.json').read_text())
+subprocess.run([str(dotnet),str(work/'Adapter.dll'),*[str(p) for p in work.glob('Unity*.dll')]],check=True)
 subprocess.run([str(dotnet),str(work/'ContinueCheck.dll')],check=True)

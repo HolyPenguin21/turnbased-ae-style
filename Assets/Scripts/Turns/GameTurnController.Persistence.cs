@@ -14,28 +14,25 @@ namespace Game.Turns
         internal GameConfig SaveConfiguration => gameConfig;
         public bool CanSaveMatch(out string reason)
         {
-            reason = MatchSaveEligibility.UnavailableReason(new MatchSaveConditions
-            {
-                HasMatch = !string.IsNullOrWhiteSpace(GameSession.MatchId) && TurnNumber > 0,
-                HumanTurn = CurrentPlayer != null && CurrentPlayer.IsHuman && !CurrentPlayer.IsEliminated,
-                TurnConfirmed = TurnConfirmed && !_turnConfirmationInProgress,
-                GameOver = _gameOver,
-                Restoring = MatchRestoreScope.IsRestoring || GameSession.PendingRestore != null,
-                Combat = IsCombatPresentationActive || (hexSelectionController != null && hexSelectionController.IsBattleActive),
-                Moving = ArmyRegistry.HasMovementInProgress,
-                Production = hexSelectionController != null && hexSelectionController.HasProductionTransaction,
-                BlockingDecision = UIFocusUtility.HasOverlay || UIFocusUtility.IsTextFieldFocused()
-                    || (popupPanel != null && popupPanel.IsShowing)
-                    || (armyViewerModal != null && armyViewerModal.IsShowing)
-                    || (baseViewerModal != null && baseViewerModal.IsShowing)
-                    || (researchProductionModal != null && researchProductionModal.IsShowing)
-                    || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-                    || (eventRewardPopup != null && eventRewardPopup.IsShowing)
-                    || _aviationMessageQueue.Count > 0,
-                CardOperation = _attachModeActive || (cardHand != null && cardHand.HasPendingCardOperation),
-            });
-            return reason == null;
+            reason=MatchSaveEligibility.UnavailableReason(ReadSaveConditions());return reason==null;
         }
+        public MatchSaveConditions ReadSaveConditions() => new MatchSaveConditions
+        {
+            HasMatch=!string.IsNullOrWhiteSpace(GameSession.MatchId)&&TurnNumber>0,
+            HumanTurn=CurrentPlayer!=null&&CurrentPlayer.IsHuman&&!CurrentPlayer.IsEliminated,
+            TurnConfirmed=TurnConfirmed&&!_turnConfirmationInProgress&&Phase==StrategicTurnPhase.Ready,
+            GameOver=_gameOver,Restoring=MatchRestoreScope.IsRestoring||GameSession.PendingRestore!=null,
+            Combat=(battleScreen!=null&&battleScreen.HasUnsettledEncounter)||(battleContactPopup!=null&&battleContactPopup.HasPendingDecision)
+                ||(hexSelectionController!=null&&(hexSelectionController.IsBattleActive||
+                (hexSelectionController.AviationCombatPresenter!=null&&hexSelectionController.AviationCombatPresenter.HasPendingOperation))),
+            Moving=ArmyRegistry.HasMovementInProgress,
+            Production=(hexSelectionController!=null&&hexSelectionController.HasProductionTransaction)
+                ||(GameSession.Players!=null&&GameSession.Players.Any(p=>p?.BlueprintQuota?.HasPendingOperations==true)),
+            BlockingDecision=(popupPanel!=null&&popupPanel.HasPendingDecision)||(armyViewerModal!=null&&armyViewerModal.HasPendingRename)
+                ||(eventChoicePopup!=null&&eventChoicePopup.HasPendingDecision)||(eventRewardPopup!=null&&eventRewardPopup.HasPendingAcknowledgement)
+                ||_aviationMessageQueue.Count>0,
+            CardOperation=_attachModeActive||(cardHand!=null&&cardHand.HasPendingCardOperation)||(armyViewerModal!=null&&armyViewerModal.HasPendingCardOperation),
+        };
 
         public GameTurnState CaptureTurnState()
         {
@@ -63,6 +60,8 @@ namespace Game.Turns
             state.Validate(players.Select(p => p.PlayerId), human?.PlayerId);
             if (human.IsEliminated) throw new ArgumentException("Cannot resume an eliminated human player.");
             var byId = players.ToDictionary(p => p.PlayerId, StringComparer.Ordinal);
+            if(exiting)throw new InvalidOperationException("Cannot resume an outgoing scene controller.");
+            matchStarted = true;Phase=StrategicTurnPhase.Ready; matchGeneration = GameSession.Generation;
             TurnNumber = state.Round;
             CurrentTurnOrder = state.PlayerOrder.Select(id => byId[id]).ToList();
             _currentPlayerIndex = state.CurrentPlayerIndex;

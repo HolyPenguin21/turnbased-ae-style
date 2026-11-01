@@ -34,7 +34,9 @@ namespace Game.Aviation
 
         private readonly HashSet<PresentationLifetime> _presentations = new HashSet<PresentationLifetime>();
 
-        private void OnDisable()
+        public bool HasPendingOperation => _presentations.Count > 0;
+        private void OnDisable()=>CancelForExit();
+        internal void CancelForExit()
         {
             foreach (var presentation in new List<PresentationLifetime>(_presentations)) presentation.Cancel();
         }
@@ -51,7 +53,7 @@ namespace Game.Aviation
             // The turn owner must not confirm/start planning while mandatory AA remains. A
             // cancelled presentation falls back to the same operation's headless policy. Recollect
             // eligible pairs: accepted shots/skips stay committed; a cancelled choice is undecided.
-            if (presentationOutcome.StopMovement)
+            if (presentationOutcome.StopMovement && Game.Core.GameSession.Stage != Game.Core.MatchSessionStage.Exiting)
                 AviationCombatHeadlessAdapter.Run(operation.ResolveTurnStartAntiAir(owner));
         }
 

@@ -216,20 +216,7 @@ namespace Game.UI
             {
                 if (human.Hand != null)
                     BindHumanHand(human.Hand);
-                else
-                {
-                    var rules = new DeckRules(startingDeckCatalog, Game.Progression.ProgressionContext.Collection?.Rules.Research);
-                    if (human.MatchLoadout == null || human.MatchLoadout.Faction != human.Faction
-                        || !human.MatchLoadout.TryBuildPool(rules, out var pool, out var error))
-                    {
-                        GameSession.SetupError = "Cannot load the selected deck. Select a saved deck in Collection & Decks.";
-                        GameSession.EndRewardEligibility();
-                        UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.MainMenu);
-                        return;
-                    }
-                    human.Hand = new PlayerHandData(pool, startingHandSize, maxHandSize);
-                    BindHumanHand(human.Hand);
-                }
+
             }
             else
             {
@@ -399,6 +386,8 @@ namespace Game.UI
         // reactivation is the first point the coroutine can run at all.
         public void Show()
         {
+            var preparedHand = GameSession.FindHumanPlayer()?.Hand;
+            if (preparedHand != null && !ReferenceEquals(preparedHand, _humanHand)) BindHumanHand(preparedHand);
             gameObject.SetActive(true);
             if (resourceBar != null)
                 resourceBar.gameObject.SetActive(true);
@@ -469,6 +458,8 @@ namespace Game.UI
         // Hide()/Show() cycle mid-AI-turn used to null it, leaving the debug hand and both
         // counters frozen for the rest of that player's turn. Released in HideAiHandDebug /
         // OnDestroy / the next ShowAiHandDebug instead.
+        internal void CancelForExit()
+        { CancelAttachMode();ResetTacticPresentation();StopAllCoroutines(); }
         private void OnDisable()
         {
             _handEnabled = false;

@@ -28,8 +28,7 @@ namespace Game.Setup
         private void FailMatchRestore(Exception exception)
         {
             Debug.LogException(exception);
-            MatchStateInventory.EndMatch(turnController);
-            GameSession.SetupError = "Could not restore the saved match: " + exception.Message;
+            MatchSceneAssembly.FailReconstruction(exception,turnController);
         }
     }
 }

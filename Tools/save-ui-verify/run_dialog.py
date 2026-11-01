@@ -42,7 +42,7 @@ class Program {
 static void Set(object target,string field,object value)=>target.GetType().GetField(field,BindingFlags.Instance|BindingFlags.NonPublic).SetValue(target,value);
 static T New<T>() where T:class=>(T)RuntimeHelpers.GetUninitializedObject(typeof(T));
 static MatchSaveSlotsUI Dialog(string dir,bool saving,int selected){var dialog=New<MatchSaveSlotsUI>();
-Set(dialog,"store",new MatchSaveStore(dir));Set(dialog,"saving",saving);Set(dialog,"slots",Enumerable.Range(0,9).ToList());
+Set(dialog,"application",new MatchSaveApplication(dir,null,null,null,null));Set(dialog,"occupiedSlots",new Dictionary<int,MatchSaveSlot>());Set(dialog,"saving",saving);Set(dialog,"slots",Enumerable.Range(0,9).ToList());
 Set(dialog,"selected",selected);Set(dialog,"deleting",selected);Set(dialog,"status",New<TMP_Text>());
 Set(dialog,"<IsShowing>k__BackingField",true);return dialog;}
 static void Confirm(MatchSaveSlotsUI dialog)=>typeof(MatchSaveSlotsUI).GetMethod("ConfirmDelete",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(dialog,null);
@@ -74,4 +74,11 @@ rsp = work/'compile.rsp';rsp.write_text('\n'.join('"'+x+'"' for x in args))
 subprocess.run([str(dotnet),str(sdk/'Roslyn/bincore/csc.dll'),'@'+str(rsp)],check=True)
 for p in [*engine.glob('*.dll'),ui]:shutil.copy2(p,work/p.name)
 (work/'DialogCheck.runtimeconfig.json').write_text(json.dumps({'runtimeOptions':{'tfm':'net8.0','framework':{'name':'Microsoft.NETCore.App','version':'8.0.0'}}}))
+# Normalize only incompatible placeholder metadata in disposable reference DLL copies.
+root=Path(__file__).resolve().parents[2]
+adapter_args=['-nologo','-target:exe','-out:'+str(work/'Adapter.dll'),*['-r:'+str(p) for p in refs.glob('*.dll')],str(root/'Tools/save-preparation-verify/ai/ReferenceAdapter.cs')]
+adapter_rsp=work/'adapter.rsp';adapter_rsp.write_text('\n'.join('"'+x+'"' for x in adapter_args))
+subprocess.run([str(dotnet),str(sdk/'Roslyn/bincore/csc.dll'),'@'+str(adapter_rsp)],check=True)
+(work/'Adapter.runtimeconfig.json').write_text((work/'DialogCheck.runtimeconfig.json').read_text())
+subprocess.run([str(dotnet),str(work/'Adapter.dll'),*[str(p) for p in work.glob('Unity*.dll')]],check=True)
 subprocess.run([str(dotnet),str(output)],check=True)

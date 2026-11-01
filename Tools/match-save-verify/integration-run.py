@@ -36,6 +36,19 @@ for file in SOURCE.rglob('*.cs'):
     text=re.sub(r'(?<![\w?.])([A-Za-z_]\w*(?:\??\.[A-Za-z_]\w*)*)\s*([!=]=)\s*null',lambda m:('!' if m[2]=='!=' else '')+'object.ReferenceEquals('+m[1]+', null)',text)
     text=text.replace('Time.frameCount','IntegrationNative.Frame')
     file.write_text(text)
+# Scene identity is the only native reset input adapted here.
+if 'gameObject.scene.handle' in (SOURCE/'Setup/CitadelSetupController.cs').read_text():
+    edit('Setup/CitadelSetupController.cs',lambda t:t.replace('gameObject.scene.handle','IntegrationNative.SceneHandle++'))
+# Omit native rendering only, after opening the actual production decision.
+def omit_choice_rendering(t):
+    a=t.rfind('\n',0,t.index('heroOrUnitArtImage',t.index('public void Show(')))+1
+    b=t.index('\n        private static string BuildDescription',a)
+    return t[:a]+'            VisibilityChanged?.Invoke();\n        }\n'+t[b:]
+edit('UI/Popups/EventChoicePopupUI.cs',omit_choice_rendering)
+# Native coroutine stopping and root deactivation remain native Unity checks.
+for relative in ['Turns/GameTurnController.cs','Map/HexSelectionController.cs']:
+    edit(relative,lambda t:t.replace('            StopAllCoroutines();',''))
+edit('Turns/GameTurnController.cs',lambda t:t.replace('            foreach (GameObject root in gameObject.scene.GetRootGameObjects())\n                root.SetActive(false);',''))
 # Native reference Vector3 constructor throws; supply only its three field assignments.
 edit('HexGrid/HexGridMath.cs',lambda t:t.replace('return new Vector3(x, 0f, z);','return new Vector3 { x = x, y = 0f, z = z };'))
 edit('Terrain/MapGenerationSettings.cs',lambda t:re.sub(r'new Color\([^)]*\)', 'default(Color)', t))
@@ -64,5 +77,5 @@ def compile(name, sources, references):
 compile('Integration', [*SOURCE.rglob('*.cs'), WORK/'EngineStubs.cs', WORK/'Math.cs', HERE/'integration-program.cs'], refs)
 for file in [*ENGINE.glob('*.dll'), UI]: shutil.copy2(file,WORK/file.name)
 compile('ReferenceAdapter',[ROOT/'Tools/save-preparation-verify/ai/ReferenceAdapter.cs'],list(REF.glob('*.dll')))
-subprocess.run([str(DOTNET),str(WORK/'ReferenceAdapter.dll'),*[str(WORK/file.name) for file in ENGINE.glob('*.dll')]],check=True)
+subprocess.run([str(DOTNET),str(WORK/'ReferenceAdapter.dll'),*[str(WORK/file.name) for file in [*ENGINE.glob('*.dll'),UI]]],check=True)
 subprocess.run([str(DOTNET),str(WORK/'Integration.dll')],check=True)

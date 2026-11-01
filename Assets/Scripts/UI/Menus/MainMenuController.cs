@@ -1,6 +1,5 @@
 using Game.Core;
 using Game.Saves;
-using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -31,14 +30,12 @@ namespace Game.UI
         [SerializeField] private Button campaignOverwriteCancelButton;
         [SerializeField] private Button continueCampaignButton;
         [SerializeField] private MatchSaveSlotsUI saveSlots;
-        private MatchSaveStore matchStore;
         private GameObject campaignPreviousSelection;
         private Game.Players.Faction campaignPendingFaction;
         private void Awake()
         {
             Game.Core.GameSession.EndRewardEligibility();
             GameSession.ClearMapConditions();
-            matchStore = new MatchSaveStore(Path.Combine(Application.persistentDataPath, "Matches"));
             // Retain campaign initialization for pending reward acknowledgements, independently
             // of the first button's routing priority.
             Game.Campaign.CampaignMatchBridge.Load(out _);
@@ -68,7 +65,7 @@ namespace Game.UI
         internal static int ContinueAction(bool hasMatches, bool hasCampaign) => hasMatches ? 2 : hasCampaign ? 1 : 0;
         private bool HasSavedMatches()
         {
-            try { return matchStore != null && matchStore.Slots().Length > 0; }
+            try { return MatchSaveApplication.HasSavedMatches(); }
             catch (System.Exception ex)
             {
                 // Keep the list reachable to display a storage error instead of silently

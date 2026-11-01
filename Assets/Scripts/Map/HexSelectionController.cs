@@ -97,8 +97,8 @@ namespace Game.Map
         internal bool HasProductionTransaction => _rpTransactionActive;
         public bool IsBattleActive =>
             _revealedArmyContacts.Count > 0 ||
-            (battleScreen != null && battleScreen.IsShowing) ||
-            (battleContactPopup != null && battleContactPopup.IsShowing);
+            (battleScreen != null && battleScreen.HasUnsettledEncounter) ||
+            (battleContactPopup != null && battleContactPopup.HasPendingDecision);
 
         private Coroutine _residentContactPump;
         private readonly List<(ArmyData Army, HexCoord Hex)> _revealedArmyContacts
@@ -185,6 +185,12 @@ namespace Game.Map
             RefreshAllVisibility();
         }
 
+        internal void CancelForExit()
+        {
+            CancelResearchProduction();StopResidentContactPump();_revealedArmyContacts.Clear();
+            AviationCombatPresenter?.CancelForExit();
+            StopAllCoroutines();
+        }
         private void OnDisable()
         {
             CancelResearchProduction();
