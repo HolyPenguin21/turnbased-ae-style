@@ -68,8 +68,15 @@ namespace Game.Ai.V2
             { reason = "home_needs_the_army:" + home.Reason; return false; }
             AttackLocalAction contact = AttackTacticalOpportunity.Decide(snap, actor, target,
                 snap.TurnNumber, false, null, intents);
+            // The callers that decide on this refusal log it (Assembly REJECT_CANDIDATE, Gather
+            // REJECT, Continuity "retired before departure"): the contact's facts travel in it.
             if (contact.Kind == AttackLocalActionKind.Retreat)
-            { reason = "hostile_contact_on_path"; return false; }
+            {
+                reason = $"hostile_contact_on_path:actor=#{actor.ArmyId} "
+                    + $"enemy=#{contact.EnemyArmyId} at=({contact.Hex.Q},{contact.Hex.R}) "
+                    + $"fightWin={contact.WinChance:0.00} < floor {AbortFloor:0.00}";
+                return false;
+            }
             if (AttackRetreatWitness.Blocks(intents, snap, target, actor, out string why, out _))
             { reason = "waiting_for_changed_odds:" + why; return false; }
             return true;

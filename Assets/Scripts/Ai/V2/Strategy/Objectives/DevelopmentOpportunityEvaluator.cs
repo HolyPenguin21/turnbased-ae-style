@@ -514,7 +514,17 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':needs_{creationAp}_creation_ap";
                     continue;
                 }
-                // Preserve sunk-facility admission: Phase A owns the final card EV comparison.
+                // Sunk facility: no investment EV here, but the card score itself
+                // (ScoreGeneratedEquipmentUpgrade, the one Phase A plays CardUpgrade by; the chain's
+                // price does not depend on the recipient, so the most valuable one is its maximum)
+                // must clear the margin. 2026-11-01 (owner decision) — an offering that loses to
+                // holding was admitted every pass and refused every time (Draven T16-T19: ~20 per
+                // pass, ~130 DEV demands per turn, play -0.66 against hold 0).
+                if (ev <= AiConfigV2.devEvMargin)
+                {
+                    last = $"'{card.displayName}':card_ev_{ev:0.00}_not_above_{AiConfigV2.devEvMargin:0.00}";
+                    continue;
+                }
                 best.Explain = $"{best.Mode} '{card.displayName}' -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} tactical={best.TacticalGain:0.0} "
                     + best.Explain;

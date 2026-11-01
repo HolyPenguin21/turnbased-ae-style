@@ -665,11 +665,54 @@ namespace Game.Ai.V2
         }
 
         internal static bool NeedsSafeWithdrawal(WorldSnapshot snap, ArmySnapshot actor) =>
-            actor != null && (snap?.Threat?.Threats ?? Array.Empty<AssetThreatSnapshot>()).Any(t =>
-                IsHonestPositionedHostile(t) && t.Asset.Kind == AssetKind.Army
-                && t.Asset.Hex.Equals(actor.Hex) && t.CanDamage && t.EnemyEta.HasValue
-                && t.EnemyEta.Value <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta
-                && t.AttackWinChance > 1f - AiConfigV2.activeDefenceHoldWinChance);
+            WithdrawalThreats(snap, actor).Any();
+
+        // The honest threats to this army itself (its Army asset) that make it withdraw.
+        private static IEnumerable<AssetThreatSnapshot> WithdrawalThreats(WorldSnapshot snap,
+            ArmySnapshot actor) =>
+            actor == null ? Enumerable.Empty<AssetThreatSnapshot>()
+                : (snap?.Threat?.Threats ?? Array.Empty<AssetThreatSnapshot>()).Where(t =>
+                    IsHonestPositionedHostile(t) && t.Asset.Kind == AssetKind.Army
+                    && t.Asset.Hex.Equals(actor.Hex) && t.CanDamage && t.EnemyEta.HasValue
+                    && t.EnemyEta.Value <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta
+                    && t.AttackWinChance > 1f - AiConfigV2.activeDefenceHoldWinChance);
+
+        // 2026-11-01 (owner decision) — a free lone hero is a bench (Housekeeping, 2026-10-15), and
+        // under a known threat it shelters; Housekeeping can only put it into a garrison on its own
+        // hex, and the Shortage withdrawal lists usable fighters only, so a bench standing off every
+        // own Base had no owner (Rurik #27 Aldric Voss idle at (1,-2) T13-T20, Draven's fist one hex
+        // away). Its objective is the threat to its own Army asset, the one NeedsSafeWithdrawal
+        // reads; the leg is an ordinary SafeWithdrawal Return (Continuity and Provisioning re-check
+        // NeedsSafeWithdrawal and SafeWithdrawalBase). Null: not a threatened off-base bench.
+        internal static ActiveDefenceObjective BenchShelterObjective(WorldSnapshot snap, ArmySnapshot hero)
+        {
+            if (!GroundCombatActorEligibility.IsHeroAssemblyHost(hero)
+                || snap?.Self?.BaseHexes?.Contains(hero.Hex) == true)
+                return null;
+            AssetThreatSnapshot t = WithdrawalThreats(snap, hero)
+                .OrderBy(x => x.EnemyEta.Value).ThenByDescending(x => x.Severity)
+                .ThenBy(x => x.Contact.Army.ArmyId).FirstOrDefault();
+            if (t == null)
+                return null;
+            return new ActiveDefenceObjective
+            {
+                Target = new ActiveDefenceMissionTarget
+                {
+                    Phase = ActiveDefencePhase.Return,
+                    EnemyArmyId = t.Contact.Army.ArmyId,
+                    LastKnownHex = t.Contact.Position.Value,
+                    LastObservedTurn = t.Contact.LastObservedTurn,
+                    Confidence = t.Confidence,
+                    ProtectedAssetHex = t.Asset.Hex,
+                    ProtectedAssetKind = t.Asset.Kind,
+                    ProtectedAssetValue = t.Asset.Value,
+                    ThreatSeverity = t.Severity,
+                    EstimatedEta = t.EnemyEta.Value,
+                    EnemyEta = t.EnemyEta,
+                },
+                TaskScore = BuildActiveDefenceScore(snap, t),
+            };
+        }
 
         // Keep the global base ranking, constrained only for this lane to a reachable safe home.
         internal static HexCoord? SafeWithdrawalBase(WorldSnapshot snap, ArmySnapshot actor,

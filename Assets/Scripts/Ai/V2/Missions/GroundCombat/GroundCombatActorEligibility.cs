@@ -52,7 +52,8 @@ namespace Game.Ai.V2
 
         // A lone hero is never a ready fighter. Only the same-hex assembly loop may nominate it,
         // and only a complete projected roster with a legal escort can pass that loop's gate.
-        private static bool IsHeroAssemblyHost(ArmySnapshot a) =>
+        // The lone-hero field container shape (also the ActiveDefence bench shelter's mover).
+        internal static bool IsHeroAssemblyHost(ArmySnapshot a) =>
             a != null && a.HasHero && a.MemberCount == 1 && !a.IsGarrison && !a.IsPrison
                 && !a.IsAir && !a.IsAirfield && !a.IsSoloRecce;
 

@@ -149,7 +149,12 @@ namespace Game.Ai.V2
             // Under a fetched commander every support carrier of the host stays, the current
             // commander included when it is one (an ordinary one returns to the garrison).
             int retainedUnderUpgrade = host.SupportCarrierSlots;
-            if (AttackForceReadiness.ForceReady(currentPower, snap.Self.AttackPeak))
+            // 2026-11-01 (owner decision) — the fetch is asked of the fist that actually stands
+            // (its live roster), not of the roster the current commander could lead once the
+            // hand and deck arrive: that potential cleared the bar while the real fist did not,
+            // and a Command 8 hero sat in the home garrison (Draven T13-T20: Nadia 6, fist 59.7 <
+            // 73.2). The gain is still the potential roster the larger Command allows.
+            if (AttackForceReadiness.ForceReady(host.EffectiveArmyPower, snap.Self.AttackPeak))
                 return default;
             currentCommand = host.CommanderCommandRating;
             (ArmyData garrison, UnitData hero, float power) best = (null, null, currentPower);
