@@ -125,8 +125,11 @@ namespace Game.Ai.V2
             u == null ? null : CardKey(u.OriginatingCard) ?? $"unit#{u.RuntimeId}";
 
         // Target positions the members do not fill yet (multiset difference, by key).
+        // `equivalents` — the FillsMissing rule on live bodies: a body left over after the exact
+        // keys fills a missing body position no stronger than itself (the strongest leftover body
+        // takes the strongest position it covers).
         public static List<StrikeRosterSlot> Missing(IReadOnlyList<StrikeRosterSlot> target,
-            IEnumerable<UnitData> members)
+            IEnumerable<UnitData> members, bool equivalents = false)
         {
             var have = new Dictionary<string, int>();
             foreach (UnitData u in members ?? Enumerable.Empty<UnitData>())
@@ -143,6 +146,22 @@ namespace Game.Ai.V2
                     have[slot.Key] = n - 1;
                 else
                     missing.Add(slot);
+            }
+            if (!equivalents || missing.Count == 0)
+                return missing;
+            missing = missing.OrderByDescending(m => m.Power).ToList();
+            foreach (UnitData u in (members ?? Enumerable.Empty<UnitData>())
+                         .Where(u => u != null && !u.IsHero && !u.IsPrisoner)
+                         .OrderByDescending(u => AiPower.UnitPower(u)).ThenBy(u => u.RuntimeId))
+            {
+                string k = UnitKey(u);
+                if (k == null || !have.TryGetValue(k, out int n) || n <= 0)
+                    continue;
+                have[k] = n - 1;
+                float power = AiPower.UnitPower(u);
+                int at = missing.FindIndex(m => !m.IsHero && power + 0.001f >= m.Power);
+                if (at >= 0)
+                    missing.RemoveAt(at);
             }
             return missing;
         }

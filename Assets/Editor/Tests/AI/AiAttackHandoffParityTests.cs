@@ -167,6 +167,37 @@ namespace Game.EditorTests
             Assert.That(gather.SupportArmyIds, Is.EqualTo(new[] { rear.Id }));
         }
 
+        // Playtest 2026-11-01 (Draven T16): past the power bar the gather goes to the peak's roster
+        // (StrikeRoster), not to any power gain. A support whose body is no missing position walks
+        // for nothing; one that brings a missing position (or an equivalent) still joins.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PowerBarGather_PastTheBar_TakesOnlyASupportThatFillsAPeakPosition(bool fillsPosition)
+        {
+            var goal = new HexCoord(10, 0);
+            UnitData a = Body("A", 6, 8), b = Body("B", 6, 8), extra = Body("Extra", 7, 8);
+            ArmyData host = Army(new HexCoord(6, 0), Hero("Front", 7), a, b);
+            ArmyData support = Army(new HexCoord(0, 0), extra);
+            ArmyRegistry.Register(host);
+            ArmyRegistry.Register(support);
+            var roster = new List<StrikeRosterSlot>
+            {
+                new StrikeRosterSlot(StrikeRoster.UnitKey(a), false, AiPower.UnitPower(a), ForceSource.Map),
+                new StrikeRosterSlot(StrikeRoster.UnitKey(b), false, AiPower.UnitPower(b), ForceSource.Map),
+            };
+            if (fillsPosition)
+                roster.Add(new StrikeRosterSlot("Heavy Tank", false, AiPower.UnitPower(extra), ForceSource.Deck));
+            var snap = new WorldSnapshot { Observer = Us,
+                Self = new SelfSnapshot { Armies = new[] { Snapshot(host), Snapshot(support) },
+                    StrikeRoster = roster } };
+
+            GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, Site(), 0f,
+                goal, new HashSet<int>(), .8f, pinnedHostArmyId: host.Id, minimumArmyPower: 1f);
+
+            Assert.That(gather.Feasible, Is.True, gather.Reason);
+            Assert.That(gather.SupportArmyIds, Is.EqualTo(fillsPosition ? new[] { support.Id } : new int[0]));
+        }
+
         [Test]
         public void FullHost_WithoutAStrongerBody_HasNoPlanAndAnExactReason()
         {

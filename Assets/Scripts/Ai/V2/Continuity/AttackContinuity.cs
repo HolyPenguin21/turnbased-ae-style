@@ -959,7 +959,8 @@ namespace Game.Ai.V2
                 : GroundCombatAssemblyPlanner.PlanGather(snap, opposition, hexBonus, a.Target.Hex,
                     unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate, hostId, null,
                     minimumArmyPower: required, allowPartial: true,
-                    departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate));
+                    departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate),
+                    targetRoster: a.TargetRoster);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);

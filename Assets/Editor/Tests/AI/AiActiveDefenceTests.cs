@@ -1553,6 +1553,49 @@ namespace Game.EditorTests
             finally { MissionIntentRegistry.Clear(); }
         }
 
+        // Playtest 2026-11-01 (Rurik #27 Aldric Voss idle at (1,-2) T13-T20 next to Draven's fist):
+        // a free lone hero off every own Base shelters at a safe own Base under a known threat to
+        // itself, through the ordinary SafeWithdrawal Return. A hero already withdrawing, one with no
+        // imminent threat and a one-body fighter get no shelter leg.
+        [TestCase("bench", true)]
+        [TestCase("claimed", false)]
+        [TestCase("distant", false)]
+        [TestCase("fighter", false)]
+        public void BenchHero_UnderThreatOffBase_ShelterReturnHome(string shape, bool shelters)
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot army = DefenceActor(owner, 27, new HexCoord(-3, 0));
+            if (shape != "fighter")
+            {
+                army.HasHero = true;
+                army.IsStructuralRaidActor = false;
+                army.EffectiveArmyPower = 0f;
+                army.Members = Array.Empty<WorthIt.DefenderProfile>();
+            }
+            WorldSnapshot snap = AssetWorld(army);
+            AssetThreatSnapshot danger = snap.Threat.Threats[0];
+            danger.Asset = new StrategicAssetSnapshot { Kind = AssetKind.Army, Hex = army.Hex };
+            danger.EnemyEta = shape == "distant" ? AiConfigV2.activeDefenceWithdrawMaxEnemyEta + 1 : 1;
+            MissionIntent[] intents = shape == "claimed"
+                ? new[] { DefenceIntent(ActiveDefencePhase.Return, 5, 27, Home) }
+                : Array.Empty<MissionIntent>();
+
+            List<MissionProposal> legs = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
+                    intents, Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer))
+                .Where(p => p.Kind == MissionKind.ActiveDefence && !p.FromDurableIntent
+                    && ((ActiveDefenceMissionTarget)p.Target).Phase == ActiveDefencePhase.Return)
+                .ToList();
+
+            Assert.That(legs, Has.Count.EqualTo(shelters ? 1 : 0));
+            if (!shelters)
+                return;
+            var target = (ActiveDefenceMissionTarget)legs[0].Target;
+            Assert.That(target.ReturnPurpose, Is.EqualTo(ActiveDefenceReturnPurpose.SafeWithdrawal));
+            Assert.That(target.PrimaryArmyId, Is.EqualTo(27));
+            Assert.That(new[] { Home, Secondary }, Does.Contain(target.ReturnHex.Value));
+            Assert.That(legs[0].BaseValue, Is.GreaterThan(0f), "the walk is worth its activation");
+        }
+
         [Test]
         public void SafeWithdrawal_RechecksCurrentPositionAndRetiresOnArrival()
         {

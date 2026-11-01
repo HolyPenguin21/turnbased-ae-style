@@ -45,7 +45,8 @@ namespace Game.Ai.V2
             HexCoord targetHex, ISet<int> excludeArmyIds, float winChanceGate,
             int? pinnedHostArmyId = null, IReadOnlyDictionary<int, float> donorValues = null,
             bool requireMovementNow = true, float minimumArmyPower = 0f, bool allowPartial = false,
-            System.Func<GroundCombatGatherPlan, string> departureVeto = null)
+            System.Func<GroundCombatGatherPlan, string> departureVeto = null,
+            IReadOnlyList<StrikeRosterSlot> targetRoster = null)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatGatherPlan.Infeasible("no own-force snapshot");
@@ -80,7 +81,7 @@ namespace Game.Ai.V2
                 GroundCombatGatherPlan p = PlanGatherForHost(snap, opposition, defenderHexDefenseBonus,
                     targetHex, hostSnap, free.Concat(bought).Where(s => s.ArmyId != hostSnap.ArmyId).ToList(),
                     winChanceGate, donorValues, minimumArmyPower,
-                    allowPartial && pinnedHostArmyId.HasValue);
+                    allowPartial && pinnedHostArmyId.HasValue, targetRoster);
                 string departureReason = p.Feasible ? departureVeto?.Invoke(p) : null;
                 if (departureReason != null)
                 { p.Feasible = false; p.Reason = departureReason; }
@@ -116,7 +117,8 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ArmySnapshot hostSnap, List<ArmySnapshot> supportSnaps,
             float winChanceGate, IReadOnlyDictionary<int, float> donorValues,
-            float minimumArmyPower, bool allowPartial = false)
+            float minimumArmyPower, bool allowPartial = false,
+            IReadOnlyList<StrikeRosterSlot> targetRoster = null)
         {
             ArmyData host = LiveArmy(hostSnap);
             if (host == null || host.Members.Count == 0)
@@ -264,6 +266,18 @@ namespace Game.Ai.V2
             bool clears = coverageOk
                 && AttackForceReadiness.ClearsFloor(power, minimumArmyPower, win, opposition);
             int uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus, attackerCommander: commander);
+            // The power bar is 80% of the peak (AttackForceReadiness.RequiredPower(AttackPeak)), and
+            // the peak is a concrete roster (SelfSnapshot.StrikeRoster): what the formation still
+            // lacks of it, an equivalent body counting as its position. A live preparation reads
+            // its frozen roster (`targetRoster`, AttackIntent.TargetRoster), the one its card
+            // witness waits for (AggressionDemandEvaluator.PreparationHostCardSource).
+            IReadOnlyList<StrikeRosterSlot> rosterSource = targetRoster != null && targetRoster.Count > 0
+                ? targetRoster : snap.Self.StrikeRoster;
+            IReadOnlyList<StrikeRosterSlot> peakRoster = minimumArmyPower > 0f
+                && rosterSource != null && rosterSource.Count > 0 ? rosterSource : null;
+            float RosterShortfall(IEnumerable<UnitData> formation) => peakRoster == null ? 0f
+                : StrikeRoster.Missing(peakRoster, formation, equivalents: true).Sum(m => m.Power);
+            float shortfall = RosterShortfall(roster);
             var chosen = new List<GatherSupport>();
             // Strike force step 5 — gather to the PEAK, not to the bare gate: below the gate any
             // improving support is taken (best win gain per AP first); past it a support is worth
@@ -313,6 +327,17 @@ namespace Game.Ai.V2
                         && WorthIt.UncoveredDefenderCount(projected, opposition,
                             defenderHexDefenseBonus, attackerCommander: commander) >= uncovered)
                         continue;
+                    // 2026-11-01 — past the power bar (and in a T01 preparation, which waits only
+                    // for a missing position — StrikeRoster) the formation gathers toward the
+                    // peak's roster, not toward any power gain: a support whose handoff fills no
+                    // missing position is a walk for nothing (Draven T16: the 6/6 fist walked three
+                    // turns to swap a Light Infantry in for +0.2). A support closing coverage
+                    // still joins.
+                    if (peakRoster != null && (clears || allowPartial)
+                        && RosterShortfall(candidate) >= shortfall - GatherPowerEpsilon
+                        && (uncovered == 0 || WorthIt.UncoveredDefenderCount(projected, opposition,
+                            defenderHexDefenseBonus, attackerCommander: commander) >= uncovered))
+                        continue;
                     if (minimumArmyPower <= 0f && clears
                         && projectedWin - win < AiConfigV2.attackGatherMinWinGain)
                         continue;
@@ -345,7 +370,8 @@ namespace Game.Ai.V2
                     return GroundCombatGatherPlan.Infeasible(minimumArmyPower > 0f
                         ? $"gather host #{host.Id}: no remaining support raises the formation "
                             + $"(projectedPower {power:0.#} must be > requiredPower {minimumArmyPower:0.#}"
-                            + $" strict; coverage {(cover ? "ok" : "missing")})"
+                            + $" strict; coverage {(cover ? "ok" : "missing")}"
+                            + (peakRoster == null ? "" : $"; peak roster short {shortfall:0.#}") + ")"
                         : !cover
                             ? $"gather host #{host.Id}: no remaining support closes coverage "
                                 + $"(a known defender no pooled body can damage; win {win:0.00})"
@@ -373,6 +399,7 @@ namespace Game.Ai.V2
                 win = pickWin;
                 chosen.Add(pick);
                 power = AiPower.EffectiveArmyPower(roster);
+                shortfall = RosterShortfall(roster);
                 uncovered = WorthIt.UncoveredDefenderCount(bodies, opposition, defenderHexDefenseBonus, attackerCommander: commander);
                 coverageOk = GroundCombatFeasibility.Clears(bodies, commander, opposition,
                     winChanceGate, defenderHexDefenseBonus, out win, out cover);

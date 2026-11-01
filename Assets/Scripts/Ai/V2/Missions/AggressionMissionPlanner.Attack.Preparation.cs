@@ -373,9 +373,9 @@ namespace Game.Ai.V2
         }
 
         // 2026-10-01 (user decision, variant B) — the host's own commander caps the roster
-        // (StrikeRoster.ComposeUnder). When that roster cannot clear the march bar (> 80% of the
-        // peak) and an own garrison ELSEWHERE holds a hero with a larger Command whose roster would
-        // be stronger — never a garrison hero (Support tag), never a facility operator, only one
+        // (StrikeRoster.ComposeUnder). When the live fist cannot clear the march bar (> 80% of the
+        // peak; 2026-11-01, not that potential roster) and an own garrison ELSEWHERE holds a hero
+        // with a larger Command whose roster would be stronger — never a garrison hero (Support tag), never a facility operator, only one
         // the garrison may spare — the hero leaves the garrison as a lone-hero container (2 AP,
         // lifecycle of the Hard operation) and then walks to the host (CommanderLeg).
         private static void AppendPreparationCommanderFetch(WorldSnapshot snap, MissionIntent intent,
@@ -386,13 +386,15 @@ namespace Game.Ai.V2
             if (!assessable)
                 return;
             float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
-            if (AttackForceReadiness.ForceReady(currentPower, snap.Self.AttackPeak))
+            // The live fist decides whether a commander is needed (FindCommanderUpgrade).
+            if (AttackForceReadiness.ForceReady(host.EffectiveArmyPower, snap.Self.AttackPeak))
                 return;
             if (best.hero == null)
             {
                 AiDebugLog.WriteDeduped(intent.IntentKey + "#commander",
                     $"[AI][V2][Attack][Mobilization] {intent.IntentKey} decision=NONE step=FetchCommander "
-                    + $"host=#{host.ArmyId} command={currentCommand} roster={F(currentPower)} required>{F(required)} "
+                    + $"host=#{host.ArmyId} command={currentCommand} fist={F(host.EffectiveArmyPower)} "
+                    + $"roster={F(currentPower)} required>{F(required)} "
                     + "reason=no_stronger_spareable_commander_in_an_own_garrison");
                 return;
             }
@@ -429,7 +431,8 @@ namespace Game.Ai.V2
                 KnownOpposition.OnHex(snap, a.Target.Hex), hexBonus,
                 a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 host.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true,
-                departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate));
+                departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate),
+                targetRoster: a.TargetRoster);
             List<int> bought = plan.Feasible
                 ? plan.SupportArmyIds.Where(donorValues.ContainsKey).ToList() : new List<int>();
             if (bought.Count == 0)

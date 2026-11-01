@@ -396,7 +396,8 @@ namespace Game.EditorTests
                 HitPointsMax = 20, HitPointsCurrent = 20, Initiative = 5 });
             ArmyRegistry.Register(host);
             ArmyRegistry.Register(donor);
-            ArmySnapshot hostFacts = Actor(host.Id, Home);
+            // The live host is its hero alone: its fist is 0.
+            ArmySnapshot hostFacts = Actor(host.Id, Home, power: 0f);
             hostFacts.RosterCapacity = StrikeRoster.HostRosterCapacity(host);
             hostFacts.CommanderRosterCandidate = StrikeRoster.CommanderCandidate(host.Commander);
             hostFacts.CommanderCommandRating = host.Commander.CommandRating;
@@ -410,6 +411,47 @@ namespace Game.EditorTests
             Assert.That(assessable, Is.True);
             Assert.That(result.hero, garrisonHero ? Is.Null : Is.SameAs(hero));
             Assert.That(donor.Members.Contains(hero), Is.True, "policy may never perform the extraction");
+        }
+
+        // Playtest 2026-11-01 (Draven T13-T20: Nadia Command 6 led a 59.7 fist under the 73.2 bar
+        // while Aldric Voss, Command 8, sat in the home garrison): the fetch is asked of the live
+        // fist. The roster the current commander could lead once hand and deck arrive already
+        // clears the bar, the fist does not, and the larger Command leads a stronger roster.
+        [TestCase(0f, true)]
+        [TestCase(1000f, false)]
+        public void CommanderUpgrade_IsAskedOfTheLiveFist_NotOfThePotentialRoster(float fist, bool fetches)
+        {
+            var host = new ArmyData { Owner = _us, Hex = Home };
+            host.Members.Add(new UnitData { Owner = _us, IsHero = true, CommandRating = 4 });
+            var donor = new ArmyData { Owner = _us, Hex = Away, IsGarrison = true };
+            var hero = new UnitData { Owner = _us, IsHero = true, CommandRating = 8 };
+            donor.Members.Add(hero);
+            donor.Members.Add(new UnitData { Owner = _us, Attack = 50, Defense = 50,
+                HitPointsMax = 20, HitPointsCurrent = 20, Initiative = 5 });
+            ArmyRegistry.Register(host);
+            ArmyRegistry.Register(donor);
+            ArmySnapshot hostFacts = Actor(host.Id, Home, power: fist);
+            hostFacts.RosterCapacity = StrikeRoster.HostRosterCapacity(host);
+            hostFacts.CommanderRosterCandidate = StrikeRoster.CommanderCandidate(host.Commander);
+            hostFacts.CommanderCommandRating = host.Commander.CommandRating;
+            WorldSnapshot snap = Snap(hostFacts);
+            snap.Self.StrikePool = Enumerable.Range(0, 8).Select(i => new StrikeRosterCandidate(
+                new StrikeRosterSlot("body" + i, false, 20f, ForceSource.Deck),
+                new AiPower.PowerUnit(20f, null, 1, false))).ToArray();
+            StrikeRoster.ComposeUnder(snap.Self.StrikePool, hostFacts.CommanderRosterCandidate,
+                hostFacts.RosterCapacity, out float underCurrent);
+            StrikeRoster.ComposeUnder(snap.Self.StrikePool, StrikeRoster.CommanderCandidate(hero),
+                hero.CommandRating, out float underHero);
+            Assert.That(underHero, Is.GreaterThan(underCurrent), "fixture: the larger Command leads more");
+            // The bar sits just under the current commander's potential roster.
+            snap.Self.AttackPeak = underCurrent / 0.8f - 0.5f;
+            Assert.That(AttackForceReadiness.ForceReady(underCurrent, snap.Self.AttackPeak), Is.True);
+
+            var result = AttackPreparationPolicy.FindCommanderUpgrade(snap, snap.Self.Armies[0],
+                out _, out _, out bool assessable);
+
+            Assert.That(assessable, Is.True);
+            Assert.That(result.hero, fetches ? Is.SameAs(hero) : Is.Null);
         }
 
         [Test]

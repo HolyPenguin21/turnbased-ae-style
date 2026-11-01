@@ -126,6 +126,36 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 2026-11-01 (owner decision) — a threatened free lone hero off every own Base walks to
+            // a safe own Base (ActiveDefenceObjectiveEvaluator.BenchShelterObjective): the same
+            // one-army SafeWithdrawal leg a Shortage gives a field army, no fight.
+            foreach (ArmySnapshot hero in snap.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+            {
+                if (hero == null || hero.CurrentMovement <= 0
+                    || (committed != null && committed.Contains(hero.ArmyId))
+                    || withdrawing.Contains(hero.ArmyId) || withdrawalProposed.Contains(hero.ArmyId))
+                    continue;
+                ActiveDefenceObjective shelter = ActiveDefenceObjectiveEvaluator.BenchShelterObjective(snap, hero);
+                if (shelter == null)
+                    continue;
+                HexCoord? destination = ActiveDefenceObjectiveEvaluator.SafeWithdrawalBase(snap, hero, committed);
+                if (!destination.HasValue || hero.Hex.Equals(destination.Value))
+                    continue;
+                withdrawalProposed.Add(hero.ArmyId);
+                pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
+                var response = new ActiveDefenceResponse
+                {
+                    Kind = ActiveDefenceResponseKind.Shortage, Reason = "bench_hero_shelter",
+                };
+                proposals.Add(BuildActiveDefenceWithdrawal(shelter, hero, destination.Value,
+                    response, pendingHost.Value));
+                AiDebugLog.WriteDeduped(hero.ArmyId + "#bench-shelter",
+                    $"[AI][V2][ActiveDefence][Admission] decision=SHELTER hero_army=#{hero.ArmyId} "
+                    + $"at=({hero.Hex.Q},{hero.Hex.R}) enemy={shelter.Target.EnemyArmyId} "
+                    + $"enemyEta={shelter.Target.EnemyEta} destination=({destination.Value.Q},{destination.Value.R}) "
+                    + $"task={shelter.TaskScore.Value:0.00} reason=bench_hero_shelter");
+            }
+
             AppendImmediateOpportunities(snap, activeIntents, committed, withdrawing, proposals,
                 deferredThisPass, strategicallyAnswered, ref pendingHost);
         }
