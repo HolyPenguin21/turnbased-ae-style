@@ -4,11 +4,10 @@ namespace Game.Cards
     // ones (formerly a separate Game.Map.BuildingAbilities) in one place, since nothing
     // downstream actually distinguishes them: CardDefinition.grantedAbilities is one shared
     // field for every CardType (see its own comment), UnitData.Abilities/BuildingData.Abilities
-    // both just read this same field at spawn time, and both UnitAbilityCatalog.knownAbilities
-    // and GameConfig.abilityAbbreviations list every tag here regardless of what kind of card
-    // grants it. Keeping two parallel tag lists was what let them drift apart in the first place
-    // (see the project owner's own report: a tag typed into UnitAbilityCatalog/
-    // GameConfig.abilityAbbreviations with a space, e.g. "Rapid Reaction", silently never
+    // both just read this same field at spawn time, and UnitAbilityCatalog.knownAbilities
+    // lists every tag here regardless of what kind of card grants it. Keeping two parallel tag
+    // lists was what let them drift apart in the first place (see the project owner's own
+    // report: a tag typed into UnitAbilityCatalog with a space, e.g. "Rapid Reaction", silently never
     // matched the real UnitAbilities.RapidReaction constant checked at the actual effect site,
     // so the ability showed up in the UI but never worked) — folding everything into this one
     // class, plus All below driving every other list instead of being hand-typed, closes that
@@ -251,8 +250,8 @@ namespace Game.Cards
         // --- Every tag above, in one place --------------------------------------------------
         // Symbol references, not fresh string literals — a typo here is a compile error, not a
         // silent runtime mismatch. Drives AbilityTagDrawer's dropdown and
-        // UnitAbilityCatalog/GameConfig.abilityAbbreviations' own auto-sync (see their
-        // OnValidate) instead of either being hand-typed, so a newly added ability only ever
+        // UnitAbilityCatalog's own auto-sync (see its OnValidate) instead of either being
+        // hand-typed, so a newly added ability only ever
         // needs a const above PLUS an entry here — every list that shows abilities picks it up
         // automatically from there on.
         public static readonly string[] All =
@@ -268,10 +267,8 @@ namespace Game.Cards
 
         // Human-readable form of a tag, derived purely from its own PascalCase spelling (a
         // space inserted before each internal capital) — e.g. "RapidReaction" -> "Rapid
-        // Reaction". Used wherever a full ability name is shown (see GameConfig.
-        // FormatAbilitiesDetailed) instead of a separately hand-typed copy that could drift
-        // from the tag itself the same way GameConfig.abilityAbbreviations' old fullName field
-        // once could.
+        // Reaction". Used wherever a full ability name is shown (see UnitAbilityCatalog.
+        // GetTitle) instead of a separately hand-typed copy that could drift from the tag itself.
         public static string PrettyName(string tag)
         {
             if (string.IsNullOrEmpty(tag))
