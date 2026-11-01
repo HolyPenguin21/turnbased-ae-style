@@ -5,15 +5,16 @@ using UnityEngine;
 
 namespace Game.Cards
 {
-    // Single place to write a description for every ability tag in the game (see
-    // Game.Cards.UnitAbilities — Base-card ones like Barracks/Research/CollectX and Hero/Unit
-    // ones like RapidReaction alike) — plus the tunable magnitudes for the fixed-value combat
-    // abilities below. A separate small asset (Assets/Cards/UnitAbilityCatalog.asset) rather
-    // than folding these into GameConfig, same reasoning as FactionCardCatalog living on its
-    // own: this is card/combat design data, tuned by editing one asset in the Cards folder.
-    // knownAbilities' own tag field is never hand-typed (see SyncKnownAbilities) — only
-    // description is — so it can never again drift from UnitAbilities the way it used to (a
-    // tag typed with a stray space silently never matched the real ability effect's own check).
+    // Single place for every ability tag's display text — card abbreviation and detail-panel
+    // description (see Game.Cards.UnitAbilities — Base-card ones like Barracks/Research/CollectX
+    // and Hero/Unit ones like RapidReaction alike) — plus the tunable magnitudes for the
+    // fixed-value combat abilities below. A separate small asset (Assets/Cards/
+    // UnitAbilityCatalog.asset) rather than folding these into GameConfig, same reasoning as
+    // FactionCardCatalog living on its own: this is card/combat design data, tuned by editing
+    // one asset in the Cards folder. knownAbilities' own tag/title fields are never hand-typed
+    // (see OnValidate) — only abbreviation/description are — so they can never again drift from
+    // UnitAbilities the way they used to (a tag typed with a stray space silently never matched
+    // the real ability effect's own check).
     // The actual effect for each tag still lives wherever that ability is implemented
     // (BuildingRegistry/CitadelSetupController for the Base ones, BattleAttackPopupUI/
     // BattleScreenUI.Combat.cs/CardHandUI/HexSelectionController.Factory for the Unit ones).
@@ -43,45 +44,92 @@ namespace Game.Cards
         [System.Serializable]
         public class AbilityEntry
         {
-            // Synced from UnitAbilities.All (see SyncKnownAbilities) — never hand-edited, so
-            // this can never drift from the real ability tag the way a free-typed field could.
+            // Synced from UnitAbilities.All (see OnValidate) — never hand-edited, so neither can
+            // drift from the real ability tag the way a free-typed field could.
             [ReadOnly] public string tag;
-            public string description;
+            [ReadOnly] public string title;
+            // Short form shown on the compact card itself; empty falls back to title.
+            public string abbreviation;
+            // Shown under the title in detail panels (see FormatAbilitiesDetailed).
+            [TextArea(2, 5)] public string description;
         }
 
-        [Header("Every ability tag in the game - tag is synced automatically (see UnitAbilities.All), only description is ever hand-edited")]
+        [Header("Every ability tag in the game - tag/title are synced automatically (see UnitAbilities.All)")]
         public List<AbilityEntry> knownAbilities = new List<AbilityEntry>();
 
         // Keeps knownAbilities in exact 1:1 sync with UnitAbilities.All on every inspector
-        // refresh: adds an entry for a newly added ability, drops one for a removed/renamed
-        // tag, and otherwise leaves each entry's own hand-written description untouched.
+        // refresh, sorted by title: adds an entry for a newly added ability, drops one for a
+        // removed/renamed tag, and otherwise keeps each entry's hand-written abbreviation and
+        // description untouched.
         private void OnValidate()
         {
-            var descriptionsByTag = new Dictionary<string, string>();
+            var entriesByTag = new Dictionary<string, AbilityEntry>();
             if (knownAbilities != null)
                 foreach (AbilityEntry entry in knownAbilities)
                     if (entry != null && !string.IsNullOrEmpty(entry.tag))
-                        descriptionsByTag[entry.tag] = entry.description;
+                        entriesByTag[entry.tag] = entry;
 
             knownAbilities = UnitAbilities.All
-                .Select(tag => new AbilityEntry
+                .Select(tag =>
                 {
-                    tag = tag,
-                    description = descriptionsByTag.TryGetValue(tag, out string description) ? description : string.Empty,
+                    entriesByTag.TryGetValue(tag, out AbilityEntry old);
+                    return new AbilityEntry
+                    {
+                        tag = tag,
+                        title = UnitAbilities.PrettyName(tag),
+                        abbreviation = old?.abbreviation ?? string.Empty,
+                        description = old?.description ?? string.Empty,
+                    };
                 })
+                .OrderBy(entry => entry.title, System.StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
-        // Looked up by GameConfig.FormatAbilitiesDetailed for a unit/building's detail-panel
-        // ability list — null if this tag has no entry (or the entry's description is empty),
-        // so callers can skip the indented description line instead of showing a blank one.
-        public string GetDescription(string tag)
+        private AbilityEntry Find(string tag)
         {
             if (knownAbilities != null)
                 foreach (AbilityEntry entry in knownAbilities)
-                    if (entry != null && entry.tag == tag && !string.IsNullOrEmpty(entry.description))
-                        return entry.description;
+                    if (entry != null && entry.tag == tag)
+                        return entry;
             return null;
+        }
+
+        // Full display name, derived from the tag itself (see UnitAbilities.PrettyName).
+        public static string GetTitle(string tag) => UnitAbilities.PrettyName(tag);
+
+        // Short card form; falls back to the title when no abbreviation is authored.
+        public string GetAbbreviation(string tag)
+        {
+            AbilityEntry entry = Find(tag);
+            return entry != null && !string.IsNullOrEmpty(entry.abbreviation) ? entry.abbreviation : GetTitle(tag);
+        }
+
+        // Null when the tag has no entry or an empty description, so callers skip the indented
+        // description line instead of showing a blank one.
+        public string GetDescription(string tag)
+        {
+            AbilityEntry entry = Find(tag);
+            return entry != null && !string.IsNullOrEmpty(entry.description) ? entry.description : null;
+        }
+
+        // Compact card form (CardUI, ArmyUnitCardUI, BaseSlotCardUI, BattleGridCellUI, ...):
+        // space-separated abbreviations, empty string for a null set.
+        public string FormatAbilities(IEnumerable<string> abilities)
+            => abilities == null ? string.Empty : string.Join(" ", abilities.Select(GetAbbreviation));
+
+        // Detail-panel form: each ability is preceded by an empty line, then its title, then
+        // "  description" when one is authored.
+        public string FormatAbilitiesDetailed(IEnumerable<string> abilities)
+        {
+            if (abilities == null)
+                return string.Empty;
+            var parts = new List<string>();
+            foreach (string ability in abilities)
+            {
+                string description = GetDescription(ability);
+                parts.Add(description == null ? $"\n{GetTitle(ability)}" : $"\n{GetTitle(ability)}\n  {description}");
+            }
+            return string.Join("\n", parts);
         }
 
         [Header("Critical Damage (x2) - UnitAbilities.CriticalDamage")]
@@ -131,6 +179,6 @@ namespace Game.Cards
         // Recce is parameterized now (r1s0/r1s4/r1s5/r1s6) — its radius/spot-strength live
         // in the tag string itself and are read via Game.Cards.AbilityParams, so there is no
         // shared magnitude field here any more. Stealth4's hide tokens are likewise encoded in
-        // the tag. knownAbilities above still carries a hand-written description for each.
+        // the tag. knownAbilities above still carries a hand-written abbreviation/description for each.
     }
 }

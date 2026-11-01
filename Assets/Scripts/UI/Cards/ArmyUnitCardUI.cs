@@ -166,8 +166,8 @@ namespace Game.UI
             {
                 // Abilities only now — Move used to be prefixed onto this same line, but now
                 // has its own slot in statsRow below (see RefreshStatsRow), so showing it here
-                // too would just be the same number twice. Abbreviated per GameConfig.
-                // abilityAbbreviations (see GameConfig.FormatAbilities) — read via the modal
+                // too would just be the same number twice. Abbreviated per UnitAbilityCatalog
+                // (see GameConfig.FormatAbilities) — read via the modal
                 // reference this card already keeps rather than needing its own config field.
                 string formatted = unit != null ? _modal?.GameConfig?.FormatAbilities(unit.Abilities) : null;
                 moveText.text = formatted ?? string.Empty;

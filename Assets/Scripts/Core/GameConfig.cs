@@ -118,99 +118,20 @@ namespace Game.Core
         public int resourceSiteDefense = 2;
         public int resourceSiteFate = 1;
 
-        [Header("Ability Abbreviations")]
-        // Short display form for each ability tag (see UnitAbilities) — used wherever a
-        // card/building/unit's abilities are listed in a description area (CardUI, ArmyUnitCardUI,
-        // BaseSlotCardUI, and the two viewer modals' own detail panels — see FormatAbilities).
-        // ability is synced from UnitAbilities.All (see SyncAbilityAbbreviations), one entry per
-        // real tag — abbreviation is the only field ever hand-edited here.
-        public AbilityAbbreviation[] abilityAbbreviations = new AbilityAbbreviation[0];
-
-        // Descriptions for FormatAbilitiesDetailed come from here rather than being duplicated
-        // onto AbilityAbbreviation — this asset is already the populated reference for every
-        // ability tag (see UnitAbilityCatalog.knownAbilities).
+        [Header("Abilities")]
+        // Abbreviations, titles and descriptions for every ability tag (see UnitAbilityCatalog).
         public UnitAbilityCatalog abilityCatalog;
 
-        // Keeps abilityAbbreviations in exact 1:1 sync with UnitAbilities.All on every inspector
-        // refresh — same self-healing idea as UnitAbilityCatalog.OnValidate, so this array can
-        // never again carry a hand-typed ability tag that's silently drifted from the real one
-        // (see UnitAbilityCatalog's own comment on the incident this replaced).
-        private void OnValidate()
-        {
-            SyncAbilityAbbreviations();
-        }
-
-        private void SyncAbilityAbbreviations()
-        {
-            var abbreviationsByTag = new Dictionary<string, string>();
-            if (abilityAbbreviations != null)
-                foreach (AbilityAbbreviation entry in abilityAbbreviations)
-                    if (entry != null && !string.IsNullOrEmpty(entry.ability))
-                        abbreviationsByTag[entry.ability] = entry.abbreviation;
-
-            abilityAbbreviations = UnitAbilities.All
-                .Select(tag => new AbilityAbbreviation
-                {
-                    ability = tag,
-                    abbreviation = abbreviationsByTag.TryGetValue(tag, out string abbreviation) ? abbreviation : string.Empty,
-                })
-                .ToArray();
-        }
-
-        // Falls back to the raw tag if it has no entry above.
-        public string GetAbilityAbbreviation(string ability)
-        {
-            if (abilityAbbreviations != null)
-                foreach (AbilityAbbreviation entry in abilityAbbreviations)
-                    if (entry != null && entry.ability == ability && !string.IsNullOrEmpty(entry.abbreviation))
-                        return entry.abbreviation;
-            return ability;
-        }
-
-        // Shared by every place that lists a card/building/unit's abilities, so they can't drift
-        // on how that's formatted — space-separated abbreviations (see GetAbilityAbbreviation),
-        // empty string for a null/empty set rather than each call site checking separately.
+        // Shared by every place that lists a card/building/unit's abilities — compact card form
+        // and detail-panel form, see UnitAbilityCatalog. PrettyName fallback if the catalog
+        // isn't assigned.
         public string FormatAbilities(IEnumerable<string> abilities)
-        {
-            if (abilities == null)
-                return string.Empty;
-            var parts = new List<string>();
-            foreach (string ability in abilities)
-                parts.Add(GetAbilityAbbreviation(ability));
-            return string.Join(" ", parts);
-        }
+            => abilityCatalog != null ? abilityCatalog.FormatAbilities(abilities)
+                : abilities == null ? string.Empty : string.Join(" ", abilities.Select(UnitAbilities.PrettyName));
 
-        // Full display name is derived straight from the tag itself (see UnitAbilities.
-        // PrettyName) rather than a separate hand-typed copy — see AbilityAbbreviation's own
-        // comment for why that field was removed.
-        public string GetAbilityFullName(string ability) => UnitAbilities.PrettyName(ability);
-
-        // Null if abilityCatalog isn't assigned, or the tag has no entry (or an empty
-        // description) there — callers skip the indented description line entirely rather than
-        // showing a blank one (see FormatAbilitiesDetailed).
-        public string GetAbilityDescription(string ability)
-        {
-            return abilityCatalog != null ? abilityCatalog.GetDescription(ability) : null;
-        }
-
-        // The detail-panel counterpart to FormatAbilities: full name, then "  description" on
-        // its own line — used only where a card/unit/building is shown in a dedicated detail
-        // view (ArmyViewerModalUI.ShowUnitDetail, BaseViewerModalUI, BattleScreenUI.Grid's
-        // detail panel), never on the compact card itself (that stays abbreviation-only, see
-        // FormatAbilities).
         public string FormatAbilitiesDetailed(IEnumerable<string> abilities)
-        {
-            if (abilities == null)
-                return string.Empty;
-            var parts = new List<string>();
-            foreach (string ability in abilities)
-            {
-                string fullName = GetAbilityFullName(ability);
-                string description = GetAbilityDescription(ability);
-                parts.Add(description == null ? fullName : $"{fullName}\n  {description}");
-            }
-            return string.Join("\n", parts);
-        }
+            => abilityCatalog != null ? abilityCatalog.FormatAbilitiesDetailed(abilities)
+                : abilities == null ? string.Empty : string.Join("\n", abilities.Select(UnitAbilities.PrettyName));
 
         [Header("Citadel Setup Step")]
         // How far from the map edge a player's random starting hex can land.

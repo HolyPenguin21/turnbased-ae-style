@@ -13,102 +13,186 @@ MonoBehaviour:
   m_Name: UnitAbilityCatalog
   m_EditorClassIdentifier: 
   knownAbilities:
-  - tag: CriticalDamage
-    description: 'Hit: x2 DMG'
-  - tag: CeramicArmor
-    description: -1 DMG received
-  - tag: Berserk
-    description: 'On hit: +ATK / -DEF'
-  - tag: RapidReaction
-    description: '0 AP: Deploy & Army Move'
-  - tag: ShockAttack
-    description: Hit forces target to skip turn
-  - tag: Hyperkinetic
-    description: +2 DMG vs Armor
-  - tag: Pyrokinetic
-    description: +2 DMG vs Bio targets
-  - tag: Splash
-    description: 
-  - tag: Scorcher
-    description: 
-  - tag: RaiseTheRots
-    description: 
-  - tag: Heal
-    description: Restores 1 HP to one random wounded living Bio ally
-  - tag: Transport
-    description: Raises the movement maximum of the slowest Infantry
-  - tag: Repair
-    description: Enables paid repair for all own units on this hex
-  - tag: Disruption
-    description: While on a hostile Base or Citadel hex, or arriving in an attacking
-      army, suppresses its positive building DEF bonus for the whole encounter.
-      Terrain, formation and unit DEF are unchanged. Does not reveal the carrier.
-  - tag: Airfield
-    description: Provides a mobile airfield
-  - tag: SingleUse
-    description: Equipment is consumed after an attack
-  - tag: Explosion3
-    description: Replaces an attack with separate 10-die challenges against up to
-      3 random distinct units or structures on the target hex, including allies.
-  - tag: Explosion5
-    description: Replaces an attack with separate 10-die challenges against up to
-      5 random distinct units or structures on the target hex, including allies.
-  - tag: Explosion10
-    description: Replaces an attack with separate 10-die challenges against up to
-      10 random distinct units or structures on the target hex, including allies.
-  - tag: Ionic
-    description: +2 DMG vs Mechanical
-  - tag: Bodyguard
-    description: 
-  - tag: Counterattack
-    description: 
-  - tag: Drill
-    description: 
-  - tag: r1s0
-    description: Vision +1
-  - tag: r1s4
-    description: Vision +1, Detection =4
-  - tag: r1s5
-    description: Vision +1, Detection =5
-  - tag: r1s6
-    description: Vision +1, Detection =6
-  - tag: Stealth4
-    description: Unit can enter stealth
   - tag: AA
-    description: Can intercept air targets
+    title: 'AA'
+    abbreviation: ''
+    description: 'Intercepts enemy aircraft within the card''s anti-air radius.'
+  - tag: Airfield
+    title: 'Airfield'
+    abbreviation: ''
+    description: 'Mobile airfield: carries aircraft up to its Airfield Capacity.'
   - tag: ApBonus
-    description: 'Passive: +2 AP/turn'
-  - tag: TacticalIntelligence
-    description: Unlocks opponent intelligence while in play. Ground armies closer
-      to an enemy citadel reveal more fields; revealed fields change each turn.
-  - tag: Barracks
-    description: Accepts hand deploys
-  - tag: Research
-    description: Facility enables research.
-  - tag: Researcher
-    description: Hero can use Research facilities.
-  - tag: Production
-    description: Facility enables production.
+    title: 'Ap Bonus'
+    abbreviation: 'AP+2'
+    description: '+2 AP each turn while in play.'
   - tag: Assembler
-    description: Hero can use Production facilities.
-  - tag: CollectHuman
-    description: Collects Human resource each turn
+    title: 'Assembler'
+    abbreviation: ''
+    description: 'Hero can run Production at a Production Facility on its hex.'
+  - tag: Barracks
+    title: 'Barracks'
+    abbreviation: 'Barracks'
+    description: 'Accepts units deployed from hand and holds a garrison. Retreating armies head to the nearest own Barracks.'
+  - tag: Berserk
+    title: 'Berserk'
+    abbreviation: ''
+    description: 'Each hit taken in combat: +1 ATK, -1 DEF until the battle ends.'
+  - tag: Bodyguard
+    title: 'Bodyguard'
+    abbreviation: ''
+    description: 'Once per round takes a hit aimed at an adjacent ally instead. Heroes never guard.'
+  - tag: CeramicArmor
+    title: 'Ceramic Armor'
+    abbreviation: ''
+    description: '-1 to all damage received.'
   - tag: CollectEnergy
-    description: Collects Energy resource each turn
+    title: 'Collect Energy'
+    abbreviation: 'cE'
+    description: 'Collects Energy from this hex each turn: 1 + upgrade level, up to the hex yield.'
+  - tag: CollectHuman
+    title: 'Collect Human'
+    abbreviation: 'cH'
+    description: 'Collects Human from this hex each turn: 1 + upgrade level, up to the hex yield.'
   - tag: CollectMaterials
-    description: Collects Materials resource each turn
+    title: 'Collect Materials'
+    abbreviation: 'cM'
+    description: 'Collects Materials from this hex each turn: 1 + upgrade level, up to the hex yield.'
   - tag: CollectTech
-    description: Collects Tech resource each turn
-  - tag: Regeneration
-    description: 
-  - tag: ProduceHuman
-    description: 'Passive: +1 H/turn'
+    title: 'Collect Tech'
+    abbreviation: 'cT'
+    description: 'Collects Tech from this hex each turn: 1 + upgrade level, up to the hex yield.'
+  - tag: Counterattack
+    title: 'Counterattack'
+    abbreviation: ''
+    description: 'After surviving an attack from an adjacent cell (diagonals included), strikes the attacker back. Cancelled by Shock Attack.'
+  - tag: CriticalDamage
+    title: 'Critical Damage'
+    abbreviation: 'Critical'
+    description: 'Damage of a successful attack x2.'
+  - tag: Disruption
+    title: 'Disruption'
+    abbreviation: 'DIS'
+    description: 'On a hostile Base or Citadel hex, or arriving with an attacking army: cancels its building DEF bonus for the encounter. Does not reveal the carrier.'
+  - tag: Drill
+    title: 'Drill'
+    abbreviation: ''
+    description: 'Each combat round: +1 ATK for that round to the own ground unit with the highest ATK.'
+  - tag: Explosion10
+    title: 'Explosion 10'
+    abbreviation: 'Exp 10'
+    description: 'Replaces the attack with 10-die challenges against up to 10 random distinct units or structures on the target hex, allies included.'
+  - tag: Explosion3
+    title: 'Explosion 3'
+    abbreviation: 'Exp 3'
+    description: 'Replaces the attack with 10-die challenges against up to 3 random distinct units or structures on the target hex, allies included.'
+  - tag: Explosion5
+    title: 'Explosion 5'
+    abbreviation: 'Exp 5'
+    description: 'Replaces the attack with 10-die challenges against up to 5 random distinct units or structures on the target hex, allies included.'
+  - tag: Heal
+    title: 'Heal'
+    abbreviation: ''
+    description: 'Restores 1 HP to a random wounded Bio ally in its army: unit at the start of its combat turn, hero at the start of each round.'
+  - tag: Hyperkinetic
+    title: 'Hyperkinetic'
+    abbreviation: 'Hyper+2'
+    description: '+2 DMG vs Armored targets when the attack deals damage.'
+  - tag: Ionic
+    title: 'Ionic'
+    abbreviation: ''
+    description: '+2 DMG vs Mechanical targets when the attack deals damage.'
   - tag: ProduceEnergy
-    description: 'Passive: +1 E/turn'
+    title: 'Produce Energy'
+    abbreviation: 'Energy+1'
+    description: '+1 Energy income each turn while in play.'
+  - tag: ProduceHuman
+    title: 'Produce Human'
+    abbreviation: 'Humans+1'
+    description: '+1 Human income each turn while in play.'
   - tag: ProduceMaterials
-    description: 'Passive: +1 M/turn'
+    title: 'Produce Materials'
+    abbreviation: 'Materials+1'
+    description: '+1 Materials income each turn while in play.'
   - tag: ProduceTech
-    description: 'Passive: +1 T/turn'
+    title: 'Produce Tech'
+    abbreviation: 'Tech+1'
+    description: '+1 Tech income each turn while in play.'
+  - tag: Production
+    title: 'Production'
+    abbreviation: ''
+    description: 'Facility: enables Production for a hero with Assembler on this hex.'
+  - tag: Pyrokinetic
+    title: 'Pyrokinetic'
+    abbreviation: 'Pyro+2'
+    description: '+2 DMG vs Bio targets when the attack deals damage.'
+  - tag: r1s0
+    title: 'r1s0'
+    abbreviation: 'r1s0'
+    description: 'Army vision +1 hex. Cannot detect stealth units.'
+  - tag: r1s4
+    title: 'r1s4'
+    abbreviation: 'r1s4'
+    description: 'Army vision +1 hex. 4 dice to detect stealth units on its hex and adjacent hexes.'
+  - tag: r1s5
+    title: 'r1s5'
+    abbreviation: 'r1s5'
+    description: 'Army vision +1 hex. 5 dice to detect stealth units on its hex and adjacent hexes.'
+  - tag: r1s6
+    title: 'r1s6'
+    abbreviation: 'r1s6'
+    description: 'Army vision +1 hex. 6 dice to detect stealth units on its hex and adjacent hexes.'
+  - tag: RaiseTheRots
+    title: 'Raise The Rots'
+    abbreviation: ''
+    description: 'At battle start summons 2 extra units on its side while the grid has room. They fight for this battle only.'
+  - tag: RapidReaction
+    title: 'Rapid Reaction'
+    abbreviation: 'Rapid'
+    description: 'Deploys for 0 AP and moves in an army for 0 AP.'
+  - tag: Regeneration
+    title: 'Regeneration'
+    abbreviation: 'Regen'
+    description: 'Restores 1 HP (a Base: 1 structure point) at the end of the owner''s turn.'
+  - tag: Repair
+    title: 'Repair'
+    abbreviation: ''
+    description: 'Enables paid repair for all own armies on its hex.'
+  - tag: Research
+    title: 'Research'
+    abbreviation: ''
+    description: 'Facility: enables Research for a hero with Researcher on this hex.'
+  - tag: Researcher
+    title: 'Researcher'
+    abbreviation: ''
+    description: 'Hero can run Research at a Research Facility on its hex.'
+  - tag: Scorcher
+    title: 'Scorcher'
+    abbreviation: ''
+    description: 'On a damaging hit, one random adjacent unit takes half the damage if it is Bio.'
+  - tag: ShockAttack
+    title: 'Shock Attack'
+    abbreviation: 'Shock'
+    description: 'A damaging hit makes the target lose its pending turn this round and cancels its counterattack.'
+  - tag: SingleUse
+    title: 'Single Use'
+    abbreviation: ''
+    description: 'Equipment: consumed after an attack. Unit: expended after its attack.'
+  - tag: Splash
+    title: 'Splash'
+    abbreviation: ''
+    description: 'On a damaging hit, up to 2 random adjacent units, allies included, take half the damage.'
+  - tag: Stealth4
+    title: 'Stealth4'
+    abbreviation: 'Stealth'
+    description: 'Can enter stealth for 1 AP: hides with 4 dice, +1 or +2 on difficult terrain.'
+  - tag: TacticalIntelligence
+    title: 'Tactical Intelligence'
+    abbreviation: 'Intel'
+    description: 'Unlocks opponent intelligence while in play. Ground armies closer to an enemy citadel reveal more fields; fields change each turn.'
+  - tag: Transport
+    title: 'Transport'
+    abbreviation: ''
+    description: 'Raises the slowest Infantry in its army to the carrier''s Move.'
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1
