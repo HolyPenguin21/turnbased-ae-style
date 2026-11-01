@@ -37,6 +37,9 @@ namespace Game.Ai.V2
         // `allowPartial` (T01 preparation only, with a pinned host): the host may be weak or
         // hero-only (not yet a structural actor), and supports that genuinely raise its power are
         // returned even when the whole pool still misses the threshold (ReachesThreshold=false).
+        // Float noise of AiPower.EffectiveArmyPower over the same units summed in another order.
+        private const float GatherPowerEpsilon = 0.01f;
+
         internal static GroundCombatGatherPlan PlanGather(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ISet<int> excludeArmyIds, float winChanceGate,
@@ -86,10 +89,18 @@ namespace Game.Ai.V2
                     refusals.Add(p.Reason);
                     continue;
                 }
+                // 2026-11-01 — the power bar prefers the stronger formation, but two hosts that
+                // assemble the same strength (equal up to float summation order) are one formation
+                // at two places: the cheaper walk wins, never the first candidate (the weakest host
+                // in EligibleArmies order), so the fist never backtracks to a rear shell.
+                bool samePower = best != null
+                    && System.Math.Abs(p.ProjectedPower - best.ProjectedPower) <= GatherPowerEpsilon;
                 if (best == null || (minimumArmyPower > 0f
-                        ? p.ProjectedPower > best.ProjectedPower
+                        ? (p.ProjectedPower > best.ProjectedPower && !samePower)
+                            || (samePower && p.SelectionCost < best.SelectionCost)
                         : p.SelectionCost < best.SelectionCost)
-                    || (p.SelectionCost == best.SelectionCost && (p.TotalEta < best.TotalEta
+                    || ((minimumArmyPower <= 0f || samePower)
+                        && p.SelectionCost == best.SelectionCost && (p.TotalEta < best.TotalEta
                         || (p.TotalEta == best.TotalEta
                             && p.ProjectedWinChance > best.ProjectedWinChance + 0.001f))))
                     best = p;
