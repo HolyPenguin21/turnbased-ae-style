@@ -48,7 +48,7 @@ namespace Game.Map
         private void OnEnable()
         {
             if (!Application.isPlaying) { Generate(); return; }
-            GameSession.InitializeWorld(gameObject.scene.handle);
+            GameSession.InitializeWorld(gameObject.scene.handle.GetRawData());
             try
             {
                 if (GameSession.PendingRestore != null) BuildFromLayout(GameSession.PendingRestore.Map);

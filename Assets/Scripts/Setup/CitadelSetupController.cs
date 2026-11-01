@@ -104,7 +104,7 @@ namespace Game.Setup
             // HexMapGenerator builds fog and resource visuals in OnEnable. Clear the previous
             // match before those default-order components run, including direct Game loads.
             // Prepared GameSession players, map choices and campaign context stay intact.
-            GameSession.InitializeWorld(gameObject.scene.handle);
+            GameSession.InitializeWorld(gameObject.scene.handle.GetRawData());
             setupGeneration = GameSession.Generation;
         }
 
