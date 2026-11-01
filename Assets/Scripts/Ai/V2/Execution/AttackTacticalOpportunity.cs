@@ -83,7 +83,8 @@ namespace Game.Ai.V2
     //  identity (AttackIntent.Target never changes here) and decides, from honest knowledge only,
     //  what to do about the field around it. Priority, strongest first:
     //
-    //    0. Retreat   a relevant hostile army on the path that it cannot beat
+    //    0. Retreat   a relevant hostile army (one that fields a ground combatant) on the path
+    //                 that it cannot beat
     //                 (estimator chance below AiConfigV2.attackLocalMinWinChance) — the attack ends
     //                 and the army walks home (Continuity: RecoveryReturn).
     //    1. Continue  the main target is reachable with the movement left now: go there.
@@ -157,14 +158,20 @@ namespace Game.Ai.V2
                 float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, h);
                 bool fightable = ClearsContact(attackers, army.Commander, opposition,
                     bonus, out float win, out bool cover);
-                AiMapMemory.KnownEnemySighting? army0 = HostileFieldArmyOn(player, bodies);
+                // 2026-11-01 — only an army that fields a ground combatant can beat us: a hero-only
+                // contact's low chance is its Capture/Kill escape chance, never a lost fight, so it
+                // is bypassed like any other contact we do not fight.
+                AiMapMemory.KnownEnemySighting? army0 = HostileFieldArmyOn(player,
+                    bodies.Where(b => WorthIt.FieldsGroundCombatant(b.Defenders)).ToList());
                 if (!fightable)
                 {
-                    if (army0.HasValue && win < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate)
+                    float fightWin = army0.HasValue ? FightWin(attackers, army.Commander, opposition,
+                        bonus, win) : win;
+                    if (army0.HasValue && fightWin < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate)
                     {
                         AiMapMemory.KnownEnemySighting e = army0.Value;
                         return new AttackLocalAction(AttackLocalActionKind.Retreat, h, e.ArmyId, e.Name,
-                            cumulative, win, cover, "hostile_contact_below_threshold",
+                            cumulative, fightWin, cover, "hostile_contact_below_threshold",
                             contactFingerprint: ContactFingerprint(opposition),
                             enemyPower: AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition), bonus));
                     }
@@ -397,6 +404,28 @@ namespace Game.Ai.V2
             GroundCombatFeasibility.Clears(attackers, commander, opposition,
                 GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out win, out cover,
                 GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage);
+
+        // The Retreat question (Decide's path rule and AttackRetreatWitness.Blocks): can the
+        // contact BEAT the march? Asked of its armies that field a ground combatant only — a
+        // hero-only army on the same hex adds a Capture/Kill escape chance to the package win,
+        // never a lost fight. `packageWin` is reused when every army fights.
+        internal static float FightWin(IReadOnlyList<WorthIt.DefenderProfile> attackers,
+            WorthIt.SideCommander commander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            float bonus, float packageWin)
+        {
+            List<WorthIt.DefendingArmy> fighting = FightingArmies(opposition);
+            if (fighting.Count == 0)
+                return 1f;
+            if (fighting.Count == opposition.Count)
+                return packageWin;
+            ClearsContact(attackers, commander, fighting, bonus, out float win, out _);
+            return win;
+        }
+
+        internal static List<WorthIt.DefendingArmy> FightingArmies(
+            IReadOnlyList<WorthIt.DefendingArmy> opposition) =>
+            (opposition ?? (IReadOnlyList<WorthIt.DefendingArmy>)System.Array.Empty<WorthIt.DefendingArmy>())
+                .Where(a => WorthIt.FieldsGroundCombatant(a.Units)).ToList();
 
         internal static int ContactFingerprint(IReadOnlyList<WorthIt.DefendingArmy> opposition)
         {

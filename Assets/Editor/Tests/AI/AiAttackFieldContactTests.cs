@@ -193,6 +193,56 @@ namespace Game.EditorTests
                 Is.EqualTo(AttackLocalActionKind.Retreat));
         }
 
+        // Playtest 2026-11-01 (Draven T16/T20): a lone hero on the path cannot damage the march;
+        // its low chance is the Capture/Kill escape chance, so it is bypassed, never a Retreat.
+        [Test]
+        public void HeroOnlyContactOnThePath_IsBypassedNotARetreat()
+        {
+            ArmySnapshot us = Army(7, Origin, new[] { Body(2, 2, 6) });
+            var hero = new WorthIt.DefenderProfile(0f, false, null, 0f, 6f, 0, null, 6f,
+                isGroundCombatant: false, isHero: true, fateMax: 12);
+            var hex = new HexCoord(2, 0);
+            WorldSnapshot snap = Snap(us, Sight(5, hex, Red, new[] { hero }));
+            AttackTacticalOpportunity.ClearsContact(us.Members, us.Commander,
+                KnownOpposition.OnHex(snap, hex), 0f, out float win, out _);
+            Assert.That(win, Is.LessThan(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate),
+                "precondition: the hero is likely to escape");
+
+            AttackLocalAction action = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null);
+
+            Assert.That(action.Kind, Is.Not.EqualTo(AttackLocalActionKind.Retreat));
+            Assert.That(action.FightsPathContact, Is.False);
+        }
+
+        // A beatable army sharing its hex with an escape-prone lone hero: the package win carries
+        // the Capture/Kill chance, the Retreat rule asks only the fight. An unbeatable army there
+        // still sends the march home.
+        [Test]
+        public void HeroBesideAContactOnThePath_RetreatAsksTheFightOnly()
+        {
+            ArmySnapshot us = Army(7, Origin, new[] { Body(40, 8, 120) });
+            var hero = new WorthIt.DefenderProfile(0f, false, null, 0f, 6f, 0, null, 6f,
+                isGroundCombatant: false, isHero: true, fateMax: 12);
+            var hex = new HexCoord(2, 0);
+            WorldSnapshot snap = Snap(us, Sight(5, hex, Red, new[] { Body(1, 0, 1) }),
+                Sight(6, hex, Red, new[] { hero }));
+            List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, hex);
+            AttackTacticalOpportunity.ClearsContact(us.Members, us.Commander, opposition, 0f,
+                out float packageWin, out _);
+            Assert.That(packageWin, Is.LessThan(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate),
+                "precondition: the hero is likely to escape");
+            Assert.That(AttackTacticalOpportunity.FightWin(us.Members, us.Commander, opposition, 0f,
+                packageWin), Is.GreaterThanOrEqualTo(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate));
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null).Kind,
+                Is.Not.EqualTo(AttackLocalActionKind.Retreat));
+
+            snap.Known.EnemySightings = new[] { Sight(5, hex, Red, new[] { Body(900, 900, 9000) }),
+                Sight(6, hex, Red, new[] { hero }) };
+            AttackLocalAction home = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null);
+            Assert.That(home.Kind, Is.EqualTo(AttackLocalActionKind.Retreat));
+            Assert.That(home.EnemyArmyId, Is.EqualTo(5), "the army that can beat us, not the hero");
+        }
+
         [Test]
         public void LastKnownDetour_StillCannotChasePastTheCurrentMovementBudget()
         {
@@ -545,8 +595,12 @@ namespace Game.EditorTests
             Assert.That(state.TryGetRetreatWitness(Main, out _), Is.False, "cleared once the odds are confirmed");
         }
 
+        // 2026-11-01 — a lone hero is a Capture/Kill target that can escape but never beats the
+        // march (BattleEngine.ApplyCaptureKillOutcome): no Retreat, and an unchanged witness
+        // against such an army (an army reduced to its hero, an older save) no longer holds the
+        // Attack. The Capture/Kill chance itself stays the estimator's (no empty battle win).
         [Test]
-        public void HeroRetreatWitness_RechecksObservedFate_WithoutGrantingAnEmptyBattleWin()
+        public void HeroOnlyRetreatWitness_IsLifted_WithoutGrantingAnEmptyBattleWin()
         {
             var state = MissionIntentRegistry.GetOrCreate(Us);
             ArmySnapshot us = Army(7, Origin, Strong());
@@ -555,23 +609,18 @@ namespace Game.EditorTests
                 isGroundCombatant: false, isHero: true, fateMax: 10);
             WorldSnapshot snap = Snap(us, new AiMapMemory.KnownEnemySighting(hex, Red, "hero", 1,
                 0, 0, new[] { hero }, seenTurn: 6, commander: new WorthIt.SideCommander(0, 10), armyId: 5));
-            AttackLocalAction retreat = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null);
-            Assert.That(retreat.Kind, Is.EqualTo(AttackLocalActionKind.Retreat));
+            List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, hex);
+            AttackTacticalOpportunity.ClearsContact(us.Members.ToList(), us.Commander, opposition, 0,
+                out float win, out _);
+            Assert.That(win, Is.LessThan(1f), "Capture/Kill is priced, not an empty battle win");
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null).Kind,
+                Is.Not.EqualTo(AttackLocalActionKind.Retreat));
+
             state.PutRetreatWitness(new AttackRetreatWitness { Target = Main, EnemyArmyId = 5,
-                EnemyHex = hex, EnemyFingerprint = retreat.ContactFingerprint,
+                EnemyHex = hex, EnemyFingerprint = AttackTacticalOpportunity.ContactFingerprint(opposition),
                 OwnFingerprint = AttackRetreatWitness.OwnFingerprintOf(us) });
-            Assert.That(CheckAndApply(state, snap, us, out _), Is.True);
-            // A roster change alone cannot turn Capture/Kill into the empty tactical battle win.
-            ArmySnapshot changed = Army(7, Origin, new[] { Body(900, 900, 900) });
-            Assert.That(CheckAndApply(state, snap, changed, out _), Is.True);
-            // Only an observed change in Fate can change this otherwise identical hero challenge.
-            snap.Known.EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(hex, Red, "hero", 1,
-                0, 0, new[] { hero }, seenTurn: 7, commander: new WorthIt.SideCommander(0, 0), armyId: 5) };
-            bool clears = AttackTacticalOpportunity.ClearsContact(changed.Members.ToList(), changed.Commander,
-                KnownOpposition.OnHex(snap, hex), 0, out _, out _);
-            Assert.That(CheckAndApply(state, snap, changed, out string why),
-                Is.EqualTo(!clears));
-            Assert.That(why, Is.Not.EqualTo("unchanged_obstacle"), "observed current Fate participates in the fingerprint");
+            Assert.That(CheckAndApply(state, snap, us, out _), Is.False);
+            Assert.That(state.TryGetRetreatWitness(Main, out _), Is.False, "the witness is cleared");
         }
 
         [Test]

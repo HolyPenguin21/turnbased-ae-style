@@ -145,6 +145,28 @@ namespace Game.EditorTests
                         requireChargeNow: false, out _) != null));
         }
 
+        // Playtest 2026-11-01 (Draven T16): under the power bar two hosts that assemble the same
+        // strength are one formation at two places; the forward host's shorter march wins, the
+        // rear shell (first in EligibleArmies order) no longer pulls the fist back to it.
+        [Test]
+        public void PowerBarGather_EqualStrengthHosts_TakesTheCheaperForwardHost()
+        {
+            var goal = new HexCoord(10, 0);
+            ArmyData rear = Army(new HexCoord(0, 0), Hero("Rear", 7), Body("R", 6, 8));
+            ArmyData front = Army(new HexCoord(6, 0), Hero("Front", 7), Body("F", 6, 8));
+            ArmyRegistry.Register(rear);
+            ArmyRegistry.Register(front);
+            var snap = new WorldSnapshot { Observer = Us,
+                Self = new SelfSnapshot { Armies = new[] { Snapshot(rear), Snapshot(front) } } };
+
+            GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, Site(), 0f,
+                goal, new HashSet<int>(), .8f, minimumArmyPower: 1000f);
+
+            Assert.That(gather.Feasible, Is.True, gather.Reason);
+            Assert.That(gather.HostArmyId, Is.EqualTo(front.Id));
+            Assert.That(gather.SupportArmyIds, Is.EqualTo(new[] { rear.Id }));
+        }
+
         [Test]
         public void FullHost_WithoutAStrongerBody_HasNoPlanAndAnExactReason()
         {

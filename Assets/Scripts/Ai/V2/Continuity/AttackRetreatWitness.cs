@@ -56,6 +56,14 @@ namespace Game.Ai.V2
                     $"enemy #{w.EnemyArmyId} is no longer known");
                 return false;
             }
+            // 2026-11-01 — the same Retreat rule as AttackTacticalOpportunity.Decide: an army that
+            // fields no ground combatant (a lone hero) cannot beat the march, so it is no obstacle.
+            if (!WorthIt.FieldsGroundCombatant(enemy.Value.Defenders))
+            {
+                revision = RetreatWitnessRevision.Clear(target,
+                    $"enemy #{w.EnemyArmyId} fields no ground combatant");
+                return false;
+            }
             List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, enemy.Value.Hex);
             int enemyFp = AttackTacticalOpportunity.ContactFingerprint(opposition);
             int ownFp = OwnFingerprintOf(army);
@@ -66,8 +74,11 @@ namespace Game.Ai.V2
             }
             // Something changed: the answer comes from the estimator, not from the change itself.
             float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap.Map, enemy.Value.Hex);
-            AttackTacticalOpportunity.ClearsContact(army.Members.ToList(), army.Commander, opposition,
-                bonus, out float win, out _);
+            List<WorthIt.DefenderProfile> own = army.Members.ToList();
+            AttackTacticalOpportunity.ClearsContact(own, army.Commander, opposition,
+                bonus, out float packageWin, out _);
+            float win = AttackTacticalOpportunity.FightWin(own, army.Commander, opposition, bonus,
+                packageWin);
             bool clears = win >= GroundCombatAdmissionPolicy.AttackLocalWinChanceGate;
             if (clears)
             {

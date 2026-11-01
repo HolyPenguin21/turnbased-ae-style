@@ -260,6 +260,12 @@ namespace Game.Combat
             return units;
         }
 
+        // Whether this roster brings a ground combatant into a battle (after summons). One without
+        // is a Capture/Kill target only: it can escape, but it never damages the hunter
+        // (BattleEngine.ApplyCaptureKillOutcome).
+        public static bool FieldsGroundCombatant(IEnumerable<DefenderProfile> units) =>
+            units != null && WithBattleSummons(units).Any(p => p.IsGroundCombatant);
+
         // Hero-only contacts have no tactical actors, but their Capture/Kill challenge is not a
         // guaranteed success. Use the canonical pools, Fate policy/order and outcome resolver.
         // Pure observed inputs, deterministic RNG and a separate exact cache mode; no live lookup.
@@ -332,7 +338,7 @@ namespace Game.Combat
             // Judged after summons exactly like the fights filter, so a summoning hero is never both.
             List<DefendingArmy> heroOnly = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
                 .Where(a => a.Units != null && a.Units.Any(p => p.IsHero)
-                    && !WithBattleSummons(a.Units).Any(p => p.IsGroundCombatant)).ToList();
+                    && !FieldsGroundCombatant(a.Units)).ToList();
             if (heroOnly.Count == 0)
                 return fights;
             BattleEstimate capture = EstimateCaptureKill(attackerUnits, attackerCommander, heroOnly);
