@@ -324,9 +324,7 @@ namespace Game.EditorTests
             VisionSystem.VisibleContentChanged += changed;
             try
             {
-                typeof(Game.Turns.GameTurnController).GetMethod("ReleasePrisoners",
-                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
-                    .Invoke(null, new object[] { capturer, hex });
+                ArmyActions.ReleasePrisoners(capturer, hex);
             }
             finally { VisionSystem.VisibleContentChanged -= changed; }
             Assert.That(calls, Is.EqualTo(1)); Assert.That(final, Is.True);

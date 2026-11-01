@@ -120,11 +120,9 @@ namespace Game.EditorTests
         [Test] public void NewTurnReobservesStationaryEnemyAfterPreviousTurnMemoryExpiry()
         {
             var watcher = Army(viewer, hex); var live = Army(enemy, hex);
-            var replenish = typeof(Game.Turns.GameTurnController).GetMethod("ReplenishMoveForOwner",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
             HumanVisualMemory.EndTurn(viewer);
-            replenish.Invoke(null, new object[] { enemy });
-            replenish.Invoke(null, new object[] { viewer });
+            Game.Turns.StrategicTurnEffects.BeginPlayer(enemy);
+            Game.Turns.StrategicTurnEffects.BeginPlayer(viewer);
             Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, live.Id, out var seen), Is.True);
             ArmyRegistry.MoveArmy(watcher, new HexCoord(8, 0));
             Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, live.Id, out seen), Is.True);

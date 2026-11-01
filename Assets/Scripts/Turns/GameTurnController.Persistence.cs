@@ -63,6 +63,7 @@ namespace Game.Turns
             state.Validate(players.Select(p => p.PlayerId), human?.PlayerId);
             if (human.IsEliminated) throw new ArgumentException("Cannot resume an eliminated human player.");
             var byId = players.ToDictionary(p => p.PlayerId, StringComparer.Ordinal);
+            matchStarted = true; matchGeneration = GameSession.Generation;
             TurnNumber = state.Round;
             CurrentTurnOrder = state.PlayerOrder.Select(id => byId[id]).ToList();
             _currentPlayerIndex = state.CurrentPlayerIndex;

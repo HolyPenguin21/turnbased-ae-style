@@ -397,17 +397,10 @@ namespace Game.Turns
         // again by the start of their own next turn).
         private void EliminatePlayer(PlayerSetupData player)
         {
-            if (player == null || player.IsEliminated)
-                return;
-            player.IsEliminated = true;
-            Game.Ai.AiMatchStats.RecordElimination(player);
+            if (!StrategicTurnEffects.Eliminate(player, hexSelectionController)) return;
+            long generation = GameSession.Generation;
             if (GameSession.CampaignContext == null) PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
-
-            // Resource facilities go with their owner; Bases and the Citadel stay (capturable).
-            BuildingRegistry.DestroyFacilitiesOf(player, hexSelectionController);
-
-            if (player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
-                ReleasePrisoners(player, new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
+            if (!GameSession.IsCurrent(generation)) return;
 
             ShowSpawnHint($"{player.Nickname}'s citadel has fallen - {player.Nickname} is defeated.");
 
@@ -425,6 +418,7 @@ namespace Game.Turns
                 survivors.Count == 1 ? survivors[0].Faction : Faction.None, player.Faction, survivors.Count == 0);
             GameSession.CompleteMatch(finalResult);
             MatchFinished?.Invoke(finalResult);
+            if (!GameSession.IsCurrent(generation)) return;
             // Record the whole-match outcome before the existing human reward transaction.
             // Reward UI retries a failed campaign write before it can grant/dismiss anything.
             if (GameSession.CampaignContext != null)
@@ -436,38 +430,6 @@ namespace Game.Turns
             if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw - no citadels remain.");
         }
-
-        // True once `player` no longer owns the building at their own fixed starting-citadel hex
-        // — covers both a captured citadel (ownership flipped, see BattleScreenUI.Combat.cs's
-        // HandleBuildingOnArmyDefeat) and the degenerate "no building there at all" case. Checked
-        // fresh every time this player's own turn is about to start (see BeginPlayerTurn) rather
-        // than cached — that's what gives the user's own "buffer" its actual length: a capture
-        // during ANY other turn still leaves the full stretch until this player's own next turn
-        // to retake it.
-        private static bool StartingCitadelLost(PlayerSetupData player)
-        {
-            if (!player.CitadelHexQ.HasValue || !player.CitadelHexR.HasValue)
-                return false;
-            var hex = new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value);
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            return building == null || building.Owner != player;
-        }
-
-        // The answer to "what happens to prisoners when the empire holding them is destroyed" —
-        // there's no "citadel changes hands without being destroyed" mechanic in this project
-        // (destroying a starting citadel eliminates its owner outright, see OnBuildingDestroyed's
-        // own comment), so this is the one place a captured hero (see BattleScreenUI.Combat.cs's
-        // TryImprison) can ever leave a Prison again: back to whoever it was
-        // UnitData.CapturedFrom, landing in THEIR garrison — same "deployed cards land in the
-        // garrison first" convention CardHandUI.TryPlayCard already uses. A prisoner whose
-        // original owner has ALSO since been eliminated (no citadel hex on record any more, or no
-        // garrison found there) just stays discarded — nowhere left to send it.
-        //
-        // Same "wired for correctness, currently unreachable" status as the rest of this event
-        // chain — BuildingRegistry.Unregister (which raises BuildingDestroyed at all) has no
-        // caller yet, since nothing can destroy a building's StructurePoints today.
-        private static void ReleasePrisoners(PlayerSetupData defeatedOwner, HexCoord citadelHex)
-            => ArmyActions.ReleasePrisoners(defeatedOwner, citadelHex);
 
         // Set true by CardHandUI for the duration of the human's equipment-attach mode (see
         // BeginAttachMode). That mode is deliberately non-blocking — the player keeps navigating
@@ -543,9 +505,13 @@ namespace Game.Turns
             GameSession.InitializeNewMatchHands(startingDeckCatalog, cardHand != null ? cardHand.StartingHandSize : 7,
                 cardHand != null ? cardHand.MaxHandSize : 10);
         }
+        private bool matchStarted;
+        private long matchGeneration;
         public void BeginGame()
         {
+            if (matchStarted) return;
             InitializeNewMatchState();
+            matchStarted = true; matchGeneration = GameSession.Generation;
             GameSession.MarkRunning();
             InitializeMatchPresentation();
             MapObservationSystem.ObserveAllViewers();
@@ -816,13 +782,7 @@ namespace Game.Turns
             // AP that rank pays - is never pushed down by someone who cannot play). Their armies
             // stay where they stand: attackable, but nothing ever moves them again (their turn
             // never runs, they never retreat - see BattleScreenUI.TryAssessSideRetreat).
-            List<PlayerSetupData> activePlayers = InitiativeRules.ActivePlayers(GameSession.Players);
-
-            CollectResourceIncome();
-            GrantProduceResourceIncome();
-
-            foreach (PlayerSetupData player in activePlayers)
-                PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeTokens();
+            List<PlayerSetupData> activePlayers = StrategicTurnEffects.PrepareRound(map, gameConfig, GameSession.Players);
 
             // Initiative has one implementation now. Every AI plans from the same immutable
             // pre-purchase state, then all paid purchases are applied before the human sees
@@ -830,200 +790,25 @@ namespace Game.Turns
             Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
                 activePlayers, map, startingDeckCatalog, TurnNumber);
 
-            turnOrderPopup.Show(activePlayers, OnTurnOrderResolved);
+            long generation = matchGeneration;
+            bool resolved = false;
+            turnOrderPopup.Show(activePlayers, order =>
+            {
+                if (resolved || _gameOver || !GameSession.IsCurrent(generation)) return;
+                resolved = true; OnTurnOrderResolved(order);
+            });
         }
-
-        private static readonly ResourceType[] AllResourceTypes =
-        {
-            ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
-        };
 
         // The physical allocation is owned by IncomeProjection; this turn controller only
         // performs the live credits in exactly the allocator's building-first/army-owner order.
         // The existing gameConfig guard, collection-before-Produce and initiative order remain.
-        private void CollectResourceIncome()
-        {
-            if (map == null || gameConfig == null)
-                return;
-            IncomeProjection.ForEachHexCollectionGrant(map, (recipient, type, amount) =>
-            {
-                if (recipient != null && (recipient.Setup == null || !recipient.Setup.IsEliminated))
-                    recipient.AddResource(type, amount);
-            });
-        }
 
         private void OnTurnOrderResolved(List<PlayerSetupData> order)
         {
             CurrentTurnOrder = order;
 
-            // Public record of what everyone visibly ended up buying this round — the ONLY
-            // opponent information next round's Initiative AI is allowed to use (see
-            // InitiativePublicHistory). Taken now, after the roll, before next turn's
-            // ResetBonusInitiativeTokens wipes the counts.
-            foreach (PlayerSetupData player in GameSession.Players)
-            {
-                PlayerRoot historyRoot = PlayerRootRegistry.FindFor(player);
-                if (historyRoot != null)
-                    InitiativePublicHistory.RecordFinalBonusTokens(player, historyRoot.BonusInitiativeTokens);
-            }
-
-            AllocateActionPoints(order);
-            GrantPrisonBonusActionPoints(order);
-            GrantApBonusActionPoints(order);
+            StrategicTurnEffects.ApplyTurnOrder(order, GameSession.Players);
             BeginPlayerTurn(0);
-        }
-
-        // AP for this turn, by initiative rank — replaces whatever was left over from last
-        // turn rather than adding to it. Neutral never appears in `order` so it never gets AP.
-        private static void AllocateActionPoints(List<PlayerSetupData> order)
-        {
-            for (int i = 0; i < order.Count; i++)
-            {
-                PlayerRoot root = PlayerRootRegistry.FindFor(order[i]);
-                if (root != null)
-                {
-                    int rankAp = InitiativeRules.ApForRank(i);
-                    root.ActionPoints = rankAp;
-                    root.SetLastApFromInitiative(rankAp);
-                }
-            }
-        }
-
-        // Manual's own "Bonuses For Captured Heroes" (pg. 11): recurring every turn, for as long
-        // as a hero sits in that player's Prison (see ArmyData.IsPrison / BattleScreenUI.
-        // Combat.cs's TryImprison) — added ON TOP of AllocateActionPoints's own by-rank replace
-        // above, not folded into ActionPointsForRank, which has nothing to do with prisoners.
-        // 2 AP per hero rather than the manual's own 3, per the user's own explicit call.
-        private const int PrisonBonusActionPointsPerHero = 2;
-
-        private static void GrantPrisonBonusActionPoints(List<PlayerSetupData> order)
-        {
-            foreach (PlayerSetupData player in order)
-            {
-                PlayerRoot root = PlayerRootRegistry.FindFor(player);
-                if (root == null)
-                    continue;
-                int prisonerCount = ArmyRegistry.AllForOwner(player).Where(a => a.IsPrison).Sum(a => a.Members.Count);
-                int bonus = PrisonBonusActionPointsPerHero * prisonerCount;
-                root.SetLastApFromPrisonBonus(bonus);
-                if (bonus > 0)
-                    root.ActionPoints += bonus;
-            }
-        }
-
-        // UnitAbilities.ApBonus (new skill, works on any card type): +2 AP on this player's turn
-        // per carrier actually IN PLAY — a member of one of their own (non-Prison) armies, or a
-        // Base/Facility they own — added on top of AllocateActionPoints's by-rank base, same
-        // "on top" treatment as GrantPrisonBonusActionPoints just above. Prison armies are
-        // skipped for the SAME reason GrantPrisonBonusActionPoints only ever reads them: a
-        // captured hero (TryImprison sets hero.Owner to its CAPTOR) sits in the captor's own
-        // Prison army, not free to act for them — it already earns the captor a separate,
-        // ability-independent prison bonus, it shouldn't also earn them this skill's bonus.
-        // Canonical value lives on UnitAbilities so the V2 AI (StrategicEffectRegistry) prices
-        // the recurring ApBonus effect from the same number this grant uses.
-        private const int ApBonusPerSource = UnitAbilities.ApBonusActionPointsPerSource;
-
-        private static void GrantApBonusActionPoints(List<PlayerSetupData> order)
-        {
-            foreach (PlayerSetupData player in order)
-            {
-                PlayerRoot root = PlayerRootRegistry.FindFor(player);
-                if (root == null)
-                    continue;
-
-                int sources = 0;
-                List<string> breakdown = new List<string>();
-                foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
-                {
-                    if (army.IsPrison)
-                        continue;
-                    foreach (UnitData unit in army.Members)
-                    {
-                        if (!unit.HasAbility(UnitAbilities.ApBonus))
-                            continue;
-                        sources++;
-                        breakdown.Add($"{unit.Name} +{ApBonusPerSource}");
-                    }
-                }
-                foreach (BuildingData building in BuildingRegistry.AllBuildings())
-                {
-                    if (building.Owner != player)
-                        continue;
-                    if (building.HasAbility(UnitAbilities.ApBonus))
-                    {
-                        sources++;
-                        breakdown.Add($"Base at ({building.Hex.Q},{building.Hex.R}) +{ApBonusPerSource}");
-                    }
-                    foreach (FacilityData facility in building.FacilitySlots)
-                        if (facility != null && facility.HasAbility(UnitAbilities.ApBonus))
-                        {
-                            sources++;
-                            breakdown.Add($"{facility.Name} at ({building.Hex.Q},{building.Hex.R}) +{ApBonusPerSource}");
-                        }
-                }
-
-                int bonus = ApBonusPerSource * sources;
-                root.SetLastApFromApBonus(bonus);
-                root.SetLastApBonusSources(string.Join(", ", breakdown));
-                if (bonus > 0)
-                    root.ActionPoints += bonus;
-            }
-        }
-
-        // Produce grants stay AFTER the physical hex grants; only the carrier enumeration has
-        // moved into IncomeProjection, the same count used by its read-only IncomeFor.
-        private void GrantProduceResourceIncome()
-        {
-            if (GameSession.Players == null)
-                return;
-            foreach (PlayerSetupData player in GameSession.Players)
-            {
-                if (player == null || player.IsEliminated)
-                    continue;
-                PlayerRoot root = PlayerRootRegistry.FindFor(player);
-                if (root == null)
-                    continue;
-                foreach (ResourceType type in AllResourceTypes)
-                {
-                    int sources = IncomeProjection.CountInPlayAbilitySources(
-                        player, UnitAbilities.ProduceAbilityFor(type));
-                    if (sources > 0)
-                        root.AddResource(type, sources);
-                }
-            }
-        }
-
-        // UnitAbilities.Regeneration: at the end of `player`'s turn every carrier they own
-        // restores 1 Hit Point, capped at its maximum — a unit's HitPointsCurrent, or a Base's
-        // StructurePointsCurrent (a Facility has no HP field, so it is skipped). Prison armies
-        // are excluded, same as the Produce/ApBonus grants. Called from AdvanceToNextPlayer.
-        private static void RegenerateForOwner(PlayerSetupData player)
-        {
-            if (player == null)
-                return;
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
-            {
-                if (army.IsPrison)
-                    continue;
-                foreach (UnitData unit in army.Members)
-                    if (unit.HasAbility(UnitAbilities.Regeneration)
-                        && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax)
-                    {
-                        unit.HitPointsCurrent++;
-                        VisionSystem.NotifyContentChanged(army.Hex);
-                    }
-            }
-            foreach (BuildingData building in BuildingRegistry.AllBuildings())
-            {
-                if (building.Owner != player)
-                    continue;
-                if (building.HasAbility(UnitAbilities.Regeneration)
-                    && building.StructurePointsCurrent > 0 && building.StructurePointsCurrent < building.StructurePointsMax)
-                {
-                    building.StructurePointsCurrent++;
-                    VisionSystem.NotifyContentChanged(building.Hex);
-                }
-            }
         }
 
         private void BeginPlayerTurn(int index)
@@ -1044,7 +829,7 @@ namespace Game.Turns
             if (index >= CurrentTurnOrder.Count)
             {
                 CurrentPlayer = null;
-                ReplenishMoveForOwner(null);
+                StrategicTurnEffects.BeginPlayer(null);
                 if (popupPanel != null && !_aiObserverMatch)
                     popupPanel.ShowForOther(null);
                 TurnStateChanged?.Invoke();
@@ -1053,16 +838,13 @@ namespace Game.Turns
             }
 
             PlayerSetupData player = CurrentTurnOrder[index];
-            if (!player.IsEliminated && StartingCitadelLost(player))
+            if (!player.IsEliminated && StrategicTurnEffects.StartingCitadelLost(player))
                 EliminatePlayer(player);
-            if (player.IsEliminated)
-            {
-                AdvanceToNextPlayer();
-                return;
-            }
+            if (_gameOver) return;
+            if (player.IsEliminated) { BeginPlayerTurn(index + 1); return; }
 
             CurrentPlayer = player;
-            ReplenishMoveForOwner(player);
+            StrategicTurnEffects.BeginPlayer(player);
             if (player.IsHuman || debugWatchAiTurns || _aiObserverMatch)
                 VisionSystem.CurrentViewer = player;
             TurnStateChanged?.Invoke();
@@ -1072,7 +854,10 @@ namespace Game.Turns
                 cardHand?.HideAiHandDebug();
                 resourceBar?.HideRootDebug();
                 if (popupPanel != null)
-                    popupPanel.ShowForHuman(player, OnTurnConfirmed);
+                {
+                    long generation = matchGeneration;
+                    popupPanel.ShowForHuman(player, () => { if (GameSession.IsCurrent(generation) && CurrentPlayer == player) OnTurnConfirmed(); });
+                }
             }
             else
             {
@@ -1198,29 +983,6 @@ namespace Game.Turns
             TurnStateChanged?.Invoke();
         }
 
-        private static void ReplenishMoveForOwner(PlayerSetupData player)
-        {
-            using var mutation = VisionSystem.BeginMutation();
-            AntiAirRules.SyncFacilityGunnerOwners();
-            AntiAirState.ResetForOwner(player);
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
-            {
-                foreach (UnitData unit in army.Members)
-                {
-                    unit.ReplenishMoveForNewTurn();
-                    unit.HasEnteredStealthThisTurn = false;
-                    if (unit.IsAviation)
-                        unit.HasAirAttackedThisTurn = false;
-                }
-                army.ResetActivationForNewTurn();
-                army.RefreshTransport();
-                VisionSystem.NotifyContentChanged(army.Hex);
-            }
-            // Memory may have expired at this player's preceding turn end even when no enemy
-            // moved. Re-observe the complete visible area after turn mutations, before UI refresh.
-            VisionSystem.PublishAfterMutation(() => MapObservationSystem.ObserveVisible(player));
-        }
-
         private IEnumerator PassAfterDelay(Action onDone)
         {
             yield return new WaitForSeconds(aiStepDelay);
@@ -1239,14 +1001,12 @@ namespace Game.Turns
         {
             if (_gameOver)
                 return;
-            var aviationMessages = AviationTurnLifecycle.ResolveEndOfTurn(CurrentPlayer, hexSelectionController);
+            var aviationMessages = StrategicTurnEffects.EndPlayer(CurrentPlayer, hexSelectionController);
             if (aviationMessages.Count > 0)
                 _pendingAviationMessages[CurrentPlayer] = aviationMessages;
 
             if (CurrentPlayer != null)
             {
-                ArmyActions.DisbandEmptyArmiesOf(CurrentPlayer);
-                RegenerateForOwner(CurrentPlayer);
                 _completedTurns[CurrentPlayer] = CompletedTurnsFor(CurrentPlayer) + 1;
                 Game.Map.StealthSystem.PurgeExpiredFor(CurrentPlayer);
             }

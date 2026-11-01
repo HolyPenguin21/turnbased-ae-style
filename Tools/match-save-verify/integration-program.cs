@@ -23,6 +23,7 @@ using Game.Turns;
 internal static class IntegrationNative
 {
     internal static int Frame = 100;
+    internal static int SceneHandle = 1;
     internal static string ProfileDirectory;
     internal static MatchSaveAssetManifest Manifest;
     internal static T New<T>() where T : class
@@ -194,5 +195,16 @@ internal static class IntegrationProgram
             try{store.Load(10,b=>MatchSaveCodec.Decode(b,config),out _);}catch{rejected=true;}
             Check(rejected,"accepted "+damage);Check(ReferenceEquals(GameSession.Players,currentPlayers) && ArmyRegistry.IsRegistered(army) && GameSession.PendingRestore==null,"rejection replaced current session");SameIds(identity);checks++;Console.WriteLine("PASS reject "+damage+" before session and ID changes");
         }
+        var phaseTurns=Turns(config,selection);
+        var dead=new PlayerSetupData {PlayerId="skipped",IsEliminated=true};
+        var next=new PlayerSetupData {PlayerId="next-human",IsHuman=true};
+        typeof(GameTurnController).GetProperty("CurrentTurnOrder").SetValue(phaseTurns,new List<PlayerSetupData>{human,dead,next});
+        typeof(GameTurnController).GetProperty("CurrentPlayer").SetValue(phaseTurns,human);
+        var clocks=(Dictionary<PlayerSetupData,long>)typeof(GameTurnController).GetField("_completedTurns",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(phaseTurns);
+        clocks[human]=9;
+        typeof(GameTurnController).GetMethod("BeginPlayerTurn",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(phaseTurns,new object[]{1});
+        Check(phaseTurns.CompletedTurnsFor(human)==9,"eliminated slot ended outgoing player twice");
+        Check(phaseTurns.CurrentPlayer==next,"eliminated slot did not advance");
+        checks++;Console.WriteLine("PASS eliminated slot never repeats outgoing effects");
     }
 }

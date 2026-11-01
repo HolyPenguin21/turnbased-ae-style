@@ -36,6 +36,9 @@ for file in SOURCE.rglob('*.cs'):
     text=re.sub(r'(?<![\w?.])([A-Za-z_]\w*(?:\??\.[A-Za-z_]\w*)*)\s*([!=]=)\s*null',lambda m:('!' if m[2]=='!=' else '')+'object.ReferenceEquals('+m[1]+', null)',text)
     text=text.replace('Time.frameCount','IntegrationNative.Frame')
     file.write_text(text)
+# Scene identity is the only native reset input adapted here.
+if 'gameObject.scene.handle' in (SOURCE/'Setup/CitadelSetupController.cs').read_text():
+    edit('Setup/CitadelSetupController.cs',lambda t:t.replace('gameObject.scene.handle','IntegrationNative.SceneHandle++'))
 # Native reference Vector3 constructor throws; supply only its three field assignments.
 edit('HexGrid/HexGridMath.cs',lambda t:t.replace('return new Vector3(x, 0f, z);','return new Vector3 { x = x, y = 0f, z = z };'))
 edit('Terrain/MapGenerationSettings.cs',lambda t:re.sub(r'new Color\([^)]*\)', 'default(Color)', t))
