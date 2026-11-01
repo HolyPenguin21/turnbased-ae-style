@@ -12,3 +12,5 @@ Recovery: the original uncommitted checkout and /tmp evidence were removed by an
 5.1 recovery gate: 24/24 original full-file checks passed against restored lifecycle; native scene identity adapted only in disposable verification copy.
 
 5.2 restored and verified: 25/25 full-file checks, including eliminated-slot double-end regression. Income/AP/replenishment/regeneration/elimination implementation moved without duplicating rules. Existing test consumers migrated to the new effect owner.
+
+5.3 restored; 25/25 existing full-file checks pass. Added application slot DTO/operations, detached preflight, real pending decision/quota/roster facts; extended scenarios are rerun with final reconstruction/cancellation.

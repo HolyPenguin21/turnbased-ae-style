@@ -275,6 +275,7 @@ namespace Game.UI
         // BeginCaptureKillEncounter) — that one deliberately never activates panelRoot at all
         // (no grid/Arrangement chrome for a hero-only encounter, per the user's own spec), but
         // GameTurnController.InputBlocked still needs to know something modal is showing.
+        public bool HasUnsettledEncounter => _battleState != null || _pendingRetreatContacts.Count > 0;
         public bool IsShowing => (panelRoot != null && panelRoot.activeSelf)
             || (attackPopup != null && attackPopup.IsShowing)
             || (outcomePopup != null && outcomePopup.IsShowing);

@@ -40,6 +40,8 @@ namespace Game.UI
             (ResourceType.Materials, "Materials"), (ResourceType.Tech, "Tech"),
         };
 
+        private Game.Core.MatchDecision acknowledgement;
+        public bool HasPendingAcknowledgement => acknowledgement?.IsPending == true;
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
         public event Action VisibilityChanged;
 
@@ -62,6 +64,7 @@ namespace Game.UI
 
         private void ShowContent(bool messageMode, Sprite portrait, Sprite art, string summary)
         {
+            acknowledgement?.Cancel();acknowledgement=new Game.Core.MatchDecision();
             if (!_defaultsCaptured)
             {
                 _rewardTitle = titleText != null ? titleText.text : "Reward";
@@ -158,6 +161,7 @@ namespace Game.UI
 
         public void Hide()
         {
+            acknowledgement?.Cancel();
             if (panelRoot == null || !panelRoot.activeSelf)
                 return;
             panelRoot.SetActive(false);

@@ -30,6 +30,8 @@ namespace Game.UI
         private Vector2 _textAnchorMin, _textAnchorMax, _textOffsetMin, _textOffsetMax;
         private VerticalAlignmentOptions _textVerticalAlignment;
 
+        private Game.Core.MatchDecision decision;
+        public bool HasPendingDecision => decision?.IsPending == true;
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
         private bool _isOtherTurn;
         public bool IsOtherTurnShowing => IsShowing && _isOtherTurn;
@@ -51,6 +53,7 @@ namespace Game.UI
         // AI/Neutral turn — informational only, no Confirm button.
         public void ShowForOther(PlayerSetupData player)
         {
+            decision?.Cancel();
             _isOtherTurn = true;
             SetButton(false, null);
             Display($"Current turn: {NameOf(player)}");
@@ -61,7 +64,8 @@ namespace Game.UI
         public void ShowForHuman(PlayerSetupData player, Action onConfirm)
         {
             _isOtherTurn = false;
-            SetButton(true, () => onConfirm?.Invoke());
+            decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
+            SetButton(true, () => {if(request.TryComplete())onConfirm?.Invoke();});
             Display($"Your turn, {NameOf(player)}");
             if (player != null && player.IsHuman) HumanTurnShown?.Invoke();
         }
@@ -70,12 +74,14 @@ namespace Game.UI
         public void ShowHint(string message)
         {
             _isOtherTurn = false;
-            SetButton(true, Hide);
+            decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
+            SetButton(true, () => {if(request.TryComplete())Hide();});
             Display(message);
         }
 
         public void Hide()
         {
+            decision?.Cancel();
             _isOtherTurn = false;
             if (panelRoot != null)
                 panelRoot.SetActive(false);

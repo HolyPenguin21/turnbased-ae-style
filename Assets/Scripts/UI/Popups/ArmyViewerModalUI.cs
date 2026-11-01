@@ -134,6 +134,8 @@ namespace Game.UI
         // via RtsCameraController/UIFocusUtility, WASD camera panning) switched off for its
         // duration, unlike the rest of this modal which deliberately leaves card dragging on
         // (see CardHandUI.TryDeployIntoArmyModal).
+        public bool HasPendingCardOperation => _draggingCard != null;
+        public bool HasPendingRename => renamePopup != null && renamePopup.HasPendingDecision;
         public bool IsRenamePopupShowing => renamePopup != null && renamePopup.IsShowing;
 
         // Whichever army this is currently displaying — CardHandUI reads this to know which

@@ -20,6 +20,8 @@ namespace Game.UI
 
         private ArmyData _army;
         private Action _onRenamed;
+        private Game.Core.MatchDecision decision;
+        public bool HasPendingDecision => decision?.IsPending == true;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
@@ -35,6 +37,7 @@ namespace Game.UI
 
         public void Show(ArmyData army, Action onRenamed)
         {
+            decision?.Cancel();decision=new Game.Core.MatchDecision();
             _army = army;
             _onRenamed = onRenamed;
 
@@ -51,6 +54,7 @@ namespace Game.UI
 
         public void Hide()
         {
+            decision?.Cancel();
             if (panelRoot != null)
                 panelRoot.SetActive(false);
             // Same "closing resets cached fields" rule every other modal in this project follows
@@ -66,6 +70,7 @@ namespace Game.UI
 
         private void OnValueChanged(string value)
         {
+            if(!HasPendingDecision)return;
             if (_army != null)
                 _army.Name = value;
             _onRenamed?.Invoke();

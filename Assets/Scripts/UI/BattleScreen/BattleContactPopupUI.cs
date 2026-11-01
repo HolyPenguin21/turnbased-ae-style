@@ -77,6 +77,8 @@ namespace Game.UI
         private List<ArmyData> _lastParticipants;
         private PlayerSetupData _lastObserver;
 
+        private Game.Core.MatchDecision decision;
+        public bool HasPendingDecision => decision?.IsPending == true;
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
         // Owner is never null for a real army (see PlayerSetupData/CitadelSetupController's own
@@ -177,6 +179,7 @@ namespace Game.UI
         // actually opening for.
         public void Show(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action<bool> onFight, Action onDelay)
         {
+            decision?.Cancel();decision=new Game.Core.MatchDecision();
             Populate(hex, participants, observer);
             // A defender with no combat-capable unit left (hero-only army/garrison) isn't fought
             // in the Tactical Battle Module at all — onFight routes straight into a Capture/Kill
@@ -191,7 +194,8 @@ namespace Game.UI
             {
                 delayButton.gameObject.SetActive(true);
                 Game.UI.UIUtility.ResetRuntimeListeners(delayButton);
-                delayButton.onClick.AddListener(() => { Hide(); onDelay?.Invoke(); });
+                var request=decision;
+                delayButton.onClick.AddListener(() => { if(!request.TryComplete())return; Hide(); onDelay?.Invoke(); });
             }
         }
 
@@ -200,6 +204,7 @@ namespace Game.UI
         // single acknowledgement before the (placeholder) battle screen opens.
         public void ShowResolved(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action<bool> onContinue)
         {
+            decision?.Cancel();decision=new Game.Core.MatchDecision();
             Populate(hex, participants, observer);
             if (fightButtonLabel != null)
                 fightButtonLabel.text = "Continue";
@@ -230,7 +235,8 @@ namespace Game.UI
                 return;
             button.gameObject.SetActive(true);
             UIUtility.ResetRuntimeListeners(button);
-            button.onClick.AddListener(() => { Hide(); onFight?.Invoke(fastResolve); });
+            var request=decision;
+            button.onClick.AddListener(() => { if(!request.TryComplete())return; Hide(); onFight?.Invoke(fastResolve); });
         }
 
         private void Populate(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer)
@@ -370,6 +376,7 @@ namespace Game.UI
 
         public void Hide()
         {
+            decision?.Cancel();
             SetPanelActive(false);
             leftArmyList?.Hide();
             rightArmyList?.Hide();

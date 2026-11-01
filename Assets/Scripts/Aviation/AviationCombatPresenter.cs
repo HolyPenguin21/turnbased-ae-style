@@ -34,6 +34,7 @@ namespace Game.Aviation
 
         private readonly HashSet<PresentationLifetime> _presentations = new HashSet<PresentationLifetime>();
 
+        public bool HasPendingOperation => _presentations.Count > 0;
         private void OnDisable()
         {
             foreach (var presentation in new List<PresentationLifetime>(_presentations)) presentation.Cancel();
