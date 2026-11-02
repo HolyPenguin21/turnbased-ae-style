@@ -154,19 +154,34 @@ namespace Game.Ai.V2
         // intents / actor claims from it, in that order. Does not refresh the snapshot itself.
         internal IEnumerator RefreshOperationalDecision()
         {
+            StagePerfMark mark = StagePerfTelemetry.Mark(_pacer);
             yield return _services.WarmEstimates(Snapshot);
+            StagePerfTelemetry.Log(_pacer, mark, "refresh.warmEstimates");
+            mark = StagePerfTelemetry.Mark(_pacer);
             Recon = _services.EnumerateRecon(Snapshot);
+            StagePerfTelemetry.Log(_pacer, mark, "refresh.enumerateRecon");
             yield return Checkpoint();
             // Rebuild the operational Aggression facts from this settled snapshot before
             // re-enumerating objectives, so a neutral destroyed by the previous step is gone.
+            mark = StagePerfTelemetry.Mark(_pacer);
             _services.RefreshAggressionFacts(Snapshot);
+            StagePerfTelemetry.Log(_pacer, mark, "refresh.aggressionFacts");
             yield return Checkpoint();
+            mark = StagePerfTelemetry.Mark(_pacer);
             Aggression = _services.EnumerateAggression(Snapshot);
+            StagePerfTelemetry.Log(_pacer, mark, "refresh.enumerateAggression");
             yield return Checkpoint();
+            mark = StagePerfTelemetry.Mark(_pacer);
             Intents = _services.ResolveActive(Snapshot, Recon, Aggression, false);
             Commitments = _services.RefreshActors(Intents, Snapshot, Recon);
+            StagePerfTelemetry.Log(_pacer, mark, "refresh.resolveIntents");
+            mark = StagePerfTelemetry.Mark(_pacer);
             yield return WarmDemands();
+            StagePerfTelemetry.Log(_pacer, mark, "refresh.warmDemands");
         }
+
+        // Diagnostics only (StagePerfTelemetry): the pacer whose yields and work a stage reports.
+        internal FramePacer Pacer => _pacer;
 
         // The first Phase A changed the settled world: refresh knowledge and the operational
         // decision (the caller regenerates the demands of every axis).

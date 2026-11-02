@@ -442,9 +442,9 @@ namespace Game.Ai.V2
 
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, a.Target.Hex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex, primary);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
 
             if (a.Phase == AttackMissionPhase.Reinforcement && a.SupportArmyId.HasValue)
             {
@@ -728,16 +728,16 @@ namespace Game.Ai.V2
         {
             if (a.Preparation)
                 return ResolveAttackPreparation(snap, intent, a, unavailableArmyIds);
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, a.Target.Hex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
-
             // A support that stopped existing, or whose bodies no longer improve the host (arrival
             // order filled the host differently than planned, defenders changed), leaves the plan:
             // otherwise its leg would be rejected by Provisioning forever and the host would hold
             // for nothing.
             ArmySnapshot host = snap?.Self?.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
+            // The one forecast of the site (AttackSupportProjection), priced for this host.
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex, host);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
             List<int> dropped = a.GatherSupportArmyIds.Where(id =>
             {
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
@@ -824,11 +824,13 @@ namespace Game.Ai.V2
         private static bool ResolveAttackPreparation(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ISet<int> unavailableArmyIds)
         {
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, a.Target.Hex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
             int hostId = a.PrimaryArmyId.Value;
             ArmySnapshot host = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == hostId);
+            // The fist waits on its staging Base until the forecast (with the support that now
+            // physically exists — a produced missile, a fielded carrier) clears the site.
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex, host);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
             var unavailable = unavailableArmyIds == null
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(hostId);
@@ -903,9 +905,9 @@ namespace Game.Ai.V2
                 // the way, and every pass of the march re-checks the then-known defenders.
                 ArmySnapshot readyHost = snap.Self.Armies.FirstOrDefault(x => x != null
                     && x.ArmyId == a.PrimaryArmyId);
+                AttackSupportForecast readyForecast = AttackSupportProjection.For(snap, a.Target.Hex, readyHost);
                 AttackPreparationAssessment ready = AttackPreparationPolicy.AssessReadiness(readyHost,
-                    snap.Self.AttackPeak, KnownOpposition.OnHex(snap, a.Target.Hex),
-                    AiMapMemory.KnownHexDefenseBonus(snap.Observer, null, a.Target.Hex));
+                    snap.Self.AttackPeak, readyForecast.Opposition, readyForecast.HexBonus);
                 string readyReason = ready.CurrentPower > ready.RequiredPower ? "power_floor"
                     : ready.Reason == "ready_by_opportunity" ? "opportunity" : "ongoing_assault";
                 AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} decision=ASSAULT-READY "
@@ -1095,23 +1097,24 @@ namespace Game.Ai.V2
             ArmySnapshot primary = a.PrimaryArmyId.HasValue
                 ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value)
                 : null;
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex, primary);
             return AttackPreparationPolicy.AssessReadiness(primary, snap.Self.AttackPeak,
-                KnownOpposition.OnHex(snap, a.Target.Hex),
-                AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex)).Reason;
+                forecast.Opposition, forecast.HexBonus).Reason;
         }
 
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return false;
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, a.Target.Hex);
-            // Continuity is snapshot-pure and has no map, so terrain is not in this read; the
-            // remembered structural defence still is. The mission/provisioning layers, which do have
-            // the map, apply the full bonus before anything is actually funded or executed.
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
+            // 2026-11-02 — the same forecast the mission planner prices (AttackSupportProjection):
+            // the snapshot's own terrain read plus the committed support. A terrain-less read here
+            // let the host "clear" a site the planner then refused (Rurik T21: Gather -> Assault ->
+            // Reinforcement -> RecoveryReturn on one unchanged fact).
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex, primary);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
             AttackPreparationAssessment readiness = AttackPreparationPolicy.AssessReadiness(
                 primary, snap.Self.AttackPeak, opposition, hexBonus);
             bool clears = a.AssaultStarted
@@ -1137,9 +1140,10 @@ namespace Game.Ai.V2
         {
             if (!a.PrimaryArmyId.HasValue)
                 return false;
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, a.Target.Hex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex,
+                snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value));
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
                 a.PrimaryArmyId.Value, opposition, unavailableArmyIds, hexBonus,
                 allowCommandHandover: true,

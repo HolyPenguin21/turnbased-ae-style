@@ -48,6 +48,9 @@ namespace Game.Ai.V2
             // NonCombatPlayExecutor.Execute re-resolves the placement against the real minted instance). null => Card is a real
             // hand card.
             public GenerationStep Generation;
+            // Aviation only: the ground-combat target hex this aircraft's strike serves (the
+            // witness of its use), null for a Recon use. Read by PhaseAOperationSupport.
+            public HexCoord? StrikeTarget;
         }
 
         // Every non-combat card is scored through the shared StrategicCardEvaluator (same
@@ -246,7 +249,7 @@ namespace Game.Ai.V2
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
             MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null,
-            bool ignoreApForMeasurement = false)
+            bool ignoreApForMeasurement = false, bool aviationOnly = false)
         {
             if (player == null || root == null || hand?.Hand == null || ctx == null)
                 yield break;
@@ -258,7 +261,7 @@ namespace Game.Ai.V2
             foreach (CardData card in hand.Hand.ToList())
             {
                 CardDefinition def = card?.Definition;
-                if (def == null)
+                if (def == null || aviationOnly && !def.isAviation)
                     continue;
                 // Respect physical Economy reservations before placement enumeration. Base
                 // founding itself is excluded below for every copy, including generated cards.
@@ -307,7 +310,7 @@ namespace Game.Ai.V2
                     reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards))
                 {
                     CardDefinition gd = g?.CardDef;
-                    if (gd == null || g.ProducesEquipment)
+                    if (gd == null || g.ProducesEquipment || aviationOnly && !gd.isAviation)
                         continue;
                     if (!(gd.isAviation || gd.cardType == CardType.Base || gd.cardType == CardType.Facility))
                         continue;
@@ -502,7 +505,7 @@ namespace Game.Ai.V2
             {
                 TaskScore service = AirfieldServiceTaskScore(snap, player, ctx, projected, airfield,
                     objectives, strikeTargets, uncoveredAirJobs > 0 && !ExplosionAttack.IsSingleUseUnit(def),
-                    out int coverage, out string witness, out string use);
+                    out int coverage, out string witness, out string use, out HexCoord? strikeHex);
                 if (judgeUse && use == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
@@ -527,6 +530,7 @@ namespace Game.Ai.V2
                     ApCost = totalAp,
                     ResCost = totalRes,
                     Score = score,
+                    StrikeTarget = strikeHex,
                     StableKey = $"{sourceKey}:aviation:{airfield.Q},{airfield.R}",
                     Explain = $"{def.displayName} -> airfield ({airfield.Q},{airfield.R}); "
                         + $"runnableAirObjectives={coverage}, serviceTask={service.Value:0.00}, "
@@ -546,8 +550,16 @@ namespace Game.Ai.V2
         internal static TaskScore AirfieldServiceTaskScore(WorldSnapshot snap, PlayerSetupData player,
             AiTurnContext ctx, IReadOnlyList<UnitData> projected, HexCoord airfield,
             IReadOnlyList<ReconObjective> objectives, IReadOnlyList<CombatAirSupportRequest> strikeTargets,
-            bool reconUseful, out int coverage, out string witness, out string use)
+            bool reconUseful, out int coverage, out string witness, out string use) =>
+            AirfieldServiceTaskScore(snap, player, ctx, projected, airfield, objectives, strikeTargets,
+                reconUseful, out coverage, out witness, out use, out _);
+
+        internal static TaskScore AirfieldServiceTaskScore(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, IReadOnlyList<UnitData> projected, HexCoord airfield,
+            IReadOnlyList<ReconObjective> objectives, IReadOnlyList<CombatAirSupportRequest> strikeTargets,
+            bool reconUseful, out int coverage, out string witness, out string use, out HexCoord? strikeHex)
         {
+            strikeHex = null;
             TaskScore service = reconUseful
                 ? BestAirfieldServiceTaskScore(snap, player, ctx, projected, airfield, objectives,
                     out coverage, out witness)
@@ -564,7 +576,14 @@ namespace Game.Ai.V2
                 coverage = 1;
                 witness = $"{target.Identity}; first strike in {combat.Value.FirstStrikeEta} turn(s)";
                 use = $"{(target.IsStockPreparation ? "missile-stock" : "strike")}@({target.Target.Q},{target.Target.R})";
+                strikeHex = target.Target;
             }
+            // 2026-11-02 — a single-use missile has no Recon role: "covered_by_existing_air" named
+            // the wrong reason when nothing could be struck (Rurik, no aircraft at all).
+            if (use == null && !reconUseful && projected?.Count == 1
+                && ExplosionAttack.IsSingleUseUnit(projected[0]))
+                witness = (strikeTargets?.Count ?? 0) == 0 ? "no_live_strike_target"
+                    : $"no_serviceable_strike_target(targets={strikeTargets.Count})";
             return service;
         }
 
@@ -579,7 +598,7 @@ namespace Game.Ai.V2
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
             return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,
-                AviationRebasePlanner.CombatSupportTargets(snap, intents), commitments)
+                AviationRebasePlanner.CombatSupportTargets(snap, intents, includeGather: true), commitments)
                 .ToList();
         }
 

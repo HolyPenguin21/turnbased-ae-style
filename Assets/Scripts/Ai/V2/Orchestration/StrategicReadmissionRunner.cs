@@ -95,6 +95,7 @@ namespace Game.Ai.V2
             HashSet<DesireAxis> dirtyAxes, ReadmissionOutcome outcome)
         {
             outcome.StateChanged = false;
+            StagePerfMark mark = StagePerfTelemetry.Mark(_frame.Pacer);
             DeferredAdmissionGate gate = _readmission.Decide(cause, reasons, dirtyAxes,
                 () => AviationObligations.Pending(_player, _ctx), Key,
                 (axis, fingerprint) =>
@@ -105,6 +106,7 @@ namespace Game.Ai.V2
                         + $"axis={axis} reason=settled_state_unchanged fingerprint="
                         + $"#{(uint)fingerprint.GetHashCode():x8}/{fingerprint.Length}"),
                 out HashSet<DesireAxis> admittedAxes);
+            StagePerfTelemetry.Log(_frame.Pacer, mark, "readmission.admissionKeys", $"cause={cause}");
             if (gate == DeferredAdmissionGate.Skip)
                 yield break;
             if (gate == DeferredAdmissionGate.Defer)
@@ -120,7 +122,10 @@ namespace Game.Ai.V2
             if (dirtyAxes.Count == 0)
                 yield break;
 
+            string axesLabel = $"axes={string.Join(",", dirtyAxes)} triggers={reasons}";
+            mark = StagePerfTelemetry.Mark(_frame.Pacer);
             yield return _frame.RefreshOperationalDecision();
+            StagePerfTelemetry.Log(_frame.Pacer, mark, "readmission.refresh", axesLabel);
             // T03 — the baseline is the input Generate actually evaluates: taken after
             // continuity resolved (a completed target, a handed-off donor), before any
             // follow-up delivery. Post-delivery state is judged by the delta it publishes,
@@ -130,7 +135,9 @@ namespace Game.Ai.V2
             Dictionary<DesireAxis, string> demandsBefore = dirtyAxes.ToDictionary(axis => axis,
                 axis => DemandIdentityDigest(_frame.Demands, axis));
             yield return _frame.Checkpoint();
+            mark = StagePerfTelemetry.Mark(_frame.Pacer);
             List<AxisDemand> regenerated = _frame.GenerateDemands(dirtyAxes);
+            StagePerfTelemetry.Log(_frame.Pacer, mark, "readmission.generateDemands", axesLabel);
             List<AxisDemand> dirtyDemands = regenerated;
             _frame.ReplaceDemandFamilies(dirtyAxes, regenerated);
             // Phase A is told exactly which axes were re-evaluated (admittedAxes = dirtyAxes):
@@ -140,12 +147,14 @@ namespace Game.Ai.V2
             yield return _frame.Checkpoint();
             WorldAnalysis.StepObservationStamp beforeCapabilities =
                 WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
+            mark = StagePerfTelemetry.Mark(_frame.Pacer);
             StrategicPhaseResult followup = StrategicManager.FulfillDemands(
                 _frame.Snapshot, _player, _root, _hand, _ctx, _apBudget, dirtyDemands,
                 _frame.Commitments, _frame.IntentState, _frame.Intents, _frame.Recon,
                 _phases.Carried,
                 admittedAxes: dirtyAxes, radar: _radar,
                 deferFreshZeroRadar: true);
+            StagePerfTelemetry.Log(_frame.Pacer, mark, "readmission.phaseA", axesLabel);
             _phases.PhaseA.Accumulate(followup);
             ReservationInvariants.CheckBoundary(_player, _root, _ctx,
                 $"phaseA reentry axes={string.Join(",", dirtyAxes)}");

@@ -193,6 +193,34 @@ namespace Game.EditorTests
                 Is.EqualTo(AttackLocalActionKind.Retreat));
         }
 
+        // Playtest 2026-11-02 (Rurik T19/T22): an unbeatable army holding its own Base on the route,
+        // beyond today's window, is invisible to the marching one-day rule but certain to send the
+        // march home later; the start sees it. A roaming army that far may leave: not a start veto.
+        [Test]
+        public void Departure_SeesAnUnbeatableHolderBeyondTheWindow_ARoamingArmyThereIsNoVeto()
+        {
+            ArmySnapshot us = Army(7, Origin, new[] { Body(2, 2, 6) });
+            var hold = new HexCoord(8, 0);
+            WorldSnapshot snap = Snap(us, Sight(5, hold, Red, new[] { Body(60, 60, 500), Body(60, 60, 500) }));
+
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false, null, null).Kind,
+                Is.Not.EqualTo(AttackLocalActionKind.Retreat), "the marching rule keeps its one-day window");
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false, null, null,
+                departure: true).Kind, Is.Not.EqualTo(AttackLocalActionKind.Retreat), "roaming army: no veto");
+
+            snap.Known.Buildings = new[]
+            {
+                new AiMapMemory.KnownBuilding(MainHex, Red, true, null, seenTurn: 6),
+                new AiMapMemory.KnownBuilding(hold, Red, false, null, isBase: true, seenTurn: 6),
+            };
+            AttackLocalAction start = AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false,
+                null, null, departure: true);
+            Assert.That(start.Kind, Is.EqualTo(AttackLocalActionKind.Retreat));
+            Assert.That(start.EnemyArmyId, Is.EqualTo(5));
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false, null, null).Kind,
+                Is.Not.EqualTo(AttackLocalActionKind.Retreat), "a march still judges only its window");
+        }
+
         // Playtest 2026-11-01 (Draven T16/T20): a lone hero on the path cannot damage the march;
         // its low chance is the Capture/Kill escape chance, so it is bypassed, never a Retreat.
         [Test]

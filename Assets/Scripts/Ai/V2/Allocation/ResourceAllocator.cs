@@ -259,7 +259,9 @@ namespace Game.Ai.V2
                         : $"Raid({(RaidMissionPhase)SubKind} #{TargetId} {Q},{R})")
                     : Kind == MissionKind.Attack
                         ? (SubKind == (int)AttackMissionPhase.Assault
-                            ? $"Attack(Base@{Q},{R}#P{TargetId})"
+                            // The key holds the structure's hex and owner, not its kind (a Citadel
+                            // read as "Base@" in the 2026-11-02 log): the intent key's own form.
+                            ? $"Attack(@{Q},{R}#P{TargetId})"
                             : $"Attack({(AttackMissionPhase)SubKind} #{TargetId} {Q},{R})")
                     : Kind == MissionKind.ActiveDefence
                         ? (SubKind == (int)ActiveDefencePhase.Return
@@ -317,6 +319,10 @@ namespace Game.Ai.V2
         // parked, and funded only from the common remainder after every other fresh mission (the
         // same pass that funds InsufficientBudget spillover), i.e. on turns with AP to spare.
         LowValuePerAp,
+        // 2026-11-02 — a fresh (non-durable) proposal whose intrinsic TaskScore is below zero: its
+        // cost outweighs its benefit, so no AP is spent on it, not even from the remainder
+        // (playtest: Rurik T22 marched on Citadel (5,-1) at value -10.3 and walked back).
+        NegativeValue,
     }
 
     public sealed class DeferredEntry
@@ -738,6 +744,11 @@ namespace Game.Ai.V2
                     alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.InvalidContribution });
                     continue;
                 }
+                if (IsNegativeFresh(m))
+                {
+                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.NegativeValue });
+                    continue;
+                }
                 if (ConflictsCurrentPortfolio(m))
                 {
                     alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.MissionConflict });
@@ -935,6 +946,11 @@ namespace Game.Ai.V2
             m != null && m.Kind == MissionKind.Raid && !m.FromDurableIntent
             && m.CauseDemandTraceIds.Count == 0
             && m.BaseValue < AiConfigV2.raidParkValuePerAp * Mathf.Max(1f, ApDesired(m));
+
+        // Intrinsic value, never the radar-scaled EffectiveValue (a cold axis legitimately ranks 0).
+        // Durable legs (lifecycle returns, continuing operations) carry their commitment instead.
+        private static bool IsNegativeFresh(MissionProposal m) =>
+            m != null && !m.FromDurableIntent && m.BaseValue < 0f;
 
         private float ApDesired(MissionProposal m) =>
             Mathf.Max(ApMinimum(m), m.Requirements?.ApDesired ?? m.Requirements?.ApMinimum ?? 0f);

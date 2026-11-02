@@ -109,9 +109,14 @@ namespace Game.Ai.V2
         // optional Base (AttackIntermediateBasePolicy.Select). `adObjectives` are the live
         // ActiveDefence objectives of this snapshot (null: none). `intents` is the owner's durable
         // intent store, read only (null: no ActiveDefence response is running).
+        // `departure` — the start decision (AttackMarchPolicy.CanStart): beyond today's window the
+        // path is walked on to the main target for positional obstacles only (PathHolds), the
+        // contacts the march is certain to meet and retreat from (playtest 2026-11-02: Rurik T19 and
+        // T22 started on Citadel (5,-1) and withdrew one turn later from the army holding (1,-2)).
         internal static AttackLocalAction Decide(WorldSnapshot snap, ArmySnapshot army,
             AttackTargetRef main, int lastLocalTurn, bool intermediateBaseAvailable,
-            IReadOnlyList<ActiveDefenceObjective> adObjectives, IMissionIntentView intents)
+            IReadOnlyList<ActiveDefenceObjective> adObjectives, IMissionIntentView intents,
+            bool departure = false)
         {
             if (snap?.Known == null || army == null || army.Owner == null
                 || !main.HasValue || army.Members == null || army.Members.Count == 0)
@@ -149,10 +154,14 @@ namespace Game.Ai.V2
             {
                 HexCoord h = route.Hexes[i];
                 cumulative += StepCost(map, h);
-                if (cumulative > window || h.Equals(mainHex))
+                if (h.Equals(mainHex) || (cumulative > window && !departure))
                     break;
                 List<AiMapMemory.KnownEnemySighting> bodies = KnownBodiesOn(snap, player, h);
                 if (bodies.Count == 0)
+                    continue;
+                // Past today's window a start sees only an army that holds its own known structure:
+                // it stays where the march will meet it. A roaming army may have left by then.
+                if (cumulative > window && !PathHolds(snap, player, bodies, h))
                     continue;
                 List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, h);
                 float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, h);
@@ -394,6 +403,20 @@ namespace Game.Ai.V2
                     best = s;
             }
             return best;
+        }
+
+        // A hostile player's army standing on a known structure of its own side: the positional
+        // obstacle a start must see on the whole route (Decide `departure`).
+        private static bool PathHolds(WorldSnapshot snap, PlayerSetupData player,
+            List<AiMapMemory.KnownEnemySighting> bodies, HexCoord hex)
+        {
+            AiMapMemory.KnownEnemySighting? holder = HostileFieldArmyOn(player, bodies);
+            if (!holder.HasValue || snap.Known.Buildings == null)
+                return false;
+            foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
+                if (b.Hex.Equals(hex) && b.Owner == holder.Value.Owner)
+                    return true;
+            return false;
         }
 
         // The local-contact gate of the one ground-combat check. A standalone hero is priced as a

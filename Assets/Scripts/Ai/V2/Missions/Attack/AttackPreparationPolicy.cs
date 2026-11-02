@@ -17,6 +17,9 @@ namespace Game.Ai.V2
         internal readonly bool StructuralActor;
         internal readonly float CurrentPower, RequiredPower, ProjectedWinChance;
         internal readonly string Reason;
+        // 2026-11-02 — the trade read when the capture did not clear (AttackExchangePolicy).
+        internal readonly AttackExchange Exchange;
+        internal bool ByExchange => CombatFeasible && Exchange.Favorable;
         // Capability satisfaction is separate from admission of an actor to a march. Empty / hero
         // preparation containers can be strengthened before they become structural combat actors.
         internal bool CapabilityReady => HostAvailable && PowerReady && CombatFeasible;
@@ -24,8 +27,10 @@ namespace Game.Ai.V2
 
         internal AttackPreparationAssessment(ArmySnapshot host, float peak,
             bool feasible, float win, bool cover,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = null)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = null, AttackExchange exchange = default)
         {
+            Exchange = exchange;
+            feasible |= exchange.Favorable;
             HostAvailable = host != null;
             CurrentPower = host?.EffectiveArmyPower ?? 0f;
             RequiredPower = AttackForceReadiness.RequiredPower(peak);
@@ -39,6 +44,7 @@ namespace Game.Ai.V2
             Reason = !HostAvailable ? "no_primary" : !PowerReady ? "fist_below_bar"
                 : !feasible ? (!cover ? "coverage_missing" : "win_below_gate")
                 : !StructuralActor ? "actor_ineligible"
+                : exchange.Favorable ? "ready_by_exchange"
                 : AttackForceReadiness.ForceReady(CurrentPower, peak) ? "ready" : "ready_by_opportunity";
         }
     }
@@ -222,7 +228,10 @@ namespace Game.Ai.V2
                 host.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(), host.Commander,
                 opposition, GroundCombatAdmissionPolicy.AttackWinChanceGate, hexBonus,
                 out float win, out bool cover);
-            return new AttackPreparationAssessment(host, currentPeak, clears, win, cover, opposition);
+            // A capture that does not clear may still be a favorable trade (AttackExchangePolicy).
+            AttackExchange exchange = clears ? default : AttackExchangePolicy.Assess(
+                host.Members, host.Commander, opposition, hexBonus);
+            return new AttackPreparationAssessment(host, currentPeak, clears, win, cover, opposition, exchange);
         }
 
         // ---- Priority: attack preparation goes before fresh raids ----

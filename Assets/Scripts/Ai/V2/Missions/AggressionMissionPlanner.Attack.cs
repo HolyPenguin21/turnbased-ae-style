@@ -162,14 +162,22 @@ namespace Game.Ai.V2
                         intermediate = null;
                 }
                 AttackObjective assaultObjective = intermediate ?? objective;
-                IReadOnlyList<WorthIt.DefendingArmy> opposition = assaultObjective.Opposition;
-                // §30 — the honest, knowledge-scoped answer to "what defence does a defender on
-                // that hex actually get". Never a live BuildingRegistry read.
-                float hexBonus = AiMapMemory.KnownHexDefenseBonus(
-                    snap?.Observer, ctx?.Map, assaultObjective.Hex);
+                // 2026-11-02 — the one forecast of what the march meets (AttackSupportProjection):
+                // the known package and the honest, knowledge-scoped hex bonus (§30, never a live
+                // BuildingRegistry read), after the committed air / Disruption support. A fresh
+                // plan prices it against the fastest free fist, a marching one against its own.
+                ArmySnapshot pinnedArmy = pinnedActor.HasValue
+                    ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == pinnedActor.Value) : null;
+                // An optional Base on the way gets no air support (the wing is bound to the main
+                // target only): an unknown ETA counts none there.
+                AttackSupportForecast forecast = AttackSupportProjection.For(snap, assaultObjective.Hex,
+                    () => intermediate != null ? int.MaxValue
+                        : pinnedArmy != null ? AttackSupportProjection.ArmyEta(snap, pinnedArmy, assaultObjective.Hex)
+                        : AttackSupportProjection.FastestFistEta(snap, assaultObjective.Hex, excluded));
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+                float hexBonus = forecast.HexBonus;
 
-                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
-                    new GroundCombatAssemblyRequest
+                var request = new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
                         WinChanceGate = prepDetour != null
@@ -203,7 +211,28 @@ namespace Game.Ai.V2
                                     + $"reason={why}; checking remaining candidates");
                             return allowed;
                         },
-                    });
+                    };
+                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap, request);
+
+                // 2026-11-02 — no capture plan: the main target may still be a favorable trade
+                // (AttackExchangePolicy) for the fist the same planner would field without the
+                // capture gate. Observed defenders only; never an optional Base or a secondary.
+                AttackExchange? exchange = null;
+                if (!plan.Feasible && intermediate == null && prepDetour == null && !secondary
+                    && AttackObjectiveEvaluator.HasAssaultObservation(snap, objective.Target, out _))
+                {
+                    GroundCombatAssemblyPlan trade = AttackExchangePolicy.TradePlan(snap, request,
+                        out AttackExchange read);
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#exchange",
+                        $"[AI][V2][Attack][Exchange] target={objective.Target.DiagnosticLabel} "
+                        + $"{(trade != null ? $"actor=#{trade.BaseArmyId} " : "")}{read.Describe()} "
+                        + forecast.Describe());
+                    if (trade != null)
+                    {
+                        plan = trade;
+                        exchange = read;
+                    }
+                }
 
                 if (!plan.Feasible)
                 {
@@ -295,11 +324,27 @@ namespace Game.Ai.V2
                         $"[AI][V2][Attack][Disruption] HOLD {disruptionWhy} target={objective.Target.DiagnosticLabel}");
                     continue;
                 }
+                // The terminal step waits for the counted strike the plan was priced on (one turn).
+                if (intermediate == null && !local.IsLocalFight
+                    && distance <= (GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, plan)
+                        ?? actor.CurrentMovement)
+                    && AttackMarchPolicy.WaitForAirStrike(snap, forecast, actor, out string strikeWhy, plan))
+                {
+                    if (incumbent != null)
+                    {
+                        assaultWhy[incumbent.IntentKey] = strikeWhy;
+                        incumbent.LastProtectedTurn = snap.TurnNumber;
+                    }
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#strike-wait",
+                        $"[AI][V2][Attack][AirSupport] HOLD {strikeWhy} target={objective.Target.DiagnosticLabel}");
+                    continue;
+                }
                 int eta = AiV2Util.CeilDiv(distance,
                     Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
                 int? projectedAp = GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan);
+                // A trade is worth what its first battle delivers (the strongest army falls).
                 TaskScore score = AttackObjectiveEvaluator.WithResponse(assaultObjective, actor,
-                    observedDefence ? plan.ProjectedWinChance : 0f, eta, 0f, projectedAp);
+                    !observedDefence ? 0f : exchange?.FirstWin ?? plan.ProjectedWinChance, eta, 0f, projectedAp);
 
                 // Once the assembled actor strictly clears the force threshold, it may march.
 
@@ -323,6 +368,7 @@ namespace Game.Ai.V2
                         incumbent?.Attack?.LastOpportunisticStrikeTurn ?? 0,
                     Local = intermediate != null ? default : local,
                     Secondary = secondary,
+                    Exchange = exchange.HasValue,
                 };
                 float ap = actor.HasActivatedThisTurn ? 0f
                     : projectedAp ?? actor.ActivationApCost;
@@ -348,6 +394,7 @@ namespace Game.Ai.V2
                     Explain = $"Attack {objective.Target.DiagnosticLabel} "
                         + (intermediate == null ? "" : $"via {intermediate.Target.DiagnosticLabel} ")
                         + $"task {F(score.Value)} win {(observedDefence ? F(plan.ProjectedWinChance) : "unknown")} "
+                        + (exchange.HasValue ? exchange.Value.Describe() + " " : "")
                         + $"defenders {assaultObjective.DefenderCount} hexDef {F(hexBonus)} eta {eta}",
                 };
                 proposal.Axes.Value[DesireAxis.Aggression] = 1f;
@@ -391,7 +438,8 @@ namespace Game.Ai.V2
                         + $"ad={(local.ServesActiveDefence ? 1 : 0)} reason={local.Reason}");
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                     $"[AI][V2][Attack][Admission] decision=PROPOSE target={objective.Target.DiagnosticLabel} "
-                    + $"actor={actor.ArmyId} score={F(score.Value)} eligible=[{GroundCombatAdmissionRegistry.EligibleIds(proposal)}]");
+                    + $"actor={actor.ArmyId} score={F(score.Value)} eligible=[{GroundCombatAdmissionRegistry.EligibleIds(proposal)}] "
+                    + forecast.Describe());
             }
 
             // freshCandidates were appended in objective order — the internal selection priority

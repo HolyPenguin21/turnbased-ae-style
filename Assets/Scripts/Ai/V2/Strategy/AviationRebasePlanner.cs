@@ -98,8 +98,10 @@ namespace Game.Ai.V2
         }
 
         // Targets of existing ground-combat tasks that want air support and have no wing yet.
+        // `includeGather` — production's question (NonCombatCardPlayer.KnownStrikeTargets): a live
+        // Gather may have its strike PRODUCED and stored; only an Assault forms and flies a wing.
         internal static List<CombatAirSupportRequest> CombatSupportTargets(WorldSnapshot snap,
-            IReadOnlyList<MissionIntent> activeIntents)
+            IReadOnlyList<MissionIntent> activeIntents, bool includeGather = false)
         {
             var targets = new List<CombatAirSupportRequest>();
             int turn = snap?.TurnNumber ?? 0;
@@ -108,8 +110,12 @@ namespace Game.Ai.V2
                 if (i == null || i.Status != IntentStatus.Active)
                     continue;
                 AttackIntent a = i.Attack;
-                if (a != null && a.Phase == AttackMissionPhase.Assault && !a.AirSupportArmyId.HasValue
-                    && a.AirSupportAttemptedTurn != turn)
+                // 2026-11-02 (owner decision) — a live Gather (preparation included) is a production
+                // customer: the softening it waits for (AttackSupportProjection) must exist before
+                // the fist departs. It is never flown before the Assault (no premature strike).
+                if (a != null && (a.Phase == AttackMissionPhase.Assault
+                        || includeGather && a.Phase == AttackMissionPhase.Gather)
+                    && !a.AirSupportArmyId.HasValue && a.AirSupportAttemptedTurn != turn)
                 {
                     var objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target);
                     if (objective != null) targets.Add(new CombatAirSupportRequest(i.IntentKey,

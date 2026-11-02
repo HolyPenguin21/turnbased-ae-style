@@ -14,14 +14,23 @@ namespace Game.Ai.V2
         internal const double BudgetSeconds = 0.008;
 
         private long _since = Stopwatch.GetTimestamp();
+        private double _workBeforeSince;
 
-        internal bool Expired =>
-            (Stopwatch.GetTimestamp() - _since) / (double)Stopwatch.Frequency >= BudgetSeconds;
+        // Diagnostics only (StagePerfTelemetry): frames given back, and the AI's own work time —
+        // wall time minus the engine frames between checkpoints.
+        internal int Yields { get; private set; }
+        internal double WorkSeconds => _workBeforeSince + Elapsed;
+
+        private double Elapsed => (Stopwatch.GetTimestamp() - _since) / (double)Stopwatch.Frequency;
+
+        internal bool Expired => Elapsed >= BudgetSeconds;
 
         internal IEnumerator Checkpoint()
         {
             if (!Expired)
                 yield break;
+            _workBeforeSince += Elapsed;
+            Yields++;
             yield return null;
             _since = Stopwatch.GetTimestamp();
         }

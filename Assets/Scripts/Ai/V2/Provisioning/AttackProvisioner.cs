@@ -156,10 +156,17 @@ namespace Game.Ai.V2
             HexCoord targetHex = target.AssaultTarget.Hex;
             // Re-read the site from the CURRENT snapshot rather than trusting the proposal's frozen
             // copy: a fresh observation between planning and provisioning is exactly the kind of
-            // honest news that must reach the estimator.
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, targetHex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, targetHex);
+            // honest news that must reach the estimator. 2026-11-02 — the same forecast the
+            // planner priced (AttackSupportProjection): what the assigned fist meets after the
+            // committed support. An optional Base gets no air.
+            ArmySnapshot mover = funded.Mission.PreferredMoverArmyId.HasValue
+                ? snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == funded.Mission.PreferredMoverArmyId.Value) : null;
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, targetHex,
+                () => target.IsIntermediateAssault || mover == null ? int.MaxValue
+                    : AttackSupportProjection.ArmyEta(snap, mover, targetHex));
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
 
             GroundCombatAssaultOutcome assault = GroundCombatAssaultTransactionRunner.Run(
                 new GroundCombatAssaultRequest
@@ -518,9 +525,11 @@ namespace Game.Ai.V2
 
             WorldSnapshot snap = session.Snapshot;
             HexCoord targetHex = target.Target.Hex;
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, targetHex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, ctx?.Map, targetHex);
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, targetHex,
+                target.PrimaryArmyId.HasValue ? snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == target.PrimaryArmyId.Value) : null);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
 
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,

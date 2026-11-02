@@ -149,8 +149,10 @@ namespace Game.Ai.V2
         // The coverage rule of the assigned assault (null: the gate's default).
         internal static bool? AssaultCoverage(MissionProposal proposal) =>
             proposal != null && proposal.Kind == MissionKind.Attack
-                && proposal.Target is AttackMissionTarget attack && attack.IsIntermediateAssault
-                ? AttackIntermediateBaseRequiresCoverage : (bool?)null;
+                && proposal.Target is AttackMissionTarget attack
+                ? attack.IsIntermediateAssault ? AttackIntermediateBaseRequiresCoverage
+                    : attack.Exchange ? false : (bool?)null
+                : (bool?)null;
 
         // The gate an assigned assault actor is (re)planned at: Attack's floor; otherwise the
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
@@ -169,6 +171,8 @@ namespace Game.Ai.V2
             : proposal != null && proposal.Kind == MissionKind.Attack
                 ? proposal.Target is AttackMissionTarget attack
                     ? attack.IsIntermediateAssault ? AttackIntermediateBaseWinChanceGate
+                        // A trade has no capture gate: AttackSecondaryPolicy.CanStart judges it.
+                        : attack.Exchange ? 0f
                         : attack.ForceCommitted ? AttackLocalWinChanceGate : AttackWinChanceGate
                     : AttackWinChanceGate
             : PinnedOrFreshGate(proposal != null && proposal.FromDurableIntent

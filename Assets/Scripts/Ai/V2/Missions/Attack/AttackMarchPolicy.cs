@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
+using Game.Map;
 
 namespace Game.Ai.V2
 {
@@ -67,7 +68,7 @@ namespace Game.Ai.V2
             if (home.Verdict == AttackMarchVerdict.DefendHome)
             { reason = "home_needs_the_army:" + home.Reason; return false; }
             AttackLocalAction contact = AttackTacticalOpportunity.Decide(snap, actor, target,
-                snap.TurnNumber, false, null, intents);
+                snap.TurnNumber, false, null, intents, departure: true);
             // The callers that decide on this refusal log it (Assembly REJECT_CANDIDATE, Gather
             // REJECT, Continuity "retired before departure"): the contact's facts travel in it.
             if (contact.Kind == AttackLocalActionKind.Retreat)
@@ -134,9 +135,11 @@ namespace Game.Ai.V2
         {
             if (snap?.Self == null || primary == null)
                 return new AttackMarchAssessment(AttackMarchVerdict.Continue, 0f, false, null, "no_primary");
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, target.Hex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, target.Hex);
+            // 2026-11-02 — priced against what the march meets: the committed support counted
+            // (AttackSupportProjection). A bound wing in flight no longer reads as a lost fight.
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, target.Hex, primary);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
             GroundCombatFeasibility.Clears(primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(),
                 primary.Commander, opposition, 0f, hexBonus, out float win, out _, requireCoverage: false);
             bool known = opposition != null && opposition.Any(a => a.Units.Any(u => u.IsGroundCombatant));
@@ -167,8 +170,46 @@ namespace Game.Ai.V2
             if (win >= AbortFloor)
                 return new AttackMarchAssessment(AttackMarchVerdict.Continue, win, decisive, null,
                     decisive ? "decisive" : "contested");
+            // 2026-11-02 — a capture out of reach may still be a favorable trade on this hex: the
+            // same read readiness started the march on (AttackExchangePolicy), re-asked every turn.
+            AttackExchange exchange = AttackExchangePolicy.Assess(
+                primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(), primary.Commander,
+                opposition, hexBonus);
+            if (exchange.Favorable)
+                return new AttackMarchAssessment(AttackMarchVerdict.Continue, win, false, null,
+                    $"{exchange.Describe()} ({forecast.Describe()})");
             return new AttackMarchAssessment(AttackMarchVerdict.Withdraw, win, false, null,
-                $"win {win:0.00} < abort floor {AbortFloor:0.00}");
+                $"win {win:0.00} < abort floor {AbortFloor:0.00}; {exchange.Describe()} ({forecast.Describe()})");
+        }
+
+        // 2026-11-02 — the terminal step waits for the bound wing whose strike the march was
+        // priced on (AttackSupportProjection counts a first strike up to one turn after arrival),
+        // while that strike is still to come and the fist does not clear the fight without it.
+        // The wait ends when the wing strikes or Continuity releases it (never took off / series
+        // over), so it is never a timer.
+        internal static bool WaitForAirStrike(WorldSnapshot snap, AttackSupportForecast forecast,
+            ArmySnapshot actor, out string reason, GroundCombatAssemblyPlan plan = null)
+        {
+            reason = null;
+            if (snap?.Observer == null || actor == null || !forecast.AirBound
+                || !forecast.AirSourceArmyId.HasValue || forecast.AirFirstStrikeEta > 1)
+                return false;
+            ArmyData wing = OwnWorld.Of(snap.Observer).Army(forecast.AirSourceArmyId.Value);
+            if (wing != null && !Game.Aviation.AviationRules.IsAirfield(wing)
+                && wing.Members.Any(u => u != null && u.HasAirAttackedThisTurn))
+                return false;
+            ArmySnapshot departing = actor;
+            if (plan != null)
+            {
+                var projected = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
+                if (projected.TryGetValue(actor.ArmyId, out ArmySnapshot assembled)) departing = assembled;
+            }
+            if (GroundCombatFeasibility.Clears(departing.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(),
+                    departing.Commander, forecast.BaseOpposition, GroundCombatAdmissionPolicy.AttackLocalWinChanceGate,
+                    forecast.BaseHexBonus, out _, out _))
+                return false;
+            reason = $"awaiting_air_strike:#{forecast.AirSourceArmyId}@eta{forecast.AirFirstStrikeEta}";
+            return true;
         }
 
         // The own Citadel / Base that an honest hostile army will take unless `army` returns: the

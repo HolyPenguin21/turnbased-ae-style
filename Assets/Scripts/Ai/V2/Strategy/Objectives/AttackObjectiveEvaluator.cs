@@ -133,6 +133,10 @@ namespace Game.Ai.V2
         // 2026-10-21 (user decision) — the second, surplus-only operation beside the live one
         // (AttackSecondaryPolicy). Continuity copies it into AttackIntent.Secondary.
         public bool Secondary;
+        // 2026-11-02 — this Assault is priced as a favorable TRADE, not a capture
+        // (AttackExchangePolicy): admission and provisioning re-plan it without the capture gate
+        // and accept only a fist whose trade still holds (AttackSecondaryPolicy.CanStart).
+        public bool Exchange;
         // 2026-10-21 — a second operation born from a garrison with no field host on its Base:
         // the pinned detachment (spare surplus bodies + an empty shell or a new container) the
         // executor materializes as its own terminal step (AttackExecutor.TryMaterializeSortie);
@@ -569,8 +573,7 @@ namespace Game.Ai.V2
                 bool canConsider = (snap.Self.Armies ?? Array.Empty<ArmySnapshot>()).Any(army =>
                     GroundCombatActorEligibility.IsStructuralActor(army)
                     && !commitments.IsArmyClaimed(army.ArmyId)
-                    && AttackPreparationPolicy.AssessReadiness(army, snap.Self.AttackPeak,
-                        target.Opposition, target.HexDefense).Ready
+                    && ReadyFor(snap, army, target)
                     && AiV2Util.TravelCost(snap, army, target.Hex, terrainOnly: true) != int.MaxValue);
                 if (!canConsider) continue;
                 yield return target.Hex;
@@ -580,6 +583,15 @@ namespace Game.Ai.V2
             // including when an intermediate hostile Base is already known. No defenders inferred.
             AttackObjective unseen = targets.FirstOrDefault(t => t.LocationOnly && !emitted.Contains(t.Hex));
             if (unseen != null) yield return unseen.Hex;
+        }
+
+        // The one readiness read of an Attack fist (AttackPreparationPolicy) against the one
+        // forecast of its target (AttackSupportProjection): terrain and committed support included.
+        private static bool ReadyFor(WorldSnapshot snap, ArmySnapshot army, AttackObjective target)
+        {
+            AttackSupportForecast site = AttackSupportProjection.For(snap, target.Hex, army);
+            return AttackPreparationPolicy.AssessReadiness(army, snap.Self.AttackPeak,
+                site.Opposition, site.HexBonus).Ready;
         }
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as

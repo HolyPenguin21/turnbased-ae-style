@@ -37,11 +37,16 @@ namespace Game.Ai.V2
         // this sortie, and the wing is formed when the leg executes.
         internal readonly bool FromStorage;
         internal readonly TaskScore? ServiceScore;
+        // 2026-11-02 — the ground package after the expected series (the input WinAfter reads);
+        // null when the roster is unknown. AttackSupportProjection prices a march against it.
+        internal readonly IReadOnlyList<WorthIt.DefendingArmy> OppositionAfter;
 
         internal AirSupportOption(int wingArmyId, HexCoord landingHex, int etaTurns,
             int firstStrikeEta, int strikeTurns, float expectedDamage, bool rosterKnown,
-            float winAfter, float ap, ResourceVector resources, bool fromStorage = false, TaskScore? serviceScore = null)
+            float winAfter, float ap, ResourceVector resources, bool fromStorage = false, TaskScore? serviceScore = null,
+            IReadOnlyList<WorthIt.DefendingArmy> oppositionAfter = null)
         {
+            OppositionAfter = oppositionAfter;
             ServiceScore = serviceScore;
             FromStorage = fromStorage;
             WingArmyId = wingArmyId;
@@ -260,13 +265,15 @@ namespace Game.Ai.V2
                         firstStrikeThisTurnOnly: reconHandoff);
                     if (!projection.HasValue) continue;
                     CombatAirService service = projection.Value;
-                    float projectedWin = service.RosterKnown && winAgainst != null
-                        ? winAgainst(AfterAirStrike(opposition, airTargets, service.Estimate)) : currentWin;
+                    IReadOnlyList<WorthIt.DefendingArmy> serviceAfter = service.RosterKnown
+                        ? AfterAirStrike(opposition, airTargets, service.Estimate) : null;
+                    float projectedWin = serviceAfter != null && winAgainst != null ? winAgainst(serviceAfter) : currentWin;
                     result.Add(new AirSupportOption(wing.ArmyId, service.Landing, service.FirstStrikeEta,
                         service.FirstStrikeEta, service.StrikeTurns,
                         service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
                         service.RosterKnown, projectedWin, service.Ap,
-                        new ResourceVector(0f, 0f, service.Energy, 0f, 0f), serviceScore: service.Score));
+                        new ResourceVector(0f, 0f, service.Energy, 0f, 0f), serviceScore: service.Score,
+                        oppositionAfter: serviceAfter));
                     continue;
                 }
                 List<WorthIt.DefenderProfile> attackers = (wing.RecoveryMembers
@@ -290,6 +297,7 @@ namespace Game.Ai.V2
 
                 float damage = 0f;
                 float winAfter = currentWin;
+                IReadOnlyList<WorthIt.DefendingArmy> after = null;
                 if (rosterKnown)
                 {
                     AviationCombatEstimator.AirStrikeEstimate estimate =
@@ -305,15 +313,17 @@ namespace Game.Ai.V2
                         || estimate.ExpectedDefendersAfter.Count < policy.MinimumSurvivors)
                         continue;
                     damage = estimate.NetExpectedDamage;
+                    after = observedAir ? AfterAirStrike(opposition, airTargets, estimate)
+                        : AfterStrike(opposition, estimate.ExpectedDefendersAfter,
+                            SourceIndices(estimate, defenders.Count));
                     if (winAgainst != null)
-                        winAfter = winAgainst(observedAir ? AfterAirStrike(opposition, airTargets, estimate)
-                            : AfterStrike(opposition, estimate.ExpectedDefendersAfter,
-                                SourceIndices(estimate, defenders.Count)));
+                        winAfter = winAgainst(after);
                 }
 
                 result.Add(new AirSupportOption(wing.ArmyId, landing.Value, eta, eta, strikeTurns,
                     damage, rosterKnown, winAfter, wing.PendingActivationApCost,
-                    new ResourceVector(0f, 0f, wing.PendingActivationEnergyCost, 0f, 0f)));
+                    new ResourceVector(0f, 0f, wing.PendingActivationEnergyCost, 0f, 0f),
+                    oppositionAfter: after));
             }
 
             // Stored aircraft are the same support (playtest 2026-10-22, Kryll T17-T21: Rusty
@@ -331,13 +341,15 @@ namespace Game.Ai.V2
                 ArmyData live = OwnWorld.Of(snap.Observer).Army(field.ArmyId);
                 if (StoredSupportGroup(snap, live, targetHex, policy, out CombatAirService service, supportRequest).Count == 0)
                     continue;
-                float projectedWin = service.RosterKnown && winAgainst != null
-                    ? winAgainst(AfterAirStrike(opposition, airTargets, service.Estimate)) : currentWin;
+                IReadOnlyList<WorthIt.DefendingArmy> storedAfter = service.RosterKnown
+                    ? AfterAirStrike(opposition, airTargets, service.Estimate) : null;
+                float projectedWin = storedAfter != null && winAgainst != null ? winAgainst(storedAfter) : currentWin;
                 result.Add(new AirSupportOption(field.ArmyId, service.Landing, service.FirstStrikeEta,
                     service.FirstStrikeEta, service.StrikeTurns,
                     service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
                     service.RosterKnown, projectedWin, service.Ap,
-                    new ResourceVector(0f, 0f, service.Energy, 0f, 0f), fromStorage: true, serviceScore: service.Score));
+                    new ResourceVector(0f, 0f, service.Energy, 0f, 0f), fromStorage: true, serviceScore: service.Score,
+                    oppositionAfter: storedAfter));
             }
             return result;
         }
