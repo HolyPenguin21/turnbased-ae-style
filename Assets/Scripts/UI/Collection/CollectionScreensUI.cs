@@ -150,8 +150,9 @@ namespace Game.UI
             starterButton.onClick.AddListener(() => Guard(() =>
             {
                 var starter = collection.Starter(faction);
-                var existing = collection.StarterDeck(faction);
-                if (existing != null) starter.deckId = existing.deckId;
+                // Fill the selected deck with starter contents; identity (id, name, starter flag) stays.
+                starter.deckId = draft.deckId; starter.isStarter = draft.isStarter;
+                if (!draft.isStarter) starter.name = draft.name;
                 draft = starter; dirty = true; RefreshAll();
             }));
             copyButton.onClick.AddListener(() =>
