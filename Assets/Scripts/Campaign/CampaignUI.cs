@@ -44,14 +44,10 @@ namespace Game.Campaign
         [Header("Region information")]
         [SerializeField] private FactionRowRefs[] standings;
         [SerializeField] private TMP_Text sidebarTitle;
-        [SerializeField] private GameObject noSelectionPanel, regionPanel;
-        [SerializeField] private Image humanLogo;
-        [SerializeField] private TMP_Text humanFactionName;
+        [SerializeField] private GameObject noSelectionHint, regionPanel;
         [SerializeField] private RawImage terrainPreview;
         [SerializeField] private Image ownerLogo;
         [SerializeField] private TMP_Text ownerName, regionConditionsText;
-        [SerializeField] private RectTransform neighborsContent;
-        [SerializeField] private CampaignNeighborRowView neighborRowPrefab;
         // When assigned, replaces the single Attack Region button with one row per legal attack.
         [SerializeField] private RectTransform attacksContent;
         [SerializeField] private CampaignAttackRowView attackRowPrefab;
@@ -260,9 +256,11 @@ namespace Game.Campaign
             }
             var region = selected.HasValue ? s.Regions.Find(r => r.RegionId == selected.Value) : null;
             sidebarTitle.text = region == null ? "SELECT A REGION" : region.Name.ToUpperInvariant();
-            noSelectionPanel.SetActive(region == null); regionPanel.SetActive(region != null);
+            // RegionPanel stays up: without a selection it shows the title and the hint in place of the region details.
+            noSelectionHint.SetActive(region == null);
+            foreach (var detail in new Component[] { terrainPreview, ownerLogo, ownerName, regionConditionsText }) detail.gameObject.SetActive(region != null);
             if (region != null) RenderRegion(s, region);
-            else { SetLogo(humanLogo, s.HumanFaction); humanFactionName.text = FactionName(s.HumanFaction); }
+            else ClearAttacks(); // the attack list sits outside RegionPanel, so drop the last region's rows
             RenderFooter(s);
             RefreshMap();
         }
@@ -313,16 +311,6 @@ namespace Game.Campaign
             }
             SetLogo(ownerLogo, region.OwnerFaction); ownerName.text = FactionName(region.OwnerFaction);
             regionConditionsText.text = $"Biome: {BiomeName(region.Biome)}\nSpecialization: {region.Specialization}\nRichness: {region.Richness}";
-            ClearChildren(neighborsContent);
-            int row = 0;
-            foreach (int id in region.NeighborIds)
-            {
-                var neighbor = s.Regions.Find(r => r.RegionId == id);
-                var view = Instantiate(neighborRowPrefab, neighborsContent, false);
-                ((RectTransform)view.transform).anchoredPosition = new Vector2(0, -row * 30);
-                view.Dot.color = CampaignMapView.ColorFor(neighbor.OwnerFaction); view.Label.text = neighbor.Name; row++;
-            }
-            neighborsContent.sizeDelta = new Vector2(neighborsContent.sizeDelta.x, Math.Max(106, row * 30));
             if (attacksContent != null && attackRowPrefab != null)
                 RenderAttacks(s, region, region.OwnerFaction == s.HumanFaction ? "No attacks available from this region." : "Attack unavailable this turn.");
         }
@@ -340,11 +328,16 @@ namespace Game.Campaign
             preview.material = material;
             attackPreviewMaterials.Add(material);
         }
-        private void RenderAttacks(CampaignState s, RegionState region, string emptyText)
+        private void ClearAttacks()
         {
-            ClearChildren(attacksContent);
+            if (attacksContent != null) ClearChildren(attacksContent);
             foreach (var m in attackPreviewMaterials) if (m != null) Destroy(m);
             attackPreviewMaterials.Clear();
+            if (noAttacksLabel != null) noAttacksLabel.gameObject.SetActive(false);
+        }
+        private void RenderAttacks(CampaignState s, RegionState region, string emptyText)
+        {
+            ClearAttacks();
             var attacks = region.OwnerFaction == s.HumanFaction
                 ? region.NeighborIds.Where(id => CampaignRules.CanAttack(s, s.HumanFaction, region.RegionId, id)).Select(id => (from: region.RegionId, target: id)).ToList()
                 : s.Regions.Where(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId)).Take(1).Select(r => (from: r.RegionId, target: region.RegionId)).ToList();

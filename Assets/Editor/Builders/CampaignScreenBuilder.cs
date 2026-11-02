@@ -39,7 +39,6 @@ public static class CampaignScreenBuilder
         var frame = GameAssetCatalog.Load<Sprite>("UI/Panels/Campaign/MetalFrameRounded");
         var metal = GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetalClean") ?? GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetal");
 
-        var neighborRow = LoadOrCreatePrefab("CampaignNeighborRow", BuildNeighborRow).GetComponent<CampaignNeighborRowView>();
         var deckRow = LoadOrCreatePrefab("CampaignDeckRow", BuildDeckRow).GetComponent<CampaignDeckRowView>();
 
         var canvas = Rect(null, "PlanetaryCampaign");
@@ -97,12 +96,8 @@ public static class CampaignScreenBuilder
         Divider(sidebar, 28, 253, 374);
         var sidebarTitle = Plaque(sidebar, "SidebarTitle", "SELECT A REGION", 24, 268, 382, 62, 25);
 
-        var noSelection = Rect(sidebar, "NoSelectionPanel"); Stretch(noSelection);
-        Text(noSelection, "Hint", "Select a territory to see its owner and neighboring regions.\n\nSelect your territory to highlight available attacks.", 36, 356, 358, 154, 22, Cream);
-        var humanLogo = LogoImage(noSelection, "HumanLogo", 143, 534, 144);
-        var humanName = Text(noSelection, "HumanFactionName", "Faction", 30, 694, 370, 34, 24, Cream, false, TextAlignmentOptions.Center);
-
         var regionPanel = Rect(sidebar, "RegionPanel"); Stretch(regionPanel);
+        var hint = Text(regionPanel, "Hint", "Select a territory to see its owner and neighboring regions.\n\nSelect your territory to highlight available attacks.", 36, 356, 358, 154, 22, Cream);
         var preview = Rect(regionPanel, "RegionTerrainPreview"); Place(preview, 20, 353, 170, 170);
         var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.raycastTarget = false;
         preview.gameObject.AddComponent<Mask>();
@@ -110,8 +105,6 @@ public static class CampaignScreenBuilder
 
         var ownerLogo = LogoImage(regionPanel, "OwnerLogo", 160, 353, 36);
         var ownerName = Text(regionPanel, "OwnerName", "Faction", 200, 353, 200, 36, 23, Cream);
-        Plaque(regionPanel, "NeighborsPlaque", "NEIGHBORING REGIONS", 28, 530, 374, 34, 20);
-        var neighbors = Scroll(regionPanel, "Neighbors", 28, 574, 374, 106, new Color(0, 0, 0, .32f));
 
         // Footer
         var footer = Panel(console, "CampaignHistory"); Place(footer, 24, 889, 1820, 130);
@@ -165,10 +158,9 @@ public static class CampaignScreenBuilder
             element.FindPropertyRelative("factionName").objectReferenceValue = standingRefs[i].name;
             element.FindPropertyRelative("count").objectReferenceValue = standingRefs[i].count;
         }
-        Set("sidebarTitle", sidebarTitle); Set("noSelectionPanel", noSelection.gameObject); Set("regionPanel", regionPanel.gameObject);
-        Set("humanLogo", humanLogo); Set("humanFactionName", humanName); Set("terrainPreview", terrain);
+        Set("sidebarTitle", sidebarTitle); Set("noSelectionHint", hint.gameObject); Set("regionPanel", regionPanel.gameObject);
+        Set("terrainPreview", terrain);
         Set("ownerLogo", ownerLogo); Set("ownerName", ownerName);
-        Set("neighborsContent", neighbors); Set("neighborRowPrefab", neighborRow);
         Set("statusLabel", status); Set("noBattlesLabel", noBattles); Set("summaryLabel", summary);
         Set("endTurnButton", endTurn); Set("resumeButton", resume);
         Set("modalBackdrop", backdrop.gameObject);
@@ -284,7 +276,7 @@ public static class CampaignScreenBuilder
         }
         if (regionPanel != null && Missing("attacksContent"))
         {
-            var group = Created(Rect(regionPanel.transform, "AvailableAttacks")); Stretch(group);
+            var group = Created(Rect(regionPanel.transform.parent, "AvailableAttacks")); Stretch(group);
             Plaque(group, "AvailableAttacksPlaque", "AVAILABLE ATTACKS", 28, 578, 374, 34, 20);
             var content = Scroll(group, "AttackList", 28, 620, 374, 134, new Color(0, 0, 0, .32f));
             var layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -359,17 +351,6 @@ public static class CampaignScreenBuilder
         var saved = PrefabUtility.SaveAsPrefabAsset(go, path);
         Object.DestroyImmediate(go);
         return saved;
-    }
-    private static GameObject BuildNeighborRow()
-    {
-        var root = Rect(null, "CampaignNeighborRow"); Place(root, 0, 0, 352, 30);
-        var dot = Panel(root, "OwnerColor"); Place(dot, 12, 10, 8, 8); dot.GetComponent<Image>().raycastTarget = false;
-        var label = Text(root, "Label", "Region", 30, 0, 308, 30, 20, Cream); NoWrap(label);
-        var view = root.gameObject.AddComponent<CampaignNeighborRowView>();
-        var so = new SerializedObject(view);
-        so.FindProperty("dot").objectReferenceValue = dot.GetComponent<Image>(); so.FindProperty("label").objectReferenceValue = label;
-        so.ApplyModifiedPropertiesWithoutUndo();
-        return root.gameObject;
     }
     private static GameObject BuildAttackRow()
     {
