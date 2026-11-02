@@ -9,9 +9,7 @@ namespace Game.Campaign
     {
         [SerializeField] private Button button;
         [SerializeField] private TMP_Text buttonLabel;
-        [SerializeField] private TMP_Text status;
         public Button Button => button;
         public TMP_Text ButtonLabel => buttonLabel;
-        public TMP_Text Status => status;
     }
 }

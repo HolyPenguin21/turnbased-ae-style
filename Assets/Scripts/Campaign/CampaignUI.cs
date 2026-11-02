@@ -434,11 +434,10 @@ namespace Game.Campaign
                 var validation = ProgressionContext.Collection.Rules.Validate(deck, ProgressionContext.Collection.Owned);
                 var row = Instantiate(deckRowPrefab, deckListContent, false);
                 ((RectTransform)row.transform).anchoredPosition = new Vector2(0, -i * rowPitch);
-                row.ButtonLabel.text = deck.name + "  ·  " + validation.Points + " / 100";
+                row.ButtonLabel.text = (selectedDeckId == deck.deckId ? "> " : "") + deck.name + "  ·  " + validation.Points + " / 100";
                 row.Button.interactable = validation.IsValid;
                 row.Button.onClick.AddListener(() => { selectedDeckId = deck.deckId; OpenDeckSelection(); });
-                row.Status.text = !validation.IsValid ? string.Join("; ", validation.Errors)
-                    : selectedDeckId == deck.deckId ? "Selected" : "Valid saved deck"; i++;
+                i++;
             }
             // Content must not exceed the viewport when the rows fit, otherwise the scrollbar never hides.
             float viewportHeight = ((RectTransform)deckListContent.parent).rect.height;
