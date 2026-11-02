@@ -15,9 +15,14 @@ namespace Game.Setup
             Game.Ai.AiMapMemory.EnsureSubscribed(map);
         }
         internal static void FailReconstruction(Exception exception, Game.Turns.GameTurnController turns)
+            => Fail("Could not restore the saved match: ", exception, turns);
+        // A new launch shares the cleanup but must not report itself as a failed restore.
+        internal static void FailLaunch(Exception exception, Game.Turns.GameTurnController turns)
+            => Fail("Could not start the match: ", exception, turns);
+        private static void Fail(string prefix, Exception exception, Game.Turns.GameTurnController turns)
         {
             MatchStateInventory.EndMatch(turns);
-            GameSession.SetupError = "Could not restore the saved match: " + exception.Message;
+            GameSession.SetupError = prefix + exception.Message;
         }
     }
 }
