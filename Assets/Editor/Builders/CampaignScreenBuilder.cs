@@ -391,12 +391,10 @@ public static class CampaignScreenBuilder
     {
         var root = Rect(null, "CampaignDeckRow"); Place(root, 0, 0, 850, 105);
         var button = MakeButton(root, "Select", "Deck", 8, 6, 830, 42, 20, "Action");
-        var status = Text(root, "Status", "", 12, 50, 820, 52, 16, Cream);
         var view = root.gameObject.AddComponent<CampaignDeckRowView>();
         var so = new SerializedObject(view);
         so.FindProperty("button").objectReferenceValue = button;
         so.FindProperty("buttonLabel").objectReferenceValue = button.GetComponentInChildren<TMP_Text>();
-        so.FindProperty("status").objectReferenceValue = status;
         so.ApplyModifiedPropertiesWithoutUndo();
         return root.gameObject;
     }
