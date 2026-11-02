@@ -154,7 +154,9 @@ namespace Game.EditorTests
             finally
             {
                 UnityEngine.Object.DestroyImmediate(root);
-                MatchStateInventory.ResetForNewMatch();
+                // Awake started a world for the editor scene; leave the session Inactive so a
+                // later InitializeWorld for the same scene is not treated as a repeat.
+                MatchStateInventory.EndMatch();
                 Game.Core.GameSession.Players = players;
             }
         }

@@ -30,5 +30,11 @@ namespace Game.Setup
             Debug.LogException(exception);
             MatchSceneAssembly.FailReconstruction(exception,turnController);
         }
+
+        private void FailMatchLaunch(Exception exception)
+        {
+            Debug.LogException(exception);
+            MatchSceneAssembly.FailLaunch(exception, turnController);
+        }
     }
 }

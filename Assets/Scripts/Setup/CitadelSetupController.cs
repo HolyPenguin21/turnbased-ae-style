@@ -168,7 +168,7 @@ namespace Game.Setup
             }
             catch (System.Exception ex)
             {
-                FailMatchRestore(ex);
+                FailMatchLaunch(ex);
                 UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
             }
             yield break;
@@ -638,7 +638,7 @@ namespace Game.Setup
             try { CompleteNewMatchAssembly(); }
             catch (System.Exception ex)
             {
-                FailMatchRestore(ex);
+                FailMatchLaunch(ex);
                 UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
             }
         }
