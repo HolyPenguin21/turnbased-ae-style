@@ -353,11 +353,11 @@ namespace Game.Ai.V2
                 return;
             var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             unavailable.Remove(host.ArmyId);
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, a.Target.Hex);
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex, host);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            hexBonus = forecast.HexBonus;
             AttackPreparationAssessment readiness = AttackPreparationPolicy.AssessReadiness(host,
-                snap.Self.AttackPeak, KnownOpposition.OnHex(snap, a.Target.Hex),
-                hexBonus);
+                snap.Self.AttackPeak, opposition, hexBonus);
             GroundCombatAssemblyPlan step = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
                 snap, live, unavailable, opposition, hexBonus,
                 rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map, live,
@@ -427,8 +427,9 @@ namespace Game.Ai.V2
             var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             unavailable.Remove(host.ArmyId);
             float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, a.Target.Hex, host);
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap,
-                KnownOpposition.OnHex(snap, a.Target.Hex), hexBonus,
+                forecast.Opposition, forecast.HexBonus,
                 a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 host.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true,
                 departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, a.Target, candidate),

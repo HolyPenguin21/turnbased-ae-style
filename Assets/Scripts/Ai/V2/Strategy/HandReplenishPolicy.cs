@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Linq;
+using Game.Cards;
 using Game.Map;
 using Game.Players;
 
@@ -55,13 +58,69 @@ namespace Game.Ai.V2
             int wanted = DrawsWanted(handBefore, ctx.HandCapacity - handBefore, deckCount,
                 apBefore, apToKeep, ctx.DrawApCost, budget.DrawActionsUsed);
 
+            int drawn = Draw(player, root, hand, ctx, budget, wanted, "strat.replenish");
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: hand replenish - hand {handBefore}->{hand.Hand.Count}"
+                + $"/{ctx.HandCapacity}, drew {drawn}, spendable AP {apBefore}->{SpendableAp(player, root, ctx)} "
+                + $"(target {AiConfigV2.handReplenishTargetCards}, keep {apToKeep} AP = "
+                + $"{AiConfigV2.handReplenishMinApLeft} + aviation {aviationAp})");
+            return drawn;
+        }
+
+        // 2026-11-02 (owner decision, variant B) — a count target cannot see a hand of cards no
+        // demand can use (playtest: Draven T15-T21, hand 3/10 of a held scout, a Factory and an
+        // equipment card, E/M/T up to 16/15/16, every AGG demand "no-capability-card", the Attack
+        // preparation waiting on undrawn_card). Phase A calls this when a round found no feasible
+        // chain: each materialization demand Phase A judged structurally undeliverable from the hand
+        // that a deck card of its capability serves, payable from today's spendable stock, asks for one more
+        // draw — under the same per-turn draw cap, free slots and kept AP as the turn-start refill.
+        // Returns how many cards were drawn; 0 lets Phase A end the pass as before.
+        internal static int RunForDemands(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, IEnumerable<AxisDemand> demands, float reservedFollowupAp = 0f)
+        {
+            if (player == null || root == null || hand == null || ctx == null || demands == null
+                || !hand.HasFreeSlot)
+                return 0;
+            List<CardDefinition> deck = hand.RemainingDeck?.Where(d => d != null).ToList();
+            if (deck == null || deck.Count == 0)
+                return 0;
+            int served = demands.Count(d => d != null && d.StructurallyUndeliverable
+                && deck.Any(def => DeckServes(def, d)
+                    && StrategicSpendability.FitsSpendableResources(player, root, ctx, def.resourceCost)));
+            if (served == 0)
+                return 0;
+
+            StrategicTempoBudget budget = StrategicTempoBudget.For(player, ctx.TurnNumber);
+            // Follow-up AP Phase A already promised to delivered capabilities stays kept too.
+            int apToKeep = AiConfigV2.handReplenishMinApLeft + AviationObligations.ActivationAp(player, ctx)
+                + (int)System.Math.Ceiling(System.Math.Max(0f, reservedFollowupAp));
+            int handBefore = hand.Hand.Count;
+            int wanted = DrawsWanted(0, ctx.HandCapacity - handBefore, deck.Count,
+                SpendableAp(player, root, ctx), apToKeep, ctx.DrawApCost, budget.DrawActionsUsed);
+            wanted = System.Math.Min(wanted, served);
+            int drawn = Draw(player, root, hand, ctx, budget, wanted, "strat.demand-draw");
+            if (drawn > 0)
+                AiDebugLog.Write($"[AI][V2] {player.Nickname}: demand draw - {served} structurally "
+                    + $"unserved demand(s) a deck card answers; hand {handBefore}->{hand.Hand.Count}"
+                    + $"/{ctx.HandCapacity}, drew {drawn} (keep {apToKeep} AP)");
+            return drawn;
+        }
+
+        // The canonical capability matcher of the materialization chain, on the definition.
+        private static bool DeckServes(CardDefinition def, AxisDemand d) =>
+            MaterializationChainMatching.MatchesCapabilityDef(def, d.Capability)
+            && MaterializationChainMatching.AbilitiesSatisfyCapability(def.grantedAbilities, def.cardType,
+                d.Capability, d.EconomyResourceType, recceMayFight: d.AttackFistIsPreparationHost);
+
+        private static int Draw(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, StrategicTempoBudget budget, int wanted, string scope)
+        {
             int drawn = 0;
             for (int i = 0; i < wanted; i++)
             {
                 ReservationInvariants.SpendProbe probe = ReservationInvariants.BeginSpend(
                     player, root, ctx, "hand replenish draw");
                 bool ok = CardDrawExecutor.TryCycle(root, hand, ctx,
-                    scope: "strat.replenish", raiseBoundaryInterrupt: false);
+                    scope: scope, raiseBoundaryInterrupt: false);
                 ReservationInvariants.EndSpend(player, root, ctx, probe);
                 if (!ok)
                     break;
@@ -70,10 +129,6 @@ namespace Game.Ai.V2
                 WorldDeltaLifecycle.CommitMutation();
                 drawn++;
             }
-            AiDebugLog.Write($"[AI][V2] {player.Nickname}: hand replenish - hand {handBefore}->{hand.Hand.Count}"
-                + $"/{ctx.HandCapacity}, drew {drawn}, spendable AP {apBefore}->{SpendableAp(player, root, ctx)} "
-                + $"(target {AiConfigV2.handReplenishTargetCards}, keep {apToKeep} AP = "
-                + $"{AiConfigV2.handReplenishMinApLeft} + aviation {aviationAp})");
             return drawn;
         }
 

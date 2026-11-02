@@ -286,11 +286,14 @@ namespace Game.Ai.V2
                 return h != null && AiPower.EffectiveArmyPower(FinalRoster(primary, h))
                     > AiPower.EffectiveArmyPower(primary.Members) ? h : null;
             }
+            // The fight the fist will have (AttackSupportProjection), like every Attack read.
+            AttackSupportForecast site = refit.TargetHex.HasValue
+                ? AttackSupportProjection.For(snap, refit.TargetHex.Value,
+                    snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == primary.Id))
+                : default;
             IReadOnlyList<WorthIt.DefendingArmy> opposition = refit.TargetHex.HasValue
-                ? KnownOpposition.OnHex(snap, refit.TargetHex.Value)
-                : (IReadOnlyList<WorthIt.DefendingArmy>)Array.Empty<WorthIt.DefendingArmy>();
-            float bonus = refit.TargetHex.HasValue
-                ? AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap?.Map, refit.TargetHex.Value) : 0f;
+                ? site.Opposition : (IReadOnlyList<WorthIt.DefendingArmy>)Array.Empty<WorthIt.DefendingArmy>();
+            float bonus = refit.TargetHex.HasValue ? site.HexBonus : 0f;
             return GroundCombatReinforcement.PlanAttackHandoff(primary, support, opposition, bonus,
                 requireChargeNow, out _, capacityIsProgress: true,
                 rosterAdmissible: refit.TargetHex.HasValue
@@ -385,8 +388,10 @@ namespace Game.Ai.V2
         {
             if (!target.HasValue)
                 return true;
-            var opposition = KnownOpposition.OnHex(snap, target.Value);
-            float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap?.Map, target.Value);
+            AttackSupportForecast site = AttackSupportProjection.For(snap, target.Value,
+                snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == primary.Id));
+            var opposition = site.Opposition;
+            float bonus = site.HexBonus;
             return !WorthIt.CanDamageAll(primary.Members.Select(WorthIt.FromLiveUnit).ToList(), opposition, bonus)
                 || WorthIt.CanDamageAll(FinalRoster(primary, plan).Select(WorthIt.FromLiveUnit).ToList(), opposition, bonus);
         }

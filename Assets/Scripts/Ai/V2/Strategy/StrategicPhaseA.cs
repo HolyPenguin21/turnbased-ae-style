@@ -82,6 +82,9 @@ namespace Game.Ai.V2
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
             // builder + jointly-feasible Phase-A portfolio below as every materialization demand.
             RunCardArbitration(pass);
+            // The strike a live Attack waits for is produced from the operation's own pass, not
+            // from Phase B's leftovers (PhaseAOperationSupport).
+            PhaseAOperationSupport.TryProduceStrikeSupport(pass);
             PhaseAInfrastructureLane.FulfillResidual(pass);
             pass.PublishResiduals();
 
@@ -166,6 +169,11 @@ namespace Game.Ai.V2
                 if (round.Feasible.Count == 0)
                 {
                     ReportNoFeasibleChain(pass, round);
+                    // A demand no hand card can serve, that the deck can and today's stock pays,
+                    // draws toward it and the round re-judges the new hand (HandReplenishPolicy).
+                    if (HandReplenishPolicy.RunForDemands(pass.Player, pass.Root, pass.Hand, pass.Ctx,
+                            round.Active.Select(s => s.Demand), pass.ApBudget.ReservedFollowup()) > 0)
+                        continue;
                     // No currently-active demand has any feasible chain this round — the AI is about
                     // to give up on real strategic work for this pass. Before it does, give any
                     // persistence-deferred demand its no-alternative-work chance (spec Rule 2).

@@ -367,11 +367,18 @@ namespace Game.Ai.V2
                     // T10 — name the gate that actually failed. The win-chance path fails on
                     // coverage (a known defender no roster unit can damage) or on the win bar;
                     // "win 1.00 < 0.60" must never stand for a coverage failure.
+                    // 2026-11-02 — past the power bar the gate that failed is the roster/coverage
+                    // one; "75,5 must be > 66,6" read as a power failure in the log.
                     return GroundCombatGatherPlan.Infeasible(minimumArmyPower > 0f
-                        ? $"gather host #{host.Id}: no remaining support raises the formation "
-                            + $"(projectedPower {power:0.#} must be > requiredPower {minimumArmyPower:0.#}"
-                            + $" strict; coverage {(cover ? "ok" : "missing")}"
-                            + (peakRoster == null ? "" : $"; peak roster short {shortfall:0.#}") + ")"
+                        ? (power > minimumArmyPower
+                            ? $"gather host #{host.Id}: power bar cleared (projectedPower {power:0.#} > "
+                                + $"requiredPower {minimumArmyPower:0.#}) but no remaining support "
+                                + (!cover ? "closes coverage" : "fills a missing peak-roster position")
+                                + (peakRoster == null ? "" : $" (peak roster short {shortfall:0.#})")
+                            : $"gather host #{host.Id}: no remaining support raises the formation "
+                                + $"(projectedPower {power:0.#} must be > requiredPower {minimumArmyPower:0.#}"
+                                + $" strict; coverage {(cover ? "ok" : "missing")}"
+                                + (peakRoster == null ? "" : $"; peak roster short {shortfall:0.#}") + ")")
                         : !cover
                             ? $"gather host #{host.Id}: no remaining support closes coverage "
                                 + $"(a known defender no pooled body can damage; win {win:0.00})"

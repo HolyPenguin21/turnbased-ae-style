@@ -113,12 +113,16 @@ namespace Game.Ai.V2
                     || !commitments.IsArmyClaimed(ai.PrimaryArmyId.Value))
                     continue;
                 int primaryId = ai.PrimaryArmyId.Value;
+                // The shortage is priced on the same forecast the march reads (committed support
+                // counted): no new power is asked for what a bound strike or carrier removes.
+                AttackSupportForecast forecast = AttackSupportProjection.For(snap, ai.Target.Hex,
+                    snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == primaryId));
 
                 AxisDemand attackShortage = GroundCombatDemandPolicy.BoundPrimaryShortage(snap, inv, commitments, i,
                     MissionKind.Attack, ai.Target.DiagnosticLabel, primaryId, ai.SupportArmyId,
                     ai.ReinforcementRequestedTurn,
-                    KnownOpposition.OnHex(snap, ai.Target.Hex),
-                    AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, ai.Target.Hex),
+                    forecast.Opposition,
+                    forecast.HexBonus,
                     // Coverage is independent of the dynamic force requirement.
                     GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
@@ -158,9 +162,9 @@ namespace Game.Ai.V2
                 return null;
             }
             int hostId = host.ArmyId;
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                KnownOpposition.OnHex(snap, ai.Target.Hex);
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, ai.Target.Hex);
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, ai.Target.Hex, host);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
+            float hexBonus = forecast.HexBonus;
             // The march gate is power AND coverage: GroundCombatFeasibility.Clears stays the one
             // owner of coverage, so a host above the power bar is only satisfied when it also
             // damages every known defender (an unobserved site has none and is vacuously covered).
@@ -392,11 +396,15 @@ namespace Game.Ai.V2
             if (objective == null)
                 return;
             ISet<int> claimed = commitments?.ClaimedArmyIdSet;
-            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, objective.Hex);
-            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
-                new GroundCombatAssemblyRequest
+            // The planner's own read of a fresh objective (AggressionMissionLayer.AppendAttack): the
+            // forecast against the fastest free fist, and a favorable trade when no capture plan
+            // exists — so Demand never asks for power the planner would not need.
+            AttackSupportForecast forecast = AttackSupportProjection.For(snap, objective.Hex,
+                () => AttackSupportProjection.FastestFistEta(snap, objective.Hex, claimed));
+            float hexBonus = forecast.HexBonus;
+            var request = new GroundCombatAssemblyRequest
                 {
-                    Opposition = objective.Opposition,
+                    Opposition = forecast.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = claimed,
@@ -404,7 +412,10 @@ namespace Game.Ai.V2
                     AllowDecisivePinnedDefender = true,
                     AcceptPlan = candidate => AttackMarchPolicy.CanStart(snap, objective.Target,
                         candidate, snap.Intents, out _),
-                });
+                };
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap, request);
+            if (!plan.Feasible && AttackObjectiveEvaluator.HasAssaultObservation(snap, objective.Target, out _))
+                plan = AttackExchangePolicy.TradePlan(snap, request, out _) ?? plan;
             if (plan.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -417,7 +428,7 @@ namespace Game.Ai.V2
             GroundCombatAssemblyPlan future = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest
                 {
-                    Opposition = objective.Opposition,
+                    Opposition = forecast.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = claimed,
@@ -434,7 +445,7 @@ namespace Game.Ai.V2
                 return;
             }
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
-                objective.Opposition, hexBonus, objective.Hex, claimed,
+                forecast.Opposition, hexBonus, objective.Hex, claimed,
                 GroundCombatAdmissionPolicy.AttackWinChanceGate,
                 donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
                 requireMovementNow: false,

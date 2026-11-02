@@ -311,9 +311,11 @@ namespace Game.Ai.V2
 
             // The formation is led by its best legal commander (HeroRoleEvaluator, the shared rule),
             // a zero-AP reorder.
+            // Against the fight it will have (AttackSupportProjection), like every Attack read.
+            AttackSupportForecast site = AttackSupportProjection.For(snapshot, target.Target.Hex,
+                snapshot?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == host.Id));
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                KnownOpposition.OnHex(snapshot, target.Target.Hex),
-                target.DefenderHexDefenseBonus);
+                site.Opposition, site.HexBonus);
             if (lead != null && lead != host.Commander)
                 host.TryReorderCommander(lead, out _);
             result.OperationStarted = true;
@@ -566,10 +568,11 @@ namespace Game.Ai.V2
             result.ReinforcementHandoffAttempted = true;
             // The site's fight decides whether the support's hero should take command of the fist
             // (GroundCombatReinforcement.CommandHandover — the gather projection's same rule).
+            AttackSupportForecast site = AttackSupportProjection.For(snapshot, target.Target.Hex,
+                snapshot?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == primary.Id));
             bool handoffOk = GroundCombatReinforcementTransaction.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
-                KnownOpposition.OnHex(snapshot, target.Target.Hex),
-                AiMapMemory.KnownHexDefenseBonus(snapshot?.Observer, ctx.Map, target.Target.Hex),
+                site.Opposition, site.HexBonus,
                 capacityIsProgress: target.CommanderLeg,
                 rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(ctx.Map, primary,
                     target.Target.Hex, SafeRouteProfile.Attack));

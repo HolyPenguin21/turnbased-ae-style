@@ -53,6 +53,19 @@ namespace Game.Ai.V2
                     if (!AttackForceReadiness.IsOpportunity(candidate.ProjectedWinChance, opposition))
                     { why = "mobilization_closed:not_decisive"; return false; }
                 }
+                // 2026-11-02 — a trade leg (no capture gate upstream) departs only with a fist
+                // whose trade still holds on the facts now known (AttackExchangePolicy).
+                if (leg.Exchange)
+                {
+                    var departing = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, candidate);
+                    ArmySnapshot fist = departing.TryGetValue(candidate.BaseArmyId, out ArmySnapshot d) ? d
+                        : snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == candidate.BaseArmyId);
+                    AttackSupportForecast site = AttackSupportProjection.For(snap, leg.Target.Hex, fist);
+                    AttackExchange trade = fist == null ? default : AttackExchangePolicy.Assess(fist.Members,
+                        fist.Commander, site.Opposition, site.HexBonus);
+                    if (!trade.Favorable)
+                    { why = "exchange_no_longer_favorable:" + trade.Describe(); return false; }
+                }
                 return true;
             }
             if (!UsesOnlySurplus(snap, candidate, out why))
