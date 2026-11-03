@@ -421,8 +421,7 @@ namespace Game.Map
             entry.CollectionRewardError = null;
             // The guard has already been defeated. On a failed profile write, revisiting retries
             // only the reward and does not make the player fight the same guard a second time.
-            if (cardHandUI == null || !cardHandUI.CanReceiveCollectionReward
-                || !ProgressionContext.Initialize(gameConfig))
+            if (!ProgressionContext.Initialize(gameConfig))
             {
                 ShowLibraryRewardFailure(hex, recipient, entry);
                 return;
@@ -439,16 +438,17 @@ namespace Game.Map
                 return;
             }
             entry.ResolvedCardRewards.Clear();
+            bool? addedToHand = null;
             if (card != null)
             {
-                // A Library explicitly awards BOTH a permanent copy and a current-match card.
-                // Keep the hand copy even at capacity, as an explicit exception to ordinary rewards.
-                cardHandUI.AddCard(new CardData(card));
                 entry.ResolvedCardRewards.Add((new RewardEntry { type = RewardType.Card, cardKey = card.authoredKey }, card));
+                PlayerHandData hand = recipient.Owner.Hand ?? cardHandUI?.HumanHandModel;
+                if (hand != null)
+                    addedToHand = hand.HasFreeSlot && hand.TryAddCard(new CardData(card));
             }
             entry.CollectionRewardPending = false;
             HexEventRegistry.MarkConsumed(hex, recipient.Owner);
-            eventRewardPopup?.Show(entry, recipient);
+            eventRewardPopup?.Show(entry, recipient, addedToHand);
         }
 
         private void ShowLibraryRewardFailure(HexCoord hex, ArmyData recipient, HexEventRegistry.Entry entry)

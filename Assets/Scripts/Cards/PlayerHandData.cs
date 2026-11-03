@@ -44,8 +44,8 @@ namespace Game.Cards
 
         public void AddCard(CardData card) => TryAddCard(card);
 
-        // allowOverflow is the explicit human Library reward boundary. Prepaid production is
-        // the shared exception; ordinary draws, rewards and returning aircraft remain capped.
+        // Ordinary draws, rewards and returning aircraft respect capacity. Prepaid production
+        // and callers explicitly opting into overflow use the same insertion boundary.
         public bool TryAddCard(CardData card, bool allowOverflow = false)
         {
             if (card?.Definition == null || HandCards.Exists(c => c.RuntimeId == card.RuntimeId)

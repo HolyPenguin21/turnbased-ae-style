@@ -707,8 +707,7 @@ namespace Game.UI
             Relayout(animated: false);
         }
 
-        // Research/Production output is an intentional hand-cap exception (Library collection
-        // rewards also retain their hand copy, through the explicit event grant path). The explicit
+        // Research/Production output is an intentional hand-cap exception. The explicit
         // instance flag prevents rewards, draws or returned aircraft from accidentally using this
         // boundary to bypass the normal cap. Being over capacity naturally keeps ordinary draws
         // blocked until enough cards have left the hand.
@@ -724,8 +723,6 @@ namespace Game.UI
         // AiTurnContext.HandCapacity the same way StartingHandSize/DrawApCost already are, so the
         // AI's Development planner refuses a Research/Production Create into a full AiHandData.
         public int MaxHandSize => maxHandSize;
-        // Library rewards must not be persisted when the scene cannot actually display the hand copy.
-        public bool CanReceiveCollectionReward => cardPrefab != null && handContainer != null;
 
         // Single entry point for a card entering the human's hand from OUTSIDE the normal draw —
         // challenge rewards, event rewards (via HexSelectionController.GrantCard), returned
@@ -749,14 +746,6 @@ namespace Game.UI
                 return false;
             }
             return _humanHand.TryAddCard(data);
-        }
-
-        // Explicit uncapped grant retained for Library rewards. All membership now belongs to
-        // the model; a missing prefab cannot silently consume a drawn card or discard a reward.
-        public void AddCard(CardData data)
-        {
-            ObserveHumanHand();
-            _humanHand.TryAddCard(data, allowOverflow: true);
         }
 
         // Called by a CardUI every time it moves while dragged — reorders the hand live so the

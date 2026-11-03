@@ -59,22 +59,32 @@ namespace Game.EditorTests
             string text = (string)description.Invoke(null, new object[] { entry });
             Assert.That(text, Does.Contain("guards have been defeated"));
             Assert.That(text, Does.Contain("COLLECTION"));
+            Assert.That(text, Does.Contain("if there is room"));
             Assert.That(text, Does.Not.Contain("3 targets"));
+
+            entry.CollectionRewardPending = false;
+            text = (string)description.Invoke(null, new object[] { entry });
+            Assert.That(text, Does.Contain("if there is room"));
+            Assert.That(text, Does.Contain("3 targets"));
         }
 
         [Test] public void SummaryNamesCollectionOnlyAfterSuccessfulGrant()
         {
             var entry = new HexEventRegistry.Entry { Definition = new EventDefinition { grantsRandomCollectionCard = true } };
             var summary = typeof(EventRewardPopupUI).GetMethod("BuildSummary", BindingFlags.NonPublic | BindingFlags.Static);
-            string Read() => (string)summary.Invoke(null, new object[] { entry, new ArmyData { Name = "Scout" } });
+            string Read(bool? addedToHand = null) =>
+                (string)summary.Invoke(null, new object[] { entry, new ArmyData { Name = "Scout" }, addedToHand });
             Assert.That(Read(), Does.Contain("already own"));
             entry.CollectionRewardError = "The reward could not be saved. Revisit the Library to try again.";
             Assert.That(Read(), Does.Contain("could not be saved"));
             entry.CollectionRewardError = null;
             entry.ResolvedCardRewards.Add((new RewardEntry { type = RewardType.Card }, new CardDefinition { displayName = "Foreign unit" }));
-            Assert.That(Read(), Does.Contain("Foreign unit"));
+            Assert.That(Read(true), Does.Contain("copy in your hand"));
+            Assert.That(Read(false), Does.Contain("hand is full"));
+            Assert.That(Read(false), Does.Contain("Foreign unit"));
+            Assert.That(Read(false), Does.Contain("COLLECTION"));
             Assert.That(Read(), Does.Contain("COLLECTION"));
-            Assert.That(Read(), Does.Contain("hand"));
+            Assert.That(Read(), Does.Not.Contain("hand"));
         }
     }
 
@@ -204,23 +214,36 @@ namespace Game.EditorTests
             Assert.That(collection.Owned(card.authoredKey), Is.Zero);
         }
 
-        [Test, Category("UnityScene")] public void LibraryGrantAddsSameCardToFullHandAndCollectionOnlyOnce()
+        [TestCase(true, true), TestCase(false, true), TestCase(true, false), Category("UnityScene")]
+        public void LibrarySavesAndRevealsRewardEvenWhenHandIsFull(bool fullHand, bool hasHandUI)
         {
             WithScene((selector, hand) =>
             {
-                hand.BindHumanHand(new PlayerHandData(null, 0, capacity: 1));
-                hand.AddCard(new CardData(card));
-                var human = new PlayerSetupData { IsHuman = true, Faction = Faction.IronConcord };
+                var model = new PlayerHandData(null, 0, capacity: 1);
+                var existing = new CardData(new CardDefinition { displayName = "Existing card" });
+                if (fullHand)
+                    model.AddCard(existing);
+                if (hasHandUI)
+                    hand.BindHumanHand(model);
+                else
+                    SetField(selector, "cardHandUI", null);
+                var human = new PlayerSetupData { IsHuman = true, Faction = Faction.IronConcord, Hand = model };
                 var hex = new HexCoord(3, 1);
                 HexEventRegistry.Set(hex, new EventDefinition { grantsRandomCollectionCard = true }, null, null, null, null);
-                Assert.That(HexEventRegistry.FindAt(hex).ResolvedCardRewards, Is.Empty);
+                var entry = HexEventRegistry.FindAt(hex);
+                Assert.That(entry.ResolvedCardRewards, Is.Empty);
                 var army = new ArmyData { Owner = human };
                 selector.GrantEventReward(hex, army);
                 selector.GrantEventReward(hex, army);
-                Assert.That(hand.HumanHand.Count(), Is.EqualTo(2));
-                Assert.That(hand.HumanHand.Last().Definition, Is.SameAs(card));
+
+                CardData handCard = model.Hand.Single();
+                if (fullHand)
+                    Assert.That(handCard, Is.SameAs(existing));
+                else
+                    Assert.That(handCard.Definition, Is.SameAs(card));
                 Assert.That(store.Load(out _).Owned(card.authoredKey), Is.EqualTo(1));
-                Assert.That(HexEventRegistry.FindAt(hex).Consumed, Is.True);
+                Assert.That(entry.ResolvedCardRewards.Single().Item2, Is.SameAs(card));
+                Assert.That(entry.Consumed, Is.True);
             });
         }
 

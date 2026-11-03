@@ -45,14 +45,14 @@ namespace Game.UI
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
         public event Action VisibilityChanged;
 
-        public void Show(HexEventRegistry.Entry entry, ArmyData recipient)
+        public void Show(HexEventRegistry.Entry entry, ArmyData recipient, bool? libraryCardAddedToHand = null)
         {
             if (entry?.Definition == null || panelRoot == null)
                 return;
 
             CardDefinition rewardedCard = entry.ResolvedCardRewards.Select(r => r.card).FirstOrDefault(c => c != null);
             Sprite art = rewardedCard != null ? (rewardedCard.detailArt != null ? rewardedCard.detailArt : rewardedCard.art) : null;
-            ShowContent(false, EventChoicePopupUI.ResolvePortrait(recipient), art, BuildSummary(entry, recipient));
+            ShowContent(false, EventChoicePopupUI.ResolvePortrait(recipient), art, BuildSummary(entry, recipient, libraryCardAddedToHand));
         }
 
         public void ShowMessage(Sprite heroPortrait, Sprite factionLogo, string message)
@@ -102,7 +102,7 @@ namespace Game.UI
             VisibilityChanged?.Invoke();
         }
 
-        private static string BuildSummary(HexEventRegistry.Entry entry, ArmyData recipient)
+        private static string BuildSummary(HexEventRegistry.Entry entry, ArmyData recipient, bool? libraryCardAddedToHand)
         {
             string armyName = recipient?.Name ?? "The army";
             string resourceList = DescribeResources(entry.SelectedRewards);
@@ -115,7 +115,12 @@ namespace Game.UI
                     return entry.CollectionRewardError;
                 if (string.IsNullOrEmpty(cardList))
                     return "You already own the maximum number of copies of every available card. The Library has no new card for your collection.";
-                return $"Among the surviving books and military records, {armyName} uncovers forgotten knowledge. {cardList} has been added to your hand and permanently to your COLLECTION.";
+                string collectionSummary = $"{cardList} has been added to your permanent COLLECTION.";
+                if (libraryCardAddedToHand == true)
+                    return collectionSummary + " You also received a copy in your hand.";
+                if (libraryCardAddedToHand == false)
+                    return $"Your hand is full. {cardList} is now in your permanent COLLECTION.";
+                return collectionSummary;
             }
 
             bool hasResources = !string.IsNullOrEmpty(resourceList);

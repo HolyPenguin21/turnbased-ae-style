@@ -55,7 +55,7 @@ namespace Game.Cards
         public Sprite image;
         [TextArea]
         public string description;
-        // Library reward: one permanent collection copy and the same card in the current hand.
+        // Library reward: one permanent collection copy, plus a match card if the hand has room.
         // Unlike fixed card rewards, it is selected when the visitor claims the event, never at placement.
         public bool grantsRandomCollectionCard;
         public bool CanVisit(PlayerSetupData player) => !grantsRandomCollectionCard || player?.IsHuman == true;
