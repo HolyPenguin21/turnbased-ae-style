@@ -348,7 +348,7 @@ namespace Game.Campaign
                 if (view.TerrainPreview != null) { ShowTerrain(view.TerrainPreview, target); RoundAttackPreview(view.TerrainPreview); }
                 if (view.OwnerLogo != null) SetLogo(view.OwnerLogo, target.OwnerFaction);
                 if (view.RegionName != null) view.RegionName.text = target.Name;
-                if (view.OwnerName != null) view.OwnerName.text = "Owner: " + FactionName(target.OwnerFaction);
+                if (view.OwnerName != null) view.OwnerName.text = FactionName(target.OwnerFaction);
                 view.AttackButton.onClick.AddListener(() => { if (!ModalOpen && !rewardOpen && !acting && !continueAfterCapture) ConfirmAttack(from, targetId); });
             }
             if (noAttacksLabel != null) { noAttacksLabel.gameObject.SetActive(attacks.Count == 0); noAttacksLabel.text = emptyText; }

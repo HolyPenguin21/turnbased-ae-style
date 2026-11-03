@@ -360,7 +360,7 @@ public static class CampaignScreenBuilder
         var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.raycastTarget = false;
         var logo = LogoImage(root, "OwnerLogo", 106, 15, 32);
         var name = NoWrap(Text(root, "RegionName", "Region", 144, 6, 110, 26, 18, Cream, true));
-        var owner = NoWrap(Text(root, "OwnerName", "Owner: Faction", 144, 32, 110, 22, 14, Cream));
+        var owner = NoWrap(Text(root, "OwnerName", "Faction", 144, 32, 110, 22, 14, Cream));
         var attack = MakeButton(root, "Attack", "ATTACK", 258, 10, 90, 42, 16, "Action");
         var view = root.gameObject.AddComponent<CampaignAttackRowView>();
         var so = new SerializedObject(view);
