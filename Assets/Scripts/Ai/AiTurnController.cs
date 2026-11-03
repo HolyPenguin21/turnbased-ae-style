@@ -425,8 +425,8 @@ namespace Game.Ai
                     // KNOWN structure (IsKnownGroundOutcomeAuthorized above); a structure found
                     // only on arrival (fog) is a surprise and must not be left standing.
                     allowUndefendedBuildingTakeover: true,
-                    // A Hex Event met by a move that may not seek combat is always Skipped — the
-                    // mover keeps its stealth and remaining movement and walks on.
+                    // This permission gates fights with event guards. Unguarded events are
+                    // explored on arrival even by a transit move.
                     allowAiEventExplore: decision.AllowsGroundCombat)
                 : MoveOrderResult.CannotMove;
             orderStarted = moveResult == MoveOrderResult.Started;

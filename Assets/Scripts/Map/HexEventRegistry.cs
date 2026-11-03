@@ -31,6 +31,8 @@ namespace Game.Map
             // event.
             public string GuardArmyName;
             public List<(CardDefinition card, int count)> ResolvedGuardMembers = new List<(CardDefinition, int)>();
+            public bool HasResolvedGuard => ResolvedGuardMembers?.Exists(member =>
+                member.card != null && member.count > 0) == true;
             // The shared neutral PlayerSetupData every other neutral army on the map is owned by
             // (see CitadelSetupController._neutralPlayer) — captured once here since
             // CitadelSetupController itself is destroyed right after setup finishes (see its own

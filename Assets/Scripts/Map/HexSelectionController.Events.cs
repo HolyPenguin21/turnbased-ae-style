@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Economy;
@@ -42,8 +43,9 @@ namespace Game.Map
             bool allowUndefendedBuildingTakeover = true, bool allowAiEventExplore = true)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) == false)
-                return; // shouldStopEarly's own check already guarantees this, but stay defensive
+            if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) != true
+                || !mover.Hex.Equals(hex) || AviationRules.IsAirArmy(mover))
+                return;
 
             // Same "clear just the origin/departed hex's own selection, not a full Deselect()"
             // treatment as the ordinary enemy-contact branch just above this call site in
@@ -91,8 +93,12 @@ namespace Game.Map
         public bool TriggerHexEventIfClear(HexCoord hex, ArmyData survivor)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed || survivor?.Owner == null
-                || entry.Definition?.CanVisit(survivor.Owner) == false)
+            if (entry == null || entry.Consumed || survivor?.Owner == null || !survivor.Hex.Equals(hex)
+                || AviationRules.IsAirArmy(survivor) || entry.Definition?.CanVisit(survivor.Owner) != true)
+                return false;
+
+            if (!entry.HasResolvedGuard && !survivor.Owner.IsHuman && !survivor.Owner.IsNeutral
+                && !ArmyMovementOperation.HasUnclaimedCleanEventHex(survivor, hex))
                 return false;
 
             if (entry.Triggered)
@@ -113,9 +119,7 @@ namespace Game.Map
         // now; the human branch always returns false since eventChoicePopup resolves asynchronously
         // (by the time a human clicks Explore, whatever battle triggered this has long since
         // Hide()-d safely on its own).
-        // allowAiExplore — the AI mover's own move authority (AiTurnController.MoveArmyRoutine):
-        // a move that may not seek combat always Skips, so a Transit/hidden mover keeps its
-        // stealth and remaining movement and walks on, exactly like a human choosing Skip.
+        // Move authority applies to the guard fight. An unguarded event always stops an AI mover.
         private bool ShowEventChoice(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry, Action onSkip,
             bool allowAiExplore = true)
         {
@@ -144,8 +148,9 @@ namespace Game.Map
                 // AI/Neutral mover — never shown a popup, matches battleContactPopup's own
                 // human-only gating a few lines above this call site (see the user's own
                 // explicit instruction: no popup ever renders/waits for an AI-only army).
-                bool shouldExplore = allowAiExplore && HexEventGuardEstimate.ShouldExplore(mover, entry);
-                AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} visited event '{entry.Definition.name}' at {hex} - {(shouldExplore ? "accepted" : "declined")}.");
+                bool shouldExplore = HexEventGuardEstimate.ShouldExplore(mover, entry, allowAiExplore);
+                string choice = !shouldExplore ? "Skip" : entry.HasResolvedGuard ? "Explore" : "Explore (unguarded)";
+                AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} (#{mover.Id}) visited event '{entry.Definition.name}' at {hex} - {choice}.");
                 if (shouldExplore)
                     return ResolveEventExplore(mover, hex, entry);
                 HexEventRegistry.MarkSkipped(hex, mover.Owner);
@@ -167,7 +172,7 @@ namespace Game.Map
         // branches never touch battleScreen at all, so false is always correct for them).
         private bool ResolveEventExplore(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry)
         {
-            if (entry.Definition?.CanVisit(mover?.Owner) == false)
+            if (entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) != true)
                 return false;
             // Exploring is an action: every hidden member of the mover leaves stealth, guarded or
             // not (a guarded fight would also reveal through PrepareCommittedEncounter, but a
@@ -177,7 +182,7 @@ namespace Game.Map
                 member.MoveCurrent = 0;
             entry.Triggered = true;
 
-            if (entry.CollectionRewardPending || entry.ResolvedGuardMembers == null || entry.ResolvedGuardMembers.Count == 0)
+            if (entry.CollectionRewardPending || !entry.HasResolvedGuard)
             {
                 GrantEventReward(hex, mover);
                 return false;
@@ -214,10 +219,32 @@ namespace Game.Map
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
             if (mover == null || entry == null || entry.Consumed || entry.Triggered
-                || entry.Definition?.CanVisit(mover.Owner) == false)
+                || !mover.Hex.Equals(hex) || AviationRules.IsAirArmy(mover)
+                || entry.Definition?.CanVisit(mover.Owner) != true)
                 return false;
+            if (!entry.HasResolvedGuard)
+            {
+                TryExploreUnguardedAiEvent(mover, hex);
+                return false; // no guard battle was opened
+            }
             HexEventRegistry.MarkDiscovered(hex, mover.Owner);
             return ResolveEventExplore(mover, hex, entry);
+        }
+
+        // An Explore assignment can start on the event itself (for example, from an old save).
+        // Use the same choice and reward path, after rechecking physical occupancy and contact.
+        internal bool TryExploreUnguardedAiEvent(ArmyData mover, HexCoord hex)
+        {
+            if (mover?.Owner == null || mover.Owner.IsHuman || mover.Owner.IsNeutral
+                || !mover.Hex.Equals(hex) || mover.Members.Count == 0 || !ArmyRegistry.IsRegistered(mover)
+                || AviationRules.IsAirArmy(mover) || AviationRules.IsAirfield(mover) || IsBattleActive)
+                return false;
+            var entry = HexEventRegistry.FindAt(hex);
+            if (entry == null || entry.HasResolvedGuard || !ArmyMovementOperation.HasUnclaimedCleanEventHex(mover, hex))
+                return false;
+
+            ShowEventChoice(mover, hex, entry, onSkip: () => { }, allowAiExplore: false);
+            return entry.Consumed;
         }
 
         // Builds `entry`'s own guard as a fresh ArmyData, right now — the only place one of these
@@ -384,7 +411,7 @@ namespace Game.Map
                 // same "no popup ever renders for an AI-only army" rule as BeginCleanHexEvent's own
                 // human-only gating, so this is the only record an AI's reward ever gets.
                 string rewardSummary = grantedText.Count > 0 ? string.Join(", ", grantedText) : "nothing";
-                AiDebugLog.Write($"[AI] {recipient.Owner?.Nickname ?? "Neutral"}: {recipient.Name} received reward for event '{entry.Definition.name}' at {hex} - {rewardSummary}.");
+                AiDebugLog.Write($"[AI] {recipient.Owner?.Nickname ?? "Neutral"}: {recipient.Name} (#{recipient.Id}) received reward for event '{entry.Definition.name}' at {hex} - {rewardSummary}. Event consumed.");
             }
         }
 

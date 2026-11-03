@@ -62,8 +62,15 @@ namespace Game.Ai.V2
                 && IsExploreFocusRunnable(snap, intent.FocusHex);
         }
 
-        // THE authoritative Explore validity predicate. An Explore focus is runnable iff it is a
-        // real map hex that has not been physically visited and is not scout-hard-blocked.
+        internal static bool IsKnownUnguardedEvent(WorldSnapshot snap, HexCoord hex) =>
+            snap?.Known?.ActiveEventHexes?.Contains(hex) == true
+            && snap.Known.EventGuardHexes?.Contains(hex) != true;
+
+        internal static bool IsKnownUnguardedEvent(PlayerSetupData player, HexCoord hex) =>
+            AiMapMemory.KnownEventStateAt(player, hex) == AiMapMemory.KnownEventState.Active
+            && !AiMapMemory.KnownEventGuardStrengthAt(player, hex).HasValue;
+
+        // A previously visited focus can reopen only for a known, unresolved unguarded event.
         public static bool IsExploreFocusRunnable(WorldSnapshot snap, HexCoord focus)
         {
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
@@ -72,7 +79,7 @@ namespace Game.Ai.V2
             var onMap = mk.OnMapSet();
             if (!onMap.Contains(focus))
                 return false;
-            if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(focus))
+            if (mk.VisitedHexSet?.Contains(focus) == true && !IsKnownUnguardedEvent(snap, focus))
                 return false;
             if (mk.IsBlockedForScout(focus, stealthCapable: false))
                 return false;

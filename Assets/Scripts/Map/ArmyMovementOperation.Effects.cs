@@ -96,6 +96,7 @@ namespace Game.Map
                     StealthSystem.RunChecksForArrival(army, hex, stealthSeen);
                 if (!AviationRules.IsAirArmy(army) && takeover)
                     BuildingRegistry.CaptureOrDestroyIfUndefended(hex, army.Owner, encounters, army);
+                eventClaimed = eventClaimed && HasUnclaimedCleanEventHex(army, hex);
                 if (eventClaimed)
                     encounters?.BeginCleanHexEvent(army, hex, destination, army.Controller, takeover, explore);
                 BattleStartResult contact = eventClaimed || AviationRules.IsAirArmy(army)
@@ -103,12 +104,19 @@ namespace Game.Map
                 presentation?.Invoke(new ArmyMovementArrival(hex, contact, eventClaimed));
             }
         }
-        private static bool HasUnclaimedCleanEventHex(ArmyData mover, HexCoord hex)
+        internal static bool HasUnclaimedCleanEventHex(ArmyData mover, HexCoord hex)
         {
             var entry = HexEventRegistry.FindAt(hex);
-            if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) == false) return false;
+            if (mover == null || entry == null || entry.Consumed || entry.Definition?.CanVisit(mover.Owner) != true)
+                return false;
+            bool mandatoryExplore = mover.Owner != null && !mover.Owner.IsHuman && !mover.Owner.IsNeutral
+                && !entry.HasResolvedGuard;
+            if (mandatoryExplore && DelayedBattleRegistry.IsHexPending(hex))
+                return false;
             foreach (var other in ArmyRegistry.At(hex))
-                if (other.Owner != mover.Owner && BattleInitiator.IsEngageable(other, mover.Owner)) return false;
+                if (other.Owner != mover.Owner && (BattleInitiator.IsEngageable(other, mover.Owner)
+                    || (mandatoryExplore && BattleInitiator.IsBuildingGarrison(other))))
+                    return false;
             return true;
         }
     }

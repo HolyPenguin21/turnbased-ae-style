@@ -323,8 +323,11 @@ namespace Game.Ai
                 return true;
             }
 
+            if (entry.Definition?.CanVisit(player) != true)
+                return false;
+
             states[hex] = false;
-            if (entry.ResolvedGuardMembers.Count > 0)
+            if (entry.HasResolvedGuard)
             {
                 GuardStrength guard = BuildEventGuard(entry);
                 guards[hex] = guard;
@@ -345,7 +348,7 @@ namespace Game.Ai
             // Flat card-stat sums — the guard is never a live ArmyData until Explore is chosen
             // (see HexEventRegistry.Entry), so card stats are all there is to read.
             var guardMembers = eventEntry.ResolvedGuardMembers
-                .Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
+                .Where(g => g.card != null && g.count > 0 && g.card.cardType != CardType.Hero).ToList();
             float defense = guardMembers.Sum(g => g.card.defenseRating * g.count);
             float attack = guardMembers.Sum(g => g.card.attack * g.count);
             // One DefenderProfile per PHYSICAL copy (repeated by g.count), not one per card type:

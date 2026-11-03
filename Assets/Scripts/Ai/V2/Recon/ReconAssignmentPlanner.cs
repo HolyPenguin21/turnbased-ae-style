@@ -130,7 +130,8 @@ namespace Game.Ai.V2
                 && (!Game.Combat.DisruptionRules.HasCarrier(mover.MembersWithHeroes)
                     || !ScoutMoverSelector.StealthReadyThisTurn(mover)))
                 return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoRoute);
-            if (ReconScoutKinds.IsDisruption(target.Kind) && mover.Hex.Equals(target.FocusHex))
+            if (mover.Hex.Equals(target.FocusHex) && (ReconScoutKinds.IsDisruption(target.Kind)
+                || (ReconScoutKinds.IsExplore(target.Kind) && ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, target.FocusHex))))
                 return ReconAssignmentCandidateResult.Ok;
             if (ReconScoutKinds.IsLocalStrike(target.Kind))
             {
@@ -328,8 +329,7 @@ namespace Game.Ai.V2
                             continue;
                     }
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
-                    if (ReconScoutKinds.IsDisruption(target.Kind) && mover.Hex.Equals(target.FocusHex))
-                    { pc.RequiredAp -= pc.EffActivationAp; pc.EffActivationAp = 0; }
+                    ScoutCostModel.WaiveStationaryActivation(snap, target, mover, ref pc);
                     if (pc.Distance == int.MaxValue) continue;
                     list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
@@ -369,7 +369,8 @@ namespace Game.Ai.V2
             // to this one BuildCandidates call so two garrisons sharing a hex within the SAME
             // mission's candidate list compete for distinct shells — cross-mission dedup for the
             // same shell is the batch solver's ActorKey uniqueness.
-            if (!usesVantage)
+            if (!usesVantage && !(ReconScoutKinds.IsExplore(target.Kind)
+                && ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, target.FocusHex)))
             {
                 var reservedShellIds = new HashSet<int>();
                 foreach (GarrisonGroundActor g in MaterializableGarrisonActors(

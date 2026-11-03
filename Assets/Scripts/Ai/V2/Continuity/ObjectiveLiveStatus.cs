@@ -20,9 +20,10 @@ namespace Game.Ai.V2
     {
         // ---- Scout ----------------------------------------------------------------------------
 
-        // Explore is done only by physical ground visitation.
+        // A previously visited event remains open until its reward is claimed (or we learn
+        // that someone else claimed it). Ordinary Explore still requires ground visitation.
         public static bool ExploreSatisfied(PlayerSetupData player, HexCoord focus) =>
-            OwnWorld.Of(player).IsVisited(focus);
+            OwnWorld.Of(player).IsVisited(focus) && !ScoutObjectiveEvaluator.IsKnownUnguardedEvent(player, focus);
 
         // Generic Refresh is an OBSERVATION objective. The focus was selected from stale frozen
         // IntelAge, so observing it again now is sufficient regardless of whether a ground unit

@@ -65,7 +65,9 @@ namespace Game.Ai.V2
             var uncovered = objectives
                 .Where(o => o.BaseValue > 0f && !coveredKeys.Contains(o.IntentKey)
                     && o.Kind != ReconObjectiveKind.AirSweep
-                    && !o.IsLocalStrike && !o.IsDisruption)
+                    && !o.IsLocalStrike && !o.IsDisruption
+                    && !(o.Kind == ReconObjectiveKind.Explore
+                        && ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, o.FocusHex)))
                 .OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.IntentKey)
                 .ToList();

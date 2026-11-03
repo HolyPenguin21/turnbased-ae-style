@@ -255,6 +255,8 @@ namespace Game.Ai.V2
 
             StableMissionKey key = StableMissionKey.For(m);
             bool refresh = ReconScoutKinds.IsRefresh(target.Kind);
+            bool eventVisit = ReconScoutKinds.IsExplore(target.Kind)
+                && ScoutObjectiveEvaluator.IsKnownUnguardedEvent(player, target.FocusHex);
 
             if (!session.TryGetAssignedExecution(key, out ScoutExecutionCandidate exec))
                 return ClassifyNoAssignment(session, key, target);
@@ -367,7 +369,7 @@ namespace Game.Ai.V2
             }
             else
             {
-                if (VisionSystem.IsVisited(player, focus))
+                if (ObjectiveLiveStatus.ExploreSatisfied(player, focus))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                         $"focus ({focus.Q},{focus.R}) already visited - nothing left to discover there"));
                 if (AiMapMemory.KnownEnemySightingAt(player, focus).HasValue)
@@ -387,8 +389,8 @@ namespace Game.Ai.V2
                 ? SafeStepPathing.FindSafePath(ctx.Map, player, fromHex, executionHex,
                     plannedExtractUnit.MoveMax) != null
                 : SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex) != null;
-            if (!hasSafeApproach && !((ReconScoutKinds.IsCapture(target.Kind) || ReconScoutKinds.IsDisruption(target.Kind))
-                && army.Hex.Equals(focus)))
+            if (!hasSafeApproach && !((ReconScoutKinds.IsCapture(target.Kind)
+                || ReconScoutKinds.IsDisruption(target.Kind) || eventVisit) && army?.Hex.Equals(focus) == true))
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({fromHex.Q},{fromHex.R}) toward ({executionHex.Q},{executionHex.R})"));
 

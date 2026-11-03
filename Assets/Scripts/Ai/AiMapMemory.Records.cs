@@ -343,8 +343,7 @@ namespace Game.Ai
         // same definition the gameplay rules use) — never whether an enemy has detected it: the
         // owner of a hidden army does not know that (stealth design).
         // A Hex Event is deliberately not part of this: every AI move resolves its own event choice
-        // by authority (AiTurnController.MoveArmyRoutine → IssueMoveOrder allowAiEventExplore), so
-        // a Transit move always skips and keeps its stealth / movement, exactly like a human Skip.
+        // on arrival. Transit may decline guard fights, but must explore a clean unguarded event.
         // Every AI "may this mover step onto hex X" check must derive from this — the execution
         // gate, Recon step/vantage safety, the route blockers and the snapshot's scout block set.
         public readonly struct GroundArrival

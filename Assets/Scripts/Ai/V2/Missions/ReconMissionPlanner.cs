@@ -313,7 +313,23 @@ namespace Game.Ai.V2
                 c = new ScoutCandidate(c.Target, priced, priced.Value, c.Explain,
                     c.IsIncumbent, c.Tier, preferred, c.FreshNeighbors);
             }
-            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, preferred, air);
+            bool eventVisit = ReconScoutKinds.IsExplore(c.Target.Kind)
+                && ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, c.Target.FocusHex);
+            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, preferred, air,
+                excludeArmyIds: eventVisit ? excluded : null);
+            if (eventVisit)
+            {
+                if (!est.MoverKnown)
+                {
+                    AiDebugLog.WriteDeduped($"event-explore-{snap.Observer?.ColorIndex}-{c.Target.FocusHex}",
+                        $"[AI][V2][Recon] {snap.Observer?.Nickname} unguarded event at {c.Target.FocusHex} "
+                        + "deferred: no free ground scout with a route");
+                    return null;
+                }
+                AiDebugLog.WriteDeduped($"event-explore-{snap.Observer?.ColorIndex}-{c.Target.FocusHex}",
+                    $"[AI][V2][Recon] {snap.Observer?.Nickname} proposes Explore at unguarded event "
+                    + $"{c.Target.FocusHex}, preferred scout #{est.PreferredMoverArmyId}");
+            }
             // 2026-10-21 (playtest Mordak T17-T21) — the cheapest scout for a fresh ground job may
             // be held by another Recon role. Refresh(1,-1) (value 16-21, the observation a parked
             // Assault waited for) priced itself on Hooded #15, two hexes away, which a durable
@@ -321,7 +337,7 @@ namespace Game.Ai.V2
             // Attack donors and Economy loans: take it only when the job is worth more than what
             // the role loses (MoverOpportunityCost = DisplacementValue) and no free scout gets
             // there as soon; otherwise price the free scout the job can really get.
-            if (!c.IsIncumbent && excluded != null && est.MoverKnown && est.PreferredMoverArmyId.HasValue
+            if (!eventVisit && !c.IsIncumbent && excluded != null && est.MoverKnown && est.PreferredMoverArmyId.HasValue
                 && excluded.Contains(est.PreferredMoverArmyId.Value)
                 && !ReconScoutKinds.IsLocalStrike(c.Target.Kind) && !ReconScoutKinds.IsAirSweep(c.Target.Kind))
             {

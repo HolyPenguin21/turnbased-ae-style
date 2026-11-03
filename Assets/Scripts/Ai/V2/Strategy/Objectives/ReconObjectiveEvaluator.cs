@@ -108,6 +108,19 @@ namespace Game.Ai.V2
                 }
             }
 
+            foreach (HexCoord hex in snap.Known?.ActiveEventHexes ?? System.Array.Empty<HexCoord>())
+            {
+                if (!ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, hex)
+                    || list.Any(o => o.FocusHex.Equals(hex)))
+                    continue;
+                ReconObjective objective = ExploreAt(snap, hex);
+                if (objective != null)
+                    list.Add(objective);
+                else
+                    AiDebugLog.WriteDeduped($"event-explore-{snap.Observer?.ColorIndex}-{hex}",
+                        $"[AI][V2][Recon] {snap.Observer?.Nickname} unguarded event at {hex} deferred: blocked focus");
+            }
+
             // Generic Refresh revisits map information the
             // player genuinely observed in an earlier turn. The frozen sidecar excludes never-seen
             // hexes by construction and current-visible hexes naturally have age 0.
@@ -493,9 +506,12 @@ namespace Game.Ai.V2
                 ScoutObjectiveEvaluator.LocalExplorationGap(snap));
             float relevance = AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex)
                 ? 1f : RuinsRelevance(snap, hex);
+            bool eventVisit = ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, hex);
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
+                eventReward: eventVisit ? TaskScoreEvaluator.EventReward(-1) : 0f,
+                citadelThreatRisk: eventVisit ? TaskScoreEvaluator.CitadelThreatRisk(snap) : 0f,
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance) * homeWeight,
                 cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
                 delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
@@ -557,11 +573,9 @@ namespace Game.Ai.V2
             };
         }
 
-        // An unvisited City-ruins focus always holds a Hex Event (a public map rule). What a scout
-        // gains there is KNOWLEDGE of that site (its guard, its reward), not the reward itself: a
-        // scout declines the guard fight, and the reward is the Raid's (RaidReward) once the guard
-        // is known. So the ruins weight rides StrategicRelevance ("how much knowing this target
-        // matters"), never an Economy income slot.
+        // An unvisited City-ruins focus signals a Hex Event (a public map rule). Discovery is
+        // priced through StrategicRelevance. Known unguarded rewards are priced separately in
+        // BuildExploreScore, and a known guard's reward is priced by Raid.
         private static float RuinsRelevance(WorldSnapshot snap, HexCoord hex)
         {
             ISet<HexCoord> ruins = snap?.MapKnowledge?.UnvisitedRuinsHexes;

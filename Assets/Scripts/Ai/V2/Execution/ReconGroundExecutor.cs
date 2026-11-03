@@ -232,6 +232,26 @@ namespace Game.Ai.V2
             }
 
             RefreshObjectiveSatisfied(player, pm, result);
+            bool eventVisit = ReconScoutKinds.IsExplore(pm.ScoutKind)
+                && ScoutObjectiveEvaluator.IsKnownUnguardedEvent(player, pm.FocusHex);
+            if (eventVisit && army.Hex.Equals(pm.FocusHex))
+            {
+                bool explored = ctx.HexSelection?.TryExploreUnguardedAiEvent(army, pm.FocusHex) == true;
+                if (!explored)
+                {
+                    AiMapMemory.ObserveEventAt(player, pm.FocusHex);
+                    RefreshObjectiveSatisfied(player, pm, result);
+                }
+                else
+                {
+                    control.CommandAttempted = true;
+                    WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+                    result.ReachedGoal = true;
+                }
+                control.StopReason = explored ? ExecutionStopReason.HexEventStarted
+                    : result.ReachedGoal ? ExecutionStopReason.ReachedGoal : ExecutionStopReason.TargetInvalidated;
+                yield break;
+            }
             if (ReconScoutKinds.IsLocalStrike(pm.ScoutKind) && result.ReachedGoal)
             { control.StopReason = ExecutionStopReason.ReachedGoal; yield break; }
             // Hidden arrival does nothing until the resident voluntarily reveals. Zero MP/AP
@@ -340,6 +360,12 @@ namespace Game.Ai.V2
                     {
                         next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, pm.FocusHex);
                         actionWhy = "Disruption delivery";
+                        break;
+                    }
+                    if (eventVisit)
+                    {
+                        next = pm.FocusHex;
+                        actionWhy = "Unguarded event";
                         break;
                     }
                     ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
@@ -493,6 +519,7 @@ namespace Game.Ai.V2
             }
             if (trace.HexEventOccurred)
             {
+                RefreshObjectiveSatisfied(player, pm, result);
                 control.StopReason = ExecutionStopReason.HexEventStarted;
                 yield break;
             }

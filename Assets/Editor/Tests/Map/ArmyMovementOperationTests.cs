@@ -3,6 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
+using Game.Ai;
+using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -274,6 +277,100 @@ namespace Game.EditorTests
                 Assert.That(army.Hex, Is.EqualTo(first));
             });
         }
+        [TestCase(false), TestCase(true), Category("UnityScene")]
+        public void TransitExploresUnguardedEventAndStopsBeforeDestination(bool hidden)
+        {
+            army.Members[0].IsHidden = hidden;
+            army.MarkActivated();
+            var host = new UnityEngine.GameObject("AI event visit");
+            host.SetActive(false);
+            try
+            {
+                var selector = host.AddComponent<HexSelectionController>();
+                var root = host.AddComponent<PlayerRoot>();
+                PlayerRootRegistry.Register(army.Owner, root);
+                AiMapMemory.EnsureSubscribed();
+                var reward = new RewardEntry
+                {
+                    type = RewardType.Resources,
+                    resources = new ResourceYields { energy = 3 },
+                };
+                var tactic = new CardDefinition
+                {
+                    displayName = "Event tactic", cardType = CardType.Tactic,
+                    tacticEffect = TacticEffect.AddSuccess, tacticAmount = 1,
+                };
+                HexEventRegistry.Set(first, new EventDefinition { name = "Cache" }, "Unresolved guard name",
+                    null, null, new List<(RewardEntry, CardDefinition)>
+                    {
+                        (new RewardEntry { type = RewardType.Card }, tactic),
+                    }, new List<RewardEntry> { reward });
+
+                WithMap(map =>
+                {
+                    var move = ArmyMovementOperation.ForOrder(army, map, new[] { origin, first, last },
+                        root, last, selector, allowAiEventExplore: false);
+                    Drain(move.Run(null));
+                    Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Interrupted));
+                });
+
+                Assert.That(army.Hex, Is.EqualTo(first));
+                Assert.That(army.Members[0].IsHidden, Is.False);
+                Assert.That(army.CurrentMovement, Is.Zero);
+                Assert.That(HexEventRegistry.FindAt(first).Consumed, Is.True);
+                Assert.That(HexEventRegistry.FindAt(first).Skipped, Is.False);
+                Assert.That(AiMapMemory.KnownEventStateAt(army.Owner, first),
+                    Is.EqualTo(AiMapMemory.KnownEventState.Completed));
+                var savedEvents = HexEventRegistry.CaptureEntries((_, entry) => entry);
+                HexEventRegistry.RestoreEntries(savedEvents, (_, entry) => entry);
+                selector.GrantEventReward(first, army); // repeat payout request after restoring the event
+                Assert.That(root.GetResource(ResourceType.Energy), Is.EqualTo(3));
+                Assert.That(army.Owner.Tactics.Cards.Single().Definition, Is.SameAs(tactic));
+            }
+            finally
+            {
+                HexEventRegistry.Clear();
+                PlayerRootRegistry.Clear();
+                AiMapMemory.Clear();
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test, Category("UnityScene")]
+        public void UnguardedEventWaitsForHostileContact()
+        {
+            army.MarkActivated();
+            var enemy = new ArmyData { Owner = new PlayerSetupData(), Hex = first };
+            enemy.Members.Add(new UnitData { Owner = enemy.Owner, HitPointsCurrent = 3, HitPointsMax = 3 });
+            ArmyRegistry.Register(enemy);
+            var host = new UnityEngine.GameObject("AI event contact");
+            host.SetActive(false);
+            try
+            {
+                var selector = host.AddComponent<HexSelectionController>();
+                HexEventRegistry.Set(first, new EventDefinition { name = "Cache" }, null, null, null, null);
+                ArmyMovementArrival arrival = null;
+                WithMap(map =>
+                {
+                    var move = ArmyMovementOperation.ForOrder(army, map, new[] { origin, first, last },
+                        null, last, selector, arrivalPresentation: value => arrival = value, allowAiEventExplore: false);
+                    Drain(move.Run(null));
+                });
+
+                Assert.That(arrival.Contact, Is.EqualTo(BattleStartResult.Started));
+                Assert.That(arrival.HexEvent, Is.False);
+                Assert.That(HexEventRegistry.FindAt(first).Consumed, Is.False);
+                ArmyRegistry.Unregister(enemy);
+                selector.TriggerHexEventIfClear(first, army);
+                Assert.That(HexEventRegistry.FindAt(first).Consumed, Is.True);
+            }
+            finally
+            {
+                HexEventRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
         [Test] public void ArrivalAndCompletionAreOneShotAndReleaseBusyBeforeNotification()
         {
             int arrivals = 0, results = 0;

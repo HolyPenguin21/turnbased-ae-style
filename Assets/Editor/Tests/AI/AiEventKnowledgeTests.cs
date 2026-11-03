@@ -228,6 +228,65 @@ namespace Game.EditorTests
             Assert.That(BuildKnown(_a).ActiveEventHexes, Is.EqualTo(new[] { Hex }));
         }
 
+        [Test]
+        public void TransitPermissionOnlyGatesResolvedGuards()
+        {
+            var mover = new ArmyData { Owner = _a };
+            var entry = new HexEventRegistry.Entry
+            {
+                Definition = new EventDefinition(),
+                GuardArmyName = "Unresolved",
+            };
+            entry.ResolvedGuardMembers.Add((null, 1));
+            entry.ResolvedGuardMembers.Add((new CardDefinition(), 0));
+
+            Assert.That(HexEventGuardEstimate.ShouldExplore(mover, entry, allowGuardCombat: false), Is.True);
+            entry.ResolvedGuardMembers.Add((new CardDefinition(), 1));
+            Assert.That(HexEventGuardEstimate.ShouldExplore(mover, entry, allowGuardCombat: false), Is.False);
+
+            entry.ResolvedGuardMembers.Clear();
+            entry.Definition.grantsRandomCollectionCard = true;
+            Assert.That(HexEventGuardEstimate.ShouldExplore(mover, entry, allowGuardCombat: false), Is.False);
+            entry.Definition.grantsRandomCollectionCard = false;
+            entry.Consumed = true;
+            Assert.That(HexEventGuardEstimate.ShouldExplore(mover, entry, allowGuardCombat: false), Is.False);
+        }
+
+        [Test]
+        public void ExploreReopensVisitedHexOnlyForKnownActiveUnguardedEvent()
+        {
+            HexEventRegistry.Set(Hex, new EventDefinition(), null, null, null, null);
+            var snap = new WorldSnapshot
+            {
+                Observer = _a,
+                Self = new SelfSnapshot(),
+                MapKnowledge = new MapKnowledgeSnapshot
+                {
+                    AllHexes = new[] { Hex },
+                    VisitedHexSet = new HashSet<HexCoord> { Hex },
+                },
+            };
+
+            ReconObjective[] ExploreObjectives()
+            {
+                snap.Known = BuildKnown(_a);
+                return ReconObjectiveEvaluator.Enumerate(snap)
+                    .Where(o => o.Kind == ReconObjectiveKind.Explore && o.FocusHex.Equals(Hex)).ToArray();
+            }
+
+            See(_a, Hex);
+            AiMapMemory.RefreshVisibleForTest(_a);
+            Assert.That(ExploreObjectives(), Is.Empty);
+
+            HexEventRegistry.MarkSkipped(Hex, _a); // a previously skipped event, already visited
+            _a.PlayerId = "event-scout";
+            var savedMemory = AiMapMemory.CapturePersistentState(player => player.PlayerId);
+            AiMapMemory.RestorePersistentState(savedMemory, id => id == _a.PlayerId ? _a : null);
+            Assert.That(ExploreObjectives().Length, Is.EqualTo(1));
+            HexEventRegistry.MarkConsumed(Hex, _a);
+            Assert.That(ExploreObjectives(), Is.Empty);
+        }
+
         // ---- cache / snapshot / lifecycle --------------------------------------------------------
 
         [Test]

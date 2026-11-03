@@ -18,14 +18,17 @@ namespace Game.Ai
     // site has no HexCoord/HexMap context handy), matching the original.
     public static class HexEventGuardEstimate
     {
-        public static bool ShouldExplore(ArmyData mover, HexEventRegistry.Entry entry)
+        public static bool ShouldExplore(ArmyData mover, HexEventRegistry.Entry entry, bool allowGuardCombat = true)
         {
-            if (entry?.Definition?.CanVisit(mover?.Owner) == false)
+            if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) != true)
                 return false;
-            if (entry?.ResolvedGuardMembers == null || entry.ResolvedGuardMembers.Count == 0)
-                return true; // no guard — nothing to risk, always worth it
+            if (!entry.HasResolvedGuard)
+                return allowGuardCombat || (mover?.Owner != null && !mover.Owner.IsHuman && !mover.Owner.IsNeutral);
+            if (!allowGuardCombat)
+                return false;
 
-            var guardMembers = entry.ResolvedGuardMembers.Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
+            var guardMembers = entry.ResolvedGuardMembers
+                .Where(g => g.card != null && g.count > 0 && g.card.cardType != CardType.Hero).ToList();
             var guardDefenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
                 g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor), g.card.unitTypeTags,
                 g.card.attack, g.card.hitPoints, g.card.initiative, g.card.grantedAbilities,
@@ -42,7 +45,7 @@ namespace Game.Ai
         public static WorthIt.SideCommander GuardCommander(HexEventRegistry.Entry entry)
         {
             var hero = entry?.ResolvedGuardMembers?
-                .FirstOrDefault(g => g.card != null && g.card.cardType == CardType.Hero).card;
+                .FirstOrDefault(g => g.card != null && g.count > 0 && g.card.cardType == CardType.Hero).card;
             return WorthIt.SideCommander.Of(hero);
         }
 
