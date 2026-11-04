@@ -277,6 +277,20 @@ namespace Game.EditorTests
             Assert.That(groups.All(g => g.FramesPerSecond == 2.5f), Is.True);
         }
 
+        // Saves survive art patches (project owner, 2026-11-04): a texture variant removed or
+        // renamed since the save falls back to the terrain's first variant; terrain stays strict.
+        [Test] public void RemovedTextureVariantRestoresWithTheTerrainsFirstVariant()
+        {
+            _generator.Generate();
+            HexMapLayout layout = _map.Layout.Copy();
+            layout.Cells[0].TextureKey = "texture.removed-by-patch";
+            Assert.DoesNotThrow(() => HexMapGenerator.ValidateLayout(layout, _config));
+            Restore(layout);
+            Assert.That(_map.AllCoords.Count(), Is.EqualTo(7));
+            layout.Cells[0].TerrainKey = "terrain.removed-by-patch";
+            Assert.Throws<System.ArgumentException>(() => HexMapGenerator.ValidateLayout(layout, _config));
+        }
+
         [Test] public void GeneratedMapRetainsItsVisualLayoutAfterGeneratorIsRemoved()
         {
             _generator.Generate();

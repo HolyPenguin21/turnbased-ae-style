@@ -248,7 +248,7 @@ namespace Game.Setup
                 definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,
                 definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
                 definition.defenseRating, definition.unitTypeTags, definition.detailArt,
-                definition.apCost, definition.resourceCost);
+                definition.apCost, definition.resourceCost, catalogDefinition: definition);
         }
 
         // Chance that any single hex carrying a neutral army (GenerateNeutralArmies or

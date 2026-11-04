@@ -403,12 +403,14 @@ namespace Game.Map
                     || !templates.TryGetValue(complex.TemplateKey, out TerrainComplexTemplate template)
                     || !template.IsValid() || complex.Parts == null || complex.Parts.Length != template.parts.Length
                     || complex.RotationSteps < 0 || complex.RotationSteps > 5
-                    || complex.Phase < 0 || complex.Phase >= template.parts[0].frames.Length
+                    || complex.Phase < 0
                     || !Finite(complex.FramesPerSecond) || complex.FramesPerSecond <= 0)
                     throw InvalidLayout("unknown or incompatible complex.");
                 var placed = new PlacedComplex
                 {
-                    Template = template, RotationSteps = complex.RotationSteps, Phase = complex.Phase,
+                    // Frame count is art (project owner, 2026-11-04): a saved phase wraps into
+                    // the current animation instead of rejecting the save.
+                    Template = template, RotationSteps = complex.RotationSteps, Phase = complex.Phase % template.parts[0].frames.Length,
                     FramesPerSecond = complex.FramesPerSecond, Cells = new HexCoord[complex.Parts.Length], FirstSlot = plan.Slots.Count,
                 };
                 HexCoord? origin = null;
@@ -440,9 +442,16 @@ namespace Game.Map
             {
                 if (plan.CellSlots.ContainsKey(entry.Key)) continue;
                 int typeIndex = terrainIndices[entry.Value.TerrainKey];
-                if (string.IsNullOrEmpty(entry.Value.TextureKey)
-                    || !textureSlots.TryGetValue((typeIndex, entry.Value.TextureKey), out int slot))
-                    throw InvalidLayout("unknown texture key.");
+                if (string.IsNullOrEmpty(entry.Value.TextureKey)) throw InvalidLayout("missing texture key.");
+                // A texture variant is art (project owner, 2026-11-04): one that a patch renamed
+                // or removed falls back to the terrain's first variant; the terrain itself stays.
+                if (!textureSlots.TryGetValue((typeIndex, entry.Value.TextureKey), out int slot))
+                {
+                    slot = -1;
+                    foreach (var known in textureSlots)
+                        if (known.Key.type == typeIndex && (slot < 0 || known.Value < slot)) slot = known.Value;
+                    if (slot < 0) throw InvalidLayout("terrain has no texture variant.");
+                }
                 plan.CellSlots.Add(entry.Key, slot);
             }
             return plan;

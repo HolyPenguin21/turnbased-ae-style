@@ -11,6 +11,8 @@ namespace Game.Map
     public class FacilityData
     {
         public string Name;
+        // Authored Facility card this slot was built from (see BuildingData.CatalogSource).
+        public CardDefinition CatalogSource;
         public Sprite Art;
         // Carried over from CardDefinition.detailArt (falling back to Art itself when the card
         // never set one — same convention as BuildingData.DetailArt/UnitData.DetailArt) — the
@@ -47,6 +49,7 @@ namespace Game.Map
             var facility = new FacilityData
             {
                 Name = definition.displayName,
+                CatalogSource = definition,
                 Art = definition.art,
                 DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
                 UpgradeLevel = 0,

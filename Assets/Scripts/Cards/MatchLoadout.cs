@@ -13,9 +13,14 @@ namespace Game.Cards
         private readonly Dictionary<string, int> owned = new Dictionary<string, int>();
         public Faction Faction => deck.faction;
         public MatchLoadout(SavedDeck source, DeckRules rules, Func<string, int> ownership)
+            : this(source, rules, ownership, true) { }
+        private MatchLoadout(SavedDeck source, DeckRules rules, Func<string, int> ownership, bool validate)
         {
-            var validation = rules.Validate(source, ownership);
-            if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
+            if (validate)
+            {
+                var validation = rules.Validate(source, ownership);
+                if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
+            }
             deck = CollectionProfile.CopyDeck(source);
             // Unknown cards are only warnings in Validate; they never reach the match.
             deck.mainCards.RemoveAll(e => rules.Resolve(e.cardKey) == null);
@@ -35,20 +40,25 @@ namespace Game.Cards
         // The existing profile copy boundary also detaches the saved match from profile edits.
         public SavedDeck CaptureState() => CollectionProfile.CopyDeck(deck);
 
+        // A saved match keeps the loadout it started with: deck-building rules (points, copy
+        // limits, permitted cards) are a new-match gate and may change in a balance patch
+        // (project owner, 2026-11-04). Only the card identities must still exist.
         public static MatchLoadout FromState(SavedDeck state, DeckRules rules)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
-            var savedOwnership = new Dictionary<string, int>();
+            if (rules == null) throw new ArgumentNullException(nameof(rules));
             foreach (var entries in new[] { state.mainCards, state.equipment, state.mutators })
-                if (entries != null)
-                    foreach (var entry in entries)
-                        if (entry != null && !string.IsNullOrEmpty(entry.cardKey))
-                        {
-                            if (rules?.Resolve(entry.cardKey) == null)
-                                throw new InvalidOperationException("Cannot resolve saved loadout card: " + entry.cardKey);
-                            savedOwnership[entry.cardKey] = entry.count;
-                        }
-            return new MatchLoadout(state, rules, key => savedOwnership.TryGetValue(key, out int n) ? n : 0);
+            {
+                if (entries == null) throw new InvalidOperationException("Saved loadout data is incomplete.");
+                foreach (var entry in entries)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.cardKey) || entry.count < 0)
+                        throw new InvalidOperationException("Saved loadout contains an unreadable card.");
+                    if (rules.Resolve(entry.cardKey) == null)
+                        throw new InvalidOperationException("Cannot resolve saved loadout card: " + entry.cardKey);
+                }
+            }
+            return new MatchLoadout(state, rules, null, false);
         }
 
         internal List<DeckCardEntry> BlueprintEntries()

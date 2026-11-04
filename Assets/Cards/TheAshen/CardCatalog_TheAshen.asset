@@ -2031,7 +2031,7 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
+    attack: 4
     defenseRating: 2
     range: 2
     hitPoints: 5

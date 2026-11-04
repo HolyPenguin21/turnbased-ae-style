@@ -137,6 +137,8 @@ namespace Game.Map
             snapshot.DetailArt = source.DetailArt;
             snapshot.Equipment = source.Equipment;
             snapshot.Mutator = source.Mutator;
+            // Lets a saved memory take the current card art (MatchPresentationCodec).
+            snapshot.CatalogSource = source.CatalogSource;
             snapshot.Attack = source.Attack;
             snapshot.Defense = source.Defense;
             snapshot.Range = source.Range;

@@ -272,7 +272,7 @@ namespace Game.Map
                         card.activationApCost, card.cardType == CardType.Hero, card.commandRating, card.art,
                         card.grantedAbilities, card.attack, card.range, card.hitPoints, card.initiative, card.fate,
                         card.defenseRating, card.unitTypeTags, card.detailArt,
-                        card.apCost, card.resourceCost);
+                        card.apCost, card.resourceCost, catalogDefinition: card);
                     if (spawned != null)
                         guard.AddMemberSorted(spawned);
                 }

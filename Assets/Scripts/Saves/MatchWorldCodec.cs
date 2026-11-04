@@ -119,8 +119,8 @@ namespace Game.Saves
                 a.Name = x.name; a.Hex = new HexCoord(x.q, x.r); a.Owner = NeedPlayer(x.owner);
                 a.IsGarrison = x.garrison; a.IsPrison = x.prison; a.IsAirfield = x.airfield; a.IsAirArmy = x.airArmy; a.AirWingLanded = x.wingLanded;
                 if (x.registered) registered.Add(a);
-                var prefab = MatchSaveAssets.ResolvePrefab(x.markerPrefab); if (prefab != null) armyPrefabs.Add(a, prefab);
-                var icon = MatchSaveAssets.ResolveSprite(x.markerIcon); if (icon != null) armyIcons.Add(a, icon);
+                var prefab = MatchSaveAssets.ResolvePrefab(x.markerPrefab, required: false); if (prefab != null) armyPrefabs.Add(a, prefab);
+                var icon = MatchSaveAssets.ResolveSprite(x.markerIcon, required: false); if (icon != null) armyIcons.Add(a, icon);
             }
             var members = new HashSet<int>();
             foreach (var x in data.armies)
@@ -156,6 +156,8 @@ namespace Game.Saves
                 u.RestoreCarrierLinksState(new UnitCarrierLinksState { AirfieldArmyId = Link(x.airfieldArmy), FlightDeckArmyId = Link(x.flightDeckArmy) }, NeedArmy);
             }
             foreach (var a in armies.Values) a.RebindRestoredTransportRecipients();
+            // After movement and transport links: the rebase keeps each body's movement spending.
+            foreach (var u in units.Values) u.RebaseOnCatalog();
             foreach (var x in data.buildings) RestoreBuilding(x);
             var bonusHexes = new HashSet<HexCoord>();
             foreach (var x in data.bonuses)
@@ -232,7 +234,10 @@ namespace Game.Saves
                 || x.activationApCost < 0 || x.apCost < 0 || x.airfieldCapacity < 0 || x.unlandedEnds < 0 || x.turnsWithoutRefuel < 0 || x.berserkStacks < 0 || x.berserkDefenseLost < 0 || x.drillAttackBonus < 0 || !Enum.IsDefined(typeof(BattleRow), x.row)) throw Invalid("Invalid unit stats.");
             u.Name = x.name; u.Owner = NeedPlayer(x.owner); u.CapturedFrom = OptionalPlayer(x.capturedFrom);
             u.OriginatingCard = content.OptionalCard(x.origin); u.Equipment = content.OptionalCard(x.equipment); u.Mutator = content.OptionalCard(x.mutator);
-            u.Art = MatchSaveAssets.ResolveSprite(x.art); u.DetailArt = MatchSaveAssets.ResolveSprite(x.detailArt);
+            u.CatalogSource = content.OptionalCard(x.source);
+            // A catalogued body takes its art from the current card (RebaseOnCatalog); its saved
+            // sprite keys may name art that a patch has since replaced.
+            if (u.CatalogSource == null) { u.Art = MatchSaveAssets.ResolveSprite(x.art, required: false); u.DetailArt = MatchSaveAssets.ResolveSprite(x.detailArt, required: false); }
             AddAbilities(u.Abilities, x.abilities);
             foreach (var tag in x.typeTags) if (!Enum.IsDefined(typeof(UnitTypeTag), tag) || !u.TypeTags.Add(tag)) throw Invalid("Invalid unit type tag.");
             u.IsHidden = x.hidden; u.HasEnteredStealthThisTurn = x.enteredStealth; u.IsHero = x.hero; u.IsPrisoner = x.prisoner; u.IsSummoned = x.summoned; u.IsAviation = x.aviation;
@@ -255,26 +260,76 @@ namespace Game.Saves
         {
             if (x == null || x.level < 0 || x.hp < 0 || x.hpMax < 0 || x.hp > x.hpMax || x.airfieldCapacity < 0) throw Invalid("Invalid building state."); Require(x.facilities); Require(x.abilities);
             var hex = new HexCoord(x.q, x.r); if (buildings.ContainsKey(hex) || x.facilities.Count > 64) throw Invalid("Invalid building location or slot count.");
+            var source = content.OptionalCard(x.source);
             var b = new BuildingData(x.facilities.Count)
             {
-                Name = x.name, Hex = hex, Owner = NeedPlayer(x.owner), Art = MatchSaveAssets.ResolveSprite(x.art), DetailArt = MatchSaveAssets.ResolveSprite(x.detailArt),
+                Name = x.name, Hex = hex, Owner = NeedPlayer(x.owner), CatalogSource = source,
+                // Catalogued art comes from the current card (RebaseBuildingOnContent).
+                Art = source == null ? MatchSaveAssets.ResolveSprite(x.art, required: false) : null, DetailArt = source == null ? MatchSaveAssets.ResolveSprite(x.detailArt, required: false) : null,
                 IsBase = x.isBase, IsStartingCitadel = x.startingCitadel, HasTieredUnlock = x.tiered, Level = x.level,
                 StructurePointsCurrent = x.hp, StructurePointsMax = x.hpMax, Defense = x.defense, Fate = x.fate, AirfieldCapacity = x.airfieldCapacity,
             };
             AddAbilities(b.Abilities, x.abilities); buildings.Add(hex, b);
-            var prefab = MatchSaveAssets.ResolvePrefab(x.markerPrefab); if (prefab != null) buildingPrefabs.Add(b, prefab);
-            var icon = MatchSaveAssets.ResolveSprite(x.markerIcon); if (icon != null) buildingIcons.Add(b, icon);
+            RebaseBuildingOnContent(b);
+            var prefab = MatchSaveAssets.ResolvePrefab(x.markerPrefab, required: false); if (prefab != null) buildingPrefabs.Add(b, prefab);
+            var icon = MatchSaveAssets.ResolveSprite(x.markerIcon, required: false); if (icon != null) buildingIcons.Add(b, icon);
             for (int i = 0; i < x.facilities.Count; i++)
             {
                 var f = x.facilities[i]; if (f == null) throw Invalid("Missing facility slot."); if (!f.occupied) continue;
                 if (f.upgradeLevel < 0 || f.hp < 0 || f.hpMax < 0 || f.hp > f.hpMax || f.antiAirRadius < 0) throw Invalid("Invalid facility stats."); Require(f.abilities);
+                var facilitySource = content.OptionalCard(f.source);
                 var facility = new FacilityData
                 {
-                    Name = f.name, Art = MatchSaveAssets.ResolveSprite(f.art), DetailArt = MatchSaveAssets.ResolveSprite(f.detailArt), UpgradeLevel = f.upgradeLevel,
+                    Name = f.name, CatalogSource = facilitySource, UpgradeLevel = f.upgradeLevel,
+                    Art = facilitySource == null ? MatchSaveAssets.ResolveSprite(f.art, required: false) : null,
+                    DetailArt = facilitySource == null ? MatchSaveAssets.ResolveSprite(f.detailArt, required: false) : null,
                     StructurePointsCurrent = f.hp, StructurePointsMax = f.hpMax, Defense = f.defense, Fate = f.fate, Attack = f.attack, AntiAirRadius = f.antiAirRadius,
                 };
                 AddAbilities(facility.Abilities, f.abilities); b.FacilitySlots[i] = facility;
+                RebaseFacilityOnCatalog(facility);
             }
+        }
+        // Authored building values follow the current content (project owner, 2026-11-04);
+        // level, owner, name (the starting citadel renames its card), damage and airfield
+        // capacity (stored aircraft may not exceed it) stay as saved. Current structure keeps
+        // its saved value, capped by the new maximum. A Base's Defense is its card value plus
+        // the defenseGain of every upgrade tier it has taken, exactly as TryUpgradeBase adds it.
+        private void RebaseBuildingOnContent(BuildingData b)
+        {
+            CardDefinition source = b.CatalogSource;
+            if (source != null)
+            {
+                b.Art = source.art; b.DetailArt = source.detailArt != null ? source.detailArt : source.art;
+                b.StructurePointsMax = source.hitPoints;
+                int defense = source.defenseRating;
+                var tiers = config?.baseUpgradeTiers;
+                for (int tier = 0; tiers != null && tier < b.Level - 1 && tier < tiers.Length; tier++)
+                    defense += tiers[tier]?.defenseGain ?? 0;
+                b.Defense = defense; b.Fate = source.fate;
+                b.Abilities.Clear();
+                if (source.grantedAbilities != null) b.Abilities.UnionWith(source.grantedAbilities);
+            }
+            else if (!b.IsBase && !b.HasTieredUnlock && config != null)
+            {
+                // A hero-built resource site is authored by GameConfig, not by a card.
+                b.StructurePointsMax = config.resourceSiteStructurePoints;
+                b.Defense = config.resourceSiteDefense; b.Fate = config.resourceSiteFate;
+            }
+            else return;
+            b.StructurePointsCurrent = Mathf.Min(b.StructurePointsCurrent, b.StructurePointsMax);
+        }
+        private static void RebaseFacilityOnCatalog(FacilityData f)
+        {
+            CardDefinition source = f.CatalogSource;
+            if (source == null) return;
+            f.Name = source.displayName;
+            f.Art = source.art; f.DetailArt = source.detailArt != null ? source.detailArt : source.art;
+            f.StructurePointsMax = source.hitPoints;
+            f.StructurePointsCurrent = Mathf.Min(f.StructurePointsCurrent, f.StructurePointsMax);
+            f.Defense = source.defenseRating; f.Fate = source.fate; f.Attack = source.attack;
+            f.AntiAirRadius = Mathf.Max(1, source.antiAirRadius);
+            f.Abilities.Clear();
+            if (source.grantedAbilities != null) f.Abilities.UnionWith(source.grantedAbilities);
         }
         private HexEventRegistry.Entry RestoreEvent(MatchEventData x)
         {

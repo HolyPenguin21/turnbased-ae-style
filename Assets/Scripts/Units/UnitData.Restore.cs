@@ -1,4 +1,5 @@
 using System;
+using Game.Cards;
 using Game.Map;
 
 namespace Game.Units
@@ -10,6 +11,35 @@ namespace Game.Units
     }
     public partial class UnitData
     {
+        // Load path: replace the authored part of a restored body with the current content of
+        // CatalogSource (project owner, 2026-11-04 — saves survive balance and art patches).
+        // Kept as saved: identity, owner, IsHero (neutral spawns choose it apart from the card),
+        // aviation kind, airfield capacity (stored aircraft may not exceed it), the rolled
+        // repair cost and all match state. Aviation launch values are authored only on the
+        // FromDefinition path (OriginatingCard), so other bodies keep their saved ones.
+        public void RebaseOnCatalog()
+        {
+            CardDefinition source = CatalogSource;
+            if (source == null) return;
+            EquipmentSystem.RebaseOnCatalog(this, source);
+            Name = source.displayName;
+            Art = source.art;
+            DetailArt = source.detailArt != null ? source.detailArt : source.art;
+            TypeTags.Clear();
+            if (source.unitTypeTags != null) TypeTags.UnionWith(source.unitTypeTags);
+            ApCost = source.apCost;
+            OriginalResourceCost = source.resourceCost == null ? null : new ResourceCost
+            {
+                human = source.resourceCost.human, energy = source.resourceCost.energy,
+                materials = source.resourceCost.materials, tech = source.resourceCost.tech,
+            };
+            if (ReferenceEquals(OriginatingCard, source))
+            {
+                LaunchEnergyCost = source.launchEnergyCost;
+                AntiAirRadius = System.Math.Max(1, source.antiAirRadius);
+            }
+        }
+
         public static int IdentityHighWaterMark => System.Threading.Volatile.Read(ref _nextRuntimeId);
         public static void ReserveIdentity(int id)
         {

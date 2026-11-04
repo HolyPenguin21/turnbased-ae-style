@@ -23,8 +23,8 @@ namespace Game.Map
     // action is shared by the human resource buttons and InfrastructureActions for AI.
     public partial class HexSelectionController
     {
-        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null)
-            => UnitData.Materialize(unitName, owner, moveMax, activationApCost, isHero, commandRating, art, grantedAbilities, attack, range, hitPoints, initiative, fate, defense, typeTags, detailArt, apCost, resourceCost, isAviation, launchEnergyCost, turnsWithoutRefuel, antiAirRadius, sourceDefinition);
+        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null, CardDefinition catalogDefinition = null)
+            => UnitData.Materialize(unitName, owner, moveMax, activationApCost, isHero, commandRating, art, grantedAbilities, attack, range, hitPoints, initiative, fate, defense, typeTags, detailArt, apCost, resourceCost, isAviation, launchEnergyCost, turnsWithoutRefuel, antiAirRadius, sourceDefinition, catalogDefinition);
 
         public ArmyController CreateArmyMarker(ArmyData army)
         {

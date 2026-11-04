@@ -99,6 +99,7 @@ namespace Game.Saves
             {
                 var entry = new MatchRememberedUnitData { RuntimeId = unit.RuntimeId, Name = unit.Name, OwnerId = StateReference.PlayerId(unit.Owner),
                     CapturedFromId = unit.CapturedFrom == null ? null : StateReference.PlayerId(unit.CapturedFrom),
+                    SourceKey = CatalogKey(unit.CatalogSource, config),
                     ArtKey = MatchSaveAssets.SpriteKey(unit.Art), DetailArtKey = MatchSaveAssets.SpriteKey(unit.DetailArt),
                     EquipmentKey = CardKey(unit.Equipment, config), MutatorKey = CardKey(unit.Mutator, config),
                     BerserkStacks = unit.BerserkStacks, BerserkDefenseLost = unit.BerserkDefenseLost, DrillAttackBonus = unit.DrillAttackBonus,
@@ -130,6 +131,13 @@ namespace Game.Saves
                     result = card;
                 }
             return result ?? throw new ArgumentException("Unresolved historical card definition: " + key);
+        }
+        // Only a canonical catalog instance qualifies as an art source; anything else keeps ArtKey.
+        private static string CatalogKey(CardDefinition card, GameConfig config)
+        {
+            if (card == null || string.IsNullOrEmpty(card.authoredKey)) return null;
+            try { return ReferenceEquals(Card(card.authoredKey, config), card) ? card.authoredKey : null; }
+            catch (ArgumentException) { return null; }
         }
         private static string CardKey(CardDefinition card, GameConfig config)
         {
@@ -195,8 +203,7 @@ namespace Game.Saves
                             throw new ArgumentException("Invalid historical unit.");
                         StateReference.Player(unit.OwnerId, player);
                         if (!string.IsNullOrEmpty(unit.CapturedFromId)) StateReference.Player(unit.CapturedFromId, player);
-                        MatchSaveAssets.ResolveSprite(unit.ArtKey); MatchSaveAssets.ResolveSprite(unit.DetailArtKey);
-                        Card(unit.EquipmentKey, config); Card(unit.MutatorKey, config);
+                        Card(unit.SourceKey, config); Card(unit.EquipmentKey, config); Card(unit.MutatorKey, config);
                         ValidateCost(unit.OriginalCost); ValidateCost(unit.RepairCost);
                         var abilities = new HashSet<string>(StringComparer.Ordinal);
                         foreach (var ability in unit.Abilities)
@@ -267,7 +274,17 @@ namespace Game.Saves
                 var unit = UnitData.CreateProjection(entry.RuntimeId);
                 unit.Name = entry.Name; unit.Owner = StateReference.Player(entry.OwnerId, player);
                 unit.CapturedFrom = string.IsNullOrEmpty(entry.CapturedFromId) ? null : StateReference.Player(entry.CapturedFromId, player);
-                unit.Art = MatchSaveAssets.ResolveSprite(entry.ArtKey); unit.DetailArt = MatchSaveAssets.ResolveSprite(entry.DetailArtKey);
+                unit.CatalogSource = Card(entry.SourceKey, config);
+                if (unit.CatalogSource != null)
+                {
+                    unit.Art = unit.CatalogSource.art;
+                    unit.DetailArt = unit.CatalogSource.detailArt != null ? unit.CatalogSource.detailArt : unit.CatalogSource.art;
+                }
+                else
+                {
+                    unit.Art = MatchSaveAssets.ResolveSprite(entry.ArtKey, required: false);
+                    unit.DetailArt = MatchSaveAssets.ResolveSprite(entry.DetailArtKey, required: false);
+                }
                 unit.Equipment = Card(entry.EquipmentKey, config); unit.Mutator = Card(entry.MutatorKey, config);
                 unit.BerserkStacks = entry.BerserkStacks; unit.BerserkDefenseLost = entry.BerserkDefenseLost; unit.DrillAttackBonus = entry.DrillAttackBonus;
                 unit.MoveMax = entry.MoveMax; unit.MoveCurrent = entry.MoveCurrent; unit.ActivationApCost = entry.ActivationApCost; unit.ApCost = entry.ApCost;

@@ -42,7 +42,9 @@ namespace Game.Saves
     [Serializable] internal sealed class MatchRememberedUnitData
     {
         public int RuntimeId;
-        public string Name, OwnerId, CapturedFromId, ArtKey, DetailArtKey, EquipmentKey, MutatorKey;
+        // SourceKey: catalog card of the remembered body; its current art replaces ArtKey on load.
+        // The remembered stats stay as seen.
+        public string Name, OwnerId, CapturedFromId, SourceKey, ArtKey, DetailArtKey, EquipmentKey, MutatorKey;
         public int BerserkStacks, BerserkDefenseLost, DrillAttackBonus, MoveMax, MoveCurrent, ActivationApCost, ApCost;
         public bool HasOriginalCost, HasRepairCost;
         public ResourceCost OriginalCost = new ResourceCost(), RepairCost = new ResourceCost();

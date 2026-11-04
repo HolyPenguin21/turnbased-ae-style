@@ -20,7 +20,7 @@ namespace Game.Map
             if (definition == null || owner == null) return null;
             var building = new BuildingData
             {
-                Name = definition.displayName, Hex = hex, Owner = owner, IsBase = true,
+                Name = definition.displayName, Hex = hex, Owner = owner, IsBase = true, CatalogSource = definition,
                 Art = definition.art, DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
                 Level = 1, StructurePointsMax = definition.hitPoints, StructurePointsCurrent = definition.hitPoints,
                 Defense = definition.defenseRating, Fate = definition.fate,
@@ -31,6 +31,9 @@ namespace Game.Map
         }
 
         public string Name;
+        // Authored Base card this building was materialized from; a loaded save re-derives its
+        // authored stats from it (see UnitData.CatalogSource). Null for resource sites.
+        public CardDefinition CatalogSource;
         public HexCoord Hex;
         public PlayerSetupData Owner;
         public MapObjectVisual Visual;

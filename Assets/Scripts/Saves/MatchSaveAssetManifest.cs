@@ -10,6 +10,7 @@ namespace Game.Saves
     // References keep the same GUID/local-file identity when assets are renamed or reordered.
     public sealed class MatchSaveAssetManifest : ScriptableObject
     {
+        // Change detection for the builder only; save compatibility is MatchSaveSchema (2026-11-04).
         public string ContentFingerprint;
         public List<MatchSaveSpriteAsset> Sprites = new List<MatchSaveSpriteAsset>();
         public List<MatchSaveMaterialAsset> Materials = new List<MatchSaveMaterialAsset>();
@@ -25,15 +26,6 @@ namespace Game.Saves
         private const string ResourceName = "MatchSaveAssetManifest";
         private static MatchSaveAssetManifest Manifest => Resources.Load<MatchSaveAssetManifest>(ResourceName)
             ?? throw new InvalidOperationException("Missing generated match save content manifest. Reimport the project before building.");
-        internal static string ContentFingerprint
-        {
-            get
-            {
-                string value = Manifest.ContentFingerprint;
-                if (string.IsNullOrEmpty(value) || value.Length != 64) throw new InvalidOperationException("Invalid match content fingerprint.");
-                return value;
-            }
-        }
         internal static string SpriteKey(Sprite asset)
         {
             if (asset == null) return null;
@@ -46,7 +38,10 @@ namespace Game.Saves
                 }
             return result ?? throw new InvalidOperationException("Sprite is not in the authored match content manifest.");
         }
-        internal static Sprite ResolveSprite(string key)
+        // Art is content, not save structure (project owner, 2026-11-04): with required false a
+        // sprite or marker prefab that a patch removed from the manifest resolves to null and the
+        // caller's default applies. File integrity is guarded by the payload checksum.
+        internal static Sprite ResolveSprite(string key, bool required = true)
         {
             if (string.IsNullOrEmpty(key)) return null;
             Sprite result = null;
@@ -56,7 +51,7 @@ namespace Game.Saves
                     if (result != null) throw new ArgumentException("Duplicate sprite asset identity: " + key);
                     result = entry.Asset;
                 }
-            return result != null ? result : throw new ArgumentException("Unresolved authored sprite: " + key);
+            return result != null || !required ? result : throw new ArgumentException("Unresolved authored sprite: " + key);
         }
         internal static string MaterialKey(Material asset)
         {
@@ -94,7 +89,7 @@ namespace Game.Saves
                 }
             return result ?? throw new InvalidOperationException("Marker prefab is not in the authored match content manifest.");
         }
-        internal static MapObjectVisual ResolvePrefab(string key)
+        internal static MapObjectVisual ResolvePrefab(string key, bool required = true)
         {
             if (string.IsNullOrEmpty(key)) return null;
             MapObjectVisual result = null;
@@ -104,7 +99,7 @@ namespace Game.Saves
                     if (result != null) throw new ArgumentException("Duplicate marker prefab identity: " + key);
                     result = entry.Asset;
                 }
-            return result != null ? result : throw new ArgumentException("Unresolved authored marker prefab: " + key);
+            return result != null || !required ? result : throw new ArgumentException("Unresolved authored marker prefab: " + key);
         }
         internal static EventDefinition ResolveEvent(string key)
         {

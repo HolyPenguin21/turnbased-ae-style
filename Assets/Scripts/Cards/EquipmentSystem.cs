@@ -117,6 +117,48 @@ namespace Game.Cards
             unit.AttachmentApplied = unit.AttachmentBase;
         }
 
+        // Load-time counterpart of Install (project owner, 2026-11-04): a saved body takes the
+        // current authored card as its permanent baseline and re-projects both slots from the
+        // current attachment cards, so a balance patch reaches units already on the map.
+        // Temporary runtime deltas (Berserk/Drill and the like) ride over the new projection via
+        // MergeRuntimeState. Current HP/Fate keep their saved value, capped by the new maximum;
+        // movement keeps its spending. With unchanged content the result equals the saved body.
+        internal static void RebaseOnCatalog(UnitData unit, CardDefinition source)
+        {
+            if (unit == null || source == null || !unit.AttachmentBase.HasValue || !unit.AttachmentApplied.HasValue)
+                return;
+            var baseline = new PredictedEquipmentState(DefinitionStats(source),
+                source.grantedAbilities != null ? new List<string>(source.grantedAbilities) : new List<string>());
+            PredictedEquipmentState projected = PredictSlots(baseline, unit.Equipment, unit.Mutator);
+            int hp = unit.HitPointsCurrent, fate = unit.Fate, moveSpent = unit.MovementSpent;
+            int hpMax = unit.HitPointsMax, fateMax = unit.FateMax;
+            int hpSpent = SpentResource(unit, EquipmentStat.HitPoints), fateSpent = SpentResource(unit, EquipmentStat.Fate);
+            PredictedEquipmentState next = MergeRuntimeState(unit, projected);
+            var stats = next.Stats;
+            unit.Attack = stats[EquipmentStat.Attack]; unit.Defense = stats[EquipmentStat.Defense];
+            unit.Range = stats[EquipmentStat.Range]; unit.Initiative = stats[EquipmentStat.Initiative];
+            unit.ActivationApCost = stats[EquipmentStat.ActivationApCost];
+            unit.CommandRating = stats[EquipmentStat.CommandRating];
+            unit.HitPointsMax = stats[EquipmentStat.HitPoints];
+            unit.HitPointsCurrent = Mathf.Min(hp, unit.HitPointsMax);
+            unit.FateMax = stats[EquipmentStat.Fate];
+            unit.Fate = Mathf.Min(fate, unit.FateMax);
+            unit.MoveMax = stats[EquipmentStat.MoveMax];
+            unit.RestoreMovementSpent(moveSpent);
+            ReconcileTemporaryDefenseLoss(unit, projected);
+            unit.Abilities.Clear();
+            unit.Abilities.UnionWith(next.Abilities);
+            unit.AttachmentBase = baseline;
+            unit.AttachmentApplied = projected;
+            // The consumption ledger keeps its history (an attachment clamp is not healing). A raised
+            // maximum with the current value kept adds exactly that rise to the consumption, so
+            // the next attachment change cannot heal the unit by it either.
+            if (unit.AttachmentResources.HasValue)
+                unit.AttachmentResources = new AttachmentResourceState(
+                    hpSpent + Mathf.Max(0, unit.HitPointsMax - hpMax), moveSpent,
+                    fateSpent + Mathf.Max(0, unit.FateMax - fateMax), unit);
+        }
+
         private static void Install(CardDefinition attachment, UnitData unit)
         {
             InitializeBaseline(unit);

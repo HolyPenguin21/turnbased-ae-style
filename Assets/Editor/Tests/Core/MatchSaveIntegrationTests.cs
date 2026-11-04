@@ -442,7 +442,7 @@ namespace Game.EditorTests
 
         public enum Damage
         {
-            Truncated, InvalidUtf8, BadChecksum, FutureVersion, OldVersion, WrongContent, UnknownCard,
+            Truncated, InvalidUtf8, BadChecksum, FutureVersion, OldVersion, WrongFormat, UnknownCard,
             UnknownTerrain, DuplicatePlayer, DuplicateArmy, DuplicateUnit, DuplicateCard, DanglingMember,
             WrongCurrentPlayer, Unsettled, MissingVisualCoverage, InvalidHighWater, DuplicateJsonField,
             ArmyOutsideMap, BuildingOutsideMap, EventOutsideMap, BonusOutsideMap, BattleOutsideMap,
@@ -462,7 +462,7 @@ namespace Game.EditorTests
                 case Damage.BadChecksum: envelope.payloadSha256 = new string('0', 64); break;
                 case Damage.FutureVersion: envelope.version++; break;
                 case Damage.OldVersion: envelope.version = 0; break;
-                case Damage.WrongContent: envelope.contentFingerprint = new string(envelope.contentFingerprint[0] == '0' ? '1' : '0', 64); break;
+                case Damage.WrongFormat: envelope.schemaHash = new string(envelope.schemaHash[0] == '0' ? '1' : '0', 64); break;
                 case Damage.UnknownCard: data.world.cards[0].definitionKey = "missing-authored-card"; break;
                 case Damage.UnknownTerrain: data.map.Cells[0].TerrainKey = "missing-authored-terrain"; break;
                 case Damage.DuplicatePlayer: data.world.players.Add(data.world.players[0]); break;
@@ -571,6 +571,22 @@ namespace Game.EditorTests
             Assert.That(() => store.Load(0, data => MatchSaveCodec.Decode(data, config), out _), Throws.TypeOf<NotSupportedException>());
             Assert.That(File.ReadAllBytes(SlotPath(0)), Is.EqualTo(DamageFile(bytes, Damage.FutureVersion)));
             Assert.That(File.Exists(SlotPath(0) + ".bak"), Is.True); AssertCounters(before);
+        }
+
+        // A checksum-valid save that names removed content is incompatible, not damaged: it is
+        // neither quarantined nor replaced by an older backup (project owner, 2026-11-04).
+        [Test]
+        public void RemovedContentDoesNotRecoverAnOlderBackupOrQuarantineThePrimary()
+        {
+            byte[] backup = CaptureFile();
+            byte[] primary = DamageFile(backup, Damage.UnknownCard);
+            store.Save(0, backup); store.Save(0, primary);
+            var before = MatchIdentityState.Capture();
+            Assert.That(() => store.Load(0, bytes => MatchSaveCodec.Decode(bytes, config), out _),
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("missing-authored-card"));
+            Assert.That(File.ReadAllBytes(SlotPath(0)), Is.EqualTo(primary));
+            Assert.That(File.ReadAllBytes(SlotPath(0) + ".bak"), Is.EqualTo(backup));
+            Assert.That(GameSession.PendingRestore, Is.Null); AssertCounters(before);
         }
 
         [Test]

@@ -21,7 +21,7 @@ namespace Game.Units
             EquipmentSystem.ApplyAttachments(unit, equipment, mutator);
             return unit;
         }
-        public static UnitData Materialize(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null)
+        public static UnitData Materialize(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null, CardDefinition catalogDefinition = null)
         {
             if (owner == null)
                 return null;
@@ -42,6 +42,7 @@ namespace Game.Units
                 AntiAirRadius = Mathf.Max(1, antiAirRadius),
                 AirfieldCapacity = !isAviation && !isHero ? Mathf.Max(0, sourceDefinition?.airfieldCapacity ?? 0) : 0,
                 OriginatingCard = sourceDefinition,
+                CatalogSource = catalogDefinition ?? sourceDefinition,
             };
             if (grantedAbilities != null)
                 foreach (string ability in grantedAbilities)

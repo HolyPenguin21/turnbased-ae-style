@@ -84,7 +84,8 @@ namespace Game.Saves
                     || !Enum.IsDefined(typeof(SpriteDrawMode), renderer.DrawMode) || !Enum.IsDefined(typeof(SpriteTileMode), renderer.TileMode)
                     || !Enum.IsDefined(typeof(SpriteMaskInteraction), renderer.MaskInteraction) || !Enum.IsDefined(typeof(SpriteSortPoint), renderer.SortPoint)
                     || !SortingLayer.IsValid(renderer.SortingLayer)) throw new ArgumentException("Invalid frozen sprite renderer.");
-                MatchSaveAssets.ResolveSprite(renderer.SpriteKey); MatchSaveAssets.ResolveMaterial(renderer.MaterialKey);
+                // A sprite removed by a later patch only blanks this remembered image.
+                MatchSaveAssets.ResolveMaterial(renderer.MaterialKey);
             }
         }
         internal static void RestorePresentation(MatchPresentationData data, HexSelectionController selection,
@@ -139,7 +140,7 @@ namespace Game.Saves
                 foreach (var value in data.Renderers)
                 {
                     var renderer = nodes[value.Node].gameObject.AddComponent<SpriteRenderer>();
-                    renderer.sprite = MatchSaveAssets.ResolveSprite(value.SpriteKey);
+                    renderer.sprite = MatchSaveAssets.ResolveSprite(value.SpriteKey, required: false);
                     renderer.sharedMaterial = MatchSaveAssets.ResolveMaterial(value.MaterialKey);
                     renderer.color = value.Tint; renderer.sortingLayerID = value.SortingLayer; renderer.sortingOrder = value.SortingOrder;
                     renderer.flipX = value.FlipX; renderer.flipY = value.FlipY;

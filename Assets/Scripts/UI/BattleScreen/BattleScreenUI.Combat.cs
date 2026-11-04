@@ -258,7 +258,7 @@ namespace Game.UI
                     card.commandRating, card.art, card.grantedAbilities, card.attack, card.range,
                     card.hitPoints, card.initiative, card.fate, card.defenseRating,
                     card.unitTypeTags, card.detailArt,
-                    card.apCost, card.resourceCost));
+                    card.apCost, card.resourceCost, catalogDefinition: card));
 
             if (result.Summoners > 0)
                 BattleDebugLog.Write($"[RaiseTheRots] {army.Name}: {result.Summoners} summoner(s) x{perSummoner} " +

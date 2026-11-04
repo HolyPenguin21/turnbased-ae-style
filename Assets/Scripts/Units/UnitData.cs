@@ -36,7 +36,7 @@ namespace Game.Units
             copy.BerserkStacks = BerserkStacks; copy.BerserkDefenseLost = BerserkDefenseLost;
             copy.DrillAttackBonus = DrillAttackBonus; copy.IsAviation = IsAviation;
             copy.IsPrisoner = IsPrisoner; copy.IsHidden = IsHidden;
-            copy.OriginatingCard = OriginatingCard; copy.Equipment = Equipment; copy.Mutator = Mutator;
+            copy.OriginatingCard = OriginatingCard; copy.CatalogSource = CatalogSource; copy.Equipment = Equipment; copy.Mutator = Mutator;
             copy.AttachmentBase = AttachmentBase; copy.AttachmentApplied = AttachmentApplied;
             copy.AttachmentResources = AttachmentResources;
             copy.Abilities.UnionWith(Abilities); copy.TypeTags.UnionWith(TypeTags);
@@ -198,6 +198,13 @@ namespace Game.Units
         // of just deleting it. Null for anything spawned without a definition on hand (neutral/
         // hex-event armies) — those are never returned anywhere on removal.
         public CardDefinition OriginatingCard;
+
+        // The authored card this body's base stats were materialized from, including neutral,
+        // hex-event and summoned bodies that have no returnable OriginatingCard. A loaded save
+        // re-derives the authored part of the unit from this definition, so a balance patch
+        // reaches units already on the map (project owner, 2026-11-04). Null for stand-ins not
+        // built from a card (facility AA gunners, AI projections).
+        public CardDefinition CatalogSource;
 
         // What this unit originally cost to play from hand — carried over from
         // CardDefinition.apCost/resourceCost at spawn time, same as ActivationApCost. Only

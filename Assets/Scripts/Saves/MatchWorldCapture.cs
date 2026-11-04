@@ -34,6 +34,7 @@ namespace Game.Saves
                 var saved = new MatchBuildingData
                 {
                     q = building.Hex.Q, r = building.Hex.R, name = building.Name, owner = PlayerId(building.Owner),
+                    source = content.CatalogKey(building.CatalogSource),
                     markerPrefab = MatchSaveAssets.PrefabKey(building.Visual?.PersistenceSourcePrefab),
                     markerIcon = MatchSaveAssets.SpriteKey(building.Visual?.PersistenceIcon),
                     art = MatchSaveAssets.SpriteKey(building.Art), detailArt = MatchSaveAssets.SpriteKey(building.DetailArt),
@@ -46,7 +47,7 @@ namespace Game.Saves
                 foreach (var f in building.FacilitySlots)
                     saved.facilities.Add(f == null ? new MatchFacilityData() : new MatchFacilityData
                     {
-                        occupied = true, name = f.Name, art = MatchSaveAssets.SpriteKey(f.Art), detailArt = MatchSaveAssets.SpriteKey(f.DetailArt),
+                        occupied = true, name = f.Name, source = content.CatalogKey(f.CatalogSource), art = MatchSaveAssets.SpriteKey(f.Art), detailArt = MatchSaveAssets.SpriteKey(f.DetailArt),
                         upgradeLevel = f.UpgradeLevel, hp = f.StructurePointsCurrent, hpMax = f.StructurePointsMax,
                         defense = f.Defense, fate = f.Fate, attack = f.Attack, antiAirRadius = f.AntiAirRadius,
                         abilities = f.Abilities.ToList(),
@@ -143,7 +144,7 @@ namespace Game.Saves
             data.units.Add(new MatchUnitData
             {
                 id = unit.RuntimeId, name = unit.Name, owner = PlayerId(unit.Owner), capturedFrom = PlayerId(unit.CapturedFrom),
-                origin = content.OptionalKey(unit.OriginatingCard), equipment = content.OptionalKey(unit.Equipment), mutator = content.OptionalKey(unit.Mutator),
+                source = content.CatalogKey(unit.CatalogSource), origin = content.OptionalKey(unit.OriginatingCard), equipment = content.OptionalKey(unit.Equipment), mutator = content.OptionalKey(unit.Mutator),
                 art = MatchSaveAssets.SpriteKey(unit.Art), detailArt = MatchSaveAssets.SpriteKey(unit.DetailArt), abilities = unit.Abilities.ToList(), typeTags = unit.TypeTags.OrderBy(x => x).ToList(),
                 hidden = unit.IsHidden, enteredStealth = unit.HasEnteredStealthThisTurn, hero = unit.IsHero, prisoner = unit.IsPrisoner, summoned = unit.IsSummoned, aviation = unit.IsAviation,
                 row = unit.Row, attack = unit.Attack, defense = unit.Defense, range = unit.Range, hpMax = unit.HitPointsMax, hp = unit.HitPointsCurrent,
@@ -234,12 +235,16 @@ namespace Game.Saves
         }
         internal CardDefinition Card(string key)
         {
-            if (string.IsNullOrWhiteSpace(key) || !cards.TryGetValue(key, out var card)) throw new InvalidOperationException("Unknown saved card: " + key);
+            if (string.IsNullOrWhiteSpace(key) || !cards.TryGetValue(key, out var card)) throw new InvalidOperationException("The save uses a card that is no longer in the game: " + key);
             return card;
         }
         internal CardDefinition OptionalCard(string key) => string.IsNullOrEmpty(key) ? null : Card(key);
         internal string Key(CardDefinition card)
         { if (card == null || !ReferenceEquals(Card(card.authoredKey), card)) throw new InvalidOperationException("Non-canonical authored card."); return card.authoredKey; }
         internal string OptionalKey(CardDefinition card) => card == null ? null : Key(card);
+        // Re-derivation source: only the canonical catalog instance qualifies. A runtime clone
+        // (e.g. a mutated extractor definition) or an uncatalogued card keeps its saved snapshot.
+        internal string CatalogKey(CardDefinition card) => card != null && !string.IsNullOrWhiteSpace(card.authoredKey)
+            && cards.TryGetValue(card.authoredKey, out var known) && ReferenceEquals(known, card) ? card.authoredKey : null;
     }
 }

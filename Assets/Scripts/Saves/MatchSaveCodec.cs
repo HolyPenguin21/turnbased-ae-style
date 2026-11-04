@@ -14,7 +14,8 @@ namespace Game.Saves
     [Serializable] internal sealed class MatchSaveEnvelope
     {
         public int version;
-        public string format, contentFingerprint, matchId, savedUtc, summary, payloadSha256, payload;
+        // schemaHash identifies the file structure (MatchSaveSchema); content values never do.
+        public string format, schemaHash, matchId, savedUtc, summary, payloadSha256, payload;
     }
     [Serializable] internal sealed class MatchCampaignData
     {
@@ -51,7 +52,10 @@ namespace Game.Saves
 
     internal static class MatchSaveCodec
     {
-        internal const int SchemaVersion = 1;
+        // Version 2: structure hash in place of the content fingerprint. Later structure changes
+        // are detected by the hash alone; the number moves only with the envelope itself.
+        internal const int SchemaVersion = 2;
+        internal const string DifferentFormatMessage = "This save was created by a different version of the game and cannot be loaded.";
         internal const string Format = "turnbased-ae-match";
         private static UTF8Encoding Utf8 => new UTF8Encoding(false, true);
 
@@ -73,7 +77,7 @@ namespace Game.Saves
             string payload = MatchSaveJson.Serialize(data);
             var envelope = new MatchSaveEnvelope
             {
-                version = SchemaVersion, format = Format, contentFingerprint = MatchSaveAssets.ContentFingerprint,
+                version = SchemaVersion, format = Format, schemaHash = MatchSaveSchema.Hash,
                 matchId = data.matchId, savedUtc = DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
                 summary = "Round " + data.turn.Round + " · " + (GameSession.FindHumanPlayer()?.Nickname ?? "Human"),
                 payload = payload, payloadSha256 = Sha256(payload),
@@ -88,12 +92,21 @@ namespace Game.Saves
         internal static IMatchRestoreSource Decode(byte[] bytes, GameConfig config)
         {
             var envelope = ReadEnvelope(bytes);
-            if (envelope.contentFingerprint != MatchSaveAssets.ContentFingerprint)
-                throw new NotSupportedException("This save uses a different version of the game content.");
-            MatchSaveJson.Validate(envelope.payload, typeof(MatchSaveData));
-            var data = MatchSaveJson.Deserialize<MatchSaveData>(envelope.payload);
-            if (data == null || data.matchId != envelope.matchId) throw new ArgumentException("Saved match identity mismatch.");
-            return new MatchFileRestoreSource(data, config);
+            // The checksum proves the payload is exactly what a game build wrote. If it still
+            // fails here, it is incompatible with this build (content removed since, changed
+            // rules), not damaged: like a newer version it must neither be quarantined nor be
+            // silently replaced by an older backup (AtomicJsonFile).
+            try
+            {
+                MatchSaveJson.Validate(envelope.payload, typeof(MatchSaveData));
+                var data = MatchSaveJson.Deserialize<MatchSaveData>(envelope.payload);
+                if (data == null || data.matchId != envelope.matchId) throw new ArgumentException("Saved match identity mismatch.");
+                return new MatchFileRestoreSource(data, config);
+            }
+            catch (Exception ex) when (!(ex is NotSupportedException))
+            {
+                throw new NotSupportedException("This save cannot be loaded by this version of the game. " + ex.Message, ex);
+            }
         }
 
         internal static MatchSaveEnvelope ReadEnvelope(byte[] bytes)
@@ -103,11 +116,14 @@ namespace Game.Saves
             string json = Utf8.GetString(bytes);
             int version = MatchSaveJson.Version(json);
             if (version > SchemaVersion) throw new NotSupportedException("This save was created by a newer game version.");
-            if (version != SchemaVersion) throw new NotSupportedException("Unsupported match save version: " + version);
+            if (version != SchemaVersion) throw new NotSupportedException(DifferentFormatMessage);
+            // Before the strict shape check: another structure is unsupported, not corrupt.
+            if (MatchSaveJson.TopLevelText(json, "schemaHash") != MatchSaveSchema.Hash)
+                throw new NotSupportedException(DifferentFormatMessage);
             MatchSaveJson.Validate(json, typeof(MatchSaveEnvelope));
             var envelope = MatchSaveJson.Deserialize<MatchSaveEnvelope>(json);
             if (envelope == null || envelope.format != Format || string.IsNullOrWhiteSpace(envelope.matchId)
-                || string.IsNullOrEmpty(envelope.contentFingerprint) || envelope.contentFingerprint.Length != 64
+                || envelope.schemaHash != MatchSaveSchema.Hash
                 || string.IsNullOrEmpty(envelope.payload) || envelope.payloadSha256 != Sha256(envelope.payload)
                 || !DateTimeOffset.TryParseExact(envelope.savedUtc, "O", System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.None, out _))

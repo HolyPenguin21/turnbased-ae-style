@@ -12,12 +12,12 @@ Capture rechecks `GameTurnController.CanSaveMatch` immediately before capturing 
 
 Files: `Application.persistentDataPath/Matches/slot-N.json`, where N is a nonnegative integer. Storage delegates atomic replacement, temporary-file cleanup, previous-file backup and corruption recovery to the existing `AtomicJsonFile`. An unsupported schema/content revision or unavailable durable campaign context does not fall back to an older backup. Both main and backup go through the same complete decoder before loading.
 
-Envelope schema **1**, format `turnbased-ae-match`:
+Envelope schema **2**, format `turnbased-ae-match` (schema 1 used `contentFingerprint`; see "Balance and art patches" below):
 
 | Field | Meaning |
 | --- | --- |
-| `version`, `format` | Exact schema discriminator |
-| `contentFingerprint` | Strict SHA-256 fingerprint of authored/imported content and editor version |
+| `version`, `format` | Exact envelope discriminator |
+| `schemaHash` | SHA-256 of the save structure (`MatchSaveSchema`): every DTO field name/type and enum member number |
 | `matchId` | Existing tactical identity; preserved for permanent reward receipts |
 | `savedUtc`, `summary` | Display metadata |
 | `payloadSha256` | SHA-256 of the UTF-8 payload string |
@@ -116,3 +116,41 @@ compatible with this version. Later visual edits within the designated UI direct
 longer invalidate newly created saves. No blanket legacy bypass/migration was added.
 
 Verification commands and native checks: `Tools/save-ui-verify/README.md`.
+
+## Balance and art patches (2026-11-04)
+
+Owner decision: frequent balance/art patches must keep in-progress match saves; any change of
+the save **structure** must invalidate them. This supersedes the content-fingerprint rule above.
+
+- **Structure gate.** `schemaHash` replaces `contentFingerprint`. It is computed by reflection
+  over the DTO graph with the same field rule as `MatchSaveJson`, so adding/removing/retyping a
+  field or renumbering/removing an enum member changes it; nothing is bumped by hand. A
+  mismatch is `NotSupportedException` (not corruption) and is checked before the strict shape
+  check. `MatchSaveAssetManifest.ContentFingerprint` no longer gates loading; it only lets the
+  manifest builder skip unchanged rebuilds.
+- **Incompatible, not damaged.** After the payload checksum passes, any decode/validation
+  failure (for example a card removed since the save) becomes `NotSupportedException`: the file
+  is neither quarantined nor replaced by an older `.bak`. The message names the missing key.
+- **Units re-derive from the current card.** `UnitData.CatalogSource` (set by materialization,
+  including neutral, hex-event and summoned bodies; separate from the returnable
+  `OriginatingCard`) is saved as `source`. On load `UnitData.RebaseOnCatalog` /
+  `EquipmentSystem.RebaseOnCatalog` take the current card as the permanent baseline, re-project
+  the current Equipment/Mutator cards and keep temporary deltas. Current HP/Fate keep the saved
+  value capped by the new maximum; movement keeps its spending; the consumption ledger grows by
+  a raised maximum. Name, art, type tags, AP/resource cost follow the card. Kept as saved:
+  owner, `IsHero`, aviation kind, airfield capacity (stored aircraft), rolled repair cost.
+- **Buildings and facilities** save `source` too: card stats, art and abilities follow the card;
+  a Base's Defense is card value plus the taken `baseUpgradeTiers` gains; resource sites follow
+  `GameConfig`. Level, owner, name, damage (capped) and airfield capacity stay.
+- **Saved as seen.** Remembered enemy rosters keep their observed stats but take current card
+  art (`SourceKey`); event reward tables and AI memory numbers stay as recorded.
+- **Art lookups are tolerant.** A sprite or marker prefab no longer in the manifest resolves to
+  the default; a removed terrain texture variant falls back to the terrain's first variant and
+  a complex animation phase wraps to the current frame count. Terrain types, complexes and all
+  card/event keys stay strict.
+- **Rules are a new-match gate.** `MatchLoadout.FromState` no longer re-runs deck-building rules
+  (points, copy limits); only card identities must resolve.
+
+Tests: `MatchSaveCompatibilityTests` (format hash; unchanged-content rebase reproduces every
+published host/attachment body; patch application; clamp history), plus Unity-only
+`MatchLoadoutStateTests`, `HexMapLayoutTests` and `MatchSaveIntegrationTests` cases.

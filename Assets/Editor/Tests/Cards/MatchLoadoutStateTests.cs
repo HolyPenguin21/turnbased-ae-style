@@ -33,6 +33,39 @@ namespace Game.EditorTests
             finally { Random.state = savedRandom; }
         }
 
+        // Deck-building rules gate a new match only; a balance patch must not void a saved one
+        // (project owner, 2026-11-04). A card that no longer exists still stops the load.
+        [Test]
+        public void RestoredLoadoutIgnoresDeckRulesChangedByABalancePatch()
+        {
+            var starting = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+            var research = ScriptableObject.CreateInstance<ResearchProductionCatalog>();
+            var catalog = ScriptableObject.CreateInstance<FactionCardCatalog>();
+            try
+            {
+                catalog.faction = Faction.IronConcord;
+                var unit = new CardDefinition { authoredKey = "saved.unit", cardType = CardType.Unit, deckPointCost = 25 };
+                catalog.cards.Add(unit);
+                starting.catalogs.Add(catalog); research.cardCatalogs.Add(catalog);
+                var rules = new DeckRules(starting, research);
+                var deck = new SavedDeck { deckId = "selected", faction = Faction.IronConcord };
+                deck.mainCards.Add(new DeckCardEntry { cardKey = unit.authoredKey, count = 2 });
+                var state = new MatchLoadout(deck, rules, key => 4).CaptureState();
+
+                unit.deckPointCost = 80; // the saved deck now exceeds the point limit
+                Assert.Throws<System.InvalidOperationException>(() => new MatchLoadout(state, rules, key => 4));
+                var restored = MatchLoadout.FromState(state, rules);
+                Assert.That(restored.CaptureState().mainCards[0].count, Is.EqualTo(2));
+
+                state.mainCards[0].cardKey = "removed.unit";
+                Assert.Throws<System.InvalidOperationException>(() => MatchLoadout.FromState(state, rules));
+            }
+            finally
+            {
+                Object.DestroyImmediate(starting); Object.DestroyImmediate(research); Object.DestroyImmediate(catalog);
+            }
+        }
+
         [Test]
         public void RestoredLoadoutUsesItsOwnStartingCardsAndBlueprintsAfterProfileDeckChanges()
         {

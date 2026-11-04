@@ -63,7 +63,9 @@ namespace Game.Saves
     [Serializable] internal sealed class MatchUnitData
     {
         public int id;
-        public string name, owner, capturedFrom, origin, equipment, mutator, art, detailArt;
+        // source: authored card the body re-derives its authored stats from on load (null keeps
+        // the saved snapshot). origin is only the returnable card (UnitData.OriginatingCard).
+        public string name, owner, capturedFrom, source, origin, equipment, mutator, art, detailArt;
         public List<string> abilities = new List<string>();
         public List<UnitTypeTag> typeTags = new List<UnitTypeTag>();
         public bool hidden, enteredStealth, hero, prisoner, summoned, aviation;
@@ -90,7 +92,7 @@ namespace Game.Saves
     [Serializable] internal sealed class MatchBuildingData
     {
         public int q, r;
-        public string name, owner, art, detailArt, markerPrefab, markerIcon;
+        public string name, owner, source, art, detailArt, markerPrefab, markerIcon;
         public List<string> abilities = new List<string>();
         public bool isBase, startingCitadel, tiered;
         public int level, hp, hpMax, defense, fate, airfieldCapacity;
@@ -100,7 +102,7 @@ namespace Game.Saves
     [Serializable] internal sealed class MatchFacilityData
     {
         public bool occupied;
-        public string name, art, detailArt;
+        public string name, source, art, detailArt;
         public int upgradeLevel, hp, hpMax, defense, fate, attack, antiAirRadius;
         public List<string> abilities = new List<string>();
     }

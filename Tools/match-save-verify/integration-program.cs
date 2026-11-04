@@ -177,7 +177,7 @@ internal static class IntegrationProgram
             if(damage=="future version")envelope.version++;
             if(damage=="missing current viewer")data.presentation.CurrentViewerId=null;
             if(damage=="wrong current viewer") {data.presentation.CurrentViewerId="ai"; data.presentation.Vision.Add(new MatchVisionData {PlayerId="ai"});}
-            if(damage=="wrong content")envelope.contentFingerprint=new string('b',64);
+            if(damage=="wrong content")envelope.schemaHash=new string('b',64);
             if(damage=="outside map")data.world.armies[0].q=10;
             if(damage=="missing living order") { data.turn.PlayerOrder=new[]{"eliminated","human"};data.turn.CurrentPlayerIndex=1; }
             if(damage=="only one living player") data.world.players.Single(p=>p.id=="ai").eliminated=true;

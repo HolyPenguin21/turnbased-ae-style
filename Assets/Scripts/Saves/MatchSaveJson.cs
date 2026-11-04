@@ -29,14 +29,14 @@ namespace Game.Saves
             Check(value, typeof(T), "$", 0);
             return (T)Build(value, typeof(T));
         }
-        private static FieldInfo[] Fields(Type type)
+        internal static FieldInfo[] Fields(Type type)
         {
             if (type == typeof(object) || type.IsInterface || type.IsAbstract || typeof(Delegate).IsAssignableFrom(type)
                 || typeof(IEnumerable).IsAssignableFrom(type)) throw Invalid("Unsupported DTO type: " + type.FullName);
             return Array.FindAll(type.GetFields(BindingFlags.Instance | BindingFlags.Public),
                 f => !f.IsDefined(typeof(NonSerializedAttribute), false));
         }
-        private static Type ItemType(Type type) => type.IsArray ? type.GetElementType()
+        internal static Type ItemType(Type type) => type.IsArray ? type.GetElementType()
             : type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>) ? type.GetGenericArguments()[0] : null;
         private static object Build(object value, Type type)
         {
@@ -130,6 +130,13 @@ namespace Game.Saves
             if (root == null || !root.TryGetValue("version", out var value)) throw Invalid("Missing file version.");
             Check(value, typeof(int), "version", 0);
             return int.Parse(((Number)value).Text, CultureInfo.InvariantCulture);
+        }
+        // Header text read before the strict shape check, so a different save format reports
+        // as unsupported instead of as a damaged file.
+        internal static string TopLevelText(string json, string field)
+        {
+            var root = new Parser(json).Read() as Dictionary<string, object>;
+            return root != null && root.TryGetValue(field, out var value) ? value as string : null;
         }
         private static ArgumentException Invalid(string message) => new ArgumentException("Invalid saved match JSON: " + message);
         private static void Check(object value, Type type, string path, int depth)
