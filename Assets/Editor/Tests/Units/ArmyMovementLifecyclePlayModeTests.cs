@@ -110,14 +110,16 @@ namespace Game.EditorTests
         private static void Field(object obj, string name, object value) =>
             obj.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(obj, value);
 
-        private ArmyData Army(bool air = true, int count = 1, HexCoord? hex = null)
+        private ArmyData Army(bool air = true, int count = 1, HexCoord? hex = null,
+            ArmyController controller = null, PlayerSetupData owner = null)
         {
-            var army = new ArmyData { Owner = _owner, Name = "mover", Hex = hex ?? _origin, IsAirArmy = air };
+            owner = owner ?? _owner;
+            var army = new ArmyData { Owner = owner, Name = "mover", Hex = hex ?? _origin, IsAirArmy = air };
             for (int i = 0; i < count; i++)
-                army.Members.Add(new UnitData { Owner = _owner, Name = "unit", IsAviation = air,
+                army.Members.Add(new UnitData { Owner = owner, Name = "unit", IsAviation = air,
                     MoveMax = 5, MoveCurrent = 5, ActivationApCost = 1, LaunchEnergyCost = air ? 2 : 0,
                     HitPointsCurrent = 5, HitPointsMax = 5 });
-            var controller = NewObject("mover").AddComponent<ArmyController>();
+            controller = controller ?? NewObject("mover").AddComponent<ArmyController>();
             controller.SetData(army);
             army.Controller = controller;
             Field(controller, "stepDuration", 0f);
@@ -232,6 +234,59 @@ namespace Game.EditorTests
             Assert.That(mover.Members[0].MoveCurrent, Is.EqualTo(5));
             Assert.That(enemy.Members[0].IsHidden, Is.True);
             Assert.That(_selection.IsBattleActive, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator SelectedMoverReplacesFriendlyMarkerOnlyAtItsPositionOnSharedHex()
+        {
+            var config = ScriptableObject.CreateInstance<GameConfig>();
+            Field(_selection, "gameConfig", config);
+            try
+            {
+                var mover = Army(air: false, controller: LayoutMarker());
+                var friendly = Army(air: false, hex: _first, controller: LayoutMarker());
+                var enemy = Army(hex: _first, controller: LayoutMarker(),
+                    owner: new PlayerSetupData { PlayerId = "rival", Nickname = "rival", ColorIndex = 1 });
+                mover.Controller.Visual.SetVisible(false);
+                friendly.Controller.Visual.SetVisible(false);
+                enemy.Controller.Visual.SetVisible(false);
+                Field(_selection, "_selectedArmy", mover.Controller);
+                _selection.enabled = true;
+
+                Vector3 origin = mover.Controller.transform.position;
+                Vector3 enemyPosition = enemy.Controller.transform.position;
+                Assert.That(friendly.Controller.transform.position, Is.Not.EqualTo(enemyPosition));
+                Field(mover.Controller, "stepDuration", 10f);
+                Assert.That(_selection.IssueMoveOrder(mover.Controller, _first), Is.EqualTo(MoveOrderResult.Started));
+                for (int frame = 0; frame < 120 && mover.Controller.transform.position == origin; frame++)
+                    yield return null;
+
+                Assert.That(mover.Hex, Is.EqualTo(_first));
+                Assert.That(mover.Controller.transform.position, Is.Not.EqualTo(origin));
+                Assert.That(mover.Controller.Visual.IsVisible, Is.True);
+                Assert.That(friendly.Controller.Visual.IsVisible, Is.True, "Keep the resident visible in transit.");
+                Assert.That(enemy.Controller.Visual.IsVisible, Is.True);
+
+                // Model a marker whose visible position differs from its settled layout slot.
+                Vector3 meetingPoint = friendly.Controller.transform.position + new Vector3(0f, 0f, 0.1f);
+                friendly.Controller.SetLayoutPosition(meetingPoint, false);
+                Vector3? arrivalPosition = null;
+                mover.Movement.Completed += _ => arrivalPosition = mover.Controller.transform.position;
+                Field(mover.Controller, "stepDuration", 0f);
+                yield return Settled(mover);
+
+                Assert.That(arrivalPosition, Is.EqualTo(meetingPoint));
+                Assert.That(mover.Controller.Visual.IsVisible, Is.True);
+                Assert.That(friendly.Controller.Visual.IsVisible, Is.False);
+                Assert.That(enemy.Controller.Visual.IsVisible, Is.True);
+                Assert.That(enemy.Controller.transform.position, Is.EqualTo(enemyPosition));
+            }
+            finally
+            {
+                _selection.enabled = false;
+                Field(_selection, "gameConfig", null);
+                Object.Destroy(config);
+            }
         }
 
         [UnityTest]

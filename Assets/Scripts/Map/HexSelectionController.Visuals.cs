@@ -426,6 +426,17 @@ namespace Game.Map
             return index >= 0 ? ToWorldOffset(layout.ArmyOffsets[index]) : Vector3.zero;
         }
 
+        private static ArmyController FindVisibleArrivalMarker(HexCoord hex, ArmyController mover)
+        {
+            foreach (ArmyData army in ArmyRegistry.At(hex))
+            {
+                ArmyController marker = army.Controller;
+                if (marker != null && marker.CanAnchorArrival(mover, hex))
+                    return marker;
+            }
+            return null;
+        }
+
         // Armies with zero members don't exist for layout/visibility purposes — a freshly
         // created army (see CreateArmyMarker) or one just emptied out by ArmyViewerModalUI's
         // drag-between-armies flow is invisible until/unless it has at least one unit again.
@@ -480,7 +491,7 @@ namespace Game.Map
                 .FindAll(a => a.IsAirfield && a.Members.Count > 0), hex).ConvertAll(a => a.Owner));
             foreach (PlayerSetupData owner in airfieldOwners)
             {
-                if (VisibleForLayout(armiesHere, hex).Exists(a => a.Owner == owner))
+                if (VisibleForLayout(armiesHere, hex).Exists(a => a.Owner == owner && a.Controller?.IsTraversingStep != true))
                     continue;
                 ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, owner);
                 if (garrison != null && !armiesHere.Contains(garrison))
@@ -520,13 +531,13 @@ namespace Game.Map
             // encountered first, but the currently selected one (if it's here) always wins
             // instead — so picking a different army via the hex-side button row (see
             // SelectArmyForOrders) actually shows, and later animates, THAT army, not an
-            // arbitrary one. An army that's mid-move stays visible regardless (it's the thing the
-            // player is watching travel), even if it isn't the representative one.
+            // arbitrary one. The travelling marker is shown separately until it reaches the
+            // hex, so an incoming selected army cannot replace the resident marker early.
             var representativeForOwner = new Dictionary<PlayerSetupData, ArmyData>();
             foreach (ArmyData army in visibleArmies)
-                if (!representativeForOwner.ContainsKey(army.Owner))
+                if (army.Controller?.IsTraversingStep != true && !representativeForOwner.ContainsKey(army.Owner))
                     representativeForOwner[army.Owner] = army;
-            if (_selectedArmy != null && visibleArmies.Contains(_selectedArmy.Data))
+            if (_selectedArmy != null && !_selectedArmy.IsTraversingStep && visibleArmies.Contains(_selectedArmy.Data))
                 representativeForOwner[_selectedArmy.Data.Owner] = _selectedArmy.Data;
 
             // Airfields have no independent marker (see airfieldOwners above, computed early
@@ -551,7 +562,7 @@ namespace Game.Map
                 // members or die behind fog, so everSeen never authorizes its live marker.
                 bool visible = visibleArmies.Contains(army)
                     && ((representativeForOwner.TryGetValue(army.Owner, out ArmyData representative)
-                            && representative == army) || controller.IsMoving)
+                            && representative == army) || controller.ShowsMovingMarker)
                     && (army.Owner == VisionSystem.CurrentViewer || CurrentViewerCanRenderLiveHex(hex))
                     // An enemy army every member of which is hidden from the current viewer
                     // (and undetected) shows no marker at all (see Game.Map.StealthSystem). A

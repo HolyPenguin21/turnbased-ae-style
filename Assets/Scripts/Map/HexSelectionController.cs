@@ -335,37 +335,14 @@ namespace Game.Map
 
         // Moved to HexSelectionController.Visuals.cs — see that file.
 
-        private void ObserveMovingArmyStep(ArmyData army, HexCoord from, HexCoord to, bool completed)
+        private void ShowArmyDepartingVisibleHex(ArmyData army, HexCoord from)
         {
-            if (army == null || GameSession.Players == null)
-                return;
-
-            bool startsInCurrentView = false;
-            foreach (PlayerSetupData viewer in GameSession.Players)
-            {
-                if (!HumanVisualMemory.Tracks(viewer) || viewer == army.Owner)
-                    continue;
-                bool observed = VisionSystem.IsVisible(viewer, from) || VisionSystem.IsVisible(viewer, to);
-                if (!observed)
-                    continue;
-                startsInCurrentView |= viewer == VisionSystem.CurrentViewer && VisionSystem.IsVisible(viewer, from);
-                if (!completed)
-                    continue;
-            }
-
-            if (completed)
-                RefreshAllVisibility();
-            // Same stealth rule as ReconcileHexVisualState: an enemy army fully hidden from the
-            // current viewer shows no marker, even while walking through their vision.
-            bool hiddenFromCurrentViewer = army.Owner != VisionSystem.CurrentViewer
-                && StealthSystem.ArmyFullyHiddenFrom(army, VisionSystem.CurrentViewer);
-            if (army.Controller != null && army.Controller.Visual != null)
-            {
-                if (!completed && startsInCurrentView && !hiddenFromCurrentViewer)
-                    army.Controller.Visual.SetVisible(true);
-                else if (completed)
-                    army.Controller.Visual.SetVisible(VisionSystem.IsVisibleToCurrentViewer(to) && !hiddenFromCurrentViewer);
-            }
+            // Keep an observed enemy mover visible as it leaves the viewer's vision.
+            PlayerSetupData viewer = VisionSystem.CurrentViewer;
+            if (army?.Controller?.Visual != null && GameSession.Players != null
+                && viewer != army.Owner && GameSession.Players.Contains(viewer) && HumanVisualMemory.Tracks(viewer)
+                && VisionSystem.IsVisible(viewer, from) && !StealthSystem.ArmyFullyHiddenFrom(army, viewer))
+                army.Controller.Visual.SetVisible(true);
         }
 
         // Moved to HexSelectionController.Visuals.cs — see that file.

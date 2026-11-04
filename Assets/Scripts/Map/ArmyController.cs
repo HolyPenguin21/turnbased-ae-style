@@ -39,6 +39,16 @@ namespace Game.Map
         public HexCoord CurrentHex => Data?.Movement?.IsBusy == true ? Data.Movement.CurrentHex : Data.Hex;
         private ArmyMovementOperation _presentedMovement;
         private System.Action<ArmyMovementResult> _movementTermination;
+        private int _presentedSteps;
+        // The registry enters each hex before its marker gets there.
+        internal bool IsTraversingStep => _presentedMovement != null && _presentedMovement.EnteredSteps > _presentedSteps;
+        internal bool ShowsMovingMarker => IsMoving
+            && (_presentedMovement == null || _presentedMovement.EnteredSteps == 0 || IsTraversingStep);
+
+        internal bool CanAnchorArrival(ArmyController mover, HexCoord hex) => this != mover
+            && isActiveAndEnabled && !IsTraversingStep && Visual != null && Visual.IsVisible
+            && Data != null && Data.Owner == mover.Data.Owner && Data.Hex.Equals(hex);
+
         internal int MovementGeneration => _motionEpoch;
         internal bool PresentsMovement(ArmyMovementOperation operation) => operation != null && IsMoving && ReferenceEquals(_presentedMovement, operation);
 
@@ -322,7 +332,8 @@ namespace Game.Map
             System.Action<HexCoord, HexCoord> onStepStarted = null,
             System.Action<HexCoord, HexCoord> onStepCompleted = null,
             System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync = null,
-            System.Action onSettled = null, bool settle = true, System.Action onCancelled = null)
+            System.Action onSettled = null, bool settle = true, System.Action onCancelled = null,
+            System.Func<HexCoord, ArmyController> findArrivalMarker = null)
         {
             if (operation == null || !operation.IsBusy || Data == null || !ReferenceEquals(Data.Movement, operation)) return;
             if (_presentedMovement?.IsBusy == true) return;
@@ -338,6 +349,7 @@ namespace Game.Map
             int epoch = ++_motionEpoch;
             _afterMovement = null;
             _presentedMovement = operation;
+            _presentedSteps = 0;
             System.Action<ArmyMovementResult> terminated = null;
             terminated = result =>
             {
@@ -355,13 +367,14 @@ namespace Game.Map
             _layoutTransition = false;
             _arrivalLayoutPosition = null;
             var movement = StartCoroutine(PresentMovement(operation, map, resolveOffset, shouldStopEarly,
-                onStepStarted, onStepCompleted, resolveStepAsync, settle));
+                onStepStarted, onStepCompleted, resolveStepAsync, settle, findArrivalMarker));
             if (_motionEpoch == epoch && ReferenceEquals(_presentedMovement, operation)) _movement = movement;
         }
         private IEnumerator PresentMovement(ArmyMovementOperation operation, HexMap map,
             System.Func<HexCoord, Vector3> resolveOffset, System.Func<HexCoord, bool> shouldStopEarly,
             System.Action<HexCoord, HexCoord> onStepStarted, System.Action<HexCoord, HexCoord> onStepCompleted,
-            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync, bool settle)
+            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync, bool settle,
+            System.Func<HexCoord, ArmyController> findArrivalMarker)
         {
             try
             {
@@ -369,8 +382,26 @@ namespace Game.Map
                 if (!operation.IsBusy || !ReferenceEquals(_presentedMovement, operation)) yield break;
                 SetSelected(false);
                 transform.localScale = _defaultScale;
-                yield return operation.Run(hex => StepTo(map.HexToWorld(hex) + resolveOffset(hex), operation),
-                    onStepStarted, onStepCompleted, resolveStepAsync, shouldStopEarly);
+                HexCoord arrivalHex = default;
+                Vector3 layoutPosition = default;
+                ArmyController arrivalMarker = null;
+                // Follow the resident marker if it is still easing into its layout slot.
+                Vector3 TargetPosition() => arrivalMarker != null && arrivalMarker.CanAnchorArrival(this, arrivalHex)
+                    ? arrivalMarker.transform.position : layoutPosition;
+
+                yield return operation.Run(hex =>
+                {
+                    arrivalHex = hex;
+                    layoutPosition = map.HexToWorld(hex) + resolveOffset(hex);
+                    arrivalMarker = findArrivalMarker?.Invoke(hex);
+                    return StepTo(TargetPosition, operation);
+                }, onStepStarted, (from, to) =>
+                {
+                    // Snap and reconcile together so both markers never draw at the endpoint.
+                    transform.position = TargetPosition();
+                    _presentedSteps = operation.EnteredSteps;
+                    onStepCompleted?.Invoke(from, to);
+                }, resolveStepAsync, shouldStopEarly);
             }
             finally
             {
@@ -383,17 +414,17 @@ namespace Game.Map
             }
         }
 
-        private IEnumerator StepTo(Vector3 targetPosition, ArmyMovementOperation operation)
+        private IEnumerator StepTo(System.Func<Vector3> targetPosition, ArmyMovementOperation operation)
         {
             Vector3 start = transform.position;
             float elapsed = 0f;
             while (operation.IsBusy && ReferenceEquals(_presentedMovement, operation) && elapsed < stepDuration)
             {
                 elapsed += Time.deltaTime;
-                transform.position = Vector3.Lerp(start, targetPosition, elapsed / stepDuration);
+                if (elapsed >= stepDuration) yield break;
+                transform.position = Vector3.Lerp(start, targetPosition(), elapsed / stepDuration);
                 yield return null;
             }
-            if (operation.IsBusy && ReferenceEquals(_presentedMovement, operation)) transform.position = targetPosition;
         }
     }
 }

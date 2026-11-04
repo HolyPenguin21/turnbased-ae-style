@@ -473,12 +473,13 @@ namespace Game.Map
                     RestackArmiesOn(army.Hex, null);
             };
             movingArmy.PlayMovement(movement, map, hex => ResolveArmyOffset(hex, movingArmy),
-                onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
-                onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true),
+                onStepStarted: (from, to) => ShowArmyDepartingVisibleHex(army, from),
+                onStepCompleted: (from, to) => RefreshAllVisibility(),
                 resolveStepAsync: aviationCombatPresenter != null
                     ? (System.Func<HexCoord, HexCoord, ArmyController.StepResolutionOutcome, System.Collections.IEnumerator>)
                         ((from, to, outcome) => aviationCombatPresenter.ResolveStep(army, to, outcome)) : null,
-                onSettled: reconcile, onCancelled: reconcile);
+                onSettled: reconcile, onCancelled: reconcile,
+                findArrivalMarker: hex => FindVisibleArrivalMarker(hex, movingArmy));
             RestackArmiesOn(originHex, movingArmy);
 
             HidePathPreview();
