@@ -301,6 +301,16 @@ namespace Game.Setup
             List<HexCoord> candidates = map.AllCoords.Where(h => map.CanEnter(h))
                 .Where(h => !excluded.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null && !guaranteedSet.Contains(h))
                 .ToList();
+            EventDefinition library = eventCatalog.events.FirstOrDefault(e => e?.grantsRandomCollectionCard == true);
+            // The mandatory Library still needs a home on resource-saturated maps. Share
+            // one resource hex only when neither an ordinary nor a guaranteed site is legal.
+            // The one reserved candidate is consumed by the Library before ordinary events.
+            if (library != null && candidates.Count == 0 && !guaranteedHexes.Any(h => CanPlaceEventAt(h, library)))
+            {
+                List<HexCoord> fallback = map.AllCoords.Where(h => CanPlaceEventAt(h, library)).ToList();
+                if (fallback.Count > 0)
+                    candidates.Add(fallback[Random.Range(0, fallback.Count)]);
+            }
             if (candidates.Count == 0 && guaranteedHexes.Count == 0)
                 return;
 
@@ -317,7 +327,12 @@ namespace Game.Setup
             int target = Mathf.Clamp(Random.Range(min, max + 1), guaranteedHexes.Count,
                 Mathf.Min(candidates.Count + guaranteedHexes.Count, eventCatalog.events.Count));
 
-            List<EventDefinition> chosenEvents = PickRandomDistinct(eventCatalog.events, target);
+            // Reserve one place in the existing budget for the Library. Place it first so
+            // ordinary events cannot use up its legal hexes through the spacing rule.
+            List<EventDefinition> chosenEvents = PickRandomDistinct(
+                eventCatalog.events.Where(e => e != library).ToList(), target - (library != null ? 1 : 0));
+            if (library != null && target > 0)
+                chosenEvents.Insert(0, library);
             if (chosenEvents.Count == 0)
                 return;
 
