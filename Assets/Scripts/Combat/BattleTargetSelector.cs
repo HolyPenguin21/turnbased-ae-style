@@ -318,9 +318,8 @@ namespace Game.Combat
                 }
 
                 bool notYetActed = turnOrder != null && turnOrder.IndexOf(candidate) > turnIndex;
-                int defenderBonus = battleDefender != null && battleDefender.Members.Contains(candidate)
-                    ? battleDefenderDefenseBonus : 0;
-                defenderBonus += BattleRules.GetGuardedDefenseBonus(grid, candidate, battleDefender);
+                int defenderBonus = BattleRules.GetTotalDefenseBonus(
+                    grid, candidate, battleDefender, battleDefenderDefenseBonus);
                 UnitData guard = BattleRules.FindBodyguard(grid, candidate, actor,
                     u => u.HitPointsCurrent, reactions);
                 float counter = ExpectedCounterDamage(grid, actor, guard ?? candidate, actor.HitPointsCurrent,

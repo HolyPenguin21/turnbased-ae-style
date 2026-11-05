@@ -91,7 +91,7 @@ namespace Game.UI
                 },
                 ShowAiThought, defenderIsRetreating,
                 defense.TerrainBonus, defense.ConstructionBonus,
-                defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve,
+                automateHumanSides: _fastResolve,
                 interceptor: interceptor, isCounterattack: isCounterattack, tacticsCritical: _tacticsCritical,
                 groundHitEffects: (victim, damage) =>
                     engine.PreviewGroundHitEffects(attacker, victim, damage, isCounterattack),

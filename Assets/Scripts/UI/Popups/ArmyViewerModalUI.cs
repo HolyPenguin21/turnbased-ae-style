@@ -69,7 +69,7 @@ namespace Game.UI
         public int CurrentArmyDefenseBonus =>
             _currentArmy == null || AviationRules.IsAirArmy(_currentArmy)
                 ? 0
-                : _currentArmy.VisualSnapshotDefenseBonus ?? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map));
+                : _currentArmy.VisualSnapshotDefenseBonus ?? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map, _currentArmy.Owner));
 
         private readonly List<ArmyUnitCardUI> _cards = new List<ArmyUnitCardUI>();
         private ArmyData _currentArmy;
@@ -1040,12 +1040,8 @@ namespace Game.UI
             int buildingDefMod = 0;
             if (!isAirArmy && _currentArmy.VisualSnapshotConstructionDefense.HasValue)
                 buildingDefMod = _currentArmy.VisualSnapshotConstructionDefense.Value;
-            else
-            {
-                BuildingData building = BuildingRegistry.FindAt(_currentArmy.Hex);
-                if (!isAirArmy && building != null && building.IsBase)
-                    buildingDefMod = building.Defense;
-            }
+            else if (!isAirArmy)
+                buildingDefMod = DisruptionRules.OwnBaseDefense(_currentArmy.Hex, _currentArmy.Owner);
 
             // Same "slowest member caps the whole army" rule as ArmyData.CurrentMovement/
             // MaxMovement, just recomputed against `members` instead of reading those

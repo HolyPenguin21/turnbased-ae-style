@@ -46,8 +46,7 @@ namespace Game.Map
             }
             else
             {
-                var building = BuildingRegistry.FindAt(hex);
-                ConstructionDefense = !IsAirArmy && building != null && building.IsBase ? building.Defense : 0;
+                ConstructionDefense = IsAirArmy ? 0 : Game.Combat.DisruptionRules.OwnBaseDefense(hex, source.Owner);
                 DefenseBonus = (IsAirArmy ? 0 : MapObservationSystem.TerrainDefenseAt(hex)) + ConstructionDefense.Value;
             }
         }

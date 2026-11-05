@@ -196,7 +196,7 @@ namespace Game.EditorTests
             UnitData hero=BattleTurnOrder.LivingCommanderOnGrid(state.Grid,state.OwningArmy(actor));
             UnitData enemyHero=BattleTurnOrder.LivingCommanderOnGrid(state.Grid,state.OwningArmy(target));
             int defense=(target.IsHero?target.FateMax:target.Defense)
-                +BattleRules.GetGuardedDefenseBonus(state.Grid,target,state.Defender);
+                +engine.GetDefenseBreakdown(target,null).TotalBonus;
             var duel=new BattleChallengeSession(BattleChallengeMode.GroundCombat,actor,target,actor.Attack,defense,
                 hero?.Fate??0,enemyHero?.Fate??0,AbilityMagnitudes.Default,
                 rollTokens:n=>BattleSimulationKernel.RollTokens(n,rng));

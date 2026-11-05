@@ -55,12 +55,15 @@ namespace Game.EditorTests
                 Assert.That(all.Select(e => e.cardKey).Distinct().Count(), Is.EqualTo(all.Count), deck.deckName);
                 Assert.That(all.All(e => cards.ContainsKey(e.cardKey) && e.count > 0
                     && e.count <= DeckRules.CopyLimit(cards[e.cardKey])), Is.True, deck.deckName);
-                Assert.That(deck.cards.Sum(e => cards[e.cardKey].deckPointCost * e.count), Is.InRange(98, 100));
+                // Owner decision 2026-11-05: Vessels AI decks carry no Laboratory (its points went to units).
+                bool vessels = deck.faction == Faction.Vessels;
+                Assert.That(deck.cards.Sum(e => cards[e.cardKey].deckPointCost * e.count), Is.InRange(98, 100), deck.deckName);
                 Assert.That(deck.cards.Where(e => cards[e.cardKey].cardType == CardType.Base).Sum(e => e.count), Is.EqualTo(1));
                 Assert.That(deck.cards.Where(e => cards[e.cardKey].cardType == CardType.Unit && !cards[e.cardKey].isAviation
                     && AbilityParams.GetBestRecceRadius(cards[e.cardKey].grantedAbilities) > 0).Sum(e => e.count), Is.GreaterThanOrEqualTo(4));
-                foreach (string facility in new[] { "neutral.facility.lab", "neutral.facility.factory", "neutral.facility.intel" })
+                foreach (string facility in new[] { "neutral.facility.factory", "neutral.facility.intel" })
                     Assert.That(deck.cards.Single(e => e.cardKey == facility).count, Is.EqualTo(1));
+                Assert.That(deck.cards.Count(e => e.cardKey == "neutral.facility.lab"), Is.EqualTo(vessels ? 0 : 1), deck.deckName);
                 var heroes = deck.cards.Select(e => cards[e.cardKey]).Where(c => c.cardType == CardType.Hero).ToList();
                 Assert.That(heroes.Any(c => c.grantedAbilities.Contains(UnitAbilities.Researcher)), Is.True);
                 Assert.That(heroes.Any(c => c.grantedAbilities.Contains(UnitAbilities.Assembler)), Is.True);

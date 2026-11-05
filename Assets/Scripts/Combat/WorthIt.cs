@@ -3,6 +3,7 @@ using System.Linq;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
+using Game.Players;
 using Game.Terrain;
 using Game.Units;
 using UnityEngine;
@@ -354,25 +355,15 @@ namespace Game.Combat
             AbilityMagnitudes? magnitudes = null) =>
             Estimate(attacker, enemyUnits, hexDefenseBonus, defenderCommander, magnitudes).WinChance;
 
-        // The hex's own contribution alone, no army — terrain.defenseModifier (see
-        // TerrainTypeEntry's own comment: added to the defender's tokens pool only, in every real
-        // fight) plus a Base building's own Defense stat if one sits here (see
-        // BuildingData.IsBase — only Base buildings carry this, per BattingScreenUI.Combat.cs's
-        // own gate). Needed on its own for a Hex Event's card-stat guard (AiMapMemory.
-        // KnownEventGuardStrengthAt) — that guard is never a live ArmyData sitting on the hex until
-        // Explore is chosen, so there's no army to hand over, only the hex's own bonus to add
-        // on top of the guard's own card total.
-        public static float HexDefenseBonus(HexCoord hex, HexMap map)
-        {
-            float bonus = 0f;
-            if (map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) && terrain != null)
-                bonus += terrain.defenseModifier;
-
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building != null && building.IsBase)
-                bonus += building.Defense;
-
-            return bonus;
-        }
+        // The hex's bonus for a defender owned by `defenderOwner`: terrain (defender's pool only, in
+        // every real fight) plus that owner's own Base Defense. Same rule as a live battle
+        // (BattleRulesSnapshot + DisruptionRules.BuildingDefenseAtEncounterStart), except that
+        // Disruption comes only from the caller's known incoming carrier.
+        // Never scans the hex's other armies (a hidden carrier is not revealed). Air armies are
+        // gated by the caller.
+        public static float HexDefenseBonus(HexCoord hex, HexMap map, PlayerSetupData defenderOwner,
+            ArmyData incomingAttacker = null)
+            => BattleRules.TerrainDefenseBonus(hex, map)
+                + DisruptionRules.KnownBuildingDefenseFor(hex, defenderOwner, incomingAttacker);
     }
 }

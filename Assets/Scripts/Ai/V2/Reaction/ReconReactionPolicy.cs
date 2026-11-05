@@ -241,7 +241,7 @@ namespace Game.Ai.V2
                 return false;
             List<WorthIt.DefenderProfile> profiles = visible.Select(WorthIt.FromLiveUnit).ToList();
             // CURRENTLY visible target, so the full live hex bonus is honest here.
-            float hexBonus = WorthIt.HexDefenseBonus(h, map);
+            float hexBonus = WorthIt.HexDefenseBonus(h, map, target.Owner, army);
             if (!WorthIt.CanDamageAll(army, profiles, hexBonus))
                 return false;
             WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus,

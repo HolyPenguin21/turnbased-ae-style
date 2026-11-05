@@ -262,13 +262,12 @@ namespace Game.UI
 
             int terrainDefMod = 0;
             int buildingDefMod = 0;
+            // Same values the battle will freeze (BattleRulesSnapshot): defender only, own Base,
+            // the incoming attacker's Disruption applied.
             if (defender != null && !AviationRules.IsAirArmy(defender))
             {
-                if (map != null && map.TryGetTerrainAt(defender.Hex, out TerrainTypeEntry terrain))
-                    terrainDefMod = terrain.defenseModifier;
-                BuildingData building = BuildingRegistry.FindAt(defender.Hex);
-                if (building != null && building.IsBase)
-                    buildingDefMod = building.Defense;
+                terrainDefMod = BattleRules.TerrainDefenseBonus(defender.Hex, map);
+                buildingDefMod = DisruptionRules.BuildingDefenseAtEncounterStart(defender.Hex, defender, attacker);
             }
 
             PopulateParticipantSlot(attacker, attackerFactionLogo, attackerCommanderArt,
