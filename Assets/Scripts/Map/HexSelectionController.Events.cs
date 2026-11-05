@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Ai;
 using Game.Aviation;
 using Game.Cards;
@@ -377,6 +378,34 @@ namespace Game.Map
 
             PlayerRoot root = PlayerRootRegistry.FindFor(recipient.Owner);
             var grantedText = new List<string>();
+            if (entry.Definition?.grantsBase == true)
+            {
+                // Only a surviving ground visitor that completed exploration can restore it.
+                // In particular, winning neutral guards must never receive the base.
+                if (!entry.Triggered || !recipient.Hex.Equals(hex) || recipient.Members.Count == 0
+                    || !ArmyRegistry.IsRegistered(recipient) || AviationRules.IsAirArmy(recipient)
+                    || AviationRules.IsAirfield(recipient)
+                    || BattleInitiator.FindEnemyAt(hex, recipient.Owner) != null) return;
+                // The guard fight is complete even if restoring the base fails. Persist this
+                // using the existing resolved-guard list so a retry/load cannot respawn it.
+                entry.ResolvedGuardMembers.Clear();
+                var catalog = cardHandUI?.StartingDeckCatalog?.GetCatalog(recipient.Owner.Faction);
+                CardDefinition baseCard = catalog?.ForType(CardType.Base)
+                    .FirstOrDefault(card => !card.deckBuilderExcluded);
+                var outcome = InfrastructureActions.TryClaimEventBase(map, baseCard, hex, recipient.Owner, this);
+                if (!outcome.Ok)
+                {
+                    Debug.LogError("Event base reward could not be granted: " + outcome.FailReason);
+                    entry.Triggered = false;
+                    HexEventRegistry.MarkSkipped(hex, recipient.Owner);
+                    VisionSystem.NotifyContentChanged(hex);
+                    if (recipient.Owner.IsHuman)
+                        eventRewardPopup?.ShowMessage(EventChoicePopupUI.ResolvePortrait(recipient), entry.Definition.image,
+                            outcome.FailReason + " Revisit the command post to try again.");
+                    return;
+                }
+                grantedText.Add("a base on the event hex");
+            }
             foreach (RewardEntry reward in entry.SelectedRewards)
             {
                 if (reward.type != RewardType.Resources)

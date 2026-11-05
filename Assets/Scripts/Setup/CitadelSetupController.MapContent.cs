@@ -127,10 +127,8 @@ namespace Game.Setup
             return excluded;
         }
 
-        // Every player's citadel hex plus its immediate neighbours — used by GenerateNeutralArmies
-        // only (GenerateRandomEvents used to share this too, but now uses the narrower
-        // BuildCitadelHexExclusion below instead — the user's own later call to let events land
-        // next to a starting citadel, just never on it).
+        // Every player's citadel hex plus its immediate neighbours — used by neutral armies
+        // and base-granting events. Ordinary events may still appear next to a citadel.
         private HashSet<HexCoord> BuildCitadelExclusion()
         {
             var excluded = new HashSet<HexCoord>();
@@ -326,13 +324,23 @@ namespace Game.Setup
             var placedHexes = new List<HexCoord>();
             int eventIndex = 0;
 
-            // Guaranteed hexes claim the front of chosenEvents first, in random order (reusing
+            // Guaranteed hexes claim compatible chosenEvents first, in random order (reusing
             // PickRandomDistinct purely as a shuffle here) — the plain pass below draws from
             // whatever's left, so the two passes never compete for the same EventDefinition.
-            foreach (HexCoord hex in PickRandomDistinct(guaranteedHexes, guaranteedHexes.Count))
+            // Fill the most constrained guaranteed hexes first so a distant ruin does not
+            // take the last ordinary event that a citadel's neighbour could receive.
+            foreach (HexCoord hex in PickRandomDistinct(guaranteedHexes, guaranteedHexes.Count)
+                .OrderBy(h => chosenEvents.Count(definition => CanPlaceEventAt(h, definition))))
             {
                 if (eventIndex >= chosenEvents.Count)
                     break;
+                int eligibleIndex = chosenEvents.FindIndex(eventIndex, definition => CanPlaceEventAt(hex, definition));
+                if (eligibleIndex < 0)
+                    continue;
+                // Leave a restricted event in the pool for a later, legal hex rather than
+                // discarding it or removing ordinary events from a citadel's neighbouring ruins.
+                (chosenEvents[eventIndex], chosenEvents[eligibleIndex]) =
+                    (chosenEvents[eligibleIndex], chosenEvents[eventIndex]);
                 placedHexes.Add(hex);
                 PlaceEvent(hex, chosenEvents[eventIndex]);
                 eventIndex++;
@@ -341,7 +349,7 @@ namespace Game.Setup
             for (; eventIndex < chosenEvents.Count; eventIndex++)
             {
                 List<HexCoord> pool = candidates.Where(h =>
-                    !placedHexes.Contains(h) &&
+                    CanPlaceEventAt(h, chosenEvents[eventIndex]) && !placedHexes.Contains(h) &&
                     !placedHexes.Any(p => HexGridMath.Neighbors(p).Contains(h)))
                     .ToList();
                 if (pool.Count == 0)
@@ -375,9 +383,18 @@ namespace Game.Setup
             card != null && (card.cardType == CardType.Unit || card.cardType == CardType.Equipment
                 || card.cardType == CardType.Tactic);
 
+        private bool CanPlaceEventAt(HexCoord hex, EventDefinition definition)
+        {
+            if (map == null || !map.CanEnter(hex) || definition == null)
+                return false;
+            HashSet<HexCoord> excluded = definition.grantsBase
+                ? BuildCitadelExclusion() : BuildCitadelHexExclusion();
+            return !excluded.Contains(hex);
+        }
+
         private void PlaceEvent(HexCoord hex, EventDefinition definition)
         {
-            if (!map.CanEnter(hex)) return;
+            if (!CanPlaceEventAt(hex, definition)) return;
             EventVariant variant = definition.variants != null && definition.variants.Count > 0
                 ? definition.variants[Random.Range(0, definition.variants.Count)] : null;
             string chosenGuard = variant != null ? variant.guardArmyName : definition.guardArmyName;

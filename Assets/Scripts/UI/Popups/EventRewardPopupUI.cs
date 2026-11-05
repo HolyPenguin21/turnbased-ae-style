@@ -51,6 +51,8 @@ namespace Game.UI
                 return;
 
             CardDefinition rewardedCard = entry.ResolvedCardRewards.Select(r => r.card).FirstOrDefault(c => c != null);
+            if (entry.Definition.grantsBase && recipient != null)
+                rewardedCard = BuildingRegistry.FindAt(recipient.Hex)?.CatalogSource;
             Sprite art = rewardedCard != null ? (rewardedCard.detailArt != null ? rewardedCard.detailArt : rewardedCard.art) : null;
             ShowContent(false, EventChoicePopupUI.ResolvePortrait(recipient), art, BuildSummary(entry, recipient, libraryCardAddedToHand));
         }
@@ -122,6 +124,9 @@ namespace Game.UI
                     return $"Your hand is full. {cardList} is now in your permanent COLLECTION.";
                 return collectionSummary;
             }
+
+            if (entry.Definition.grantsBase)
+                return "The command post is secured. A base on this hex is now under your control, ready for deployment, production and upgrades.";
 
             bool hasResources = !string.IsNullOrEmpty(resourceList);
             bool hasCard = !string.IsNullOrEmpty(cardList);

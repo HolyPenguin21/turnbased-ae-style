@@ -523,3 +523,18 @@ MonoBehaviour:
     - guardArmyName: Event Heavy 07
       resourceCount: 0
       rewards: []
+  - authoredKey: event-abandoned-command-post
+    name: Abandoned command post
+    image: {fileID: 21300000, guid: a099d5bb44404095a7faa0d7b226ab34, type: 3}
+    description: A forgotten command post stands behind battered blast walls. Armed scavengers control its barracks, generators and communications equipment. Explore and defeat the guards to restore a level 1 base for your faction on this hex, without spending a card, resources or AP.
+    grantsBase: 1
+    variants:
+    - guardArmyName: Event Light 01
+      resourceCount: 0
+      rewards: []
+    - guardArmyName: Event Medium 01
+      resourceCount: 0
+      rewards: []
+    - guardArmyName: Event Heavy 01
+      resourceCount: 0
+      rewards: []

@@ -58,7 +58,10 @@ namespace Game.Cards
         // Library reward: one permanent collection copy, plus a match card if the hand has room.
         // Unlike fixed card rewards, it is selected when the visitor claims the event, never at placement.
         public bool grantsRandomCollectionCard;
-        public bool CanVisit(PlayerSetupData player) => !grantsRandomCollectionCard || player?.IsHuman == true;
+        // A map reward, not a Base card in the visitor's hand. Neutral guards cannot claim it.
+        public bool grantsBase;
+        public bool CanVisit(PlayerSetupData player) => (!grantsRandomCollectionCard || player?.IsHuman == true)
+            && (!grantsBase || player != null && !player.IsNeutral);
         // Ordered light / medium / heavy. The map selects one uniformly at placement.
         public List<EventVariant> variants = new List<EventVariant>();
         // Legacy fields remain for assets/tests not yet converted to variants.

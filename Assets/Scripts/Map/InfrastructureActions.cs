@@ -408,6 +408,58 @@ namespace Game.Map
             return InfrastructureBuildOutcome.Success(building, slotIndex, apBefore - root.ActionPoints);
         }
 
+        // Event completion restores a base without a card, payment or hero requirement.
+        // Keep the canonical spawn path (slots, garrison, airfield, vision and faction visual).
+        public static InfrastructureBuildOutcome TryClaimEventBase(HexMap map, CardDefinition definition,
+            HexCoord hex, PlayerSetupData owner, HexSelectionController presentation = null)
+        {
+            if (map == null || !map.CanEnter(hex) || owner == null || owner.IsNeutral
+                || definition == null || definition.cardType != CardType.Base || definition.faction != owner.Faction)
+                return InfrastructureBuildOutcome.Fail("The command post cannot be restored here.");
+            if (BattleInitiator.FindEnemyAt(hex, owner) != null)
+                return InfrastructureBuildOutcome.Fail("Defeat all hostile forces before restoring the command post.");
+            BuildingData existing = BuildingRegistry.FindAt(hex);
+            if (existing != null && existing.Owner != owner)
+                return InfrastructureBuildOutcome.Fail("An enemy building occupies this hex.");
+            // A player may have built/captured a base here after skipping the event. Never
+            // replace it, reset its upgrades or duplicate its containers on completion.
+            if (existing?.IsBase == true && existing.HasTieredUnlock)
+                return InfrastructureBuildOutcome.Success(existing, -1, 0);
+            if (existing != null && (!CanMergeIntoResourceSite(existing)
+                || existing.FacilitySlots.Skip(BuildingData.DefaultTotalFacilitySlots).Any(f => f != null)))
+                return InfrastructureBuildOutcome.Fail("This building cannot be restored as a base.");
+
+            using var mutation = VisionSystem.BeginMutation();
+            bool hadGarrison = ArmyRegistry.AllAt(hex).Any(a => a.IsGarrison && a.Owner == owner);
+            bool hadAirfield = AviationRules.AirfieldsAt(hex, owner).Any(a => !a.IsCarrierContainer);
+            BuildingData building;
+            try { building = SpawnBaseDefinition(definition, hex, owner, map, presentation, false); }
+            catch (Exception e)
+            {
+                RollbackPartialSpawn(presentation, hex, owner, existing, hadGarrison, hadAirfield);
+                mutation.Discard();
+                Debug.LogError("Event base restoration failed: " + e.Message);
+                return InfrastructureBuildOutcome.Fail("The command post could not be restored.");
+            }
+            if (building == null)
+            {
+                mutation.Discard();
+                return InfrastructureBuildOutcome.Fail("The command post could not be restored.");
+            }
+            if (existing != null)
+            {
+                // Facility slot identity is stable; holes in a resource site are not an
+                // instruction to move the remaining facilities into different slots.
+                for (int slot = 0; slot < Math.Min(existing.FacilitySlots.Length, building.FacilitySlots.Length); slot++)
+                    building.FacilitySlots[slot] = existing.FacilitySlots[slot];
+                if (existing.Visual != null) Game.Core.UnityObjectLifetime.Destroy(existing.Visual.gameObject);
+            }
+            StealthSystem.RunChecksForNewVisionSource(building);
+            VisionSystem.NotifyContentChanged(hex);
+            VisionSystem.PublishAfterMutation(BaseFounded, building);
+            return InfrastructureBuildOutcome.Success(building, -1, 0);
+        }
+
         // Scripted spawn by definition is separate from playing an exact hand instance.
         internal static BuildingData SpawnBaseDefinition(CardDefinition definition, HexCoord hex,
             PlayerSetupData owner, HexMap map, HexSelectionController presentation, bool runVisionChecks)
