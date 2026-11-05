@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
@@ -505,6 +506,15 @@ namespace Game.Combat
                 return;
             BattleAi.ArrangeArmy(_state.Grid, army, frontRow, backRow, enemyArmy,
                 _magnitudes, _state.Defender, GetDefenderHexDefenseBonus(map));
+        }
+
+        public IEnumerator ArrangeAiArmyRoutine(ArmyData army, ArmyData enemyArmy, int frontRow, int backRow,
+            HexMap map)
+        {
+            bool CanCommit() => !_state.FinalizationApplied && Phase == BattleCommandPhase.Deployment
+                && army != null && (army == _state.Attacker || army == _state.Defender);
+            return BattleAi.ArrangeArmyRoutine(_state.Grid, army, frontRow, backRow, enemyArmy,
+                _magnitudes, _state.Defender, GetDefenderHexDefenseBonus(map), CanCommit);
         }
 
         public BattleAi.RetreatAssessment AssessAiRetreat(ArmyData army, ArmyData enemyArmy,

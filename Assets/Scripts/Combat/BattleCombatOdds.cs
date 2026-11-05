@@ -45,30 +45,27 @@ namespace Game.Combat
             float hitProbability = 0f;
             float killProbability = 0f;
             float rawHitProbability = 0f;
+            var profile = ChallengeResult.ModifierProfile.Of(attacker.Abilities, defender.TypeTags, defender.Abilities);
+            var guardProfile = interceptor != null
+                ? ChallengeResult.ModifierProfile.Of(attacker.Abilities, interceptor.TypeTags, interceptor.Abilities)
+                : default;
 
-            for (int a = 0; a <= attackTokens; a++)
+            // A - D has the same distribution as Binomial(attack + defense, .5) - defense.
+            // The shared kernel uses this identity too. Enumerate one pool, and build ability
+            // profiles once per exchange, rather than rescanning abilities for every token pair.
+            int totalTokens = attackTokens + defenseTokens;
+            for (int successes = 0; successes <= totalTokens; successes++)
             {
-                float pa = BattleSimulationKernel.BinomialHalfProbability(attackTokens, a);
-                if (pa <= 0f)
-                    continue;
-                for (int d = 0; d <= defenseTokens; d++)
-                {
-                    float probability = pa * BattleSimulationKernel.BinomialHalfProbability(defenseTokens, d);
-                    if (probability <= 0f)
-                        continue;
-
-                    int raw = Mathf.Max(0, a - d);
-                    if (raw > 0) rawHitProbability += probability;
-                    int damage = ChallengeResult.ApplyAbilityModifiers(raw, attacker, defender, magnitudes);
-                    if (interceptor != null && damage > 0)
-                        damage = BattleSimulationKernel.InterceptedDamage(raw, attacker.Abilities,
-                            interceptor.TypeTags, interceptor.Abilities, magnitudes);
-                    expected += probability * damage;
-                    if (damage > 0)
-                        hitProbability += probability;
-                    if (defenderHp > 0f && damage >= defenderHp)
-                        killProbability += probability;
-                }
+                float probability = BattleSimulationKernel.BinomialHalfProbability(totalTokens, successes);
+                if (probability <= 0f) continue;
+                int raw = Mathf.Max(0, successes - defenseTokens);
+                if (raw > 0) rawHitProbability += probability;
+                int damage = ChallengeResult.ApplyAbilityModifiers(raw, profile, magnitudes);
+                if (interceptor != null && damage > 0)
+                    damage = ChallengeResult.ApplyAbilityModifiers(raw, guardProfile, magnitudes);
+                expected += probability * damage;
+                if (damage > 0) hitProbability += probability;
+                if (defenderHp > 0f && damage >= defenderHp) killProbability += probability;
             }
 
             return new ExchangeOdds(expected, hitProbability, killProbability, rawHitProbability);

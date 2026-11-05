@@ -370,7 +370,7 @@ namespace Game.EditorTests
             typeof(BattleAi).GetMethod("RunOneRound", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new object[] { grid, hp, new List<UnitData> { first, second },
                     AbilityMagnitudes.Default, dealt, false, null, 0, null, null, null, null,
-                    null, null, null, false, null });
+                    null, null, null, false, null, null });
 
             Assert.That(expectedAnswer, Is.GreaterThan(0f));
             Assert.That(hp[first], Is.EqualTo(100f - expectedAnswer).Within(.0001f));

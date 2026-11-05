@@ -80,6 +80,43 @@ namespace Game.EditorTests
             Assert.That(Call(screen, "IsAutomatedSide", army), Is.False);
         }
 
+        [Test]
+        public void ReadyWhileAiDeploymentIsRunning_DoesNotSaveLayoutOrStartRound()
+        {
+            var screen = Shell<BattleScreenUI>();
+            var army = new ArmyData { Owner = new PlayerSetupData { IsHuman = true } };
+            var unit = new UnitData { Owner = army.Owner };
+            army.SavedArrangement[unit] = (4, 2);
+            Set(screen, "_localArmy", army);
+            Set(screen, "_arranging", true);
+            Set(screen, "_arrangeInteractive", true);
+            var pending = Shell<UnityEngine.Coroutine>();
+            GC.SuppressFinalize(pending); // this managed sentinel owns no native coroutine
+            Set(screen, "_aiArrangementRoutine", pending);
+            // No live grid is installed: reaching the old save/start path would fail.
+            Call(screen, "OnReadyClicked");
+            Assert.That(army.SavedArrangement[unit], Is.EqualTo((4, 2)));
+            Assert.That(Get(screen, "_arranging"), Is.True);
+        }
+
+        [Test]
+        public void StaleDeploymentCoroutine_DoesNotEnterTheReplacementEncounter()
+        {
+            var screen = Shell<BattleScreenUI>();
+            var oldEngine = Shell<BattleEngine>();
+            var replacement = Shell<BattleEngine>();
+            Set(screen, "_battleEngine", replacement);
+            var attacker = new ArmyData { Owner = new PlayerSetupData() };
+            Set(screen, "_battleState", new BattleState(default, attacker, null, new BattleGrid(), 1));
+            var pending = Shell<UnityEngine.Coroutine>(); GC.SuppressFinalize(pending);
+            Set(screen, "_aiArrangementRoutine", pending);
+            var routine = (IEnumerator)Call(screen, "ArrangeAiAndContinue", oldEngine);
+            Assert.That(routine.MoveNext(), Is.True, "initial UI frame yield");
+            Assert.That(routine.MoveNext(), Is.False, "old work must stop before entering either army's search");
+            Assert.That(Get(screen, "_battleEngine"), Is.SameAs(replacement));
+            Assert.That(Get(screen, "_aiArrangementRoutine"), Is.SameAs(pending));
+        }
+
         private static BattleChallengeSession RunAutomaticDuel(BattleChallengeMode mode,
             PlayerSetupData attackerOwner, PlayerSetupData defenderOwner, bool fastResolve)
         {
@@ -132,6 +169,41 @@ namespace Game.EditorTests
 
 #if UNITY_6000_3_OR_NEWER
         [UnityTest]
+        public IEnumerator DeploymentCompletion_DoesNotDestroyInteractiveArrangementCells()
+        {
+            var screenObject = new GameObject("Deployment completion test screen");
+            var popupObject = new GameObject("Deployment completion test popup");
+            var cellObject = new GameObject("Player cell being arranged");
+            try
+            {
+                var screen = screenObject.AddComponent<BattleScreenUI>();
+                var popup = popupObject.AddComponent<BattleArrangePopupUI>();
+                Set(screen, "panelRoot", screenObject); Set(screen, "arrangePopup", popup);
+                Set(popup, "panelRoot", popupObject); popupObject.SetActive(false);
+                // Two human sides avoid scheduling an actual AI search; exercise its UI
+                // completion against a player who is already arranging, with real cells.
+                screen.Show(new HexCoord(0, 0), new List<ArmyData>
+                {
+                    TestArmy(new PlayerSetupData { IsHuman = true }, "A", 3),
+                    TestArmy(new PlayerSetupData { IsHuman = true }, "B", 3),
+                }, null);
+                Call(screen, "BeginArrangement");
+                var cell = cellObject.AddComponent<BattleGridCellUI>();
+                var cells = (List<BattleGridCellUI>)Get(screen, "_cells"); cells.Add(cell);
+                yield return (IEnumerator)Call(screen, "ArrangeAiAndContinue", Get(screen, "_battleEngine"));
+                Assert.That(cellObject.activeSelf, Is.True);
+                Assert.That(cells.Contains(cell), Is.True, "finishing AI deployment must preserve a human's drag object");
+                screen.Hide();
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(screenObject);
+                UnityEngine.Object.DestroyImmediate(popupObject);
+                if (cellObject != null) UnityEngine.Object.DestroyImmediate(cellObject);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator FastBattle_WaitsForPlayerOnFinalOutcome_ThenNormalBattleOffersArrangement()
         {
             ArmyRegistry.Clear();
@@ -178,7 +250,14 @@ namespace Game.EditorTests
                 screen.Show(new HexCoord(0, 0), new List<ArmyData>
                     { TestArmy(human, "Next human", 100), TestArmy(opponent, "Next opponent", 1) }, null);
                 Assert.That(arrangement.IsShowing, Is.True, "Fast Resolve must not leak into the next ordinary battle");
+                Call(screen, "BeginArrangement");
+                Call(screen, "OnReadyClicked");
+                Assert.That(((BattleEngine)Get(screen, "_battleEngine")).Phase, Is.EqualTo(BattleCommandPhase.Deployment),
+                    "Ready must wait for the coroutine's complete AI layout");
                 screen.Hide();
+                for (int frame = 0; frame < 3; frame++) yield return null;
+                Assert.That(Get(screen, "_aiArrangementRoutine"), Is.Null);
+                Assert.That(Get(screen, "_battleEngine"), Is.Null, "a cancelled deployment must not reopen the battle");
             }
             finally
             {

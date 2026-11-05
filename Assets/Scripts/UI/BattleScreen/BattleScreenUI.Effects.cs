@@ -125,6 +125,10 @@ namespace Game.UI
                 { effect.Layer.gameObject.SetActive(false); Destroy(effect.Layer.gameObject); }
             _attackEffectLayers.Clear();
         }
-        private void OnDisable() => CancelAttackPresentation();
+        private void OnDisable()
+        {
+            CancelAiArrangement();
+            CancelAttackPresentation();
+        }
     }
 }

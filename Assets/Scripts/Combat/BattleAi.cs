@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -11,33 +12,58 @@ namespace Game.Combat
     // work on cloned grids/HP. ArrangeArmy commits only the chosen initial positions.
     public static class BattleAi
     {
-        // Deployment is scored against two plausible enemy layouts, never the enemy's
-        // actual hidden positions. Near-equal outcomes prefer earlier participation, then
-        // more front-line combatants and a central anchor. Movement in every projection uses
-        // the same firing-position search as live ChooseAction.
+        // Deployment is scored against plausible enemy layouts and both advance/hold policies,
+        // never the enemy's hidden positions. Refine the templates with legal local changes.
+        // Near-equal three-round outcomes prefer earlier useful progress, then the better
+        // opening exchange. Both use initiative, movement and support in the shared projection.
         private const float ScoreTieTolerance = 0.015f;
+        private const int DeploymentRefinementPasses = 2;
 
         private enum FormationPattern { LeftPacked, CenterOut, EdgesIn, Staggered }
+
+        private sealed class DeploymentCandidate
+        {
+            public BattleGrid Grid;
+            public float Score;
+            public float OpeningScore;
+            public float Participation;
+            public float Exchange;
+            public float EnemyLoss;
+        }
 
         public static void ArrangeArmy(BattleGrid grid, ArmyData army, int frontRow, int backRow, ArmyData enemyArmy,
             AbilityMagnitudes magnitudes, ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0)
         {
-            if (grid == null || army == null)
-                return;
+            CompleteDeploymentSearch(ArrangeArmyRoutine(grid, army, frontRow, backRow, enemyArmy,
+                magnitudes, battleDefender, battleDefenderDefenseBonus));
+        }
 
-            foreach (UnitData member in army.Members)
-                if (grid.TryFindPosition(member, out int row, out int col))
-                    grid.Set(row, col, null);
+        // Synchronous callers/tests use the same search. Presentation consumes its yields so
+        // the expanded search shares a frame budget; cancellation never clears a live layout.
+        private static void CompleteDeploymentSearch(IEnumerator routine)
+        {
+            while (routine.MoveNext())
+                if (routine.Current is IEnumerator nested) CompleteDeploymentSearch(nested);
+        }
+
+        public static IEnumerator ArrangeArmyRoutine(BattleGrid grid, ArmyData army, int frontRow, int backRow,
+            ArmyData enemyArmy, AbilityMagnitudes magnitudes, ArmyData battleDefender = null,
+            int battleDefenderDefenseBonus = 0, System.Func<bool> canCommit = null)
+        {
+            if (grid == null || army == null || (canCommit != null && !canCommit()))
+                yield break;
 
             int combatantCount = CountDeploymentCombatants(army);
 
             if (enemyArmy == null)
             {
+                foreach (UnitData member in army.Members)
+                    if (grid.TryFindPosition(member, out int row, out int col)) grid.Set(row, col, null);
                 // No opposing roster to weigh candidates against (shouldn't happen in a real
                 // battle) — keep the usual short-range front and long-range rear as a fallback.
                 PlaceTankAnchoredSplit(grid, army, frontRow, backRow, FormationPattern.CenterOut,
                     enemyArmy: null, frontCount: army.Members.Count(u => u.IsGroundCombatant && u.Range <= 2));
-                return;
+                yield break;
             }
 
             bool weAreAttackerSide = frontRow == BattleGrid.AttackerFrontRow;
@@ -54,30 +80,74 @@ namespace Game.Combat
                 FormationPattern.EdgesIn,
                 FormationPattern.Staggered,
             };
-            (float score, int moves) Evaluate(FormationPattern pattern, int frontCount, bool expected)
+            var candidates = new List<DeploymentCandidate>();
+            var evaluated = new Dictionary<string, DeploymentCandidate>();
+            var enemyLayouts = new[] { new BattleGrid(), new BattleGrid() };
+            PlaceRangeSplit(enemyLayouts[0], enemyArmy, enemyFrontRow, enemyBackRow);
+            PlaceTankAnchoredSplit(enemyLayouts[1], enemyArmy, enemyFrontRow, enemyBackRow,
+                FormationPattern.CenterOut, army, CountDeploymentCombatants(enemyArmy));
+            var slice = System.Diagnostics.Stopwatch.StartNew();
+            IEnumerator Evaluate(BattleGrid layout)
             {
+                // Roster order, rather than RuntimeId, also distinguishes projection/test units
+                // with coinciding identities. Only our positions enter the key.
+                string key = string.Join(";", army.Members.Select(u =>
+                    layout.TryFindPosition(u, out int r, out int c) ? $"{r},{c}" : "-"));
+                if (evaluated.ContainsKey(key)) yield break;
                 float score = 0f;
-                int moves = 0;
+                float openingScore = 0f;
+                float participation = 0f;
+                float exchange = 0f;
+                float enemyLoss = 0f;
+                float weight = 1f / (4 * ArrangementSimulationTrials);
                 for (int opponentLayout = 0; opponentLayout < 2; opponentLayout++)
                 {
-                    var trial = new BattleGrid();
-                    PlaceTankAnchoredSplit(trial, army, frontRow, backRow, pattern, enemyArmy, frontCount);
-                    if (opponentLayout == 0)
-                        PlaceRangeSplit(trial, enemyArmy, enemyFrontRow, enemyBackRow);
-                    else
-                        PlaceTankAnchoredSplit(trial, enemyArmy, enemyFrontRow, enemyBackRow,
-                            FormationPattern.CenterOut, army, CountDeploymentCombatants(enemyArmy));
-                    moves += MovesToParticipate(trial, army, magnitudes);
-                    SimulationOutcome outcome = SimulateRounds(trial, army, enemyArmy, 3, magnitudes,
-                        battleDefender, battleDefenderDefenseBonus,
-                        expected ? BattleSimulationTrials : ArrangementSimulationTrials,
-                        deterministic: expected, holdingArmy: expected ? enemyArmy : null);
-                    score += -LossMarginAgainstUs(ownTotalHp, enemyTotalHp, outcome) / 2f;
+                    var trial = CloneGrid(layout);
+                    for (int col = 0; col < BattleGrid.Columns; col++)
+                    {
+                        trial.Set(enemyFrontRow, col, enemyLayouts[opponentLayout].Get(enemyFrontRow, col));
+                        trial.Set(enemyBackRow, col, enemyLayouts[opponentLayout].Get(enemyBackRow, col));
+                    }
+                    for (int policy = 0; policy < 2; policy++)
+                    for (int sample = 0; sample < ArrangementSimulationTrials; sample++)
+                    {
+                        if (canCommit != null && !canCommit()) yield break;
+                        SimulationOutcome outcome = SimulateRounds(trial, army, enemyArmy, 3, magnitudes,
+                            battleDefender, battleDefenderDefenseBonus, 1,
+                            deterministic: true, holdingArmy: policy == 0 ? null : enemyArmy,
+                            measureParticipation: true, firstTrial: sample);
+                        score -= LossMarginAgainstUs(ownTotalHp, enemyTotalHp, outcome) * weight;
+                        participation += outcome.OwnParticipationValue / Mathf.Max(1f, enemyTotalHp) * weight;
+                        enemyLoss += Mathf.Clamp01((enemyTotalHp - outcome.EnemyHpRemaining)
+                            / Mathf.Max(1f, enemyTotalHp)) * weight;
+                        exchange += (Mathf.Abs(ownTotalHp - outcome.OwnHpRemaining) / Mathf.Max(1f, ownTotalHp)
+                            + Mathf.Abs(enemyTotalHp - outcome.EnemyHpRemaining) / Mathf.Max(1f, enemyTotalHp)) * weight;
+                        openingScore -= LossMarginAgainstUs(ownTotalHp, enemyTotalHp, new SimulationOutcome
+                        {
+                            OwnHpRemaining = outcome.OwnHpAfterOpeningRound,
+                            EnemyHpRemaining = outcome.EnemyHpAfterOpeningRound,
+                        }) * weight;
+                        // A projection is atomic; yield between scenarios once this slice has
+                        // spent 4 ms. No Unity clock/API is needed by the synchronous path.
+                        if (slice.ElapsedMilliseconds >= 4)
+                        {
+                            yield return null;
+                            slice.Restart();
+                        }
+                    }
                 }
-                return (score, moves);
+                var candidate = new DeploymentCandidate
+                {
+                    Grid = layout, Score = score, OpeningScore = openingScore,
+                    Participation = participation, Exchange = exchange, EnemyLoss = enemyLoss,
+                };
+                if (BattleDebugLog.Verbose)
+                    BattleDebugLog.Write($"[ArrangeCandidate] layout={key} score={score} openingScore={openingScore} "
+                        + $"participation={participation} exchange={exchange}");
+                evaluated.Add(key, candidate);
+                candidates.Add(candidate);
             }
 
-            var candidates = new List<(FormationPattern pattern, int frontCount, float score, int moves)>();
             int maxFrontCount = Mathf.Min(BattleGrid.Columns, combatantCount);
             int heroCount = army.Members.Count(u => u.IsHero);
             int minFrontCount = Mathf.Min(maxFrontCount,
@@ -87,51 +157,79 @@ namespace Game.Combat
             for (int frontCount = minFrontCount; frontCount <= maxFrontCount; frontCount++)
                 foreach (FormationPattern pattern in formationCandidates)
                 {
-                    var outcome = Evaluate(pattern, frontCount, expected: false);
-                    candidates.Add((pattern, frontCount, outcome.score, outcome.moves));
+                    if (canCommit != null && !canCommit()) yield break;
+                    var layout = new BattleGrid();
+                    PlaceTankAnchoredSplit(layout, army, frontRow, backRow, pattern, enemyArmy, frontCount);
+                    yield return Evaluate(layout);
                 }
 
-            // Holding a shooter out of opening range must beat a ready line against an enemy
-            // that holds its ground as well. Average equal-initiative orders, not just tokens.
-            int earliestParticipation = candidates.Min(c => c.moves);
-            var ready = candidates.Where(c => c.moves == earliestParticipation).ToList();
-            float readyScore = ready.Max(c => c.score);
-            var eligible = ready.ToList();
-            // Candidates below the best ready score's tie window cannot be selected. Avoid
-            // the additional expected-damage projection for those already-eliminated layouts.
-            var delayed = candidates.Where(c => c.moves > earliestParticipation
-                && c.score >= readyScore - ScoreTieTolerance).ToList();
-            if (delayed.Count > 0)
+            if (canCommit != null && !canCommit()) yield break;
+            DeploymentCandidate best = BestDeployment(candidates);
+            for (int pass = 0; pass < DeploymentRefinementPasses; pass++)
             {
-                float readyExpected = ready.Max(c => Evaluate(c.pattern, c.frontCount, expected: true).score);
-                foreach (var candidate in delayed)
-                    if (Evaluate(candidate.pattern, candidate.frontCount, expected: true).score
-                        > readyExpected + ScoreTieTolerance)
-                        eligible.Add(candidate);
+                // At most 25 cross-row pairs and eight adjacent same-row pairs per pass.
+                // Empty cells permit individual advances; swaps let the simulation choose the
+                // front-line members and preserve/reposition Bodyguard/commander relationships.
+                foreach (BattleGrid neighbor in DeploymentNeighbors(best.Grid, frontRow, backRow))
+                {
+                    if (canCommit != null && !canCommit()) yield break;
+                    yield return Evaluate(neighbor);
+                }
+                if (canCommit != null && !canCommit()) yield break;
+                DeploymentCandidate next = BestDeployment(candidates);
+                if (next == best) break;
+                best = next;
             }
-            float bestScore = eligible.Max(c => c.score);
-
-            // Select only after finding the true maximum. A later, tiny score improvement must
-            // not undo the participation tie-break or make a sequence of near-ties drift.
-            var best = eligible.Where(c => c.score >= bestScore - ScoreTieTolerance)
-                .OrderBy(c => c.moves)
-                .ThenByDescending(c => c.frontCount)
-                .ThenBy(c => c.pattern == FormationPattern.CenterOut ? 0 : 1)
-                .First();
             BattleDebugLog.Write($"[ArrangeDiag] army \"{army.Name}\": " +
-                $"frontlineCount={combatantCount} -> chosen pattern={best.pattern} frontCount={best.frontCount} " +
-                $"score={best.score} bestScore={bestScore} movesToParticipate={best.moves}");
-            PlaceTankAnchoredSplit(grid, army, frontRow, backRow, best.pattern, enemyArmy, best.frontCount);
+                $"candidates={candidates.Count} score={best.Score} openingScore={best.OpeningScore}");
+            foreach (UnitData member in army.Members)
+                if (grid.TryFindPosition(member, out int row, out int col)) grid.Set(row, col, null);
+            foreach (UnitData member in army.Members)
+                if (best.Grid.TryFindPosition(member, out int row, out int col)) grid.Set(row, col, member);
         }
 
-        private static int MovesToParticipate(BattleGrid grid, ArmyData army, AbilityMagnitudes magnitudes)
+        private static DeploymentCandidate BestDeployment(List<DeploymentCandidate> candidates)
         {
-            int moves = 0;
-            foreach (UnitData member in army.Members)
-                if (member.IsGroundCombatant && member.HitPointsCurrent > 0 && !IsRearSupport(member, army)
-                    && grid.TryFindPosition(member, out int row, out int col))
-                    moves += FiringPositionDistance(grid, member, row, col, magnitudes);
-            return moves;
+            // A short horizon can otherwise reward avoiding the exchange altogether: fewer
+            // shots taken AND fired makes a losing trade look closer to zero. A slower layout
+            // must either retain enemy progress or improve outcome and exchange efficiency;
+            // simply postponing the same bad exchange is not a tactical protection benefit.
+            float bestParticipation = candidates.Max(c => c.Participation);
+            var active = candidates.Where(c => c.Participation >= bestParticipation - 0.0001f).ToList();
+            DeploymentCandidate reference = active.OrderByDescending(c => c.Score)
+                .ThenByDescending(c => c.OpeningScore).First();
+            float activeScore = reference.Score;
+            float Efficiency(DeploymentCandidate c) => c.Exchange > 0.0001f ? c.Score / c.Exchange : -1f;
+            float activeEfficiency = Efficiency(reference);
+            var eligible = candidates.Where(c => c.Participation >= bestParticipation - 0.0001f
+                // Later damage is not stalling if at least the same enemy progress is made
+                // within the horizon. Preserve such improved outcomes even at equal efficiency.
+                || (c.Score >= activeScore - ScoreTieTolerance && c.EnemyLoss >= reference.EnemyLoss - 0.0001f)
+                || (c.Score > activeScore + ScoreTieTolerance
+                    && Efficiency(c) > activeEfficiency + ScoreTieTolerance)).ToList();
+            // Compare to the true maximum across all evaluated layouts, preventing a sequence
+            // of near-ties from gradually drifting toward a worse three-round result.
+            float bestScore = eligible.Max(c => c.Score);
+            return eligible.Where(c => c.Score >= bestScore - ScoreTieTolerance)
+                .OrderByDescending(c => c.Participation).ThenByDescending(c => c.OpeningScore)
+                .ThenByDescending(c => c.Score).First();
+        }
+
+        private static IEnumerable<BattleGrid> DeploymentNeighbors(BattleGrid layout, int frontRow, int backRow)
+        {
+            for (int a = 0; a < 2 * BattleGrid.Columns; a++)
+                for (int b = a + 1; b < 2 * BattleGrid.Columns; b++)
+                {
+                    int ar = a < BattleGrid.Columns ? frontRow : backRow, ac = a % BattleGrid.Columns;
+                    int br = b < BattleGrid.Columns ? frontRow : backRow, bc = b % BattleGrid.Columns;
+                    if (ar == br && Mathf.Abs(ac - bc) != 1) continue;
+                    // CanSwap expects its first cell to be occupied. Empty-empty pairs do nothing.
+                    if (layout.Get(ar, ac) == null) { (ar, br) = (br, ar); (ac, bc) = (bc, ac); }
+                    if (!BattleRules.CanSwap(layout, ar, ac, br, bc, frontRow, backRow)) continue;
+                    BattleGrid neighbor = CloneGrid(layout);
+                    neighbor.Swap(ar, ac, br, bc);
+                    yield return neighbor;
+                }
         }
 
         private static int CountDeploymentCombatants(ArmyData army)
@@ -140,8 +238,11 @@ namespace Game.Combat
         // Healing is army-wide. A healer whose attack is below its soldiers' is a rear
         // support candidate, even when Defense+HP alone would sort it ahead of those soldiers.
         private static bool IsRearSupport(UnitData unit, ArmyData army)
-            => unit.HasAbility(UnitAbilities.Heal) && army.Members.Any(other => other != unit
-                && other.IsGroundCombatant && other.HitPointsCurrent > 0 && other.Attack > unit.Attack);
+            => unit.HasAbility(UnitAbilities.Heal)
+                && army.Members.Any(other => other != unit && !other.IsPrisoner
+                    && other.HitPointsCurrent > 0 && other.TypeTags.Contains(UnitTypeTag.Bio))
+                && army.Members.Any(other => other != unit && other.IsGroundCombatant
+                    && other.HitPointsCurrent > 0 && other.Attack > unit.Attack);
 
         // Rough "how good a soak is this unit" score — Defense+HP is the base survivability, but
         // CeramicArmor's flat -1 to every hit and Berserk's own "getting hit makes it stronger"
@@ -416,6 +517,9 @@ namespace Game.Combat
         {
             public float OwnHpRemaining;
             public float EnemyHpRemaining;
+            public float OwnHpAfterOpeningRound;
+            public float EnemyHpAfterOpeningRound;
+            public float OwnParticipationValue;
         }
 
         // Honest round-by-round playout on a cloned grid/HP shadow — no real UnitData/BattleGrid
@@ -435,7 +539,9 @@ namespace Game.Combat
         // meant to call into later, per the user's own note that whatever gets built for the
         // reactive in-battle retreat should be reusable there too.
         private const int BattleSimulationTrials = 8;
-        private const int ArrangementSimulationTrials = 4;
+        // Two initiative samples per policy/layout: 2 layouts x 2 policies x 2 orders,
+        // matching the old initial search's eight playouts per candidate without dice noise.
+        private const int ArrangementSimulationTrials = 2;
 
         private static Dictionary<UnitData, UnitData> CloneConsumableState(ref BattleGrid grid,
             ref ArmyData own, ref ArmyData enemy, ref ArmyData defender, ref ArmyData holding)
@@ -472,7 +578,7 @@ namespace Game.Combat
         public static SimulationOutcome SimulateRounds(BattleGrid liveGrid, ArmyData ownArmy, ArmyData enemyArmy, int rounds,
             AbilityMagnitudes magnitudes, ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0,
             int simulationTrials = BattleSimulationTrials, bool deterministic = false,
-            ArmyData holdingArmy = null)
+            ArmyData holdingArmy = null, bool measureParticipation = false, int firstTrial = 0)
         {
             if (liveGrid == null || ownArmy == null || enemyArmy == null || rounds <= 0)
                 return default;
@@ -481,9 +587,15 @@ namespace Game.Combat
             int baseSeed = BuildSimulationSeed(ownArmy, enemyArmy);
             float ownHpSum = 0f;
             float enemyHpSum = 0f;
+            float ownOpeningHpSum = 0f;
+            float enemyOpeningHpSum = 0f;
+            float participationSum = 0f;
 
             for (int trial = 0; trial < trials; trial++)
             {
+                // Coroutine batches can yield between initiative samples without changing
+                // which samples an equivalent synchronous multi-trial projection would use.
+                int trialIndex = unchecked(firstTrial + trial);
                 BattleGrid sourceGrid = liveGrid;
                 ArmyData trialOwn = ownArmy, trialEnemy = enemyArmy, trialDefender = battleDefender,
                     trialHolding = holdingArmy;
@@ -515,21 +627,33 @@ namespace Game.Combat
                     [trialOwn] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, trialOwn)?.Fate ?? 0),
                     [trialEnemy] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, trialEnemy)?.Fate ?? 0),
                 };
-                var rng = deterministic ? null : new System.Random(unchecked(baseSeed + trial * 7919));
+                var rng = deterministic ? null : new System.Random(unchecked(baseSeed + trialIndex * 7919));
                 var previousPositions = new Dictionary<UnitData, Vector2Int>();
 
                 for (int round = 0; round < rounds; round++)
                 {
                     List<UnitData> order = BattleTurnOrder.BuildOrder(grid, trialOwn, trialEnemy,
-                        unchecked(baseSeed * 31 + trial * 131 + round + 1));
+                        unchecked(baseSeed * 31 + trialIndex * 131 + round + 1));
                     List<UnitData> drilled = ApplySimDrill(grid, hp, simulatedAttack, magnitudes,
                         trialOwn, trialEnemy);
+                    float enemyHpBefore = measureParticipation ? RemainingCombatHp(grid, hp, trialEnemy) : 0f;
                     RunOneRound(grid, hp, order, magnitudes, null, smartAdvance: true,
                         battleDefender: trialDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                         rng: rng, fateByArmy: fateByArmy, simulatedAttack: simulatedAttack,
                         simulatedDefense: simulatedDefense, ownArmy: trialOwn, enemyArmy: trialEnemy,
                         previousPositions: previousPositions, holdingArmy: trialHolding);
                     RevertSimDrill(drilled, simulatedAttack, magnitudes);
+                    // Net enemy HP reduction includes collateral/counterattacks, excludes
+                    // overkill, and accounts for healing. Earlier progress is more useful;
+                    // merely delaying the exchange must not manufacture a better trade.
+                    if (measureParticipation)
+                        participationSum += Mathf.Max(0f, enemyHpBefore - RemainingCombatHp(grid, hp, trialEnemy))
+                            / (round + 1f);
+                    if (round == 0)
+                    {
+                        ownOpeningHpSum += RemainingCombatHp(grid, hp, trialOwn);
+                        enemyOpeningHpSum += RemainingCombatHp(grid, hp, trialEnemy);
+                    }
                     if (!IsSimulationCombatCapable(grid, hp, trialOwn)
                         || !IsSimulationCombatCapable(grid, hp, trialEnemy))
                         break;
@@ -547,6 +671,9 @@ namespace Game.Combat
             {
                 OwnHpRemaining = ownHpSum / trials,
                 EnemyHpRemaining = enemyHpSum / trials,
+                OwnHpAfterOpeningRound = ownOpeningHpSum / trials,
+                EnemyHpAfterOpeningRound = enemyOpeningHpSum / trials,
+                OwnParticipationValue = participationSum / trials,
             };
         }
 
@@ -590,11 +717,12 @@ namespace Game.Combat
             Dictionary<ArmyData, int> fateByArmy = null, Dictionary<UnitData, int> simulatedAttack = null,
             Dictionary<UnitData, int> simulatedDefense = null, ArmyData ownArmy = null, ArmyData enemyArmy = null,
             Dictionary<UnitData, Vector2Int> previousPositions = null, bool healHeroesAtStart = true,
-            ArmyData holdingArmy = null)
+            ArmyData holdingArmy = null, BattleReactionState initialReactions = null)
         {
             var suppressed = new HashSet<UnitData>();
             // One call is one round: Bodyguard is spent once per round.
             var reactions = new BattleReactionState();
+            if (initialReactions != null) reactions.BodyguardsUsed.UnionWith(initialReactions.BodyguardsUsed);
             if (healHeroesAtStart)
                 foreach (UnitData hero in grid.AllUnits().Where(u => u.IsHero).ToList())
                     ApplySimHeal(grid, hp, hero, rng, ownArmy, enemyArmy);
@@ -653,7 +781,7 @@ namespace Game.Combat
                 (int row, int col)? step = smartAdvance
                     ? FindBestAdvanceStepInSim(grid, hp, order, i, actor, row, col, magnitudes,
                         ownArmy, enemyArmy, battleDefender, battleDefenderDefenseBonus,
-                        simulatedAttack, simulatedDefense, previousPositions)
+                        simulatedAttack, simulatedDefense, previousPositions, holdingArmy, reactions, suppressed)
                     : FindStepToward(grid, actor, row, col, magnitudes);
                 if (step.HasValue)
                 {
@@ -1157,7 +1285,7 @@ namespace Game.Combat
 
             (int row, int col)? step = FindBestAdvanceStep(grid, ownArmy, enemyArmy, actor,
                 actorRow, actorCol, magnitudes, turnOrder, turnIndex, battleDefender,
-                battleDefenderDefenseBonus, previousPositions);
+                battleDefenderDefenseBonus, previousPositions, reactions);
             waitStreak[actor] = 0;
             if (!step.HasValue || (step.Value.row == actorRow && step.Value.col == actorCol))
                 return passAction; // no empty route to any firing position, rather than a shuffle
@@ -1263,7 +1391,7 @@ namespace Game.Combat
             ArmyData ownArmy, ArmyData enemyArmy, UnitData actor, int actorRow, int actorCol,
             AbilityMagnitudes magnitudes, List<UnitData> order, int turnIndex,
             ArmyData battleDefender, int battleDefenderDefenseBonus,
-            Dictionary<UnitData, Vector2Int> previousPositions)
+            Dictionary<UnitData, Vector2Int> previousPositions, BattleReactionState reactions = null)
         {
             if (ownArmy == null || enemyArmy == null)
                 return FindStepToward(liveGrid, actor, actorRow, actorCol, magnitudes);
@@ -1272,7 +1400,7 @@ namespace Game.Combat
             var defense = liveGrid.AllUnits().ToDictionary(u => u, u => u.IsHero ? u.FateMax : u.Defense);
             return FindBestAdvanceStepInSim(liveGrid, hp, order, turnIndex, actor, actorRow, actorCol,
                 magnitudes, ownArmy, enemyArmy, battleDefender, battleDefenderDefenseBonus,
-                attack, defense, previousPositions);
+                attack, defense, previousPositions, reactions: reactions);
         }
 
         // Single movement decision for live play and deployment/retreat projections. First
@@ -1285,7 +1413,8 @@ namespace Game.Combat
             ArmyData enemyArmy, ArmyData battleDefender, int battleDefenderDefenseBonus,
             Dictionary<UnitData, int> simulatedAttack = null,
             Dictionary<UnitData, int> simulatedDefense = null,
-            Dictionary<UnitData, Vector2Int> previousPositions = null)
+            Dictionary<UnitData, Vector2Int> previousPositions = null, ArmyData holdingArmy = null,
+            BattleReactionState reactions = null, HashSet<UnitData> suppressed = null)
         {
             int? attackOverride = simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int attack)
                 ? attack : (int?)null;
@@ -1294,7 +1423,8 @@ namespace Game.Combat
             if (currentDistance == 0 || currentDistance > BattleGrid.Rows * BattleGrid.Columns)
                 return null;
             var remaining = order != null
-                ? order.Skip(Mathf.Max(0, turnIndex + 1)).Where(u => u != actor).ToList()
+                ? order.Skip(Mathf.Max(0, turnIndex + 1))
+                    .Where(u => u != actor && (suppressed == null || !suppressed.Contains(u))).ToList()
                 : new List<UnitData>();
             float ownHp = RemainingCombatHp(grid, hp, ownArmy);
             float enemyHp = RemainingCombatHp(grid, hp, enemyArmy);
@@ -1317,16 +1447,25 @@ namespace Game.Combat
                 var trialDefense = simulatedDefense != null ? new Dictionary<UnitData, int>(simulatedDefense) : null;
                 trialGrid.Set(actorRow, actorCol, null);
                 trialGrid.Set(row, col, actor);
-                ArmyData trialOwn = ownArmy, trialEnemy = enemyArmy, trialDefender = battleDefender, noHolding = null;
-                var copies = CloneConsumableState(ref trialGrid, ref trialOwn, ref trialEnemy, ref trialDefender, ref noHolding);
+                ArmyData trialOwn = ownArmy, trialEnemy = enemyArmy, trialDefender = battleDefender,
+                    trialHolding = holdingArmy;
+                var copies = CloneConsumableState(ref trialGrid, ref trialOwn, ref trialEnemy, ref trialDefender, ref trialHolding);
                 UnitData trialActor = copies.TryGetValue(actor, out var actorCopy) ? actorCopy : actor;
                 trialHp = RemapShadow(trialHp, copies);
                 trialAttack = RemapShadow(trialAttack, copies); trialDefense = RemapShadow(trialDefense, copies);
                 var trialRemaining = remaining.Select(u => copies.TryGetValue(u, out var c) ? c : u).ToList();
+                BattleReactionState trialReactions = null;
+                if (reactions != null && reactions.BodyguardsUsed.Count > 0)
+                {
+                    trialReactions = new BattleReactionState();
+                    foreach (UnitData used in reactions.BodyguardsUsed)
+                        trialReactions.BodyguardsUsed.Add(copies.TryGetValue(used, out var copy) ? copy : used);
+                }
                 RunOneRound(trialGrid, trialHp, trialRemaining, magnitudes, null,
                     battleDefender: trialDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                     simulatedAttack: trialAttack, simulatedDefense: trialDefense,
-                    ownArmy: trialOwn, enemyArmy: trialEnemy, healHeroesAtStart: false);
+                    ownArmy: trialOwn, enemyArmy: trialEnemy, healHeroesAtStart: false, holdingArmy: trialHolding,
+                    initialReactions: trialReactions);
 
                 var damageDealt = new Dictionary<UnitData, float>();
                 List<UnitData> nextOrder = BattleTurnOrder.BuildOrder(trialGrid, trialOwn, trialEnemy,
@@ -1334,7 +1473,7 @@ namespace Game.Combat
                 RunOneRound(trialGrid, trialHp, nextOrder, magnitudes, damageDealt,
                     battleDefender: trialDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                     simulatedAttack: trialAttack, simulatedDefense: trialDefense,
-                    ownArmy: trialOwn, enemyArmy: trialEnemy);
+                    ownArmy: trialOwn, enemyArmy: trialEnemy, holdingArmy: trialHolding);
                 float ownLoss = ownHp > 0f ? (ownHp - RemainingCombatHp(trialGrid, trialHp, trialOwn)) / ownHp : 0f;
                 float enemyLoss = enemyHp > 0f ? (enemyHp - RemainingCombatHp(trialGrid, trialHp, trialEnemy)) / enemyHp : 0f;
                 float trade = enemyLoss - ownLoss;
