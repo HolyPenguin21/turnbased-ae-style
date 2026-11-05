@@ -334,6 +334,8 @@ def main():
 
         cdir = TERRAIN_ROOT / biome / "Complexes"
         for group, (pattern, expected) in GROUPS.items():
+            if biome == "Desert" and group == "Canyon":
+                continue
             paths = sorted(cdir.glob(pattern))
             if len(paths) != expected:
                 raise RuntimeError(f"{biome}/{group}: expected {expected}, got {len(paths)}")

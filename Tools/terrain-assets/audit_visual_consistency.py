@@ -1,6 +1,7 @@
 """Measure every hex in an exported complex, not just a pooled bright-ground median."""
 from pathlib import Path
 import json,sys,numpy as np
+import yaml
 from PIL import Image
 from scipy.ndimage import gaussian_filter,map_coordinates
 
@@ -8,6 +9,14 @@ root=Path(sys.argv[1]) if len(sys.argv)>1 else Path(__file__).resolve().parents[
 manifest_path=root/'offsets.json'
 if not manifest_path.exists():manifest_path=root/'Docs/terrain-complexes/directional-assets/offsets.json'
 manifest=json.loads(manifest_path.read_text())
+# Repository manifests also retain historical exports. Audit only active Desert families;
+# a standalone export directory still validates every family in its supplied manifest.
+config_path = root/'Assets/Config/GameConfig.asset'
+if config_path.exists():
+ raw = config_path.read_text()
+ palette = yaml.safe_load('\n'.join(l for l in raw.splitlines() if not l.startswith(('%','---'))))['MonoBehaviour']['mapGeneration']['desertOverride']
+ if not any(t['terrainName'] == 'Deep canyon' for t in palette['complexes']):
+  manifest['families'].pop('Canyon', None)
 rows=[];seams=[]
 for family,entry in manifest['families'].items():
  for variant in entry['variants']:

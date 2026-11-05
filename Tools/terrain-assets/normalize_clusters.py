@@ -449,6 +449,8 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
     contact_pairs: list[tuple[str, str, np.ndarray, np.ndarray]] = []
 
     for group, (pattern, expected) in GROUPS.items():
+        if biome == "Desert" and group == "Canyon":
+            continue
         if selected_group is not None and group != selected_group:
             continue
         paths = sorted(complex_dir.glob(pattern))

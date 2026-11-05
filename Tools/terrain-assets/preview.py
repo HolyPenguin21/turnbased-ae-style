@@ -21,7 +21,10 @@ raw=(ROOT/'Assets/Config/GameConfig.asset').read_text()
 settings=yaml.safe_load('\n'.join(line for line in raw.splitlines() if not line.startswith(('%','---'))))['MonoBehaviour']['mapGeneration']
 palette=settings if args.biome=='AridSteppe' else settings['desertOverride']
 names={'AcidLake':'Acid lake','Canyon':'Deep canyon','BoilingMud':'Boiling mud field','GiantMachineWreck':'Giant machine wreck'}
-templates={family:next(t for t in palette['complexes'] if t['terrainName']==name) for family,name in names.items()}
+templates={family:template for family,name in names.items()
+           if (template := next((t for t in palette['complexes'] if t['terrainName']==name), None)) is not None}
+if args.group and args.group not in templates:
+    raise SystemExit(f'{args.group} is not configured for {args.biome}.')
 guids={re.search(r'^guid: ([0-9a-f]+)$',meta.read_text(),re.M)[1]:Path(str(meta)[:-5]).relative_to(TEX).as_posix() for meta in TEX.rglob('*.png.meta')}
 def configured_parts(family,frame=0):
     return {(part['offset']['x'],part['offset']['y']):(guids[part['frames'][frame]['guid']],0) for part in templates[family]['parts']}
@@ -50,7 +53,7 @@ def render(parts,name):
     if name is not None: result.save(OUT/(args.biome.lower()+'-'+name))
     return result
 if args.group in (None, 'AcidLake'): render(configured_parts('AcidLake'),'lake-offline-diagnostic.png')
-if args.group in (None, 'Canyon'): render(configured_parts('Canyon'),'canyon-offline-diagnostic.png')
+if 'Canyon' in templates and args.group in (None, 'Canyon'): render(configured_parts('Canyon'),'canyon-offline-diagnostic.png')
 
 for family, label in [('AcidLake', 'lake'), ('BoilingMud', 'mud')]:
     if args.group not in (None, family): continue

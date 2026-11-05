@@ -1,7 +1,10 @@
 ## Current generation layout
 
 See `Docs/terrain-complexes/generation-options-and-footprints.md` for the current configuration:
-AcidLake and BoilingMud are single hexes, Wreck has two hexes, and Canyon has three.
+AcidLake and BoilingMud are single hexes, Wreck has two hexes, and AridSteppe Canyon has three.
+Desert has no canyon terrain or complex; its canyon textures, source and dedicated previews
+were removed. Historical audit JSON/reports describe the former assets. Extraction and
+preview skip Canyon for Desert; use `--biome AridSteppe --group Canyon` for the retained canyon.
 Each biome template has `Use In Generation`; `Complex Count = 0` still disables all.
 AcidLake uses imported, closed-shore bubble animation at 6.25 FPS. Mud and wreck art is
 provisional pending replacement. `preview.py` reads the actual configured footprint.

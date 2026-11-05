@@ -13,6 +13,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--biome', choices=['Desert', 'AridSteppe'], default='Desert')
 parser.add_argument('--group', choices=['AcidLake', 'Canyon', 'BoilingMud', 'GiantMachineWreck'])
 args = parser.parse_args()
+if args.biome == 'Desert' and args.group == 'Canyon':
+    raise SystemExit('Canyon is available only in AridSteppe; no textures were written.')
 # Legacy multi-hex atlases cannot reproduce the new footprints. Fail before writing
 # any texture rather than silently restoring the removed parts or replacing imported art.
 raw=(ROOT/'Assets/Config/GameConfig.asset').read_text()
@@ -48,7 +50,7 @@ if args.group in (None, 'AcidLake'):
         for part, (x,y) in enumerate(centers, 1):
             extract(square, x, y, radius, OUT/f'AcidLake_Part{part}_{frame:02}.png')
 
-if args.group in (None, 'Canyon'):
+if args.biome == 'AridSteppe' and args.group in (None, 'Canyon'):
     canyon = Image.open(SOURCE/'Canyon_Source.png').convert('RGB')
     for part,(x,y) in enumerate([(.35,.75),(.65,.75-math.sqrt(3)*.1),(.65,.75-math.sqrt(3)*.3)],1):
         extract(canyon,x,y,.2,OUT/f'Canyon_Part{part}.png')

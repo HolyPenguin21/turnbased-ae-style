@@ -7,8 +7,14 @@ import hashlib
 import json
 import math
 import re
+import yaml
 
 root = Path(__file__).resolve().parents[2]
+raw = (root / 'Assets/Config/GameConfig.asset').read_text()
+palette = yaml.safe_load('\n'.join(l for l in raw.splitlines() if not l.startswith(('%', '---'))))['MonoBehaviour']['mapGeneration']['desertOverride']
+if not any(t['terrainName'] == 'Deep canyon' for t in palette['complexes']):
+    print('SKIP: baked Desert canyon was removed; historical six-angle camera contracts are inactive. AridSteppe art uses a separate source.')
+    raise SystemExit(0)
 scene_path = root / 'Assets/Scenes/Game.unity'
 data = scene_path.read_bytes()
 blocks = re.split(r'^--- !u!\d+ &', data.decode('utf-8'), flags=re.M)[1:]

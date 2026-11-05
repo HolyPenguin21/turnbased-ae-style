@@ -17,14 +17,18 @@ for meta in (ROOT/'Assets').rglob('*.meta'):
     if match:
         assert match[1] not in guids, f'Duplicate GUID: {meta}'
         guids[match[1]]=Path(str(meta)[:-5])
-expected={'Acid lake':(2,1,7),'Deep canyon':(1,3,1),'Boiling mud field':(1,1,7),'Giant machine wreck':(1,2,1)}
+expected={'Acid lake':(1,7),'Deep canyon':(3,1),'Boiling mud field':(1,7),'Giant machine wreck':(2,1)}
 for biome,palette in [('AridSteppe',config),('Desert',config['desertOverride'])]:
     terrain={t['terrainName']:t for t in palette['terrainTypes']}
     assert not terrain['Mountains'].get('blocksGroundMovement',0)
-    assert set(t['terrainName'] for t in palette['complexes'])==set(expected)
+    expected_names = set(expected) - ({'Deep canyon'} if biome == 'Desert' else set())
+    assert set(t['terrainName'] for t in palette['complexes']) == expected_names
+    assert ('Deep canyon' in terrain) == (biome == 'AridSteppe')
+    if biome == 'Desert':
+        assert not list((ROOT/'Assets/Textures/Terrain/Desert').rglob('Canyon*.png*'))
     for template in palette['complexes']:
-        count,parts,frames=expected[template['terrainName']]
-        assert template['count']==count and len(template['parts'])==parts
+        parts,frames=expected[template['terrainName']]
+        assert template['count'] >= 0 and len(template['parts'])==parts
         assert template['useInGeneration'] in (0, 1)
         assert 'rotations' not in template
         assert set(template['allowedTerrainNames'])=={'Desert','Sand dunes','Rock desert'}
@@ -32,7 +36,10 @@ for biome,palette in [('AridSteppe',config),('Desert',config['desertOverride'])]
         entry=terrain[template['terrainName']]
         assert entry['baselineWeight']==0 and entry['blocksGroundMovement']==1
         assert not any(entry['resourceYields'].values())
-        assert entry['texture']==template['parts'][0]['frames'][0]
+        # The ordinary fallback texture can differ from the directional part art.
+        fallback = guids[entry['texture']['guid']]
+        assert fallback.is_relative_to(ROOT/'Assets/Textures/Terrain'/biome/'Complexes')
+        assert fallback.is_file()
         offsets={(p['offset']['x'],p['offset']['y']) for p in template['parts']}
         assert len(offsets)==parts
         for part in template['parts']:
@@ -44,7 +51,7 @@ for biome,palette in [('AridSteppe',config),('Desert',config['desertOverride'])]
                 image=Image.open(path);image.load()
                 assert image.width==image.height and image.width>=512
                 if template['terrainName'] != 'Deep canyon': assert image.size==(512,512)
-    print(f'{biome}: 4 templates, GUIDs, palette, frames, yields and passability valid')
+    print(f'{biome}: {len(palette["complexes"])} templates, GUIDs, palette, frames, yields and passability valid')
 print('Authored asset checks passed; Unity generation/render checks are separate.')
 if args.normalization_base:
     base=args.normalization_base

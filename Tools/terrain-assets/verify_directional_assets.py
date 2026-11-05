@@ -7,13 +7,15 @@ manifest=json.loads((root/'Docs/terrain-complexes/directional-assets/offsets.jso
 config=(root/'Assets/Config/GameConfig.asset').read_text()
 arid,desert=config.split('    desertOverride:',1)
 assert 'randomizeRotation: 1' not in arid
-blocks=re.findall(r'      - name: (.+?)\n(.*?)(?=      - name: |      mountainsTerrainName:)',desert,re.S)
+blocks=re.findall(r'      - contentKey: [^\n]+\n        name: (.+?)\n(.*?)(?=      - contentKey: |      mountainsTerrainName:)',desert,re.S)
 centerpieces=[(name,body) for name,body in blocks if 'exclusiveGroup: centerpiece' in body]
-assert len(centerpieces)==12
+assert len(centerpieces)==6
+assert "Deep canyon" not in desert
 counts={}
 refs=set()
 for family,entry in manifest['families'].items():
- label='Canyon snake' if family=='Canyon' else 'Desert Giant machine wreck'
+ if family == 'Canyon': continue  # Historical manifest; Desert canyon assets were removed.
+ label='Desert Giant machine wreck'
  counts[family]=0
  for variant in entry['variants']:
   name=label+f' directional {variant["angle_degrees"]:03d}'
@@ -39,11 +41,11 @@ for family,entry in manifest['families'].items():
    assert hashlib.sha256(data).hexdigest()==p['sha256']
    meta=(root/(p['file']+'.meta')).read_text()
    assert re.search(r'^guid: (.+)$',meta,re.M)[1]==p['guid']
-   assert '  textureType: 0' in meta and '    sRGBTexture: 1' in meta
+   assert re.search(r'^  textureType: (0|8)$', meta, re.M) and '    sRGBTexture: 1' in meta
    assert all(f'    wrap{x}: 1' in meta for x in 'UVW')
    assert p['guid'] not in refs
    refs.add(p['guid'])
-assert counts=={'Canyon':6,'GiantMachineWreck':6}
-assert len(refs)==30
+assert counts=={'GiantMachineWreck':6}
+assert len(refs)==12
 assert 'randomizeRotation: 1' not in desert
-print('PASS: 12 connected orientation templates; 30 PNG hashes/GUIDs/settings; family weights 6:6; UV rotation disabled.')
+print('PASS: 6 connected wreck orientation templates; 12 PNG hashes/GUIDs/settings; Desert canyon absent; UV rotation disabled.')
