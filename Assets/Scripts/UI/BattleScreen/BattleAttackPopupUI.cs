@@ -270,7 +270,7 @@ namespace Game.UI
         public void Begin(UnitData attacker, UnitData attackerHero, UnitData defender, UnitData defenderHero,
             Sprite attackerLogo, Sprite defenderLogo, Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
-            int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0,
+            int? attackerPoolSize = null, int? defenderPoolSize = null,
             bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false, bool tacticsCritical = false,
             string challengeTitle = null, Func<UnitData, int, IReadOnlyList<string>> groundHitEffects = null,
             Func<BattleChallengeRollResult, BattleAttackPlan> groundAttackPlan = null, BattleChallengeSession session = null)
@@ -278,7 +278,7 @@ namespace Game.UI
             int generation = ++_presentationGeneration;
             _tacticsCritical = tacticsCritical;
             CloseTacticPresentation();
-            int defenderBonusTokens = defenderTerrainBonus + defenderConstructionBonus + defenderFormationBonus;
+            int defenderBonusTokens = defenderTerrainBonus + defenderConstructionBonus;
             // Stops a still-running RunRollAndDuel/RunDuel coroutine from a PREVIOUS Begin() on
             // this same (pooled/reused) popup instance — otherwise its delayed WaitUntil callbacks
             // could fire against the fields this call is about to overwrite.
@@ -350,7 +350,7 @@ namespace Game.UI
             defenderRow?.SetFateDisplay(_defenderFateRemaining);
             attackerRow?.SetTokenPoolSize(_attackerTokenPoolSize);
             defenderRow?.SetTokenPoolSize(_defenderTokenPoolSize,
-                defenderTerrainBonus, defenderConstructionBonus, defenderBaseDefense, defenderFormationBonus);
+                defenderTerrainBonus, defenderConstructionBonus, defenderBaseDefense);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetSpendInteractable(false);
             if (rollButton != null)

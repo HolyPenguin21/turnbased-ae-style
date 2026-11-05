@@ -169,7 +169,7 @@ namespace Game.UI
                 // too would just be the same number twice. Abbreviated per UnitAbilityCatalog
                 // (see GameConfig.FormatAbilities) — read via the modal
                 // reference this card already keeps rather than needing its own config field.
-                string formatted = unit != null ? _modal?.GameConfig?.FormatAbilities(unit.Abilities) : null;
+                string formatted = unit != null ? _modal?.GameConfig?.FormatUnitFace(unit.Abilities, unit.IsAviation) : null;
                 moveText.text = formatted ?? string.Empty;
             }
 
@@ -249,7 +249,7 @@ namespace Game.UI
             if (moveText != null && moveText != PreviewSkillsLabel)
             {
                 string formatted = card != null && config != null
-                    ? config.FormatAbilities(card.grantedAbilities)
+                    ? config.FormatUnitFace(card.grantedAbilities, card.isAviation)
                     : null;
                 moveText.text = formatted ?? string.Empty;
             }
@@ -302,7 +302,7 @@ namespace Game.UI
             else if (card.cardType == CardType.Equipment)
                 text = EquipmentCardText.CardFace(card, config);
             else
-                text = config != null ? config.FormatAbilities(card.grantedAbilities) : string.Empty;
+                text = config != null ? config.FormatUnitFace(card.grantedAbilities, card.isAviation) : string.Empty;
             label.text = text;
             label.gameObject.SetActive(!string.IsNullOrEmpty(text));
         }

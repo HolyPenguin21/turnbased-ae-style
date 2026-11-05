@@ -144,30 +144,81 @@ namespace Game.EditorTests
             Assert.That(Engine(incoming, defender).GetDefenderHexDefenseBonus(null), Is.EqualTo(3));
         }
 
-        [Test]
-        public void TerrainFormationAndOwnDefense_RemainInBreakdown()
+        // One rule for every encounter: open field, terrain bonus, own building, both — with and
+        // without Disruption. Only the defending army gets bonus defense; the attacker never does.
+        [TestCase(0, false, false, 0)]
+        [TestCase(2, false, false, 2)]
+        [TestCase(0, true, false, 3)]
+        [TestCase(2, true, false, 5)]
+        [TestCase(0, false, true, 0)]
+        [TestCase(2, false, true, 2)]
+        [TestCase(0, true, true, 0)]
+        [TestCase(2, true, true, 2)]
+        public void DefenseBonus_DefenderOnly_SameInEngineTacticalAiAndEstimate(int terrain, bool building,
+            bool disruption, int expected)
         {
-            Fort();
-            var attacker = Army(_attackerOwner, true);
+            if (building) Fort();
+            var attacker = Army(_attackerOwner, disruption);
             var defender = Army(_defenderOwner);
-            var guard = Body(_defenderOwner);
-            defender.Members.Add(guard);
             var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerBackRow, 1, attacker.Members[0]);
             grid.Set(BattleGrid.DefenderBackRow, 1, defender.Members[0]);
-            grid.Set(BattleGrid.DefenderFrontRow, 1, guard);
-            var go = new GameObject("Disruption terrain regression");
+            var go = new GameObject("Defense bonus scenario");
+            try
+            {
+                var map = go.AddComponent<HexMap>();
+                map.SetData(3, 1f, new Dictionary<HexCoord, TerrainTypeEntry>
+                    { [_hex] = new TerrainTypeEntry { defenseModifier = terrain } });
+                var engine = new BattleEngine(new BattleState(_hex, attacker, defender, grid, 1), AbilityMagnitudes.Default, map: map);
+                int hexBonus = engine.GetDefenderHexDefenseBonus(map);
+                Assert.That(hexBonus, Is.EqualTo(expected));
+                Assert.That(engine.GetDefenseBreakdown(defender.Members[0], map).TotalBonus, Is.EqualTo(expected));
+                Assert.That(BattleRules.GetTotalDefenseBonus(grid, defender.Members[0], defender, hexBonus), Is.EqualTo(expected));
+                Assert.That(WorthIt.HexDefenseBonus(_hex, map, _defenderOwner, attacker), Is.EqualTo((float)expected));
+
+                Assert.That(engine.GetDefenseBreakdown(attacker.Members[0], map).TotalBonus, Is.Zero);
+                Assert.That(BattleRules.GetTotalDefenseBonus(grid, attacker.Members[0], defender, hexBonus), Is.Zero);
+                Assert.That(defender.Members[0].Defense, Is.EqualTo(2));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        // A Hex Event guard is the defender: it keeps the event hex's terrain; the explorer gets nothing.
+        [Test]
+        public void EventGuardDefender_GetsTerrain_ExplorerGetsNothing()
+        {
+            var explorer = Army(_attackerOwner);
+            var guard = Army(new PlayerSetupData { Nickname = "Neutral", IsNeutral = true });
+            var go = new GameObject("Event guard terrain");
             try
             {
                 var map = go.AddComponent<HexMap>();
                 map.SetData(3, 1f, new Dictionary<HexCoord, TerrainTypeEntry>
                     { [_hex] = new TerrainTypeEntry { defenseModifier = 2 } });
-                var engine = new BattleEngine(new BattleState(_hex, attacker, defender, grid, 1), AbilityMagnitudes.Default, map: map);
-                BattleDefenseBreakdown bonus = engine.GetDefenseBreakdown(defender.Members[0], map);
-                Assert.That(bonus.TerrainBonus, Is.EqualTo(2));
-                Assert.That(bonus.FormationBonus, Is.EqualTo(BattleRules.GuardedDefenseBonus));
-                Assert.That(bonus.ConstructionBonus, Is.Zero);
-                Assert.That(engine.GetDefenderHexDefenseBonus(map), Is.EqualTo(2));
-                Assert.That(defender.Members[0].Defense, Is.EqualTo(2));
+                var engine = new BattleEngine(new BattleState(_hex, explorer, guard, new BattleGrid(), 1), AbilityMagnitudes.Default, map: map);
+                Assert.That(engine.GetDefenseBreakdown(guard.Members[0], map).TotalBonus, Is.EqualTo(2));
+                Assert.That(engine.GetDefenseBreakdown(explorer.Members[0], map).TotalBonus, Is.Zero);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void AirDefender_GetsNoTerrainOrBuilding()
+        {
+            Fort();
+            var attacker = Army(_attackerOwner);
+            var defender = Army(_defenderOwner);
+            defender.Members[0].IsAviation = true;
+            var go = new GameObject("Air defender");
+            try
+            {
+                var map = go.AddComponent<HexMap>();
+                map.SetData(3, 1f, new Dictionary<HexCoord, TerrainTypeEntry>
+                    { [_hex] = new TerrainTypeEntry { defenseModifier = 2 } });
+                var engine = new BattleEngine(new BattleState(_hex, attacker, defender, new BattleGrid(), 1), AbilityMagnitudes.Default, map: map);
+                Assert.That(engine.GetDefenderHexDefenseBonus(map), Is.Zero);
+                Assert.That(engine.GetDefenseBreakdown(defender.Members[0], map).TotalBonus, Is.Zero);
+                Assert.That(DisruptionRules.BuildingDefenseAtEncounterStart(_hex, defender, attacker), Is.Zero);
             }
             finally { UnityEngine.Object.DestroyImmediate(go); }
         }

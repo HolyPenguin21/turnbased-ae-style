@@ -2,7 +2,7 @@ using Game.Map;
 
 namespace Game.Combat
 {
-    // Authored/environment rules freeze at construction. Formation remains a live grid rule.
+    // Authored/environment rules freeze at construction.
     public readonly struct BattleRulesSnapshot
     {
         public readonly AbilityMagnitudes Magnitudes;
@@ -12,7 +12,9 @@ namespace Game.Combat
         { Magnitudes = magnitudes; TerrainDefenseBonus = terrain; BuildingDefenseBonus = building; }
         internal static BattleRulesSnapshot Capture(BattleState state, AbilityMagnitudes magnitudes, HexMap map)
         {
-            int terrain = map != null && map.TryGetTerrainAt(state.BattleHex, out var entry) && entry != null ? entry.defenseModifier : 0;
+            // Defender-side only (BattleRules.GetTotalDefenseBonus); an air defender gets none.
+            int terrain = Game.Aviation.AviationRules.IsAirArmy(state.Defender) ? 0
+                : BattleRules.TerrainDefenseBonus(state.BattleHex, map);
             return new BattleRulesSnapshot(magnitudes, terrain, state.DefenderBuildingDefenseBonus);
         }
     }

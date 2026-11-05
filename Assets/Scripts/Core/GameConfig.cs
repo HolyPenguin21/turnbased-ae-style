@@ -129,6 +129,18 @@ namespace Game.Core
             => abilityCatalog != null ? abilityCatalog.FormatAbilities(abilities)
                 : abilities == null ? string.Empty : string.Join(" ", abilities.Select(UnitAbilities.PrettyName));
 
+        // Tag shown on the compact card face of an aviation unit (card.isAviation / UnitData.IsAviation).
+        // Detail views already list the Aircraft type tag, so they don't repeat it.
+        public const string AirTag = "Air";
+
+        // Compact unit-card face: "Air" first for aviation, then the ability abbreviations.
+        public string FormatUnitFace(IEnumerable<string> abilities, bool isAviation)
+        {
+            string text = FormatAbilities(abilities);
+            if (!isAviation) return text;
+            return string.IsNullOrEmpty(text) ? AirTag : AirTag + " " + text;
+        }
+
         public string FormatAbilitiesDetailed(IEnumerable<string> abilities)
             => abilityCatalog != null ? abilityCatalog.FormatAbilitiesDetailed(abilities)
                 : abilities == null ? string.Empty : string.Join("\n", abilities.Select(UnitAbilities.PrettyName));

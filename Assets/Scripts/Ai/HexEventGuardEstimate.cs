@@ -14,11 +14,12 @@ namespace Game.Ai
     // Reads the guard's CardDefinition stats (defenseRating, attack, hitPoints, initiative,
     // grantedAbilities) rather than a live ArmyData — the guard is not spawned until Explore is
     // chosen — repeating each card by its copy count so the full-roster Monte Carlo plays a
-    // "3 Grunts" guard out as three separate combatants. No hex-defense bonus is added (this call
-    // site has no HexCoord/HexMap context handy), matching the original.
+    // "3 Grunts" guard out as three separate combatants. The guard is the battle's defender, so
+    // the caller passes the event hex's terrain bonus (a guard never owns a Base there).
     public static class HexEventGuardEstimate
     {
-        public static bool ShouldExplore(ArmyData mover, HexEventRegistry.Entry entry, bool allowGuardCombat = true)
+        public static bool ShouldExplore(ArmyData mover, HexEventRegistry.Entry entry, bool allowGuardCombat = true,
+            float guardHexDefenseBonus = 0f)
         {
             if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) != true)
                 return false;
@@ -36,8 +37,8 @@ namespace Game.Ai
 
             // Win chance over 50% AND able to scratch every defender. A guard with no fighting body
             // is a trivial win for the roster estimator (nothing to fight).
-            return WorthIt.WinChance(mover, guardDefenders, 0f, GuardCommander(entry)) > 0.5f
-                && WorthIt.CanDamageAll(mover, guardDefenders);
+            return WorthIt.WinChance(mover, guardDefenders, guardHexDefenseBonus, GuardCommander(entry)) > 0.5f
+                && WorthIt.CanDamageAll(mover, guardDefenders, guardHexDefenseBonus);
         }
 
         // The guard's commander: its first hero card (the same "first hero leads" rule as

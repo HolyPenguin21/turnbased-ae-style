@@ -232,7 +232,7 @@ namespace Game.UI
                 return;
             }
             var abilities = EquipmentSystem.EffectiveAbilities(Data);
-            typeText.text = _hand?.GameConfig?.FormatAbilities(abilities) ?? string.Empty;
+            typeText.text = _hand?.GameConfig?.FormatUnitFace(abilities, definition.isAviation) ?? string.Empty;
         }
 
         // See the field block's own comment for the fixed per-slot stat mapping. Facility uses

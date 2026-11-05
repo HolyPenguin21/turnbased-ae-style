@@ -3282,7 +3282,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
-    - cardKey: neutral.facility.lab
+    - cardKey: vessels.20.siege-walker
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
@@ -3470,7 +3470,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
-    - cardKey: neutral.facility.lab
+    - cardKey: vessels.20.siege-walker
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
@@ -3658,7 +3658,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
-    - cardKey: neutral.facility.lab
+    - cardKey: vessels.20.siege-walker
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
@@ -3829,7 +3829,7 @@ MonoBehaviour:
     - cardKey: vessels.18.bastion-frame
       count: 3
     - cardKey: vessels.20.siege-walker
-      count: 2
+      count: 3
     - cardKey: vessels.19.heavy-sentinel
       count: 2
     - cardKey: vessels.unit.reliquary-crab
@@ -3845,8 +3845,6 @@ MonoBehaviour:
     - cardKey: vessels.11.glass-runner
       count: 1
     - cardKey: vessels.01.relay-base
-      count: 1
-    - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
@@ -4032,7 +4030,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
-    - cardKey: neutral.facility.lab
+    - cardKey: vessels.20.siege-walker
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
@@ -4218,7 +4216,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
-    - cardKey: neutral.facility.lab
+    - cardKey: vessels.20.siege-walker
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
@@ -4404,7 +4402,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
-    - cardKey: neutral.facility.lab
+    - cardKey: vessels.20.siege-walker
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
@@ -4590,7 +4588,7 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
-    - cardKey: neutral.facility.lab
+    - cardKey: vessels.20.siege-walker
       count: 1
     - cardKey: neutral.facility.factory
       count: 1

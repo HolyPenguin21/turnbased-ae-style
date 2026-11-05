@@ -255,48 +255,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void GuardedBackRow_GainsOneDefenseToken()
-        {
-            var owner = new PlayerSetupData { Nickname = "D" };
-            var defenderArmy = new ArmyData { Owner = owner };
-            var target = new UnitData
-            {
-                Owner = owner, Defense = 2, HitPointsCurrent = 4, HitPointsMax = 4,
-            };
-            var guard = new UnitData
-            {
-                Owner = owner, Defense = 3, HitPointsCurrent = 4, HitPointsMax = 4,
-            };
-            defenderArmy.Members.Add(target);
-            defenderArmy.Members.Add(guard);
-
-            var grid = new BattleGrid();
-            grid.Set(BattleGrid.DefenderBackRow, 2, target);
-            grid.Set(BattleGrid.DefenderFrontRow, 1, guard);
-
-            Assert.That(BattleRules.GetGuardedDefenseBonus(grid, target, defenderArmy),
-                Is.EqualTo(BattleRules.GuardedDefenseBonus));
-
-            grid.Set(BattleGrid.DefenderFrontRow, 1, null);
-            Assert.That(BattleRules.GetGuardedDefenseBonus(grid, target, defenderArmy), Is.Zero);
-        }
-
-        [Test]
-        public void GuardedBonus_ReducesExactExpectedDamage()
-        {
-            var attacker = new UnitData { Attack = 4, Defense = 1, HitPointsCurrent = 4, HitPointsMax = 4 };
-            var defender = new UnitData { Attack = 1, Defense = 3, HitPointsCurrent = 6, HitPointsMax = 6 };
-
-            float open = BattleCombatOdds.Evaluate(attacker, defender, 0,
-                AbilityMagnitudes.Default, defender.HitPointsCurrent).ExpectedDamage;
-            float guarded = BattleCombatOdds.Evaluate(attacker, defender,
-                BattleRules.GuardedDefenseBonus, AbilityMagnitudes.Default,
-                defender.HitPointsCurrent).ExpectedDamage;
-
-            Assert.That(guarded, Is.LessThan(open));
-        }
-
-        [Test]
         public void CaptureKill_TieMeansKilled()
         {
             Assert.That(BattleRules.ResolveCaptureKill(
@@ -511,28 +469,34 @@ namespace Game.EditorTests
             }
         }
 
+        // No grid-derived bonus exists: a back-row unit behind its own front line gets only the
+        // defender's hex bonus, and an attacking unit gets nothing in any formation.
         [Test]
-        public void TerrainAndGuarded_DefenseBonusesStackOnce()
+        public void HexBonus_OnlyDefenderMembers_NoFormationBonus()
         {
             var owner = new PlayerSetupData { Nickname = "D" };
+            var enemy = new PlayerSetupData { Nickname = "A" };
             var defenderArmy = new ArmyData { Owner = owner };
+            var attackerArmy = new ArmyData { Owner = enemy };
             var target = Body(owner, hp: 5);
             var guard = Body(owner, hp: 5);
+            var attackerBack = Body(enemy, hp: 5);
+            var attackerFront = Body(enemy, hp: 5);
             defenderArmy.Members.Add(target);
             defenderArmy.Members.Add(guard);
+            attackerArmy.Members.Add(attackerBack);
+            attackerArmy.Members.Add(attackerFront);
             var grid = new BattleGrid();
             grid.Set(BattleGrid.DefenderBackRow, 2, target);
             grid.Set(BattleGrid.DefenderFrontRow, 2, guard);
+            grid.Set(BattleGrid.AttackerBackRow, 2, attackerBack);
+            grid.Set(BattleGrid.AttackerFrontRow, 2, attackerFront);
 
-            int combined = BattleRules.GetTotalDefenseBonus(
-                grid, target, defenderArmy, defenderHexBonus: 2);
-
-            Assert.That(combined, Is.EqualTo(3));
-            float terrainOnly = BattleCombatOdds.Evaluate(
-                new UnitData { Attack = 5 }, target, 2, AbilityMagnitudes.Default, 5).ExpectedDamage;
-            float terrainAndGuard = BattleCombatOdds.Evaluate(
-                new UnitData { Attack = 5 }, target, combined, AbilityMagnitudes.Default, 5).ExpectedDamage;
-            Assert.That(terrainAndGuard, Is.LessThan(terrainOnly));
+            Assert.That(BattleRules.GetTotalDefenseBonus(grid, target, defenderArmy, defenderHexBonus: 2), Is.EqualTo(2));
+            Assert.That(BattleRules.GetTotalDefenseBonus(grid, target, defenderArmy, defenderHexBonus: 0), Is.Zero);
+            Assert.That(BattleRules.GetTotalDefenseBonus(grid, attackerBack, defenderArmy, defenderHexBonus: 2), Is.Zero);
+            Assert.That(BattleRules.GetTotalDefenseBonus(grid, attackerFront, defenderArmy, defenderHexBonus: 2), Is.Zero);
+            Assert.That(BattleRules.GetTotalDefenseBonus(grid, attackerBack, battleDefender: null, defenderHexBonus: 2), Is.Zero);
         }
 
         [Test]
@@ -584,23 +548,6 @@ namespace Game.EditorTests
             Assert.That(simAttack, Is.EqualTo(defender.Attack));
             Assert.That(simDefense, Is.EqualTo(defender.Defense));
             Assert.That(simSuppresses, Is.EqualTo(live.Shocked));
-        }
-
-        [Test]
-        public void Guarded_HeroInBackRow_ReceivesFormationDefense()
-        {
-            var owner = new PlayerSetupData { Nickname = "A" };
-            var army = new ArmyData { Owner = owner, Name = "A" };
-            var hero = new UnitData { Owner = owner, IsHero = true, FateMax = 4, HitPointsCurrent = 5, HitPointsMax = 5 };
-            var guard = Body(owner);
-            army.Members.Add(hero);
-            army.Members.Add(guard);
-            var grid = new BattleGrid();
-            grid.Set(BattleGrid.AttackerBackRow, 2, hero);
-            grid.Set(BattleGrid.AttackerFrontRow, 2, guard);
-
-            Assert.That(BattleRules.GetGuardedDefenseBonus(grid, hero, battleDefender: null),
-                Is.EqualTo(BattleRules.GuardedDefenseBonus));
         }
 
         [Test]

@@ -23,14 +23,12 @@ namespace Game.Combat
     {
         public readonly int TerrainBonus;
         public readonly int ConstructionBonus;
-        public readonly int FormationBonus;
-        public int TotalBonus => TerrainBonus + ConstructionBonus + FormationBonus;
+        public int TotalBonus => TerrainBonus + ConstructionBonus;
 
-        public BattleDefenseBreakdown(int terrainBonus, int constructionBonus, int formationBonus)
+        public BattleDefenseBreakdown(int terrainBonus, int constructionBonus)
         {
             TerrainBonus = terrainBonus;
             ConstructionBonus = constructionBonus;
-            FormationBonus = formationBonus;
         }
     }
 
@@ -540,20 +538,12 @@ namespace Game.Combat
 
         public BattleDefenseBreakdown GetDefenseBreakdown(UnitData defender, HexMap map)
         {
+            // Same gate as BattleRules.GetTotalDefenseBonus: only the defending army's members;
+            // the snapshot already holds 0 for an air defender.
             ArmyData defenderArmy = _state.OwningArmy(defender);
-            int terrain = 0;
-            int construction = 0;
-            int formation = BattleRules.GetGuardedDefenseBonus(
-                _state.Grid, defender, _state.Defender);
-
-            if (defenderArmy != null && defenderArmy == _state.Defender
-                && !Game.Aviation.AviationRules.IsAirArmy(defenderArmy))
-            {
-                terrain = _rules.TerrainDefenseBonus;
-                construction = _rules.BuildingDefenseBonus;
-            }
-
-            return new BattleDefenseBreakdown(terrain, construction, formation);
+            return defenderArmy != null && defenderArmy == _state.Defender
+                ? new BattleDefenseBreakdown(_rules.TerrainDefenseBonus, _rules.BuildingDefenseBonus)
+                : default;
         }
 
         public void CommitGroundAttack(UnitData attacker)

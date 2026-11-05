@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Game.Cards;
+using Game.HexGrid;
 using Game.Map;
 using Game.Units;
 
@@ -69,44 +70,21 @@ namespace Game.Combat
         }
 
         // ---- Protection ----
-        // Spatial defensive rules that are derived from the live tactical grid.
-        public const int GuardedDefenseBonus = 1;
-
+        // The only bonus defense tokens in a battle are the hex's: terrain + the defender's own
+        // Base building (Disruption cancels the building part). Only the DEFENDING ground army
+        // gets them; the attacking army never receives any bonus defense.
         private static readonly int[] OrthogonalRows = { -1, 1, 0, 0 };
         private static readonly int[] OrthogonalCols = { 0, 0, -1, 1 };
 
         public static int GetTotalDefenseBonus(BattleGrid grid, UnitData unit, ArmyData battleDefender,
             int defenderHexBonus)
-        {
-            int hex = battleDefender != null && unit != null && battleDefender.Members.Contains(unit)
+            => battleDefender != null && unit != null && battleDefender.Members.Contains(unit)
                 ? defenderHexBonus : 0;
-            return hex + GetGuardedDefenseBonus(grid, unit, battleDefender);
-        }
 
-        public static int GetGuardedDefenseBonus(BattleGrid grid, UnitData unit, ArmyData battleDefender)
-        {
-            if (grid == null || unit == null || (!unit.IsGroundCombatant && !unit.IsHero)
-                || !grid.TryFindPosition(unit, out int row, out int col))
-                return 0;
-
-            bool defenderSide = battleDefender != null && battleDefender.Members.Contains(unit);
-            int ownBackRow = defenderSide ? BattleGrid.DefenderBackRow : BattleGrid.AttackerBackRow;
-            int ownFrontRow = defenderSide ? BattleGrid.DefenderFrontRow : BattleGrid.AttackerFrontRow;
-            if (row != ownBackRow)
-                return 0;
-
-            int minCol = System.Math.Max(0, col - 1);
-            int maxCol = System.Math.Min(BattleGrid.Columns - 1, col + 1);
-            for (int c = minCol; c <= maxCol; c++)
-            {
-                UnitData guard = grid.Get(ownFrontRow, c);
-                if (guard != null && guard.IsGroundCombatant && guard.Owner == unit.Owner
-                    && guard.HitPointsCurrent > 0)
-                    return GuardedDefenseBonus;
-            }
-
-            return 0;
-        }
+        // Terrain part of the hex bonus (frozen per encounter by BattleRulesSnapshot; the building
+        // part is DisruptionRules.BuildingDefenseAtEncounterStart). An air defender gets neither.
+        public static int TerrainDefenseBonus(HexCoord hex, HexMap map)
+            => map != null && map.TryGetTerrainAt(hex, out var entry) && entry != null ? entry.defenseModifier : 0;
 
         // UnitAbilities.Bodyguard — the guard that takes a hit aimed at `victim`: a living,
         // unspent, same-owner ground combatant carrying Bodyguard on an orthogonal neighbour cell

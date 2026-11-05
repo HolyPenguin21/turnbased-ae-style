@@ -124,12 +124,12 @@ namespace Game.UI
         // say why it's bigger than the unit's own stat, so the prefix spells out the breakdown
         // instead (per the user's own request) — plain "Tokens: {count}" otherwise, unchanged.
         public void SetTokenPoolSize(int count, int terrainBonus = 0, int constructionBonus = 0,
-            int baseDefense = 0, int formationBonus = 0)
+            int baseDefense = 0)
         {
             if (tokenCountText == null)
                 return;
 
-            if (terrainBonus == 0 && constructionBonus == 0 && formationBonus == 0)
+            if (terrainBonus == 0 && constructionBonus == 0)
             {
                 tokenCountText.text = $"Tokens: {count}";
                 return;
@@ -140,8 +140,6 @@ namespace Game.UI
                 parts.Add($"Terrain({terrainBonus})");
             if (constructionBonus != 0)
                 parts.Add($"Construction({constructionBonus})");
-            if (formationBonus != 0)
-                parts.Add($"Guarded({formationBonus})");
             parts.Add($"Defence({baseDefense})");
             tokenCountText.text = $"{string.Join(" + ", parts)}, Tokens: {count}";
         }

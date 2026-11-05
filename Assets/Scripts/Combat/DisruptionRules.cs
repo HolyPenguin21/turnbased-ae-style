@@ -31,14 +31,37 @@ namespace Game.Combat
             return ArmyRegistry.AllAt(hex).Any(a => a.Owner != defenderOwner && HasCarrier(a));
         }
 
+        // An air army defends without the hex's building bonus (and without terrain, see
+        // BattleRulesSnapshot).
         public static int BuildingDefenseAtEncounterStart(HexCoord hex, ArmyData defender,
             ArmyData incomingAttacker)
+            => defender == null || Game.Aviation.AviationRules.IsAirArmy(defender) ? 0
+                : BuildingDefenseFor(hex, defender.Owner, incomingAttacker);
+
+        // The defending owner's own Base building Defense on `hex`, 0 when disrupted.
+        public static int BuildingDefenseFor(HexCoord hex, PlayerSetupData defenderOwner,
+            ArmyData incomingAttacker = null)
+        {
+            int defense = OwnBaseDefense(hex, defenderOwner);
+            return defense > 0 && IsDisrupted(hex, defenderOwner, incomingAttacker) ? 0 : defense;
+        }
+
+        // Knowledge-safe variant: only the caller's own incoming attacker can disrupt; other
+        // (possibly hidden) armies on the hex are never inspected.
+        public static int KnownBuildingDefenseFor(HexCoord hex, PlayerSetupData defenderOwner,
+            ArmyData incomingAttacker = null)
+        {
+            int defense = OwnBaseDefense(hex, defenderOwner);
+            return defense > 0 && incomingAttacker != null && defenderOwner != null
+                && incomingAttacker.Owner != defenderOwner && HasCarrier(incomingAttacker) ? 0 : defense;
+        }
+
+        // A Base's Defense counts only for an army of the building's own owner.
+        public static int OwnBaseDefense(HexCoord hex, PlayerSetupData defenderOwner)
         {
             BuildingData building = BuildingRegistry.FindAt(hex);
-            if (defender?.Owner == null || building == null || !building.IsBase
-                || building.Owner != defender.Owner) return 0;
-            return building.Defense > 0 && IsDisrupted(hex, defender.Owner, incomingAttacker)
-                ? 0 : building.Defense;
+            return defenderOwner == null || building == null || !building.IsBase
+                || building.Owner != defenderOwner ? 0 : building.Defense;
         }
     }
 }
