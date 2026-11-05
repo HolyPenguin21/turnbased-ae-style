@@ -238,6 +238,7 @@ namespace Game.UI
         // Arrangement/Round-start, before any round has actually begun.
         private UnitData _currentActingUnit;
         private Coroutine _aiAutoPassRoutine;
+        private Coroutine _aiArrangementRoutine;
         // A battle with no human participant resolves its actions back to back with no pacing beat,
         // and each action re-enters AutoActAfterDelay synchronously — without this the whole fight
         // (every action's grid/queue rebuild) landed in ONE frame (~230 ms profiled). Same
@@ -355,6 +356,7 @@ namespace Game.UI
 
         public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed, bool fastResolve = false)
         {
+            CancelAiArrangement();
             ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
             ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
             _attackerMarkerAtStart = ArmyDestructionEffect.Capture(attacker?.Controller?.Visual);
@@ -453,20 +455,10 @@ namespace Game.UI
             _aiPreviousPositions.Clear();
             _aiFavorableThisRound.Clear();
 
-            // AI never gets a UI Arrangement phase — replace whatever FromArmies's generic
-            // default just placed for any non-human side with BattleAi's own range-aware layout
-            // (covers ordinary human-vs-AI and the AI-vs-AI edge case symmetrically). The
-            // opposing army is passed only for its current STATS (see ArrangeArmy's own
-            // comment), never its placement — both sides' arrangement happens in this same call,
-            // before either one has a layout to look at.
-            if (IsAutomatedSide(_attacker))
-                _battleEngine.ArrangeAiArmy(_attacker, _defender,
-                    BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, map);
-            if (IsAutomatedSide(_defender))
-                _battleEngine.ArrangeAiArmy(_defender, _attacker,
-                    BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, map);
-
             _localArmy = null;
+            _currentActingUnit = null;
+            _arranging = false;
+            _arrangeInteractive = false;
             if (_attacker?.Owner != null && _attacker.Owner.IsHuman)
             {
                 _localArmy = _attacker;
@@ -479,6 +471,11 @@ namespace Game.UI
                 _localFrontRow = BattleGrid.DefenderFrontRow;
                 _localBackRow = BattleGrid.DefenderBackRow;
             }
+
+            // The player can arrange while the AI plans from roster stats only. Ready and
+            // automatic round start wait for the complete, atomically committed AI layout.
+            if (IsAutomatedSide(_attacker) || IsAutomatedSide(_defender))
+                _aiArrangementRoutine = StartCoroutine(ArrangeAiAndContinue(_battleEngine));
 
             if (HasInteractiveParticipant && arrangePopup != null)
             {
@@ -514,8 +511,43 @@ namespace Game.UI
                     readyButton.gameObject.SetActive(false);
                 if (passButton != null)
                     passButton.gameObject.SetActive(true);
+                if (_aiArrangementRoutine == null) BeginRound();
+            }
+        }
+
+        private IEnumerator ArrangeAiAndContinue(BattleEngine engine)
+        {
+            // Let the screen/popup render before the first projection; also ensures the
+            // Coroutine handle is assigned before any completion path can clear it.
+            yield return null;
+            if (engine != _battleEngine) yield break;
+            if (IsAutomatedSide(_attacker))
+                yield return engine.ArrangeAiArmyRoutine(_attacker, _defender,
+                    BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, map);
+            if (engine != _battleEngine) yield break;
+            if (IsAutomatedSide(_defender))
+                yield return engine.ArrangeAiArmyRoutine(_defender, _attacker,
+                    BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, map);
+            if (engine != _battleEngine) yield break;
+            _aiArrangementRoutine = null;
+            if (HasInteractiveParticipant && arrangePopup != null)
+            {
+                // The opponent is hidden until Ready. Rebuilding here would destroy the
+                // player's cell/drag object while they are arranging their own army.
+                if (readyButton != null) readyButton.interactable = _arrangeInteractive;
+            }
+            else
+            {
+                RefreshGrid();
                 BeginRound();
             }
+        }
+
+        private void CancelAiArrangement()
+        {
+            if (_aiArrangementRoutine == null) return;
+            StopCoroutine(_aiArrangementRoutine);
+            _aiArrangementRoutine = null;
         }
 
         // Only reached once the "Arrange your units" popup's Ok has been clicked — the grid
@@ -524,7 +556,7 @@ namespace Game.UI
         {
             _arrangeInteractive = true;
             if (readyButton != null)
-                readyButton.interactable = true;
+                readyButton.interactable = _aiArrangementRoutine == null;
             RefreshGrid();
         }
 
@@ -532,7 +564,7 @@ namespace Game.UI
         // SavedArrangement), then leaves Arrangement and starts the round loop proper.
         private void OnReadyClicked()
         {
-            if (!_arranging || _localArmy == null)
+            if (!_arranging || !_arrangeInteractive || _localArmy == null || _aiArrangementRoutine != null)
                 return;
 
             _localArmy.SavedArrangement.Clear();
@@ -851,6 +883,7 @@ namespace Game.UI
         // Show() is about to run again immediately after.
         private void ResetBattlePanel()
         {
+            CancelAiArrangement();
             CancelAttackPresentation();
             // RaiseTheRots-summoned units exist only for the battle that's now tearing down — pull
             // them out of both armies while _grid/_turnOrder are still valid, so nothing summoned
