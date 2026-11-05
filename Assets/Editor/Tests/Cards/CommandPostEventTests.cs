@@ -332,6 +332,159 @@ namespace Game.EditorTests
             }
         }
 
+        [TestCase(5, false, 15), TestCase(5, true, 15)]
+        [TestCase(6, false, 18), TestCase(6, true, 18)]
+        [TestCase(7, false, 24), TestCase(7, true, 24)]
+        [TestCase(8, false, 30), TestCase(8, true, 30)]
+        public void GenerationAlwaysPlacesOneLibraryWithinExistingBudget(int radius, bool ruins, int maximum)
+        {
+            var setup = scene.AddComponent<CitadelSetupController>();
+            var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
+            var events = ScriptableObject.CreateInstance<EventCatalog>();
+            var randomState = Random.state;
+            try
+            {
+                SetField(setup, "map", map); SetField(setup, "gameConfig", config); SetField(setup, "eventCatalog", events);
+                var players = (List<PlayerSetupData>)typeof(CitadelSetupController)
+                    .GetField("_allPlayers", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(setup);
+                var citadels = new[] { new HexCoord(1 - radius, 0), new HexCoord(radius - 1, 0) };
+                players.AddRange(citadels.Select(h => new PlayerSetupData { CitadelHexQ = h.Q, CitadelHexR = h.R }));
+                map.SetData(radius, 1, HexGridMath.HexesInRange(new HexCoord(0, 0), radius).ToDictionary(h => h,
+                    h => new TerrainTypeEntry { terrainName = ruins && (h.Equals(new HexCoord(-2, 0)) || h.Equals(new HexCoord(2, 0)))
+                        ? HexMap.CityRuinsTerrainName : "Plain" }));
+                // More definitions than the budget, with the Library last: it must survive
+                // selection regardless of catalog ordering or the random seed.
+                events.events.AddRange(Enumerable.Range(0, 40).Select(_ => new EventDefinition()));
+                var library = new EventDefinition { grantsRandomCollectionCard = true };
+                events.events.Add(library);
+                var generate = typeof(CitadelSetupController).GetMethod("GenerateRandomEvents", BindingFlags.Instance | BindingFlags.NonPublic);
+                for (int seed = 0; seed < 64; seed++)
+                {
+                    HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear(); Random.InitState(seed);
+                    generate.Invoke(setup, null);
+                    var placed = map.AllCoords.Select(h => HexEventRegistry.FindAt(h)).Where(e => e != null).ToList();
+                    Assert.That(placed.Count(e => e.Definition == library), Is.EqualTo(1), "seed " + seed);
+                    Assert.That(placed.Count, Is.LessThanOrEqualTo(maximum), "Library must use the existing budget; seed " + seed);
+                    Assert.That(placed.Select(e => e.Definition).Distinct().Count(), Is.EqualTo(placed.Count));
+                    foreach (var citadel in citadels) Assert.That(HexEventRegistry.FindAt(citadel), Is.Null);
+                    if (ruins)
+                    {
+                        Assert.That(HexEventRegistry.FindAt(new HexCoord(-2, 0)), Is.Not.Null);
+                        Assert.That(HexEventRegistry.FindAt(new HexCoord(2, 0)), Is.Not.Null);
+                    }
+                }
+            }
+            finally
+            {
+                Random.state = randomState; HexResourceBonusRegistry.Clear();
+                Object.DestroyImmediate(events); Object.DestroyImmediate(config);
+            }
+        }
+
+        [TestCase(false), TestCase(true)]
+        public void GenerationPlacesLibraryWhenOnlyOneLegalEventHexExists(bool resource)
+        {
+            var setup = scene.AddComponent<CitadelSetupController>();
+            var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
+            var events = ScriptableObject.CreateInstance<EventCatalog>();
+            var randomState = Random.state;
+            try
+            {
+                SetField(setup, "map", map); SetField(setup, "gameConfig", config); SetField(setup, "eventCatalog", events);
+                events.events.AddRange(Enumerable.Range(0, 40).Select(_ => new EventDefinition()));
+                var library = new EventDefinition { grantsRandomCollectionCard = true };
+                events.events.Add(library);
+                var generate = typeof(CitadelSetupController).GetMethod("GenerateRandomEvents", BindingFlags.Instance | BindingFlags.NonPublic);
+                for (int seed = 0; seed < 64; seed++)
+                {
+                    HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear(); Random.InitState(seed);
+                    var bonus = new Game.Economy.ResourceYields { materials = 2 };
+                    if (resource) HexResourceBonusRegistry.Set(hex, bonus);
+                    generate.Invoke(setup, null);
+                    Assert.That(HexEventRegistry.FindAt(hex)?.Definition, Is.SameAs(library), "seed " + seed);
+                    Assert.That(HexResourceBonusRegistry.GetBonus(hex), Is.SameAs(resource ? bonus : null));
+                }
+            }
+            finally
+            {
+                Random.state = randomState; HexResourceBonusRegistry.Clear();
+                Object.DestroyImmediate(events); Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test] public void ResourceFallbackDoesNotPlaceOnCitadelOrBlockedHexOrCreateOrdinaryEvents()
+        {
+            var setup = scene.AddComponent<CitadelSetupController>();
+            var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
+            var events = ScriptableObject.CreateInstance<EventCatalog>();
+            var randomState = Random.state;
+            try
+            {
+                SetField(setup, "map", map); SetField(setup, "gameConfig", config); SetField(setup, "eventCatalog", events);
+                var players = (List<PlayerSetupData>)typeof(CitadelSetupController)
+                    .GetField("_allPlayers", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(setup);
+                players.Add(new PlayerSetupData { CitadelHexQ = hex.Q, CitadelHexR = hex.R });
+                var ordinary = new EventDefinition();
+                var library = new EventDefinition { grantsRandomCollectionCard = true };
+                events.events.Add(ordinary); events.events.Add(library);
+                HexResourceBonusRegistry.Set(hex, new Game.Economy.ResourceYields { energy = 2 });
+                var generate = typeof(CitadelSetupController).GetMethod("GenerateRandomEvents", BindingFlags.Instance | BindingFlags.NonPublic);
+                generate.Invoke(setup, null);
+                Assert.That(HexEventRegistry.FindAt(hex), Is.Null, "Even the mandatory Library cannot occupy a citadel.");
+                players.Clear();
+                map.SetData(3, 1, new Dictionary<HexCoord, TerrainTypeEntry> { [hex] = new TerrainTypeEntry { blocksGroundMovement = true } });
+                generate.Invoke(setup, null);
+                Assert.That(HexEventRegistry.FindAt(hex), Is.Null, "The resource fallback must respect ground blocking.");
+                map.SetData(3, 1, new Dictionary<HexCoord, TerrainTypeEntry> { [hex] = new TerrainTypeEntry() });
+                events.events.Remove(library);
+                generate.Invoke(setup, null);
+                Assert.That(HexEventRegistry.FindAt(hex), Is.Null, "Ordinary events cannot use the Library's resource fallback.");
+            }
+            finally
+            {
+                Random.state = randomState; HexResourceBonusRegistry.Clear();
+                Object.DestroyImmediate(events); Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test] public void GeneratedAuthoredLibraryPreservesGuardAndIdentityAcrossRegistryRestore()
+        {
+            var setup = scene.AddComponent<CitadelSetupController>();
+            var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
+            var randomState = Random.state;
+            try
+            {
+                var events = AssetDatabase.LoadAssetAtPath<EventCatalog>("Assets/Cards/EventCatalog.asset");
+                var armies = AssetDatabase.LoadAssetAtPath<NeutralArmyCatalog>("Assets/Cards/NeutralArmyCatalog.asset");
+                var library = events.events.Single(e => e.grantsRandomCollectionCard);
+                SetField(setup, "map", map); SetField(setup, "gameConfig", config);
+                SetField(setup, "eventCatalog", events); SetField(setup, "neutralArmyCatalog", armies);
+                var generate = typeof(CitadelSetupController).GetMethod("GenerateRandomEvents", BindingFlags.Instance | BindingFlags.NonPublic);
+                for (int seed = 0; seed < 64; seed++)
+                {
+                    HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear(); Random.InitState(seed);
+                    int armiesBefore = ArmyRegistry.AllAt(hex).Count();
+                    generate.Invoke(setup, null);
+                    var generated = HexEventRegistry.FindAt(hex);
+                    Assert.That(generated?.Definition, Is.SameAs(library), "seed " + seed);
+                    Assert.That(generated.HasResolvedGuard, Is.True);
+                    Assert.That(library.variants.Any(v => v.guardArmyName == generated.GuardArmyName), Is.True);
+                    Assert.That(ArmyRegistry.AllAt(hex).Count(), Is.EqualTo(armiesBefore), "Generation must not spawn a live guard.");
+                    var snapshot = HexEventRegistry.CaptureEntries((h, e) => e);
+                    HexEventRegistry.Clear(); HexEventRegistry.RestoreEntries(snapshot, (h, e) => e);
+                    var restored = HexEventRegistry.FindAt(hex);
+                    Assert.That(restored.Definition.authoredKey, Is.EqualTo(library.authoredKey));
+                    Assert.That(restored.HasResolvedGuard, Is.True);
+                    Assert.That(restored.Consumed, Is.False);
+                }
+            }
+            finally
+            {
+                Random.state = randomState; HexResourceBonusRegistry.Clear();
+                Object.DestroyImmediate(config);
+            }
+        }
+
         private static void SetField(object target, string field, object value) => target.GetType()
             .GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(target, value);
     }
