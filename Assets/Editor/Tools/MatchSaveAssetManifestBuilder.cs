@@ -156,13 +156,15 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
     }
     // Size and write time of every content file and importer setting, plus the manifest file and
     // the engine version. A git checkout or an editor import changes the write time. Scenes are
-    // listed without their contents: the rebuild never reads them.
+    // listed without their contents: the rebuild never reads them. Presentation prefabs are left out.
     private static string InputStamp(string[] content)
     {
         var text = new System.Text.StringBuilder(Application.unityVersion).Append('\n');
         foreach (string path in content.Append(Output))
         {
             if (path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) { text.Append(path).Append('\n'); continue; }
+            // Presentation prefabs never reach the manifest; editing them must not force a later scan.
+            if (MatchSaveContentFingerprint.IsPresentationAuthoring(path)) continue;
             text.Append(path).Append('|').Append(AssetDatabase.AssetPathToGUID(path));
             AppendFile(text, path);
             AppendFile(text, path + ".meta");
