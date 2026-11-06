@@ -1290,8 +1290,8 @@ MonoBehaviour:
     apCost: 3
     resourceCost:
       human: 0
-      energy: 1
-      materials: 2
+      energy: 2
+      materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
@@ -1339,8 +1339,8 @@ MonoBehaviour:
     apCost: 3
     resourceCost:
       human: 0
-      energy: 1
-      materials: 2
+      energy: 2
+      materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
