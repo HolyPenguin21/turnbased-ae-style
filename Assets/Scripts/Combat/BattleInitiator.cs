@@ -112,6 +112,31 @@ namespace Game.Combat
             return mover.Members.Any(member => member.IsHero && !member.IsHidden);
         }
 
+        // An unresolved contact on `mover`'s own hex that holds it there until it is resolved
+        // (battle or Capture/Kill). Same pairing rule as the round-end sweep (GameTurnController.
+        // TryFindNextContestedBattle): an ordinary army fully in stealth never holds anyone, even
+        // when `mover`'s owner has detected it — it walked in hidden and did nothing, and the
+        // detecting player attacks it only by an explicit order. A building's own garrison still
+        // holds (it defends hidden or not).
+        public static bool IsHeldByContact(ArmyData mover)
+        {
+            if (mover == null || !CanInitiateContact(mover))
+                return false;
+            PlayerSetupData observer = mover.Owner;
+            bool heroOnlyMover = !IsCombatCapable(mover);
+            foreach (ArmyData army in ArmyRegistry.AllAt(mover.Hex))
+            {
+                if (army.Owner == observer || !IsEngageable(army, observer))
+                    continue;
+                if (heroOnlyMover && !IsCombatCapable(army, observer))
+                    continue;
+                if (Game.Map.StealthSystem.IsArmyFullyHidden(army) && !IsBuildingGarrison(army))
+                    continue;
+                return true;
+            }
+            return false;
+        }
+
         // Contact selection has two forms because many callers only ask the occupancy question
         // ("does any enemy stand here?"), while a committed encounter also knows the concrete
         // mover. Only the latter can answer "which defender is hardest for THIS attacker" without
