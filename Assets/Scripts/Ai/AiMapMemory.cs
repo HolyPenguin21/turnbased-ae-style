@@ -253,6 +253,11 @@ namespace Game.Ai
             return found;
         }
 
+        // Whether `player` lost its structure on `hex` on or after `sinceTurn` (its own knowledge).
+        public static bool LostStructureSince(PlayerSetupData player, HexCoord hex, int sinceTurn) =>
+            TryStore(LostStructures, player, out Dictionary<HexCoord, int> lost)
+            && lost.TryGetValue(hex, out int turn) && turn >= sinceTurn;
+
         // Whether `player` saw this enemy army destroyed. Read by the V2 Recon history so a dead
         // army stops being a remembered contact (AiReconMemory.Observe / Historical).
         public static bool IsWitnessedDestroyed(PlayerSetupData player, int armyId) =>

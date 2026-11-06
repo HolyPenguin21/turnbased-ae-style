@@ -32,7 +32,7 @@
         // principle — fill an existing suitable army / the garrison before founding a new one:
         //   Garrison  >  Existing suitable army  >  Reusable empty shell  >  new army (0).
         // A solo (Recce / ScoutCapability) card is shell-or-new only, so the top two never apply
-        // to it. Garrison respects garrisonReservedSlots (PlacementRules.CanDepositIntoGarrison).
+        // to it. Garrison needs a free slot (PlacementRules.CanDepositIntoGarrison).
         public const float stratPlacementGarrisonBonus = 0.30f;
         public const float stratPlacementExistingArmyBonus = 0.20f;
         public const float stratPlacementReusableShellBonus = 0.10f;

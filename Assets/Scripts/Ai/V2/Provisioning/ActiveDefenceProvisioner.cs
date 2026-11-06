@@ -67,7 +67,12 @@ namespace Game.Ai.V2
             };
             KnownOpposition.AddCoOccupants(session.Snapshot, sighting.Value.Hex, target.EnemyArmyId, opposition);
             bool immediate = target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity;
-            if (immediate && (!hexVisibleNow || target.ImmediateTurn != session.Snapshot?.TurnNumber))
+            // Honest position now: in sight, or the saboteur still standing on the ruin it razed
+            // (ActiveDefenceObjectiveEvaluator.OnFreshOwnRuin, the rule EnumerateImmediate admits).
+            bool immediatePositionHonest = hexVisibleNow
+                || session.Snapshot != null && ActiveDefenceObjectiveEvaluator.OnFreshOwnRuin(player,
+                    session.Snapshot.TurnNumber, sighting.Value.Hex, sighting.Value.SeenTurn);
+            if (immediate && (!immediatePositionHonest || target.ImmediateTurn != session.Snapshot?.TurnNumber))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"immediate intercept of #{target.EnemyArmyId} is no longer a visible same-turn opportunity"));
             if (target.IsMaterializedSortie)

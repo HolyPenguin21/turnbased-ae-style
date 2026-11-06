@@ -319,9 +319,19 @@ namespace Game.Ai.V2
             List<ReorgUnit> nonHeroFriendlies = containers.SelectMany(c => c.Units)
                 .Where(u => u != null && u.IsGroundCombatant).ToList();
 
+            // Owner decision 2026-11-05: a hidden enemy (fog/stealth cheat) only benchmarks the
+            // Citadel's own group, so its garrison is never packaged as an easy win; anywhere
+            // else Housekeeping packages against honestly seen enemies only. It never creates a
+            // threat or blocks a mission either way (Housekeeping owns neither).
+            // The starting Citadel only, while held: Self.Citadel falls back to another base once
+            // it is lost (and to a default hex with no base at all).
+            bool citadelGroup = snapshot.Self != null && snapshot.Self.HoldsStartingCitadel
+                && groupHex.Equals(snapshot.Self.Citadel);
             foreach (ArmySnapshot enemy in enemies.OrderBy(a => a?.ArmyId ?? int.MaxValue))
             {
                 if (!HeroRoleEvaluator.IsCommandBenchmark(enemy))
+                    continue;
+                if (enemy.IsHiddenFromUs && !citadelGroup)
                     continue;
 
                 int move = Mathf.Max(1, enemy.MaxMovement);
