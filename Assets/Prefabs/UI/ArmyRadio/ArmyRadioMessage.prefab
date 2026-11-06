@@ -65,10 +65,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyRadioBubbleView
   _group: {fileID: 100001}
   _panel: {fileID: 100021}
-  _shadow: {fileID: 0}
   _fade: {fileID: 100002}
   _bubble: {fileID: 100023}
-  _bubbleShadow: {fileID: 0}
   _art: {fileID: 100043}
   _message: {fileID: 100033}
   artHeight: 78
@@ -76,7 +74,6 @@ MonoBehaviour:
   minimumPanelHeight: 56
   cardGap: 14
   markerGap: 12
-  shadowOffset: {x: 0, y: -2}
 --- !u!1 &100020
 GameObject:
   m_ObjectHideFlags: 0
