@@ -13,18 +13,20 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  PLACEMENT RULES  (Strategy V2 — Strategic Manager)
     // ===========================================================================================
-    //  V2-only placement policy that is NOT physical deployment law (reserved garrison slots,
+    //  V2-only placement policy that is NOT physical deployment law (garrison deposit room,
     //  stable airfield enumeration). Ground building legality is owned by
     //  ArmyActions.HasRequiredGroundDeploymentBuilding and is called directly by planning/UI.
     // ===========================================================================================
     public static class PlacementRules
     {
-        // Same stricter rule V1 AiManagementPlanner.HasGarrisonDepositRoom enforces — an ordinary
-        // card must not fill a garrison's last slots, part of capacity is kept for later
-        // operations / reorganisation. Neutral primitive so V1 and V2 stay in step on the number.
+        // A garrison takes a card while it has a free slot. 2026-11-05 (owner): no slot is held
+        // back any more — the reserved last slot left a threatened Citadel 6/7 (four non-combat
+        // heroes) unable to take any of five combat cards in hand before it fell; reorganisation
+        // and materialization create or reuse armies instead. Exact projected capacity of the
+        // card (a hero's command rating) is CardPlayExecutor.CanFitAfterDeploy.
         public static bool CanDepositIntoGarrison(ArmyData garrison) =>
             garrison != null && garrison.IsGarrison
-            && garrison.Capacity - garrison.Members.Count > AiConfig.garrisonReservedSlots;
+            && garrison.Members.Count < garrison.Capacity;
 
         // Pure feasibility owner: enumerate every legal owned airfield slot. Ordering is stable
         // only; it is not a strategic preference. NonCombatCardPlayer compares these placements

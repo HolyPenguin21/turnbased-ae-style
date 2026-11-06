@@ -31,9 +31,6 @@ namespace Game.Ai
         public const float garrisonDefenceShareCitadel = 0.10f;
         public const float garrisonDefenceShareBase = 0.05f;
 
-        // Economy / management physical capacity.
-        public const int garrisonReservedSlots = 1;
-
         // Aviation execution knobs (AviationSupport, AirStrike/AirRecon in the V2 recon-air lane).
         public const int airReconTargetCooldownTurns = 3;
         public const float airStrikeContinuationScore = aggressionBaseWeight + 15f;

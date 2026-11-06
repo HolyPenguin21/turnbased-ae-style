@@ -112,14 +112,14 @@ namespace Game.Ai.V2
 
                     if (intent.Raid.Phase == RaidMissionPhase.Return)
                     {
-                        RaidCandidate? ret = ReturnCandidate(intent, RaidMissionPhase.Return,
+                        RaidCandidate? ret = ReturnCandidate(snap, intent, RaidMissionPhase.Return,
                             intent.Raid.PrimaryArmyId, intent.Raid.ReturnHex);
                         if (ret.HasValue) incumbents.Add(ret.Value);
                         continue;
                     }
                     if (intent.Raid.Phase == RaidMissionPhase.RecoveryReturn)
                     {
-                        RaidCandidate? recovery = ReturnCandidate(intent,
+                        RaidCandidate? recovery = ReturnCandidate(snap, intent,
                             RaidMissionPhase.RecoveryReturn, intent.Raid.PrimaryArmyId,
                             intent.Raid.RecoveryBaseHex);
                         if (recovery.HasValue) incumbents.Add(recovery.Value);
@@ -127,7 +127,7 @@ namespace Game.Ai.V2
                     }
                     if (intent.Raid.Phase == RaidMissionPhase.SupportReturn)
                     {
-                        RaidCandidate? sret = ReturnCandidate(intent, RaidMissionPhase.SupportReturn,
+                        RaidCandidate? sret = ReturnCandidate(snap, intent, RaidMissionPhase.SupportReturn,
                             intent.Raid.SupportArmyId, intent.Raid.SupportReturnHex);
                         if (sret.HasValue) incumbents.Add(sret.Value);
                         continue;
@@ -266,9 +266,14 @@ namespace Game.Ai.V2
         }
 
         // Return/support-return are lifecycle/continuity legs, not fresh strategic target scoring.
-        // Their execution priority is owned by the durable Hard commitment; intrinsic TaskScore
-        // stays neutral so lifecycle work cannot out-rank unrelated lanes through a legacy scale.
-        private static RaidCandidate? ReturnCandidate(MissionIntent intent, RaidMissionPhase phase,
+        // Their execution priority is owned by the durable Hard commitment. 2026-11-05 (owner:
+        // calibrate): the leg is worth the field power it brings back into play — the army's own
+        // asset value (WorldAnalysis.ArmyAssetValue, power / 4) in AP-equivalents (1 TaskScore
+        // point = 1 AP, ActionPrice), capped by the strategic-relevance term (6). A 12-power army
+        // (~3) about pays its 3-AP walk, a strong one is worth more, a 4-power remnant is not
+        // worth rushing home; every real task (raids 7-15) still outranks it. Playtest
+        // 2026-11-05: Raw Meat (12.5) idled three turns three hexes from the Citadel at value 0.
+        private static RaidCandidate? ReturnCandidate(WorldSnapshot snap, MissionIntent intent, RaidMissionPhase phase,
             int? moverArmyId, HexCoord? homeHex)
         {
             RaidIntent ri = intent.Raid;
@@ -287,7 +292,9 @@ namespace Game.Ai.V2
                 AssemblableWinChance = 1f,
                 CanCoverAllDefenders = true,
             };
-            TaskScore lifecycle = default;
+            ArmySnapshot mover = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == moverArmyId.Value);
+            TaskScore lifecycle = new TaskScore(strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
+                WorldAnalysis.ArmyAssetValue(mover) / AiConfigV2.taskScoreStrategicRelevanceMax));
             float value = lifecycle.Value;
             string label = phase == RaidMissionPhase.SupportReturn ? "SUPPORT-RETURN"
                 : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY-RETURN" : "RETURN";

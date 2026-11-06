@@ -101,8 +101,7 @@ namespace Game.Ai.V2
                     Kind = AssetKind.Army,
                     HexDefenseBonus = 0f,
                     Opposition = new[] { new WorthIt.DefendingArmy(a.Members, a.Commander) },
-                    Value = Mathf.Min(AiConfigV2.assetValueArmyCap,
-                        (a.EffectiveArmyPower + a.CarrierCargoPower) / AiConfigV2.assetValueArmyPowerDivisor),
+                    Value = ArmyAssetValue(a),
                 });
             }
             model.Assets = assets;
@@ -220,6 +219,12 @@ namespace Game.Ai.V2
             long possibleAdvance = (long)contact.AgeTurns(turn) * movement;
             return (int)System.Math.Max(0L, cost - possibleAdvance);
         }
+
+        // The strategic worth of one own field army as an asset (its power and carried cargo,
+        // capped). One formula for the threat model and for what a return leg brings home.
+        internal static float ArmyAssetValue(ArmySnapshot a) => a == null ? 0f
+            : Mathf.Min(AiConfigV2.assetValueArmyCap,
+                (a.EffectiveArmyPower + a.CarrierCargoPower) / AiConfigV2.assetValueArmyPowerDivisor);
 
         internal static bool IsSiegeThreat(AssetThreatSnapshot threat) =>
             threat?.Asset != null

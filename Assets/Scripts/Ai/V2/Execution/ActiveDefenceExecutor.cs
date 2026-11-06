@@ -141,7 +141,10 @@ namespace Game.Ai.V2
             // the intent ends here (Continuity releases it) and the army simply stays where it is.
             if (pm.ActiveDefenceTarget.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity)
             {
-                bool seen = VisionSystem.IsVisible(player, targetHex);
+                // In sight, or still standing on the ruin it razed (the shared admission rule).
+                bool seen = VisionSystem.IsVisible(player, targetHex)
+                    || ActiveDefenceObjectiveEvaluator.OnFreshOwnRuin(player, ctx.TurnNumber, targetHex,
+                        witness.Value.SeenTurn);
                 bool reach = seen && ActiveDefenceObjectiveEvaluator.CanReachNow(ctx.Map, player, army.Hex,
                     targetHex, army.CurrentMovement, army.MaxMovement, out _);
                 if (!seen || !reach || pm.ActiveDefenceTarget.ImmediateTurn != ctx.TurnNumber)

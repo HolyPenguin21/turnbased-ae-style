@@ -215,7 +215,8 @@ namespace Game.Ai.V2
         // can reach it and START the battle in this very own turn. This is deliberately a separate
         // enumeration, never a loosened Enumerate: Enumerate keeps its strategic meaning for Attack's
         // local reaction, Demand, aviation rebase and air support. Candidates come from the current
-        // honest contacts (visible NOW, also a canonical Known.EnemySightings entry) — never from
+        // honest contacts (visible NOW, or last seen on an own structure lost since our last turn —
+        // OnFreshOwnRuin; also a canonical Known.EnemySightings entry) — never from
         // Threat.Threats, which the severity cutoff already thinned, and never from a hidden registry.
         // The protected asset only anchors scoring (nearest own Base/Citadel): no damage is invented.
         public static List<ActiveDefenceObjective> EnumerateImmediate(WorldSnapshot snap)
@@ -230,7 +231,8 @@ namespace Game.Ai.V2
                 .OrderBy(c => c.Army.ArmyId))
             {
                 int id = c.Army.ArmyId;
-                if (c.Knowledge != ContactKnowledge.Exact || !c.Position.HasValue || id < 0
+                if (!c.Position.HasValue
+                    || (c.Knowledge != ContactKnowledge.Exact && !OnFreshOwnRuin(snap, c)) || id < 0
                     || c.Army.IsAir || c.Army.Owner == null || c.Army.Owner.IsNeutral
                     || c.Army.Owner == snap.Observer || c.Army.Members == null
                     || c.Army.Members.Count == 0 || !known.Contains(id) || !seen.Add(id))
@@ -265,6 +267,24 @@ namespace Game.Ai.V2
             return result.OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.Target.EnemyArmyId).ToList();
         }
+
+        // 2026-11-05 (owner) — the saboteur of a structure we lost since our last turn, last seen on
+        // that ruin. Destroying ends its movement and it cannot re-enter stealth before its next
+        // turn, so its last-known hex is honest now even unseen (fog): our own loss record
+        // (AiMapMemory.LostStructureSince) plus its own sighting, never a TrueWorld read.
+        // Ashen T14 (2026-11-05): Steel Locusts razed two extractors and stood on (3,-3) while a
+        // free army waited at the Citadel; only a visible contact was a candidate.
+        // The ONE rule, read by planning (here, beside ContactKnowledge.Exact) and by the live tiers
+        // that re-prove an immediate intercept (ActiveDefenceProvisioner, ActiveDefenceExecutor,
+        // beside VisionSystem.IsVisible): memory only, so it is legal in every layer.
+        internal static bool OnFreshOwnRuin(PlayerSetupData observer, int turn, HexCoord hex,
+            int lastObservedTurn) =>
+            observer != null && lastObservedTurn >= turn - 1
+            && AiMapMemory.LostStructureSince(observer, hex, turn - 1);
+
+        private static bool OnFreshOwnRuin(WorldSnapshot snap, EnemyContactSnapshot c) =>
+            c.Position.HasValue
+            && OnFreshOwnRuin(snap.Observer, snap.TurnNumber, c.Position.Value, c.LastObservedTurn);
 
         private static StrategicAssetSnapshot NearestOwnBaseAsset(WorldSnapshot snap, HexCoord from)
         {
@@ -601,11 +621,15 @@ namespace Game.Ai.V2
                 ArmySnapshot actor = snap.Self.Armies.First(a => a.ArmyId == id);
                 return $"{id}:eta{ArrivalEta(snap, actor, t.ProtectedAssetHex)}";
             }));
-            AiDebugLog.WriteDeduped($"defence-response:{snap.Observer?.Nickname}:{snap.TurnNumber}:{t.EnemyArmyId}",
+            string committedList = string.Join(",", (committed ?? new HashSet<int>()).OrderBy(id => id));
+            // Several readers ask the same question in one pass under different exclusion sets
+            // (planner, ImminentResponseArmyIds, Demand, Provisioning). Keyed by that set, each
+            // context logs its answer once instead of the two alternating lines re-printing.
+            AiDebugLog.WriteDeduped($"defence-response:{snap.Observer?.Nickname}:{snap.TurnNumber}:{t.EnemyArmyId}:{committedList}",
                 $"[AI][V2][ActiveDefence][Response] turn={snap.TurnNumber} player={snap.Observer?.Nickname} "
                 + $"enemy={t.EnemyArmyId} asset={t.ProtectedAssetKind}@{t.ProtectedAssetHex} "
                 + $"enemyEta={t.EnemyEta?.ToString() ?? "unknown"} hold={response.HoldWinChance:0.00} "
-                + $"free=[{free}] committed=[{string.Join(",", (committed ?? new HashSet<int>()).OrderBy(id => id))}] "
+                + $"free=[{free}] committed=[{committedList}] "
                 + $"selected=[{selected}] destination={response.RegroupHex} decision={response.Kind} reason={response.Reason}");
             return response;
         }

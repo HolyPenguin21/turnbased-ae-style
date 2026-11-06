@@ -174,7 +174,7 @@ namespace Game.Ai.V2
                         || !plan.TargetArmy.IsGarrison
                         || !PlacementRules.CanDepositIntoGarrison(plan.TargetArmy)
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
-                    { reason = "garrison no longer a valid owned deposit target (reserved slots/capacity)"; return false; }
+                    { reason = "garrison no longer a valid owned deposit target (no free slot/capacity)"; return false; }
                     break;
                 case DeploymentKind.ExistingArmy:
                     if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
