@@ -10,9 +10,9 @@ namespace Game.UI
     // Reused presentation slot; the controller alone chooses speakers and schedules replies.
     public sealed class ArmyRadioBubbleView : MonoBehaviour
     {
-        [SerializeField] private RectTransform _group, _panel, _shadow;
+        [SerializeField] private RectTransform _group, _panel;
         [SerializeField] private CanvasGroup _fade;
-        [SerializeField] private ArmyRadioBubbleGraphic _bubble, _bubbleShadow;
+        [SerializeField] private ArmyRadioBubbleGraphic _bubble;
         [SerializeField] private Image _art;
         [SerializeField] private TMP_Text _message;
         [Min(40f)] [SerializeField] private float artHeight = 78f;
@@ -20,7 +20,6 @@ namespace Game.UI
         [Min(28f)] [SerializeField] private float minimumPanelHeight = 56f;
         [Min(0f)] [SerializeField] private float cardGap = 14f;
         [Min(10f)] [SerializeField] private float markerGap = 12f;
-        [SerializeField] private Vector2 shadowOffset = new Vector2(0f, -2f);
         private Vector2 _measuredPadding;
         private float _measuredFontSize, _measuredMinimumHeight, _measuredCornerRadius;
         private TMP_FontAsset _measuredFont;
@@ -34,10 +33,10 @@ namespace Game.UI
         private bool _hasPointer;
         public bool Active => Speaker != null;
 
-        public bool IsConfigured => _group != null && _group == transform && _panel != null && _shadow != null
-            && _fade != null && _bubble != null && _bubbleShadow != null && _art != null && _message != null
-            && _fade.transform == _group && _bubble.transform == _panel && _bubbleShadow.transform == _shadow
-            && _panel.parent == _group && _shadow.parent == _group && _art.transform.parent == _group
+        public bool IsConfigured => _group != null && _group == transform && _panel != null
+            && _fade != null && _bubble != null && _art != null && _message != null
+            && _fade.transform == _group && _bubble.transform == _panel
+            && _panel.parent == _group && _art.transform.parent == _group
             && _message.transform.parent == _panel && _message.rectTransform.anchorMin == Vector2.zero
             && _message.rectTransform.anchorMax == Vector2.one;
 
@@ -103,11 +102,8 @@ namespace Game.UI
             // relative to the parent and would enlarge the drawn panel beyond Bounds.
             _panel.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
             _panel.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _messageHeight);
-            _shadow.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
-            _shadow.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _messageHeight);
-            _panel.anchoredPosition = panelPosition; _shadow.anchoredPosition = panelPosition + shadowOffset;
+            _panel.anchoredPosition = panelPosition;
             _bubble.AimAt((anchor - position) / scale - panelPosition, radius / scale + 2f);
-            _bubbleShadow.AimAt((anchor - position) / scale - _shadow.anchoredPosition, radius / scale + 2f);
             return true;
         }
 

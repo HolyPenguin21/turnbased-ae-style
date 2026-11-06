@@ -19,7 +19,7 @@ proportions are retained without cropping (inspected full images: 772×1124 incl
 
 `Assets/Prefabs/UI/ArmyRadio/ArmyRadioOverlay.prefab` contains one child Canvas and the manager
 and three inactive nested instances of `Assets/Prefabs/UI/ArmyRadio/ArmyRadioMessage.prefab`.
-Each message contains its CanvasGroup, panel, shadow, TMP label and full-art Image. This
+Each message contains its CanvasGroup, panel, TMP label and full-art Image. This
 is the complete reusable pool; there is no runtime construction or fallback UI builder.
 It has no raycaster. The manager bounds concurrent messages and prevents duplicate speakers. Each
 LateUpdate projects actual marker centers/radii through the camera, intersects the viewport
@@ -50,10 +50,9 @@ removed or re-ordered speakers also cancel immediately.
 
 - Open `ArmyRadioMessage.prefab` to change all three messages together. Its
   `ArmyRadioBubbleView` exposes art height, text-panel width/minimum height, card/marker
-  gaps and shadow offset. Runtime derives only dynamic placement and actual art proportions.
+  gaps. Runtime derives only dynamic placement and actual art proportions.
 - `Message` exposes the dark wash color/feather, radio-line color/width, signal radius and
-  corner inset (`cornerRadius`, retained for serialization). `Shadow` is disabled in the
-  authored prefab; it remains available for optional Inspector styling.
+  corner inset (`cornerRadius`, retained for serialization).
 - `Speech` exposes the TMP font, font size and color; edit its stretched RectTransform
   offsets for text padding. These choices are preserved by Configure/Show. Text measurement
   refreshes on width, padding, font/size or corner/minimum-height changes.
