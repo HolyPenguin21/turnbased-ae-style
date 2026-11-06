@@ -607,7 +607,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Chameleon Tissue
     art: {fileID: 21300000, guid: 0417d8a0d2f001347bee3295600677ea, type: 3}
-    detailArt: {fileID: 21300000, guid: 8a8333bd81e63d240a6f9178203ca691, type: 3}
+    detailArt: {fileID: 21300000, guid: 8a710b7df74bb2c42b4fd7b45fb17f69, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -665,7 +665,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Dermal Plating
     art: {fileID: 21300000, guid: f953c6494cc360548bf17f83d4282521, type: 3}
-    detailArt: {fileID: 21300000, guid: 85ff393dc8bda23408044b3155fa3c77, type: 3}
+    detailArt: {fileID: 21300000, guid: cc4ffd1f32fa8b9438b60ceef785d18c, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -719,7 +719,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Fortunate Genome
     art: {fileID: 21300000, guid: 2767d1b4adcebc345b23f84b481cf080, type: 3}
-    detailArt: {fileID: 21300000, guid: b138243b7fe1cdf42be971d14b070d83, type: 3}
+    detailArt: {fileID: 21300000, guid: dd01dd643c521bd4dbd5e1a3fb760603, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -770,7 +770,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Ghost Genome
     art: {fileID: 21300000, guid: 7830718655edbed49bcb6b356c8fbc76, type: 3}
-    detailArt: {fileID: 21300000, guid: caf02b300c67a4b4f90ac27c67aa972d, type: 3}
+    detailArt: {fileID: 21300000, guid: b1c325d7119082642ab3b6ebcdab900f, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -822,7 +822,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Metabolic Overdrive
     art: {fileID: 21300000, guid: 0aeb930b26c57654d85622d4a785b756, type: 3}
-    detailArt: {fileID: 21300000, guid: 488fc5276e3f37546994483c1679b399, type: 3}
+    detailArt: {fileID: 21300000, guid: 7ff01b63567277e468e93f026e941b72, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -876,7 +876,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Adrenal Surge
     art: {fileID: 21300000, guid: 91bd2c8e69de11248ac4e62acee2f0ef, type: 3}
-    detailArt: {fileID: 21300000, guid: dfe02b78c6c0df94a941c1a9a667749d, type: 3}
+    detailArt: {fileID: 21300000, guid: 2603a8d163f097b4c82c5789d6d52c7e, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -933,7 +933,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Sensory Glands
     art: {fileID: 21300000, guid: 3529523b3a533ee4bb89798de47496f5, type: 3}
-    detailArt: {fileID: 21300000, guid: 8fcf28a828e7d7e44ba62f6fcef07197, type: 3}
+    detailArt: {fileID: 21300000, guid: 97d72178fbddca448a8a432a2a481da4, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -988,7 +988,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Ballistic Adaptation
     art: {fileID: 21300000, guid: 34caabfccad6aad42a6831d2ca73ea85, type: 3}
-    detailArt: {fileID: 21300000, guid: a959425143073b9479bc69a2105c2af1, type: 3}
+    detailArt: {fileID: 21300000, guid: c803feee41216f44ba36945a976f3974, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1045,7 +1045,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Rapid Synapse
     art: {fileID: 21300000, guid: c326c35b5cca74b409afac480c9a5f1d, type: 3}
-    detailArt: {fileID: 21300000, guid: b1777bdf86e05724eb4b053e724d1e25, type: 3}
+    detailArt: {fileID: 21300000, guid: 7fce1446d5944a94ca788714d9d4d337, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1100,7 +1100,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Regenerative Culture
     art: {fileID: 21300000, guid: 990fd4b70b713994caed7ca345bce9a5, type: 3}
-    detailArt: {fileID: 21300000, guid: c94e5b9890e32484891c889be2ff2b7c, type: 3}
+    detailArt: {fileID: 21300000, guid: 8b4b8fe5dbd479e4c9e5eb1d54a461da, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1149,7 +1149,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Reinforced Skeleton
     art: {fileID: 21300000, guid: c77db1e872a5a834ba1c81c32ebdc0a0, type: 3}
-    detailArt: {fileID: 21300000, guid: 5f4bd69948efd134eba0619e6f5e4458, type: 3}
+    detailArt: {fileID: 21300000, guid: 2085a941e2b292d4496afb0c7662747e, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1206,7 +1206,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Vitality Strain
     art: {fileID: 21300000, guid: 31124208dccd2264bb76062501a13a94, type: 3}
-    detailArt: {fileID: 21300000, guid: ea1c3e835adbdc84c9f9011d57b038de, type: 3}
+    detailArt: {fileID: 21300000, guid: ae8eea4034739e14aa82bb7186b1942e, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1257,7 +1257,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Pain Suppression
     art: {fileID: 21300000, guid: 32b5338baf7b7544d879f23c045251c1, type: 3}
-    detailArt: {fileID: 21300000, guid: 4a28807faab186b40ac2a0db27880819, type: 3}
+    detailArt: {fileID: 21300000, guid: 23ce66d2fbf2d7b409d85d928d48f212, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1314,7 +1314,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Regenerative Marrow
     art: {fileID: 21300000, guid: 8315826a889a3de4fa25aac293056154, type: 3}
-    detailArt: {fileID: 21300000, guid: 66b0aa8330af8b34c9a0542901a1454f, type: 3}
+    detailArt: {fileID: 21300000, guid: e1daf2db1bb277945af0cb1220db695c, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1366,7 +1366,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Survivor Strain
     art: {fileID: 21300000, guid: bae94b9e24131ae4093ddee5f09faab9, type: 3}
-    detailArt: {fileID: 21300000, guid: 265ac408dfe8aa149b54ca389103aaa3, type: 3}
+    detailArt: {fileID: 21300000, guid: 52c8a5449c48d424ea67fe9bcd87b1a2, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1425,7 +1425,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Neural Accelerator
     art: {fileID: 21300000, guid: 9e1391bb2497a474190c44b1efcacc64, type: 3}
-    detailArt: {fileID: 21300000, guid: 588c5ee3db81ebc43b592166cf942773, type: 3}
+    detailArt: {fileID: 21300000, guid: 143397cfbb295f14abc74b559d421ecb, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1483,7 +1483,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Sentinel Strain
     art: {fileID: 21300000, guid: 7db4feb32d3999c4c9d99a744a3e2cad, type: 3}
-    detailArt: {fileID: 21300000, guid: 01db794b2eb34a34b88460526acc9ee5, type: 3}
+    detailArt: {fileID: 21300000, guid: eec8f35920e010b49b7cd08d27ce69c9, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1539,7 +1539,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Stalker Strain
     art: {fileID: 21300000, guid: 136d73d6ad5883e43aa14a0a0d8f6b5c, type: 3}
-    detailArt: {fileID: 21300000, guid: e89a783c4d5e9004bb40d68282b6e4b8, type: 3}
+    detailArt: {fileID: 21300000, guid: e38130da815dd6b4382f724a0c5e4348, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1597,7 +1597,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Hunter Genome
     art: {fileID: 21300000, guid: e907f43c0049e25479acb94a50c03875, type: 3}
-    detailArt: {fileID: 21300000, guid: 4c2a319f1c8f12744a6bc9a850ca551e, type: 3}
+    detailArt: {fileID: 21300000, guid: 3c5ab906f3f254e45aa26fd30d541ce4, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1649,7 +1649,7 @@ MonoBehaviour:
     deckBuilderExcluded: 0
     displayName: Reflex Genome
     art: {fileID: 21300000, guid: 7666ab34d640b1c4ba497ea1ef9e46f9, type: 3}
-    detailArt: {fileID: 21300000, guid: 0c7b6fccc0c139b46a0b686f7932d56a, type: 3}
+    detailArt: {fileID: 21300000, guid: c3a139779edb02440aaeb79e58c538e6, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1991,7 +1991,7 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 0400000005000000
+      hostTypeTags: 04000000
       hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
@@ -2042,8 +2042,8 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 03000000
-      hostKinds: 00000000
+      hostTypeTags: 0300000008000000
+      hostKinds: 0000000001000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
@@ -2073,7 +2073,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 3
+    fate: 4
     attack: 0
     defenseRating: 0
     range: 0

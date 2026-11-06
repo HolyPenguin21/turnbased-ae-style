@@ -202,6 +202,38 @@ namespace Game.EditorTests
             Assert.That(_building.Owner, Is.SameAs(_enemy));
         }
 
+        // Project owner, 2026-11-06: a fully hidden army (scout, hero) detected by the army sharing
+        // its hex must not lock that army in place as "in combat" — it is attacked only by an
+        // explicit order. A visible member, or a building's own garrison, still holds it.
+        [Test]
+        public void DetectedFullyHiddenArmyDoesNotHoldTheDetector()
+        {
+            BuildingRegistry.Clear();
+            var hero = new UnitData { Owner = _owner, IsHero = true, IsHidden = true, HitPointsCurrent = 5 };
+            _army.Members.Add(hero);
+            var detector = new ArmyData { Owner = _enemy, Hex = _hex };
+            detector.Members.Add(new UnitData { Owner = _enemy, HitPointsCurrent = 5 });
+            ArmyRegistry.Register(detector);
+
+            Assert.That(Game.Combat.BattleInitiator.IsHeldByContact(detector), Is.False, "undetected");
+            StealthSystem.MarkDetected(_unit, _enemy);
+            StealthSystem.MarkDetected(hero, _enemy);
+            Assert.That(Game.Combat.BattleInitiator.FindEnemyAt(_hex, _enemy), Is.SameAs(_army),
+                "the detector does see it");
+            Assert.That(Game.Combat.BattleInitiator.IsHeldByContact(detector), Is.False,
+                "a detected fully hidden army is no contact");
+
+            _army.IsGarrison = true;
+            BuildingRegistry.Register(_hex, new BuildingData { Owner = _owner, Hex = _hex, IsBase = true });
+            Assert.That(Game.Combat.BattleInitiator.IsHeldByContact(detector), Is.True,
+                "a building's own garrison still holds");
+
+            _army.IsGarrison = false;
+            hero.IsHidden = false;
+            Assert.That(Game.Combat.BattleInitiator.IsHeldByContact(detector), Is.True,
+                "a visible member makes the army a contact");
+        }
+
         [Test]
         public void FirstVisibleMemberActsWhileOtherMembersStayHidden()
         {

@@ -377,8 +377,9 @@ namespace Game.Map
 
             // An unresolved hostile contact must finish before another map order. For a
             // hero-only resident that resolution is Capture/Kill, for combatants it is battle.
-            if (!AviationRules.IsAirArmy(army) && BattleInitiator.CanInitiateContact(army)
-                && BattleInitiator.FindEnemyAt(army.Hex, army) != null)
+            // A detected enemy that is itself fully in stealth is no contact (BattleInitiator.
+            // IsHeldByContact).
+            if (BattleInitiator.IsHeldByContact(army))
             {
                 NotifyMoveBlocked(army, $"{army.Name} cannot move while in combat.");
                 return MoveOrderResult.LockedInCombat;
