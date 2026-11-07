@@ -184,7 +184,7 @@ namespace Game.Ai.V2
             // S1. Demand Layer — capability SHORTAGES (no card selection). All real axes are live.
             var demandAxes = new HashSet<DesireAxis>(DesireAxes.All);
             yield return frame.WarmDemands();
-            frame.RebuildDemands(demandAxes);
+            yield return frame.RebuildDemandsPaced(demandAxes);
 
             // S2. Phase A's AP budget reads the player's live AP; its only own state is the
             //     follow-up AP promised to capabilities it delivers. Radar scales objective value
@@ -230,7 +230,7 @@ namespace Game.Ai.V2
                 // full Generate call.
                 // This call regenerates every axis, so DemandLayer.Development
                 // builds its own opportunities against this pass's complete need context.
-                frame.RebuildDemands(demandAxes);
+                yield return frame.RebuildDemandsPaced(demandAxes);
             }
             // Phase A is fully reflected in the settled snapshot/continuity view before pause.
             yield return ctx.WaitAtObserverActionBoundary();
@@ -337,12 +337,16 @@ namespace Game.Ai.V2
                 // Cold Phase A and the following typed admissions may have created or
                 // re-bound actors AFTER management captured postCommitments. Housekeeping
                 // must see the latest canonical ownership, never the pre-cold snapshot.
+                // The tail of the turn: each settling stage gets its own frame.
+                yield return frame.Checkpoint();
                 frame.RefreshFinalOwnership();
+                yield return frame.Checkpoint();
 
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
                 turnSession.SettleAfterTurn(System.Array.Empty<MissionStepResult>());
                 ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
+                yield return frame.Checkpoint();
             }
 
             // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
@@ -373,6 +377,7 @@ namespace Game.Ai.V2
             //    This safety/cleanup layer does not buy cards or create new
             //    capability and remains the authoritative same-hex reorganisation path.
             var housekeeping = new HousekeepingResult();
+            yield return frame.Checkpoint();
             yield return HousekeepingManager.RunHousekeeping(
                 frame.Snapshot, player, root, ctx, frame.PostCommitments, housekeeping, phaseB.Reservation);
             ReservationInvariants.CheckBoundary(player, root, ctx, "housekeeping");

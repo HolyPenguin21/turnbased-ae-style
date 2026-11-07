@@ -117,8 +117,12 @@ namespace Game.Ai.V2
             var parkedAt = new Dictionary<string, int>(System.StringComparer.Ordinal);
             int iter = 0;
             string stopReason = null;
+            // Every caller is a turn coroutine: each tempo iteration (refresh, candidates, one
+            // action) may give the frame back; nothing else acts between AI frames.
+            var pacer = new FramePacer();
             while (!budget.TotalCapHit && iter <= AiConfigV2.maxEndOfTurnTempoActionsPerTurn + 1)
             {
+                yield return pacer.Checkpoint();
                 snap = WorldAnalysis.RefreshStrategicKnowledge(
                     snap, player, root, hand, ctx);
                 // Recon objectives also depend on live Self/Base anchors. Those are refreshed even
@@ -128,8 +132,10 @@ namespace Game.Ai.V2
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snap);
                 float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
 
+                yield return pacer.Checkpoint();
                 var cands = TempoCandidateProvider.BuildTempoCandidates(snap, player, root, hand, ctx, commitments, result,
                     reconObjectives, spendableAp, budget, verbose: iter == 0);
+                yield return pacer.Checkpoint();
 
                 float endU = cands.First(c => c.Kind == TempoKind.EndTurn).Utility;   // 0
 
