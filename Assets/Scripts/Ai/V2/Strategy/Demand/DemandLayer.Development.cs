@@ -22,12 +22,41 @@ namespace Game.Ai.V2
             if (s?.Self == null)
             {
                 AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_self_snapshot");
-                yield break;
+                return System.Array.Empty<AxisDemand>();
             }
+            return DevelopmentDemandsFrom(DevelopmentOpportunityEvaluator.Enumerate(
+                s, player, root, AiHandRegistry.Peek(player), ctx, activeIntents));
+        }
 
-            AiHandData hand = AiHandRegistry.Peek(player);
-            List<DevelopmentOpportunity> opportunities = DevelopmentOpportunityEvaluator.Enumerate(
-                s, player, root, hand, ctx, activeIntents);
+        // The Development axis of Generate spread over frames: the opportunity enumeration gives
+        // the frame back between sites (DevelopmentOpportunityEvaluator.EnumerateRoutine); the
+        // demands, their trace ids and log lines are exactly those of Generate(Development).
+        internal static System.Collections.IEnumerator GenerateDevelopmentPaced(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, PlayerSetupData player, AiTurnContext ctx,
+            PlayerRoot root, FramePacer pacer, List<AxisDemand> into)
+        {
+            if (player != null && snap != null)
+                ResourceStarvationRegistry.DecayOncePerTurn(player, snap.TurnNumber);
+            DevelopmentInvestmentGate.Observe(player, snap);
+            var demands = new List<AxisDemand>();
+            if (snap?.Self == null)
+                AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_self_snapshot");
+            else
+            {
+                var opportunities = new List<DevelopmentOpportunity>();
+                // Yielded, not driven here: the turn runner owns the nested iterator, so a cancelled
+                // turn still disposes it and its ambient verdict / target memos are restored.
+                yield return DevelopmentOpportunityEvaluator.EnumerateRoutine(
+                    snap, player, root, AiHandRegistry.Peek(player), ctx, activeIntents, opportunities, pacer);
+                using (new Game.Core.ProfileScope("AI/Demand.Development"))
+                    demands.AddRange(DevelopmentDemandsFrom(opportunities));
+            }
+            Publish(demands, player);
+            into.AddRange(demands);
+        }
+
+        private static IEnumerable<AxisDemand> DevelopmentDemandsFrom(List<DevelopmentOpportunity> opportunities)
+        {
 
             // One prerequisite per pass (the best peer step by PreparationRank: the card score of
             // a card step, a walked hero's net read in card units); the next settled pass sees the
