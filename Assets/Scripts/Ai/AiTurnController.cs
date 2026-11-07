@@ -182,6 +182,8 @@ namespace Game.Ai
                 + $"misses={battleStats.Misses} simulatedMs={battleStats.MissMilliseconds:0} "
                 + $"entries={battleStats.Entries}");
             AiDebugLog.Write(frames.Summary());
+            if (!string.IsNullOrEmpty(frames.Scopes))
+                AiDebugLog.Write($"[AI][Timing] {player.Nickname}: scopes {frames.Scopes}");
             // Final safety boundary: the turn-scoped simulation cache is already closed, all
             // pipeline cleanup is complete, and only the handoff callback remains.
             yield return ctx.WaitAtObserverActionBoundary();
@@ -204,6 +206,7 @@ namespace Game.Ai
                 var pending = new Stack<IEnumerator>();
                 pending.Push(turn);
                 long sliceStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (frames != null) Game.Core.ScopeTiming.Begin();
                 try
                 {
                     while (pending.Count > 0)
@@ -229,10 +232,12 @@ namespace Game.Ai
                         }
                     }
                     frames?.Record(sliceStart, pending);
+                    if (frames != null) frames.Scopes = Game.Core.ScopeTiming.Take(12);
                     completed?.Invoke(Game.Combat.WorthIt.CurrentEstimateCacheStats);
                 }
                 finally
                 {
+                    if (frames != null && Game.Core.ScopeTiming.Collecting) Game.Core.ScopeTiming.Take(0);
                     // Close every suspended iterator, even if one cleanup itself throws.
                     Exception cleanupFailure = null;
                     while (pending.Count > 0)
@@ -790,6 +795,9 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI][Timing][Frame] {_player}: {ms:0} ms {at}");
             }
         }
+
+        // Top ProfileScope totals of the turn (ScopeTiming), set when the run completes.
+        internal string Scopes { get; set; }
 
         internal string Summary() =>
             $"[AI][Timing] {_player}: frames={Frames} workMs={TotalMs:0} longestMs={LongestMs:0} "

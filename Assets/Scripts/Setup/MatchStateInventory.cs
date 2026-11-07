@@ -162,6 +162,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.ReconAcceptanceAudit", MatchStateKind.Diagnostics, resetBy: ByRecon),
             new MatchStateEntry("Game.Ai.AiDebugLog", MatchStateKind.Diagnostics),
             new MatchStateEntry("Game.Combat.BattleDebugLog", MatchStateKind.Diagnostics),
+            // Per-turn ProfileScope totals: collected and emptied by one AI turn runner.
+            new MatchStateEntry("Game.Core.ScopeTiming", MatchStateKind.Diagnostics),
 
             // --- caches ----------------------------------------------------------------------------
             new MatchStateEntry("Game.Ai.SafeStepPathing", MatchStateKind.Cache),

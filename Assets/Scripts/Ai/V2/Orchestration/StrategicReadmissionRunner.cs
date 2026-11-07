@@ -136,7 +136,8 @@ namespace Game.Ai.V2
                 axis => DemandIdentityDigest(_frame.Demands, axis));
             yield return _frame.Checkpoint();
             mark = StagePerfTelemetry.Mark(_frame.Pacer);
-            List<AxisDemand> regenerated = _frame.GenerateDemands(dirtyAxes);
+            var regenerated = new List<AxisDemand>();
+            yield return _frame.GenerateDemandsPaced(dirtyAxes, regenerated);
             StagePerfTelemetry.Log(_frame.Pacer, mark, "readmission.generateDemands", axesLabel);
             List<AxisDemand> dirtyDemands = regenerated;
             _frame.ReplaceDemandFamilies(dirtyAxes, regenerated);

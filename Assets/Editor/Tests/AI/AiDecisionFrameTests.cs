@@ -700,7 +700,7 @@ namespace Game.EditorTests
             }));
             Assert.That(Calls("StrategicReadmissionRunner.cs"), Is.EqualTo(new[]
             {
-                "RefreshOperationalDecision", "GenerateDemands", "ReplaceDemandFamilies", // a re-admission
+                "RefreshOperationalDecision", "GenerateDemandsPaced", "ReplaceDemandFamilies", // a re-admission
                 "AcceptChangedReentry",                                                    //   ... that changed the world
             }));
             Assert.That(Calls("AdmissionIteration.cs"), Is.EqualTo(new[]
