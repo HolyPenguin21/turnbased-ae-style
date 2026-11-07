@@ -148,6 +148,22 @@ namespace Game.Ai.V2
         // first Phase A changed the world and after a changed cold residual.
         internal void RebuildDemands(ISet<DesireAxis> axes) => Demands = GenerateDemands(axes);
 
+        // The same rebuild one axis at a time with a frame checkpoint between them. DemandLayer
+        // generates the axes independently in DesireAxes.All order and numbers the demands in list
+        // order, so the result (order and trace ids) is the one a single call gives.
+        internal IEnumerator RebuildDemandsPaced(ISet<DesireAxis> axes)
+        {
+            var all = new List<AxisDemand>();
+            foreach (DesireAxis axis in DesireAxes.All)
+            {
+                if (axes == null || !axes.Contains(axis))
+                    continue;
+                yield return Checkpoint();
+                all.AddRange(GenerateDemands(new HashSet<DesireAxis> { axis }));
+            }
+            Demands = all;
+        }
+
         // ---- the operational refresh ----
 
         // Warm the combat estimates for the current snapshot, then rebuild Recon / Aggression /

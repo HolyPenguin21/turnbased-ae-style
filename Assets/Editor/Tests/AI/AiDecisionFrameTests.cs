@@ -651,6 +651,28 @@ namespace Game.EditorTests
         // operation are fixed at the source level: per file, the order of the inline refreshes /
         // assignments of the baseline (file order), each now a named operation. The moments live in
         // RunTurn (start, formation, recall, end) and in the components that took the work bodies.
+        // The paced rebuild asks one axis per call, in DesireAxes.All order, and keeps that order.
+        [Test]
+        public void RebuildDemandsPaced_GivesTheDemandsOfOneCallAxisByAxis()
+        {
+            var calls = new List<string>();
+            var services = new FrameServices
+            {
+                GenerateDemands = (s, recon, aggr, intents, commitments, axes) =>
+                {
+                    calls.Add(string.Join(",", axes));
+                    return axes.Select(a => new AxisDemand { RequestingAxis = a }).ToList();
+                },
+            };
+            var f = new DecisionFrame(new WorldSnapshot(), services);
+            Run(f.RebuildDemandsPaced(new HashSet<DesireAxis> { DesireAxis.Development, DesireAxis.Recon,
+                DesireAxis.Economy }));
+
+            Assert.That(calls, Is.EqualTo(new[] { "Recon", "Economy", "Development" }));
+            Assert.That(f.Demands.Select(d => d.RequestingAxis), Is.EqualTo(new[]
+                { DesireAxis.Recon, DesireAxis.Economy, DesireAxis.Development }));
+        }
+
         [Test]
         public void EveryMomentOfTheFrameIsNamedInTheBaselineOrder()
         {
@@ -668,8 +690,8 @@ namespace Game.EditorTests
             }
             Assert.That(Calls("AiStrategyV2Pipeline.cs"), Is.EqualTo(new[]
             {
-                "EnumerateObjectives", "ResolveInitialOwnership", "WarmDemands", "RebuildDemands", // the start
-                "AcceptChangedPhaseA", "RebuildDemands",                                   // the first Phase A changed
+                "EnumerateObjectives", "ResolveInitialOwnership", "WarmDemands", "RebuildDemandsPaced", // the start
+                "AcceptChangedPhaseA", "RebuildDemandsPaced",                              // the first Phase A changed
                 "RefreshAfterFormation",                                                   // a wing was formed
                 "StartWithCredit",                                                         // the loop block begins
                 "ObserveSettled",                                                          // air-support recall
