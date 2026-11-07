@@ -295,7 +295,7 @@ namespace Game.EditorTests
 
             // re-admission
             InOrder(Code("StrategicReadmissionRunner.cs"), "re-admission", "_readmission.Decide(",
-                "_frame.RefreshOperationalDecision()", "admittedFingerprints", "_frame.GenerateDemands(",
+                "_frame.RefreshOperationalDecision()", "admittedFingerprints", "_frame.GenerateDemandsPaced(",
                 "ReplaceDemandFamilies(", "CaptureStepObservation(", "StrategicManager.FulfillDemandsPaced(",
                 "ReservationInvariants.CheckBoundary(", "AcceptChangedReentry()", "PublishStepObservationDelta(",
                 "_readmission.Commit(");

@@ -159,17 +159,24 @@ namespace Game.Ai.V2
         internal IEnumerator RebuildDemandsPaced(ISet<DesireAxis> axes)
         {
             var all = new List<AxisDemand>();
+            yield return GenerateDemandsPaced(axes, all);
+            Demands = all;
+        }
+
+        // GenerateDemands one axis at a time, a checkpoint between them and Development's site
+        // enumeration paced as well (FrameServices.GenerateDevelopmentPaced); fills `into`.
+        internal IEnumerator GenerateDemandsPaced(ISet<DesireAxis> axes, List<AxisDemand> into)
+        {
             foreach (DesireAxis axis in DesireAxes.All)
             {
                 if (axes == null || !axes.Contains(axis))
                     continue;
                 yield return Checkpoint();
                 if (axis == DesireAxis.Development && _services.GenerateDevelopmentPaced != null)
-                    yield return _services.GenerateDevelopmentPaced(Snapshot, Intents, _pacer, all);
+                    yield return _services.GenerateDevelopmentPaced(Snapshot, Intents, _pacer, into);
                 else
-                    all.AddRange(GenerateDemands(new HashSet<DesireAxis> { axis }));
+                    into.AddRange(GenerateDemands(new HashSet<DesireAxis> { axis }));
             }
-            Demands = all;
         }
 
         // ---- the operational refresh ----
