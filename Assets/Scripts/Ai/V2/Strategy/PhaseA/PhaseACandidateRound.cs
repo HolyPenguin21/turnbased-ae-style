@@ -49,13 +49,33 @@ namespace Game.Ai.V2
 
         internal static PhaseACandidateRound Build(PhaseAPass pass, List<DemandState> active)
         {
-            var round = new PhaseACandidateRound(active,
-                CapabilityInventory.Build(pass.Snap, pass.Player, pass.Commitments));
-            List<(MaterializationPlan plan, float followupAp)> fillerUniverse = round.MeasureWitnessedWorkload(pass);
-            round.CollectOptions(pass, fillerUniverse);
-            round.Assign(pass);
+            PhaseACandidateRound round = Create(pass, active);
+            System.Collections.IEnumerator fill = round.Fill(pass, null);
+            while (fill.MoveNext()) { }
             return round;
         }
+
+        // The round before its options are collected (Fill completes it).
+        internal static PhaseACandidateRound Create(PhaseAPass pass, List<DemandState> active) =>
+            new PhaseACandidateRound(active, CapabilityInventory.Build(pass.Snap, pass.Player, pass.Commitments));
+
+        // Measurement, options and assignment. `pacer` gives the frame back between demands (each
+        // demand's candidates are a self-contained evaluation of the same settled world); null runs
+        // the round in one go (Build).
+        internal System.Collections.IEnumerator Fill(PhaseAPass pass, FramePacer pacer)
+        {
+            System.Collections.IEnumerator measure = MeasureWitnessedWorkload(pass, pacer);
+            while (measure.MoveNext())
+                yield return measure.Current;
+            System.Collections.IEnumerator collect = CollectOptions(pass, _fillerUniverse, pacer);
+            while (collect.MoveNext())
+                yield return collect.Current;
+            if (pacer != null) yield return pacer.Checkpoint();
+            Assign(pass);
+        }
+
+        // MeasureWitnessedWorkload's result for CollectOptions (null: not measured this round).
+        private List<(MaterializationPlan plan, float followupAp)> _fillerUniverse;
 
         // AI-MGR — MEASUREMENT PASS (two-pass within the round). Assemble the owner-witnessed
         // AP workload the recurring-AP effect is priced against from the SAME feasible
@@ -70,8 +90,9 @@ namespace Game.Ai.V2
         // PlayerGlobal recurring-resource carrier (GlobalRecurringValue) or a Hero demand
         // (Command 6-vs-7 filler count). Otherwise leave WitnessedUsefulApDemand null -> the
         // evaluator uses the discounted structural fallback, exactly as before.
-        private List<(MaterializationPlan plan, float followupAp)> MeasureWitnessedWorkload(PhaseAPass pass)
+        private System.Collections.IEnumerator MeasureWitnessedWorkload(PhaseAPass pass, FramePacer pacer)
         {
+            _fillerUniverse = null;
             bool needsWitnessedWorkload = pass.ReachableGlobalRecurringCarrier
                 || Active.Any(s => s.Demand.Capability == CapabilityKind.Hero);
             ResourceStarvationRegistry.BeginVerifiedPass(pass.Player);
@@ -83,6 +104,7 @@ namespace Game.Ai.V2
                     && d.DesiredAmount > AiConfigV2.allocatorSliceEpsilon)).Distinct();
             foreach (AxisDemand demand in demands)
             {
+                if (pacer != null) yield return pacer.Checkpoint();
                 List<(MaterializationPlan plan, float followupAp)> feas;
                 using (new Game.Core.ProfileScope("AI/PhaseA.AllFeasiblePlans"))
                     feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(pass.Snap, pass.Player,
@@ -107,7 +129,7 @@ namespace Game.Ai.V2
             if (!needsWitnessedWorkload)
             {
                 pass.WitnessedUsefulApDemand = null;
-                return null;
+                yield break;
             }
             float legalCardApWorkload;
             using (new Game.Core.ProfileScope("AI/PhaseA.LegalApWorkload"))
@@ -120,7 +142,7 @@ namespace Game.Ai.V2
             // feasible body across ALL active demands this round (one per physical consumption
             // signature), so a Hero demand's candidate can see the Unit plans a
             // FieldCombatPower demand would put in the same recipient.
-            return measOptions.Values.SelectMany(v => v).ToList();
+            _fillerUniverse = measOptions.Values.SelectMany(v => v).ToList();
         }
 
         // TOP-K worthwhile chains per active demand (each carries its
@@ -128,11 +150,12 @@ namespace Game.Ai.V2
         // assignment: exactly one collision-free chain per demand (or none), so no hand
         // card / generation source is ever double-counted as available capacity, and the
         // globally best total is chosen (not a greedy per-demand pick).
-        private void CollectOptions(PhaseAPass pass,
-            List<(MaterializationPlan plan, float followupAp)> fillerUniverse)
+        private System.Collections.IEnumerator CollectOptions(PhaseAPass pass,
+            List<(MaterializationPlan plan, float followupAp)> fillerUniverse, FramePacer pacer)
         {
             foreach (DemandState state in Active)
             {
+                if (pacer != null) yield return pacer.Checkpoint();
                 bool competingHeroDemand = state.Demand.Capability == CapabilityKind.ScoutCapability
                     && Active.Any(other => !ReferenceEquals(other, state)
                         && other.Remaining > AiConfigV2.allocatorSliceEpsilon

@@ -154,6 +154,9 @@ namespace Game.Ai.V2
         // intents / actor claims from it, in that order. Does not refresh the snapshot itself.
         internal IEnumerator RefreshOperationalDecision()
         {
+            // WarmEstimates paces itself from its own start; give the frame back first when the
+            // work before it (knowledge refresh, triggers) already spent the budget.
+            yield return Checkpoint();
             StagePerfMark mark = StagePerfTelemetry.Mark(_pacer);
             yield return _services.WarmEstimates(Snapshot);
             StagePerfTelemetry.Log(_pacer, mark, "refresh.warmEstimates");
@@ -173,8 +176,10 @@ namespace Game.Ai.V2
             yield return Checkpoint();
             mark = StagePerfTelemetry.Mark(_pacer);
             Intents = _services.ResolveActive(Snapshot, Recon, Aggression, false);
+            yield return Checkpoint();
             Commitments = _services.RefreshActors(Intents, Snapshot, Recon);
             StagePerfTelemetry.Log(_pacer, mark, "refresh.resolveIntents");
+            yield return Checkpoint();
             mark = StagePerfTelemetry.Mark(_pacer);
             yield return WarmDemands();
             StagePerfTelemetry.Log(_pacer, mark, "refresh.warmDemands");
