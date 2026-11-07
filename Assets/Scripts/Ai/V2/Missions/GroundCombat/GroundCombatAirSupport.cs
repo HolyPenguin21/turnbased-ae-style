@@ -209,10 +209,10 @@ namespace Game.Ai.V2
                 if (army.ArmyId.HasValue && projected.TryGetValue(army.ArmyId.Value, out var after))
                 {
                     if (after.Bodies.Count > 0 || after.Commander.Present)
-                        result.Add(new WorthIt.DefendingArmy(after.Bodies,
+                        result.Add(army.With(after.Bodies,
                             targets.First(t => t.ArmyId == army.ArmyId.Value).Roster.CommanderIndex < 0
                                 ? army.Commander : after.Commander,
-                            army.DefenseBonusOverride, army.ArmyId, army.BuildingDefenseBonus));
+                            army.DefenseBonusOverride, army.BuildingDefenseBonus));
                 }
                 else result.Add(army);
             return result;
@@ -481,8 +481,8 @@ namespace Game.Ai.V2
             var result = new List<WorthIt.DefendingArmy>();
             for (int a = 0; a < opposition.Count; a++)
                 if (perArmy[a].Count > 0)
-                    result.Add(new WorthIt.DefendingArmy(perArmy[a], opposition[a].Commander,
-                        opposition[a].DefenseBonusOverride, opposition[a].ArmyId, opposition[a].BuildingDefenseBonus));
+                    result.Add(opposition[a].With(perArmy[a], opposition[a].Commander,
+                        opposition[a].DefenseBonusOverride, opposition[a].BuildingDefenseBonus));
             return result;
         }
 

@@ -191,11 +191,11 @@ namespace Game.Ai.V2
             float structural = opposition.Select(a => System.Math.Max(0f, a.BuildingDefenseBonus))
                 .DefaultIfEmpty(0f).Max();
             projectedHexBonus = System.Math.Max(0f, hexBonus - structural);
-            return opposition.Select(a => new WorthIt.DefendingArmy(a.Units, a.Commander,
+            return opposition.Select(a => a.With(a.Units, a.Commander,
                 a.DefenseBonusOverride.HasValue
                     ? System.Math.Max(0f, a.DefenseBonusOverride.Value - System.Math.Max(0f, a.BuildingDefenseBonus))
                     : (float?)null,
-                a.ArmyId, 0f)).ToList();
+                0f)).ToList();
         }
 
         // The own carrier on an active DisruptStructure leg at the target that stands there or

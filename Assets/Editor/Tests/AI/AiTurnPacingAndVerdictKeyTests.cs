@@ -31,6 +31,26 @@ namespace Game.EditorTests
             Assert.That(pacer.Checkpoint().MoveNext(), Is.False, "the next frame starts a new budget");
         }
 
+        private static IEnumerator SlowFrames()
+        {
+            System.Threading.Thread.Sleep(40);
+            yield return null; // one engine frame of ~40 ms AI work
+            yield return null; // one near-empty frame
+        }
+
+        [Test]
+        public void TurnRunner_MeasuresEachFrameOfAiWork()
+        {
+            var frames = new AiTurnFrameStats("P");
+            IEnumerator runner = AiTurnController.RunEstimateCachedTimed(SlowFrames(), null, frames);
+            while (runner.MoveNext()) { }
+
+            Assert.That(frames.Frames, Is.EqualTo(3), "two engine yields and the closing slice");
+            Assert.That(frames.LongestMs, Is.GreaterThanOrEqualTo(35.0));
+            Assert.That(frames.Hitches, Is.EqualTo(1));
+            Assert.That(frames.LongestAt, Does.Contain("SlowFrames"));
+        }
+
         private static WorldSnapshot Snap(int turn) => new WorldSnapshot { TurnNumber = turn };
 
         [Test]

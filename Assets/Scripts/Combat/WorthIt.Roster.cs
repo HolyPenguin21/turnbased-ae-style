@@ -64,6 +64,13 @@ namespace Game.Combat
 
             public bool HasAbility(string ability) => Abilities != null && Abilities.Contains(ability);
 
+            // The grid's approach step (BattleGrid: the two front rows are 2 cells apart, the
+            // neutral row between them). A body with a KNOWN Range of 1 or less cannot reach the
+            // enemy front row from its deployment and spends a turn stepping into the neutral row
+            // first; Range 2+ shoots from deployment at once. Unknown range (-1) keeps the old
+            // positionless reading (always in reach).
+            public bool NeedsApproach => !IsHero && Range >= 0 && Range <= 1;
+
             // True max HP the unit entered this simulated battle with — separate from Hp (which
             // Estimate() below mutates round by round) because CriticalAfterBattleChance needs to
             // compare a SURVIVOR's final Hp against its own real max, not the (possibly already
@@ -297,11 +304,38 @@ namespace Game.Combat
         // a draw, which every readout counts as half a win).
         // Estimate-local workspace: never shared across estimates or exposed through their cache.
         // Every battle/round clears it; it changes allocations, not simulated inputs or RNG order.
+        // Per-round turn flags of one battle, indexed by side and roster index — the same contract
+        // as a HashSet of (isAttacker, index) without hashing a tuple on every turn. Rosters do not
+        // change size within a battle (summons join between battles, before Reset).
+        private sealed class TurnSet
+        {
+            private bool[] _attackers = System.Array.Empty<bool>(), _defenders = System.Array.Empty<bool>();
+
+            internal void Reset(int attackers, int defenders)
+            {
+                if (_attackers.Length < attackers) _attackers = new bool[attackers];
+                if (_defenders.Length < defenders) _defenders = new bool[defenders];
+                Clear();
+            }
+
+            internal void Clear()
+            {
+                System.Array.Clear(_attackers, 0, _attackers.Length);
+                System.Array.Clear(_defenders, 0, _defenders.Length);
+            }
+
+            internal void Add((bool isAttacker, int index) turn) =>
+                (turn.isAttacker ? _attackers : _defenders)[turn.index] = true;
+
+            internal bool Contains((bool isAttacker, int index) turn) =>
+                (turn.isAttacker ? _attackers : _defenders)[turn.index];
+        }
+
         private sealed class SimulationScratch
         {
             internal readonly List<(bool isAttacker, int index)> Order;
-            internal readonly HashSet<(bool isAttacker, int index)> Acted = new HashSet<(bool, int)>();
-            internal readonly HashSet<(bool isAttacker, int index)> Suppressed = new HashSet<(bool, int)>();
+            internal readonly TurnSet Acted = new TurnSet();
+            internal readonly TurnSet Suppressed = new TurnSet();
             // Per round: Bodyguard reactions spent, Drill bonuses handed out.
             internal readonly HashSet<(bool isAttacker, int index)> BodyguardsUsed = new HashSet<(bool, int)>();
             internal readonly List<(bool isAttacker, int index)> Drilled = new List<(bool, int)>();
@@ -326,7 +360,9 @@ namespace Game.Combat
             internal void Reset(List<BattleUnit> attackers, List<BattleUnit> defenders)
             {
                 _attackers = attackers; _defenders = defenders;
-                Order.Clear(); Acted.Clear(); Suppressed.Clear();
+                Order.Clear();
+                Acted.Reset(attackers.Count, defenders.Count);
+                Suppressed.Reset(attackers.Count, defenders.Count);
                 BodyguardsUsed.Clear(); Drilled.Clear();
                 LivingTargets.Clear(); SecondaryTargets.Clear();
             }
@@ -466,6 +502,13 @@ namespace Game.Combat
             value *= Mathf.Min(ExplosionAttack.TargetLimit(actor.Abilities), count) / (float)Mathf.Max(1, count);
             return value - (actor.SingleUseUnit ? CombatValue(actor.Attack, actor.Defense, actor.Hp, actor.Initiative) : 0);
         }
+
+        // Explosion is a battle-constant skill like Bodyguard/Counterattack/Drill (only equipment
+        // consumption changes abilities, and AnyCarries reads its result too): a battle without
+        // it never asks ExplosionAttack.TargetLimit per turn.
+        private static bool AnyCarriesExplosion(List<BattleUnit> side) =>
+            AnyCarries(side, UnitAbilities.Explosion3) || AnyCarries(side, UnitAbilities.Explosion5)
+            || AnyCarries(side, UnitAbilities.Explosion10);
 
         private static bool AnyCarries(List<BattleUnit> side, string ability)
         {

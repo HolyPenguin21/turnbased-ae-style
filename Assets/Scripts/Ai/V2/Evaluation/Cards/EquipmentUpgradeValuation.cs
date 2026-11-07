@@ -96,7 +96,7 @@ namespace Game.Ai.V2
             if (snap?.Known?.EventGuards != null)
                 result.AddRange(snap.Known.EventGuards
                     .Where(g => g.Defenders != null && g.Defenders.Count > 0)
-                    .Select(g => new WorthIt.DefendingArmy(g.Defenders, g.Commander)));
+                    .Select(g => new WorthIt.DefendingArmy(g.Defenders, g.Commander, isEventGuard: true)));
             return result;
         }
 
@@ -827,7 +827,7 @@ namespace Game.Ai.V2
             if (at.HasValue)
                 foreach (var guard in snap?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
                     if (guard.Hex.Equals(at.Value) && guard.Defenders?.Count > 0)
-                        scoped.Add(new WorthIt.DefendingArmy(guard.Defenders, guard.Commander));
+                        scoped.Add(new WorthIt.DefendingArmy(guard.Defenders, guard.Commander, isEventGuard: true));
             return scoped.Count > 0 ? scoped : EquipmentValuationThreats(snap);
         }
 

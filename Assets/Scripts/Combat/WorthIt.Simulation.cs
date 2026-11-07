@@ -107,12 +107,17 @@ namespace Game.Combat
                 || AnyCarries(defenders, UnitAbilities.Counterattack);
             bool attackersDrill = AnyCarries(attackers, UnitAbilities.Drill);
             bool defendersDrill = AnyCarries(defenders, UnitAbilities.Drill);
+            bool attackersHeal = AnyCarries(attackers, UnitAbilities.Heal);
+            bool defendersHeal = AnyCarries(defenders, UnitAbilities.Heal);
+            bool anyExplosion = AnyCarriesExplosion(attackers) || AnyCarriesExplosion(defenders);
             for (int round = 0; round < MaxSimulatedRounds && AnyCombatantAlive(attackers) && AnyCombatantAlive(defenders); round++)
             {
-                for (int i = 0; i < attackers.Count; i++)
-                    if (attackers[i].IsHero) ApplyHealing(attackers, i, rng);
-                for (int i = 0; i < defenders.Count; i++)
-                    if (defenders[i].IsHero) ApplyHealing(defenders, i, rng);
+                if (attackersHeal)
+                    for (int i = 0; i < attackers.Count; i++)
+                        if (attackers[i].IsHero) ApplyHealing(attackers, i, rng);
+                if (defendersHeal)
+                    for (int i = 0; i < defenders.Count; i++)
+                        if (defenders[i].IsHero) ApplyHealing(defenders, i, rng);
                 scratch.BodyguardsUsed.Clear();
                 if (attackersDrill) ApplyRosterDrill(attackers, true, scratch.Drilled, magnitudes);
                 if (defendersDrill) ApplyRosterDrill(defenders, false, scratch.Drilled, magnitudes);
@@ -148,8 +153,11 @@ namespace Game.Combat
                         continue; // ShockAttack removed this not-yet-taken action from the round
                     }
 
-                    ApplyHealing(ownList, turn.index, rng);
-                    actor = ownList[turn.index];
+                    if (turn.isAttacker ? attackersHeal : defendersHeal)
+                    {
+                        ApplyHealing(ownList, turn.index, rng);
+                        actor = ownList[turn.index];
+                    }
 
                     // A hero stands in the back row and the fight ends when the non-hero bodies
                     // are gone, so an attack is only spent on a hero once no body of that side
@@ -157,17 +165,22 @@ namespace Game.Combat
                     // neutral units and lost four of four — random picks wasted half the enemy
                     // attacks on the hero).
                     livingTargets.Clear();
+                    bool livingHero = false;
                     for (int i = 0; i < enemyList.Count; i++)
-                        if (enemyList[i].Hp > 0f && !enemyList[i].IsHero)
-                            livingTargets.Add(i);
-                    if (livingTargets.Count == 0)
+                    {
+                        BattleUnit enemy = enemyList[i]; // one struct copy per enemy, not two
+                        if (enemy.Hp <= 0f) continue;
+                        if (enemy.IsHero) livingHero = true;
+                        else livingTargets.Add(i);
+                    }
+                    if (livingTargets.Count == 0 && livingHero)
                         for (int i = 0; i < enemyList.Count; i++)
                             if (enemyList[i].Hp > 0f)
                                 livingTargets.Add(i);
                     if (livingTargets.Count == 0)
                         break; // this side just ran out of targets mid-round — battle's over
 
-                    if (ExplosionAttack.TargetLimit(actor.Abilities) > 0)
+                    if (anyExplosion && ExplosionAttack.TargetLimit(actor.Abilities) > 0)
                     {
                         if (RosterExplosionValue(actor, ownList, enemyList, turn.index) > 0)
                         {
@@ -175,6 +188,18 @@ namespace Game.Combat
                                 scratch, ref attackerFate, ref defenderFate);
                             ConsumeRosterEquipment(ownList, turn.index);
                         }
+                        acted.Add(turn);
+                        continue;
+                    }
+
+                    // Approach (BattleUnit.NeedsApproach): the first round of every battle (also the
+                    // next battle of a sequential hex — a fresh deployment) is a short-range body's
+                    // step into the neutral row; from round two everything is in reach. Ranged
+                    // bodies shoot at once, so a melee roster takes a round it cannot answer
+                    // (playtest 2026-11-02: 2 Scab Shields vs 3 Scav + Gunner, all Range 2, rated
+                    // ~0.9, lost). Melee against melee stays symmetric: both sides step first.
+                    if (round == 0 && actor.NeedsApproach)
+                    {
                         acted.Add(turn);
                         continue;
                     }
@@ -247,13 +272,45 @@ namespace Game.Combat
             return 0;
         }
 
+        // THE order a hex held by several defenders is fought in. Armies first: the one the fresh
+        // attacker is least likely to beat (BattleInitiator.FindEnemyAt), list order for equal odds.
+        // An event guard fights only after the hex is clear (ResolveHexAfterVictory ->
+        // TriggerHexEventIfClear), so guards come last in list order. A single army needs no
+        // estimate to be ordered.
+        public static List<DefendingArmy> FightOrder(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            SideCommander attackerCommander, IReadOnlyList<DefendingArmy> armies, float hexDefenseBonus,
+            AbilityMagnitudes? magnitudes = null)
+        {
+            var order = new List<DefendingArmy>(armies?.Count ?? 0);
+            if (armies == null)
+                return order;
+            int fieldArmies = 0;
+            for (int i = 0; i < armies.Count; i++)
+                if (!armies[i].IsEventGuard) fieldArmies++;
+            if (fieldArmies > 1)
+                order.AddRange(armies
+                    .Select((a, i) => (a, i))
+                    .Where(x => !x.a.IsEventGuard)
+                    .Select(x => (x.a, x.i, win: Estimate(attackerUnits, x.a.Units,
+                        x.a.DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander),
+                        attackerCommander, x.a.Commander, magnitudes).WinChance))
+                    .OrderBy(x => x.win).ThenBy(x => x.i)
+                    .Select(x => x.a));
+            else
+                for (int i = 0; i < armies.Count; i++)
+                    if (!armies[i].IsEventGuard) order.Add(armies[i]);
+            for (int i = 0; i < armies.Count; i++)
+                if (armies[i].IsEventGuard) order.Add(armies[i]);
+            return order;
+        }
+
         private static BattleEstimate EstimateSequentialFights(IReadOnlyCollection<DefenderProfile> attackerUnits,
             SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
             float hexDefenseBonus, AbilityMagnitudes? magnitudes)
         {
             var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
-                .Select(a => new DefendingArmy(WithBattleSummons(a.Units), a.Commander,
-                    a.DefenseBonusOverride, a.ArmyId, a.BuildingDefenseBonus))
+                .Select(a => a.With(WithBattleSummons(a.Units), a.Commander,
+                    a.DefenseBonusOverride, a.BuildingDefenseBonus))
                 .Where(a => a.Units.Any(p => p.IsGroundCombatant))
                 .ToList();
             if (armies.Count <= 1)
@@ -268,14 +325,8 @@ namespace Game.Combat
             if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
-            // Strongest defender first, judged against the fresh attacker (stable for equal odds).
-            List<DefendingArmy> order = armies
-                .Select((a, i) => (a, i, win: Estimate(attackerUnits, a.Units,
-                    a.DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander),
-                    attackerCommander, a.Commander, magnitudes).WinChance))
-                .OrderBy(x => x.win).ThenBy(x => x.i)
-                .Select(x => x.a)
-                .ToList();
+            List<DefendingArmy> order = FightOrder(attackerUnits, attackerCommander, armies,
+                hexDefenseBonus, magnitudes);
 
             int seed = BuildRosterSeed(attackerUnits,
                 order.SelectMany(a => a.Units).ToList(), hexDefenseBonus, attackerCommander, default);

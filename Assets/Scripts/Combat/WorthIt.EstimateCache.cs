@@ -29,7 +29,7 @@ namespace Game.Combat
     // coroutine cannot carry entries into the next turn.
     public static partial class WorthIt
     {
-        private const int EstimateKeyVersion = 6;
+        private const int EstimateKeyVersion = 7;
         private const int EstimateCacheMaxEntries = 50000;
 
         // The field sets the key covers. WorthItEstimateCacheTests compares them against the real

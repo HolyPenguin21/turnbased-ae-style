@@ -216,7 +216,8 @@ namespace Game.Ai.V2
                     into.Add(new WorthIt.DefendingArmy(g.Defenders, g.Commander,
                         includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null) : 0f,
                         buildingDefenseBonus: includeSite ? Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(
-                            snap.Observer, g.Hex, defendingOwner: null) : 0f));
+                            snap.Observer, g.Hex, defendingOwner: null) : 0f,
+                        isEventGuard: true));
                     return;
                 }
         }
