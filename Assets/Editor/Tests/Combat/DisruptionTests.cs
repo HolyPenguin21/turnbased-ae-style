@@ -64,6 +64,31 @@ namespace Game.EditorTests
             new BattleEngine(new BattleState(_hex, attacker, defender, grid ?? new BattleGrid(), 71),
                 AbilityMagnitudes.Default);
 
+        // Playtest 2026-11-06 (Ashen T20): the Citadel fought with buildingDefense=0 against an
+        // attacker without a carrier; a hidden third army of the attacker's side stood on the hex.
+        // DisruptingArmy names that army (diagnostics) and IsDisrupted keeps its exact answer.
+        [Test]
+        public void HiddenCarrierOnTheHex_IsTheNamedDisruptor_AttackerWithoutOne()
+        {
+            Fort(defense: 2, citadel: true);
+            var attacker = Army(_attackerOwner);
+            var defender = Army(_defenderOwner);
+            var scout = Army(_attackerOwner, true);
+            scout.Members[0].IsHidden = true;
+            ArmyRegistry.Register(defender);
+            ArmyRegistry.Register(scout);
+
+            Assert.That(DisruptionRules.DisruptingArmy(_hex, _defenderOwner, attacker), Is.SameAs(scout));
+            Assert.That(DisruptionRules.IsDisrupted(_hex, _defenderOwner, attacker), Is.True);
+            Assert.That(DisruptionRules.BuildingDefenseAtEncounterStart(_hex, defender, attacker), Is.Zero);
+            Assert.That(DisruptionRules.OwnBaseDefense(_hex, _defenderOwner), Is.EqualTo(2));
+
+            scout.Owner = _defenderOwner;
+            Assert.That(DisruptionRules.DisruptingArmy(_hex, _defenderOwner, attacker), Is.Null,
+                "the defender's own carrier never disrupts its own Base");
+            Assert.That(DisruptionRules.BuildingDefenseAtEncounterStart(_hex, defender, attacker), Is.EqualTo(2));
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void IncomingUnregisteredCarrier_SuppressesBaseAndCitadel(bool citadel)

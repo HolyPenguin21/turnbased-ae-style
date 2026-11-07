@@ -157,13 +157,25 @@ namespace Game.Ai.V2
                 if (h.Equals(mainHex) || (cumulative > window && !departure))
                     break;
                 List<AiMapMemory.KnownEnemySighting> bodies = KnownBodiesOn(snap, player, h);
-                if (bodies.Count == 0)
+                // Playtest 2026-11-06 (Ashen T19): a start also sees, inside today's window, a hostile
+                // army whose canonical sighting expired but whose honest observation Analysis still
+                // keeps (Threat.Contacts, LastKnown) — the same army the threat model prices.
+                List<EnemyContactSnapshot> lastKnown = departure && cumulative <= window
+                    ? LastKnownHostilesOn(snap, player, h) : null;
+                bool anyLastKnown = lastKnown != null && lastKnown.Count > 0;
+                if (bodies.Count == 0 && !anyLastKnown)
                     continue;
                 // Past today's window a start sees only an army that holds its own known structure:
                 // it stays where the march will meet it. A roaming army may have left by then.
                 if (cumulative > window && !PathHolds(snap, player, bodies, h))
                     continue;
                 List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, h);
+                if (anyLastKnown)
+                    foreach (EnemyContactSnapshot c in lastKnown)
+                    {
+                        IReadOnlyList<WorthIt.DefendingArmy> fist = KnownOpposition.OfEnemyArmy(snap, c.Army.ArmyId);
+                        if (fist != null && fist.Count > 0) opposition.Add(fist[0]);
+                    }
                 float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, h);
                 bool fightable = ClearsContact(attackers, army.Commander, opposition,
                     bonus, out float win, out bool cover);
@@ -172,15 +184,20 @@ namespace Game.Ai.V2
                 // is bypassed like any other contact we do not fight.
                 AiMapMemory.KnownEnemySighting? army0 = HostileFieldArmyOn(player,
                     bodies.Where(b => WorthIt.FieldsGroundCombatant(b.Defenders)).ToList());
+                EnemyContactSnapshot remembered = !army0.HasValue && anyLastKnown
+                    ? lastKnown.FirstOrDefault(c => WorthIt.FieldsGroundCombatant(c.Army.Members)) : null;
                 if (!fightable)
                 {
-                    float fightWin = army0.HasValue ? FightWin(attackers, army.Commander, opposition,
+                    bool hostile = army0.HasValue || remembered != null;
+                    float fightWin = hostile ? FightWin(attackers, army.Commander, opposition,
                         bonus, win) : win;
-                    if (army0.HasValue && fightWin < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate)
+                    if (hostile && fightWin < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate)
                     {
-                        AiMapMemory.KnownEnemySighting e = army0.Value;
-                        return new AttackLocalAction(AttackLocalActionKind.Retreat, h, e.ArmyId, e.Name,
-                            cumulative, fightWin, cover, "hostile_contact_below_threshold",
+                        int enemyId = army0.HasValue ? army0.Value.ArmyId : remembered.Army.ArmyId;
+                        string enemyName = army0.HasValue ? army0.Value.Name : "#" + enemyId;
+                        return new AttackLocalAction(AttackLocalActionKind.Retreat, h, enemyId, enemyName,
+                            cumulative, fightWin, cover, army0.HasValue ? "hostile_contact_below_threshold"
+                                : "last_known_hostile_below_threshold",
                             contactFingerprint: ContactFingerprint(opposition),
                             enemyPower: AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition), bonus));
                     }
@@ -194,8 +211,9 @@ namespace Game.Ai.V2
                             ? "no_coverage" : "below_threshold"));
                     continue;
                 }
-                AiMapMemory.KnownEnemySighting lead = bodies[0];
-                pathFight = new AttackLocalAction(AttackLocalActionKind.Continue, h, lead.ArmyId, lead.Name,
+                int leadId = bodies.Count > 0 ? bodies[0].ArmyId : lastKnown[0].Army.ArmyId;
+                string leadName = bodies.Count > 0 ? bodies[0].Name : "#" + leadId;
+                pathFight = new AttackLocalAction(AttackLocalActionKind.Continue, h, leadId, leadName,
                     cumulative, win, cover, "fight_contact_on_path", fightsPathContact: true);
                 hasPathFight = true;
                 break;
@@ -385,6 +403,39 @@ namespace Game.Ai.V2
                         break;
                     }
             return bodies;
+        }
+
+        // Hostile player field armies last observed on `hex` that only Analysis still remembers
+        // (AiReconMemory history behind an expired AiMapMemory sighting; it is dropped once a
+        // re-observation proves the army left). Canonical sightings are KnownBodiesOn's.
+        private static List<EnemyContactSnapshot> LastKnownHostilesOn(WorldSnapshot snap,
+            PlayerSetupData player, HexCoord hex)
+        {
+            var result = new List<EnemyContactSnapshot>();
+            if (snap?.Threat?.Contacts == null)
+                return result;
+            // A hex in sight now shows every army that stands there (canonical sightings): a
+            // remembered army absent from it has left, even while its history still lives on
+            // (AiReconMemory.GoneOnReobservation waits for its whole hide radius).
+            if (snap.Observer != null && OwnWorld.Of(snap.Observer).IsVisible(hex))
+                return result;
+            HashSet<int> canonical = AiV2Util.KnownArmyIds(snap.Known?.EnemySightings
+                ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>());
+            foreach (EnemyContactSnapshot c in snap.Threat.Contacts)
+            {
+                ArmySnapshot a = c?.Army;
+                if (a == null || c.Knowledge != ContactKnowledge.LastKnown || !c.Position.HasValue
+                    || !c.Position.Value.Equals(hex) || canonical.Contains(a.ArmyId))
+                    continue;
+                if (a.Owner == null || a.Owner == player || a.Owner.IsNeutral || a.Owner.IsEliminated
+                    || a.IsGarrison || a.IsAir || a.Members == null || a.Members.Count == 0)
+                    continue;
+                result.Add(c);
+            }
+            result.Sort((x, y) => y.Army.Members.Count != x.Army.Members.Count
+                ? y.Army.Members.Count.CompareTo(x.Army.Members.Count)
+                : x.Army.ArmyId.CompareTo(y.Army.ArmyId));
+            return result;
         }
 
         // The enemy PLAYER's mobile army among the bodies on a hex (a building-bound garrison and a

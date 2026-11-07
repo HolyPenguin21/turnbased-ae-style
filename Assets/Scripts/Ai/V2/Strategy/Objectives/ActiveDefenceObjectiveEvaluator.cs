@@ -231,8 +231,7 @@ namespace Game.Ai.V2
                 .OrderBy(c => c.Army.ArmyId))
             {
                 int id = c.Army.ArmyId;
-                if (!c.Position.HasValue
-                    || (c.Knowledge != ContactKnowledge.Exact && !OnFreshOwnRuin(snap, c)) || id < 0
+                if (!ImmediatePositionHonest(snap, c) || id < 0
                     || c.Army.IsAir || c.Army.Owner == null || c.Army.Owner.IsNeutral
                     || c.Army.Owner == snap.Observer || c.Army.Members == null
                     || c.Army.Members.Count == 0 || !known.Contains(id) || !seen.Add(id))
@@ -285,6 +284,12 @@ namespace Game.Ai.V2
         private static bool OnFreshOwnRuin(WorldSnapshot snap, EnemyContactSnapshot c) =>
             c.Position.HasValue
             && OnFreshOwnRuin(snap.Observer, snap.TurnNumber, c.Position.Value, c.LastObservedTurn);
+
+        // The ONE snapshot-tier honesty rule of an immediate target (field intercept AND garrison
+        // sortie): in sight now, or OnFreshOwnRuin. Playtest 2026-11-06: the assessment and both
+        // sortie readers still demanded Exact, so five saboteurs on fresh ruins were deferred.
+        internal static bool ImmediatePositionHonest(WorldSnapshot snap, EnemyContactSnapshot c) =>
+            c?.Position != null && (c.Knowledge == ContactKnowledge.Exact || OnFreshOwnRuin(snap, c));
 
         private static StrategicAssetSnapshot NearestOwnBaseAsset(WorldSnapshot snap, HexCoord from)
         {
@@ -386,8 +391,8 @@ namespace Game.Ai.V2
             EnemyContactSnapshot contact = snap.Threat?.Contacts?.FirstOrDefault(c => c?.Army != null
                 && c.Army.ArmyId == enemyId && c.Position.HasValue);
             HexCoord targetHex = objective.Target.LastKnownHex;
-            if (contact == null || contact.Knowledge != ContactKnowledge.Exact
-                || !contact.Position.Value.Equals(targetHex))
+            // The admission rule of EnumerateImmediate (ImmediatePositionHonest).
+            if (!ImmediatePositionHonest(snap, contact) || !contact.Position.Value.Equals(targetHex))
                 return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Defer,
                     "immediate_contact_not_visible", -1, 0, 0);
 

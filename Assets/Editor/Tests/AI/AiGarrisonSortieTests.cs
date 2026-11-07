@@ -92,6 +92,24 @@ namespace Game.EditorTests
             Assert.That(r.Sortie.WinChance, Is.GreaterThanOrEqualTo(GroundCombatAdmissionPolicy.FreshStartWinChanceGate));
             Assert.That(s.Self.Armies[0].MemberCount, Is.EqualTo(3), "planning must stay read-only");
         }
+        // Playtest 2026-11-06: a saboteur standing in fog on the ruin it razed since our last turn
+        // is the same honest immediate target for the garrison sortie (plan AND durable witness)
+        // as for a field intercept; fog without a fresh own ruin stays no target.
+        [Test] public void SaboteurOnFreshOwnRuinInFog_GetsTheSortieAndKeepsItsWitness()
+        {
+            WorldSnapshot s = World(); EnemyContactSnapshot c = s.Threat.Contacts[0];
+            c.Knowledge = ContactKnowledge.LastKnown; c.LastObservedTurn = 8;
+            Assert.That(ActiveDefenceObjectiveEvaluator.EnumerateImmediate(s), Is.Empty, "fog, no ruin");
+            AiMapMemory.EnsureSubscribed(); AiMapMemory.OnTurnStarted(owner, 8);
+            BuildingRegistry.RaiseStructureLost(EnemyHex, owner);
+
+            ActiveDefenceResponse r = Assess(s);
+            Assert.That(r.Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept), r.Reason);
+            Assert.That(r.Sortie, Is.Not.Null);
+            MissionIntent i = MaterializeSnapshot(s, r.Sortie);
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessSortieIntercept(s, Objective(s), r.Sortie,
+                i.ActiveDefence.PrimaryArmyId.Value, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+        }
         [Test] public void ExistingFieldArmy_RemainsFirstChoice()
         {
             var s = World(); var profiles = new[] { Body(15, 8, 30) };

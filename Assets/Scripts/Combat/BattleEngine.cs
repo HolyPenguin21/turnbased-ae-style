@@ -325,12 +325,13 @@ namespace Game.Combat
             _magnitudes = magnitudes;
             _rules = BattleRulesSnapshot.Capture(state, magnitudes, map);
             _random = random ?? new System.Random(state.BattleSeed);
+            string disruption = DescribeDisruption(state);
             BattleDebugLog.Write($"[Encounter] seed={state.BattleSeed} hex=({state.BattleHex.Q},{state.BattleHex.R}) "
                 + $"attacker={state.Attacker?.Id} defender={state.Defender?.Id} "
-                + $"buildingDefense={state.DefenderBuildingDefenseBonus} "
+                + $"buildingDefense={state.DefenderBuildingDefenseBonus}{disruption} "
                 + $"attackerRoster={DescribeSides(state.Attacker)} defenderRoster={DescribeSides(state.Defender)}");
             AiDebugLog.Write($"[BATTLE] seed={state.BattleSeed} attackerId={state.Attacker?.Id} "
-                + $"defenderId={state.Defender?.Id} buildingDefense={state.DefenderBuildingDefenseBonus} "
+                + $"defenderId={state.Defender?.Id} buildingDefense={state.DefenderBuildingDefenseBonus}{disruption} "
                 + $"({state.BattleHex.Q},{state.BattleHex.R}) start: attacker "
                 + $"{DescribeSides(state.Attacker)} vs defender {DescribeSides(state.Defender)}");
             if (state.Grid != null && BattleInitiator.IsCombatCapable(state.Attacker) && BattleInitiator.IsCombatCapable(state.Defender))
@@ -344,6 +345,23 @@ namespace Game.Combat
                 m => m == null ? "?" : $"{m.Name}#{m.RuntimeId} a{m.Attack} d{m.Defense} hp{m.HitPointsCurrent}/{m.HitPointsMax}"
                     + $" range={m.Range} initiative={m.Initiative} fate={m.Fate}/{m.FateMax}"
                     + $" skills=[{string.Join(",", m.Abilities.OrderBy(a => a))}]")) + "}";
+
+        // Diagnostics only (playtest 2026-11-06: a Citadel fought with buildingDefense=0 and the
+        // log could not say why): when Disruption cancelled the defender's own Base Defense, name
+        // the base value and the carrier army, hidden ones included. Empty otherwise.
+        private static string DescribeDisruption(BattleState state)
+        {
+            if (state?.Defender?.Owner == null || state.DefenderBuildingDefenseBonus > 0)
+                return string.Empty;
+            int baseDefense = DisruptionRules.OwnBaseDefense(state.BattleHex, state.Defender.Owner);
+            if (baseDefense <= 0)
+                return string.Empty;
+            ArmyData carrier = DisruptionRules.DisruptingArmy(state.BattleHex, state.Defender.Owner,
+                state.Attacker);
+            return carrier == null ? string.Empty
+                : $" baseDefense={baseDefense} disruptedBy={DescribeForLog(carrier)}"
+                  + (carrier.Members.Any(m => m != null && m.IsHidden) ? " hidden" : "");
+        }
 
         public void StartRound()
         {

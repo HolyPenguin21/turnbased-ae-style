@@ -66,8 +66,7 @@ namespace Game.Ai.V2
         {
             var target = objective.Target;
             var contact = snap.Threat?.Contacts?.FirstOrDefault(c => c?.Army?.ArmyId == target.EnemyArmyId
-                && c.Knowledge == ContactKnowledge.Exact && c.Position.HasValue
-                && c.Position.Value.Equals(target.LastKnownHex));
+                && ImmediatePositionHonest(snap, c) && c.Position.Value.Equals(target.LastKnownHex));
             if (target.InterceptPurpose != ActiveDefenceInterceptPurpose.ImmediateOpportunity
                 || contact == null || IsSignificantHostilePower(contact.Army.EffectiveArmyPower)) return null;
             ArmySnapshot donor = snap.Self.Armies.FirstOrDefault(a => a != null && a.IsGarrison
@@ -133,7 +132,7 @@ namespace Game.Ai.V2
             var contact = snap?.Threat?.Contacts?.FirstOrDefault(c => c?.Army?.ArmyId == witness?.EnemyArmyId);
             if (objective == null || witness == null || actor == null || !actor.IsStructuralRaidActor
                 || !witness.MatchesRoster(actor.NonHeroRuntimeIds) || actor.MemberCount != witness.UnitRuntimeIds.Count
-                || contact?.Knowledge != ContactKnowledge.Exact || !contact.Position.HasValue
+                || !ImmediatePositionHonest(snap, contact)
                 || !contact.Position.Value.Equals(witness.EnemyHex)
                 || !objective.Target.ProtectedAssetHex.Equals(witness.StrongholdHex)
                 || IsSignificantHostilePower(contact.Army.EffectiveArmyPower)
