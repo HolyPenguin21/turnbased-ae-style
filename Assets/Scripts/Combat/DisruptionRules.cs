@@ -23,12 +23,18 @@ namespace Game.Combat
                 && u.Abilities != null && u.Abilities.Contains(UnitAbilities.Disruption));
 
         public static bool IsDisrupted(HexCoord hex, PlayerSetupData defenderOwner,
+            ArmyData incomingAttacker = null) =>
+            DisruptingArmy(hex, defenderOwner, incomingAttacker) != null;
+
+        // The army whose carrier cancels the defending owner's building Defense on `hex` (the
+        // incoming attacker first), or null. Authoritative read: battle rules and diagnostics only.
+        public static ArmyData DisruptingArmy(HexCoord hex, PlayerSetupData defenderOwner,
             ArmyData incomingAttacker = null)
         {
-            if (defenderOwner == null) return false;
+            if (defenderOwner == null) return null;
             if (incomingAttacker != null && incomingAttacker.Owner != defenderOwner
-                && HasCarrier(incomingAttacker)) return true;
-            return ArmyRegistry.AllAt(hex).Any(a => a.Owner != defenderOwner && HasCarrier(a));
+                && HasCarrier(incomingAttacker)) return incomingAttacker;
+            return ArmyRegistry.AllAt(hex).FirstOrDefault(a => a.Owner != defenderOwner && HasCarrier(a));
         }
 
         // An air army defends without the hex's building bonus (and without terrain, see

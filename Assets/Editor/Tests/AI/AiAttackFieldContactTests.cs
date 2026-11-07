@@ -221,6 +221,52 @@ namespace Game.EditorTests
                 Is.Not.EqualTo(AttackLocalActionKind.Retreat), "a march still judges only its window");
         }
 
+        // Playtest 2026-11-06 (Ashen T19): Ironclad's sighting at (4,-1) expired after two turns
+        // in fog, Analysis still kept it (AiReconMemory history), yet "Cold Blood" started through
+        // that hex and was destroyed. A start sees such an army inside today's window; the
+        // marching rule and a roaming army beyond the window are unchanged.
+        [Test]
+        public void Departure_SeesAnUnbeatableLastKnownHistoricalArmyOnThePath()
+        {
+            ArmySnapshot us = Army(7, Origin, new[] { Body(2, 2, 6) });
+            WorldSnapshot snap = Snap(us);
+            IReadOnlyList<WorthIt.DefenderProfile> roster = new[] { Body(60, 60, 500), Body(60, 60, 500) };
+            EnemyContactSnapshot Historical(HexCoord at) => new EnemyContactSnapshot
+            {
+                Army = new ArmySnapshot { ArmyId = 34, Owner = Red, Hex = at, MemberCount = roster.Count,
+                    MaxMovement = 2, Members = roster },
+                Knowledge = ContactKnowledge.LastKnown, Position = at, Confidence = 0.5f, LastObservedTurn = 4,
+            };
+            snap.Threat = new ThreatModel { Contacts = new[] { Historical(new HexCoord(2, 0)) } };
+
+            AttackLocalAction start = AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false,
+                null, null, departure: true);
+            Assert.That(start.Kind, Is.EqualTo(AttackLocalActionKind.Retreat), start.Reason);
+            Assert.That(start.EnemyArmyId, Is.EqualTo(34));
+            Assert.That(start.Reason, Is.EqualTo("last_known_hostile_below_threshold"));
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false, null, null).Kind,
+                Is.Not.EqualTo(AttackLocalActionKind.Retreat), "a march still reads canonical sightings only");
+
+            snap.Threat = new ThreatModel { Contacts = new[] { Historical(new HexCoord(8, 0)) } };
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false, null, null,
+                departure: true).Kind, Is.Not.EqualTo(AttackLocalActionKind.Retreat),
+                "a roaming remembered army beyond today's window is no start veto");
+
+            // Its last hex in sight now and no sighting there: it has left (no ghost veto), even
+            // though its history waits for the whole hide radius before it is dropped.
+            snap.Threat = new ThreatModel { Contacts = new[] { Historical(new HexCoord(2, 0)) } };
+            var visible = (Dictionary<PlayerSetupData, HashSet<HexCoord>>)typeof(VisionSystem)
+                .GetField("Visible", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(null);
+            try
+            {
+                visible[Us] = new HashSet<HexCoord> { new HexCoord(2, 0) };
+                Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, snap.TurnNumber, false, null, null,
+                    departure: true).Kind, Is.Not.EqualTo(AttackLocalActionKind.Retreat), "seen empty: no ghost");
+            }
+            finally { visible.Remove(Us); }
+        }
+
         // Playtest 2026-11-01 (Draven T16/T20): a lone hero on the path cannot damage the march;
         // its low chance is the Capture/Kill escape chance, so it is bypassed, never a Retreat.
         [Test]

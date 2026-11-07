@@ -2139,6 +2139,39 @@ namespace Game.EditorTests
             Assert.That(response.Reason, Is.EqualTo("immediate_response"));
         }
 
+        // Playtest 2026-11-06 (Ashen T6/T8/T10/T12/T17): the saboteur stood in fog on the ruin it
+        // razed since our last turn; EnumerateImmediate admitted it (OnFreshOwnRuin) but the
+        // assessment still demanded a visible contact and deferred "immediate_contact_not_visible".
+        [Test]
+        public void Immediate_SaboteurOnFreshOwnRuinInFog_IsInterceptedByTheSameRule()
+        {
+            var owner = new PlayerSetupData();
+            var ruin = new HexCoord(-2, 0);
+            AiMapMemory.Clear();
+            AiMapMemory.EnsureSubscribed();
+            try
+            {
+                AiMapMemory.OnTurnStarted(owner, 7);
+                Game.Map.BuildingRegistry.RaiseStructureLost(ruin, owner);
+                WorldSnapshot snap = ImmediateWorld(owner, ruin, false, true,
+                    DefenceActor(owner, 7, new HexCoord(0, 0)));
+                snap.Threat.Contacts[0].LastObservedTurn = 7;
+
+                ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                    snap, ImmediateObjective(snap), null, null, null);
+                Assert.That(response.Reason, Is.EqualTo("immediate_response"));
+                Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+                Assert.That(response.Plan.BaseArmyId, Is.EqualTo(7));
+
+                snap.TurnNumber = 10; // an old loss: the saboteur may have left, no fog target
+                Assert.That(ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap), Is.Empty);
+            }
+            finally
+            {
+                AiMapMemory.Clear();
+            }
+        }
+
         // Playtest 2026-10-19: a lone Watcher Drone shared its hex with a 5-unit army. The intercept
         // was priced against the drone alone (win 1.00), but the battle opens against the strongest
         // army on the hex — Vessel Guard walked into it and was wiped two turns in a row.

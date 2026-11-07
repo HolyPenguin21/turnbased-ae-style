@@ -83,7 +83,12 @@ namespace Game.Ai.V2
                 .Where(s => s.ArmyId == p.EnemyArmyId && s.Hex.Equals(p.EnemyHex) && !s.IsAir
                     && s.Owner != null && s.Owner != player && !s.Owner.IsNeutral && !s.Owner.IsEliminated)
                 .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
-            if (!sighting.HasValue || !VisionSystem.IsVisible(player, p.EnemyHex)
+            // In sight, or still standing on the ruin it razed (the shared admission rule, as the
+            // field intercept's provisioner and executor read it).
+            if (!sighting.HasValue
+                || !(VisionSystem.IsVisible(player, p.EnemyHex)
+                    || ActiveDefenceObjectiveEvaluator.OnFreshOwnRuin(player, ctx.TurnNumber, p.EnemyHex,
+                        sighting.Value.SeenTurn))
                 || ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(knowledge, p.EnemyHex))
             { why = "sortie target moved, became hidden or moved onto a foreign structure"; return false; }
             var opposition = new List<WorthIt.DefendingArmy>();
