@@ -44,17 +44,56 @@ namespace Game.Ai.V2
             bool deferFreshZeroRadar = false)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Strategic.FulfillDemands");
+            var result = new StrategicPhaseResult();
+            // No pacer: the routine never yields, so one pass runs to completion right here.
+            System.Collections.IEnumerator run = FulfillDemandsRoutine(snap, player, root, hand, ctx,
+                apBudget, demands, commitments, intentState, result, null, activeIntents,
+                reconObjectives, carriedReservation, admittedAxes, radar, deferFreshZeroRadar);
+            while (run.MoveNext()) { }
+            return result;
+        }
+
+        // The same pass spread over frames: `pacer` gives the frame back between card-arbitration
+        // rounds and between the pass stages (each round already re-judges the live world, and
+        // nothing else acts between AI frames; saving is only possible on a human turn). Every
+        // caller in the turn pipeline is a coroutine and reads `result` after this completes.
+        // Profiler samples cover one segment each, never a yield.
+        internal static System.Collections.IEnumerator FulfillDemandsRoutine(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            PhaseAApBudget apBudget, IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
+            MissionIntentState intentState, StrategicPhaseResult result, FramePacer pacer,
+            IReadOnlyList<MissionIntent> activeIntents = null,
+            IReadOnlyList<ReconObjective> reconObjectives = null,
+            MaterializationReservation carriedReservation = null,
+            IReadOnlyCollection<DesireAxis> admittedAxes = null, Radar radar = null,
+            bool deferFreshZeroRadar = false)
+        {
             // One turn-scoped identity set must survive main, reaction and housekeeping entries:
             // a failed generator/card pair is not a fresh candidate merely because Phase A re-entered.
-            var result = new StrategicPhaseResult
-            {
-                Reservation = carriedReservation ?? new MaterializationReservation()
-            };
+            result.Reservation = carriedReservation ?? new MaterializationReservation();
             if (player == null || root == null || hand == null || apBudget == null || ctx == null)
-                return result;
+                yield break;
             var pass = new PhaseAPass(snap, player, root, hand, ctx, apBudget, demands, commitments,
                 intentState, activeIntents, reconObjectives, admittedAxes, radar,
                 deferFreshZeroRadar, result);
+            bool admit;
+            using (new Game.Core.ProfileScope("AI/Strategic.FulfillDemands.Open"))
+                admit = OpenPass(pass, result, player, hand, ctx, intentState);
+            if (!admit)
+                yield break;
+            if (pacer != null) yield return pacer.Checkpoint();
+            System.Collections.IEnumerator rounds = RunCardArbitration(pass, pacer);
+            while (rounds.MoveNext())
+                yield return rounds.Current;
+            if (pacer != null) yield return pacer.Checkpoint();
+            using (new Game.Core.ProfileScope("AI/Strategic.FulfillDemands.Close"))
+                ClosePass(pass, result, player, apBudget);
+        }
+
+        // Entry stages up to the card rounds. False: nothing to admit (the residuals are published).
+        private static bool OpenPass(PhaseAPass pass, StrategicPhaseResult result, PlayerSetupData player,
+            AiHandData hand, AiTurnContext ctx, MissionIntentState intentState)
+        {
             RefreshFollowups(pass);
             // A new turn constructs a fresh MaterializationReservation. Restore the exact
             // pending Hero even when the current dirty-demand subset omits Development.
@@ -74,14 +113,20 @@ namespace Game.Ai.V2
             {
                 PhaseAEconomyHolds.ClearPreIntentHoldIfResolved(pass);
                 pass.PublishEarlyResiduals();
-                return result;
+                return false;
             }
             PhaseAEconomyHolds.HoldPreIntentBuild(pass);
             PhaseAInfrastructureLane.Classify(pass);
             PhaseAInfrastructureLane.FulfillPrePass(pass);
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
             // builder + jointly-feasible Phase-A portfolio below as every materialization demand.
-            RunCardArbitration(pass);
+            return true;
+        }
+
+        // Exit stages after the card rounds.
+        private static void ClosePass(PhaseAPass pass, StrategicPhaseResult result, PlayerSetupData player,
+            PhaseAApBudget apBudget)
+        {
             // The strike a live Attack waits for is produced from the operation's own pass, not
             // from Phase B's leftovers (PhaseAOperationSupport).
             PhaseAOperationSupport.TryProduceStrikeSupport(pass);
@@ -93,7 +138,6 @@ namespace Game.Ai.V2
             if (result.Reservation.UnresolvedDemands.Count > 0)
                 AiDebugLog.Write($"[AI][V2] strat.A - residual demands "
                     + string.Join(" | ", result.Reservation.UnresolvedDemands.Select(d => d.ToString())));
-            return result;
         }
 
         // The follow-up AP promises carried by the turn's shared budget, re-judged on entry.
@@ -123,10 +167,12 @@ namespace Game.Ai.V2
         // Card arbitration: one action per round, at most maxPhaseAActionsPerPass per call. Each
         // round compares the best jointly feasible chain with the best arbitrated infrastructure
         // step; the winner acts and the next round re-judges both on the new world.
-        private static void RunCardArbitration(PhaseAPass pass)
+        // A frame may be given back before each round (`pacer`; null = one synchronous run).
+        private static System.Collections.IEnumerator RunCardArbitration(PhaseAPass pass, FramePacer pacer)
         {
             while (pass.ChainAttempts < AiConfigV2.maxPhaseAActionsPerPass)
             {
+                if (pacer != null) yield return pacer.Checkpoint();
                 pass.CloseSourceDemandsAlreadyInPlay();
                 List<DemandState> active = pass.ActiveMaterializationStates();
                 // Infrastructure competing in the same arbitration is judged on the live world each

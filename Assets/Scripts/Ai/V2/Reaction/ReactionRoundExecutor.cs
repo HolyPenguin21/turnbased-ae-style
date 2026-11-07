@@ -112,9 +112,13 @@ namespace Game.Ai.V2
             result.Demands += demands.Count;
 
             PhaseAApBudget apBudget = PhaseAApBudget.Create(root);
-            StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apBudget, demands, actorCommitments, MissionIntentRegistry.GetOrCreate(player), activeIntents,
-                reconObjectives, carriedReservation, radar: radar);
+            // The reaction round has no decision frame: its own pacer spreads Phase A's rounds.
+            var pacer = new FramePacer();
+            yield return pacer.Checkpoint();
+            var phaseA = new StrategicPhaseResult();
+            yield return StrategicManager.FulfillDemandsPaced(snapshot, player, root, hand,
+                ctx, apBudget, demands, actorCommitments, MissionIntentRegistry.GetOrCreate(player), phaseA, pacer,
+                activeIntents, reconObjectives, carriedReservation, radar: radar);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
             bool aggressionPressureFresh = false;

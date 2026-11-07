@@ -225,6 +225,7 @@ namespace Game.Ai
                             frames?.Record(sliceStart, pending);
                             yield return instruction;
                             sliceStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                            frames?.Resumed(pending);
                         }
                     }
                     frames?.Record(sliceStart, pending);
@@ -744,8 +745,9 @@ namespace Game.Ai
     }
     // One AI turn's frame profile, recorded by AiTurnController.RunEstimateCachedTimed: the AI work
     // between two engine yields is one frame. A frame of LogAtMs or more is logged at once with
-    // the iterator chain that produced it (deepest last), so a playtest log names the stage to
-    // spread over more frames; the turn summary gives the longest frame and the hitch counts.
+    // the iterator chain it resumed in ("from") and the one that yielded ("to"), deepest last: the
+    // synchronous code between those two points is the stage to spread over more frames. The turn
+    // summary gives the longest frame and the hitch counts.
     internal sealed class AiTurnFrameStats
     {
         internal const double LogAtMs = 100.0;
@@ -761,6 +763,16 @@ namespace Game.Ai
 
         internal AiTurnFrameStats(string player) => _player = player;
 
+        // The chain the current frame resumed in, kept as iterator references (no strings) and
+        // described only when the frame turns out long.
+        private readonly List<IEnumerator> _resumedIn = new List<IEnumerator>();
+
+        internal void Resumed(IEnumerable<IEnumerator> chain)
+        {
+            _resumedIn.Clear();
+            if (chain != null) _resumedIn.AddRange(chain);
+        }
+
         internal void Record(long sliceStart, IEnumerable<IEnumerator> chain)
         {
             double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - sliceStart) * 1000.0
@@ -769,12 +781,13 @@ namespace Game.Ai
             TotalMs += ms;
             if (ms >= HitchMs) Hitches++;
             if (ms < LongestMs && ms < LogAtMs) return;
-            string at = Describe(chain);
+            string at = "from " + (_resumedIn.Count == 0 ? "turn start" : Describe(_resumedIn))
+                + " to " + Describe(chain);
             if (ms >= LongestMs) { LongestMs = ms; LongestAt = at; }
             if (ms >= LogAtMs)
             {
                 LongFrames++;
-                AiDebugLog.Write($"[AI][Timing][Frame] {_player}: {ms:0} ms at {at}");
+                AiDebugLog.Write($"[AI][Timing][Frame] {_player}: {ms:0} ms {at}");
             }
         }
 
