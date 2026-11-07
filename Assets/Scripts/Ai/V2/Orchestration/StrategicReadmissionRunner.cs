@@ -148,9 +148,10 @@ namespace Game.Ai.V2
             WorldAnalysis.StepObservationStamp beforeCapabilities =
                 WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
             mark = StagePerfTelemetry.Mark(_frame.Pacer);
-            StrategicPhaseResult followup = StrategicManager.FulfillDemands(
+            var followup = new StrategicPhaseResult();
+            yield return StrategicManager.FulfillDemandsPaced(
                 _frame.Snapshot, _player, _root, _hand, _ctx, _apBudget, dirtyDemands,
-                _frame.Commitments, _frame.IntentState, _frame.Intents, _frame.Recon,
+                _frame.Commitments, _frame.IntentState, followup, _frame.Pacer, _frame.Intents, _frame.Recon,
                 _phases.Carried,
                 admittedAxes: dirtyAxes, radar: _radar,
                 deferFreshZeroRadar: true);

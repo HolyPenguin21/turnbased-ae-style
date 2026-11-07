@@ -125,6 +125,8 @@ namespace Game.Ai.V2
             AttackRetreatWitness.Apply(_frame.IntentState, portfolio.WitnessRevisions);
             missions = portfolio.Missions;
             Dictionary<MissionIntentKey, string> missionDeferrals = portfolio.Deferrals;
+            // Proposals, packing and the first execution step each get their own frames.
+            yield return _frame.Checkpoint();
             // Return legs wait for the first Phase B round (Continuity decides which, records
             // the wait and protects it from the stall counter); the loop only says whether the
             // wait is still allowed.
@@ -158,6 +160,7 @@ namespace Game.Ai.V2
             allocation = cycleSession.Pack();
             _telemetry.Allocation = allocation;
             _telemetry.RecordFunded(allocation);
+            yield return _frame.Checkpoint();
 
             // Airborne obligations are settled before discretionary mission progress: a
             // multi-turn rebase already committed to landing, and a recovery whose wing

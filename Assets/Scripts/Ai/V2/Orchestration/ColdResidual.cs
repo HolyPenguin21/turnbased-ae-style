@@ -58,9 +58,10 @@ namespace Game.Ai.V2
             {
                 WorldAnalysis.StepObservationStamp beforeCold =
                     WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
-                StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
+                var coldPass = new StrategicPhaseResult();
+                yield return StrategicManager.FulfillDemandsPaced(
                     _frame.Snapshot, _player, _root, _hand, _ctx, _apBudget, coldDemands,
-                    _frame.Commitments, _frame.IntentState, _frame.Intents, _frame.Recon,
+                    _frame.Commitments, _frame.IntentState, coldPass, _frame.Pacer, _frame.Intents, _frame.Recon,
                     _phases.Carried,
                     admittedAxes: _coldAxes, radar: _radar);
                 // Phase A rewrites only the cold axes' residuals; the warm axes' unmet need stays.

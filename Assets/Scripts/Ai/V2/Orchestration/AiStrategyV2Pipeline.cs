@@ -191,18 +191,19 @@ namespace Game.Ai.V2
             //     axis is then admitted in one re-admission pass.
             int handAtStart = (hand?.Hand?.Count ?? 0) - replenishDrawn;
             var readmission = new StrategicReadmission();
-            StrategicPhaseResult phaseA;
+            var phaseA = new StrategicPhaseResult();
             if (AviationObligations.Pending(player, ctx))
             {
-                phaseA = new StrategicPhaseResult();
                 readmission.Deferred.Defer(demandAxes);
                 AiDebugLog.Write("[AI][V2] Phase A deferred - aviation obligations settle first");
             }
             else
             {
-                phaseA = StrategicManager.FulfillDemands(frame.Snapshot, player, root, hand,
-                    ctx, apBudget, frame.Demands, frame.Commitments, frame.IntentState, frame.Intents, frame.Recon,
-                    radar: radar, deferFreshZeroRadar: true);
+                // The demand rebuild above and Phase A's card rounds each get their own frames.
+                yield return frame.Checkpoint();
+                yield return StrategicManager.FulfillDemandsPaced(frame.Snapshot, player, root, hand,
+                    ctx, apBudget, frame.Demands, frame.Commitments, frame.IntentState, phaseA, frame.Pacer,
+                    frame.Intents, frame.Recon, radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
             phaseA.CardsDrawn += replenishDrawn;

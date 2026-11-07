@@ -33,6 +33,21 @@ namespace Game.Ai.V2
                 intentState, activeIntents, reconObjectives, carriedReservation, admittedAxes, radar,
                 deferFreshZeroRadar);
 
+        // The same Phase A spread over frames by `pacer` (StrategicPhaseA.FulfillDemandsRoutine);
+        // `result` is complete once the routine ends.
+        internal static IEnumerator FulfillDemandsPaced(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget,
+            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments, MissionIntentState intentState,
+            StrategicPhaseResult result, FramePacer pacer,
+            IReadOnlyList<MissionIntent> activeIntents = null,
+            IReadOnlyList<ReconObjective> reconObjectives = null,
+            MaterializationReservation carriedReservation = null,
+            IReadOnlyCollection<DesireAxis> admittedAxes = null, Radar radar = null,
+            bool deferFreshZeroRadar = false)
+            => StrategicPhaseA.FulfillDemandsRoutine(snap, player, root, hand, ctx, apBudget, demands,
+                commitments, intentState, result, pacer, activeIntents, reconObjectives,
+                carriedReservation, admittedAxes, radar, deferFreshZeroRadar);
+
         public static IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
             MaterializationReservation carriedReservation, StrategicPhaseResult result,
