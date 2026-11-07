@@ -40,6 +40,12 @@ namespace Game.Ai.V2
         private static readonly Dictionary<string, StrategicEffect[]> ByAbility =
             new Dictionary<string, StrategicEffect[]>
             {
+                [UnitAbilities.Trade] = new[]
+                {
+                    new StrategicEffect(IntendedRole.Economy, 0f, StrategicEffectContext.TradeAccess,
+                        EffectField.RoleFit, coverage: false, scope: EffectScope.PlayerGlobal,
+                        stacking: EffectStacking.Unique, stackingKey: "TradeAccess"),
+                },
                 [UnitAbilities.AntiAir] = new[]
                 {
                     new StrategicEffect(IntendedRole.AntiAir, AiConfigV2.threatResponseValueWeight,
@@ -470,3 +476,4 @@ namespace Game.Ai.V2
             => defs != null && defs.Any(d => d != null && HasGlobalRecurringEffect(d.grantedAbilities));
     }
 }
+

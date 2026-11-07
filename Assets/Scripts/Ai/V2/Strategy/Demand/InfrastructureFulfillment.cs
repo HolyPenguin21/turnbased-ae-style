@@ -190,14 +190,14 @@ namespace Game.Ai.V2
             // SpendAuthorityFor: an Economy build here (or a global source put into play) completes
             // NOW and outranks other builds' deferred holds; DEV infrastructure has no Economy
             // authority and keeps respecting them like any other card spend.
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost, authority))
+            if (!TradeFunding.CanFund(player, root, ctx, cand.ResCost, authority))
                 return $"{demand.Capability}: reserved resources cannot cover {cand.Explain}";
             // Live gameplay affordability (the executor re-checks; this keeps the demand open
             // cleanly rather than letting a doomed transaction run).
             float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx, authority);
             if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
                 || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
-                || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
+                || !TradeFunding.CanFund(player, root, ctx, cand.ResCost, authority))
                 return $"{demand.Capability}: live AP/resources cannot cover {cand.Explain}";
             return null;
         }
@@ -267,6 +267,8 @@ namespace Game.Ai.V2
             if (cand.CapacityTier != null)
                 return ExecuteCapacityUnlock(player, root, ctx, cand);
 
+            if (!TradeFunding.Fund(player, root, ctx, cand.ResCost, authority))
+                return InfraFulfillResult.No("infrastructure funding changed");
             // --- authoritative transaction (Execution) ---
             BuildingPlayResult r = InfrastructureBuildExecutor.Run(cand.Action, player, root, hand, ctx);
             if (r.Built && economyOwner != null)
@@ -585,19 +587,19 @@ namespace Game.Ai.V2
                     // A full Base is NOT upgraded behind the placement: that is the stand-alone
                     // CapacityUnlock step. A placement pays only the Facility's own bill.
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex,
-                            out string placeReason))
+                            out string placeReason, resourceForecast: true))
                     {
                         rejected.Add($"{at}:{placeReason}");
                         continue;
                     }
                     ResourceCost stageCost = card.EffectivePlayResourceCost;
                     int stageAp = card.EffectivePlayApCost;
-                    if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, stageCost))
+                    if (!TradeFunding.CanFund(player, root, ctx, stageCost))
                     {
                         rejected.Add($"{at}:spendable_resources");
                         continue;
                     }
-                    float score = DevelopmentPreparationScorer.Facility(card, stageAp, stageCost, snap, inv,
+                    float score = DevelopmentPreparationScorer.Facility(card, stageAp, TradeFunding.PricedCost(player, root, ctx, stageCost), snap, inv,
                         hand, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player,
                         witnessedUsefulApDemand);
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
@@ -674,7 +676,7 @@ namespace Game.Ai.V2
             StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
                 NonCombatRole.Facility, card, snap, CapabilityInventory.Build(snap, player, null),
                 hand, bestEquipmentUpgrade: 0f, witnessedUsefulApDemand: witnessedUsefulApDemand,
-                actualApCost: stageAp, actualResourceCost: stageCost,
+                actualApCost: stageAp, actualResourceCost: TradeFunding.PricedCost(player, root, ctx, stageCost, authority),
                 spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t, authority),
                 player: player);
             float net = use.NetScore;
@@ -853,5 +855,6 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
 

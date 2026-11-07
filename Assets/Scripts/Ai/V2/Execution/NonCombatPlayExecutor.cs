@@ -39,9 +39,16 @@ namespace Game.Ai.V2
                 return res;
             }
 
+            if (play.Kind == NonCombatCardPlayer.PlayKind.Facility && play.Generation == null
+                && !BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, play.Card, play.TargetHex,
+                    out _, resourceForecast: true))
+            { res.FailReason = "facility placement changed"; return res; }
+
             // Revalidate the successful-chain budget before minting too. Expected score
             // never authorizes a fractional payment or the use of a newly protected hold.
-            if (!FitsBudget(play, player, root, ctx))
+            if (play.ApCost > StrategicSpendability.SpendableAp(player, root, ctx)
+                || !TradeFunding.Fund(player, root, ctx, play.ResCost)
+                || !FitsBudget(play, player, root, ctx))
             {
                 res.FailReason = "non-combat chain no longer fits AP/spendable reserves";
                 return res;
@@ -179,3 +186,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

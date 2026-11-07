@@ -685,7 +685,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
             }
-            if (!StrategicSpendability.FitsSpendableForEconomyCompletion(player, root, ctx, prep.StageCost, prep.OwnerKey))
+            if (!TradeFunding.Fund(player, root, ctx, prep.StageCost, new SpendAuthority(prep.OwnerKey, true)))
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: resources "
                     + "no longer spendable - hero stays a real field mover, found again next admission pass");
@@ -1014,5 +1014,6 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
 

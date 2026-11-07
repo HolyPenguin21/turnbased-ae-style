@@ -123,6 +123,7 @@ namespace Game.Turns
         // HexSelectionController's Research/Production hex actions). No card-drop target of its
         // own, so it only feeds InputBlocked, not CardDraggingBlocked.
         [SerializeField] private ResearchProductionModalUI researchProductionModal;
+        [SerializeField] private TradeModalUI tradeModal;
         // Same "map input locked out entirely" treatment as the other modals above — see
         // HexSelectionController's own battleContactPopup/battleScreen fields (this controller
         // additionally drives their read-only ShowResolved form for delayed battles — see
@@ -175,7 +176,7 @@ namespace Game.Turns
             || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
             || (aaChoicePopup != null && aaChoicePopup.IsShowing);
 
-        private bool IsMapModalShowing => UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
+        private bool IsMapModalShowing => (tradeModal != null && tradeModal.IsShowing) || UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
             || (armyViewerModal != null && armyViewerModal.IsShowing)
             || (baseViewerModal != null && baseViewerModal.IsShowing)
             || (researchProductionModal != null && researchProductionModal.IsShowing)
@@ -219,7 +220,7 @@ namespace Game.Turns
             }
 
             bool newInputBlocked = IsMapModalShowing || (popupPanel != null && popupPanel.IsShowing);
-            bool newCardDraggingBlocked = UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
+            bool newCardDraggingBlocked = (tradeModal != null && tradeModal.IsShowing) || UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
                 || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
                 // Research/Production picker is NOT a card drop-target (unlike Army/Base Viewer,
@@ -316,7 +317,8 @@ namespace Game.Turns
         // coroutines. PlayerRoot data stays alive for the final statistics snapshot.
         internal void PrepareForExit()
         {
-            if(exiting)return;exiting=true;GameSession.BeginExit();Phase=StrategicTurnPhase.Exiting;
+            if(exiting)return;exiting=true;
+            if (tradeModal != null) tradeModal.Hide();GameSession.BeginExit();Phase=StrategicTurnPhase.Exiting;
             _gameOver = true;
             TurnConfirmed = false;
             CurrentPlayer = null;
@@ -353,6 +355,7 @@ namespace Game.Turns
             if (popupPanel != null) popupPanel.Hidden += ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged += RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged += RecomputeBlockedState;
+            if (tradeModal != null) tradeModal.VisibilityChanged += RecomputeBlockedState;
             if (researchProductionModal != null) researchProductionModal.VisibilityChanged += RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged += RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged += RecomputeBlockedState;
@@ -372,6 +375,7 @@ namespace Game.Turns
             if (popupPanel != null) popupPanel.Hidden -= ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged -= RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged -= RecomputeBlockedState;
+            if (tradeModal != null) tradeModal.VisibilityChanged -= RecomputeBlockedState;
             if (researchProductionModal != null) researchProductionModal.VisibilityChanged -= RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged -= RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged -= RecomputeBlockedState;
@@ -980,6 +984,7 @@ namespace Game.Turns
 
         private void CompleteTurnConfirmation()
         {
+            PlayerRootRegistry.FindFor(CurrentPlayer)?.BeginTradeTurn();
             TurnConfirmed = true;Phase=StrategicTurnPhase.Ready;
             _turnConfirmedFrame = Time.frameCount;
             // OnTurnConfirmed already hid the handoff. Do not hide a report that may have
@@ -1113,4 +1118,5 @@ namespace Game.Turns
         }
     }
 }
+
 

@@ -32,6 +32,7 @@ namespace Game.Ai.V2
         MobileRepair,      // additional paid repair access for wounded own units on this hex
         BuildingDisruption, // missing carrier for a known hostile structural defence
         FreeBattleSlots,    // summon— BaseFit scaled by min(free slots, CapacityRequirement) / CapacityRequirement
+        TradeAccess,
     }
 
     // final closure §3 — generic effect semantics carried as DATA on the descriptor. The central
@@ -276,3 +277,4 @@ namespace Game.Ai.V2
         public override int GetHashCode() => _bits;
     }
 }
+

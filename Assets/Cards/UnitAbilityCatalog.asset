@@ -13,6 +13,10 @@ MonoBehaviour:
   m_Name: UnitAbilityCatalog
   m_EditorClassIdentifier: 
   knownAbilities:
+  - tag: Trade
+    title: Trade
+    abbreviation: Trade
+    description: "Unlocks resource exchange while in play. Starts at 2:1; each exchange increases the price by 1. An idle turn lowers it by 1, minimum 2:1. Costs no AP."
   - tag: AA
     title: 'AA'
     abbreviation: ''
@@ -204,3 +208,4 @@ MonoBehaviour:
   raiseTheRotsUnitCatalog: {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   raiseTheRotsUnitKey: ashen.unit.ashdrifter
   raiseTheRotsUnitsPerSummoner: 2
+

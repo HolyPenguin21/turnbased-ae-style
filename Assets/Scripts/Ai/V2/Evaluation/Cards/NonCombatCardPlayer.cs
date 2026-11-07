@@ -40,6 +40,8 @@ namespace Game.Ai.V2
             public CardData EquipHostCard;
             public float Score;
             public float ApCost;
+            public TradeFundingPlan Funding;
+            public ResourceCost FundingCost => Funding?.ExternalCost ?? ResCost;
             public ResourceCost ResCost;
             public string StableKey;
             public string Explain;
@@ -380,7 +382,7 @@ namespace Game.Ai.V2
                 foreach (HexCoord h in ownBaseHexes)
                 {
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r,
-                            requireCardInHand: generation == null, requireCurrentAp: !investmentPreview))
+                            requireCardInHand: generation == null, requireCurrentAp: !investmentPreview, resourceForecast: true))
                     {
                         if (r != null) why = r;
                         continue;
@@ -401,12 +403,16 @@ namespace Game.Ai.V2
                     blocked.Add($"{def.displayName}:facility({why})");
                     return null;
                 }
+                TradeFundingPlan funding = null;
+                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, totalRes)
+                    && !TradeFunding.TryPlan(player, root, ctx, totalRes, out funding)) return null;
                 return new NonCombatPlay
                 {
+                    Funding = funding,
                     Card = card, Kind = PlayKind.Facility, TargetHex = at.Value, Generation = generation,
                     ApCost = totalAp, ResCost = totalRes,
                     Score = Score(snap, player, root, ctx, PlayKind.Facility, card, hand, 0f,
-                        totalAp, totalRes, generation, witnessedUsefulApDemand),
+                        totalAp, funding?.ExternalCost ?? totalRes, generation, witnessedUsefulApDemand),
                     StableKey = $"{sourceKey}:facility:{at.Value.Q},{at.Value.R}",
                     Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
                 };
@@ -861,3 +867,4 @@ namespace Game.Ai.V2
 
     }
 }
+

@@ -148,10 +148,11 @@ namespace Game.Ai.V2
             int apBefore = root.ActionPoints;
             BaseUpgradeTier[] tiers = ctx.GameConfig?.baseUpgradeTiers;
             if (b == null || tier == null
-                || !InfrastructureActions.CanUpgradeBase(b, tiers, null, out BaseUpgradeTier next, out _)
+                || !InfrastructureActions.CanUpgradeBase(b, tiers, null, out BaseUpgradeTier next, out _, requireCurrentResources: false)
                 || !ReferenceEquals(next, tier))
                 return false;
-            if (!InfrastructureActions.TryUpgradeBase(b, tiers).Ok)
+            if (!TradeFunding.Fund(player, root, ctx, tier.cost)
+                || !InfrastructureActions.TryUpgradeBase(b, tiers).Ok)
                 return false;
 
             activity.InfrastructureBuilt++;
@@ -166,3 +167,4 @@ namespace Game.Ai.V2
             UnitRepair.TryRepair(unit, hex, root, out _);
     }
 }
+

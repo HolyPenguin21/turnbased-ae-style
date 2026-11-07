@@ -61,9 +61,13 @@ namespace Game.Ai.V2
                     "no generation step/catalog/args");
             if (!object.ReferenceEquals(ctx.ResearchProductionCatalog.ResolveResult(g.ChallengeCard), g.CardDef))
                 return new GenerationOutcome(false, false, null, false, "production output changed since planning");
+            if (!ResearchProductionSystem.IsEligible(player, g.FacilityHex, g.Mode, out _)
+                || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
+                return new GenerationOutcome(false, false, null, false, "generation source changed");
             // AI-only reservation policy is checked BEFORE the shared gameplay transaction:
             // a protected resource may reject this plan, but must never reveal/pay first.
-            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.ChallengeCard, authority))
+            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.ChallengeCard, authority)
+                || !TradeFunding.Fund(player, root, ctx, g.GenerationResourceCost, authority))
                 return new GenerationOutcome(false, false, null, false,
                     "generation resources reserved since planning");
 
@@ -117,16 +121,6 @@ namespace Game.Ai.V2
                 return res;
             }
 
-            // The candidate was admitted against a previous snapshot. Check the whole canonical
-            // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
-            // make this executor spend another axis's newly protected resources. No substitute
-            // budget model: the same ReservesOkAfterChain is used by feasibility.
-            if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, authority))
-            {
-                res.FailReason = "chain no longer fits AP/spendable reserves";
-                return res;
-            }
-
             if (!MaterializationFeasibility.PreflightIfExisting(player, root, hand, ctx, plan))
             {
                 res.PlacementStale = true;
@@ -158,6 +152,22 @@ namespace Game.Ai.V2
                 res.FailReason = "Attack refit changed or no funded onward activation";
                 return res;
             }
+            int rateBeforeFunding = root.TradeRate;
+            if (StrategicSpendability.SpendableAp(player, root, ctx, authority) < plan.ApCost
+                || !TradeFunding.Fund(player, root, ctx, plan.ResCost, authority))
+            { res.FailReason = "chain funding changed"; return res; }
+            if (root.TradeRate != rateBeforeFunding)
+            { res.StateChanged = true; res.StateVersionAfter = WorldDeltaLifecycle.Current; }
+            // The candidate was admitted against a previous snapshot. Check the whole canonical
+            // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
+            // make this executor spend another axis's newly protected resources. No substitute
+            // budget model: the same ReservesOkAfterChain is used by feasibility.
+            if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, authority))
+            {
+                res.FailReason = "chain no longer fits AP/spendable reserves";
+                return res;
+            }
+
             int apStart = root.ActionPoints;
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
@@ -276,3 +286,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

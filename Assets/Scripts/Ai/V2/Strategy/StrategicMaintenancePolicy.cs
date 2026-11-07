@@ -58,11 +58,17 @@ namespace Game.Ai.V2
             // the same Phase-B pool immediately before the shared gameplay transaction.
             if (_repairUnit != null && (root == null || ctx == null || player != root.Setup
                 || StrategicSpendability.SpendableAp(player, root, ctx) < ApCost
-                || !StrategicSpendability.FitsSpendableResources(player, root, ctx, ResCost)))
+                || !TradeFunding.CanFund(player, root, ctx, ResCost)))
             {
                 stateChanged = progressed = false;
                 return false;
             }
+            if (_repairUnit != null && !UnitRepair.CanRepair(_repairUnit, ArmyRegistry.FindArmyContaining(_repairUnit)))
+            { stateChanged = progressed = false; return false; }
+            if (Revalidate != null && !Revalidate())
+            { stateChanged = progressed = false; return false; }
+            if (!TradeFunding.Fund(player, root, ctx, ResCost))
+            { stateChanged = progressed = false; return false; }
             bool ok = _repairUnit != null
                 ? InfrastructureBuildExecutor.RepairUnit(_repairUnit, _repairHex, root)
                 : (Revalidate == null || Revalidate())
@@ -368,7 +374,7 @@ namespace Game.Ai.V2
             foreach (BuildingData b in bases)
             {
                 if (BuildingPlayExecutor.CanPlaceFacilityAt(
-                    player, hand, ctx, card, b.Hex, out string reason))
+                    player, hand, ctx, card, b.Hex, out string reason, resourceForecast: true))
                     return false; // already playable: no dependency to buy
                 if (reason != InfrastructureActions.NoFreeFacilitySlotReason)
                     return false; // affordability or another rule is also blocking it
@@ -379,4 +385,5 @@ namespace Game.Ai.V2
 
     }
 }
+
 
