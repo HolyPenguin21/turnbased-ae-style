@@ -110,9 +110,13 @@ namespace Game.Ai.V2
             // 1b. A thin hand is refilled BEFORE the scan, so the drawn cards are in this turn's
             //     demand fulfilment instead of waiting for leftover AP in Phase B.
             int replenishDrawn = HandReplenishPolicy.Run(player, root, hand, ctx);
+            // The opening stages run before the decision frame (and its pacer) exist.
+            var openingPacer = new FramePacer();
+            yield return openingPacer.Checkpoint();
 
             // 2. One shared scan.
             WorldSnapshot scanned = WorldAnalysis.Scan(player, root, hand, ctx, turnSession.PersistentState);
+            yield return openingPacer.Checkpoint();
             // The first Analyze (desires, Aggression facts) is ~50 ms of Monte Carlo: fill the exact
             // estimate cache across frames first, so Analyze below only reads it.
             yield return CombatOpportunityAnalyzer.WarmEstimates(scanned);
@@ -126,6 +130,7 @@ namespace Game.Ai.V2
 
             // 3. Strategy: independent raw desires -> normalize once -> radar. StrategyLayer writes
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
+            yield return openingPacer.Checkpoint();
             AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
             RadarAssessment assessment = StrategyLayer.Evaluate(scanned, radarState);
             DesireVector desires = assessment.Desires;
@@ -142,7 +147,9 @@ namespace Game.Ai.V2
             // 3c. The ONE Recon-opportunity enumeration for the turn — shared by DemandLayer and
             //     ReconMissionPlanner. FROZEN here (before StrategicManager touches own forces): Strategic
             //     Manager changes which SCOUT can execute, never which objectives exist.
+            yield return openingPacer.Checkpoint();
             frame.EnumerateObjectives();
+            yield return frame.Checkpoint();
 
             //     (3d. The ONE Aggression-opportunity enumeration for the turn is made by the same call —
             //     shared by DemandLayer and AggressionMissionLayer.)
@@ -165,6 +172,7 @@ namespace Game.Ai.V2
             // view, so DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING
             // scout from an AVAILABLE one without knowing how continuity stores mover ownership.
             frame.ResolveInitialOwnership();
+            yield return frame.Checkpoint();
 
             AiFrameLog.MissionContinuity(frame.Intents, frame.Commitments);
             AiFrameLog.Forces(frame.Snapshot, frame.Commitments);

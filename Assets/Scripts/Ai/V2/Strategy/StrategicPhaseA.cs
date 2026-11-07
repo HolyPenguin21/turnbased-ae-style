@@ -192,7 +192,10 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                PhaseACandidateRound round = PhaseACandidateRound.Build(pass, active);
+                PhaseACandidateRound round = PhaseACandidateRound.Create(pass, active);
+                System.Collections.IEnumerator fill = round.Fill(pass, pacer);
+                while (fill.MoveNext())
+                    yield return fill.Current;
 
                 // ONE comparison of weighted scores: the best jointly feasible materialization
                 // chain (DecisionScore x Radar scale) against the best admissible Development
@@ -214,7 +217,9 @@ namespace Game.Ai.V2
 
                 if (round.Feasible.Count == 0)
                 {
-                    ReportNoFeasibleChain(pass, round);
+                    System.Collections.IEnumerator report = ReportNoFeasibleChain(pass, round, pacer);
+                    while (report.MoveNext())
+                        yield return report.Current;
                     // A demand no hand card can serve, that the deck can and today's stock pays,
                     // draws toward it and the round re-judges the new hand (HandReplenishPolicy).
                     if (HandReplenishPolicy.RunForDemands(pass.Player, pass.Root, pass.Hand, pass.Ctx,
@@ -232,10 +237,14 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void ReportNoFeasibleChain(PhaseAPass pass, PhaseACandidateRound round)
+        // `pacer` gives the frame back between demands (each explanation re-runs that demand's
+        // candidate search); null = in one go.
+        private static System.Collections.IEnumerator ReportNoFeasibleChain(PhaseAPass pass,
+            PhaseACandidateRound round, FramePacer pacer)
         {
             foreach (DemandState state in round.Active)
             {
+                if (pacer != null) yield return pacer.Checkpoint();
                 AxisDemand d = state.Demand;
                 float reserved = pass.ApBudget.ReservedFollowup();
                 if (round.Options.TryGetValue(state, out var topOpts) && topOpts.Count > 0)
