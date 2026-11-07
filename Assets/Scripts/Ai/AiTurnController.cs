@@ -172,14 +172,16 @@ namespace Game.Ai
             // WorthIt.EstimateCache.cs). Advance nested pipeline iterators inside the cache
             // owner, so their exceptions also pass through its cleanup.
             Game.Combat.WorthIt.EstimateCacheStats battleStats = default;
-            IEnumerator cachedTurn = RunEstimateCached(Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx),
-                stats => battleStats = stats);
+            var frames = new AiTurnFrameStats(player.Nickname);
+            IEnumerator cachedTurn = RunEstimateCachedTimed(Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx),
+                stats => battleStats = stats, frames);
             using ((IDisposable)cachedTurn)
                 while (cachedTurn.MoveNext())
                     yield return cachedTurn.Current;
             AiDebugLog.Write($"[AI][Timing] {player.Nickname}: WorthIt cache hits={battleStats.Hits} "
                 + $"misses={battleStats.Misses} simulatedMs={battleStats.MissMilliseconds:0} "
                 + $"entries={battleStats.Entries}");
+            AiDebugLog.Write(frames.Summary());
             // Final safety boundary: the turn-scoped simulation cache is already closed, all
             // pipeline cleanup is complete, and only the handoff callback remains.
             yield return ctx.WaitAtObserverActionBoundary();
@@ -188,12 +190,20 @@ namespace Game.Ai
         }
 
         internal static IEnumerator RunEstimateCached(IEnumerator turn,
-            Action<Game.Combat.WorthIt.EstimateCacheStats> completed)
+            Action<Game.Combat.WorthIt.EstimateCacheStats> completed) =>
+            RunEstimateCachedTimed(turn, completed, null);
+
+        // Every engine yield of the whole turn passes through this loop, so the time from one
+        // resume to the next yield is exactly one frame of AI work (`frames` records it; waits
+        // and engine frames are excluded). Diagnostics only — nothing reads it back.
+        internal static IEnumerator RunEstimateCachedTimed(IEnumerator turn,
+            Action<Game.Combat.WorthIt.EstimateCacheStats> completed, AiTurnFrameStats frames)
         {
             using (Game.Combat.WorthIt.OpenEstimateCacheScope())
             {
                 var pending = new Stack<IEnumerator>();
                 pending.Push(turn);
+                long sliceStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 try
                 {
                     while (pending.Count > 0)
@@ -211,8 +221,13 @@ namespace Game.Ai
                         if (instruction is IEnumerator nested && !(instruction is CustomYieldInstruction))
                             pending.Push(nested);
                         else
+                        {
+                            frames?.Record(sliceStart, pending);
                             yield return instruction;
+                            sliceStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                        }
                     }
+                    frames?.Record(sliceStart, pending);
                     completed?.Invoke(Game.Combat.WorthIt.CurrentEstimateCacheStats);
                 }
                 finally
@@ -725,6 +740,65 @@ namespace Game.Ai
         internal static IEnumerator WaitStep(AiTurnContext ctx)
         {
             yield return new WaitForSeconds(ctx.StepDelay);
+        }
+    }
+    // One AI turn's frame profile, recorded by AiTurnController.RunEstimateCachedTimed: the AI work
+    // between two engine yields is one frame. A frame of LogAtMs or more is logged at once with
+    // the iterator chain that produced it (deepest last), so a playtest log names the stage to
+    // spread over more frames; the turn summary gives the longest frame and the hitch counts.
+    internal sealed class AiTurnFrameStats
+    {
+        internal const double LogAtMs = 100.0;
+        internal const double HitchMs = 33.0;
+
+        private readonly string _player;
+        internal int Frames { get; private set; }
+        internal int Hitches { get; private set; }
+        internal int LongFrames { get; private set; }
+        internal double LongestMs { get; private set; }
+        internal double TotalMs { get; private set; }
+        internal string LongestAt { get; private set; } = "-";
+
+        internal AiTurnFrameStats(string player) => _player = player;
+
+        internal void Record(long sliceStart, IEnumerable<IEnumerator> chain)
+        {
+            double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - sliceStart) * 1000.0
+                / System.Diagnostics.Stopwatch.Frequency;
+            Frames++;
+            TotalMs += ms;
+            if (ms >= HitchMs) Hitches++;
+            if (ms < LongestMs && ms < LogAtMs) return;
+            string at = Describe(chain);
+            if (ms >= LongestMs) { LongestMs = ms; LongestAt = at; }
+            if (ms >= LogAtMs)
+            {
+                LongFrames++;
+                AiDebugLog.Write($"[AI][Timing][Frame] {_player}: {ms:0} ms at {at}");
+            }
+        }
+
+        internal string Summary() =>
+            $"[AI][Timing] {_player}: frames={Frames} workMs={TotalMs:0} longestMs={LongestMs:0} "
+            + $"over{HitchMs:0}ms={Hitches} over{LogAtMs:0}ms={LongFrames} longestAt={LongestAt}";
+
+        // Compiler iterator names ("<RefreshOperationalDecision>d__37") reduced to Type.Method,
+        // outermost first. Only built for a new longest or a logged frame.
+        private static string Describe(IEnumerable<IEnumerator> chain)
+        {
+            if (chain == null) return "-";
+            var names = new List<string>();
+            foreach (IEnumerator e in chain)
+            {
+                if (e == null) continue;
+                Type t = e.GetType();
+                string n = t.Name;
+                int open = n.IndexOf('<'), close = n.IndexOf('>');
+                string method = open >= 0 && close > open ? n.Substring(open + 1, close - open - 1) : n;
+                names.Add((t.DeclaringType?.Name ?? "") + "." + method);
+            }
+            names.Reverse(); // Stack enumerates top (deepest) first
+            return names.Count == 0 ? "-" : string.Join(">", names);
         }
     }
 }

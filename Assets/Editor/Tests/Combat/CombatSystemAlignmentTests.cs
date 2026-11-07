@@ -58,6 +58,88 @@ namespace Game.EditorTests
             finally { WorthIt.EndEstimateCacheScope(); }
         }
 
+        // Playtest 2026-11-02 (Draven T16): 2 Scab Shields (a4 d4 Range 1, Bodyguard) under a hero
+        // raided 3 Scav + Gunner (Range 2), rated ~0.9 and lost. On the grid the melee bodies spend
+        // round one closing in while the shooters fire; the estimator plays that approach round.
+        private static List<WorthIt.DefenderProfile> ScabShields(int range)
+        {
+            var list = new List<WorthIt.DefenderProfile>();
+            for (int i = 0; i < 2; i++)
+                list.Add(new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Bio, UnitTypeTag.Infantry },
+                    attack: 4, hitPoints: 4, initiative: 1, abilities: new[] { UnitAbilities.Bodyguard },
+                    range: range));
+            return list;
+        }
+
+        private static WorthIt.DefendingArmy[] ScavGuard() => new[]
+        {
+            new WorthIt.DefendingArmy(new[]
+            {
+                new WorthIt.DefenderProfile(1, false, attack: 3, hitPoints: 4, initiative: 1, range: 2),
+                new WorthIt.DefenderProfile(1, false, attack: 3, hitPoints: 4, initiative: 1, range: 2),
+                new WorthIt.DefenderProfile(1, false, attack: 3, hitPoints: 4, initiative: 1, range: 2),
+                new WorthIt.DefenderProfile(2, false, attack: 3, hitPoints: 4, initiative: 1, range: 2),
+            }, default),
+        };
+
+        [Test]
+        public void Estimate_MeleeRosterLosesTheApproachRoundAgainstShooters()
+        {
+            var commander = new WorthIt.SideCommander(1, 3);
+            float melee = WorthIt.EstimateSequential(ScabShields(1), commander, ScavGuard(), 0f).WinChance;
+            float ranged = WorthIt.EstimateSequential(ScabShields(2), commander, ScavGuard(), 0f).WinChance;
+
+            // Range is not part of the matchup seed: before the approach round both read the same.
+            Assert.That(melee, Is.LessThan(ranged));
+            Assert.That(melee, Is.LessThan(0.85f));
+        }
+
+        // A raid on an event whose hex also holds a neutral army: the army is fought first, the guard
+        // only after the hex is clear (ResolveHexAfterVictory -> TriggerHexEventIfClear), however
+        // much harder the guard is.
+        [Test]
+        public void FightOrder_PutsTheEventGuardAfterEveryArmy()
+        {
+            var commander = new WorthIt.SideCommander(1, 3);
+            var weakArmy = new WorthIt.DefendingArmy(new[]
+            {
+                new WorthIt.DefenderProfile(1, false, attack: 1, hitPoints: 2, initiative: 1, range: 1),
+            }, default, armyId: 7);
+            WorthIt.DefenderProfile heavy = new WorthIt.DefenderProfile(3, false, attack: 5, hitPoints: 8,
+                initiative: 1, range: 2);
+            var guard = new WorthIt.DefendingArmy(new[] { heavy, heavy }, default, isEventGuard: true);
+            var unflagged = new WorthIt.DefendingArmy(new[] { heavy, heavy }, default, armyId: 8);
+
+            List<WorthIt.DefendingArmy> order = WorthIt.FightOrder(ScabShields(1), commander,
+                new[] { guard, weakArmy }, 0f);
+            Assert.That(order[0].ArmyId, Is.EqualTo(7));
+            Assert.That(order[1].IsEventGuard, Is.True);
+
+            List<WorthIt.DefendingArmy> armiesOnly = WorthIt.FightOrder(ScabShields(1), commander,
+                new[] { weakArmy, unflagged }, 0f);
+            Assert.That(armiesOnly[0].ArmyId, Is.EqualTo(8), "between armies the harder one still goes first");
+        }
+
+        [Test]
+        public void DefendingArmy_WithKeepsTheEventGuardIdentity()
+        {
+            var guard = new WorthIt.DefendingArmy(Array.Empty<WorthIt.DefenderProfile>(), default,
+                2f, null, 1f, isEventGuard: true);
+            WorthIt.DefendingArmy projected = guard.With(ScabShields(1), default, 1f, 0f);
+            Assert.That(projected.IsEventGuard, Is.True);
+            Assert.That(projected.DefenseBonusOverride, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Estimate_UnknownRangeKeepsThePositionlessReading()
+        {
+            var commander = new WorthIt.SideCommander(1, 3);
+            float unknown = WorthIt.EstimateSequential(ScabShields(-1), commander, ScavGuard(), 0f).WinChance;
+            float ranged = WorthIt.EstimateSequential(ScabShields(2), commander, ScavGuard(), 0f).WinChance;
+
+            Assert.That(unknown, Is.EqualTo(ranged));
+        }
+
         [Test]
         public void EqualAttackDefense_HasPositiveExpectedDamage()
         {

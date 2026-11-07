@@ -167,17 +167,46 @@ namespace Game.Combat
             if (rng == null)
                 throw new ArgumentNullException(nameof(rng));
 
-            bool[] attackTokens = RollTokens(Mathf.Max(0, attackPool), rng);
-            bool[] defenseTokens = RollTokens(Mathf.Max(0, defensePool), rng);
+            // The simulation's hot path (every simulated attack of WorthIt, shadow grids and air
+            // estimates): the tokens live only inside this call, so they are rolled into reused
+            // buffers, and the result is the same arithmetic as BattleRules.ResolveGroundAttack
+            // without the live popup's applied-ability list. Same RNG draws in the same order.
+            bool[] attackTokens = RollInto(ref _attackBuffers, Mathf.Max(0, attackPool), rng);
+            bool[] defenseTokens = RollInto(ref _defenseBuffers, Mathf.Max(0, defensePool), rng);
 
             ResolveFateDuel(attackTokens, defenseTokens, attackerAbilities, defenderTypeTags,
                 defenderAbilities, ref attackerFate, ref defenderFate, defenderHp,
                 magnitudes, rng, defenderIsRetreating, isCaptureKill: false);
 
-            BattleRules.GroundAttackOutcome outcome = BattleRules.ResolveGroundAttack(
-                attackTokens, defenseTokens, attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
-            return new BattleSimExchangeOutcome(outcome.Damage, outcome.Damage > 0,
-                outcome.AttackerSuccesses, outcome.DefenderSuccesses);
+            int attackerSuccesses = CountHits(attackTokens);
+            int defenderSuccesses = CountHits(defenseTokens);
+            int damage = ChallengeResult.ApplyAbilityModifiers(
+                Math.Max(0, attackerSuccesses - defenderSuccesses),
+                attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
+            return new BattleSimExchangeOutcome(damage, damage > 0, attackerSuccesses, defenderSuccesses);
+        }
+
+        // One reusable token array per pool size and side (ResolveExchange only — RollTokens keeps
+        // returning a fresh array, since live combat holds on to its tokens).
+        [ThreadStatic] private static bool[][] _attackBuffers;
+        [ThreadStatic] private static bool[][] _defenseBuffers;
+
+        private static bool[] RollInto(ref bool[][] buffers, int count, System.Random rng)
+        {
+            if (buffers == null || buffers.Length <= count)
+                System.Array.Resize(ref buffers, Math.Max(count + 1, 16));
+            bool[] tokens = buffers[count] ?? (buffers[count] = new bool[count]);
+            for (int i = 0; i < tokens.Length; i++)
+                tokens[i] = rng.NextDouble() < 0.5d;
+            return tokens;
+        }
+
+        private static int CountHits(bool[] tokens)
+        {
+            int hits = 0;
+            for (int i = 0; i < tokens.Length; i++)
+                if (tokens[i]) hits++;
+            return hits;
         }
 
         public static CaptureKillOutcome ResolveCaptureKill(int hunterPool, int heroPool,

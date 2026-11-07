@@ -100,18 +100,31 @@ namespace Game.Combat
             if (ownTokens == null || !ChallengeResolver.HasMiss(ownTokens))
                 return false;
 
-            var result = new ChallengeResult(attackerTokens, defenderTokens, attackerModifier, defenderModifier);
+            // ChallengeResult's arithmetic on locals: this runs on every Fate decision of every
+            // simulated exchange, so it allocates nothing.
+            int attackerSuccesses = System.Math.Max(0, CountHits(attackerTokens) + attackerModifier);
+            int defenderSuccesses = System.Math.Max(0, CountHits(defenderTokens) + defenderModifier);
+            int rawDamage = System.Math.Max(0, attackerSuccesses - defenderSuccesses);
 
             if (isCaptureKill)
                 return isDefender
-                    ? result.AttackerSuccesses >= result.DefenderSuccesses
-                    : result.Damage <= 0;
+                    ? attackerSuccesses >= defenderSuccesses
+                    : rawDamage <= 0;
 
-            int damage = m.Damage(result.Damage);
+            int damage = m.Damage(rawDamage);
 
             return isDefender
                 ? damage > 0
-                : ShouldAttackerSpend(result, m, damage);
+                : ShouldAttackerSpend(attackerTokens, attackerSuccesses, defenderSuccesses, m, damage);
+        }
+
+        private static int CountHits(bool[] tokens)
+        {
+            int hits = 0;
+            if (tokens != null)
+                for (int i = 0; i < tokens.Length; i++)
+                    if (tokens[i]) hits++;
+            return hits;
         }
 
         // The attacker's abilities and the defender's type/abilities of one exchange — all the
@@ -154,13 +167,15 @@ namespace Game.Combat
                 _attackerAbilities, _defenderTypeTags, _defenderAbilities, _magnitudes);
         }
 
-        private static bool ShouldAttackerSpend(ChallengeResult result, Matchup m, int currentDamage)
+        private static bool ShouldAttackerSpend(bool[] attackerTokens, int attackerSuccesses,
+            int defenderSuccesses, Matchup m, int currentDamage)
         {
             if (currentDamage > 0)
                 return false; // already lands, nothing to fix
 
-            int ownMisses = CountMisses(result.AttackerTokens);
-            if (!TryMinRerollsForAttackerDamage(result, m, ownMisses, out int minRerolls))
+            int ownMisses = CountMisses(attackerTokens);
+            if (!TryMinRerollsForAttackerDamage(attackerSuccesses, defenderSuccesses, m, ownMisses,
+                    out int minRerolls))
                 return false; // physically unreachable within the misses actually on the table
             return minRerolls <= AttackerCap(m);
         }
@@ -180,12 +195,12 @@ namespace Game.Combat
             return boosted ? 2 : 1;
         }
 
-        private static bool TryMinRerollsForAttackerDamage(ChallengeResult result, Matchup m,
-            int ownMisses, out int minRerolls)
+        private static bool TryMinRerollsForAttackerDamage(int attackerSuccesses, int defenderSuccesses,
+            Matchup m, int ownMisses, out int minRerolls)
         {
             for (int k = 1; k <= ownMisses; k++)
             {
-                int rawDamage = Mathf.Max(0, (result.AttackerSuccesses + k) - result.DefenderSuccesses);
+                int rawDamage = Mathf.Max(0, (attackerSuccesses + k) - defenderSuccesses);
                 int damage = m.Damage(rawDamage);
                 if (damage > 0)
                 {

@@ -449,6 +449,9 @@ namespace Game.EditorTests
         private static WorthIt.DefenderProfile P(float attack, float defense, float hp, params string[] abilities) =>
             new WorthIt.DefenderProfile(defense, false, null, attack, hp, 1, abilities, hp, range: 1);
 
+        private static WorthIt.DefenderProfile Ranged(float attack, float defense, float hp) =>
+            new WorthIt.DefenderProfile(defense, false, null, attack, hp, 1, null, hp, range: 2);
+
         private static WorthIt.DefenderProfile Hero(params string[] abilities) =>
             new WorthIt.DefenderProfile(1f, false, null, 0f, 5f, 1, abilities, 5f,
                 isGroundCombatant: false, isHero: true, fateMax: 1, range: 1);
@@ -460,8 +463,12 @@ namespace Game.EditorTests
             var defenders = new[] { P(3, 1, 6), P(3, 1, 6), P(3, 1, 6) };
             float plain = WorthIt.Estimate(attackers, defenders, 0f).WinChance;
 
-            var drilled = new List<WorthIt.DefenderProfile>(attackers) { Hero(UnitAbilities.Drill) };
-            Assert.That(WorthIt.Estimate(drilled, defenders, 0f).WinChance, Is.GreaterThan(plain), "Drill");
+            // Drill alone: shooters, so no approach round thins the 25-trial signal (Range is
+            // not part of the matchup seed; the approach round itself is covered elsewhere).
+            var shooters = new[] { Ranged(3, 1, 6), Ranged(3, 1, 6), Ranged(3, 1, 6) };
+            float plainShooters = WorthIt.Estimate(shooters, shooters, 0f).WinChance;
+            var drilled = new List<WorthIt.DefenderProfile>(shooters) { Hero(UnitAbilities.Drill) };
+            Assert.That(WorthIt.Estimate(drilled, shooters, 0f).WinChance, Is.GreaterThan(plainShooters), "Drill");
 
             var countering = new[]
             {

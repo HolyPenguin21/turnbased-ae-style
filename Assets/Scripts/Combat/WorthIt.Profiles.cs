@@ -114,16 +114,27 @@ namespace Game.Combat
             // The structural component of the total bonus, still present after known resident
             // Disruption. Kept separate so a projected incoming carrier removes only this part.
             public readonly float BuildingDefenseBonus;
+            // A hex event's guard: it fights only once every army on the hex is beaten
+            // (ResolveHexAfterVictory -> TriggerHexEventIfClear), so FightOrder puts it last.
+            public readonly bool IsEventGuard;
 
             public DefendingArmy(IReadOnlyCollection<DefenderProfile> units, SideCommander commander,
-                float? defenseBonusOverride = null, int? armyId = null, float buildingDefenseBonus = 0f)
+                float? defenseBonusOverride = null, int? armyId = null, float buildingDefenseBonus = 0f,
+                bool isEventGuard = false)
             {
                 Units = units ?? System.Array.Empty<DefenderProfile>();
                 Commander = commander;
                 DefenseBonusOverride = defenseBonusOverride;
                 ArmyId = armyId;
                 BuildingDefenseBonus = buildingDefenseBonus;
+                IsEventGuard = isEventGuard;
             }
+
+            // The same army with another roster/commander/bonus — every projection that rebuilds a
+            // defending army keeps its identity (id, event guard) through here.
+            public DefendingArmy With(IReadOnlyCollection<DefenderProfile> units, SideCommander commander,
+                float? defenseBonusOverride, float buildingDefenseBonus) =>
+                new DefendingArmy(units, commander, defenseBonusOverride, ArmyId, buildingDefenseBonus, IsEventGuard);
 
             public float DefenseBonus(float fallback) => DefenseBonusOverride ?? fallback;
             public float DefenseBonus(float fallback, IReadOnlyCollection<DefenderProfile> attackers,

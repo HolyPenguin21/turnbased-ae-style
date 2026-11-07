@@ -65,13 +65,8 @@ namespace Game.Ai.V2
                 || !attackers.Any(AiArmyRoles.IsGroundCombatBody))
                 return new AttackExchange(0f, 0f, 0f, 0f, fighting.Count, false);
 
-            // The rules' fight order, as EstimateSequential takes it: the army the fresh attacker is
-            // least likely to beat first, list order for equal odds.
-            List<WorthIt.DefendingArmy> order = fighting
-                .Select((a, i) => (a, i, win: WorthIt.Estimate(attackers, a.Units,
-                    a.DefenseBonus(hexBonus, attackers, commander), commander, a.Commander).WinChance))
-                .OrderBy(x => x.win).ThenBy(x => x.i)
-                .Select(x => x.a).ToList();
+            // The rules' fight order, the one EstimateSequential takes (WorthIt.FightOrder).
+            List<WorthIt.DefendingArmy> order = WorthIt.FightOrder(attackers, commander, fighting, hexBonus);
 
             var prefix = new List<WorthIt.DefendingArmy>(order.Count);
             float firstWin = 0f, killed = 0f;

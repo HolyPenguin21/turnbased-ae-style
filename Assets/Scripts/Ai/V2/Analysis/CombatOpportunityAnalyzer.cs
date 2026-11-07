@@ -419,7 +419,8 @@ namespace Game.Ai.V2
         {
             var fight = new List<WorthIt.DefendingArmy> { new WorthIt.DefendingArmy(defenders, commander, hexBonus,
                 buildingDefenseBonus: AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, snap.Map, hex,
-                    armyId.HasValue ? snap.Known?.SightingOf(armyId.Value)?.Owner : null)) };
+                    armyId.HasValue ? snap.Known?.SightingOf(armyId.Value)?.Owner : null),
+                isEventGuard: !armyId.HasValue) };
             if (armyId.HasValue)
                 KnownOpposition.AddCoOccupants(snap, hex, armyId.Value, fight);
             else

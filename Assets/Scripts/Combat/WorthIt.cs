@@ -20,7 +20,9 @@ namespace Game.Combat
     //    against a random living enemy, the canonical ability-modifier chain, and the Fate duel of
     //    every exchange (ResolveExchange, spending decided by FateDuelAi). Each side may have a
     //    commander (SideCommander — ArmyData.Commander, the army's first hero): its Initiative is
-    //    added to every combatant of its side and its Fate buys rerolls. No grid positions.
+    //    added to every combatant of its side and its Fate buys rerolls. No grid positions, only
+    //    the approach step: a Range-1 body spends a turn closing in before it reaches the enemy
+    //    front row (BattleUnit.NeedsApproach), which is what ranged rosters win on.
     //  · EstimateSequential — a hex held by several armies: one battle per defending army,
     //    strongest first, wounds carry over, Fate refills.
     //  · HexDefenseBonus — terrain + Base-building defence, added to the DEFENDER's tokens only,
