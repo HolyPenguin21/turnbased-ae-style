@@ -3173,11 +3173,11 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   citadelPrefab: {fileID: 300002, guid: d8fd48d92fa14fbc88c7e3e18b67c30e, type: 3}
-  basePrefab: {fileID: 300002, guid: a0008f653f8d4aeeba802c9df01347b0, type: 3}
+  basePrefab: {fileID: 300002, guid: 344324a29ce74294c80618317a14651a, type: 3}
   armyPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
   airArmyPrefab: {fileID: 400002, guid: 1aadc6f20e4f4b728a04ea132b7b6dbc, type: 3}
   citadelIcon: {fileID: 21300000, guid: 5f369e0acdc34fe1b8cfcd0fea3bcbb0, type: 3}
-  facilityIcon: {fileID: 21300000, guid: daf65ea81f6748cf96bbba7a6093f479, type: 3}
+  facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyNamePool:
   - Quiet Relay
   - Shard Patrol
