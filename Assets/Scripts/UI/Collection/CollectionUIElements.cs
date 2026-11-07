@@ -6,300 +6,15 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Collection theme and layout helpers. Editor authoring and existing scene windows
-    // share the same skin; card art and authored control templates remain intact.
+    // Collection window scroll/dropdown skin and small runtime UI construction helpers.
+    // Window geometry is authored by hand in the scene; the skin pass never moves rects
+    // except the dropdown popup, whose height and rows follow the option count.
     public static class CollectionUIElements
     {
-        public static readonly Color CollectionText = new Color(.93f, .85f, .69f);
-        public static readonly Color CollectionInk = new Color(.16f, .12f, .08f);
-        private static TMP_FontAsset headingFont;
         private const int DropdownVisibleRows = 10;
         private const float DropdownRowHeight = 32f;
         private const float DropdownPadding = 8f;
 
-        // One visual application path for both editor authoring and opening existing windows.
-        // An already-loaded scene may retain its old serialized appearance after a code/asset
-        // update. Apply only to this window; preserve its bindings, templates and listeners.
-        public static void ApplyWindowSkin(RectTransform root)
-        {
-            if (root == null) return;
-            Surface(root, "Panel_Outer");
-            foreach (string path in new[] { "Filters", "CardDetails", "Cards", "Deck", "UnsavedModal/Window", "ConfirmModal/Window" })
-                Surface(root.Find(path), "Panel_Inset");
-            var deckCardsImage = root.Find("Deck/DeckCards")?.GetComponent<Image>();
-            if (deckCardsImage != null) { deckCardsImage.sprite = null; deckCardsImage.color = Color.clear; }
-
-            foreach (var text in root.GetComponentsInChildren<TMP_Text>(true)) text.color = CollectionText;
-            ApplyControlsSkin(root);
-
-            void At(string path, float x, float y, float w, float h)
-            { if (root.Find(path) is RectTransform rect) Place(rect, x, y, w, h); }
-            At("Filters", 24, 56, 240, 200);
-            At("Filters/Faction", 14, 30, 212, 34);
-            At("Filters/Category", 14, 89, 212, 34);
-            At("Filters/Ownership", 14, 150, 212, 34);
-            At("CardDetails", 24, 260, 240, 442);
-            At("Cards", 276, 56, 632, 646);
-            At("Deck", 920, 56, 336, 646);
-            At("Title", 384, 11, 506, 38);
-            At("Back", 1128, 10, 118, 40);
-            At("Back/Label", 6, 4, 106, 32);
-            At("Status", 276, 702, 980, 16);
-            At("Deck/DeckPicker", 16, 60, 304, 32);
-            At("Deck/Create", 16, 95, 304, 32);
-            At("Deck/Create/Label", 6, 3, 292, 26);
-            At("Deck/DeckName", 16, 133, 304, 32);
-            At("Deck/Starter", 16, 170, 107, 34);
-            At("Deck/Copy", 131, 170, 85, 34);
-            At("Deck/Delete", 224, 170, 96, 34);
-            At("Deck/Save", 16, 577, 304, 56);
-            At("Deck/Save/Label", 12, 7, 280, 42);
-            At("Deck/Points", 20, 224, 190, 24);
-            At("Deck/TotalCostTitle", 210, 226, 106, 20);
-            At("Deck/Budget", 18, 254, 300, 26);
-            At("Deck/CardsHeader", 20, 329, 220, 19);
-            At("Deck/CountHeader", 262, 329, 54, 19);
-            At("Deck/DeckCards", 18, 351, 300, 221);
-            for (int i = 0; i < 5; i++)
-            {
-                At("Deck/CostIcon" + i, 20 + i * 60, 291, 18, 18);
-                At("Deck/CostValue" + i, 43 + i * 60, 291, 32, 19);
-            }
-            Surface(root.Find("Deck/Budget"), "Meter");
-            if (root.Find("Cards/Viewport/Content") is RectTransform content)
-            {
-                var grid = content.GetComponent<GridLayoutGroup>();
-                if (grid != null)
-                {
-                    grid.cellSize = new Vector2(140, 204); grid.spacing = new Vector2(8, 8);
-                    grid.padding = new RectOffset(6, 6, 8, 8);
-                    grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount; grid.constraintCount = 4;
-                }
-            }
-            var artLayout = root.Find("CardDetails/Viewport/Content/Art")?.GetComponent<LayoutElement>();
-            if (artLayout != null) artLayout.preferredHeight = 210;
-            ApplyScrollSkin(root.Find("Cards"), true);
-            ApplyScrollSkin(root.Find("CardDetails"), true);
-            ApplyScrollSkin(root.Find("Deck/DeckCards"), false);
-            var deckRows = root.Find("Deck/DeckCards/Viewport/Content")?.GetComponent<VerticalLayoutGroup>();
-            if (deckRows != null) deckRows.spacing = 3;
-
-            var plaque = Decoration(root, "TitlePlaque", "Plaque"); Place(plaque, 360, 4, 560, 52);
-            plaque.SetAsFirstSibling();
-            var title = root.Find("Title")?.GetComponent<TMP_Text>();
-            Heading(title, 30);
-            var filters = root.Find("Filters");
-            if (filters != null)
-            {
-                Caption(filters, "FactionTitle", "FACTION", 18, 12, 204, 16, 13);
-                Caption(filters, "CategoryTitle", "TYPE", 18, 71, 204, 16, 13);
-                Caption(filters, "OwnershipTitle", "OWNERSHIP", 18, 132, 204, 16, 13);
-            }
-            var deck = root.Find("Deck");
-            if (deck != null)
-            {
-                var statistics = Decoration(deck, "StatisticsFrame", "Panel_Inset"); Place(statistics, 8, 212, 320, 360);
-                statistics.SetSiblingIndex(deck.Find("MetalBackground") != null ? 1 : 0);
-                var divider = Decoration(deck, "StatisticsDivider", "Divider"); Place(divider, 20, 320, 296, 2);
-                var heading = Decoration(deck, "DeckTitle", "DeckHeader"); Place(heading, 12, 10, 312, 42);
-                heading.SetSiblingIndex(deck.Find("MetalBackground") != null ? 2 : 1);
-                var text = Caption(heading, "Label", "DECK", 12, 4, 288, 34, 24);
-                Heading(text, 24);
-            }
-            var saveLabel = root.Find("Deck/Save/Label")?.GetComponent<TMP_Text>();
-            if (saveLabel != null) { saveLabel.text = "SAVE DECK"; Heading(saveLabel, 28); }
-            Heading(root.Find("Back/Label")?.GetComponent<TMP_Text>(), 20);
-            foreach (string path in new[] { "Deck/Starter", "Deck/Copy", "Deck/Delete" })
-                if (root.Find(path) is RectTransform button)
-                    if (button.Find("Label") is RectTransform label) Place(label, 5, 3, button.sizeDelta.x - 10, button.sizeDelta.y - 6);
-            var costTitle = root.Find("Deck/TotalCostTitle")?.GetComponent<TMP_Text>();
-            if (costTitle != null) costTitle.alignment = TextAlignmentOptions.Right;
-            foreach (string path in new[] { "UnsavedModal/Window", "ConfirmModal/Window" })
-                root.Find(path)?.SetAsFirstSibling();
-
-            // Keep editor rebuilds responsive too. Preserve the authored 1280x720 geometry
-            // while changing which edges each column follows; runtime opening only skins scrolls.
-            AnchorAtReference(root.Find("CardDetails") as RectTransform, new Vector2(0, 0), new Vector2(0, 1));
-            AnchorAtReference(root.Find("Cards") as RectTransform, Vector2.zero, Vector2.one);
-            AnchorAtReference(root.Find("Deck") as RectTransform, new Vector2(1, 0), Vector2.one);
-            AnchorAtReference(root.Find("Back") as RectTransform, Vector2.one, Vector2.one);
-            AnchorAtReference(root.Find("Title") as RectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1));
-            AnchorAtReference(root.Find("TitlePlaque") as RectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1));
-            AnchorAtReference(root.Find("Status") as RectTransform, Vector2.zero, new Vector2(1, 0));
-        }
-
-        private static void AnchorAtReference(RectTransform rect, Vector2 min, Vector2 max)
-        {
-            if (rect == null) return;
-            var reference = new Vector2(1280, 720);
-            Vector2 oldSpan = rect.anchorMax - rect.anchorMin, newSpan = max - min;
-            rect.anchoredPosition -= Vector2.Scale(reference,
-                min - rect.anchorMin + Vector2.Scale(newSpan - oldSpan, rect.pivot));
-            rect.sizeDelta -= Vector2.Scale(reference, newSpan - oldSpan);
-            rect.anchorMin = min; rect.anchorMax = max;
-        }
-
-        public static void ApplyDeckRowSkin(RectTransform root)
-        {
-            if (root == null) return;
-            void At(string path, float x, float y, float w, float h)
-            { if (root.Find(path) is RectTransform rect) Place(rect, x, y, w, h); }
-            At("Row/Art", 0, 0, 30, 38);
-            At("Row/Name", 34, 0, 164, 38);
-            At("Row/Name/Label", 6, 5, 114, 28);
-            At("Row/Cost", 158, 9, 34, 20);
-            At("Row/Minus", 204, 5, 26, 28);
-            At("Row/Count", 260, 5, 20, 28);
-            At("Row/Plus", 232, 5, 26, 28);
-            foreach (string path in new[] { "Row/Minus/Label", "Row/Plus/Label" }) At(path, 2, 2, 22, 24);
-            ApplyControlsSkin(root);
-            Surface(root.Find("Row/Name"), "RowPlate");
-            foreach (string path in new[] { "Row/Minus", "Row/Plus" }) Surface(root.Find(path), "SquareButton");
-            foreach (var text in root.GetComponentsInChildren<TMP_Text>(true))
-            { text.color = CollectionText; text.textWrappingMode = TextWrappingModes.NoWrap; text.overflowMode = TextOverflowModes.Ellipsis; }
-            var name = root.Find("Row/Name/Label")?.GetComponent<TMP_Text>();
-            if (name != null) { name.alignment = TextAlignmentOptions.Left; name.fontSize = 13; }
-            var cost = root.Find("Row/Cost")?.GetComponent<TMP_Text>();
-            if (cost != null) { cost.alignment = TextAlignmentOptions.Right; cost.fontSize = 11; }
-        }
-
-        private static void Heading(TMP_Text text, int size)
-        {
-            if (text == null) return;
-            if (headingFont == null) headingFont = GameAssetCatalog.Load<TMP_FontAsset>("Fonts/Rajdhani-SemiBold SDF");
-            if (headingFont != null) text.font = headingFont;
-            text.fontSize = size; text.fontStyle = FontStyles.Bold;
-            text.color = CollectionInk; text.alignment = TextAlignmentOptions.Center;
-        }
-
-        public static void ApplySurface(Image image, string asset)
-        {
-            if (image == null) return;
-            string directory = asset switch
-            {
-                "Button" or "SquareButton" or "BackPlate" or "SavePlate" => "Buttons",
-                "Panel_Outer" or "Panel_Inset" => "Panels",
-                "Input" or "Meter" or "ScrollbarTrack" or "ScrollbarHandle" or "DropdownBackground" => "Controls",
-                "Metal" => "Backgrounds",
-                _ => "Decorations"
-            };
-            var sprite = GameAssetCatalog.Load<Sprite>($"UI/{directory}/Collection/{asset}");
-            if (sprite == null) return;
-            image.sprite = sprite; image.color = Color.white;
-            image.type = Image.Type.Sliced; image.pixelsPerUnitMultiplier = 1.30625f;
-            if (asset == "DropdownBackground") image.pixelsPerUnitMultiplier = 2.5f;
-            image.fillCenter = asset != "Panel_Inset";
-            if (asset == "Panel_Inset")
-            {
-                // Keep the metal grain at native scale; only the frame rails are stretched.
-                var metal = image.transform.Find("MetalBackground") as RectTransform;
-                if (metal == null) metal = Panel(image.transform, "MetalBackground");
-                Stretch(metal); metal.offsetMin = new Vector2(19, 19); metal.offsetMax = new Vector2(-19, -19);
-                var background = metal.GetComponent<Image>();
-                background.sprite = GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Collection/Metal"); background.color = Color.white;
-                background.type = Image.Type.Tiled; background.pixelsPerUnitMultiplier = 1.30625f; background.raycastTarget = false;
-                metal.SetAsFirstSibling();
-            }
-        }
-        private static void Surface(Transform target, string asset)
-        { if (target != null) ApplySurface(target.GetComponent<Image>(), asset); }
-
-        // Campaign and its entry dialogs share the same transparent frame/plaque imports.
-        // Collection windows continue to use ApplySurface and their authored control templates.
-        public static void ApplyCampaignSurface(RectTransform rect, string asset)
-        {
-            var image = rect.GetComponent<Image>();
-            string path = asset == "Panel_Outer" ? "UI/Panels/Campaign/ConsoleFrame"
-                : asset == "Panel_Inset" ? "UI/Panels/Campaign/InsetFrame"
-                : asset == "Plaque" ? $"UI/Decorations/Campaign/Plaque_{(int)rect.sizeDelta.x}x{(int)rect.sizeDelta.y}" : null;
-            Sprite sprite = null;
-            if (path != null)
-            {
-                if (asset == "Plaque")
-                {
-                    var sprites = GameAssetCatalog.LoadAll<Sprite>(path);
-                    if (sprites.Length > 0) sprite = sprites[0];
-                }
-                else sprite = GameAssetCatalog.Load<Sprite>(path);
-            }
-            if (sprite == null) { ApplySurface(image, asset); return; }
-            image.sprite = sprite; image.color = Color.white;
-            image.type = asset == "Plaque" ? Image.Type.Simple : Image.Type.Sliced;
-            image.preserveAspect = asset == "Plaque";
-            image.pixelsPerUnitMultiplier = asset == "Panel_Outer" ? 3 : 2;
-            image.fillCenter = asset == "Plaque";
-        }
-        private static void ControlColors(Selectable control)
-        {
-            var colors = control.colors;
-            colors.highlightedColor = new Color(1f, .92f, .76f);
-            colors.pressedColor = new Color(.72f, .62f, .47f);
-            colors.disabledColor = new Color(.5f, .5f, .5f, .55f);
-            control.colors = colors;
-        }
-        public static void ApplyControlsSkin(Transform root)
-        {
-            foreach (var button in root.GetComponentsInChildren<Button>(true))
-            {
-                bool primary = button.name == "Save" || button.name == "Back";
-                Surface(button.transform, primary ? (button.name == "Save" ? "SavePlate" : "BackPlate") : "Button"); ControlColors(button);
-                var label = button.GetComponentInChildren<TMP_Text>(true);
-                if (label != null) label.color = primary ? CollectionInk : CollectionText;
-            }
-            foreach (var dropdown in root.GetComponentsInChildren<TMP_Dropdown>(true))
-            {
-                Surface(dropdown.transform, "Input"); ControlColors(dropdown);
-                if (dropdown.captionText != null) dropdown.captionText.color = CollectionInk;
-                if (dropdown.itemText != null) dropdown.itemText.color = CollectionInk;
-                var arrow = dropdown.transform.Find("Arrow")?.GetComponent<Image>();
-                if (arrow != null) arrow.color = CollectionInk;
-                if (dropdown.template == null) continue;
-                // One parchment surface for the popup; items are flat highlight strips.
-                var template = dropdown.template;
-                template.anchorMin = new Vector2(0, 0); template.anchorMax = new Vector2(1, 0);
-                template.pivot = new Vector2(.5f, 1); template.anchoredPosition = new Vector2(0, -4);
-                template.sizeDelta = new Vector2(0, DropdownVisibleRows * DropdownRowHeight + 2 * DropdownPadding);
-                foreach (var image in dropdown.template.GetComponentsInChildren<Image>(true))
-                {
-                    if (image.name == "Item Background")
-                    { image.sprite = null; image.type = Image.Type.Simple; image.color = Color.white; }
-                    else if (image.name == "Item Checkmark") image.color = CollectionInk;
-                }
-                var item = dropdown.itemText != null ? dropdown.itemText.GetComponentInParent<Toggle>() : null;
-                if (item != null)
-                {
-                    var rect = (RectTransform)item.transform;
-                    rect.anchorMin = new Vector2(0, 1); rect.anchorMax = new Vector2(1, 1);
-                    rect.pivot = new Vector2(.5f, 1); rect.anchoredPosition = new Vector2(0, -DropdownPadding);
-                    rect.sizeDelta = new Vector2(0, 32);
-                    var colors = item.colors;
-                    colors.normalColor = Color.clear;
-                    colors.highlightedColor = new Color(.36f, .25f, .12f, .18f);
-                    colors.selectedColor = colors.highlightedColor;
-                    colors.pressedColor = new Color(.36f, .25f, .12f, .3f);
-                    colors.disabledColor = Color.clear; item.colors = colors;
-                    var label = (RectTransform)dropdown.itemText.transform;
-                    Stretch(label); label.offsetMin = new Vector2(24, 3); label.offsetMax = new Vector2(-8, -3);
-                    dropdown.itemText.fontSize = 14; dropdown.itemText.textWrappingMode = TextWrappingModes.NoWrap;
-                    dropdown.itemText.overflowMode = TextOverflowModes.Ellipsis;
-                    var check = item.transform.Find("Item Checkmark") as RectTransform;
-                    if (check != null)
-                    {
-                        check.anchorMin = check.anchorMax = new Vector2(0, .5f);
-                        check.pivot = new Vector2(.5f, .5f); check.anchoredPosition = new Vector2(12, 0);
-                        check.sizeDelta = new Vector2(10, 10);
-                    }
-                }
-                ConfigureDropdownScroll(dropdown);
-            }
-            foreach (var input in root.GetComponentsInChildren<TMP_InputField>(true))
-            {
-                Surface(input.transform, "Input"); ControlColors(input);
-                if (input.textComponent != null) input.textComponent.color = CollectionInk;
-                if (input.placeholder is TMP_Text text) text.color = new Color(.35f, .27f, .19f);
-            }
-        }
-        // Scroll-only setup preserves manually authored window geometry, text and controls.
         public static void ApplyCollectionScrollSkin(Transform root)
         {
             if (root == null) return;
@@ -348,24 +63,7 @@ namespace Game.UI
             popup.verticalScrollbar.gameObject.SetActive(needsScroll);
             ApplyScrollbarSkin(popup.verticalScrollbar);
         }
-        private static void ApplyScrollSkin(Transform root, bool inset)
-        {
-            if (root == null) return;
-            var scroll = root.GetComponent<ScrollRect>();
-            if (scroll == null) return;
-            scroll.horizontal = false; scroll.vertical = true;
-            if (inset && scroll.viewport != null)
-            {
-                scroll.viewport.offsetMin = new Vector2(scroll.verticalScrollbar != null ? 6 : 8, 8);
-                scroll.viewport.offsetMax = new Vector2(scroll.verticalScrollbar != null ? -28 : -8, -8);
-            }
-            if (scroll.verticalScrollbar == null) return;
-            var bar = scroll.verticalScrollbar;
-            var rect = (RectTransform)bar.transform;
-            var size = ((RectTransform)root).sizeDelta;
-            Place(rect, size.x - (inset ? 26 : 14), 16, 10, size.y - 32);
-            ApplyScrollbarSkin(bar);
-        }
+
         // Skin only: track, sliding area and handle geometry stay as authored in the scene.
         private static void ApplyScrollbarSkin(Scrollbar bar)
         {
@@ -379,7 +77,7 @@ namespace Game.UI
             }
             if (bar.handleRect != null)
             {
-                Surface(bar.handleRect, "ScrollbarHandle");
+                ApplySurface(bar.handleRect.GetComponent<Image>(), "ScrollbarHandle");
                 var handle = bar.handleRect.GetComponent<Image>();
                 if (handle != null) { handle.pixelsPerUnitMultiplier = 3.2f; handle.raycastTarget = true; bar.targetGraphic = handle; }
                 for (int i = 0; i < 3; i++)
@@ -391,21 +89,26 @@ namespace Game.UI
             }
             ControlColors(bar);
         }
-        private static RectTransform Decoration(Transform parent, string name, string asset)
+
+        // Control sprites: ScrollbarTrack, ScrollbarHandle, DropdownBackground.
+        private static void ApplySurface(Image image, string asset)
         {
-            var rect = parent.Find(name) as RectTransform;
-            if (rect == null) rect = Panel(parent, name);
-            Surface(rect, asset); var image = rect.GetComponent<Image>();
-            if (image != null) image.raycastTarget = false;
-            return rect;
+            if (image == null) return;
+            var sprite = GameAssetCatalog.Load<Sprite>($"UI/Controls/Collection/{asset}");
+            if (sprite == null) return;
+            image.sprite = sprite; image.color = Color.white;
+            image.type = Image.Type.Sliced;
+            image.pixelsPerUnitMultiplier = asset == "DropdownBackground" ? 2.5f : 1.30625f;
+            image.fillCenter = true;
         }
-        private static TMP_Text Caption(Transform parent, string name, string value, float x, float y, float w, float h, int size)
+
+        private static void ControlColors(Selectable control)
         {
-            var text = parent.Find(name)?.GetComponent<TMP_Text>();
-            if (text == null) { text = Label(parent, value, x, y, w, h, size); text.name = name; }
-            Place((RectTransform)text.transform, x, y, w, h);
-            text.text = value; text.fontSize = size; text.color = CollectionText;
-            return text;
+            var colors = control.colors;
+            colors.highlightedColor = new Color(1f, .92f, .76f);
+            colors.pressedColor = new Color(.72f, .62f, .47f);
+            colors.disabledColor = new Color(.5f, .5f, .5f, .55f);
+            control.colors = colors;
         }
 
         internal static readonly Color PanelColor = new Color(.055f, .065f, .07f, .98f);
@@ -472,8 +175,3 @@ namespace Game.UI
         }
     }
 }
-
-
-
-
-

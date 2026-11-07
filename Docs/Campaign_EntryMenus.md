@@ -14,11 +14,8 @@ button margins. Faction choices are full clickable rows with the same three
 emblems serialized in Campaign.unity. MainMenu.unity now references those existing
 sprite GUIDs; no artwork or importer metadata is changed.
 
-`CollectionUIElements.ApplyCampaignSurface` is the shared implementation of the
-campaign's previous transparent-frame/plaque selection. CampaignUI delegates its
-existing calls to that method. It preserves resource names, sprite selection,
-frame densities, fillCenter and aspect handling. Collection/deck windows still
-use their existing `ApplySurface` path.
+Campaign frames and plaques are authored in the scenes; no code applies these
+sprites at run time (the editor builders were removed 2026-11-07).
 
 The heading uses `UI/Decorations/Campaign/Plaque_880x58` with Simple rendering and preserved
 aspect. Frame and metal are separate graphics, with the transparent frame above

@@ -18,7 +18,6 @@
 | `Assets/Prefabs/UI/ArmyRadio`, `BattleScreen`, `Campaign`, `Collection` | Связанные элементы конкретного экрана или функции |
 | `Assets/Scripts/UI` | UI-скрипты в подпапках по типу или функции |
 | `Assets/Editor/Drawers` | Инспекторные отрисовщики |
-| `Assets/Editor/Builders` | Инструменты сборки UI в редакторе |
 | `Assets/Editor/Tools` | Аудиты, калибровка и отчёты |
 | `Assets/Editor/Tests` | Тесты, сгруппированные по подсистемам |
 
