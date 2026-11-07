@@ -113,13 +113,28 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, bool preparationOnly = false)
         {
             var result = new List<DevelopmentOpportunity>();
+            // No pacer: the routine never yields, so the enumeration completes right here.
+            System.Collections.IEnumerator run = EnumerateRoutine(snap, player, root, hand, ctx,
+                activeIntents, result, null, preparationOnly);
+            while (run.MoveNext()) { }
+            return result;
+        }
+
+        // The same enumeration with a frame checkpoint before every (mode, site) evaluation
+        // (`pacer`; null = one synchronous run). Fills `into`, best first, when it completes.
+        internal static System.Collections.IEnumerator EnumerateRoutine(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            IReadOnlyList<MissionIntent> activeIntents, List<DevelopmentOpportunity> into,
+            FramePacer pacer, bool preparationOnly = false)
+        {
+            var result = new List<DevelopmentOpportunity>();
             var forecasts = new List<DevelopmentOpportunity>();
             if (player != null && snap != null && !preparationOnly)
                 ResourceStarvationRegistry.ReplaceOperationalForecast(player, snap.TurnNumber,
                     "development", null);
             if (snap?.Self?.BaseHexes == null || snap.Development == null || player == null
                 || root == null || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
-                return result;
+                yield break;
             // Exact staffed sources, including those rejected only by today's resources/window.
             // Executable enumeration elsewhere keeps its original gates.
             List<GenerationStep> forecastSources;
@@ -151,6 +166,7 @@ namespace Game.Ai.V2
             foreach (ResearchProductionMode mode in Modes)
             foreach (HexCoord hex in sites)
             {
+                if (pacer != null) yield return pacer.Checkpoint();
                 BuildingData building = OwnWorld.Of(player).BuildingAt(hex);
                 if (building == null || building.Owner != player)
                     continue;
@@ -194,7 +210,7 @@ namespace Game.Ai.V2
                     $"op:{op.Mode}:{op.FacilityHex.Q},{op.FacilityHex.R}:{op.PreparationKind}:{op.Card?.authoredKey}",
                     $"[AI][V2][Dev]   {(op.IsPreparation ? "prepare" : "ready")} "
                     + $"{op.Explain} base {op.BaseValue:0.0}");
-            return result;
+            into.AddRange(result);
         }
 
         // Fills this turn's (equipment, recipient) verdict store ahead of Demand, one offered

@@ -26,6 +26,9 @@ namespace Game.Ai.V2
         internal Func<WorldSnapshot, IReadOnlyList<ReconObjective>, ActorCommitments> RefreshPersistentActors;
         internal Func<WorldSnapshot, IReadOnlyList<ReconObjective>, IReadOnlyList<RaidObjective>,
             IReadOnlyList<MissionIntent>, ActorCommitments, ISet<DesireAxis>, List<AxisDemand>> GenerateDemands;
+        // The Development axis of GenerateDemands spread over frames (null: GenerateDemands).
+        internal Func<WorldSnapshot, IReadOnlyList<MissionIntent>, FramePacer, List<AxisDemand>, IEnumerator>
+            GenerateDevelopmentPaced;
 
         internal static FrameServices Production(AiTurnSession session, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, DesireBreakdown breakdown) => new FrameServices
@@ -51,6 +54,8 @@ namespace Game.Ai.V2
             GenerateDemands = (snap, recon, aggression, intents, commitments, axes) =>
                 DemandLayer.Generate(snap, breakdown, recon, aggression, intents, commitments, player, ctx,
                     root, axes),
+            GenerateDevelopmentPaced = (snap, intents, pacer, into) =>
+                DemandLayer.GenerateDevelopmentPaced(snap, intents, player, ctx, root, pacer, into),
         };
     }
 
@@ -159,7 +164,10 @@ namespace Game.Ai.V2
                 if (axes == null || !axes.Contains(axis))
                     continue;
                 yield return Checkpoint();
-                all.AddRange(GenerateDemands(new HashSet<DesireAxis> { axis }));
+                if (axis == DesireAxis.Development && _services.GenerateDevelopmentPaced != null)
+                    yield return _services.GenerateDevelopmentPaced(Snapshot, Intents, _pacer, all);
+                else
+                    all.AddRange(GenerateDemands(new HashSet<DesireAxis> { axis }));
             }
             Demands = all;
         }

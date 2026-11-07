@@ -53,16 +53,21 @@ namespace Game.Ai.V2
                 using var __axis = new Game.Core.ProfileScope("AI/Demand.Development");
                 demands.AddRange(DevelopmentDemands(snap, activeIntents, player, ctx, root));
             }
-            // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
-            // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
-            // ToString from here — into Phase A and every [CHECK] line raised for the demand.
+            Publish(demands, player);
+            return demands;
+        }
+
+        // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
+        // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
+        // ToString from here — into Phase A and every [CHECK] line raised for the demand.
+        private static void Publish(List<AxisDemand> demands, PlayerSetupData player)
+        {
             V2TraceScope scope = AiV2Trace.CurrentScope(player);
             foreach (AxisDemand d in demands)
                 if (d != null && string.IsNullOrEmpty(d.TraceId))
                     d.TraceId = scope?.NextDemandId() ?? "?";
             foreach (AxisDemand d in demands)
                 AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   demand - {d} | {d.Explain}");
-            return demands;
         }
     }
 }
