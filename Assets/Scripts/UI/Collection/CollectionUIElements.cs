@@ -344,11 +344,8 @@ namespace Game.UI
                 rect.sizeDelta = new Vector2(0, DropdownRowHeight);
             }
             if (popup.verticalScrollbar == null) return;
-            var bar = (RectTransform)popup.verticalScrollbar.transform;
-            bar.anchorMin = new Vector2(1, 0); bar.anchorMax = new Vector2(1, 1);
-            bar.pivot = new Vector2(1, .5f); bar.anchoredPosition = new Vector2(-8, 0);
-            bar.sizeDelta = new Vector2(10, -16);
-            bar.gameObject.SetActive(needsScroll);
+            // Scrollbar geometry is authored by hand in the scene; only visibility and skin apply here.
+            popup.verticalScrollbar.gameObject.SetActive(needsScroll);
             ApplyScrollbarSkin(popup.verticalScrollbar);
         }
         private static void ApplyScrollSkin(Transform root, bool inset)
@@ -369,6 +366,7 @@ namespace Game.UI
             Place(rect, size.x - (inset ? 26 : 14), 16, 10, size.y - 32);
             ApplyScrollbarSkin(bar);
         }
+        // Skin only: track, sliding area and handle geometry stay as authored in the scene.
         private static void ApplyScrollbarSkin(Scrollbar bar)
         {
             var track = bar.GetComponent<Image>();
@@ -381,11 +379,7 @@ namespace Game.UI
             }
             if (bar.handleRect != null)
             {
-                var area = bar.handleRect.parent as RectTransform;
-                if (area != null && area != bar.transform)
-                { Stretch(area); area.offsetMin = new Vector2(1, 2); area.offsetMax = new Vector2(-1, -2); }
                 Surface(bar.handleRect, "ScrollbarHandle");
-                bar.handleRect.offsetMin = bar.handleRect.offsetMax = Vector2.zero;
                 var handle = bar.handleRect.GetComponent<Image>();
                 if (handle != null) { handle.pixelsPerUnitMultiplier = 3.2f; handle.raycastTarget = true; bar.targetGraphic = handle; }
                 for (int i = 0; i < 3; i++)
