@@ -4,7 +4,7 @@ Base: df8e67e577ac29bb3ff86066a240f04925f6a2bd. Behavior change; no new AI axis 
 
 ## Gameplay
 
-`Trade` is a capability, independent of card names and carrier type. A living owned unit, base or installed facility with Trade unlocks resource exchange. Trading Post is a shared neutral Facility with Trade, built through InfrastructureActions and existing facility slots. Construction costs 2 AP and H1/E1/T1; trading itself costs zero AP. Trading Post currently uses the existing Factory illustration; no new painted artwork is included in this code/UI change.
+`Trade` is a capability, independent of card names and carrier type. A living owned unit, base or installed facility with Trade unlocks resource exchange. Trading Post is a shared neutral Facility with Trade, built through InfrastructureActions and existing facility slots. Trading Post costs 1 deck point (copy limit 1). Construction costs 2 AP and H1/E1/T1; trading itself costs zero AP. Trading Post currently uses the existing Factory illustration; no new painted artwork is included in this code/UI change.
 
 Every elementary trade buys one unit at the player's current global rate (2, 3, 4, ...), regardless of resource pair. A synchronous batch is fully simulated before any mutation. At the end of an own turn without trades the rate falls by one, minimum two. Ending the same turn twice does not decay twice. Losing or capturing a carrier does not reset/transfer a player's rate.
 
