@@ -4947,7 +4947,7 @@ MonoBehaviour:
       statChanges: []
   - id: 86
     authoredKey: neutral.facility.trading-post
-    deckPointCost: 5
+    deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Trading Post

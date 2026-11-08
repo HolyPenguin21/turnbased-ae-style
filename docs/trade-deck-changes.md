@@ -1,62 +1,46 @@
-# Trading Post — deck changes
+# Trading Post — AI deck budget update
 
-Trading Post costs 5 points. All existing card roles retain at least one copy; heroes, facilities and scouts are preserved.
+Base: c9316568d3d36273ad320f08de80365172ddb6e6. Trading Post now costs **1 deck point** (previously 5), with one copy in every one of the 24 authored AI decks. Main decks are exactly 100 points; equipment and mutator blueprints retain their separate budget rules.
 
-| Deck | Before | Removed copies | After |
-|---|---:|---|---:|
-| The Vessels Starter | 84 | none | 89 |
-| The Ashen Starter | 86 | none | 91 |
-| Iron Concord Starter | 80 | none | 85 |
-| Aldric Voss | 100 | concord.card.mosquito, concord.card.rusty-vulture | 100 |
-| Kessa Vrail | 100 | concord.card.siege-grenadier, concord.card.light-infantry | 100 |
-| Vector Vance | 100 | concord.card.light-infantry, concord.card.medium-infantry, concord.card.medium-infantry | 100 |
-| Dorian Kesh | 98 | concord.card.light-infantry, concord.card.light-infantry, concord.card.light-infantry | 100 |
-| Bolt Jax | 100 | concord.card.light-infantry, concord.card.light-infantry, concord.card.light-infantry, concord.card.medium-infantry | 100 |
-| Nadia Thorne | 100 | concord.card.grapeshot, concord.card.light-tank | 100 |
-| Lira Sable | 98 | concord.card.coil-marksman | 100 |
-| Tessa Rourke | 100 | concord.card.light-infantry, concord.card.light-infantry, concord.card.light-infantry, concord.card.medium-infantry | 100 |
-| Miller Hayes | 100 | ashen.card.iron-maw | 100 |
-| Hank Mercer | 100 | ashen.card.ash-runner, ashen.card.iron-husk, ashen.card.iron-husk | 100 |
-| Rusty Miller | 98 | ashen.card.ash-runner, ashen.card.bone-picker, ashen.card.bone-picker | 100 |
-| Nora Blackwell | 99 | ashen.card.ash-runner, ashen.card.cinder-stalker | 100 |
-| Elena Hayes | 100 | ashen.card.ash-runner, ashen.card.ash-runner, ashen.card.rust-tank | 100 |
-| Vera Sterling | 99 | ashen.card.ash-runner, ashen.card.ash-runner, ashen.card.iron-husk | 100 |
-| Nova Sterling | 100 | ashen.card.ash-runner, ashen.card.ash-runner, ashen.card.bone-picker, ashen.card.bone-picker, ashen.card.bone-picker | 100 |
-| Iri Vane | 99 | ashen.card.ash-runner, ashen.card.ash-runner, ashen.card.iron-husk | 100 |
-| Mara the Archivist | 100 | vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.27.arc-cantor | 100 |
-| Edda the Conductor | 100 | vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.unit.spindle-gunner | 100 |
-| Thren the Scholar | 100 | vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.unit.spindle-gunner | 100 |
-| Vale the Machinist | 99 | vessels.15.vessel-rifleman, vessels.unit.pilgrim-strider | 100 |
-| Orr the Keeper | 99 | vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.unit.tuning-blade | 100 |
-| Ilex the Surveyor | 100 | vessels.15.vessel-rifleman, vessels.14.shard-wanderer, vessels.14.shard-wanderer | 100 |
-| Jol the Warden | 99 | vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.14.shard-wanderer | 100 |
-| Nyx the Cartographer | 100 | vessels.15.vessel-rifleman, vessels.15.vessel-rifleman, vessels.16.bulwark-vessel | 100 |
+All pre-existing cards, heroes, leaders, scouts, facilities and blueprints are retained. Each deck gains 4 points of cheap ground units costing 1 or 2 points per card. Existing unit types are preferred; Watcher Drone is added where existing cheap ground types cannot fill the gap within copy limits. No collectors or aircraft are added.
 
-## Resource totals (Human / Energy / Materials / Tech)
+| AI deck | Added units | Points | H / E / M / T |
+| --- | --- | ---: | --- |
+| Aldric Voss | Watcher Drone ×4 | 100 | 27 / 34 / 32 / 35 |
+| Kessa Vrail | Dust Medic ×1, Scout ×1 | 100 | 32 / 23 / 27 / 23 |
+| Vector Vance | Light Infantry ×2, Scout ×1 | 100 | 36 / 24 / 22 / 21 |
+| Dorian Kesh | Light Infantry ×2, Scout ×1 | 100 | 29 / 31 / 34 / 25 |
+| Bolt Jax | Light Infantry ×2, Scout ×1 | 100 | 29 / 33 / 40 / 26 |
+| Nadia Thorne | Grapeshot ×1, Scout ×1 | 100 | 26 / 34 / 33 / 23 |
+| Lira Sable | Watcher Drone ×4 | 100 | 29 / 26 / 31 / 26 |
+| Tessa Rourke | Light Infantry ×2, Medium infantry ×1 | 100 | 26 / 38 / 30 / 27 |
+| Miller Hayes | Iron Husk ×2 | 100 | 28 / 28 / 33 / 17 |
+| Hank Mercer | Iron Husk ×2 | 100 | 36 / 28 / 22 / 18 |
+| Rusty Miller | Ash Runner ×1, Bone Picker ×3 | 100 | 28 / 30 / 36 / 22 |
+| Nora Blackwell | Rattletrap ×2 | 100 | 29 / 25 / 29 / 17 |
+| Elena Hayes | Ash Runner ×2, Iron Husk ×1 | 100 | 27 / 30 / 32 / 18 |
+| Vera Sterling | Ash Runner ×2, Iron Husk ×1 | 100 | 27 / 30 / 32 / 18 |
+| Nova Sterling | Ash Runner ×1, Bone Picker ×3 | 100 | 36 / 24 / 23 / 19 |
+| Iri Vane | Ash Runner ×2, Iron Husk ×1 | 100 | 27 / 32 / 33 / 25 |
+| Mara the Archivist | Vessel Rifleman ×2, Spindle Gunner ×1 | 100 | 5 / 45 / 35 / 40 |
+| Edda the Conductor | Vessel Rifleman ×2, Spindle Gunner ×1 | 100 | 5 / 41 / 43 / 39 |
+| Thren the Scholar | Vessel Rifleman ×2, Spindle Gunner ×1 | 100 | 5 / 35 / 43 / 32 |
+| Vale the Machinist | Vessel Rifleman ×2, Silt Pilgrim ×1 | 100 | 5 / 45 / 46 / 35 |
+| Orr the Keeper | Vessel Rifleman ×2, Whisper Scout ×1 | 100 | 5 / 36 / 46 / 29 |
+| Ilex the Surveyor | Vessel Rifleman ×2, Spindle Gunner ×1 | 100 | 5 / 38 / 39 / 34 |
+| Jol the Warden | Vessel Rifleman ×2, Whisper Scout ×1 | 100 | 5 / 43 / 46 / 29 |
+| Nyx the Cartographer | Vessel Rifleman ×2, Whisper Scout ×1 | 100 | 5 / 46 / 40 / 34 |
 
-| Deck | Before | After | Largest / smallest after |
-|---|---|---|---:|
-| Aldric Voss | [26, 36, 34, 33] | [27, 34, 32, 31] | 1.26 |
-| Kessa Vrail | [32, 22, 29, 22] | [31, 22, 27, 22] | 1.41 |
-| Vector Vance | [36, 22, 24, 20] | [34, 23, 22, 21] | 1.62 |
-| Dorian Kesh | [29, 29, 34, 24] | [27, 30, 34, 25] | 1.36 |
-| Bolt Jax | [30, 31, 41, 25] | [27, 32, 40, 26] | 1.54 |
-| Nadia Thorne | [25, 33, 36, 22] | [26, 32, 31, 23] | 1.39 |
-| Lira Sable | [29, 26, 32, 22] | [29, 26, 31, 22] | 1.41 |
-| Tessa Rourke | [26, 37, 30, 26] | [23, 38, 29, 27] | 1.65 |
-| Miller Hayes | [25, 29, 35, 17] | [26, 28, 31, 17] | 1.82 |
-| Hank Mercer | [36, 27, 22, 17] | [34, 28, 20, 18] | 1.89 |
-| Rusty Miller | [26, 29, 36, 21] | [24, 30, 36, 22] | 1.64 |
-| Nora Blackwell | [30, 22, 26, 17] | [29, 23, 25, 17] | 1.71 |
-| Elena Hayes | [25, 30, 34, 17] | [24, 30, 31, 18] | 1.72 |
-| Vera Sterling | [26, 29, 32, 17] | [24, 30, 31, 18] | 1.72 |
-| Nova Sterling | [36, 23, 23, 18] | [32, 24, 23, 19] | 1.68 |
-| Iri Vane | [26, 31, 33, 24] | [24, 32, 32, 25] | 1.33 |
-| Mara the Archivist | [4, 45, 35, 39] | [5, 45, 32, 39] | 9.0 |
-| Edda the Conductor | [4, 40, 44, 38] | [5, 41, 40, 38] | 8.2 |
-| Thren the Scholar | [4, 34, 44, 31] | [5, 35, 40, 31] | 8.0 |
-| Vale the Machinist | [4, 44, 47, 34] | [5, 44, 44, 34] | 8.8 |
-| Orr the Keeper | [4, 34, 48, 29] | [5, 35, 44, 29] | 8.8 |
-| Ilex the Surveyor | [4, 37, 39, 32] | [5, 38, 36, 33] | 7.6 |
-| Jol the Warden | [4, 41, 47, 28] | [5, 42, 44, 29] | 8.8 |
-| Nyx the Cartographer | [4, 45, 42, 34] | [5, 45, 38, 34] | 9.0 |
+The three human starter deck lists are unchanged and retain one Trading Post each. Their totals become 85 (The Vessels), 87 (The Ashen), and 81 (Iron Concord) through the shared price change.
+
+Resource demand remains within 2:1 for Concord/Ashen and within 2:1 across Energy/Materials/Tech for Vessels. The Vessels retain their intentionally small Human requirement.
+
+## Construction score
+
+Trade and ApBonus both register PlayerGlobal effects in StrategicEffectRegistry. Contributions feeds their value into GlobalRoleFit, and StrategicCardEvaluator.ScoreNonCombat includes it in the same breakdown and DecisionScore used by NonCombatCardPlayer and the Phase B arbiter. Trading Post and Intel Center (ApBonus) also share the same construction cost: 2 AP and H1/E1/T1.
+
+TradeFunding.AccessValue contributes tradeAccessValue = 8 when Trade is absent and the snapshot has a surplus donor plus an unmet deck/operational resource need; otherwise it contributes zero. ApBonus uses dynamic recurring-AP valuation. They are comparable on the shared score scale, not assigned identical values or guaranteed priority. No separate mission or duplicate building scorer is introduced.
+
+## Validation
+
+Both Unity YAML validators pass for the two changed assets. A data-level audit resolves all 24 decks against the card catalogs and checks exact point totals, one Trading Post, unique keys, faction/copy limits, leader retention, all original entries and blueprint lists, cheap additions and resource totals. Native Unity import and game runs were not performed for this data-only update.
