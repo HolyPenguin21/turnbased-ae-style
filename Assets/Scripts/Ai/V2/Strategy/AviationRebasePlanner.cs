@@ -44,10 +44,10 @@ namespace Game.Ai.V2
         // snapshot here). A multi-turn route costs nothing more: continuing a paid sortie is free
         // on every later turn (ArmyData.PendingActivation*), so there is no recurring delivery.
         internal static TaskScore ScoreImprovement(TaskScore sourceService,
-            TaskScore destinationService, int activationAp, int energyCost)
+            TaskScore destinationService, int activationAp, int energyCost, ResourceCost fundingCost = null)
         {
             float price = TaskScoreEvaluator.Price(ActionPrice.Ap(activationAp)
-                + energyCost * AiConfigV2.actionPriceResourceAp);
+                + (fundingCost == null ? energyCost * AiConfigV2.actionPriceResourceAp : ActionPrice.Resources(fundingCost)));
             return TaskScoreEvaluator.NetChange(sourceService, destinationService, price);
         }
 
@@ -185,7 +185,6 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
             float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
-            float spendableEnergy = StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy);
             foreach (ArmyData source in OwnWorld.Of(player).Armies
                 .Where(AviationRules.IsAirfield)
                 .OrderBy(a => a.Hex.Q).ThenBy(a => a.Hex.R).ToList())
@@ -193,12 +192,12 @@ namespace Game.Ai.V2
                     .Where(AviationRules.IsAviation).OrderBy(u => u.RuntimeId).ToList())
                 {
                     IReadOnlyList<UnitData> group = new[] { aircraft };
-                    if (!AiAirSortiePlanner.CanAffordLaunch(root, group))
+                    if (!AiAirSortiePlanner.CanAffordLaunch(root, group, ctx))
                         continue;
                     int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
                     int energy = group.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
                     if (ap > spendableAp + AiConfigV2.allocatorSliceEpsilon
-                        || energy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
+                        || !TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: energy)))
                         continue;
                     yield return (source, group);
                 }
@@ -310,7 +309,7 @@ namespace Game.Ai.V2
                     .Where(AviationRules.IsAviation).OrderBy(u => u.RuntimeId))
                 {
                     IReadOnlyList<UnitData> group = new[] { aircraft };
-                    if (!AiAirSortiePlanner.CanAffordLaunch(root, group))
+                    if (!AiAirSortiePlanner.CanAffordLaunch(root, group, ctx))
                         continue;
                     TaskScore sourceService = NonCombatCardPlayer.AirfieldServiceTaskScore(
                         snap, player, ctx, group, source.Hex, objectives, strikeTargets, !AiAirSortiePlanner.IsExpendableWing(group),
@@ -333,13 +332,12 @@ namespace Game.Ai.V2
                         if (ap > StrategicSpendability.SpendableAp(player, root, ctx)
                             + AiConfigV2.allocatorSliceEpsilon)
                             continue;
-                        float spendableEnergy = StrategicSpendability.SpendableAmount(
-                            player, root, ctx, ResourceType.Energy);
-                        if (energy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
+                        if (!TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: energy)))
                             continue;
 
                         TaskScore score = ScoreImprovement(
-                            sourceService, destinationService, ap * delivery.Launches, energy * delivery.Launches);
+                            sourceService, destinationService, ap * delivery.Launches, energy * delivery.Launches,
+                            TradeFunding.PricedCost(player, root, ctx, new ResourceCost(energy: energy * delivery.Launches)));
                         if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
                         var candidate = new AviationRebasePlan

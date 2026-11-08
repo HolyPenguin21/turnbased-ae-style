@@ -191,6 +191,7 @@ namespace Game.Ai.V2
                 // A tempo action has no spend authority: it may spend only what is spendable now.
                 ReservationInvariants.SpendProbe spendProbe = ReservationInvariants.BeginSpend(
                     player, root, ctx, $"phaseB {best.Kind} '{best.Label}'");
+                int versionBeforeAction = WorldDeltaLifecycle.Current;
                 var exec = new TempoExecutionResult();
                 switch (best.Kind)
                 {
@@ -199,6 +200,13 @@ namespace Game.Ai.V2
                         break;
                     case TempoKind.PlayNonCombat:
                         snap = TempoActionExecutor.ExecuteNonCombatSurplus(best.Nc, snap, player, root, hand, ctx, result, ref exec);
+                        break;
+                    case TempoKind.Trade:
+                        exec.Succeeded = Game.Economy.TradeActions.TryExchange(player, best.Trade.Rate,
+                            best.Trade.Steps, Game.Core.GameSession.Generation, out exec.FailReason);
+                        exec.StateChanged = exec.Progressed = exec.Succeeded;
+                        if (exec.Succeeded) WorldDeltaLifecycle.Apply(player, ctx.TurnNumber,
+                            new WorldDelta(true, StrategicInvalidationReason.Resources));
                         break;
                     case TempoKind.Draw:
                         if (CardDrawExecutor.TryCycle(root, hand, ctx))
@@ -267,7 +275,9 @@ namespace Game.Ai.V2
                     // do NOT version themselves — bump for those. AviationRebase records each
                     // committed launch/flight action inside its executor.
                     bool executorSelfVersions = best.Kind == TempoKind.PlayMat
-                        || best.Kind == TempoKind.PlayNonCombat || best.Kind == TempoKind.AviationRebase;
+                        || best.Kind == TempoKind.PlayNonCombat || best.Kind == TempoKind.AviationRebase
+                        || best.Kind == TempoKind.Trade
+                        || (!exec.Succeeded && WorldDeltaLifecycle.Current != versionBeforeAction);
                     if (!executorSelfVersions)
                         WorldDeltaLifecycle.CommitMutation();
                     result.StateChanged |= exec.StateChanged;
@@ -332,3 +342,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

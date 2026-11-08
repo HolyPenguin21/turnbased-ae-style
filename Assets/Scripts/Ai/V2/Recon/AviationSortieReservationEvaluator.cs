@@ -142,7 +142,7 @@ namespace Game.Ai.V2
         // pass this turn (several sorties must not each evaluate against the full AP pool).
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
             HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
-            float airSpendableEnergy, int extraCommittedAp)
+            float airSpendableEnergy, int extraCommittedAp, float? fundingOpportunityUnits = null)
         {
             if (player == null || root == null)
                 return AviationReservationDecision.None("missing_player_or_root");
@@ -201,7 +201,7 @@ namespace Game.Ai.V2
             // the shape of the retired ReconAirEnergyPolicy soft term, now folded into ONE staged
             // decision instead of a second independent gate.
             float effectiveSpendable = spendableEnergy + expectedEnergyIncome * AiConfigV2.aviationReserveIncomeHorizon;
-            float opportunityCost = (launchEnergyCost / Mathf.Max(1f, effectiveSpendable))
+            float opportunityCost = ((fundingOpportunityUnits ?? launchEnergyCost) / Mathf.Max(1f, effectiveSpendable))
                 * AiConfigV2.aviationReserveOpportunityWeight;
             float netUtility = selectedUtility - opportunityCost;
 

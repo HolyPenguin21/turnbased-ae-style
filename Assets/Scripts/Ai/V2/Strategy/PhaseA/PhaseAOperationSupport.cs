@@ -177,7 +177,7 @@ namespace Game.Ai.V2
             NonCombatCardPlayer.NonCombatPlay best = onSite
                 .Where(p => p.Score > AiConfigV2.devEvMargin
                     && p.ApCost <= spendableAp + AiConfigV2.allocatorSliceEpsilon
-                    && StrategicSpendability.FitsSpendableResources(pass.Player, pass.Root, pass.Ctx, p.ResCost))
+                    && StrategicSpendability.FitsSpendableResources(pass.Player, pass.Root, pass.Ctx, p.FundingCost))
                 .OrderByDescending(p => p.Score).ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
                 .FirstOrDefault();
             if (best == null)

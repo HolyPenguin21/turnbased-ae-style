@@ -104,6 +104,8 @@ namespace Game.Ai.V2
             AiTurnContext ctx, WorldSnapshot snap, AiHandData hand, ActorCommitments commitments,
             ReactionStateBasis basis)
         {
+            const string owner = "reaction-budget:HandFollowup";
+            var authority = new SpendAuthority(owner, false);
             var witnesses = new List<ReactionWitness>();
             var reservation = new MaterializationReservation
             {
@@ -113,17 +115,14 @@ namespace Game.Ai.V2
 
             var options = new List<(float ap, ResourceCost env)>();
             foreach (NonCombatCardPlayer.NonCombatPlay p in NonCombatCardPlayer.EnumeratePlays(
-                snap, player, root, hand, ctx, null, reservation))
-                options.Add((p.Card != null ? p.Card.EffectivePlayApCost : 0f,
-                    p.Generation != null ? p.Generation.GenerationResourceCost
-                        : (p.Card != null ? p.Card.EffectivePlayResourceCost : null)));
+                snap, player, root, hand, ctx, null, reservation, authority: authority))
+                options.Add((p.ApCost, p.FundingCost));
             foreach (MaterializationPlan mp in MaterializationFeasibility.FilterSurplus(
                 MaterializationChainEnumerator.EnumerateSurplusPlans(
-                    snap, player, root, hand, ctx, inv, commitments, reservation),
-                player, root, hand, ctx, reservation, snap, commitments: commitments))
-                options.Add((mp.ApCost, mp.ResCost));
+                    snap, player, root, hand, ctx, inv, commitments, reservation, authority),
+                player, root, hand, ctx, reservation, snap, commitments: commitments, authority: authority))
+                options.Add((mp.ApCost, mp.FundingCost));
 
-            const string owner = "reaction-budget:HandFollowup";
             // Other owners' AP holds are not the reaction's; its own envelope is.
             float ap = StrategicSpendability.SpendableAp(player, root, ctx, owner);
             float ceiling = Mathf.Min(ap, (float)AiConfigV2.reactionReserveApCap);

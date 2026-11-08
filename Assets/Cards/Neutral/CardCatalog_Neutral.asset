@@ -4945,6 +4945,55 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
+  - id: 86
+    authoredKey: neutral.facility.trading-post
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Trading Post
+    art: {fileID: 21300000, guid: a8b7b846b5129fb43b590a25bea3ae05, type: 3}
+    detailArt: {fileID: 21300000, guid: d58d3f29ab617aa4ab0f3a6e7185bf50, type: 3}
+    faction: 3
+    cardType: 2
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 3
+    range: 0
+    hitPoints: 6
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities:
+    - Trade
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   citadelPrefab: {fileID: 0}
   basePrefab: {fileID: 0}
   armyPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
@@ -4953,3 +5002,4 @@ MonoBehaviour:
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyNamePool:
   - Desert striders
+

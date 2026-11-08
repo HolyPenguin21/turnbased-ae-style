@@ -53,6 +53,7 @@ namespace Game.Ai.V2
             foreach (MaterializationPlan p in raw)
             {
                 if (p == null) continue;
+                p.TradeFunding = null;
                 if (!PreflightIfExisting(player, root, hand, ctx, p))
                     continue;
                 CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
@@ -97,12 +98,13 @@ namespace Game.Ai.V2
         internal static List<MaterializationPlan> FilterSurplus(IReadOnlyList<MaterializationPlan> raw,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             MaterializationReservation reservation, WorldSnapshot snapshot = null,
-            bool ignoreApForMeasurement = false, ActorCommitments commitments = null)
+            bool ignoreApForMeasurement = false, ActorCommitments commitments = null, SpendAuthority authority = default)
         {
             var sink = new List<MaterializationPlan>();
             foreach (MaterializationPlan p in raw)
             {
                 if (p == null) continue;
+                p.TradeFunding = null;
                 if (!PreflightIfExisting(player, root, hand, ctx, p))
                     continue;
                 // §2 — if this card is still strategically relevant to an unresolved capability
@@ -124,9 +126,12 @@ namespace Game.Ai.V2
                 if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot)
                     continue;
                 if (!(ignoreApForMeasurement
-                    ? StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost)
-                    : StrategicSpendability.ReservesOkAfterChain(root, ctx, p, player)))
+                    ? TradeFunding.CanFund(player, root, ctx, p.ResCost, authority)
+                    : (StrategicSpendability.SpendableAp(player, root, ctx, authority) >= p.ApCost
+                        && TradeFunding.CanFund(player, root, ctx, p.ResCost, authority))))
                     continue;
+                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost, authority))
+                    TradeFunding.TryPlan(player, root, ctx, p.ResCost, out p.TradeFunding, authority);
                 sink.Add(p);
             }
             return sink;
@@ -212,7 +217,9 @@ namespace Game.Ai.V2
             // Development's independent investment admission for a playable/workload candidate.
             if (resourceBlocked != null && p.Generation != null && !DevelopmentInvestmentGate.IsOpenFor(
                     player, ctx.TurnNumber, p.Generation.GenerationResourceCost)) return;
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost, authority))
+            p.TradeFunding = null;
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost, authority)
+                && !TradeFunding.TryPlan(player, root, ctx, p.ResCost, out p.TradeFunding, authority))
             {
                 // All non-resource gates passed for this concrete chain; Strategy may publish
                 // its canonical total cost as evidence before any card is scored.
@@ -245,3 +252,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

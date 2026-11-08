@@ -316,7 +316,7 @@ namespace Game.Ai.V2
                     // the extraction AP — see PlanEconomyCompletion's `alreadyCommittedApCost` for
                     // why that AP is real and separate.
                     ClaimedAp = deferredPlan.ApCost + deferredPreparation.RealAp,
-                    ClaimedPhysical = CostVector(deferredPreparation.StageCost),
+                    ClaimedPhysical = funded.PhysicalDraw,
                     ReservationOwner = deferredPreparation.OwnerKey,
                 });
             }
@@ -472,7 +472,7 @@ namespace Game.Ai.V2
                 EconomyPreparationPending = preparationPending,
                 EconomyExtractionPreparation = directPrep,
                 ClaimedAp = directPrep.RealAp,
-                ClaimedPhysical = CostVector(directPrep.StageCost),
+                ClaimedPhysical = funded.PhysicalDraw,
                 ReservationOwner = directPrep.OwnerKey,
             });
         }

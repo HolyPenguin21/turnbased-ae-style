@@ -567,6 +567,8 @@ namespace Game.Ai.V2
     // =======================================================================================
     public sealed class SelfSnapshot
     {
+        public bool HasTrade;
+        public int TradeRate = 2;
         public HexCoord Citadel;
         // True while Citadel is this player's own STARTING Citadel (not the fallback first Base
         // after it was lost). The Attack preparation host is created only there.
@@ -1251,4 +1253,5 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
+
 

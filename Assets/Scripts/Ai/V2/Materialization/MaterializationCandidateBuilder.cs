@@ -669,7 +669,7 @@ namespace Game.Ai.V2
                         snap, player, root, hand, ctx, new List<string>(), reservation,
                         ignoreApForMeasurement: true)
                     .Where(p => p.Generation == null && p.Score > AiConfigV2.tempoMinSpendUtility
-                        && StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost))
+                        && StrategicSpendability.FitsSpendableResources(player, root, ctx, p.FundingCost))
                     .ToList();
                 usefulHandCards = useful.Where(x => x.plan.ApCost > 0f)
                     .SelectMany(x => new[] { x.plan.BaseCardInHand, x.plan.EquipmentInHand })

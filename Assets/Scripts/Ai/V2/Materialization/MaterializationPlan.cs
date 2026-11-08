@@ -132,6 +132,8 @@ namespace Game.Ai.V2
         // GenerateAttachUpgrade's remaining attachment stage: priced in prospective utility,
         // never funded from today's bank. The won card itself persists in the normal hand.
         public float DeferredAttachmentAp;
+        public TradeFundingPlan TradeFunding;
+        public ResourceCost FundingCost => TradeFunding?.ExternalCost ?? ResCost;
         public ResourceCost ResCost;              // generation + attach + deploy resourceCost summed; null == none
         public int HandSlotsNeededAtPeak;         // generated output is cap-exempt; currently 0
 
@@ -177,3 +179,4 @@ namespace Game.Ai.V2
             stateVersionAfter: StateVersionAfter, failReason: Deployed ? null : FailReason);
     }
 }
+

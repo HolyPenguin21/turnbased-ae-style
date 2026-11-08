@@ -45,6 +45,12 @@ namespace Game.Ai.V2
         private static float GlobalRecurringValue(in StrategicEffect e, in EffectEvaluationContext ctx,
             ref string detail)
         {
+            if (e.Context == StrategicEffectContext.TradeAccess)
+            {
+                float accessValue = TradeFunding.AccessValue(ctx.Snap);
+                detail = "effect=Trade accessValue=" + accessValue;
+                return accessValue;
+            }
             if (e.GlobalYieldPerTurn <= 0f)
                 return 0f;
 
@@ -476,3 +482,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

@@ -86,7 +86,8 @@ namespace Game.Ai.V2
                                 continue;
                             // Forecast callers retain all structural source rules but describe
                             // the cost BEFORE today's budget/window rejects it. Never executable.
-                            if (!resourceForecast && !ResearchProductionSystem.CanAffordCard(root, card))
+                            if (!resourceForecast && (!root.CanSpendActionPoints(ResearchProductionSystem.AttemptApCost(card))
+                                || !TradeFunding.CanFund(player, root, ctx, card.resourceCost, authority)))
                                 continue;
                             if (!analysisView && !resourceForecast && !DevelopmentInvestmentGate.IsOpenFor(
                                     player, ctx.TurnNumber, card.resourceCost))
@@ -139,8 +140,9 @@ namespace Game.Ai.V2
                 return false;
             return ResearchProductionSystem.AttemptApCost(card)
                     <= StrategicSpendability.SpendableAp(player, root, ctx, authority)
-                && StrategicSpendability.FitsSpendableResources(
+                && TradeFunding.CanFund(
                 player, root, ctx, card.resourceCost, authority);
         }
     }
 }
+

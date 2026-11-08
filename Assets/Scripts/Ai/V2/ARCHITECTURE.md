@@ -597,3 +597,38 @@ Aviation launch formation sets a factual `FormationCommitted` trace after its gu
 * Formation and automatic service-container creation cost zero AP/resources and write no bank reservation. Existing launch activation, allocator admission and live spendability guards still price the real flight. ReusableArmySelector and Housekeeping exclude service containers, so they cannot become ordinary ground hosts.
 * Self refresh records airfield topology, carrier capacity/container identity and cargo value; settled observation publishes Infrastructure/Capability when mobile topology changes and Actor changes for the host. Capacity/reservation queries remain live. The carrier's cargo raises its asset value, never ground opposition power; ordinary aviation placement, combat support and recovery consume the canonical airfield capability.
 * `StrategicEffectRegistry` owns Airfield support value through actual aircraft demand less existing mobile capacity; no new desire axis, operation store or manager is introduced. See `docs/concord-carrier-implementation.md` for balance and verification limits.
+
+
+## Trade funding (Trading Post)
+
+Trade is an in-play capability; Trading Post is one authored carrier, not an AI-only unlock.
+TradeActions owns physical atomic conversion and player-specific progressive prices. PlayerRoot
+owns rate/activity/turn-open state; StrategicTurnEffects owns own-turn opening/settlement, and
+PlayerEconomyState owns its save representation. No new static registry is introduced.
+
+TradeFunding.TryPlan is read-only. It protects ordinary spendability, remaining main cards and
+operational forecasts, and computes the complete progressive quote. The selected action keeps
+its original SpendAuthority; donors may include that owner's held resources, but conversion never
+inherits permission to consume another operation's deferred hold. Materialization
+plans retain original payment cost separately from FundingCost (external debit). The scorer and
+portfolio consume external debit once. JointFeasibility admits at most one trade-dependent chain;
+after execution the next round recomputes against real balances and the new rate.
+
+Trade access is a snapshot-priced PlayerGlobal effect, not recurring resource income. Explicit
+funding execution calls the common TradeActions before returning to the selected action's normal
+payment/executor path. Proactive conversions are ordinary Phase-B candidates under the same bounds.
+A successful conversion emits Resources and one WorldDelta receipt; failed quotes do not publish
+progress. Orchestration never selects donors; Housekeeping does not select proactive exchanges.
+
+Mission requirements retain the action's logical resources (including Energy for flight), while
+ResourceAllocator and provisioning claims reserve the external donor debit through TradeFunding.
+The allocator admits at most one conversion-dependent mission per portfolio and recomputes after
+execution at the new rate. Reaction follow-up envelopes likewise reserve full chain AP and external
+debit under their existing owner. Fractional forecasts are preserved when no conversion is needed.
+
+Aviation placement, equipment, base/garrison and Development preflights may ignore current resource
+shortage only when the same selected action can be fully funded. Structural, ownership and AP checks
+remain active. Air execution funds missing launch Energy centrally in MoveArmyRoutine after route
+and live activation checks, before ordinary movement payment; an already payable mandatory return
+retains its existing safety behavior. Conversion-only outcomes invalidate resources even if the
+subsequent action refuses. No parallel payment path or new AI mission is introduced.

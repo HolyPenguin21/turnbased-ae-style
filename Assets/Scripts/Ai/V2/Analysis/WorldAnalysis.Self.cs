@@ -25,7 +25,7 @@ namespace Game.Ai.V2
         private static SelfSnapshot BuildSelf(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             IMissionIntentView intents)
         {
-            var self = new SelfSnapshot();
+            var self = new SelfSnapshot { HasTrade = Game.Economy.TradeActions.HasAccess(player), TradeRate = root?.TradeRate ?? 2 };
 
             List<ArmyData> ownArmies = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && !a.IsPrison)
@@ -659,3 +659,4 @@ namespace Game.Ai.V2
 
     }
 }
+

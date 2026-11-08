@@ -506,6 +506,7 @@ namespace Game.Ai.V2
                     best.SuccessChance * EquipmentUpgradeValuation.EquipmentUpgradeValue(best));
                 MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
                     best, source, DesireAxis.Development);
+                TradeFunding.TryPlan(player, root, ctx, plan.ResCost, out plan.TradeFunding);
                 float ev = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(best, plan,
                     snap, player, root, ctx);
                 if (ev > AiConfigV2.devEvMargin
@@ -518,8 +519,7 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':window_closed({ResourceList(closed)})";
                     continue;
                 }
-                if (!ResearchProductionSystem.CanAffordCard(root, card)
-                    || !GenerationSource.FitsReservedAffordability(root, player, ctx, card))
+                if (!GenerationSource.FitsReservedAffordability(root, player, ctx, card))
                 {
                     last = $"'{card.displayName}':resources_unavailable";
                     continue;
@@ -846,7 +846,7 @@ namespace Game.Ai.V2
                     // units (ActionPrice's own conversion) only so peer steps can be ordered.
                     float taskNet = score.Value - ActionPrice.ToTaskScore(ActionPrice.Ap(stageAp))
                         - ActionPrice.CardScoreToTaskScore(StrategicCardEvaluator.StrategicResourceCostValue(
-                            cost, snap, spendable, player))
+                            TradeFunding.PricedCost(player, root, ctx, cost), snap, spendable, player))
                         - ActionPrice.CardScoreToTaskScore(prerequisite);
                     op.PreparationRank = ActionPrice.ToCardScore(ActionPrice.FromTaskScore(taskNet));
                     string walkFacts = hero == null ? string.Empty
@@ -868,7 +868,7 @@ namespace Game.Ai.V2
                         player, snap.TurnNumber, cost);
                     if (closed.Count > 0)
                     { rejection = $"window_closed({ResourceList(closed)})"; return; }
-                    if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cost))
+                    if (!TradeFunding.CanFund(player, root, ctx, cost))
                     { rejection = "current_stage_resources_unavailable"; return; }
                     if (hero == null && StrategicSpendability.SpendableAp(player, root, ctx)
                             + AiConfigV2.allocatorSliceEpsilon < stageAp)

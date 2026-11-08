@@ -27,6 +27,7 @@ namespace Game.Ai.V2
         private readonly HashSet<string> _genKeys = new HashSet<string>();
         private readonly HashSet<string> _externalConflictKeys = new HashSet<string>();
 
+        public int FundedTrades { get; private set; }
         public int GenerationAttempts { get; private set; }
         public float ApUsed { get; private set; }
         public int HumanUsed { get; private set; }
@@ -166,6 +167,7 @@ namespace Game.Ai.V2
                 if (p.EquipmentInHand != null) _cards.Add(p.EquipmentInHand);
                 if (p.UpgradeTargetCard != null) _cards.Add(p.UpgradeTargetCard);
             }
+            if (p?.TradeFunding != null) FundedTrades++;
             string gk = GenKey(p);
             string hostKey = UpgradeConflictKey(p?.UpgradeTargetCard, p?.UpgradeTargetUnit);
             if (hostKey != null) _externalConflictKeys.Add(hostKey);
@@ -174,7 +176,7 @@ namespace Game.Ai.V2
             if (countedGen) GenerationAttempts++;
             float apAdd = Mathf.Max(0f, p?.ApCost ?? 0f) + Mathf.Max(0f, extraAp);
             ApUsed += apAdd;
-            ResourceCost rc = p?.ResCost;
+            ResourceCost rc = p?.FundingCost;
             if (rc != null)
             {
                 HumanUsed += rc.human;
@@ -188,6 +190,7 @@ namespace Game.Ai.V2
         public void Pop(in Token token)
         {
             MaterializationPlan p = token.Plan;
+            if (p?.TradeFunding != null) FundedTrades--;
             if (p != null)
             {
                 if (p.BaseCardInHand != null) _cards.Remove(p.BaseCardInHand);
@@ -203,7 +206,7 @@ namespace Game.Ai.V2
             }
             if (token.CountedGen) GenerationAttempts--;
             ApUsed -= token.ApAdded;
-            ResourceCost rc = p?.ResCost;
+            ResourceCost rc = p?.FundingCost;
             if (rc != null)
             {
                 HumanUsed -= rc.human;
@@ -214,3 +217,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

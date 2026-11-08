@@ -349,7 +349,7 @@ namespace Game.Ai.V2
             // its AP/Energy was decided once this turn by ProvisioningManager.AirSortieReservation-
             // Admission (-> AviationSortieReservationEvaluator). This layer only enforces the LIVE
             // HARD affordability gate (CanIssueMoveNow) plus the route/endurance checks above.
-            if (!AiTurnController.CanIssueMoveNow(root, air, ctx.Map, choice.Value.Hex))
+            if (!AiTurnController.CanIssueMoveNow(root, air, ctx.Map, choice.Value.Hex, ctx))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} cannot afford/issue first step "
                     + $"AP{choice.Value.ActivationAp:0.#}/E{choice.Value.ActivationEnergy:0.#}; cancel/return");

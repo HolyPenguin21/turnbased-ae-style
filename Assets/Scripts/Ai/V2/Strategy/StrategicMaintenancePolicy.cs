@@ -56,19 +56,33 @@ namespace Game.Ai.V2
         {
             // A selected repair may outlive the reservation frame that admitted it. Recheck
             // the same Phase-B pool immediately before the shared gameplay transaction.
+            stateChanged = progressed = false;
+            if (root == null || ctx == null || root.Setup != player
+                || StrategicSpendability.SpendableAp(player, root, ctx) < ApCost) return false;
+            if (_repairUnit == null && (_upgradeBuilding == null || _upgradeBuilding.Owner != player
+                || !InfrastructureActions.CanUpgradeBase(_upgradeBuilding, ctx.GameConfig?.baseUpgradeTiers,
+                    null, out var tier, out _, requireCurrentResources: false)
+                || !ReferenceEquals(tier, _upgradeTier))) return false;
             if (_repairUnit != null && (root == null || ctx == null || player != root.Setup
                 || StrategicSpendability.SpendableAp(player, root, ctx) < ApCost
-                || !StrategicSpendability.FitsSpendableResources(player, root, ctx, ResCost)))
+                || !TradeFunding.CanFund(player, root, ctx, ResCost)))
             {
                 stateChanged = progressed = false;
                 return false;
             }
+            if (_repairUnit != null && !UnitRepair.CanRepair(_repairUnit, ArmyRegistry.FindArmyContaining(_repairUnit)))
+            { stateChanged = progressed = false; return false; }
+            if (Revalidate != null && !Revalidate())
+            { stateChanged = progressed = false; return false; }
+            int rateBeforeFunding = root.TradeRate;
+            if (!TradeFunding.Fund(player, root, ctx, ResCost))
+            { stateChanged = root.TradeRate != rateBeforeFunding; return false; }
             bool ok = _repairUnit != null
                 ? InfrastructureBuildExecutor.RepairUnit(_repairUnit, _repairHex, root)
                 : (Revalidate == null || Revalidate())
                     && InfrastructureBuildExecutor.UpgradeBaseCapacity(
                         player, root, ctx, _upgradeBuilding, _upgradeTier);
-            stateChanged = ok;
+            stateChanged = ok || root.TradeRate != rateBeforeFunding;
             progressed = ok;
             return ok;
         }
@@ -368,7 +382,7 @@ namespace Game.Ai.V2
             foreach (BuildingData b in bases)
             {
                 if (BuildingPlayExecutor.CanPlaceFacilityAt(
-                    player, hand, ctx, card, b.Hex, out string reason))
+                    player, hand, ctx, card, b.Hex, out string reason, resourceForecast: true))
                     return false; // already playable: no dependency to buy
                 if (reason != InfrastructureActions.NoFreeFacilitySlotReason)
                     return false; // affordability or another rule is also blocking it
@@ -379,4 +393,5 @@ namespace Game.Ai.V2
 
     }
 }
+
 

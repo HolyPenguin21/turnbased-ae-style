@@ -81,7 +81,7 @@ namespace Game.Map
         }
 
         public static bool CanFoundBase(CardDefinition definition, HexCoord hex, PlayerSetupData owner,
-            int apCost, ResourceCost resourceCost, out string reason, HexMap map = null)
+            int apCost, ResourceCost resourceCost, out string reason, HexMap map = null, bool requireCurrentResources = true)
         {
             reason = null;
             if (map != null && !map.CanEnter(hex))
@@ -99,7 +99,7 @@ namespace Game.Map
             { reason = "An enemy army controls this hex."; return false; }
             if (apCost < 0 || !root.CanSpendActionPoints(apCost))
             { reason = apCost < 0 ? "This card has an invalid AP cost." : $"Need {apCost} AP to build here."; return false; }
-            if (resourceCost != null && !resourceCost.CanAfford(root))
+            if (requireCurrentResources && resourceCost != null && !resourceCost.CanAfford(root))
             { reason = "Not enough resources."; return false; }
             return true;
         }
@@ -310,7 +310,7 @@ namespace Game.Map
         // the AI ought to buy it (witness, gate, bank) is decided by its own admission, never here, so
         // the human UpgradeBase button keeps buying any legal next level.
         public static bool CanUpgradeBase(BuildingData building, BaseUpgradeTier[] tiers, int? expectedLevel,
-            out BaseUpgradeTier tier, out string reason)
+            out BaseUpgradeTier tier, out string reason, bool requireCurrentResources = true)
         {
             tier = null;
             reason = null;
@@ -329,9 +329,9 @@ namespace Game.Map
             BaseUpgradeTier next = tiers[tierIndex];
             if (!root.CanSpendActionPoints(next.apCost))
             { reason = $"Need {next.apCost} AP to upgrade this base."; return false; }
-            if (next.cost != null && !next.cost.CanAfford(root))
+            if (requireCurrentResources && next.cost != null && !next.cost.CanAfford(root))
             { reason = "Not enough resources."; return false; }
-            if (!new PaymentQuote(next.apCost, next.cost).CanDebit(root, out _))
+            if (requireCurrentResources && !new PaymentQuote(next.apCost, next.cost).CanDebit(root, out _))
             { reason = "Invalid or unaffordable upgrade cost."; return false; }
             tier = next;
             return true;
@@ -358,7 +358,7 @@ namespace Game.Map
         }
 
         public static bool CanPlaceFacility(CardDefinition definition, HexCoord baseHex, PlayerSetupData owner,
-            int apCost, ResourceCost resourceCost, out string reason, bool requireCurrentAp = true)
+            int apCost, ResourceCost resourceCost, out string reason, bool requireCurrentAp = true, bool requireCurrentResources = true)
         {
             reason = null;
             if (definition == null || definition.cardType != CardType.Facility || owner == null)
@@ -370,7 +370,7 @@ namespace Game.Map
             { reason = "Facilities require one of your bases on this hex."; return false; }
             if (apCost < 0 || (requireCurrentAp && !root.CanSpendActionPoints(apCost)))
             { reason = apCost < 0 ? "This card has an invalid AP cost." : $"Need {apCost} AP to build here."; return false; }
-            if (resourceCost != null && !resourceCost.CanAfford(root))
+            if (requireCurrentResources && resourceCost != null && !resourceCost.CanAfford(root))
             { reason = "Not enough resources."; return false; }
             if (building.FindFirstAvailableFacilitySlot() < 0)
             { reason = NoFreeFacilitySlotReason; return false; }
@@ -572,3 +572,4 @@ namespace Game.Map
         }
     }
 }
+

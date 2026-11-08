@@ -159,6 +159,7 @@ namespace Game.Cards
         public const string ApBonus = "ApBonus";
 
         // While the carrier is in play, unlocks the owner's opponent intelligence panel.
+        public const string Trade = "Trade";
         public const string TacticalIntelligence = "TacticalIntelligence";
 
         // The AP each in-play ApBonus carrier grants on its owner's turn. CANONICAL gameplay value:
@@ -259,7 +260,7 @@ namespace Game.Cards
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
             Splash, Scorcher, RaiseTheRots, Heal, Transport, Repair, Disruption, Airfield, SingleUse,
             Explosion3, Explosion5, Explosion10, Ionic, Bodyguard, Counterattack, Drill,
-            R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus, TacticalIntelligence,
+            R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus, TacticalIntelligence, Trade,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
             Regeneration, ProduceHuman, ProduceEnergy, ProduceMaterials, ProduceTech,
@@ -288,3 +289,4 @@ namespace Game.Cards
         }
     }
 }
+

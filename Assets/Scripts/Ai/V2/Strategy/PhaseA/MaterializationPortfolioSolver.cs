@@ -133,7 +133,8 @@ namespace Game.Ai.V2
                 }
                 if (plan?.Generation != null && _consumed.GenerationAttempts + 1 > _genAttemptsRemaining)
                     return false;
-                ResourceCost rc = plan?.ResCost;
+                if (plan?.TradeFunding != null && _consumed.FundedTrades > 0) return false;
+                ResourceCost rc = plan?.FundingCost;
                 if (rc != null)
                     foreach (ResourceType t in ResourceBundle.All)
                         if (_consumed.ResourceUsed(t) + rc.Get(t) > _resPool[t] + OwnHold(authority, t))
@@ -614,3 +615,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

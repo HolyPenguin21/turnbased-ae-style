@@ -740,7 +740,9 @@ namespace Game.Ai.V2
             float ap, float energy, out ProvisionFailure failure)
         {
             failure = default;
-            if (ap > funded.Tentative.Ap + eps || energy > funded.PhysicalDraw.Energy + eps)
+            ResourceVector debit = TradeFunding.PricedVector(player, root, ctx,
+                new ResourceVector(0f, 0f, energy, 0f, 0f));
+            if (ap > funded.Tentative.Ap + eps || !funded.PhysicalDraw.CoversPhysical(debit, eps))
             {
                 failure = ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(ap, new ResourceVector(0f, 0f, energy, 0f, 0f)),
@@ -754,7 +756,7 @@ namespace Game.Ai.V2
                     $"turn AP exhausted: {lane} support wing #{wing.Id} needs {ap:0.##}, {turnApLeft:0.##} left");
                 return false;
             }
-            float energyLeft = ProvisioningManager.AirSpendableEnergyLeft(player, root, ctx, session);
+            float energyLeft = ProvisioningManager.AirSpendableEnergyLeft(player, root, ctx, session, energy);
             if (energy > energyLeft + eps)
             {
                 failure = ProvisionFailure.MoverContended(

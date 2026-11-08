@@ -1,3 +1,4 @@
+using System.Linq;
 using Game.Aviation;
 using Game.Cards;
 using Game.Map;
@@ -12,6 +13,7 @@ namespace Game.Ai.V2
     // and consumes the turn's generation attempt. The caller must see that, not just `false`.
     internal struct NonCombatExecuteResult
     {
+        public bool ActionChanged;
         public bool Played;               // final deploy/attach/build succeeded
         public bool StateChanged;         // ANY real world mutation happened (mint, reveal, resource spend, deploy)
         public bool GenerationAttempted;  // a Challenge was rolled (attempt is spent either way)
@@ -39,14 +41,46 @@ namespace Game.Ai.V2
                 return res;
             }
 
+            if (play.Kind == NonCombatCardPlayer.PlayKind.Facility && play.Generation == null
+                && !BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, play.Card, play.TargetHex,
+                    out _, resourceForecast: true))
+            { res.FailReason = "facility placement changed"; return res; }
+
+            if (play.Kind == NonCombatCardPlayer.PlayKind.Aviation
+                && !PlacementRules.EnumerateAviationPlacements(snap, player, root, play.Card,
+                    out _, resourceForecast: true).Contains(play.TargetHex))
+            { res.FailReason = "airfield placement changed"; return res; }
+            if (play.Kind == NonCombatCardPlayer.PlayKind.Equipment)
+            {
+                bool hostCurrent = play.EquipHostCard != null
+                    ? hand.Hand.Contains(play.EquipHostCard)
+                        && EquipmentSystem.CanAttachPreview(play.Card.Definition, play.EquipHostCard, out _)
+                    : play.EquipHost != null && !play.EquipHost.IsPrisoner
+                        && OwnWorld.Of(player).ArmyContaining(play.EquipHost)?.Owner == player
+                        && EquipmentSystem.CanAttachPreview(play.Card.Definition, play.EquipHost, out _);
+                if (!hostCurrent) { res.FailReason = "equipment host changed"; return res; }
+            }
+
+            // Hand/source identity must survive until funding; buying resources cannot repair it.
+            if (play.Generation == null && !hand.Hand.Contains(play.Card))
+            { res.FailReason = "card no longer in hand"; return res; }
+            if (play.Generation != null && !ResearchProductionSystem.TryQuoteAttempt(player, root,
+                    play.Generation.Hero, play.Generation.FacilityHex, play.Generation.Mode,
+                    play.Generation.ChallengeCard, ctx.ResearchProductionCatalog, out _, out _, resourceForecast: true))
+            { res.FailReason = "generation source changed"; return res; }
+            int rateBeforeFunding = root.TradeRate;
             // Revalidate the successful-chain budget before minting too. Expected score
             // never authorizes a fractional payment or the use of a newly protected hold.
-            if (!FitsBudget(play, player, root, ctx))
+            if (play.ApCost > StrategicSpendability.SpendableAp(player, root, ctx)
+                || !TradeFunding.Fund(player, root, ctx, play.ResCost)
+                || !FitsBudget(play, player, root, ctx))
             {
+                res.StateChanged = root.TradeRate != rateBeforeFunding;
                 res.FailReason = "non-combat chain no longer fits AP/spendable reserves";
                 return res;
             }
 
+            res.StateChanged = root.TradeRate != rateBeforeFunding;
             int apBefore = root.ActionPoints;
             int stateVersionBefore = WorldDeltaLifecycle.Current;
 
@@ -58,7 +92,7 @@ namespace Game.Ai.V2
                 MaterializationExecutor.GenerationOutcome go =
                     MaterializationExecutor.TryGenerate(play.Generation, player, root, hand, ctx);
                 res.GenerationAttempted = go.Attempted;
-                if (go.StateChanged) res.StateChanged = true;
+                if (go.StateChanged) { res.StateChanged = true; res.ActionChanged |= go.Attempted; }
                 if (!go.Success)
                 {
                     res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
@@ -67,7 +101,7 @@ namespace Game.Ai.V2
                     return res;
                 }
                 res.Generated = true;
-                res.StateChanged = true;   // a card was minted into the hand
+                res.ActionChanged = res.StateChanged = true;   // a card was minted into the hand
 
                 // Re-resolve the placement against the real card + live world (the pre-mint
                 // stand-in's target may be stale). The minted card stays in hand if this fails —
@@ -111,6 +145,7 @@ namespace Game.Ai.V2
                 case NonCombatCardPlayer.PlayKind.Base:
                 {
                     BuildingPlayResult r = BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, play.Card, play.TargetHex);
+                    res.StateChanged |= r.StateChanged; res.ActionChanged |= r.StateChanged;
                     ok = r.Built;
                     failReason = r.FailReason;
                     break;
@@ -118,6 +153,7 @@ namespace Game.Ai.V2
                 case NonCombatCardPlayer.PlayKind.Facility:
                 {
                     BuildingPlayResult r = BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, play.Card, play.TargetHex);
+                    res.StateChanged |= r.StateChanged; res.ActionChanged |= r.StateChanged;
                     ok = r.Built;
                     failReason = r.FailReason;
                     break;
@@ -160,7 +196,7 @@ namespace Game.Ai.V2
             }
 
             res.Played = ok;
-            if (ok) res.StateChanged = true;
+            if (ok) res.ActionChanged = res.StateChanged = true;
             res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
             if (!ok) res.FailReason = failReason ?? "non-combat play failed";
             StampVersion(ref res, stateVersionBefore);
@@ -174,8 +210,9 @@ namespace Game.Ai.V2
 
         private static void StampVersion(ref NonCombatExecuteResult result, int versionBefore)
         {
-            WorldDeltaLifecycle.StampAction(result.StateChanged,
+            WorldDeltaLifecycle.StampAction(result.ActionChanged,
                 childAlreadyCommitted: WorldDeltaLifecycle.Current != versionBefore);
         }
     }
 }
+

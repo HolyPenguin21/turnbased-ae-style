@@ -524,11 +524,12 @@ namespace Game.Saves
         { if (x == null || x.human < 0 || x.energy < 0 || x.materials < 0 || x.tech < 0) throw Invalid("Invalid resource yield."); }
         private static void ValidateEconomy(PlayerEconomyState x)
         {
-            if (x == null || x.ActionPoints < 0 || x.Human < 0 || x.Energy < 0 || x.Materials < 0 || x.Tech < 0) throw Invalid("Invalid player economy."); Require(x.InitiativeContributions);
+            if (x == null || x.TradeRate < 2 || (!x.TradeTurnOpen && x.TradedThisTurn) || x.ActionPoints < 0 || x.Human < 0 || x.Energy < 0 || x.Materials < 0 || x.Tech < 0) throw Invalid("Invalid player economy."); Require(x.InitiativeContributions);
             foreach (var r in x.InitiativeContributions) if (!Enum.IsDefined(typeof(Game.Economy.ResourceType), r)) throw Invalid("Invalid initiative resource.");
         }
         private static PlayerEconomyState CopyEconomy(PlayerEconomyState x) => new PlayerEconomyState
         {
+            TradeRate = x.TradeRate, TradedThisTurn = x.TradedThisTurn, TradeTurnOpen = x.TradeTurnOpen,
             ActionPoints = x.ActionPoints, Human = x.Human, Energy = x.Energy, Materials = x.Materials, Tech = x.Tech,
             InitiativeContributions = new List<Game.Economy.ResourceType>(x.InitiativeContributions), LastApFromInitiative = x.LastApFromInitiative,
             LastApFromPrisonBonus = x.LastApFromPrisonBonus, LastApFromApBonus = x.LastApFromApBonus, LastApBonusSources = x.LastApBonusSources,
@@ -537,3 +538,4 @@ namespace Game.Saves
         private static InvalidOperationException Invalid(string message) => new InvalidOperationException(message);
     }
 }
+
