@@ -68,8 +68,10 @@ namespace Game.Ai.V2
     //      the operation starts). GroundCombatAirSupport.Options — its estimate and post-strike
     //      package, not a second model;
     //    · Disruption: an own carrier on an active DisruptStructure leg at the target that stands
-    //      there or arrives no later than the fist — the structural part of the bonus goes
-    //      (WorthIt.DefendingArmy.BuildingDefenseBonus, the rule DisruptionRules applies).
+    //      there or arrives no later than the fist, else (2026-11-07) a free fielded carrier that
+    //      does so for a march of at least a turn (FreeCarrier, the free-wing rule) — the
+    //      structural part of the bonus goes (WorthIt.DefendingArmy.BuildingDefenseBonus, the
+    //      rule DisruptionRules applies).
     //  Losing the support changes the forecast, and the ordinary withdraw rule then applies.
     // ===========================================================================================
     internal static class AttackSupportProjection
@@ -95,7 +97,10 @@ namespace Game.Ai.V2
             bool carrierLeg = (snap.AllIntents ?? System.Array.Empty<MissionIntent>()).Any(i =>
                 i?.Status == IntentStatus.Active && i.Scout?.Kind == ScoutTargetKind.DisruptStructure
                 && i.Scout.FocusHex.Equals(targetHex));
-            if (!hasAircraft && !carrierLeg)
+            // A free carrier matters only where a structure bonus exists to be removed.
+            bool freeCarrier = known.Any(a => a.BuildingDefenseBonus > 0f)
+                && ScoutMoverSelector.HasStructuralCandidate(snap, DisruptionTarget(targetHex));
+            if (!hasAircraft && !carrierLeg && !freeCarrier)
                 return new AttackSupportForecast(known, hexBonus, known, hexBonus, null, 0, false, null);
             int eta = armyEta?.Invoke() ?? int.MaxValue;
             AirSupportOption? air = hasAircraft ? CountedAir(snap, targetHex, known, eta, out airBound) : null;
@@ -108,6 +113,8 @@ namespace Game.Ai.V2
 
             float projectedBonus = hexBonus;
             int? carrier = carrierLeg ? CountedCarrier(snap, targetHex, eta) : null;
+            if (!carrier.HasValue && freeCarrier)
+                carrier = FreeCarrier(snap, targetHex, eta);
             if (carrier.HasValue)
                 opposition = WithoutStructure(opposition, hexBonus, out projectedBonus);
             return new AttackSupportForecast(known, hexBonus, opposition, projectedBonus,
@@ -212,11 +219,56 @@ namespace Game.Ai.V2
                 if (carrier == null || !(DisruptionRules.HasCarrier(carrier.MembersWithHeroes)
                         || DisruptionRules.HasCarrier(carrier.Members)))
                     continue;
-                if (carrier.Hex.Equals(targetHex) || ArmyEta(snap, carrier, targetHex) <= armyEta)
+                if (carrier.Hex.Equals(targetHex)
+                    || (CarrierCanEnter(snap, targetHex) && ArmyEta(snap, carrier, targetHex) <= armyEta))
                     return carrier.ArmyId;
             }
             return null;
         }
+
+        // 2026-11-07 — a carrier still to arrive counts only where a hidden scout may stand: the
+        // site is not blocked for a stealth-capable scout and no known detector covers it — the
+        // same honest rule the delivery itself and its terminal wait apply
+        // (ReconAssignmentPlanner.CanDeliverDisruptionThisTurn). A carrier already standing there
+        // counts as it stands.
+        private static bool CarrierCanEnter(WorldSnapshot snap, HexCoord targetHex) =>
+            snap?.MapKnowledge?.IsBlockedForScout(targetHex, stealthCapable: true) != true
+            && ScoutRiskModel.DetectorRisk(snap, targetHex) < 1f;
+
+        // 2026-11-07 (owner, playtest Ysolde T26) — the free carrier, counted the way CountedAir
+        // counts a free wing: only for a march of at least a turn, and only an own hidden (or
+        // stealth-capable) ground Disruption carrier that no operation holds — or that only a
+        // displaceable Explore/Refresh lane holds (ReconMissionPlanner.DisplaceableReconRole) —
+        // and that reaches the target no later than the fist. Recon then binds it: a live Attack
+        // whose fist has no carrier makes the DisruptStructure objective
+        // (ReconObjectiveEvaluator.AssaultNeedsDisruption) with Attack's priority, and the leg it
+        // opens is what CountedCarrier counts from then on; the terminal step waits for it
+        // (AttackMarchPolicy.WaitForDisruption). Without it the planner saw the structure bonus
+        // and swapped a combat body out of the 8-slot fist for a weak in-fist carrier (Crawler ->
+        // Scout) while two free stealth Scouts stood by.
+        internal static int? FreeCarrier(WorldSnapshot snap, HexCoord targetHex, int armyEta)
+        {
+            if (armyEta == int.MaxValue || armyEta < 1 || snap?.Self?.Armies == null)
+                return null;
+            bool canEnter = CarrierCanEnter(snap, targetHex);
+            List<MissionIntent> intents = (snap.AllIntents ?? System.Array.Empty<MissionIntent>())
+                .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            foreach (ArmySnapshot a in ScoutMoverSelector.StructuralCandidates(snap, DisruptionTarget(targetHex))
+                .OrderBy(a => a.ArmyId))
+            {
+                bool held = intents.Any(i => i.PreferredMoverArmyId == a.ArmyId);
+                if (held && ReconMissionPlanner.DisplaceableReconRole(intents, a.ArmyId) == null)
+                    continue;
+                if (a.Hex.Equals(targetHex) || (canEnter && ArmyEta(snap, a, targetHex) <= armyEta))
+                    return a.ArmyId;
+            }
+            return null;
+        }
+
+        private static ScoutMissionTarget DisruptionTarget(HexCoord hex) => new ScoutMissionTarget
+        {
+            Kind = ScoutTargetKind.DisruptStructure, FocusHex = hex, Stealth = StealthRequirement.Required,
+        };
 
         internal static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }

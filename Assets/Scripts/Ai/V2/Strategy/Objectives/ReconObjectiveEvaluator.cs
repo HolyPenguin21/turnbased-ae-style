@@ -200,11 +200,7 @@ namespace Game.Ai.V2
                 ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == id.Value) : null;
             bool CarriesOwn(ArmySnapshot a) => a != null
                 && Game.Combat.DisruptionRules.HasCarrier(a.MembersWithHeroes);
-            MissionIntent assault = (snap.AllIntents ?? System.Array.Empty<MissionIntent>()).FirstOrDefault(i =>
-                i?.Status == IntentStatus.Active && i.Attack != null
-                && i.Attack.Target.Hex.Equals(hex)
-                && (i.Attack.Phase == AttackMissionPhase.Assault || i.Attack.Phase == AttackMissionPhase.Gather
-                    || i.Attack.Phase == AttackMissionPhase.Reinforcement));
+            MissionIntent assault = LiveAssaultAt(snap, hex);
             if (assault != null)
                 return !CarriesOwn(OwnArmy(assault.Attack.PrimaryArmyId ?? assault.PreferredMoverArmyId));
             // A nearby field fist may need the carrier BEFORE its assault clears the defence gate.
@@ -215,6 +211,14 @@ namespace Game.Ai.V2
                 && HexGridMath.Distance(a.Hex, hex) <= 2 * a.MaxMovement
                 && !CarriesOwn(a));
         }
+
+        // The live Attack operation (Gather, Assault or Reinforcement) whose target is `hex`.
+        private static MissionIntent LiveAssaultAt(WorldSnapshot snap, HexCoord hex) =>
+            (snap?.AllIntents ?? System.Array.Empty<MissionIntent>()).FirstOrDefault(i =>
+                i?.Status == IntentStatus.Active && i.Attack != null
+                && i.Attack.Target.Hex.Equals(hex)
+                && (i.Attack.Phase == AttackMissionPhase.Assault || i.Attack.Phase == AttackMissionPhase.Gather
+                    || i.Attack.Phase == AttackMissionPhase.Reinforcement));
 
         // THE known structure defence a Disruption carrier removes at `hex`: a known hostile
         // (non-neutral) Base or starting Citadel's positive Defense, else 0. Read by the need rule
@@ -250,7 +254,13 @@ namespace Game.Ai.V2
                 FocusHex = hex, Stealth = StealthRequirement.Required };
             ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, target, preferredMoverArmyId);
             if (requireMover && !cost.MoverKnown) return null;
+            // 2026-11-07 (owner) — the carrier a live Attack operation counts on
+            // (AttackSupportProjection.FreeCarrier) is a step of that operation: it keeps Attack's
+            // priority the way every preparation step does (AttackReadiness full), so it can take a
+            // scout off a lower Explore/Refresh lane (DisplaceableReconRole) instead of losing to it.
+            bool servesLiveAttack = LiveAssaultAt(snap, hex) != null;
             TaskScore score = new TaskScore(
+                attackReadiness: servesLiveAttack ? TaskScoreEvaluator.AttackReadiness(1f) : 0f,
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(1f),
                 cardPrice: TaskScoreEvaluator.Price(cost.ActivationApNow),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(

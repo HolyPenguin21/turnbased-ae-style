@@ -109,6 +109,9 @@ namespace Game.Ai.V2
             AiDebugLog.WriteDeduped("hand", $"[AI][V2]   strat.A - {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
             pass.Partition();
+            // The live Attack's strike need, read once before the card rounds (PhaseAOperationSupport).
+            pass.StrikeSupport = result.StrikeSupport = PhaseAOperationSupport.Assess(pass);
+            PhaseAOperationSupport.PublishForecast(pass, pass.StrikeSupport);
             if (pass.NothingToAdmit)
             {
                 PhaseAEconomyHolds.ClearPreIntentHoldIfResolved(pass);
@@ -129,7 +132,8 @@ namespace Game.Ai.V2
         {
             // The strike a live Attack waits for is produced from the operation's own pass, not
             // from Phase B's leftovers (PhaseAOperationSupport).
-            PhaseAOperationSupport.TryProduceStrikeSupport(pass);
+            if (PhaseAOperationSupport.TryProduceStrikeSupport(pass) || pass.StrikeSupport != null)
+                pass.StrikeSupport = result.StrikeSupport = PhaseAOperationSupport.Assess(pass);
             PhaseAInfrastructureLane.FulfillResidual(pass);
             pass.PublishResiduals();
 
@@ -301,6 +305,16 @@ namespace Game.Ai.V2
             StrategicPhaseResult result = pass.Result;
             AxisDemand chosenDemand = selected.State.Demand;
             MaterializationPlan plan = selected.Plan;
+            // An upgrade outside the live Attack's fist leaves that operation's strike its
+            // resources (PhaseAOperationSupport.LeavesStrikeSupport); the demand is done this pass.
+            if (!PhaseAOperationSupport.LeavesStrikeSupport(pass, plan, out string strikeWhy))
+            {
+                selected.State.Blocked = true;
+                AiDebugLog.Write($"[AI][V2][Dev] SKIP - {plan.DevelopmentUpgrade?.Mode} "
+                    + $"'{plan.DevelopmentUpgrade?.Card?.displayName}' -> {plan.DevelopmentUpgrade?.RecipientLabel} "
+                    + $":: {strikeWhy}");
+                return;
+            }
             DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
                 pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx, chosenDemand, plan, pass.ApBudget);
             int upgradeApAfter = pass.Root.ActionPoints;

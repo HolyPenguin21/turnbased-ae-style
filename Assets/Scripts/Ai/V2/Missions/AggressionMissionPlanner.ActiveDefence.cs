@@ -17,7 +17,8 @@ namespace Game.Ai.V2
         private static void AppendActiveDefence(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
             List<MissionProposal> proposals,
-            IDictionary<MissionIntentKey, string> deferredThisPass)
+            IDictionary<MissionIntentKey, string> deferredThisPass,
+            List<PreparationHostCharge> preparationCharges)
         {
             // A Return already under way is finished by its own army, whatever became of the
             // threat that started it. Lifecycle work of a Hard obligation: neutral intrinsic score.
@@ -89,7 +90,7 @@ namespace Game.Ai.V2
                     case ActiveDefenceResponseKind.Intercept:
                         pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
                         AppendActiveDefenceIntercept(snap, objective, response, incumbent, proposals,
-                            pendingHost.Value);
+                            pendingHost.Value, preparationCharges);
                         break;
                     case ActiveDefenceResponseKind.Defer:
                         if (incumbent != null && deferredThisPass != null)
@@ -112,8 +113,11 @@ namespace Game.Ai.V2
                             if (!destination.HasValue || mover.Hex.Equals(destination.Value))
                                 continue;
                             pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
-                            proposals.Add(BuildActiveDefenceWithdrawal(objective, mover,
-                                destination.Value, response, pendingHost.Value));
+                            MissionProposal withdrawal = BuildActiveDefenceWithdrawal(objective, mover,
+                                destination.Value, response, pendingHost.Value);
+                            proposals.Add(withdrawal);
+                            RecordPreparationCharge(preparationCharges, withdrawal, mover.ArmyId,
+                                pendingHost.Value);
                         }
                         AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId + "#withdraw",
                             $"[AI][V2][ActiveDefence][Admission] decision="
@@ -147,8 +151,10 @@ namespace Game.Ai.V2
                 {
                     Kind = ActiveDefenceResponseKind.Shortage, Reason = "bench_hero_shelter",
                 };
-                proposals.Add(BuildActiveDefenceWithdrawal(shelter, hero, destination.Value,
-                    response, pendingHost.Value));
+                MissionProposal shelterLeg = BuildActiveDefenceWithdrawal(shelter, hero,
+                    destination.Value, response, pendingHost.Value);
+                proposals.Add(shelterLeg);
+                RecordPreparationCharge(preparationCharges, shelterLeg, hero.ArmyId, pendingHost.Value);
                 AiDebugLog.WriteDeduped(hero.ArmyId + "#bench-shelter",
                     $"[AI][V2][ActiveDefence][Admission] decision=SHELTER hero_army=#{hero.ArmyId} "
                     + $"at=({hero.Hex.Q},{hero.Hex.R}) enemy={shelter.Target.EnemyArmyId} "
@@ -157,7 +163,7 @@ namespace Game.Ai.V2
             }
 
             AppendImmediateOpportunities(snap, activeIntents, committed, withdrawing, proposals,
-                deferredThisPass, strategicallyAnswered, ref pendingHost);
+                deferredThisPass, strategicallyAnswered, ref pendingHost, preparationCharges);
         }
 
         // ImmediateOpportunity: a visible weak field army that a free defender can reach and START a
@@ -168,7 +174,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
             ICollection<int> withdrawing, List<MissionProposal> proposals,
             IDictionary<MissionIntentKey, string> deferredThisPass, ISet<int> strategicallyAnswered,
-            ref (int armyId, float value)? pendingHost)
+            ref (int armyId, float value)? pendingHost, List<PreparationHostCharge> preparationCharges)
         {
             foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap))
             {
@@ -192,7 +198,7 @@ namespace Game.Ai.V2
                 {
                     pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
                     AppendActiveDefenceIntercept(snap, objective, response, incumbent, proposals,
-                        pendingHost.Value);
+                        pendingHost.Value, preparationCharges);
                 }
                 else if (incumbent != null && deferredThisPass != null)
                     deferredThisPass[incumbent.IntentKey] = response.Reason ?? "immediate_deferred";
@@ -202,7 +208,8 @@ namespace Game.Ai.V2
         private static void AppendActiveDefenceIntercept(WorldSnapshot snap,
             ActiveDefenceObjective objective, ActiveDefenceResponse response,
             MissionIntent incumbent, List<MissionProposal> proposals,
-            (int armyId, float value) pendingPreparationHost)
+            (int armyId, float value) pendingPreparationHost,
+            List<PreparationHostCharge> preparationCharges)
         {
             if (response.Sortie != null)
             {
@@ -292,6 +299,9 @@ namespace Game.Ai.V2
                 && eligible.Count > 0)
             {
                 proposals.Add(proposal);
+                if (moverCost > 0f)
+                    preparationCharges?.Add(new PreparationHostCharge(proposal,
+                        pendingPreparationHost.armyId, moverCost));
                 AiDebugLog.WriteDeduped(target.EnemyArmyId.ToString(),
                     $"[AI][V2][ActiveDefence][Admission] decision=PROPOSE enemy={target.EnemyArmyId} actor={actor.ArmyId} score={actorScore.Value:0.00}");
             }
@@ -404,6 +414,70 @@ namespace Game.Ai.V2
                     + $"strikeTurns={best.StrikeTurns} damage={best.ExpectedDamage:0.0} score={score.Value:0.00}");
             }
         }
+
+        // A pending preparation's value charged to an ActiveDefence leg that takes its host
+        // (MoverOpportunityCost). Kept per pass so the charge can be settled once Attack, which is
+        // planned after ActiveDefence in the same Propose, has said whether that preparation
+        // really proposes a step for the host (ReleaseIdlePreparationHostCharges).
+        internal readonly struct PreparationHostCharge
+        {
+            internal readonly MissionProposal Proposal;
+            internal readonly int HostArmyId;
+            internal readonly float Charge;
+
+            internal PreparationHostCharge(MissionProposal proposal, int hostArmyId, float charge)
+            {
+                Proposal = proposal;
+                HostArmyId = hostArmyId;
+                Charge = charge;
+            }
+        }
+
+        private static void RecordPreparationCharge(List<PreparationHostCharge> charges,
+            MissionProposal proposal, int moverArmyId, (int armyId, float value) pendingHost)
+        {
+            if (charges != null && proposal != null && pendingHost.armyId >= 0
+                && moverArmyId == pendingHost.armyId && pendingHost.value > 0f)
+                charges.Add(new PreparationHostCharge(proposal, pendingHost.armyId, pendingHost.value));
+        }
+
+        // 2026-11-07 (owner, playtest Ysolde T24-T25) — the preparation's value is what taking its
+        // host loses only when the preparation proposes a step that uses that army this pass. A
+        // preparation that HOLDs (no support or same-hex body raises the host, the host cannot
+        // reach staging, ...) loses nothing: Ysolde's #20 (60 power) left a 16.9-power army
+        // beside her captured Base for four turns, its intercept priced -13.5 by a 20.8 charge
+        // for a preparation that held every one of those turns. Any Attack proposal naming the
+        // host (actor, primary or a support) keeps the charge.
+        private static void ReleaseIdlePreparationHostCharges(List<MissionProposal> proposals,
+            List<PreparationHostCharge> charges)
+        {
+            if (charges == null || charges.Count == 0 || proposals == null)
+                return;
+            foreach (PreparationHostCharge charge in charges)
+            {
+                if (!proposals.Contains(charge.Proposal) || !charge.Proposal.Score.HasValue
+                    || proposals.Any(p => p != null && p.Kind == MissionKind.Attack
+                        && UsesArmy(p, charge.HostArmyId)))
+                    continue;
+                TaskScore priced = charge.Proposal.Score.Value;
+                float released = UnityEngine.Mathf.Min(charge.Charge, priced[TaskSlot.MoverOpportunityCost]);
+                if (released <= 0f)
+                    continue;
+                TaskScore score = TaskScore.FromSlots(slot => slot == TaskSlot.MoverOpportunityCost
+                    ? priced[slot] - released : priced[slot]);
+                charge.Proposal.Score = score;
+                charge.Proposal.BaseValue = score.Value;
+                charge.Proposal.LocalAdmissionScore = score.Value;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Admission] preparation host #{charge.HostArmyId} "
+                    + $"charge {released:0.00} released (no preparation step uses it this pass): "
+                    + $"{charge.Proposal.Explain} -> score {score.Value:0.00}");
+            }
+        }
+
+        private static bool UsesArmy(MissionProposal p, int armyId) =>
+            p.PreferredMoverArmyId == armyId
+            || p.Target is AttackMissionTarget t && (t.PrimaryArmyId == armyId
+                || t.SupportArmyId == armyId || t.GatherSupportArmyIds?.Contains(armyId) == true);
 
         // One army's own withdrawal leg: to the Citadel (regroup) or to its home base (shortage).
         // Scored off the threat it answers — the canonical TaskScore with the walk's own price and

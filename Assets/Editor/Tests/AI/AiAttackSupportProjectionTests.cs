@@ -88,6 +88,147 @@ namespace Game.EditorTests
             Assert.That(AttackSupportProjection.CountedCarrier(snap, Site, armyEta: 5), Is.Null);
         }
 
+        // 2026-11-07 playtest (Ysolde T26): with two free stealth Scouts beside, the gather swapped
+        // a Crawler out of the fist for an in-fist carrier, because only a carrier already on a
+        // Disruption leg counted. A free one counts like a free wing: for a march of a turn or
+        // more, arriving no later than the fist, held by nothing but a displaceable Recon lane.
+        [Test]
+        public void FreeCarrier_CountsLikeAFreeWing()
+        {
+            ArmySnapshot carrier = Carrier(2, maxMovement: 3);
+            WorldSnapshot snap = Snapshot(carrier);
+
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.EqualTo(2));
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 0), Is.Null,
+                "a fist striking this turn waits for nobody: only a bound leg counts then");
+
+            carrier.MaxMovement = 1; carrier.CurrentMovement = 1;
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.EqualTo(2),
+                "two hexes at one movement point: next turn, with the fist");
+            carrier.Hex = new HexCoord(-1, 0);
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.Null,
+                "four hexes at one movement point: after the fist");
+            carrier.Hex = new HexCoord(1, 0); carrier.MaxMovement = 3; carrier.CurrentMovement = 3;
+
+            var refresh = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = new HexCoord(5, 5) },
+                PreferredMoverArmyId = 2,
+                IntentKey = MissionIntentKey.ForScout(ScoutTargetKind.Refresh, new HexCoord(5, 5)) };
+            MissionIntentRegistry.GetOrCreate(_player).Put(refresh);
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.EqualTo(2),
+                "a scout on a displaceable Refresh lane is still free for the operation");
+
+            refresh.Funding = CommitmentTier.Hard;
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.Null,
+                "a Hard lane keeps its scout");
+
+            refresh.Funding = CommitmentTier.None;
+            // The same honest entry rule as the delivery itself: a hard-blocked site or certain
+            // detection there means no hidden carrier will stand on it.
+            snap.MapKnowledge = new MapKnowledgeSnapshot { ScoutHardBlockedHexes = new HashSet<HexCoord> { Site } };
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.Null,
+                "a site blocked for a stealth scout");
+            snap.MapKnowledge.ScoutHardBlockedHexes.Clear();
+            snap.Known.EnemySightings = Enumerable.Range(0, (int)Math.Ceiling(AiConfigV2.scoutDetectionRiskNorm))
+                .Select(id => new AiMapMemory.KnownEnemySighting(Site, _enemy, "detector", 1, 1f, 1f,
+                    new[] { Body() }, armyId: 90 + id)).ToList();
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.Null,
+                "certain detection on the site");
+            carrier.Hex = Site;
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.EqualTo(2),
+                "a carrier already standing hidden there counts as it stands");
+            carrier.Hex = new HexCoord(1, 0);
+            snap.Known.EnemySightings = Array.Empty<AiMapMemory.KnownEnemySighting>();
+
+            carrier.IsHidden = false;
+            carrier.Members = carrier.MembersWithHeroes = new[] { Body() };
+            Assert.That(AttackSupportProjection.FreeCarrier(snap, Site, armyEta: 1), Is.Null,
+                "no Disruption carrier, no support");
+        }
+
+        // The Disruption a live Attack counts on keeps Attack's priority (AttackReadiness full), so
+        // it can take a scout off a lower Refresh lane; with no live Attack it has none.
+        [Test]
+        public void DisruptionForALiveAttack_CarriesAttackPriority()
+        {
+            var fist = new ArmySnapshot { ArmyId = 9, Owner = _player, Hex = new HexCoord(0, 0),
+                MemberCount = 1, Members = new[] { Body() }, MembersWithHeroes = new[] { Body() },
+                MaxMovement = 2, CurrentMovement = 2 };
+            WorldSnapshot snap = Snapshot(Carrier(2, maxMovement: 3), fist);
+            Assert.That(ReconObjectiveEvaluator.DisruptAt(snap, Site, requireMover: false), Is.Null,
+                "no Attack and no ready fist nearby: nothing needs the carrier");
+
+            MissionIntentRegistry.GetOrCreate(_player).Put(new MissionIntent
+            {
+                Kind = MissionKind.Attack, Status = IntentStatus.Active, PreferredMoverArmyId = 9,
+                Objective = new AttackIntent { Target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base),
+                    Phase = AttackMissionPhase.Gather, PrimaryArmyId = 9 },
+                IntentKey = MissionIntentKey.ForAttack(AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base)),
+            });
+            ReconObjective o = ReconObjectiveEvaluator.DisruptAt(snap, Site, requireMover: false);
+            Assert.That(o, Is.Not.Null);
+            Assert.That(o.TaskScore[TaskSlot.AttackReadiness],
+                Is.EqualTo(TaskScoreEvaluator.AttackReadiness(1f)).Within(0.0001f));
+        }
+
+        // 2026-11-07 playtest (Ysolde T26): E6 M9 T5 bought one Tactical Missile, but three upgrades
+        // in the card rounds (a Fate genome on a garrison hero among them) spent T to 0 before the
+        // strike was asked. An upgrade outside the fist leaves the strike what it needs of the
+        // resources the upgrade itself spends; the fist's own upgrades are never held back.
+        [Test]
+        public void UpgradeOutsideTheFist_LeavesTheStrikeItsResources()
+        {
+            PlayerRoot root = PlayerRoot.Create(_player, "strike support test");
+            PlayerRootRegistry.Register(_player, root);
+            try
+            {
+                root.AddResource(Game.Economy.ResourceType.Tech, 5);
+                root.AddResource(Game.Economy.ResourceType.Energy, 6);
+                var attack = new AttackIntent { PrimaryArmyId = 9, Phase = AttackMissionPhase.Gather,
+                    Target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Citadel) };
+                var operation = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                    PreferredMoverArmyId = 9, Objective = attack,
+                    IntentKey = MissionIntentKey.ForAttack(attack.Target) };
+                var pass = new PhaseAPass(Snapshot(), _player, root, null, new AiTurnContext { TurnNumber = 10 },
+                    null, null, null, null, null, null, null, null, false,
+                    new StrategicPhaseResult { Reservation = new MaterializationReservation() })
+                {
+                    StrikeSupport = new StrikeSupportNeed { Operation = operation, Attack = attack,
+                        Cost = new ResourceCost(energy: 5, materials: 6, tech: 5), Source = "generate:test" },
+                };
+                MaterializationPlan Upgrade(ResourceCost cost, int recipient) => new MaterializationPlan
+                    { ResCost = cost, DevelopmentUpgrade = new DevelopmentOpportunity { RecipientArmyId = recipient } };
+
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass,
+                    Upgrade(new ResourceCost(tech: 1), recipient: 4), out string why), Is.False);
+                Assert.That(why, Does.Contain("Tech"));
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass,
+                    Upgrade(new ResourceCost(energy: 1), recipient: 4), out _), Is.True,
+                    "E6 covers the upgrade's 1 and the strike's 5; Tech it does not spend");
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass,
+                    Upgrade(new ResourceCost(tech: 1), recipient: 9), out _), Is.True,
+                    "the fist's own upgrade keeps its priority");
+                // Phase B: an Equipment card from hand for a unit outside the fist, the same rule.
+                var play = new NonCombatCardPlayer.NonCombatPlay { Kind = NonCombatCardPlayer.PlayKind.Equipment,
+                    ResCost = new ResourceCost(tech: 1) };
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(_player, root, pass.Ctx,
+                    pass.StrikeSupport, play, out why), Is.False);
+                Assert.That(why, Does.Contain("equipment"));
+                play.ResCost = new ResourceCost(energy: 1);
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(_player, root, pass.Ctx,
+                    pass.StrikeSupport, play, out _), Is.True);
+                pass.StrikeSupport = null;
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass,
+                    Upgrade(new ResourceCost(tech: 5), recipient: 4), out _), Is.True);
+            }
+            finally
+            {
+                PlayerRootRegistry.Clear();
+                StrategicResourceReservationLedger.ClearAll();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
+        }
+
         // No known defenders: nothing to project, the forecast is the bare package.
         [Test]
         public void Forecast_WithoutKnownDefenders_CountsNoSupport()
