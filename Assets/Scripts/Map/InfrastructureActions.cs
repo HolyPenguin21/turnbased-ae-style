@@ -81,7 +81,7 @@ namespace Game.Map
         }
 
         public static bool CanFoundBase(CardDefinition definition, HexCoord hex, PlayerSetupData owner,
-            int apCost, ResourceCost resourceCost, out string reason, HexMap map = null)
+            int apCost, ResourceCost resourceCost, out string reason, HexMap map = null, bool requireCurrentResources = true)
         {
             reason = null;
             if (map != null && !map.CanEnter(hex))
@@ -99,7 +99,7 @@ namespace Game.Map
             { reason = "An enemy army controls this hex."; return false; }
             if (apCost < 0 || !root.CanSpendActionPoints(apCost))
             { reason = apCost < 0 ? "This card has an invalid AP cost." : $"Need {apCost} AP to build here."; return false; }
-            if (resourceCost != null && !resourceCost.CanAfford(root))
+            if (requireCurrentResources && resourceCost != null && !resourceCost.CanAfford(root))
             { reason = "Not enough resources."; return false; }
             return true;
         }

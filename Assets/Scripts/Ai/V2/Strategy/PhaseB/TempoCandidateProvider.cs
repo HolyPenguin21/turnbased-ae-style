@@ -243,7 +243,7 @@ namespace Game.Ai.V2
                     Rebase = rebase,
                     Utility = rebase.Utility,
                     ApCost = rebase.ActivationAp,
-                    ResCost = new ResourceCost(energy: rebase.EnergyCost),
+                    ResCost = TradeFunding.PricedCost(player, root, ctx, new ResourceCost(energy: rebase.EnergyCost)),
                     ActionKey = $"aviation-rebase:{rebase.Aircraft[0].RuntimeId}:"
                         + $"{rebase.DestinationHex.Q},{rebase.DestinationHex.R}",
                     Label = $"rebase aircraft #{rebase.Aircraft[0].RuntimeId} "

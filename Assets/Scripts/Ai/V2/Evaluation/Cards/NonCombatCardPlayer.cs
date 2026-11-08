@@ -204,7 +204,7 @@ namespace Game.Ai.V2
                 foreach (var play in BuildAviationPlays(preview, source, snap, player, root, hand, ctx, null))
                     if (play.Score > AiConfigV2.devEvMargin
                         && play.ApCost <= StrategicSpendability.SpendableAp(player, root, ctx)
-                        && StrategicSpendability.FitsSpendableResources(player, root, ctx, play.ResCost))
+                        && StrategicSpendability.FitsSpendableResources(player, root, ctx, play.FundingCost))
                         return true;
             }
             return false;
@@ -251,7 +251,7 @@ namespace Game.Ai.V2
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
             MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null,
-            bool ignoreApForMeasurement = false, bool aviationOnly = false)
+            bool ignoreApForMeasurement = false, bool aviationOnly = false, SpendAuthority authority = default)
         {
             if (player == null || root == null || hand?.Hand == null || ctx == null)
                 yield break;
@@ -281,7 +281,7 @@ namespace Game.Ai.V2
                 if (def.isAviation)
                 {
                     foreach (NonCombatPlay aviation in BuildAviationPlays(card, null, snap,
-                        player, root, hand, ctx, blocked, witnessedUsefulApDemand, ignoreApForMeasurement))
+                        player, root, hand, ctx, blocked, witnessedUsefulApDemand, ignoreApForMeasurement, authority))
                         yield return aviation;
                     continue;
                 }
@@ -291,12 +291,12 @@ namespace Game.Ai.V2
                     // select one. Generated attachments belong to materialization below.
                     foreach (var attachment in BuildEquipmentPlays(card, snap, player, root, hand, ctx,
                         card.EffectivePlayApCost, StrategicCardEvaluator.AddResourceCosts(card.EffectivePlayResourceCost, null),
-                        witnessedUsefulApDemand, ignoreApForMeasurement))
+                        witnessedUsefulApDemand, ignoreApForMeasurement, authority))
                         yield return attachment;
                     continue;
                 }
                 NonCombatPlay p = BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
-                    ownBaseHexes, blocked, witnessedUsefulApDemand, ignoreApForMeasurement);
+                    ownBaseHexes, blocked, witnessedUsefulApDemand, ignoreApForMeasurement, authority);
                 if (p != null)
                     yield return p;
             }
@@ -309,7 +309,7 @@ namespace Game.Ai.V2
             if (!ignoreApForMeasurement && reservation != null && reservation.CanGenerateMore)
             {
                 foreach (GenerationStep g in GenerationSource.Enumerate(player, root, ctx, hand,
-                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards))
+                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards, authority: authority))
                 {
                     CardDefinition gd = g?.CardDef;
                     if (gd == null || g.ProducesEquipment || aviationOnly && !gd.isAviation)
@@ -320,7 +320,7 @@ namespace Game.Ai.V2
                     if (gd.isAviation)
                     {
                         foreach (NonCombatPlay aviation in BuildAviationPlays(stand, g, snap,
-                            player, root, hand, ctx, blocked, witnessedUsefulApDemand))
+                            player, root, hand, ctx, blocked, witnessedUsefulApDemand, authority: authority))
                         {
                             aviation.Explain = $"generate:{gd.displayName} -> " + aviation.Explain;
                             yield return aviation;
@@ -328,7 +328,7 @@ namespace Game.Ai.V2
                         continue;
                     }
                     NonCombatPlay p = BuildPlayFor(stand, g, snap, player, root, hand, ctx,
-                        ownBaseHexes, blocked, witnessedUsefulApDemand);
+                        ownBaseHexes, blocked, witnessedUsefulApDemand, authority: authority);
                     if (p == null)
                         continue;
                     p.Explain = $"generate:{gd.displayName} -> " + p.Explain;
@@ -343,7 +343,7 @@ namespace Game.Ai.V2
         private static NonCombatPlay BuildPlayFor(CardData card, GenerationStep generation,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, List<HexCoord> ownBaseHexes, List<string> blocked,
-            float? witnessedUsefulApDemand = null, bool investmentPreview = false)
+            float? witnessedUsefulApDemand = null, bool investmentPreview = false, SpendAuthority authority = default)
         {
             CardDefinition def = card?.Definition;
             if (def == null)
@@ -362,7 +362,7 @@ namespace Game.Ai.V2
             if (def.isAviation)
             {
                 return BuildAviationPlays(card, generation, snap, player, root, hand, ctx,
-                        blocked, witnessedUsefulApDemand, investmentPreview)
+                        blocked, witnessedUsefulApDemand, investmentPreview, authority)
                     .OrderByDescending(p => p.Score)
                     .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
                     .FirstOrDefault();
@@ -404,8 +404,8 @@ namespace Game.Ai.V2
                     return null;
                 }
                 TradeFundingPlan funding = null;
-                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, totalRes)
-                    && !TradeFunding.TryPlan(player, root, ctx, totalRes, out funding)) return null;
+                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, totalRes, authority)
+                    && !TradeFunding.TryPlan(player, root, ctx, totalRes, out funding, authority)) return null;
                 return new NonCombatPlay
                 {
                     Funding = funding,
@@ -437,7 +437,7 @@ namespace Game.Ai.V2
         private static List<NonCombatPlay> BuildAviationPlays(CardData card,
             GenerationStep generation, WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
-            float? witnessedUsefulApDemand = null, bool investmentPreview = false)
+            float? witnessedUsefulApDemand = null, bool investmentPreview = false, SpendAuthority authority = default)
         {
             var result = new List<NonCombatPlay>();
             CardDefinition def = card?.Definition;
@@ -445,7 +445,7 @@ namespace Game.Ai.V2
                 return result;
             List<HexCoord> airfields = PlacementRules.EnumerateAviationPlacements(
                 snap, player, root, card, out string why,
-                requireCurrentAp: !investmentPreview);
+                requireCurrentAp: !investmentPreview, resourceForecast: true);
             if (airfields.Count == 0)
             {
                 blocked?.Add($"{def.displayName}:aviation({why ?? "noAirfieldSlot"})");
@@ -457,6 +457,8 @@ namespace Game.Ai.V2
                 ? ResearchProductionSystem.AttemptApCost(generation.ChallengeCard) : 0f);
             ResourceCost totalRes = StrategicCardEvaluator.AddResourceCosts(card.EffectivePlayResourceCost,
                 generation?.ChallengeCard?.resourceCost);
+            if (!TradeFunding.CanFund(player, root, ctx, totalRes, authority)) return result;
+            TradeFunding.TryPlan(player, root, ctx, totalRes, out var funding, authority);
             int handOrdinal = hand.Hand.IndexOf(card);
             string sourceKey = generation != null
                 ? "gen:" + generation.CardKey
@@ -473,8 +475,25 @@ namespace Game.Ai.V2
             if (judgeUse)
             {
                 float energyAfterPlay = StrategicSpendability.SpendableAmount(
-                        player, root, ctx, Game.Economy.ResourceType.Energy)
-                    - (totalRes?.energy ?? 0);
+                        player, root, ctx, Game.Economy.ResourceType.Energy, authority) - (totalRes?.energy ?? 0);
+                // Keep the existing income-horizon admission. A trade is an additional way
+                // to fund a launch, not a requirement to stockpile tomorrow's fuel today.
+                TradeFundingPlan launchFunding = funding;
+                if (!AviationSortieReservationEvaluator.CanSustainLaunch(player, ctx.Map,
+                        energyAfterPlay, Mathf.Max(0, def.launchEnergyCost)))
+                {
+                    ResourceCost throughLaunch = StrategicCardEvaluator.AddResourceCosts(totalRes,
+                        new ResourceCost(energy: Mathf.Max(0, def.launchEnergyCost)));
+                    if (TradeFunding.CanFund(player, root, ctx, throughLaunch, authority))
+                        TradeFunding.TryPlan(player, root, ctx, throughLaunch, out launchFunding, authority);
+                }
+                if (launchFunding != null)
+                    for (int i = 0; i < launchFunding.Steps.Count; i++)
+                    {
+                        var step = launchFunding.Steps[i];
+                        if (step.Receive == Game.Economy.ResourceType.Energy) energyAfterPlay++;
+                        if (step.Give == Game.Economy.ResourceType.Energy) energyAfterPlay -= launchFunding.Rate + i;
+                    }
                 if (!AviationSortieReservationEvaluator.CanSustainLaunch(
                         player, ctx.Map, energyAfterPlay, Mathf.Max(0, def.launchEnergyCost)))
                 {
@@ -520,7 +539,7 @@ namespace Game.Ai.V2
                     continue;
                 }
                 float score = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
-                    totalAp, totalRes, generation, witnessedUsefulApDemand,
+                    totalAp, funding?.ExternalCost ?? totalRes, generation, witnessedUsefulApDemand,
                     logDynamicEffect: true, operationalTask: service);
                 int free = AiAirSortiePlanner.FreeLandingCapacity(airfield, player);
                 AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
@@ -529,7 +548,7 @@ namespace Game.Ai.V2
                     + $"decision=CANDIDATE use={use ?? "unjudged"} witness={witness ?? "none"}");
                 result.Add(new NonCombatPlay
                 {
-                    Card = card,
+                    Funding = funding, Card = card,
                     Kind = PlayKind.Aviation,
                     TargetHex = airfield,
                     Generation = generation,
@@ -829,33 +848,32 @@ namespace Game.Ai.V2
 
         private static IEnumerable<NonCombatPlay> BuildEquipmentPlays(CardData card,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            float ap, ResourceCost resources, float? workload, bool ignoreApForMeasurement = false)
+            float ap, ResourceCost resources, float? workload, bool ignoreApForMeasurement = false, SpendAuthority authority = default)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.EquipmentOpportunities(
                 ResearchProductionMode.Production, default, card.Definition, 1f, null,
-                snap, inv, player, root, hand, out _, card, ignoreApForMeasurement: ignoreApForMeasurement))
+                snap, inv, player, root, hand, out _, card, ignoreApForMeasurement: true))
             {
                 // The candidate is the actual card in hand; a reservation on its recipient is
                 // respected through the same bank/physical portfolio, and installation is rechecked.
                 if (op.RecipientCard != null
-                    ? !(ignoreApForMeasurement
-                        ? EquipmentSystem.CanAttachPreview(card.Definition, op.RecipientCard, out _)
-                        : EquipmentSystem.CanAttach(card, op.RecipientCard, root, out _))
-                    : !(ignoreApForMeasurement
-                        ? EquipmentSystem.CanAttachPreview(card.Definition, op.RecipientUnit, out _)
-                        : EquipmentSystem.CanAttach(card, op.RecipientUnit, root, out _))) continue;
+                    ? !EquipmentSystem.CanAttachPreview(card.Definition, op.RecipientCard, out _)
+                    : !EquipmentSystem.CanAttachPreview(card.Definition, op.RecipientUnit, out _)) continue;
+                if ((!ignoreApForMeasurement && ap > StrategicSpendability.SpendableAp(player, root, ctx, authority))
+                    || !TradeFunding.CanFund(player, root, ctx, resources, authority)) continue;
+                TradeFunding.TryPlan(player, root, ctx, resources, out var funding, authority);
                 // The item's own utility, without production context (no Challenge, repeat or supply).
                 float value = EquipmentUpgradeValuation.EquipmentUpgradeValue(op);
                 yield return new NonCombatPlay
                 {
-                    Card = card, Kind = PlayKind.Equipment, EquipHost = op.RecipientUnit,
+                    Funding = funding, Card = card, Kind = PlayKind.Equipment, EquipHost = op.RecipientUnit,
                     EquipHostCard = op.RecipientCard,
                     TargetHex = op.RecipientUnit != null
                         ? OwnWorld.Of(player).ArmyContaining(op.RecipientUnit)?.Hex ?? default : default,
                     ApCost = ap, ResCost = resources,
                     Score = Score(snap, player, root, ctx, PlayKind.Equipment, card, hand, value,
-                        ap, resources, null, workload),
+                        ap, funding?.ExternalCost ?? resources, null, workload),
                     StableKey = "hand:" + GenerationSource.StableCardKey(card)
                         + ":equipment:" + DevelopmentOpportunityEvaluator.RecipientKey(op),
                     Explain = card.Definition.displayName + " -> " + op.RecipientLabel

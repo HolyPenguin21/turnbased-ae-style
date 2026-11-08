@@ -28,7 +28,8 @@ namespace Game.Ai.V2
             float? witnessedUsefulApDemand = null) =>
             StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Facility, card, snap, inv, hand,
                 bestEquipmentUpgrade: 0f, witnessedUsefulApDemand: witnessedUsefulApDemand,
-                actualApCost: stageAp, actualResourceCost: stageCost,
+                actualApCost: stageAp, actualResourceCost: TradeFunding.PricedCost(player, PlayerRootRegistry.FindFor(player),
+                    new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 }, stageCost),
                 spendableResource: spendableResource, player: player).NetScore;
 
         // The stand-alone CapacityUnlock step: opening one Facility slot of a full Base so a confirmed
@@ -44,7 +45,9 @@ namespace Game.Ai.V2
                 return float.NegativeInfinity;
             return AiConfigV2.nonCombatFacilityValue
                 - ActionPrice.ToCardScore(ActionPrice.Ap(tier.apCost))
-                - StrategicCardEvaluator.StrategicResourceCostValue(tier.cost, snap, spendableResource, player);
+                - StrategicCardEvaluator.StrategicResourceCostValue(TradeFunding.PricedCost(player,
+                    PlayerRootRegistry.FindFor(player), new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 },
+                    tier.cost), snap, spendableResource, player);
         }
 
         internal static float HandOperator(CardData card, int ordinal, HexCoord hex,
@@ -60,6 +63,8 @@ namespace Game.Ai.V2
             MaterializationPlan plan = MaterializationPlanFactory.MakeExistingPlan(
                 MaterializationChainKind.Direct, demand, card, ordinal, null, -1,
                 new PlacementOption(hex, DeploymentKind.Garrison, garrison), abilities);
+            TradeFunding.TryPlan(player, PlayerRootRegistry.FindFor(player),
+                new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 }, plan.ResCost, out plan.TradeFunding);
             return StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits, inv,
                 card.Definition.moveMax, hasCompetingHeroDemand: false, snap,
                 witnessedUsefulApDemand: witnessedUsefulApDemand,
@@ -79,6 +84,8 @@ namespace Game.Ai.V2
             MaterializationPlan plan = MaterializationPlanFactory.MakeGeneratedPlan(
                 MaterializationChainKind.GenerateDeploy, demand, source, null, -1, false,
                 new PlacementOption(hex, DeploymentKind.Garrison, garrison), abilities);
+            TradeFunding.TryPlan(player, PlayerRootRegistry.FindFor(player),
+                new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 }, plan.ResCost, out plan.TradeFunding);
             float chain = StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits, inv,
                 source.CardDef.moveMax, hasCompetingHeroDemand: false, snap,
                 witnessedUsefulApDemand: witnessedUsefulApDemand,

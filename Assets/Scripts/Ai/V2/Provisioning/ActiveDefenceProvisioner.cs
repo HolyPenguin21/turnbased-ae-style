@@ -184,7 +184,7 @@ namespace Game.Ai.V2
                 ActiveDefenceTarget = target,
                 AircraftRuntimeIds = storedAircraft,
                 ClaimedAp = ap, ClaimedEnergy = energy,
-                ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
+                ClaimedPhysical = TradeFunding.PricedVector(player, root, ctx, new ResourceVector(0f, 0f, energy, 0f, 0f)),
             });
         }
 

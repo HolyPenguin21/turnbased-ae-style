@@ -608,7 +608,8 @@ PlayerEconomyState owns its save representation. No new static registry is intro
 
 TradeFunding.TryPlan is read-only. It protects ordinary spendability, remaining main cards and
 operational forecasts, and computes the complete progressive quote. The selected action keeps
-its original SpendAuthority; donor conversion always respects the ordinary bank. Materialization
+its original SpendAuthority; donors may include that owner's held resources, but conversion never
+inherits permission to consume another operation's deferred hold. Materialization
 plans retain original payment cost separately from FundingCost (external debit). The scorer and
 portfolio consume external debit once. JointFeasibility admits at most one trade-dependent chain;
 after execution the next round recomputes against real balances and the new rate.
@@ -617,4 +618,17 @@ Trade access is a snapshot-priced PlayerGlobal effect, not recurring resource in
 funding execution calls the common TradeActions before returning to the selected action's normal
 payment/executor path. Proactive conversions are ordinary Phase-B candidates under the same bounds.
 A successful conversion emits Resources and one WorldDelta receipt; failed quotes do not publish
-progress. Orchestration never selects donors, and Housekeeping never trades.
+progress. Orchestration never selects donors; Housekeeping does not select proactive exchanges.
+
+Mission requirements retain the action's logical resources (including Energy for flight), while
+ResourceAllocator and provisioning claims reserve the external donor debit through TradeFunding.
+The allocator admits at most one conversion-dependent mission per portfolio and recomputes after
+execution at the new rate. Reaction follow-up envelopes likewise reserve full chain AP and external
+debit under their existing owner. Fractional forecasts are preserved when no conversion is needed.
+
+Aviation placement, equipment, base/garrison and Development preflights may ignore current resource
+shortage only when the same selected action can be fully funded. Structural, ownership and AP checks
+remain active. Air execution funds missing launch Energy centrally in MoveArmyRoutine after route
+and live activation checks, before ordinary movement payment; an already payable mandatory return
+retains its existing safety behavior. Conversion-only outcomes invalidate resources even if the
+subsequent action refuses. No parallel payment path or new AI mission is introduced.

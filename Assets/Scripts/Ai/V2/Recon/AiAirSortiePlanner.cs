@@ -717,7 +717,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, destination))
+            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, destination, ctx))
                 return null;
             HexCoord? nextStep = AiTurnController.FindAffordableStep(ctx.Map, task.Army, destination);
             if (nextStep == null)
@@ -755,14 +755,15 @@ namespace Game.Ai.V2
         // computation over the specific UnitData subset a candidate wants to launch. Energy is read
         // from the raw stockpile, the same physical gate as AiTurnController.CanIssueMoveNow (see
         // its comment); owner-reserved Energy is protected at the Provisioning gate.
-        public static bool CanAffordLaunch(PlayerRoot root, IReadOnlyList<UnitData> aircraft)
+        public static bool CanAffordLaunch(PlayerRoot root, IReadOnlyList<UnitData> aircraft, AiTurnContext ctx = null)
         {
             if (root == null || aircraft == null || aircraft.Count == 0)
                 return false;
             int apCost = aircraft.Sum(u => u.ActivationApCost);
             int energyCost = aircraft.Sum(u => u.LaunchEnergyCost);
             return root.CanSpendActionPoints(apCost)
-                && root.GetResource(ResourceType.Energy) >= energyCost;
+                && (ctx == null ? root.GetResource(ResourceType.Energy) >= energyCost
+                    : TradeFunding.CanFund(root.Setup, root, ctx, new ResourceCost(energy: energyCost)));
         }
 
         // Shared execution for LaunchAirStrike/LaunchAirRecon (see AiTurnController.
