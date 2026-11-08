@@ -112,6 +112,8 @@ namespace Game.Ai.V2
         public int? EconomyMaterializationSourceArmyId;
         // A direct Economy actor's roster and/or donor intent was prepared.
         public bool EconomyPrepared;
+        // A committed exchange may survive a later preparation refusal.
+        public bool ResourceConverted;
         public bool NeedsReplan;
         // Stops this step for a reason that asks the next pass to plan again.
         internal void StopForReplan(ExecutionStopReason reason)
@@ -142,7 +144,7 @@ namespace Game.Ai.V2
                 bool succeeded = ReachedGoal || moved || InfrastructureChanged || CombatChanged
                     || ActorMaterialized || EconomyPrepared;
                 bool changed = moved || EnteredStealth || StealthChanged
-                    || InfrastructureChanged || CombatChanged || ActorMaterialized || EconomyPrepared;
+                    || InfrastructureChanged || CombatChanged || ActorMaterialized || EconomyPrepared || ResourceConverted;
                 // ReachedGoal alone remains a stale no-op; capture/ownership mutation is explicit.
                 return new V2ActionOutcome(
                     succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
@@ -685,7 +687,11 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
             }
-            if (!TradeFunding.Fund(player, root, ctx, prep.StageCost, new SpendAuthority(prep.OwnerKey, true)))
+            int rateBeforeFunding = root.TradeRate;
+            bool funded = TradeFunding.Fund(player, root, ctx, prep.StageCost, new SpendAuthority(prep.OwnerKey, true));
+            if (root.TradeRate != rateBeforeFunding)
+            { result.ResourceConverted = true; result.StateVersionAfter = WorldDeltaLifecycle.Current; }
+            if (!funded)
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: resources "
                     + "no longer spendable - hero stays a real field mover, found again next admission pass");
@@ -1001,7 +1007,7 @@ namespace Game.Ai.V2
             result.StateVersionAfter = WorldDeltaLifecycle.StampAction(
                 result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
                     || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
-                    || result.EconomyPrepared,
+                    || result.EconomyPrepared || result.ResourceConverted,
                 childAlreadyCommitted: result.StateVersionAfter >= 0);
         }
 

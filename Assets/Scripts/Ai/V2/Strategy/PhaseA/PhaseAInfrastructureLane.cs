@@ -143,7 +143,7 @@ namespace Game.Ai.V2
                 AiV2Trace.CheckCapacityUnlock(demand.TraceId, infraBefore, infraAfter);
             else if (!infra.GenerationAttempted)
                 AiV2Trace.CheckInfrastructureRollback(demand.TraceId, infra.Built,
-                    infra.StateChanged, infraBefore, infraAfter);
+                    infra.StateChanged, infraBefore, infraAfter, resourceConverted: infra.ResourceConverted);
             // A compensated failure can still publish newer knowledge/version stamps.
             // Refresh reads without inventing a resource debit or a completed project.
             if (!infra.Built && !infra.GenerationAttempted && infra.StateVersionAfter >= 0)
@@ -166,7 +166,7 @@ namespace Game.Ai.V2
             }
             // A partial state-changing action (a paid Base capacity upgrade whose Facility
             // placement then failed) is debited like a Challenge: its AP is really spent.
-            if (!(infra.Built || infra.CapacityUnlocked || infra.GenerationAttempted
+            if (!(infra.Built || infra.CapacityUnlocked || infra.GenerationAttempted || infra.ResourceConverted
                 || (infra.StateChanged && infra.ApSpent > 0f)))
             {
                 AiDebugLog.WriteDedupedWithId(demand.TraceId,

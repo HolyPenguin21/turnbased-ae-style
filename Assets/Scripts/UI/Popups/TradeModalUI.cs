@@ -50,6 +50,7 @@ namespace Game.UI
         }
         public void Show()
         {
+            if (IsShowing) return;
             generation = GameSession.Generation;
             Bind(PlayerRootRegistry.FindFor(GameSession.FindHumanPlayer()));
             if (!CanTrade || turnController.InputBlocked) { Bind(null); return; }

@@ -37,3 +37,26 @@ See trade-deck-changes.md for all 27 starter/AI deck changes and resource totals
 - New AiTradeFundingTests cover actual shared payment after funding at zero AP, pure quotes, insufficient full funding, hand protection, reservation protection, lifecycle/restore and capability access. They compile but require native Unity objects and are not claimed as executed here.
 
 Not run: Unity 6000.5.4f1 import, full EditMode, visual interaction in the scene, or long AI games. The scene's native layout and the full funding-to-mission continuation chain still need that acceptance. Existing ai-verify scripts can be used in the normal Unity environment; local SDK CLI cannot read process metadata here, so this run invoked Roslyn directly rather than treating an aborted build/empty error list as a successful check.
+
+## Bottom-up review (2026-11-08)
+
+Scope: behavior corrections within the existing capability/payment, executor, result and invalidation owners; no new AI axis or architecture.
+
+| Failure found | Correction and owner |
+| --- | --- |
+| Chronological largest-donor selection rejected feasible funding (3+2 donors for rates 2+3; 4+5 for 2+3+4). | TradeFunding assigns descending prices with bounded backtracking (8192 nodes, existing 128-unit limit), then returns chronological steps. Donor protection and pure preview remain unchanged. |
+| A trade could disappear from an action result when a later step refused, or be counted twice as a world mutation. | MaterializationExecutor, NonCombatPlayExecutor, InfrastructureFulfillment, BuildingPlayExecutor, TaskExecutor and DevelopmentUpgradeFulfillment preserve committed conversions and distinguish them from the requested action's own mutation. Pure refusals remain no-ops. Phase A refreshes after funding-only changes; Phase B does not stamp those twice. |
+| CapacityUnlock admitted exchange affordability but called the upgrade without funding it. | InfrastructureBuildExecutor validates owner, expected level, AP and tier through CanUpgradeBase, funds the tier, then calls the normal upgrade transaction. |
+| Maintenance could buy resources before detecting insufficient AP or a stale tier; a non-combat card/source could disappear before funding. | StrategicMaintenancePolicy validates the live action first; NonCombatPlayExecutor checks held-card identity. ResearchProductionSystem exposes a quote that ignores only insufficient resources while retaining canonical source, output, blueprint, quota, cost and AP checks. Generation consumers use that quote before funding. |
+| A conversion looked like an infrastructure rollback leak. | PhaseAInfrastructureLane reports it explicitly. AiV2Trace allows resource-vector changes for a known conversion while still checking AP, building/slot counts, levels, defenses and army movement. |
+| Match completion left a survivor's backend trade window open. | GameTurnController closes every trade turn and the popup on match completion; PlayerRoot.CloseTradeTurn grants no idle-turn discount. TradeModalUI also tolerates repeated Show calls while visible. |
+
+Review verification:
+
+- Both Unity YAML validators repeated on Game.unity and the three changed catalogs: zero errors.
+- Differential managed compilation: pre-review source and corrected runtime plus AI/Economy/Card test sources compile with zero errors using temporary old-reference adapters outside the repository. This does not establish Unity import/build success.
+- Focused NUnitLite run: pre-review 43 passed / 1 native-engine error; corrected 47 passed / the same native-engine error. The eight passing trade/allocation cases include the exhaustive 2916-case donor-allocation oracle; the existing 39 passing AI checks remain passing.
+- AiTradeFundingTests now also cover AP-blocked maintenance, a missing held equipment card and terminal close without rate decay. All 11 cases compile; their native Unity execution remains outstanding.
+- The exact native-engine error in both runs is AiEconomyAdmissionFingerprintTests.TheDispatcherRoutesEachAxisToItsOwnerAndSharesNoKey (UnityEngine.Object initialization in the reference harness).
+
+Remaining acceptance in Unity: full EditMode suite, popup layout/input and new-game/load transitions, loss/capture of the Trade carrier, and long games with AI traces showing funding followed by the originally selected action. No native or long-game run is claimed by this review.

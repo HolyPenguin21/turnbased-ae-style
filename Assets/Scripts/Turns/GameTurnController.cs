@@ -422,6 +422,8 @@ namespace Game.Turns
                 return;
 
             _gameOver = true;Phase=StrategicTurnPhase.Finished;
+            foreach (var participant in GameSession.Players) PlayerRootRegistry.FindFor(participant)?.CloseTradeTurn();
+            if (tradeModal != null) tradeModal.Hide();
             // Result/reward subscribers can return to another scene synchronously. Finish
             // metrics before publishing the result so exit cleanup cannot label it stopped.
             Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);

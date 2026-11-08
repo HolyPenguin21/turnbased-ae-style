@@ -15,6 +15,11 @@ namespace Game.Map
             TradeRate = nextRate; TradedThisTurn = true;
             VisionSystem.PublishAfterMutation(TradeChanged);
         }
+        internal void CloseTradeTurn()
+        {
+            TradeTurnOpen = false; TradedThisTurn = false;
+            VisionSystem.PublishAfterMutation(TradeChanged);
+        }
         internal void EndTradeTurn()
         {
             if (!TradeTurnOpen) return;

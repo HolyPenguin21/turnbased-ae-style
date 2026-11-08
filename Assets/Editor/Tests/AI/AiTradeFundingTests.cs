@@ -83,6 +83,33 @@ namespace Game.EditorTests
             });
             Assert.That(TradeFunding.TryPlan(player, root, context, new ResourceCost(tech: 1), out _), Is.False);
         }
+        [Test] public void UpgradeWithoutApDoesNotBuyResourcesFirst()
+        {
+            root.AddResource(ResourceType.Materials, 2);
+            var tier = new BaseUpgradeTier { apCost = 1, cost = new ResourceCost(tech: 1) };
+            var candidate = new StrategicSpendCandidate(BuildingRegistry.FindAt(new HexCoord(0, 0)), tier)
+                { ApCost = 1, ResCost = tier.cost };
+            Assert.That(candidate.Execute(player, root, context, out bool changed, out _), Is.False);
+            Assert.That(changed, Is.False); Assert.That(root.TradeRate, Is.EqualTo(2));
+            Assert.That(root.GetResource(ResourceType.Materials), Is.EqualTo(2));
+        }
+        [Test] public void MissingEquipmentCardDoesNotTriggerConversion()
+        {
+            root.AddResource(ResourceType.Materials, 2);
+            var hand = new AiHandData(null, Faction.None, 0);
+            AiHandRegistry.RegisterRestored(player, hand);
+            var play = new NonCombatCardPlayer.NonCombatPlay
+            {
+                Kind = NonCombatCardPlayer.PlayKind.Equipment,
+                Card = new CardData(new CardDefinition { cardType = CardType.Equipment,
+                    resourceCost = new ResourceCost(tech: 1) }),
+                ResCost = new ResourceCost(tech: 1),
+            };
+            var result = NonCombatPlayExecutor.Execute(play, null, player, root, hand, context);
+            Assert.That(result.Played, Is.False); Assert.That(result.StateChanged, Is.False);
+            Assert.That(root.TradeRate, Is.EqualTo(2));
+            Assert.That(root.GetResource(ResourceType.Materials), Is.EqualTo(2));
+        }
         [Test] public void RateSettlesOnlyOnceAtOwnTurnEndAndRestoresExactly()
         {
             root.AddResource(ResourceType.Materials, 5);
@@ -94,6 +121,15 @@ namespace Game.EditorTests
             var state = root.CaptureEconomyState(); root.BeginTradeTurn(); root.EndTradeTurn();
             root.RestoreEconomyState(state); Assert.That(root.TradeRate, Is.EqualTo(3));
             Assert.That(root.TradeTurnOpen, Is.False);
+        }
+        [Test] public void TerminalCloseRevokesAccessWithoutIdleDiscount()
+        {
+            root.AddResource(ResourceType.Materials, 2);
+            var step = new TradeStep(ResourceType.Materials, ResourceType.Tech);
+            Assert.That(TradeActions.TryExchange(player, 2, new[] { step }, GameSession.Generation, out _), Is.True);
+            root.EndTradeTurn(); root.BeginTradeTurn(); root.CloseTradeTurn();
+            Assert.That(root.TradeRate, Is.EqualTo(3)); Assert.That(root.TradeTurnOpen, Is.False);
+            Assert.That(TradeActions.TryExchange(player, 3, new[] { step }, GameSession.Generation, out _), Is.False);
         }
         [Test] public void LostAccessAndClosedTurnDoNotSpend()
         {

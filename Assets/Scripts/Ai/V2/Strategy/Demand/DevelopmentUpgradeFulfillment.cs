@@ -94,7 +94,8 @@ namespace Game.Ai.V2
                 MaterializationExecutor.TryGenerate(generation, player, root, hand, ctx,
                     demand?.SpendAuthority ?? default);
             if (!generated.Attempted)
-                return DevUpgradeResult.Skip(generated.FailReason ?? "generation_preflight_failed");
+                return new DevUpgradeResult { StateChanged = generated.StateChanged,
+                    Detail = generated.FailReason ?? "generation_preflight_failed" };
             if (!generated.Success)
             {
                 if (generated.StateChanged) WorldDeltaLifecycle.CommitMutation();

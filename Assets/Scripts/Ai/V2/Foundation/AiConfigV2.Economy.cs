@@ -5,6 +5,7 @@ namespace Game.Ai.V2
     {
         public const float tradeAccessValue = 8f;
         public const int tradeMaxPreviewUnits = 128;
+        public const int tradeMaxDonorSearchNodes = 8192;
         // The spending horizon and measured shortage of the actual hand/deck determine demand.
         public const float economyDeckNeedHorizonTurns = 8f;
         public const float economyHandPaydownHorizonTurns = 2f;

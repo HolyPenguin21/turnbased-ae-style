@@ -231,12 +231,12 @@ namespace Game.Cards
 
         public static bool TryQuoteAttempt(PlayerSetupData player, PlayerRoot root, UnitData hero,
             HexCoord hex, ResearchProductionMode mode, CardDefinition card, ResearchProductionCatalog catalog,
-            out PaymentQuote quote, out string reason)
-            => PrepareAttempt(player, root, hero, hex, mode, card, catalog, out quote, out _, out _, out reason);
+            out PaymentQuote quote, out string reason, bool resourceForecast = false)
+            => PrepareAttempt(player, root, hero, hex, mode, card, catalog, out quote, out _, out _, out reason, resourceForecast);
 
         private static bool PrepareAttempt(PlayerSetupData player, PlayerRoot root, UnitData hero,
             HexCoord hex, ResearchProductionMode mode, CardDefinition card, ResearchProductionCatalog catalog,
-            out PaymentQuote quote, out BlueprintQuota quota, out CardDefinition output, out string reason)
+            out PaymentQuote quote, out BlueprintQuota quota, out CardDefinition output, out string reason, bool resourceForecast = false)
         {
             reason = null; quota = null; output = null;
             quote = new PaymentQuote(AttemptApCost(card), card?.resourceCost);
@@ -272,7 +272,8 @@ namespace Game.Cards
             output = catalog.ResolveResult(card);
             if (output == null)
             { reason = "This card cannot be produced."; return false; }
-            if (!quote.CanDebit(root, out _))
+            if (!quote.CanDebit(root, out PaymentFailure failure)
+                && (!resourceForecast || failure != PaymentFailure.Resources))
             {
                 reason = !root.CanSpendActionPoints(AttemptApCost(card))
                     ? $"Need {AttemptApCost(card)} AP to start this challenge." : "Not enough resources for this challenge.";

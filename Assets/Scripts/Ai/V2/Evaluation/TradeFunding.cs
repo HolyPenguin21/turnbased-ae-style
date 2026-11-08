@@ -56,24 +56,53 @@ namespace Game.Ai.V2
                 external[i] = cost.Get(type);
             }
             if (units == 0 || units > AiConfigV2.tradeMaxPreviewUnits || (long)root.TradeRate + units > int.MaxValue) return false;
-            var steps = new List<TradeStep>(); int rate = root.TradeRate;
-            // Never sell a resource being bought in the same quote (no trade cycles).
+            // Reserve large rates first. Largest-donor-first in chronological order can
+            // falsely reject a feasible quote (donors 3+2, rates 2+3).
+            var available = (int[])donors.Clone();
+            for (int i = 0; i < 4; i++) if (missing[i] > 0) available[i] = 0;
+            if (!TryAllocateDonors(available, root.TradeRate, (int)units, out var assignment)) return false;
+            var steps = new List<TradeStep>(); int stepIndex = 0;
             for (int target = 0; target < 4; target++)
                 for (int n = 0; n < missing[target]; n++)
                 {
-                    int donor = -1;
-                    for (int i = 0; i < 4; i++)
-                        if (i != target && missing[i] == 0 && donors[i] >= rate
-                            && (donor < 0 || donors[i] > donors[donor])) donor = i;
-                    if (donor < 0) return false;
-                    donors[donor] -= rate;
+                    int donor = assignment[stepIndex]; int rate = root.TradeRate + stepIndex++;
                     if ((long)external[donor] + rate > int.MaxValue) return false;
-                    external[donor] += rate++; external[target]--;
+                    external[donor] += rate; external[target]--;
                     steps.Add(new TradeStep((ResourceType)donor, (ResourceType)target));
                 }
             plan = new TradeFundingPlan(root.TradeRate, steps,
                 new ResourceCost(external[0], external[1], external[2], external[3]));
             return true;
+        }
+
+        // Pure bounded bin allocation; the caller's capacities are never mutated.
+        internal static bool TryAllocateDonors(int[] capacities, int rate, int count, out int[] allocation)
+        {
+            allocation = null;
+            if (capacities == null || capacities.Length != 4 || rate < 2 || count < 1
+                || count > AiConfigV2.tradeMaxPreviewUnits || (long)rate + count > int.MaxValue) return false;
+            var remaining = (int[])capacities.Clone();
+            if (remaining.Any(x => x < 0)) return false;
+            var chosen = new int[count]; int nodes = 0;
+            bool Place(int index)
+            {
+                if (index < 0) return true;
+                if (++nodes > AiConfigV2.tradeMaxDonorSearchNodes) return false;
+                int price = rate + index;
+                long total = remaining.Sum(x => (long)x);
+                if (total < (long)(index + 1) * rate + (long)index * (index + 1) / 2) return false;
+                var seen = new HashSet<int>();
+                foreach (int donor in Enumerable.Range(0, 4).OrderBy(i => remaining[i]))
+                {
+                    if (remaining[donor] < price || !seen.Add(remaining[donor])) continue;
+                    remaining[donor] -= price; chosen[index] = donor;
+                    if (Place(index - 1)) return true;
+                    remaining[donor] += price;
+                }
+                return false;
+            }
+            if (!Place(count - 1)) return false;
+            allocation = chosen; return true;
         }
 
         internal static ResourceCost PricedCost(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,

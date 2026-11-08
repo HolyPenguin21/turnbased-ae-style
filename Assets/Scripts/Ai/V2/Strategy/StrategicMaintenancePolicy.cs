@@ -56,6 +56,13 @@ namespace Game.Ai.V2
         {
             // A selected repair may outlive the reservation frame that admitted it. Recheck
             // the same Phase-B pool immediately before the shared gameplay transaction.
+            stateChanged = progressed = false;
+            if (root == null || ctx == null || root.Setup != player
+                || StrategicSpendability.SpendableAp(player, root, ctx) < ApCost) return false;
+            if (_repairUnit == null && (_upgradeBuilding == null || _upgradeBuilding.Owner != player
+                || !InfrastructureActions.CanUpgradeBase(_upgradeBuilding, ctx.GameConfig?.baseUpgradeTiers,
+                    null, out var tier, out _, requireCurrentResources: false)
+                || !ReferenceEquals(tier, _upgradeTier))) return false;
             if (_repairUnit != null && (root == null || ctx == null || player != root.Setup
                 || StrategicSpendability.SpendableAp(player, root, ctx) < ApCost
                 || !TradeFunding.CanFund(player, root, ctx, ResCost)))
@@ -67,14 +74,15 @@ namespace Game.Ai.V2
             { stateChanged = progressed = false; return false; }
             if (Revalidate != null && !Revalidate())
             { stateChanged = progressed = false; return false; }
+            int rateBeforeFunding = root.TradeRate;
             if (!TradeFunding.Fund(player, root, ctx, ResCost))
-            { stateChanged = progressed = false; return false; }
+            { stateChanged = root.TradeRate != rateBeforeFunding; return false; }
             bool ok = _repairUnit != null
                 ? InfrastructureBuildExecutor.RepairUnit(_repairUnit, _repairHex, root)
                 : (Revalidate == null || Revalidate())
                     && InfrastructureBuildExecutor.UpgradeBaseCapacity(
                         player, root, ctx, _upgradeBuilding, _upgradeTier);
-            stateChanged = ok;
+            stateChanged = ok || root.TradeRate != rateBeforeFunding;
             progressed = ok;
             return ok;
         }

@@ -243,15 +243,21 @@ namespace Game.Ai.V2
             if (!hand.Hand.Contains(card))
                 return BuildingPlayResult.Fail("card not in hand");
 
-            if (!CanPlaceFacilityAt(player, hand, ctx, card, baseHex, out string fundingReason, resourceForecast: true)
-                || !TradeFunding.Fund(player, root, ctx, card.EffectivePlayResourceCost))
-                return BuildingPlayResult.Fail(fundingReason ?? "facility funding unavailable");
+            if (!CanPlaceFacilityAt(player, hand, ctx, card, baseHex, out string fundingReason, resourceForecast: true))
+                return BuildingPlayResult.Fail(fundingReason);
+            int rateBeforeFunding = root.TradeRate;
+            if (!TradeFunding.Fund(player, root, ctx, card.EffectivePlayResourceCost))
+                return new BuildingPlayResult { FailReason = "facility funding unavailable",
+                    StateChanged = root.TradeRate != rateBeforeFunding,
+                    StateVersionAfter = root.TradeRate != rateBeforeFunding ? WorldDeltaLifecycle.Current : -1 };
 
             InfrastructureBuildOutcome outcome = InfrastructureActions.TryPlaceFacility(
                 card.Definition, baseHex, player,
                 card.EffectivePlayApCost, card.EffectivePlayResourceCost);
             if (!outcome.Ok)
-                return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason };
+                return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason,
+                    StateChanged = root.TradeRate != rateBeforeFunding,
+                    StateVersionAfter = root.TradeRate != rateBeforeFunding ? WorldDeltaLifecycle.Current : -1 };
 
             hand.RemoveCard(card);
             return new BuildingPlayResult

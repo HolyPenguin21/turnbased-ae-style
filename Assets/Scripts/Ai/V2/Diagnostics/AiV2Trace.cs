@@ -110,9 +110,10 @@ namespace Game.Ai.V2
             BaseDefenseSum = baseDefenseSum;
         }
 
-        public bool SameAs(V2InfraWorldStamp o) =>
+        public bool SameAs(V2InfraWorldStamp o, bool ignoreResourceExchange = false) =>
             OwnedBuildings == o.OwnedBuildings && FilledFacilitySlots == o.FilledFacilitySlots
-            && ArmyMovementSum == o.ArmyMovementSum && Resources.SameAs(o.Resources)
+            && ArmyMovementSum == o.ArmyMovementSum
+            && (ignoreResourceExchange ? Resources.Ap == o.Resources.Ap : Resources.SameAs(o.Resources))
             && BaseLevelSum == o.BaseLevelSum && UnlockedFacilitySlots == o.UnlockedFacilitySlots
             && BaseDefenseSum == o.BaseDefenseSum;
 
@@ -328,12 +329,13 @@ namespace Game.Ai.V2
         //  trigger, never trusted as proof of a clean rollback on its own.
         public static void CheckInfrastructureRollback(string demandTraceId, bool built, bool stateChanged,
             V2InfraWorldStamp before, V2InfraWorldStamp after,
-            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)
+            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0,
+            bool resourceConverted = false)
         {
             if (built) return;                              // success path is not this invariant
             if (!before.Valid || !after.Valid) return;
             string detail = $"{before.Diff(after)} stateChanged={(stateChanged ? 1 : 0)}";
-            if (!before.SameAs(after) || stateChanged)
+            if (!before.SameAs(after, ignoreResourceExchange: resourceConverted) || (stateChanged && !resourceConverted))
                 Check("ERROR", demandTraceId, "InfrastructureRollbackLeak", detail, cf, cm, cl);
             else
                 Check("OK", demandTraceId, "InfrastructureRollbackClean", detail, cf, cm, cl);
