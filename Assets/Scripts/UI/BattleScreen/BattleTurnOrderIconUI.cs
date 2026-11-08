@@ -13,7 +13,7 @@ namespace Game.UI
     public class BattleTurnOrderIconUI : MonoBehaviour
     {
         private const float InactiveBorderAlpha = 50f;
-        private const float InactiveTitleAlpha = 150f;
+        private const float InactiveContentAlpha = 150f;
 
         [SerializeField] private Image factionLogo;
         [SerializeField] private Image artImage;
@@ -26,21 +26,23 @@ namespace Game.UI
             if (factionLogo != null)
             {
                 factionLogo.sprite = ownerFactionLogo;
+                factionLogo.color = WithAlpha(factionLogo.color, isCurrent ? 255f : InactiveContentAlpha);
                 factionLogo.gameObject.SetActive(ownerFactionLogo != null);
             }
             if (artImage != null)
             {
                 Sprite unitDetailArt = unit != null ? unit.DetailArt : null;
                 artImage.sprite = unitDetailArt;
+                artImage.color = WithAlpha(artImage.color, isCurrent ? 255f : InactiveContentAlpha);
                 artImage.gameObject.SetActive(unitDetailArt != null);
             }
             if (titleText != null)
             {
                 titleText.text = unit != null ? unit.Name : string.Empty;
-                titleText.color = WithAlpha(titleText.color, isCurrent ? 255f : InactiveTitleAlpha);
+                titleText.color = WithAlpha(titleText.color, isCurrent ? 255f : InactiveContentAlpha);
             }
             if (titleBackground != null)
-                titleBackground.color = WithAlpha(titleBackground.color, isCurrent ? 255f : InactiveTitleAlpha);
+                titleBackground.color = WithAlpha(titleBackground.color, isCurrent ? 255f : InactiveContentAlpha);
             if (highlightBorder != null)
             {
                 // Always shown in the owner's color; dimmed while it isn't this unit's turn.
