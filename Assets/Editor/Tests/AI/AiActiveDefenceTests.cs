@@ -2311,6 +2311,47 @@ namespace Game.EditorTests
             finally { AiMapMemory.Clear(); UnityEngine.Object.DestroyImmediate(go); }
         }
 
+        // 2026-11-08 (owner): a won Raid leaves its army on the raid hex until its next turn; a
+        // known hostile army reaching it within ONE turn and beating it vetoes the host
+        // (RaidPostFightPolicy). The immediate intercept keeps its two-turn horizon.
+        [Test]
+        public void Raid_PostFightExposure_UsesAOneTurnHorizon()
+        {
+            var go = new UnityEngine.GameObject("raid-exposure");
+            Game.Map.HexMap map = go.AddComponent<Game.Map.HexMap>();
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true, actor);
+            snap.Map = map;
+            var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+            for (int q = -5; q <= 0; q++) terrain[new HexCoord(q, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 };
+            map.SetData(6, 1f, terrain);
+            try
+            {
+                var strong = new WorthIt.DefenderProfile(6f, false, null, 12f, 30f, 3);
+                var avenger = new EnemyContactSnapshot
+                {
+                    Army = new ArmySnapshot { ArmyId = 88, Owner = snap.Threat.Contacts[0].Army.Owner,
+                        EffectiveArmyPower = 48f, Members = new[] { strong, strong }, MemberCount = 2,
+                        MaxMovement = 2 },
+                    Knowledge = ContactKnowledge.Exact, Position = new HexCoord(-4, 0),
+                    LastObservedTurn = 8, Confidence = 1f,
+                };
+                snap.Threat.Contacts = new[] { avenger };
+                var plan = new GroundCombatAssemblyPlan { Feasible = true, BaseArmyId = 7 };
+
+                Assert.That(RaidPostFightPolicy.Accepts(snap, new HexCoord(-2, 0), plan), Is.False,
+                    "two hexes at two movement points: there before our next move");
+                avenger.Army.MaxMovement = 1;
+                Assert.That(RaidPostFightPolicy.Accepts(snap, new HexCoord(-2, 0), plan), Is.True,
+                    "two turns away: outside the Raid's one-turn horizon");
+                Assert.That(ActiveDefenceObjectiveEvaluator.LeavesForceExposed(snap, actor.Members, default,
+                    new HexCoord(-2, 0), -1, out _, out _), Is.True,
+                    "the immediate intercept keeps its two-turn horizon");
+            }
+            finally { AiMapMemory.Clear(); UnityEngine.Object.DestroyImmediate(go); }
+        }
+
         [Test]
         public void Immediate_RealTerrainAndBlockedRoute_AreHonoured()
         {

@@ -490,6 +490,7 @@ namespace Game.Ai.V2
                     ExcludedArmyIds = excluded,
                     WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(operationStarted),
                     DefenderHexDefenseBonus = hexBonus,
+                    AcceptPlan = RaidPostFightPolicy.AcceptFor(snap, target),
                 })
                 : GroundCombatAssemblyPlanner.Plan(snap, target, opposition, excluded, hexBonus);
 

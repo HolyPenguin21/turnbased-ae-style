@@ -43,7 +43,8 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.ForRaid(snap, target.Target);
             float hexBonus = KnownOpposition.RaidDefenceBonus(snap, target.Target);
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
-                GroundCombatAdmissionPolicy.FreshStartWinChanceGate, hexBonus);
+                GroundCombatAdmissionPolicy.FreshStartWinChanceGate, hexBonus,
+                acceptPlan: RaidPostFightPolicy.AcceptFor(snap, target));
             ApplyDurableIncumbentPin(proposal, snap, opposition, hexBonus, ids,
                 GroundCombatAdmissionPolicy.ContinuationWinChanceFloor,
                 "RaidAdmission", target.Target.DiagnosticLabel);

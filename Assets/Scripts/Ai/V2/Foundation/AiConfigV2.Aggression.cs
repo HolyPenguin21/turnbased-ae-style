@@ -97,6 +97,10 @@ namespace Game.Ai.V2
         // Structural requirement projection: a raid roster must clear this Monte-Carlo win chance
         // (parity with opportunityMinViableWinChance).
         public const float raidMinViableWinChance = 0.80f;
+        // 2026-11-08 (owner) — a won Raid leaves its army on the raid hex until its next turn: a
+        // known hostile army reaching that hex within this many turns and beating the formation
+        // vetoes the host (RaidPostFightPolicy). 1 = before our next move.
+        public const int raidPostFightExposureMaxEnemyEta = 1;
         // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
         // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).
         public const float attackGatherMinWinGain = 0.05f;
