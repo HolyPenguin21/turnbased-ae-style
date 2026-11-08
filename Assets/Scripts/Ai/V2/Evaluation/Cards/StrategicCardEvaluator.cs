@@ -661,7 +661,9 @@ namespace Game.Ai.V2
                     // PlayerGlobal sources get their dynamic registry effect value below.
                     // Research/Production sites earn no income, so economic insecurity adds
                     // nothing to them: their intrinsic value is the infrastructure value alone.
-                    bd.RoleFit = role == IntendedRole.ResourceGain ? 0f
+                    bd.RoleFit = def?.grantedAbilities?.Contains(UnitAbilities.Trade) == true
+                        ? 0f
+                        : role == IntendedRole.ResourceGain ? 0f
                         : AiConfigV2.nonCombatFacilityValue
                           + (role == IntendedRole.Development ? 0f
                               : (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus);
@@ -751,7 +753,7 @@ namespace Game.Ai.V2
             float apScale = 1f)
         {
             if (plan == null) return 0f;
-            return ResourceCost(plan.ApCost + plan.DeferredAttachmentAp, plan.ResCost,
+            return ResourceCost(plan.ApCost + plan.DeferredAttachmentAp, plan.FundingCost,
                        plan.Generation, snap, spendableResource, player, apScale)
                    + ChainStepPenalty(plan.Kind);
         }
@@ -1351,4 +1353,5 @@ namespace Game.Ai.V2
             : ResourceBundle.All.Sum(t => Mathf.Max(0, cost.Get(t)));
     }
 }
+
 

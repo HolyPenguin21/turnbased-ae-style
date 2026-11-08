@@ -36,6 +36,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal sealed class InfraFulfillResult : IV2ActionResult
     {
+        public bool ResourceConverted;
         public bool Built;
         // A paid stand-alone Base-level step (Development CapacityUnlock): a real, successful action that
         // is NOT a facility, a played card or a new building. It never satisfies a "facility is ready" demand.
@@ -190,14 +191,14 @@ namespace Game.Ai.V2
             // SpendAuthorityFor: an Economy build here (or a global source put into play) completes
             // NOW and outranks other builds' deferred holds; DEV infrastructure has no Economy
             // authority and keeps respecting them like any other card spend.
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost, authority))
+            if (!TradeFunding.CanFund(player, root, ctx, cand.ResCost, authority))
                 return $"{demand.Capability}: reserved resources cannot cover {cand.Explain}";
             // Live gameplay affordability (the executor re-checks; this keeps the demand open
             // cleanly rather than letting a doomed transaction run).
             float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx, authority);
             if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
                 || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
-                || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
+                || !TradeFunding.CanFund(player, root, ctx, cand.ResCost, authority))
                 return $"{demand.Capability}: live AP/resources cannot cover {cand.Explain}";
             return null;
         }
@@ -235,6 +236,7 @@ namespace Game.Ai.V2
                             && x.CardDef == g.CardDef))
                     return InfraFulfillResult.No("operator generator unavailable or already attempted");
                 int beforeAp = root.ActionPoints;
+                int beforeRate = root.TradeRate;
                 int beforeH = root.GetResource(ResourceType.Human);
                 int beforeE = root.GetResource(ResourceType.Energy);
                 int beforeM = root.GetResource(ResourceType.Materials);
@@ -248,9 +250,10 @@ namespace Game.Ai.V2
                     materials = beforeM - root.GetResource(ResourceType.Materials),
                     tech = beforeT - root.GetResource(ResourceType.Tech),
                 };
-                int version = generated.StateChanged ? WorldDeltaLifecycle.CommitMutation() : WorldDeltaLifecycle.Current;
+                int version = WorldDeltaLifecycle.StampAction(generated.StateChanged && generated.Attempted);
                 return new InfraFulfillResult
                 {
+                    ResourceConverted = root.TradeRate != beforeRate,
                     Built = false, GenerationAttempted = generated.Attempted,
                     Generated = generated.Success, Generation = g,
                     GeneratedOperatorCard = generated.Success ? generated.Minted : null,
@@ -267,19 +270,27 @@ namespace Game.Ai.V2
             if (cand.CapacityTier != null)
                 return ExecuteCapacityUnlock(player, root, ctx, cand);
 
+            int rateBeforeFunding = root.TradeRate;
+            if (!TradeFunding.Fund(player, root, ctx, cand.ResCost, authority))
+                return new InfraFulfillResult { Detail = "infrastructure funding changed",
+                    ResourceConverted = root.TradeRate != rateBeforeFunding,
+                    StateChanged = root.TradeRate != rateBeforeFunding,
+                    StateVersionAfter = root.TradeRate != rateBeforeFunding ? WorldDeltaLifecycle.Current : -1 };
             // --- authoritative transaction (Execution) ---
             BuildingPlayResult r = InfrastructureBuildExecutor.Run(cand.Action, player, root, hand, ctx);
+            bool converted = root.TradeRate != rateBeforeFunding;
+            if (converted) { r.StateChanged = true; r.StateVersionAfter = WorldDeltaLifecycle.Current; }
             if (r.Built && economyOwner != null)
                 MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
                     economyOwner);
             if (!r.Built)
             {
                 AiDebugLog.Write($"[AI][V2]   infra - {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
-                return new InfraFulfillResult { Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
+                return new InfraFulfillResult { ResourceConverted = converted, Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
                     ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
                     StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
             }
-            return new InfraFulfillResult { Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
+            return new InfraFulfillResult { ResourceConverted = converted, Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
                 ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
                 AdditionalCardsConsumed = r.AdditionalCardsConsumed,
                 BuilderArmyId = cand.BuilderArmyId,
@@ -489,13 +500,16 @@ namespace Game.Ai.V2
             AiTurnContext ctx, InfraCandidate cand)
         {
             int apBefore = root.ActionPoints;
+            int rateBefore = root.TradeRate;
             BaseUpgradeOutcome outcome = InfrastructureBuildExecutor.UnlockCapacity(player, root, ctx,
                 cand.CapacityBuilding, cand.CapacityExpectedLevel, cand.TargetHex, out int version);
             if (!outcome.Ok)
             {
-                // Nothing was paid or changed: the plan is stale. The next pass re-judges the world.
+                // The upgrade refused; preserve any conversion already committed before it.
                 AiDebugLog.Write($"[AI][V2]   infra - CapacityUnlock refused: {outcome.FailReason} ({cand.Explain})");
-                return InfraFulfillResult.No(outcome.FailReason);
+                return new InfraFulfillResult { Detail = outcome.FailReason,
+                    ResourceConverted = root.TradeRate != rateBefore, StateChanged = root.TradeRate != rateBefore,
+                    StateVersionAfter = root.TradeRate != rateBefore ? WorldDeltaLifecycle.Current : -1 };
             }
             return new InfraFulfillResult
             {
@@ -585,19 +599,19 @@ namespace Game.Ai.V2
                     // A full Base is NOT upgraded behind the placement: that is the stand-alone
                     // CapacityUnlock step. A placement pays only the Facility's own bill.
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex,
-                            out string placeReason))
+                            out string placeReason, resourceForecast: true))
                     {
                         rejected.Add($"{at}:{placeReason}");
                         continue;
                     }
                     ResourceCost stageCost = card.EffectivePlayResourceCost;
                     int stageAp = card.EffectivePlayApCost;
-                    if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, stageCost))
+                    if (!TradeFunding.CanFund(player, root, ctx, stageCost))
                     {
                         rejected.Add($"{at}:spendable_resources");
                         continue;
                     }
-                    float score = DevelopmentPreparationScorer.Facility(card, stageAp, stageCost, snap, inv,
+                    float score = DevelopmentPreparationScorer.Facility(card, stageAp, TradeFunding.PricedCost(player, root, ctx, stageCost), snap, inv,
                         hand, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player,
                         witnessedUsefulApDemand);
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
@@ -674,7 +688,7 @@ namespace Game.Ai.V2
             StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
                 NonCombatRole.Facility, card, snap, CapabilityInventory.Build(snap, player, null),
                 hand, bestEquipmentUpgrade: 0f, witnessedUsefulApDemand: witnessedUsefulApDemand,
-                actualApCost: stageAp, actualResourceCost: stageCost,
+                actualApCost: stageAp, actualResourceCost: TradeFunding.PricedCost(player, root, ctx, stageCost, authority),
                 spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t, authority),
                 player: player);
             float net = use.NetScore;
@@ -853,5 +867,6 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
 

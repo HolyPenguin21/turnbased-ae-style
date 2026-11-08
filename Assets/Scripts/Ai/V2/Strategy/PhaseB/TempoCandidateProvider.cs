@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ---- tempo candidate model ------------------------------------------------------------
-    internal enum TempoKind { PlayMat, PlayNonCombat, Draw, MaintenanceSpend, AviationRebase, Hold, EndTurn }
+    internal enum TempoKind { PlayMat, PlayNonCombat, Draw, MaintenanceSpend, AviationRebase, Hold, EndTurn, Trade }
 
     internal sealed class TempoCandidate
     {
@@ -26,6 +26,7 @@ namespace Game.Ai.V2
         public MatSurplusDecision Mat;
         public NonCombatCardPlayer.NonCombatPlay Nc;
         public AviationRebasePlan Rebase;
+        public TradeFundingPlan Trade;
         public StrategicSpendCandidate Spend;   // non-card strategic spend — executed verbatim
     }
 
@@ -49,7 +50,7 @@ namespace Game.Ai.V2
     {
         internal static bool IsSpend(TempoKind k) =>
             k == TempoKind.PlayMat || k == TempoKind.PlayNonCombat || k == TempoKind.Draw
-            || k == TempoKind.MaintenanceSpend || k == TempoKind.AviationRebase;
+            || k == TempoKind.Trade || k == TempoKind.MaintenanceSpend || k == TempoKind.AviationRebase;
 
         internal static List<TempoCandidate> BuildTempoCandidates(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
@@ -57,6 +58,36 @@ namespace Game.Ai.V2
             StrategicTempoBudget budget, bool verbose)
         {
             var list = new List<TempoCandidate>();
+            if (TradeActions.HasAccess(player) && snap.Economy != null)
+                foreach (ResourceType type in ResourceBundle.All)
+                {
+                    float need = snap.Economy.DeckResourceNeed.Get(type) + snap.Economy.ForecastOperationalNeed.Get(type);
+                    int have = root.GetResource(type);
+                    if (need <= have || have == int.MaxValue) continue;
+                    var target = new ResourceCost(type == ResourceType.Human ? have + 1 : 0,
+                        type == ResourceType.Energy ? have + 1 : 0,
+                        type == ResourceType.Materials ? have + 1 : 0,
+                        type == ResourceType.Tech ? have + 1 : 0);
+                    if (!TradeFunding.TryPlan(player, root, ctx, target, out var trade)) continue;
+                    var give = new ResourceCost();
+                    for (int i = 0; i < trade.Steps.Count; i++)
+                    {
+                        var step = trade.Steps[i];
+                        switch (step.Give)
+                        {
+                            case ResourceType.Human: give.human += trade.Rate + i; break;
+                            case ResourceType.Energy: give.energy += trade.Rate + i; break;
+                            case ResourceType.Materials: give.materials += trade.Rate + i; break;
+                            case ResourceType.Tech: give.tech += trade.Rate + i; break;
+                        }
+                    }
+                    float value = ActionPrice.ToCardScore(ActionPrice.Resources(t => t == type ? 1f : 0f, snap)
+                        - ActionPrice.Resources(give, snap));
+                    if (value > 0f) list.Add(new TempoCandidate { Kind = TempoKind.Trade, Trade = trade,
+                        ActionKey = "trade:" + type, Utility = value, ApCost = 0f, ResCost = give,
+                        Label = "convert unused stock into " + type });
+                }
+
 
             // Rebuild exact residual-chain evidence after every real tempo mutation, before
             // either card lane scores. Diagnostics and enumeration order cannot affect it.
@@ -96,7 +127,7 @@ namespace Game.Ai.V2
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayMat, Mat = mat, Utility = mat.Utility,
-                    ApCost = mat.Plan.ApCost, ResCost = mat.Plan.ResCost,
+                    ApCost = mat.Plan.ApCost, ResCost = mat.Plan.FundingCost,
                     ConsumesGeneration = mat.Plan.Generation != null,
                     ActionKey = "mat:" + mat.Plan.StableKey,
                     Label = $"{mat.Plan.Kind} {AiCardLog.Plan(mat.Plan)}"
@@ -116,7 +147,7 @@ namespace Game.Ai.V2
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,
-                    ApCost = nc.ApCost, ResCost = nc.ResCost,
+                    ApCost = nc.ApCost, ResCost = nc.FundingCost,
                     ConsumesGeneration = nc.Generation != null,
                     ActionKey = "nc:" + nc.StableKey,
                     Label = $"{nc.Kind} {nc.Explain}",
@@ -190,7 +221,7 @@ namespace Game.Ai.V2
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.MaintenanceSpend, Utility = sp.Utility, ApCost = sp.ApCost,
-                    ResCost = sp.ResCost, Spend = sp,
+                    ResCost = TradeFunding.PricedCost(player, root, ctx, sp.ResCost), Spend = sp,
                     ActionKey = "maint:" + sp.StableKey, Label = sp.Label,
                 });
 
@@ -519,4 +550,5 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+
 

@@ -33,6 +33,7 @@ namespace Game.Turns
         }
         public static List<string> EndPlayer(PlayerSetupData player, HexSelectionController selection)
         {
+            PlayerRootRegistry.FindFor(player)?.EndTradeTurn();
             var messages = AviationTurnLifecycle.ResolveEndOfTurn(player, selection);
             if (player != null) { ArmyActions.DisbandEmptyArmiesOf(player); RegenerateForOwner(player); }
             return messages;
@@ -185,6 +186,7 @@ namespace Game.Turns
 
         public static void BeginPlayer(PlayerSetupData player)
         {
+            if (player != null && !player.IsHuman) PlayerRootRegistry.FindFor(player)?.BeginTradeTurn();
             using var mutation = VisionSystem.BeginMutation();
             AntiAirRules.SyncFacilityGunnerOwners();
             AntiAirState.ResetForOwner(player);
@@ -216,3 +218,4 @@ namespace Game.Turns
         }
     }
 }
+

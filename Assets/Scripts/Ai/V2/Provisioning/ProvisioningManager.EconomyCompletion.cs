@@ -144,7 +144,7 @@ namespace Game.Ai.V2
                 return EconomyCompletionPlan.No(ProvisionFailure.MoverContended("economy AP no longer available"));
 
             ReservationOwner owner = EconomyMissionPlanner.ReservationIdentity(key);
-            if (!StrategicSpendability.FitsSpendableForEconomyCompletion(player, root, ctx, stageCost, owner))
+            if (!TradeFunding.CanFund(player, root, ctx, stageCost, new SpendAuthority(owner, true)))
                 return EconomyCompletionPlan.No(ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(realAp, CostVector(stageCost)),
                     "economy completion resources no longer spendable"));
@@ -330,3 +330,4 @@ namespace Game.Ai.V2
                 cost.Get(ResourceType.Materials), cost.Get(ResourceType.Tech));
     }
 }
+

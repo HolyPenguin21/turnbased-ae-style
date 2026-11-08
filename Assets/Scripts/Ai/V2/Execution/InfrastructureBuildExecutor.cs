@@ -100,8 +100,11 @@ namespace Game.Ai.V2
             if (tier == null)
                 return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
             int apBefore = root.ActionPoints;
+            int rateBeforeFunding = root.TradeRate;
             if (!UpgradeBaseCapacity(player, root, ctx, building, tier))
-                return BuildingPlayResult.Fail("capacity upgrade refused");
+                return new BuildingPlayResult { FailReason = "capacity upgrade refused",
+                    StateChanged = root.TradeRate != rateBeforeFunding,
+                    StateVersionAfter = root.TradeRate != rateBeforeFunding ? WorldDeltaLifecycle.Current : -1 };
             int upgradeVersion = WorldDeltaLifecycle.CommitMutation();
             BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
                 player, root, hand, ctx, card, hex);
@@ -117,12 +120,19 @@ namespace Game.Ai.V2
 
         // A stand-alone Base level (Development CapacityUnlock): one payment + one mutation by the
         // gameplay primitive, then ONE world receipt. No authority: the payment may not reach into
-        // anyone else's hold. Nothing is paid or changed when the outcome is not Ok.
+        // anyone else's hold. A prior conversion remains committed when the upgrade refuses.
         internal static BaseUpgradeOutcome UnlockCapacity(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, BuildingData building, int expectedLevel, HexCoord hex, out int stateVersionAfter)
         {
             ReservationInvariants.SpendProbe probe = ReservationInvariants.BeginSpend(
                 player, root, ctx, "phaseA CapacityUnlock");
+            stateVersionAfter = WorldDeltaLifecycle.Current;
+            if (building == null || building.Owner != player) return BaseUpgradeOutcome.Fail("Base owner changed.");
+            if (!InfrastructureActions.CanUpgradeBase(building, ctx.GameConfig?.baseUpgradeTiers,
+                    expectedLevel, out var tier, out string reason, requireCurrentResources: false))
+                return BaseUpgradeOutcome.Fail(reason);
+            if (!TradeFunding.Fund(player, root, ctx, tier.cost))
+                return BaseUpgradeOutcome.Fail("Capacity funding changed.");
             BaseUpgradeOutcome outcome = InfrastructureActions.TryUpgradeBase(
                 building, ctx.GameConfig?.baseUpgradeTiers, expectedLevel);
             ReservationInvariants.EndSpend(player, root, ctx, probe);
@@ -147,11 +157,12 @@ namespace Game.Ai.V2
             activity.InfrastructureAttempts++;
             int apBefore = root.ActionPoints;
             BaseUpgradeTier[] tiers = ctx.GameConfig?.baseUpgradeTiers;
-            if (b == null || tier == null
-                || !InfrastructureActions.CanUpgradeBase(b, tiers, null, out BaseUpgradeTier next, out _)
+            if (b == null || b.Owner != player || tier == null
+                || !InfrastructureActions.CanUpgradeBase(b, tiers, null, out BaseUpgradeTier next, out _, requireCurrentResources: false)
                 || !ReferenceEquals(next, tier))
                 return false;
-            if (!InfrastructureActions.TryUpgradeBase(b, tiers).Ok)
+            if (!TradeFunding.Fund(player, root, ctx, tier.cost)
+                || !InfrastructureActions.TryUpgradeBase(b, tiers).Ok)
                 return false;
 
             activity.InfrastructureBuilt++;
@@ -166,3 +177,4 @@ namespace Game.Ai.V2
             UnitRepair.TryRepair(unit, hex, root, out _);
     }
 }
+

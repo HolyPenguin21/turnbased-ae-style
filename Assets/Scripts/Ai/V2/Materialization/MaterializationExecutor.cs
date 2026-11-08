@@ -61,10 +61,15 @@ namespace Game.Ai.V2
                     "no generation step/catalog/args");
             if (!object.ReferenceEquals(ctx.ResearchProductionCatalog.ResolveResult(g.ChallengeCard), g.CardDef))
                 return new GenerationOutcome(false, false, null, false, "production output changed since planning");
+            if (!ResearchProductionSystem.TryQuoteAttempt(player, root, g.Hero, g.FacilityHex, g.Mode,
+                    g.ChallengeCard, ctx.ResearchProductionCatalog, out _, out _, resourceForecast: true))
+                return new GenerationOutcome(false, false, null, false, "generation source changed");
             // AI-only reservation policy is checked BEFORE the shared gameplay transaction:
             // a protected resource may reject this plan, but must never reveal/pay first.
-            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.ChallengeCard, authority))
-                return new GenerationOutcome(false, false, null, false,
+            int rateBeforeFunding = root.TradeRate;
+            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.ChallengeCard, authority)
+                || !TradeFunding.Fund(player, root, ctx, g.GenerationResourceCost, authority))
+                return new GenerationOutcome(false, false, null, root.TradeRate != rateBeforeFunding,
                     "generation resources reserved since planning");
 
             bool wasHidden = g.Hero != null && g.Hero.IsHidden;
@@ -76,7 +81,7 @@ namespace Game.Ai.V2
             // irreversible payment are owned by the same transaction the human path uses.
             if (!ResearchProductionSystem.TryStartAttempt(player, root, g.Hero, g.FacilityHex,
                     g.Mode, g.ChallengeCard, ctx.ResearchProductionCatalog, out string why, out ProductionAttempt attempt))
-                return new GenerationOutcome(false, false, null, false,
+                return new GenerationOutcome(false, false, null, root.TradeRate != rateBeforeFunding,
                     $"generation no longer valid ({why})");
 
             // Every paid attachment Challenge enters the same history, regardless of the
@@ -97,7 +102,7 @@ namespace Game.Ai.V2
             {
                 attempt.Complete(false);
                 return new GenerationOutcome(true, false, null,
-                    historyChanged || costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
+                    root.TradeRate != rateBeforeFunding || historyChanged || costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
                     $"Challenge lost ({outcome.Successes}/{outcome.Required})");
             }
 
@@ -114,16 +119,6 @@ namespace Game.Ai.V2
             if (plan == null || player == null || root == null || hand == null || ctx == null)
             {
                 res.FailReason = "missing args";
-                return res;
-            }
-
-            // The candidate was admitted against a previous snapshot. Check the whole canonical
-            // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
-            // make this executor spend another axis's newly protected resources. No substitute
-            // budget model: the same ReservesOkAfterChain is used by feasibility.
-            if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, authority))
-            {
-                res.FailReason = "chain no longer fits AP/spendable reserves";
                 return res;
             }
 
@@ -158,6 +153,28 @@ namespace Game.Ai.V2
                 res.FailReason = "Attack refit changed or no funded onward activation";
                 return res;
             }
+            if (plan.Generation != null && !ResearchProductionSystem.TryQuoteAttempt(player, root,
+                    plan.Generation.Hero, plan.Generation.FacilityHex, plan.Generation.Mode,
+                    plan.Generation.ChallengeCard, ctx.ResearchProductionCatalog, out _, out _, resourceForecast: true))
+            { res.FailReason = "generation source changed before funding"; return res; }
+            int rateBeforeFunding = root.TradeRate;
+            if (StrategicSpendability.SpendableAp(player, root, ctx, authority) < plan.ApCost)
+            { res.FailReason = "chain AP changed"; return res; }
+            bool funded = TradeFunding.Fund(player, root, ctx, plan.ResCost, authority);
+            if (root.TradeRate != rateBeforeFunding)
+            { res.StateChanged = true; res.StateVersionAfter = WorldDeltaLifecycle.Current; }
+            if (!funded) { res.FailReason = "chain funding changed"; return res; }
+            // The candidate was admitted against a previous snapshot. Check the whole canonical
+            // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
+            // make this executor spend another axis's newly protected resources. No substitute
+            // budget model: the same ReservesOkAfterChain is used by feasibility.
+            if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, authority))
+            {
+                res.FailReason = "chain no longer fits AP/spendable reserves";
+                return res;
+            }
+
+            bool chainChanged = false;
             int apStart = root.ActionPoints;
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
@@ -171,7 +188,7 @@ namespace Game.Ai.V2
                     dm = m0 - root.GetResource(ResourceType.Materials), dt = t0 - root.GetResource(ResourceType.Tech);
                 res.ResourcesSpent = (dh | de | dm | dt) == 0
                     ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
-                res.StateVersionAfter = WorldDeltaLifecycle.StampAction(res.StateChanged, childAlreadyStamped);
+                res.StateVersionAfter = WorldDeltaLifecycle.StampAction(chainChanged, childAlreadyStamped);
             }
 
             // ---------------------------------------------------------------- 1. generate ----
@@ -182,7 +199,7 @@ namespace Game.Ai.V2
                 res.GenerationAttempted = go.Attempted;
                 if (go.Attempted)
                     res.AttemptedGenerationUseKey = plan.Generation.UseKey;
-                if (go.StateChanged) res.StateChanged = true;
+                if (go.StateChanged) { res.StateChanged = true; chainChanged |= go.Attempted; }
                 if (!go.Success)
                 {
                     res.ApSpent = apStart - root.ActionPoints;
@@ -229,7 +246,7 @@ namespace Game.Ai.V2
                 hand.RemoveCard(equipmentCard);
                 DevelopmentOutcomeTelemetry.RecordAttachment(player, ctx.TurnNumber, equipmentCard);
                 res.Attached = true;
-                res.StateChanged = true;
+                res.StateChanged = true; chainChanged = true;
             }
 
             // ---------------------------------------------------------------- 4. deploy ----
@@ -252,7 +269,7 @@ namespace Game.Ai.V2
             res.CardDeployed = play.Deployed;
             res.ApSpent = apStart - root.ActionPoints;
             if (play.StateChanged)
-                res.StateChanged = true;
+            { res.StateChanged = true; chainChanged = true; }
             // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
             // twice for the same chain; generation/attachment-only failures still bump above.
             StampResources(childAlreadyStamped: play.StateChanged);
@@ -276,3 +293,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

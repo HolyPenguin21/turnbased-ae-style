@@ -21,6 +21,8 @@ MonoBehaviour:
   - deckName: The Vessels Starter
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.02.mara-the-archivist
       count: 1
     - cardKey: vessels.03.orr-the-keeper
@@ -84,6 +86,8 @@ MonoBehaviour:
   - deckName: The Ashen Starter
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.miller-hayes
       count: 1
     - cardKey: ashen.card.hank-mercer
@@ -147,6 +151,8 @@ MonoBehaviour:
   - deckName: Iron Concord Starter
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.dorian-kesh
       count: 1
     - cardKey: concord.card.aldric-voss
@@ -212,6 +218,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.aldric-voss
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.aldric-voss
       count: 1
     - cardKey: concord.card.vector-vance
@@ -231,9 +239,9 @@ MonoBehaviour:
     - cardKey: concord.card.ark-carrier
       count: 2
     - cardKey: concord.card.mosquito
-      count: 4
+      count: 3
     - cardKey: concord.card.rusty-vulture
-      count: 2
+      count: 1
     - cardKey: concord.card.storm-petrel
       count: 2
     - cardKey: concord.card.skydiver
@@ -402,6 +410,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.kessa-vrail
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.kessa-vrail
       count: 1
     - cardKey: concord.card.vector-vance
@@ -423,7 +433,7 @@ MonoBehaviour:
     - cardKey: concord.card.trench-guardian
       count: 4
     - cardKey: concord.card.siege-grenadier
-      count: 4
+      count: 3
     - cardKey: concord.card.at-infantry
       count: 2
     - cardKey: concord.card.medium-infantry
@@ -435,7 +445,7 @@ MonoBehaviour:
     - cardKey: concord.card.crawler
       count: 2
     - cardKey: concord.card.light-infantry
-      count: 4
+      count: 3
     - cardKey: concord.card.scout
       count: 3
     - cardKey: concord.card.rc-vehicle
@@ -590,6 +600,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.vector-vance
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.vector-vance
       count: 1
     - cardKey: concord.card.bolt-jax
@@ -607,9 +619,9 @@ MonoBehaviour:
     - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.light-infantry
-      count: 3
+      count: 2
     - cardKey: concord.card.medium-infantry
-      count: 4
+      count: 2
     - cardKey: concord.card.hazard-pioneer
       count: 3
     - cardKey: concord.card.at-infantry
@@ -780,6 +792,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.dorian-kesh
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.dorian-kesh
       count: 1
     - cardKey: concord.card.vector-vance
@@ -807,7 +821,7 @@ MonoBehaviour:
     - cardKey: concord.card.boatswain
       count: 1
     - cardKey: concord.card.light-infantry
-      count: 4
+      count: 1
     - cardKey: concord.card.atlas
       count: 3
     - cardKey: concord.card.coil-marksman
@@ -970,6 +984,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.bolt-jax
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.bolt-jax
       count: 1
     - cardKey: concord.card.vector-vance
@@ -987,9 +1003,9 @@ MonoBehaviour:
     - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.light-infantry
-      count: 4
+      count: 1
     - cardKey: concord.card.medium-infantry
-      count: 4
+      count: 3
     - cardKey: concord.card.atlas
       count: 2
     - cardKey: concord.card.claimjumper
@@ -1160,6 +1176,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.nadia-thorne
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.nadia-thorne
       count: 1
     - cardKey: concord.card.vector-vance
@@ -1179,11 +1197,11 @@ MonoBehaviour:
     - cardKey: concord.card.jackal
       count: 1
     - cardKey: concord.card.grapeshot
-      count: 2
+      count: 1
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.light-tank
-      count: 3
+      count: 2
     - cardKey: concord.card.barracuda
       count: 3
     - cardKey: concord.card.roadwarden-aa
@@ -1348,6 +1366,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.lira-sable
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.vector-vance
@@ -1371,7 +1391,7 @@ MonoBehaviour:
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.coil-marksman
-      count: 4
+      count: 3
     - cardKey: concord.card.at-infantry
       count: 3
     - cardKey: concord.card.rusty-vulture
@@ -1534,6 +1554,8 @@ MonoBehaviour:
     leaderCardKey: concord.card.tessa-rourke
     faction: 0
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: concord.card.tessa-rourke
       count: 1
     - cardKey: concord.card.vector-vance
@@ -1551,9 +1573,9 @@ MonoBehaviour:
     - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.light-infantry
-      count: 4
+      count: 1
     - cardKey: concord.card.medium-infantry
-      count: 4
+      count: 3
     - cardKey: concord.card.artillery-cannon
       count: 2
     - cardKey: concord.card.sand-organ
@@ -1728,6 +1750,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.miller-hayes
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.miller-hayes
       count: 1
     - cardKey: ashen.card.nova-sterling
@@ -1751,7 +1775,7 @@ MonoBehaviour:
     - cardKey: ashen.card.rust-tank
       count: 1
     - cardKey: ashen.card.iron-maw
-      count: 2
+      count: 1
     - cardKey: ashen.card.scrap-mortar
       count: 2
     - cardKey: ashen.card.slag-lobber
@@ -1916,6 +1940,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.hank-mercer
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.hank-mercer
       count: 1
     - cardKey: ashen.card.nova-sterling
@@ -1933,9 +1959,9 @@ MonoBehaviour:
     - cardKey: ashen.card.vera-sterling
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 3
+      count: 2
     - cardKey: ashen.card.iron-husk
-      count: 4
+      count: 2
     - cardKey: ashen.card.scab-shield
       count: 1
     - cardKey: ashen.card.rad-brute
@@ -2102,6 +2128,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.rusty-miller
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.rusty-miller
       count: 1
     - cardKey: ashen.card.nova-sterling
@@ -2119,9 +2147,9 @@ MonoBehaviour:
     - cardKey: ashen.card.vera-sterling
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 2
+      count: 1
     - cardKey: ashen.card.bone-picker
-      count: 3
+      count: 1
     - cardKey: ashen.card.ash-walker
       count: 2
     - cardKey: ashen.card.scrap-locust
@@ -2292,6 +2320,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.nora-blackwell
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.nora-blackwell
       count: 1
     - cardKey: ashen.card.nova-sterling
@@ -2309,9 +2339,9 @@ MonoBehaviour:
     - cardKey: ashen.card.elena-hayes
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 4
-    - cardKey: ashen.card.cinder-stalker
       count: 3
+    - cardKey: ashen.card.cinder-stalker
+      count: 2
     - cardKey: ashen.card.deadeye
       count: 4
     - cardKey: ashen.card.rad-leaper
@@ -2480,6 +2510,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.elena-hayes
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.elena-hayes
       count: 1
     - cardKey: ashen.card.nova-sterling
@@ -2497,11 +2529,11 @@ MonoBehaviour:
     - cardKey: ashen.card.vera-sterling
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 4
+      count: 2
     - cardKey: ashen.card.iron-husk
       count: 1
     - cardKey: ashen.card.rust-tank
-      count: 2
+      count: 1
     - cardKey: ashen.card.boomstick
       count: 1
     - cardKey: ashen.card.iron-maw
@@ -2670,6 +2702,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.vera-sterling
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.vera-sterling
       count: 1
     - cardKey: ashen.card.nova-sterling
@@ -2687,9 +2721,9 @@ MonoBehaviour:
     - cardKey: ashen.card.elena-hayes
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 4
+      count: 2
     - cardKey: ashen.card.iron-husk
-      count: 4
+      count: 3
     - cardKey: ashen.card.rattletrap
       count: 3
     - cardKey: ashen.card.flywheel
@@ -2858,6 +2892,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.nova-sterling
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.nova-sterling
       count: 1
     - cardKey: ashen.card.rusty-miller
@@ -2875,9 +2911,9 @@ MonoBehaviour:
     - cardKey: ashen.card.vera-sterling
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 3
+      count: 1
     - cardKey: ashen.card.bone-picker
-      count: 4
+      count: 1
     - cardKey: ashen.card.iron-husk
       count: 2
     - cardKey: ashen.card.rad-leaper
@@ -3048,6 +3084,8 @@ MonoBehaviour:
     leaderCardKey: ashen.card.iri-vane
     faction: 4
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: ashen.card.iri-vane
       count: 1
     - cardKey: ashen.card.nova-sterling
@@ -3065,9 +3103,9 @@ MonoBehaviour:
     - cardKey: ashen.card.vera-sterling
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 4
-    - cardKey: ashen.card.iron-husk
       count: 2
+    - cardKey: ashen.card.iron-husk
+      count: 1
     - cardKey: ashen.card.gravebell-mortar
       count: 2
     - cardKey: ashen.card.ash-howitzer
@@ -3240,6 +3278,8 @@ MonoBehaviour:
     leaderCardKey: vessels.02.mara-the-archivist
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.02.mara-the-archivist
       count: 1
     - cardKey: vessels.08.thren-the-scholar
@@ -3257,9 +3297,9 @@ MonoBehaviour:
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 4
-    - cardKey: vessels.27.arc-cantor
       count: 2
+    - cardKey: vessels.27.arc-cantor
+      count: 1
     - cardKey: vessels.24.prism-engine
       count: 2
     - cardKey: vessels.unit.censer-keeper
@@ -3430,6 +3470,8 @@ MonoBehaviour:
     leaderCardKey: vessels.09.edda-the-conductor
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.09.edda-the-conductor
       count: 1
     - cardKey: vessels.08.thren-the-scholar
@@ -3447,9 +3489,9 @@ MonoBehaviour:
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 4
+      count: 1
     - cardKey: vessels.unit.spindle-gunner
-      count: 3
+      count: 2
     - cardKey: vessels.27.lens-watcher
       count: 2
     - cardKey: vessels.unit.prism-lancer
@@ -3618,6 +3660,8 @@ MonoBehaviour:
     leaderCardKey: vessels.08.thren-the-scholar
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.08.thren-the-scholar
       count: 1
     - cardKey: vessels.04.vale-the-machinist
@@ -3635,9 +3679,9 @@ MonoBehaviour:
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 4
+      count: 1
     - cardKey: vessels.unit.spindle-gunner
-      count: 3
+      count: 2
     - cardKey: vessels.unit.tuning-blade
       count: 4
     - cardKey: vessels.27.lens-watcher
@@ -3806,6 +3850,8 @@ MonoBehaviour:
     leaderCardKey: vessels.04.vale-the-machinist
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.04.vale-the-machinist
       count: 1
     - cardKey: vessels.08.thren-the-scholar
@@ -3823,9 +3869,9 @@ MonoBehaviour:
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 2
+      count: 1
     - cardKey: vessels.unit.pilgrim-strider
-      count: 2
+      count: 1
     - cardKey: vessels.18.bastion-frame
       count: 3
     - cardKey: vessels.20.siege-walker
@@ -3992,6 +4038,8 @@ MonoBehaviour:
     leaderCardKey: vessels.03.orr-the-keeper
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.03.orr-the-keeper
       count: 1
     - cardKey: vessels.08.thren-the-scholar
@@ -4009,9 +4057,9 @@ MonoBehaviour:
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 4
+      count: 2
     - cardKey: vessels.unit.tuning-blade
-      count: 4
+      count: 3
     - cardKey: vessels.16.bulwark-vessel
       count: 2
     - cardKey: vessels.unit.bell-breacher
@@ -4178,6 +4226,8 @@ MonoBehaviour:
     leaderCardKey: vessels.05.ilex-the-surveyor
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.05.ilex-the-surveyor
       count: 1
     - cardKey: vessels.08.thren-the-scholar
@@ -4195,9 +4245,9 @@ MonoBehaviour:
     - cardKey: vessels.03.orr-the-keeper
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 3
+      count: 2
     - cardKey: vessels.14.shard-wanderer
-      count: 3
+      count: 1
     - cardKey: vessels.unit.mantle-skirmisher
       count: 4
     - cardKey: vessels.unit.spindle-gunner
@@ -4364,6 +4414,8 @@ MonoBehaviour:
     leaderCardKey: vessels.06.jol-the-warden
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.08.thren-the-scholar
@@ -4381,9 +4433,9 @@ MonoBehaviour:
     - cardKey: vessels.05.ilex-the-surveyor
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 4
+      count: 2
     - cardKey: vessels.14.shard-wanderer
-      count: 4
+      count: 3
     - cardKey: vessels.21.resonance-tank
       count: 3
     - cardKey: vessels.unit.duplex-crawler
@@ -4550,6 +4602,8 @@ MonoBehaviour:
     leaderCardKey: vessels.07.nyx-the-cartographer
     faction: 5
     cards:
+    - cardKey: neutral.facility.trading-post
+      count: 1
     - cardKey: vessels.07.nyx-the-cartographer
       count: 1
     - cardKey: vessels.08.thren-the-scholar
@@ -4567,9 +4621,9 @@ MonoBehaviour:
     - cardKey: vessels.06.jol-the-warden
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 4
+      count: 2
     - cardKey: vessels.16.bulwark-vessel
-      count: 3
+      count: 2
     - cardKey: vessels.unit.bell-tortoise
       count: 3
     - cardKey: vessels.23.echo-mortar
@@ -4732,3 +4786,4 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.mutator.reflex-genome
       count: 1
+

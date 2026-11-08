@@ -53,6 +53,7 @@ namespace Game.Ai.V2
             foreach (MaterializationPlan p in raw)
             {
                 if (p == null) continue;
+                p.TradeFunding = null;
                 if (!PreflightIfExisting(player, root, hand, ctx, p))
                     continue;
                 CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
@@ -103,6 +104,7 @@ namespace Game.Ai.V2
             foreach (MaterializationPlan p in raw)
             {
                 if (p == null) continue;
+                p.TradeFunding = null;
                 if (!PreflightIfExisting(player, root, hand, ctx, p))
                     continue;
                 // §2 — if this card is still strategically relevant to an unresolved capability
@@ -125,8 +127,11 @@ namespace Game.Ai.V2
                     continue;
                 if (!(ignoreApForMeasurement
                     ? StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost)
-                    : StrategicSpendability.ReservesOkAfterChain(root, ctx, p, player)))
+                    : (StrategicSpendability.SpendableAp(player, root, ctx) >= p.ApCost
+                        && TradeFunding.CanFund(player, root, ctx, p.ResCost))))
                     continue;
+                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost))
+                    TradeFunding.TryPlan(player, root, ctx, p.ResCost, out p.TradeFunding);
                 sink.Add(p);
             }
             return sink;
@@ -212,7 +217,9 @@ namespace Game.Ai.V2
             // Development's independent investment admission for a playable/workload candidate.
             if (resourceBlocked != null && p.Generation != null && !DevelopmentInvestmentGate.IsOpenFor(
                     player, ctx.TurnNumber, p.Generation.GenerationResourceCost)) return;
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost, authority))
+            p.TradeFunding = null;
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost, authority)
+                && !TradeFunding.TryPlan(player, root, ctx, p.ResCost, out p.TradeFunding, authority))
             {
                 // All non-resource gates passed for this concrete chain; Strategy may publish
                 // its canonical total cost as evidence before any card is scored.
@@ -245,3 +252,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
