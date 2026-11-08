@@ -538,7 +538,7 @@ namespace Game.Ai.V2
             if (!demand.EconomyReadyDeliveryCost.HasValue)
                 return DeliveryAssessment.Ok;
             float newCost = TaskScoreEvaluator.Price(ActionPrice.Ap(p.ApCost)
-                    + ActionPrice.Resources(p.ResCost))
+                    + ActionPrice.Resources(p.FundingCost))
                 + newDelivery;
             if (demand.EconomyReadyBuilderIsSupport && !EconomyHeroHasHomeVocation(p))
                 return Decide(newCost < siteAllowance, DeliveryFailureReason.DeliveryExceedsSiteValue,

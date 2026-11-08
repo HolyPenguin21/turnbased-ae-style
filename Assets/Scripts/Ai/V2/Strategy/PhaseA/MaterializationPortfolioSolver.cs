@@ -208,8 +208,11 @@ namespace Game.Ai.V2
                 string conflictKey, CardData recipientCard = null) =>
                 _consumed.ExternalDisjoint(physicalCard, generationCardKey, conflictKey, recipientCard);
 
-            public bool FitsExternal(float ap, ResourceCost resources, bool generation)
+            public bool FitsExternal(float ap, ResourceCost resources, bool generation, bool tradeFunded = false)
             {
+                // Progressive prices are shared: one conversion-dependent play per portfolio.
+                if (tradeFunded && _consumed.FundedTrades > 0)
+                    return false;
                 if (_enforceApPool)
                 {
                     float held = TurnResourceBook.Outstanding(_apClaims,
@@ -229,9 +232,10 @@ namespace Game.Ai.V2
 
             public MaterializationConsumptionState.ExternalToken PushExternal(
                 CardData physicalCard, string generationCardKey, string conflictKey,
-                bool generation, float ap, ResourceCost resources, CardData recipientCard = null) =>
+                bool generation, float ap, ResourceCost resources, CardData recipientCard = null,
+                bool tradeFunded = false) =>
                 _consumed.PushExternal(physicalCard, generationCardKey, conflictKey,
-                    generation, ap, resources, recipientCard);
+                    generation, ap, resources, recipientCard, tradeFunded);
 
             public void PopExternal(in MaterializationConsumptionState.ExternalToken token) =>
                 _consumed.PopExternal(token);
@@ -474,7 +478,7 @@ namespace Game.Ai.V2
                 CardData physical = p.Generation == null ? p.Card : null;
                 string genKey = p.Generation?.CardKey;
                 return jf.ExternalDisjoint(physical, genKey, ConflictKey(p), p.EquipHostCard)
-                    && jf.FitsExternal(p.ApCost, p.ResCost, p.Generation != null);
+                    && jf.FitsExternal(p.ApCost, p.FundingCost, p.Generation != null, p.Funding != null);
             }
 
             float best = 0f;
@@ -497,7 +501,8 @@ namespace Game.Ai.V2
                     CardData physical = item.nc.Generation == null ? item.nc.Card : null;
                     MaterializationConsumptionState.ExternalToken token = jf.PushExternal(
                         physical, item.nc.Generation?.CardKey, ConflictKey(item.nc),
-                        item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost, item.nc.EquipHostCard);
+                        item.nc.Generation != null, item.nc.ApCost, item.nc.FundingCost, item.nc.EquipHostCard,
+                            item.nc.Funding != null);
                     Rec(i + 1, apSum + item.ap);
                     jf.PopExternal(token);
                 }
@@ -522,7 +527,8 @@ namespace Game.Ai.V2
                     {
                         CardData physical = item.nc.Generation == null ? item.nc.Card : null;
                         jf.PushExternal(physical, item.nc.Generation?.CardKey, ConflictKey(item.nc),
-                            item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost, item.nc.EquipHostCard);
+                            item.nc.Generation != null, item.nc.ApCost, item.nc.FundingCost, item.nc.EquipHostCard,
+                            item.nc.Funding != null);
                         greedy += item.ap;
                     }
                 }

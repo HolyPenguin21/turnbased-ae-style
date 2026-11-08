@@ -105,10 +105,13 @@ namespace Game.Ai.V2
             public readonly bool CountedGeneration;
             public readonly float ApAdded;
             public readonly ResourceCost Resources;
+            public readonly bool CountedTrade;
 
             public ExternalToken(CardData physicalCard, string generationCardKey, string conflictKey,
-                bool countedGeneration, float apAdded, ResourceCost resources, CardData recipientCard = null)
+                bool countedGeneration, float apAdded, ResourceCost resources, CardData recipientCard = null,
+                bool countedTrade = false)
             {
+                CountedTrade = countedTrade;
                 RecipientCard = recipientCard;
                 PhysicalCard = physicalCard;
                 GenerationCardKey = generationCardKey;
@@ -120,8 +123,10 @@ namespace Game.Ai.V2
         }
 
         public ExternalToken PushExternal(CardData physicalCard, string generationCardKey,
-            string conflictKey, bool generation, float ap, ResourceCost resources, CardData recipientCard = null)
+            string conflictKey, bool generation, float ap, ResourceCost resources, CardData recipientCard = null,
+            bool tradeFunded = false)
         {
+            if (tradeFunded) FundedTrades++;
             if (recipientCard != null) _cards.Add(recipientCard);
             if (physicalCard != null) _cards.Add(physicalCard);
             if (!string.IsNullOrEmpty(generationCardKey)) _genKeys.Add(generationCardKey);
@@ -137,11 +142,12 @@ namespace Game.Ai.V2
                 TechUsed += resources.tech;
             }
             return new ExternalToken(physicalCard, generationCardKey, conflictKey,
-                generation, apAdded, resources, recipientCard);
+                generation, apAdded, resources, recipientCard, tradeFunded);
         }
 
         public void PopExternal(in ExternalToken token)
         {
+            if (token.CountedTrade) FundedTrades--;
             if (token.RecipientCard != null) _cards.Remove(token.RecipientCard);
             if (token.PhysicalCard != null) _cards.Remove(token.PhysicalCard);
             if (!string.IsNullOrEmpty(token.GenerationCardKey)) _genKeys.Remove(token.GenerationCardKey);

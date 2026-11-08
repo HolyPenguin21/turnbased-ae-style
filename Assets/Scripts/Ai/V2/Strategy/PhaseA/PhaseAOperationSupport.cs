@@ -117,7 +117,7 @@ namespace Game.Ai.V2
         // pass's strike need: only resources the upgrade itself consumes are compared, and an
         // upgrade of the operation's own fist (primary or a held support) is never held back.
         internal static bool LeavesStrikeSupport(PhaseAPass pass, MaterializationPlan plan, out string why) =>
-            LeavesStrikeSupport(pass?.Player, pass?.Root, pass?.Ctx, pass?.StrikeSupport, plan?.ResCost,
+            LeavesStrikeSupport(pass?.Player, pass?.Root, pass?.Ctx, pass?.StrikeSupport, plan?.FundingCost,
                 plan?.DevelopmentUpgrade?.RecipientArmyId, "upgrade", out why);
 
         // The same rule for an Equipment card played from hand in Phase B (the need Phase A left
@@ -128,7 +128,7 @@ namespace Game.Ai.V2
         {
             int? recipient = play?.EquipHost != null
                 ? OwnWorld.Of(player)?.ArmyContaining(play.EquipHost)?.Id : null;
-            return LeavesStrikeSupport(player, root, ctx, need, play?.ResCost, recipient, "equipment", out why);
+            return LeavesStrikeSupport(player, root, ctx, need, play?.FundingCost, recipient, "equipment", out why);
         }
 
         private static bool LeavesStrikeSupport(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -236,7 +236,7 @@ namespace Game.Ai.V2
             var shortages = new List<string>();
             foreach (ResourceType t in ResourceBundle.All)
             {
-                int need = top.ResCost?.Get(t) ?? 0;
+                int need = top.FundingCost?.Get(t) ?? 0;
                 float have = StrategicSpendability.SpendableAmount(pass.Player, pass.Root, pass.Ctx, t);
                 if (need > 0 && have + AiConfigV2.allocatorSliceEpsilon < need)
                     shortages.Add($"{t} {have.ToString("0.##", CultureInfo.InvariantCulture)}<{need}");
