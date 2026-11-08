@@ -158,8 +158,10 @@ namespace Game.Cards
         // GrantApBonusActionPoints/ApBonusPerSource.
         public const string ApBonus = "ApBonus";
 
-        // While the carrier is in play, unlocks the owner's opponent intelligence panel.
+        // While a living carrier is in play, unlocks the owner's resource exchange (TradeActions).
         public const string Trade = "Trade";
+
+        // While the carrier is in play, unlocks the owner's opponent intelligence panel.
         public const string TacticalIntelligence = "TacticalIntelligence";
 
         // The AP each in-play ApBonus carrier grants on its owner's turn. CANONICAL gameplay value:

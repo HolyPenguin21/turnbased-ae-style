@@ -48,6 +48,44 @@ namespace Game.EditorTests
                         Is.EqualTo(Oracle((int[])bank.Clone(), count - 1)), $"{a}/{b}/{c}, count={count}");
                 }
         }
+
+        private static readonly float[] UselessHuman = { 0.2f, 1.5f, 1.5f, 1.5f };
+        private static readonly float[] NoIncome = { 0f, 0f, 0f, 0f };
+
+        [Test] public void AccessIsWorthNothingWithoutProtectedSurplus()
+        {
+            float gain = TradeFunding.SimulateConversionGain(new[] { 5f, 5f, 5f, 5f },
+                new[] { 10f, 10f, 10f, 10f }, new[] { 1f, 1f, 1f, 1f }, UselessHuman, 2, 1);
+            Assert.That(gain, Is.EqualTo(0f));
+        }
+
+        [Test] public void UnneededResourceIsConvertedOnlyAboveItsProtection()
+        {
+            // Human 20, of which 1 is still needed: 19 surplus pays rates 2+3+4+5; 6 does not fit.
+            var stock = new[] { 20f, 0f, 0f, 0f };
+            float gain = TradeFunding.SimulateConversionGain(stock, new[] { 1f, 10f, 10f, 10f },
+                NoIncome, UselessHuman, 2, 1);
+            Assert.That(gain, Is.EqualTo(1.1f + 0.9f + 0.7f + 0.5f).Within(1e-4f));
+            Assert.That(stock[0], Is.EqualTo(20f), "Simulation must not change the caller's stock.");
+        }
+
+        [Test] public void ProgressiveRateStopsUnprofitableConversion()
+        {
+            float gain = TradeFunding.SimulateConversionGain(new[] { 100f, 0f, 0f, 0f },
+                new[] { 0f, 10f, 10f, 10f }, NoIncome, new[] { 0.5f, 1.5f, 1.5f, 1.5f }, 2, 1);
+            Assert.That(gain, Is.EqualTo(0.5f).Within(1e-4f), "rate 3 x 0.5 already equals the bought unit");
+        }
+
+        [Test] public void ProjectedIncomeAndIdleDecayFeedLaterTurns()
+        {
+            var income = new[] { 3f, 0f, 0f, 0f };
+            var protect = new[] { 0f, 10f, 10f, 10f };
+            Assert.That(TradeFunding.SimulateConversionGain(new float[4], protect, income, UselessHuman, 6, 1),
+                Is.EqualTo(0f));
+            // Turn 0 idle (6->5), turn 1 Human 3 < 5 idle (5->4), turn 2 Human 6 pays 4.
+            Assert.That(TradeFunding.SimulateConversionGain(new float[4], protect, income, UselessHuman, 6, 3),
+                Is.EqualTo(1.5f - 4 * 0.2f).Within(1e-4f));
+        }
     }
 }
 #endif

@@ -39,7 +39,7 @@ Resource demand remains within 2:1 for Concord/Ashen and within 2:1 across Energ
 
 Trade and ApBonus both register PlayerGlobal effects in StrategicEffectRegistry. Contributions feeds their value into GlobalRoleFit, and StrategicCardEvaluator.ScoreNonCombat includes it in the same breakdown and DecisionScore used by NonCombatCardPlayer and the Phase B arbiter. Trading Post and Intel Center (ApBonus) also share the same construction cost: 2 AP and H1/E1/T1.
 
-TradeFunding.AccessValue contributes tradeAccessValue = 8 when Trade is absent and the snapshot has a surplus donor plus an unmet deck/operational resource need; otherwise it contributes zero. ApBonus uses dynamic recurring-AP valuation. They are comparable on the shared score scale, not assigned identical values or guaranteed priority. No separate mission or duplicate building scorer is introduced.
+TradeFunding.AccessValueApEquivalents (2026-11-08 calibration; replaced a flat 8 that exceeded the 1.6 cap of every global effect) values Trade by simulating the AI's own conversions over the recurring horizon: protected surplus (stock above hand + remaining deck + operational need, plus projected income) pays for missing units while the ActionPrice gain stays positive at the progressive rate. The value goes through ActionPrice.ToCardScore, carrier persistence and effectGlobalRecurringValueCap, like ApBonus. Without surplus it is zero. No separate mission or duplicate building scorer is introduced.
 
 ## Validation
 

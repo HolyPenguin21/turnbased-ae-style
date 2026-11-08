@@ -85,7 +85,7 @@ namespace Game.Ai.V2
                 return 0;
             int served = demands.Count(d => d != null && d.StructurallyUndeliverable
                 && deck.Any(def => DeckServes(def, d)
-                    && StrategicSpendability.FitsSpendableResources(player, root, ctx, def.resourceCost)));
+                    && TradeFunding.CanFund(player, root, ctx, def.resourceCost)));
             if (served == 0)
                 return 0;
 

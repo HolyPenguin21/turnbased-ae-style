@@ -134,15 +134,104 @@ namespace Game.Ai.V2
             return StrategicSpendability.FitsSpendableResources(player, root, ctx, cost, authority);
         }
 
-        internal static float AccessValue(WorldSnapshot snap)
+        // The payment of a quote, per donor resource (step i pays Rate + i).
+        internal static ResourceCost Payment(TradeFundingPlan plan)
         {
-            if (snap?.Self == null || snap.Self.HasTrade) return 0f;
-            if (snap.Economy == null) return 0f;
-            var need = snap.Economy.DeckResourceNeed;
-            bool donor = ResourceBundle.All.Any(t => snap.Self.Stockpile.Get(t) - need.Get(t)
-                - snap.Economy.ForecastOperationalNeed.Get(t) >= snap.Self.TradeRate);
-            bool deficit = ResourceBundle.All.Any(t => need.Get(t) + snap.Economy.ForecastOperationalNeed.Get(t) > snap.Self.Stockpile.Get(t));
-            return donor && deficit ? AiConfigV2.tradeAccessValue : 0f;
+            var paid = new ResourceCost();
+            if (plan == null) return paid;
+            for (int i = 0; i < plan.Steps.Count; i++)
+                switch (plan.Steps[i].Give)
+                {
+                    case ResourceType.Human: paid.human += plan.Rate + i; break;
+                    case ResourceType.Energy: paid.energy += plan.Rate + i; break;
+                    case ResourceType.Materials: paid.materials += plan.Rate + i; break;
+                    case ResourceType.Tech: paid.tech += plan.Rate + i; break;
+                }
+            return paid;
+        }
+
+        // Phase B proactive conversion of protected surplus into `type`, still missing for the
+        // hand/deck/operational need. The whole profitable batch is ONE exchange (one tempo
+        // action): k grows while the priced total gain still grows. Utility is card score.
+        internal static bool TryPlanConversion(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ResourceType type, out TradeFundingPlan best, out ResourceCost give, out float utility)
+        {
+            best = null; give = null; utility = 0f;
+            if (snap?.Economy == null || ReferenceEquals(root, null) || root == null || ctx == null) return false;
+            int deficit = Mathf.FloorToInt(snap.Economy.DeckResourceNeed.Get(type)
+                + snap.Economy.ForecastOperationalNeed.Get(type) - root.GetResource(type));
+            if (deficit < 1) return false;
+            // Quote against the spendable amount so the batch buys exactly k units.
+            int free = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type)));
+            float unit = ActionPrice.Resources(t => t == type ? 1f : 0f, snap);
+            float bestGain = 0f;
+            for (int k = 1; k <= Math.Min(deficit, AiConfigV2.tradeMaxPreviewUnits); k++)
+            {
+                if ((long)free + k > int.MaxValue) break;
+                var want = new ResourceCost(type == ResourceType.Human ? free + k : 0,
+                    type == ResourceType.Energy ? free + k : 0,
+                    type == ResourceType.Materials ? free + k : 0,
+                    type == ResourceType.Tech ? free + k : 0);
+                if (!TryPlan(player, root, ctx, want, out var plan)) break;
+                ResourceCost paid = Payment(plan);
+                float gain = k * unit - ActionPrice.Resources(paid, snap);
+                if (gain <= bestGain) break;
+                bestGain = gain; best = plan; give = paid;
+            }
+            if (best == null) return false;
+            utility = ActionPrice.ToCardScore(bestGain);
+            return utility > 0f;
+        }
+
+        // Value of gaining Trade access, in AP-equivalents: what the AI's own conversion policy
+        // (TryPlanConversion each turn while a unit's priced gain is positive) realises over
+        // `horizonTurns` of projected income. Donors and deficits use TryPlan's protection
+        // (hand + remaining deck + operational forecast). Zero when access already exists.
+        internal static float AccessValueApEquivalents(WorldSnapshot snap, int horizonTurns)
+        {
+            if (snap?.Self == null || snap.Self.HasTrade || snap.Economy == null) return 0f;
+            var stock = new float[4]; var protect = new float[4]; var income = new float[4]; var scarcity = new float[4];
+            foreach (ResourceType t in ResourceBundle.All)
+            {
+                int i = (int)t;
+                stock[i] = snap.Self.Stockpile.Get(t);
+                protect[i] = snap.Economy.DeckResourceNeed.Get(t) + snap.Economy.ForecastOperationalNeed.Get(t);
+                income[i] = Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t));
+                scarcity[i] = ActionPrice.Scarcity(t, snap);
+            }
+            return SimulateConversionGain(stock, protect, income, scarcity, snap.Self.TradeRate, horizonTurns);
+        }
+
+        // Pure: greedy per-turn conversions (best-priced missing unit from the cheapest surplus
+        // donor) with the real progressive rate and its idle-turn decay.
+        internal static float SimulateConversionGain(float[] stock, float[] protect, float[] income,
+            float[] scarcity, int rate, int horizonTurns)
+        {
+            if (stock == null || protect == null || income == null || scarcity == null
+                || stock.Length != 4 || protect.Length != 4 || income.Length != 4 || scarcity.Length != 4) return 0f;
+            var s = (float[])stock.Clone();
+            int r = Math.Max(TradeActions.MinimumRate, rate);
+            float total = 0f;
+            for (int turn = 0; turn < horizonTurns; turn++)
+            {
+                if (turn > 0) for (int i = 0; i < 4; i++) s[i] += income[i];
+                bool traded = false;
+                for (int n = 0; n < AiConfigV2.tradeMaxPreviewUnits && r < int.MaxValue; n++)
+                {
+                    int target = -1, donor = -1;
+                    for (int i = 0; i < 4; i++)
+                        if (protect[i] - s[i] >= 1f && (target < 0 || scarcity[i] > scarcity[target])) target = i;
+                    if (target < 0) break;
+                    for (int i = 0; i < 4; i++)
+                        if (s[i] - protect[i] >= r && (donor < 0 || scarcity[i] < scarcity[donor])) donor = i;
+                    if (donor < 0) break;
+                    float gain = (scarcity[target] - r * scarcity[donor]) * AiConfigV2.actionPriceResourceAp;
+                    if (gain <= 0f) break;
+                    total += gain; s[donor] -= r; s[target] += 1f; r++; traded = true;
+                }
+                if (!traded) r = Math.Max(TradeActions.MinimumRate, r - 1);
+            }
+            return total;
         }
     }
 }

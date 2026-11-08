@@ -614,9 +614,16 @@ plans retain original payment cost separately from FundingCost (external debit).
 portfolio consume external debit once. JointFeasibility admits at most one trade-dependent chain;
 after execution the next round recomputes against real balances and the new rate.
 
-Trade access is a snapshot-priced PlayerGlobal effect, not recurring resource income. Explicit
+Trade access is a snapshot-priced PlayerGlobal effect, not recurring resource income. Its value
+(TradeFunding.AccessValueApEquivalents) simulates the AI's own conversion policy over
+effectRecurringHorizonTurns of projected income: each turn, the best-priced missing unit is bought
+from the cheapest protected surplus while ActionPrice gain is positive, with the real progressive
+rate and idle-turn decay. It reaches the card score through ActionPrice.ToCardScore, carrier
+persistence and the common effectGlobalRecurringValueCap. Explicit
 funding execution calls the common TradeActions before returning to the selected action's normal
-payment/executor path. Proactive conversions are ordinary Phase-B candidates under the same bounds.
+payment/executor path. Proactive conversions are ordinary Phase-B candidates under the same bounds:
+TradeFunding.TryPlanConversion sizes one batch per resource (one tempo action) by the largest
+priced total gain, so a series of single-unit trades never consumes the turn's tempo slots.
 A successful conversion emits Resources and one WorldDelta receipt; failed quotes do not publish
 progress. Orchestration never selects donors; Housekeeping does not select proactive exchanges.
 

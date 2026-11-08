@@ -58,35 +58,13 @@ namespace Game.Ai.V2
             StrategicTempoBudget budget, bool verbose)
         {
             var list = new List<TempoCandidate>();
-            if (TradeActions.HasAccess(player) && snap.Economy != null)
+            if (snap.Economy != null && TradeActions.HasAccess(player))
                 foreach (ResourceType type in ResourceBundle.All)
-                {
-                    float need = snap.Economy.DeckResourceNeed.Get(type) + snap.Economy.ForecastOperationalNeed.Get(type);
-                    int have = root.GetResource(type);
-                    if (need <= have || have == int.MaxValue) continue;
-                    var target = new ResourceCost(type == ResourceType.Human ? have + 1 : 0,
-                        type == ResourceType.Energy ? have + 1 : 0,
-                        type == ResourceType.Materials ? have + 1 : 0,
-                        type == ResourceType.Tech ? have + 1 : 0);
-                    if (!TradeFunding.TryPlan(player, root, ctx, target, out var trade)) continue;
-                    var give = new ResourceCost();
-                    for (int i = 0; i < trade.Steps.Count; i++)
-                    {
-                        var step = trade.Steps[i];
-                        switch (step.Give)
-                        {
-                            case ResourceType.Human: give.human += trade.Rate + i; break;
-                            case ResourceType.Energy: give.energy += trade.Rate + i; break;
-                            case ResourceType.Materials: give.materials += trade.Rate + i; break;
-                            case ResourceType.Tech: give.tech += trade.Rate + i; break;
-                        }
-                    }
-                    float value = ActionPrice.ToCardScore(ActionPrice.Resources(t => t == type ? 1f : 0f, snap)
-                        - ActionPrice.Resources(give, snap));
-                    if (value > 0f) list.Add(new TempoCandidate { Kind = TempoKind.Trade, Trade = trade,
-                        ActionKey = "trade:" + type, Utility = value, ApCost = 0f, ResCost = give,
-                        Label = "convert unused stock into " + type });
-                }
+                    if (TradeFunding.TryPlanConversion(snap, player, root, ctx, type,
+                            out TradeFundingPlan trade, out ResourceCost give, out float value))
+                        list.Add(new TempoCandidate { Kind = TempoKind.Trade, Trade = trade,
+                            ActionKey = "trade:" + type, Utility = value, ApCost = 0f, ResCost = give,
+                            Label = $"convert unused stock into {trade.Steps.Count} {type} at {trade.Rate}+" });
 
 
             // Rebuild exact residual-chain evidence after every real tempo mutation, before
