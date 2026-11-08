@@ -296,9 +296,13 @@ namespace Game.Ai.V2
             result.FinalHex = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Execution] enemy={pm?.ActiveDefenceTarget.EnemyArmyId} "
-                + $"actor={pm?.MoverArmyId} intercept={pm?.ActiveDefenceTarget.InterceptPurpose} "
-                + $"purpose={pm?.ActiveDefenceTarget.ReturnPurpose} "
-                + $"destination={pm?.ActiveDefenceTarget.ReturnHex} steps={result.StepsMoved} "
+                + $"actor={pm?.MoverArmyId} phase={pm?.ActiveDefenceTarget.Phase} "
+                // The purpose that applies to this leg's phase: an Intercept has no return purpose
+                // (its default value used to read "SafeWithdrawal" on every intercept line).
+                + (pm?.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return
+                    ? $"purpose={pm?.ActiveDefenceTarget.ReturnPurpose} destination={pm?.ActiveDefenceTarget.ReturnHex} "
+                    : $"intercept={pm?.ActiveDefenceTarget.InterceptPurpose} ")
+                + $"steps={result.StepsMoved} "
                 + $"apBefore={apBefore} apSpent={result.ApSpent} apAfter={root?.ActionPoints} stop={result.StopReason}");
         }
 

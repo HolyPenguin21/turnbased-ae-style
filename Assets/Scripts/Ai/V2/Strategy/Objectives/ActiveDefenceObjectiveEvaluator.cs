@@ -242,9 +242,17 @@ namespace Game.Ai.V2
                 StrategicAssetSnapshot asset = NearestOwnBaseAsset(snap, position);
                 if (asset == null)
                     continue;
-                TaskScore score = new TaskScore(ownTerritoryProximity:
-                    TaskScoreEvaluator.ActiveDefenceProximity(
-                        TaskScoreEvaluator.NearestOwnedHomeDistance(snap, position)));
+                // 2026-11-07 (owner, playtest Mordak/Ysolde) — the damage kept off our home is the
+                // force this fight takes off the map: the enemy's power on the scale of our own
+                // strike force (SelfSnapshot.AttackPeak). Without it a 17-power army beside a
+                // captured Base and a lone scout were worth the same WinChance, and the larger
+                // target lost to a mover price (Ysolde T24-T25). The win chance stays its own slot.
+                float enemyPower = Mathf.Max(0f, c.Army.EffectiveArmyPower);
+                float strikeScale = Mathf.Max(1f, Mathf.Max(snap.Self.AttackPeak, enemyPower));
+                TaskScore score = new TaskScore(
+                    ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(
+                        TaskScoreEvaluator.NearestOwnedHomeDistance(snap, position)),
+                    preventedDamage: TaskScoreEvaluator.PreventedDamage(enemyPower / strikeScale));
                 result.Add(new ActiveDefenceObjective
                 {
                     TaskScore = score,
@@ -406,6 +414,8 @@ namespace Game.Ai.V2
 
             // The planner may pick an assembly that drags the formation below the needed movement:
             // the chosen roster is re-proved and a failing host is excluded for the next try.
+            // The same for a formation the fight would leave exposed (LeavesForceExposed).
+            string exposed = null;
             for (int attempt = 0; attempt <= snap.Self.Armies.Count; attempt++)
             {
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
@@ -429,6 +439,17 @@ namespace Game.Ai.V2
                     ?? host.CurrentMovement;
                 if (CanReachNow(snap, host, targetHex, out int routeCost, projectedNow, projectedMax))
                 {
+                    ArmySnapshot formation = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan)
+                        .TryGetValue(plan.BaseArmyId, out ArmySnapshot projected) ? projected : host;
+                    if (LeavesForceExposed(snap, formation.Members, formation.Commander, targetHex,
+                            enemyId, out int exposerId, out float exposerWin))
+                    {
+                        exposed = $"#{host.ArmyId} vs #{exposerId} win {exposerWin:0.00}";
+                        if (pinnedActor.HasValue && plan.BaseArmyId == pinnedActor.Value)
+                            break;
+                        planExcluded.Add(plan.BaseArmyId);
+                        continue;
+                    }
                     response.Plan = plan;
                     response.ExcludedArmyIds = planExcluded;
                     return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Intercept,
@@ -441,13 +462,61 @@ namespace Game.Ai.V2
             if (!pinnedActor.HasValue)
             {
                 response.Sortie = PlanGarrisonSortie(snap, objective, opposition, planExcluded);
+                ArmySnapshot detachment = response.Sortie?.Detachment;
+                if (detachment != null && LeavesForceExposed(snap, detachment.Members,
+                        detachment.Commander, targetHex, enemyId, out int exposerId, out float exposerWin))
+                {
+                    exposed = $"sortie #{detachment.ArmyId} vs #{exposerId} win {exposerWin:0.00}";
+                    response.Sortie = null;
+                }
                 if (response.Sortie != null)
                     return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Intercept,
                         "immediate_garrison_sortie", response.Sortie.Detachment.ArmyId,
                         response.Sortie.Detachment.CurrentMovement, response.Sortie.RouteCost, response.Sortie.WinChance);
             }
             return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Defer,
-                "immediate_not_reachable_or_not_capable", -1, 0, 0);
+                exposed != null ? "immediate_force_exposed_after_fight:" + exposed
+                    : "immediate_not_reachable_or_not_capable", -1, 0, 0);
+        }
+
+        // 2026-11-07 (owner, playtest Mordak T19) — a voluntary one-turn fight must not leave the
+        // force where it at once needs the safe withdrawal WithdrawalThreats orders: a known hostile
+        // player army other than the struck one that reaches the battle hex within
+        // activeDefenceWithdrawMaxEnemyEta turns, can damage the formation and beats it above
+        // 1 - activeDefenceHoldWinChance. The same threat facts the Army asset is measured with
+        // (WorldAnalysis.ContactApproachCost, the shared estimator, no hex bonus in the open);
+        // wounds of the won fight are not subtracted, so the read is never more cautious than the
+        // fight itself. Mordak's Dust Dogs chased a lone scout onto (-2,3), beside Ysolde's Base
+        // and her 21.8 Ironfang, and were destroyed with their hero on her next move.
+        internal static bool LeavesForceExposed(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefenderProfile> roster, WorthIt.SideCommander commander,
+            HexCoord at, int struckEnemyId, out int exposerId, out float exposerWin)
+        {
+            exposerId = -1;
+            exposerWin = 0f;
+            if (snap?.Threat?.Contacts == null || roster == null || roster.Count == 0
+                || ReferenceEquals(snap.Map, null))
+                return false;
+            var defending = new[] { new WorthIt.DefendingArmy(roster, commander) };
+            foreach (EnemyContactSnapshot c in snap.Threat.Contacts)
+            {
+                if (c?.Army == null || c.Army.ArmyId < 0 || c.Army.ArmyId == struckEnemyId
+                    || !c.Position.HasValue || c.Army.Owner == null || c.Army.Owner.IsNeutral
+                    || c.Army.Owner == snap.Observer || c.Army.Members == null || c.Army.Members.Count == 0)
+                    continue;
+                int? approach = WorldAnalysis.ContactApproachCost(snap.Map, c, at, snap.TurnNumber);
+                if (!approach.HasValue || AiV2Util.CeilDiv(approach.Value, Math.Max(1, c.Army.MaxMovement))
+                        > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                    continue;
+                if (!WorthIt.CanDamageAll(c.Army.Members, defending, 0f, attackerCommander: c.Army.Commander))
+                    continue;
+                float win = WorthIt.EstimateSequential(c.Army.Members, c.Army.Commander, defending, 0f).WinChance;
+                if (win <= 1f - AiConfigV2.activeDefenceHoldWinChance || win <= exposerWin)
+                    continue;
+                exposerId = c.Army.ArmyId;
+                exposerWin = win;
+            }
+            return exposerId >= 0;
         }
 
         private static ActiveDefenceResponse TraceImmediate(WorldSnapshot snap,

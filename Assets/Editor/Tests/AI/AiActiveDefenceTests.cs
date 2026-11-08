@@ -2249,6 +2249,68 @@ namespace Game.EditorTests
                 out _, currentMovement: 0, maxMovement: 6), Is.False, "max 6 / current 0 is not reach");
         }
 
+        // 2026-11-07 playtest (Ysolde T24): a 16.9-power army beside a captured Base and a lone
+        // scout were worth the same WinChance; the removed force is now its own benefit, on the
+        // scale of our strike force.
+        [Test]
+        public void Immediate_RemovedEnemyForce_IsWorthMoreForAStrongerArmy()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
+                DefenceActor(owner, 7, new HexCoord(0, 0)));
+            snap.Self.AttackPeak = 70f;
+            float scout = ImmediateObjective(snap).TaskScore[TaskSlot.PreventedDamage];
+            snap.Threat.Contacts[0].Army.EffectiveArmyPower = 17f;
+            float army = ImmediateObjective(snap).TaskScore[TaskSlot.PreventedDamage];
+
+            Assert.That(scout, Is.GreaterThan(0f));
+            Assert.That(army, Is.EqualTo(scout * 17f / 3f).Within(0.001f),
+                "the benefit is the removed power on the strike-force scale");
+            Assert.That(army, Is.LessThan(AiConfigV2.taskScorePreventedDamageMax));
+        }
+
+        // 2026-11-07 playtest (Mordak T19): Dust Dogs chased a lone scout onto a hex beside the
+        // enemy Base and its 21.8 army and were destroyed on the next enemy move. A voluntary
+        // fight that ends where a known hostile army reaches and beats the formation is deferred.
+        [Test]
+        public void Immediate_FightThatLeavesTheForceExposed_IsDeferred()
+        {
+            var go = new UnityEngine.GameObject("immediate-exposure");
+            Game.Map.HexMap map = go.AddComponent<Game.Map.HexMap>();
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true, actor);
+            snap.Map = map;
+            var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+            for (int q = -5; q <= 0; q++) terrain[new HexCoord(q, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 };
+            map.SetData(6, 1f, terrain);
+            try
+            {
+                Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, ImmediateObjective(snap),
+                    null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept),
+                    "nothing else near the battle hex: the fight is taken");
+
+                var strong = new WorthIt.DefenderProfile(6f, false, null, 12f, 30f, 3);
+                var avenger = new EnemyContactSnapshot
+                {
+                    Army = new ArmySnapshot { ArmyId = 88, Owner = snap.Threat.Contacts[0].Army.Owner,
+                        EffectiveArmyPower = 48f, Members = new[] { strong, strong }, MemberCount = 2,
+                        MaxMovement = 2 },
+                    Knowledge = ContactKnowledge.Exact, Position = new HexCoord(-4, 0),
+                    LastObservedTurn = 8, Confidence = 1f,
+                };
+                snap.Threat.Contacts = new[] { snap.Threat.Contacts[0], avenger };
+                ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                    ImmediateObjective(snap), null, null, null);
+                Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer));
+                Assert.That(response.Reason, Does.StartWith("immediate_force_exposed_after_fight:"));
+                Assert.That(ActiveDefenceObjectiveEvaluator.LeavesForceExposed(snap, actor.Members,
+                    default, new HexCoord(-2, 0), 77, out int exposer, out _), Is.True);
+                Assert.That(exposer, Is.EqualTo(88));
+            }
+            finally { AiMapMemory.Clear(); UnityEngine.Object.DestroyImmediate(go); }
+        }
+
         [Test]
         public void Immediate_RealTerrainAndBlockedRoute_AreHonoured()
         {

@@ -113,8 +113,14 @@ namespace Game.Ai.V2
             {
                 Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
                     player == null ? null : intentState?.All);
-                GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                    hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceGate,
+                // 2026-11-07 — the gather reads the one site forecast (AttackSupportProjection) as the
+                // live gather in AttackContinuity does: a free Disruption carrier already counted
+                // there removes the structure bonus, so no combat body is swapped out of the fist
+                // for an in-fist carrier.
+                AttackSupportForecast hostForecast = AttackSupportProjection.For(snap, objective.Hex, fieldHost);
+                GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
+                    hostForecast.Opposition, hostForecast.HexBonus, objective.Hex, excluded,
+                    GroundCombatAdmissionPolicy.AttackWinChanceGate,
                     fieldHost.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true,
                     departureVeto: candidate => AttackMarchPolicy.GatherDepartureReason(snap, objective.Target, candidate));
                 // The lead leg is a FREE army (a bought donor stays with its operation until the

@@ -273,12 +273,17 @@ namespace Game.Ai.V2
                 return GroundCombatAssemblyPlan.Infeasible("no free, mobile ground combat army exists this cycle");
 
             // Already-formed force always wins over reorganisation.
+            // 2026-11-07 — the strongest army's own refusal travels in the final reason, so a
+            // REJECT says by how much the best fist missed (diagnostics only).
+            string strongestRefusal = null;
             foreach (ArmySnapshot a in eligible)
             {
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(
                     snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.RequireCoverage,
                     request.MinimumArmyPower, request.PreserveDepartureRoster, request.RequireReadyThisTurn);
+                if (!exact.Feasible && strongestRefusal == null)
+                    strongestRefusal = exact.Reason;
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
                     && DecisiveIfPinned(snap, request, a, exact, opposition)
@@ -306,7 +311,8 @@ namespace Game.Ai.V2
             }
 
             return GroundCombatAssemblyPlan.Infeasible(
-                "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
+                "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator"
+                + (strongestRefusal != null ? $" (strongest: {strongestRefusal})" : ""));
         }
 
         // The ONE enumeration of "which ready ground armies could independently take this fight"

@@ -60,6 +60,9 @@ namespace Game.Ai.V2
         public float? WitnessedUsefulApDemand;
         public bool ReachableGlobalRecurringCarrier;
         public int ChainAttempts;
+        // The live Attack's strike need read at OpenPass (PhaseAOperationSupport.Assess): what
+        // Development upgrades outside the fist must leave for ClosePass. Null when none.
+        public StrikeSupportNeed StrikeSupport;
 
         public PhaseAPass(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, PhaseAApBudget apBudget, IReadOnlyList<AxisDemand> demands,

@@ -113,6 +113,13 @@ namespace Game.Ai.V2
             {
                 if (result.Reservation.ClaimsEconomyBuildCard(nc.Card))
                     continue;
+                if (nc.Kind == NonCombatCardPlayer.PlayKind.Equipment
+                    && !PhaseAOperationSupport.LeavesStrikeSupport(player, root, ctx, result.StrikeSupport,
+                        nc, out string strikeWhy))
+                {
+                    nonCombatBlocked.Add($"{nc.Card?.Definition?.displayName}:{strikeWhy}");
+                    continue;
+                }
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,

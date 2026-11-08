@@ -26,6 +26,11 @@ namespace Game.Ai.V2
 
         public MaterializationReservation Reservation;
 
+        // The live Attack's strike need as the last Phase A pass left it
+        // (PhaseAOperationSupport.Assess): Phase B's equipment plays outside the fist leave its
+        // resources (PhaseAOperationSupport.LeavesStrikeSupport). Null when none.
+        internal StrikeSupportNeed StrikeSupport;
+
         // One executed materialization chain, Phase A or Phase B alike: the per-stage
         // attempt/success telemetry, the generation attempt charged to the reservation and to the
         // turn's tempo budget, and the world change it made.
