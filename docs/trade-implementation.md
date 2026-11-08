@@ -60,3 +60,28 @@ Review verification:
 - The exact native-engine error in both runs is AiEconomyAdmissionFingerprintTests.TheDispatcherRoutesEachAxisToItsOwnerAndSharesNoKey (UnityEngine.Object initialization in the reference harness).
 
 Remaining acceptance in Unity: full EditMode suite, popup layout/input and new-game/load transitions, loss/capture of the Trade carrier, and long games with AI traces showing funding followed by the originally selected action. No native or long-game run is claimed by this review.
+
+## Horizontal integration completion (2026-11-08)
+
+Behavior change within existing planning, allocation and execution owners. This closes early physical-resource gates that previously discarded a selected action before TradeFunding could evaluate it. No new mission, desire axis or alternative exchange/payment implementation is added.
+
+| Action or connection | Fundability and continuation |
+| --- | --- |
+| Found a base, including its required garrison | InfrastructureActions and BuildingPlayExecutor expose a resource-only forecast; InfrastructureFulfillment retains live hero, hex, AP and garrison constraints and quotes the combined cost. Ordinary construction remains the executor. |
+| Build a global resource Facility | Placement forecast reaches the common funding preview while preserving facility slots, ownership and placement rules. |
+| Deploy an aircraft | PlacementRules and NonCombatCardPlayer retain valid airfields despite a resource deficit, price the complete generation/play chain and preserve the fuel-outlook check. NonCombatPlayExecutor revalidates the airfield before funding. |
+| Attach equipment and prepare Development | Opportunities use structural attachment previews, spendable AP and full-chain funding. Development scoring prices actual external debit; the executor checks that the intended host still exists before conversion. |
+| Launch or continue reconnaissance, rebase, or provide combat air support | AiAirSortiePlanner, AviationRebasePlanner, ground-support projection and provisioning accept fundable launch Energy. MoveArmyRoutine performs the exchange immediately before the ordinary move/payment. Recon, rebase and combat results preserve a committed conversion even if movement later refuses. |
+| Allocate and provision missions | Requirements keep logical action resources; PhysicalMinimum/PhysicalDesired, locked claims and air packs reserve the actual donor debit. Only one conversion-dependent mission is funded in a portfolio; after execution the next round uses the changed rate and balance. |
+| Reaction follow-up and materialization | The existing reaction owner flows through enumeration and feasibility. Reservations cover complete chain AP and external donor cost. A joint portfolio admits only one conversion-dependent chain. |
+
+The shared preview can spend its own owner's held donors but cannot sell another operation's held resources, including deferred Economy holds. Remaining hand/deck demand and operational forecasts stay protected. Missing Trade access, AP, placement, source, host or route is not repaired by a resource quote. Preview and scoring do not mutate resources; execution continues through the existing domain transaction after funding.
+
+Verification against the unchanged pre-integration baseline:
+
+- Runtime and AI/Economy/Card test sources compile with zero errors in the temporary managed reference harness, with compatibility adapters outside the repository. This is not a Unity build result.
+- The expanded focused NUnitLite selection contains 365 tests: 222 pass and 143 fail because native Unity initialization is unavailable. Baseline: 357 tests, 221 pass and 136 fail. All 221 baseline passes remain passing; there are zero pass-to-fail regressions.
+- The added pure check preserves fractional mission requirements without a live account and passes. Seven added native cases compile: stale equipment host, joint fuel funding then canonical payment, own versus foreign donor holds, base forecast retaining AP checks, stored launch retaining AP checks, missing airfield, and one funded mission followed by repricing the next. These seven fail during native fixture setup here and are not claimed as gameplay passes.
+- No scene, catalog, prefab, image or Unity metadata is changed in this integration. YAML validators therefore do not apply to this diff.
+
+Still required in the project's Unity editor: full EditMode tests and AI playthroughs covering each table row, trace-confirmed continuation after exchange, reaction interruption, changing airfields/hosts, and progressive-rate replanning across multiple actions. The code paths and managed regression comparison are verified; native gameplay acceptance remains outstanding.

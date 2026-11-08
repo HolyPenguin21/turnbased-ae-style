@@ -200,7 +200,7 @@ namespace Game.Ai.V2
         // is a property of the shape. MaterializationFeasibility.FilterSurplus admits the set.
         internal static List<MaterializationPlan> EnumerateSurplusPlans(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation)
+            CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation, SpendAuthority authority = default)
         {
             List<CardData> handList = hand.Hand.ToList();
             var candidates = new List<MaterializationPlan>();
@@ -253,7 +253,7 @@ namespace Game.Ai.V2
             if (AiConfigV2.surplusAllowGeneration && reservation != null && reservation.CanGenerateMore)
             {
                 foreach (GenerationStep g in GenerationSource.Enumerate(player, root, ctx, hand,
-                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards))
+                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards, authority: authority))
                 {
                     CardDefinition gd = g.CardDef;
                     if (gd == null || gd.isAviation)

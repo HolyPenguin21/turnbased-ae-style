@@ -98,7 +98,7 @@ namespace Game.Ai.V2
         internal static List<MaterializationPlan> FilterSurplus(IReadOnlyList<MaterializationPlan> raw,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             MaterializationReservation reservation, WorldSnapshot snapshot = null,
-            bool ignoreApForMeasurement = false, ActorCommitments commitments = null)
+            bool ignoreApForMeasurement = false, ActorCommitments commitments = null, SpendAuthority authority = default)
         {
             var sink = new List<MaterializationPlan>();
             foreach (MaterializationPlan p in raw)
@@ -126,12 +126,12 @@ namespace Game.Ai.V2
                 if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot)
                     continue;
                 if (!(ignoreApForMeasurement
-                    ? StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost)
-                    : (StrategicSpendability.SpendableAp(player, root, ctx) >= p.ApCost
-                        && TradeFunding.CanFund(player, root, ctx, p.ResCost))))
+                    ? TradeFunding.CanFund(player, root, ctx, p.ResCost, authority)
+                    : (StrategicSpendability.SpendableAp(player, root, ctx, authority) >= p.ApCost
+                        && TradeFunding.CanFund(player, root, ctx, p.ResCost, authority))))
                     continue;
-                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost))
-                    TradeFunding.TryPlan(player, root, ctx, p.ResCost, out p.TradeFunding);
+                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost, authority))
+                    TradeFunding.TryPlan(player, root, ctx, p.ResCost, out p.TradeFunding, authority);
                 sink.Add(p);
             }
             return sink;

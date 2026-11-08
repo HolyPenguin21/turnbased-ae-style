@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Combat;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -153,14 +154,17 @@ namespace Game.Ai.V2
             {
                 effect = MissileStockEffect(stockValue, aircraft[0]);
             }
-            TaskScore score = ServiceScore(request.Score, effect, ap, energy, eta);
+            ResourceCost bill = TradeFunding.PricedCost(player, PlayerRootRegistry.FindFor(player),
+                new AiTurnContext { Map = map, TurnNumber = snap?.TurnNumber ?? 0 },
+                new ResourceCost(energy: Mathf.CeilToInt(energy)));
+            TaskScore score = ServiceScore(request.Score, effect, ap, energy, eta, ActionPrice.Resources(bill));
             return new CombatAirService(same?.LandingHex ?? multi.Value.LandingHex,
                 eta, strikes, outbound + home, known, ap, energy, score, estimate);
         }
 
         internal static TaskScore ServiceScore(TaskScore intrinsic, float effect,
-            float ap, float energy, int eta) => TaskScoreEvaluator.WithResponse(intrinsic, effect,
-                ap + energy * AiConfigV2.actionPriceResourceAp, 0f, eta);
+            float ap, float energy, int eta, float? resourcePrice = null) => TaskScoreEvaluator.WithResponse(intrinsic, effect,
+                ap + (resourcePrice ?? energy * AiConfigV2.actionPriceResourceAp), 0f, eta);
 
         // Augmenting assignments retain task identity. A complete proposed assignment must pass
         // the joint validator before it counts as coverage; no registries or bank are mutated.
@@ -236,11 +240,11 @@ namespace Game.Ai.V2
                 .OrderBy(r => Enumerable.Range(0, wings.Count).Count(w => admissible[r, w]))
                 .ThenByDescending(r => requests[r].Score.Value).ThenBy(r => r).ToList();
             float bankAp = StrategicSpendability.SpendableAp(player, root, ctx);
-            float bankEnergy = StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy);
             bool Validate(IReadOnlyDictionary<int, int> assignments)
             {
                 if (assignments.Keys.Sum(w => wings[w].Ap) > bankAp + AiConfigV2.allocatorSliceEpsilon
-                    || assignments.Keys.Sum(w => wings[w].Energy) > bankEnergy + AiConfigV2.allocatorSliceEpsilon)
+                    || !TradeFunding.CanFund(player, root, ctx,
+                        new Game.Cards.ResourceCost(energy: Mathf.CeilToInt(assignments.Keys.Sum(w => wings[w].Energy)))))
                     return false;
                 var claims = new Dictionary<HexCoord, int>();
                 void Add(HexCoord hex, int count) => claims[hex] =

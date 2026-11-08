@@ -147,8 +147,8 @@ namespace Game.Ai.V2
                 string armyKey, bool armyEligible, AiPower.PowerUnit unit)>();
             foreach (MaterializationPlan p in MaterializationFeasibility.FilterSurplus(
                 MaterializationChainEnumerator.EnumerateSurplusPlans(
-                    snap, player, root, hand, ctx, inv, commitments, reservation),
-                player, root, hand, ctx, reservation, snap, commitments: commitments))
+                    snap, player, root, hand, ctx, inv, commitments, reservation, new SpendAuthority(ReactionOwner, false)),
+                player, root, hand, ctx, reservation, snap, commitments: commitments, authority: new SpendAuthority(ReactionOwner, false)))
             {
                 if (p == null) continue;
                 bool dHero = MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, heroDemand, snap, player, ctx, commitments);
@@ -230,6 +230,7 @@ namespace Game.Ai.V2
                 {
                     var c = pool[i];
                     if (!consumed.CardsDisjoint(c.plan)) continue;
+                    if (c.plan.TradeFunding != null && consumed.FundedTrades > 0) continue;
                     if (c.plan.Generation != null && consumed.GenerationAttempts + 1 > genRemaining) continue;
                     if (consumed.ApUsed + c.ap > prepCeiling + 0.001f) continue;
                     if (!physical.CanAdd(c.plan)) continue;

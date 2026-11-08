@@ -21,6 +21,7 @@ namespace Game.Ai.V2
         public bool AnyMoved;
         public bool AnyLaunched;
         public bool AnyStruck;
+        public bool ResourceConverted;
         public int Steps;
         public float ApSpent;
         public Game.Cards.ResourceCost ResourcesSpent;   // real H/E/M/T delta over the pass (null = none)
@@ -30,7 +31,7 @@ namespace Game.Ai.V2
         public void RecordLaunch() { AnyLaunched = true; }
         public void RecordStrike() { AnyStruck = true; }
 
-        public bool Mutated => AnyMoved || AnyLaunched || AnyStruck;
+        public bool Mutated => AnyMoved || AnyLaunched || AnyStruck || ResourceConverted;
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
             succeeded: Mutated, stateChanged: Mutated, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
@@ -202,7 +203,7 @@ namespace Game.Ai.V2
                 bool affordable = ap <= pm.ClaimedAp + AiConfigV2.allocatorSliceEpsilon
                     && energy <= pm.ClaimedEnergy + AiConfigV2.allocatorSliceEpsilon
                     && ap <= StrategicSpendability.SpendableAp(player, root, ctx)
-                    && energy <= StrategicSpendability.SpendableAmount(player, root, ctx, Game.Economy.ResourceType.Energy);
+                    && TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: (int)energy));
                 ActorCommitments commitments = ActorCommitments.FromIntents(
                     WorldSnapshot.IntentsOf(snapshot), snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
                 foreach (int actor in plan.ReservedActorIds)
@@ -443,6 +444,7 @@ namespace Game.Ai.V2
             var stepResult = result ?? new AirReconExecutionResult();
             if (perMissionResult != null && root != null)
                 perMissionResult.ResourcesBefore = AiV2Trace.Stamp(root);
+            int rateBefore = root?.TradeRate ?? 2;
             int h0 = root != null ? root.GetResource(Game.Economy.ResourceType.Human) : 0;
             int e0 = root != null ? root.GetResource(Game.Economy.ResourceType.Energy) : 0;
             int m0 = root != null ? root.GetResource(Game.Economy.ResourceType.Materials) : 0;
@@ -450,6 +452,9 @@ namespace Game.Ai.V2
 
             yield return RunActorStepCore(player, root, ctx, snapshot, initial.Id,
                 stepResult, missionFocusHex, perMissionResult, control);
+            bool converted = root != null && root.TradeRate != rateBefore;
+            stepResult.ResourceConverted |= converted;
+            if (perMissionResult != null) perMissionResult.ResourceConverted |= converted;
             FinishActorStep(player, initial.Id, perMissionResult, control, control.StopReason);
 
             stepResult.ApSpent = Math.Max(0f,

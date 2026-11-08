@@ -18,6 +18,13 @@ namespace Game.EditorTests
             { remaining[allocation[i]] -= 2 + i; Assert.That(remaining[allocation[i]], Is.GreaterThanOrEqualTo(0)); }
             Assert.That(capacities, Is.EqualTo(new[] { a, b, c, 0 }), "Preview must not change the bank.");
         }
+        [Test] public void MissingLiveAccountPreservesFractionalMissionRequirements()
+        {
+            var raw = new ResourceVector(0f, 0.25f, 0.5f, 0.75f, 0.125f);
+            ResourceVector priced = TradeFunding.PricedVector(null, null, new Game.Ai.AiTurnContext(), raw);
+            Assert.That(priced.Human, Is.EqualTo(raw.Human)); Assert.That(priced.Energy, Is.EqualTo(raw.Energy));
+            Assert.That(priced.Materials, Is.EqualTo(raw.Materials)); Assert.That(priced.Tech, Is.EqualTo(raw.Tech));
+        }
         [Test] public void SmallAllocationsMatchExhaustiveOracle()
         {
             bool Oracle(int[] bank, int index)

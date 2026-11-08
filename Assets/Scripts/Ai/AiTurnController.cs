@@ -96,6 +96,7 @@ namespace Game.Ai
         // Formation survived the guarded launch rollback boundary; actor death during the
         // ensuing flight cannot erase this already committed world mutation.
         public bool FormationCommitted;
+        public bool ResourceConverted;
         public MoveOrderResult MoveResult;   // exactly what IssueMoveOrder returned
         public bool BattleOccurred;          // a fight was open (or the post-move safety net opened one) on this step
         public bool HexEventOccurred;        // a clean Hex Event resolved (explored or skipped) during this step
@@ -429,6 +430,16 @@ namespace Game.Ai
             // "this step walked into an event", ownership-scoped to this move and this hex. Not
             // recoverable afterwards: an AI mover's event resolves synchronously with no popup,
             // and a Skip fires no registry state change on a re-visit.
+            if (!isGroundMove)
+            {
+                if (!CanIssueMoveNow(root, army, ctx.Map, destination, ctx)) yield break;
+                int rateBefore = root.TradeRate;
+                bool funded = root.GetResource(ResourceType.Energy) >= army.PendingActivationEnergyCost
+                    || V2.TradeFunding.Fund(player, root, ctx,
+                        new ResourceCost(energy: army.PendingActivationEnergyCost));
+                if (trace != null) trace.ResourceConverted |= root.TradeRate != rateBefore;
+                if (!funded) yield break;
+            }
             HexCoord before = army.Hex;
             if (!isGroundMove)
             {
@@ -701,9 +712,13 @@ namespace Game.Ai
         // independently requires, a candidate this rejects would always have failed at
         // IssueMoveOrder anyway, so gating it here only ever removes a doomed candidate from
         // arbitration, never a viable one.
-        internal static bool CanIssueMoveNow(PlayerRoot root, ArmyData army, HexMap map, HexCoord destination) =>
-            root != null && army != null && FindAffordableStep(map, army, destination).HasValue
-                && ArmyActions.CanAffordActivation(army, root);
+        internal static bool CanIssueMoveNow(PlayerRoot root, ArmyData army, HexMap map, HexCoord destination,
+            AiTurnContext ctx = null) => root != null && army != null
+                && FindAffordableStep(map, army, destination).HasValue
+                && (ArmyActions.CanAffordActivation(army, root) || (ctx != null
+                    && root.CanSpendActionPoints(army.PendingActivationApCost)
+                        && V2.TradeFunding.CanFund(root.Setup, root, ctx,
+                            new ResourceCost(energy: army.PendingActivationEnergyCost))));
 
         // Trailer for an action's own log line — "what did this actually cost", read as a
         // before/after snapshot around the spend rather than off the CardDefinition/ResourceCost

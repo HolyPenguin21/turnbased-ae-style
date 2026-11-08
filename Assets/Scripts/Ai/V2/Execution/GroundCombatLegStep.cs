@@ -130,6 +130,8 @@ namespace Game.Ai.V2
             ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             HexCoord endHex = army != null ? army.Hex : trace.EndHex;
             moved = !endHex.Equals(before);
+            if (trace.ResourceConverted)
+            { result.ResourceConverted = true; result.StateVersionAfter = WorldDeltaLifecycle.Current; }
             WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
                 || trace.EnteredStealthThisStep);
             if (moved)

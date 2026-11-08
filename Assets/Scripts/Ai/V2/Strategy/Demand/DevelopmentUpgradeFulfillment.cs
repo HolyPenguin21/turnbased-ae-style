@@ -83,8 +83,8 @@ namespace Game.Ai.V2
                 || plan.ApCost != challengeAp || plan.DeferredAttachmentAp != attachAp
                 || DevelopmentOpportunityEvaluator.PendingEquipmentCovers(op, hand, snap,
                     CapabilityInventory.Build(snap, player, null))
-                || !StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player,
-                    demand?.SpendAuthority ?? default))
+                || challengeAp > StrategicSpendability.SpendableAp(player, root, ctx, demand?.SpendAuthority ?? default)
+                || !TradeFunding.CanFund(player, root, ctx, plan.ResCost, demand?.SpendAuthority ?? default))
                 return DevUpgradeResult.Skip("upgrade_chain_no_longer_spendable");
 
             int apBefore = root.ActionPoints;

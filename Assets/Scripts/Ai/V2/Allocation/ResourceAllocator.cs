@@ -624,6 +624,10 @@ namespace Game.Ai.V2
             bool ConflictsCurrentPortfolio(MissionProposal candidate)
             {
                 if (candidate == null) return false;
+                // Progressive prices are shared: reserve one conversion-dependent mission,
+                // then rebuild after execution, exactly like the card portfolio.
+                if (NeedsTrade(candidate) && (alloc.Funded.Any(fe => NeedsTrade(fe.Mission))
+                    || _lockedClaims.Values.Any(lc => NeedsTrade(lc.Mission)))) return true;
                 return alloc.Funded.Any(fe => fe?.Mission != null
                         && MissionAdmissionPolicy.Conflicts(fe.Mission, candidate))
                     || _lockedClaims.Values.Any(lc => lc.Mission != null
@@ -966,21 +970,26 @@ namespace Game.Ai.V2
         // over a positively-ranked alternative.
         private static float RankValue(MissionProposal m) => m?.EffectiveValue ?? 0f;
 
-        private ResourceVector PhysicalMinimum(MissionProposal m)
+        private ResourceVector LogicalMinimum(MissionProposal m)
         {
             MissionRequirements r = m?.Requirements;
-            ResourceVector baseMin = r == null ? ResourceVector.Zero
+            ResourceVector min = r == null ? ResourceVector.Zero
                 : new ResourceVector(0f, Mathf.Max(0f, r.HumanMinimum), Mathf.Max(0f, r.EnergyMinimum),
                     Mathf.Max(0f, r.MaterialsMinimum), Mathf.Max(0f, r.TechMinimum));
-            if (!_repricedFloors.TryGetValue(StableMissionKey.For(m), out ProvisionRequirement floor)
-                || !floor.Physical.AnyPhysical)
-                return baseMin;
-            return new ResourceVector(0f,
-                Mathf.Max(baseMin.Human, floor.Physical.Human),
-                Mathf.Max(baseMin.Energy, floor.Physical.Energy),
-                Mathf.Max(baseMin.Materials, floor.Physical.Materials),
-                Mathf.Max(baseMin.Tech, floor.Physical.Tech));
+            if (!_repricedFloors.TryGetValue(StableMissionKey.For(m), out ProvisionRequirement floor)) return min;
+            return new ResourceVector(0f, Mathf.Max(min.Human, floor.Physical.Human),
+                Mathf.Max(min.Energy, floor.Physical.Energy), Mathf.Max(min.Materials, floor.Physical.Materials),
+                Mathf.Max(min.Tech, floor.Physical.Tech));
         }
+
+        private ResourceVector PhysicalMinimum(MissionProposal m) => TradeFunding.PricedVector(
+            _player, PlayerRootRegistry.FindFor(_player), FundingContext(), LogicalMinimum(m), AuthorityFor(m));
+
+        private AiTurnContext FundingContext() => new AiTurnContext { Map = _snap?.Map, TurnNumber = _snap?.TurnNumber ?? 0 };
+
+        private bool NeedsTrade(MissionProposal m) => m != null && TradeFunding.TryPlan(
+            _player, PlayerRootRegistry.FindFor(_player), FundingContext(), TradeFunding.CostOf(LogicalMinimum(m)),
+            out _, AuthorityFor(m));
 
         // The allocator's spend authority for one candidate. An Economy build is funded against
         // FitsSpendableForEconomyCompletion's pool: its own owner's rows and other builds'
@@ -1053,13 +1062,11 @@ namespace Game.Ai.V2
         private ResourceVector PhysicalDesired(MissionProposal m)
         {
             MissionRequirements r = m?.Requirements;
-            ResourceVector min = PhysicalMinimum(m);
-            if (r == null) return min;
-            return new ResourceVector(0f,
-                Mathf.Max(min.Human, r.HumanDesired),
-                Mathf.Max(min.Energy, r.EnergyDesired),
-                Mathf.Max(min.Materials, r.MaterialsDesired),
-                Mathf.Max(min.Tech, r.TechDesired)).ClampLow0();
+            ResourceVector min = LogicalMinimum(m);
+            ResourceVector desired = r == null ? min : new ResourceVector(0f,
+                Mathf.Max(min.Human, r.HumanDesired), Mathf.Max(min.Energy, r.EnergyDesired),
+                Mathf.Max(min.Materials, r.MaterialsDesired), Mathf.Max(min.Tech, r.TechDesired));
+            return TradeFunding.PricedVector(_player, PlayerRootRegistry.FindFor(_player), FundingContext(), desired, AuthorityFor(m));
         }
 
         private sealed class MissionKeyComparer : IComparer<StableMissionKey>

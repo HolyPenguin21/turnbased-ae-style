@@ -33,7 +33,7 @@ namespace Game.Ai.V2
         // through the canonical current-objective TaskScore.
         public static List<HexCoord> EnumerateAviationPlacements(WorldSnapshot snapshot,
             PlayerSetupData player, PlayerRoot root, CardData card, out string reason,
-            bool requireCurrentAp = true)
+            bool requireCurrentAp = true, bool resourceForecast = false)
         {
             reason = null;
             if (player == null || root == null || card?.Definition == null)
@@ -42,7 +42,7 @@ namespace Game.Ai.V2
             int deployApCost = CardCostRules.PlayAp(card);
             if (requireCurrentAp && !root.CanSpendActionPoints(deployApCost))
             { reason = "unaffordable(ap)"; return new List<HexCoord>(); }
-            if (!CardCostRules.CanAffordPlay(root, card))
+            if (!resourceForecast && !CardCostRules.CanAffordPlay(root, card))
             { reason = "unaffordable(resources)"; return new List<HexCoord>(); }
 
             List<HexCoord> options = FeasibleAviationAirfields(

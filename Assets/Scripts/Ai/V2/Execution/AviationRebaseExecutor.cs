@@ -38,7 +38,7 @@ namespace Game.Ai.V2
             }
             ArmyData source = AviationActions.FindStoredAircraftSource(plan.SourceHex, player, plan.Aircraft);
             if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u))
-                || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft))
+                || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft, ctx))
                 yield break;
 
             AiAirSortiePlanner.RebaseRoute? liveRoute =
@@ -50,10 +50,8 @@ namespace Game.Ai.V2
             int liveAp = plan.Aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
             int liveEnergy = plan.Aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
             float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
-            float spendableEnergy = StrategicSpendability.SpendableAmount(
-                player, root, ctx, ResourceType.Energy);
             if (liveAp > spendableAp + AiConfigV2.allocatorSliceEpsilon
-                || liveEnergy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
+                || !TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: liveEnergy)))
             {
                 AiDebugLog.Write("[AI][V2][Aviation][Rebase] cancelled - AP/Energy held by the resource bank");
                 yield break;
@@ -75,6 +73,7 @@ namespace Game.Ai.V2
             yield return AiAirSortiePlanner.LaunchRoutine(
                 player, decision, ctx, AirSortieKind.Rebase, trace);
             RecordLaunchReceipt(trace);
+            if (trace.ResourceConverted) setChanged?.Invoke(true);
 
             ArmyData wing = ArmyRegistry.AllForOwner(player)
                 .Where(a => AviationRules.IsValidAirArmy(a) && (!before.Contains(a.Id) || plan.Aircraft.Any(a.Members.Contains)))
@@ -97,6 +96,7 @@ namespace Game.Ai.V2
                 wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == wing.Id);
                 WorldDeltaLifecycle.RecordExecutionMutation(null,
                     !(wing?.Hex ?? trace.EndHex).Equals(prior));
+                if (trace.ResourceConverted) setChanged?.Invoke(true);
                 if (wing == null || wing.Hex.Equals(prior))
                     break;
                 changed = true;
@@ -119,10 +119,9 @@ namespace Game.Ai.V2
             // Re-proved against the live bank: the flight this wing exists for must still be payable.
             int ap = plan.Aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
             int energy = plan.Aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
-            if (!AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft)
+            if (!AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft, ctx)
                 || ap > StrategicSpendability.SpendableAp(player, root, ctx) + AiConfigV2.allocatorSliceEpsilon
-                || energy > StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
-                    + AiConfigV2.allocatorSliceEpsilon)
+                || !TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: energy)))
             {
                 AiDebugLog.Write("[AI][V2][Aviation][FormWing] cancelled - AP/Energy held by the resource bank");
                 yield break;
@@ -157,8 +156,7 @@ namespace Game.Ai.V2
             // both the optional strike and the return must respect other owners' bank holds.
             if (wing.PendingActivationApCost > StrategicSpendability.SpendableAp(player, root, ctx)
                     + AiConfigV2.allocatorSliceEpsilon
-                || wing.PendingActivationEnergyCost > StrategicSpendability.SpendableAmount(
-                    player, root, ctx, ResourceType.Energy) + AiConfigV2.allocatorSliceEpsilon)
+                || !TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: wing.PendingActivationEnergyCost)))
                 yield break;
 
             bool changed = false;
@@ -211,6 +209,7 @@ namespace Game.Ai.V2
                 wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == wing.Id);
                 WorldDeltaLifecycle.RecordExecutionMutation(result,
                     !(wing?.Hex ?? trace.EndHex).Equals(prior));
+                if (trace.ResourceConverted) setChanged?.Invoke(true);
                 if (wing == null || wing.Hex.Equals(prior))
                     break;
                 changed = true;

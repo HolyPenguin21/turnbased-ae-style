@@ -383,7 +383,7 @@ namespace Game.Ai.V2
             if (!demand.TargetHex.HasValue || demand.EconomyBuildCard == null
                 || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player)
                 || !BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx,
-                    demand.EconomyBuildCard, demand.TargetHex.Value, out _))
+                    demand.EconomyBuildCard, demand.TargetHex.Value, out _, resourceForecast: true))
                 return null;
             CardData card = demand.EconomyBuildCard;
             HexCoord hex = demand.TargetHex.Value;
@@ -406,9 +406,9 @@ namespace Game.Ai.V2
                             && reservation?.ClaimsEconomyBuildCard(candidate) != true
                             && (apBudget == null || ap <= apBudget.UnreservedBalance() + AiConfigV2.allocatorSliceEpsilon)
                             && ap <= StrategicSpendability.SpendableAp(player, root, ctx, authority) + AiConfigV2.allocatorSliceEpsilon
-                            && StrategicSpendability.FitsSpendableResources(player, root, ctx,
+                            && TradeFunding.CanFund(player, root, ctx,
                                 BuildingPlayExecutor.BaseAndGarrisonCost(card, candidate), authority);
-                    })) continue;
+                    }, resourceForecast: true, authority: SpendAuthorityFor(demand))) continue;
                 // Composition readiness alone does not grant ownership of an Attack/Defence
                 // mover standing here. Reuse the same candidate/claim gate as outbound planning.
                 var choice = EconomyBuilderSelection.SelectEconomyBuilder(snap, hex, new[] { route },
@@ -657,7 +657,7 @@ namespace Game.Ai.V2
                 .Select(b => b.Hex)
                 .Where(h =>
                 {
-                    if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string why))
+                    if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string why, resourceForecast: true))
                         return true;
                     lastReject = why ?? lastReject;
                     return false;
@@ -763,14 +763,13 @@ namespace Game.Ai.V2
 
                     var placement = new PlacementOption(fac.Hex, DeploymentKind.Garrison, garrison);
                     CardPlayPlan preflight = placement.Bind(card);
-                    if (!CardPlayExecutor.Preflight(player, root, hand, ctx, preflight, out string why))
+                    if (!CardPlayExecutor.Preflight(player, root, hand, ctx, preflight, out string why, resourceForecast: true))
                     {
                         AiDebugLog.Write($"[AI][V2]   infra - DevelopmentOperator preflight fail "
                             + $"@({fac.Hex.Q},{fac.Hex.R}) {card.Definition.displayName}: {why}");
                         continue;
                     }
-                    if (!StrategicSpendability.FitsSpendableResources(
-                            player, root, ctx, card.EffectivePlayResourceCost))
+                    if (!TradeFunding.CanFund(player, root, ctx, card.EffectivePlayResourceCost))
                         continue;
 
                     float score = DevelopmentPreparationScorer.HandOperator(card, ordinal, fac.Hex, fac.Mode,

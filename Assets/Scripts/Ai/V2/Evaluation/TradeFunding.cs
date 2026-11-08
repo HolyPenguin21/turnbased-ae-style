@@ -31,8 +31,10 @@ namespace Game.Ai.V2
             ResourceCost cost, out TradeFundingPlan plan, SpendAuthority authority = default, bool previewAccess = false)
         {
             plan = null;
-            if (player == null || root == null || ctx == null || cost == null || root.TradeRate == int.MaxValue
-                || (!previewAccess && (!root.TradeTurnOpen || !TradeActions.HasAccess(player)))) return false;
+            if (player == null || ReferenceEquals(root, null) || root == null || ctx == null || cost == null
+                || root.TradeRate == int.MaxValue) return false;
+            if (StrategicSpendability.FitsSpendableResources(player, root, ctx, cost, authority)) return false;
+            if (!previewAccess && (!root.TradeTurnOpen || !TradeActions.HasAccess(player))) return false;
             var hand = AiHandRegistry.Peek(player);
             var forecast = ResourceStarvationRegistry.ForecastOperationalNeed(player, ctx.TurnNumber);
             var free = new int[4]; var donors = new int[4]; var missing = new int[4]; var external = new int[4];
@@ -42,7 +44,7 @@ namespace Game.Ai.V2
                 var type = (ResourceType)i;
                 if (cost.Get(type) < 0) return false;
                 free[i] = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type, authority)));
-                int ordinaryFree = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type)));
+                int ordinaryFree = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type, new SpendAuthority(authority.Owner, false))));
                 double future = forecast.Get(type);
                 if (hand != null)
                 {
@@ -50,7 +52,7 @@ namespace Game.Ai.V2
                     future += hand.RemainingDeck.Sum(c => (double)(c?.resourceCost?.Get(type) ?? 0));
                 }
                 // Conservatively protect the full remaining main deck AND non-card operations.
-                // Claims are not released or re-denominated for a conversion.
+                // Only this action's own held donor units may be used; foreign holds remain protected.
                 donors[i] = (int)Math.Max(0, ordinaryFree - Math.Max(future, cost.Get(type)));
                 missing[i] = Math.Max(0, cost.Get(type) - free[i]); units += missing[i];
                 external[i] = cost.Get(type);
@@ -108,6 +110,18 @@ namespace Game.Ai.V2
         internal static ResourceCost PricedCost(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ResourceCost cost, SpendAuthority authority = default) =>
             TryPlan(player, root, ctx, cost, out var plan, authority) ? plan.ExternalCost : cost;
+
+        // Mission requirements describe the action's resources; allocation reserves the
+        // external debit. Ceil each physical component so fractional forecasts never underfund.
+        internal static ResourceCost CostOf(ResourceVector cost) => new ResourceCost(
+            Mathf.CeilToInt(Mathf.Max(0f, cost.Human)), Mathf.CeilToInt(Mathf.Max(0f, cost.Energy)),
+            Mathf.CeilToInt(Mathf.Max(0f, cost.Materials)), Mathf.CeilToInt(Mathf.Max(0f, cost.Tech)));
+
+        internal static ResourceVector PricedVector(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ResourceVector cost, SpendAuthority authority = default) =>
+            cost.AnyPhysical && !ReferenceEquals(root, null)
+                && TryPlan(player, root, ctx, CostOf(cost), out var quote, authority)
+                ? ProvisioningManager.CostVector(quote.ExternalCost) : cost;
 
         internal static bool Fund(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ResourceCost cost, SpendAuthority authority = default)

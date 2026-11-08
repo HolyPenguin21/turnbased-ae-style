@@ -1,3 +1,4 @@
+using System.Linq;
 using Game.Aviation;
 using Game.Cards;
 using Game.Map;
@@ -44,6 +45,21 @@ namespace Game.Ai.V2
                 && !BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, play.Card, play.TargetHex,
                     out _, resourceForecast: true))
             { res.FailReason = "facility placement changed"; return res; }
+
+            if (play.Kind == NonCombatCardPlayer.PlayKind.Aviation
+                && !PlacementRules.EnumerateAviationPlacements(snap, player, root, play.Card,
+                    out _, resourceForecast: true).Contains(play.TargetHex))
+            { res.FailReason = "airfield placement changed"; return res; }
+            if (play.Kind == NonCombatCardPlayer.PlayKind.Equipment)
+            {
+                bool hostCurrent = play.EquipHostCard != null
+                    ? hand.Hand.Contains(play.EquipHostCard)
+                        && EquipmentSystem.CanAttachPreview(play.Card.Definition, play.EquipHostCard, out _)
+                    : play.EquipHost != null && !play.EquipHost.IsPrisoner
+                        && OwnWorld.Of(player).ArmyContaining(play.EquipHost)?.Owner == player
+                        && EquipmentSystem.CanAttachPreview(play.Card.Definition, play.EquipHost, out _);
+                if (!hostCurrent) { res.FailReason = "equipment host changed"; return res; }
+            }
 
             // Hand/source identity must survive until funding; buying resources cannot repair it.
             if (play.Generation == null && !hand.Hand.Contains(play.Card))

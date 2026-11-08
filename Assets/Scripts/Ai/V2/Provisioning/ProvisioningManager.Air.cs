@@ -92,8 +92,10 @@ namespace Game.Ai.V2
             float realEnergy = stored ? exec.AircraftRuntimeIds.Sum(id =>
                 Mathf.Max(0, wing.Members.First(u => u.RuntimeId == id).LaunchEnergyCost)) : exec.RequiredEnergy;
             float apEnvelope = funded.Tentative.Ap;
+            ResourceCost fuel = new ResourceCost(energy: Mathf.CeilToInt(realEnergy));
+            ResourceVector debit = TradeFunding.PricedVector(player, root, ctx, CostVector(fuel));
             float energyEnvelope = funded.PhysicalDraw.Energy;
-            if (realAp > apEnvelope + eps || realEnergy > energyEnvelope + eps)
+            if (realAp > apEnvelope + eps || !funded.PhysicalDraw.CoversPhysical(debit, eps))
                 // Round 7 (Problem 3) — report BOTH the real AP and the real Energy this exact air
                 // actor needs, not AP alone: an air launch's Energy shortfall must raise an Energy
                 // floor too, so ResourceAllocator's next Pack() can actually fund it, instead of
@@ -108,7 +110,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: air actor #{moverArmyId} needs {N(realAp)}, {N(turnApLeft)} left after earlier claims"));
 
-            float liveEnergyLeft = AirSpendableEnergyLeft(player, root, ctx, session);
+            float liveEnergyLeft = AirSpendableEnergyLeft(player, root, ctx, session, realEnergy);
             if (realEnergy > liveEnergyLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"spendable Energy exhausted: air actor #{moverArmyId} needs {N(realEnergy)}, "
@@ -141,7 +143,7 @@ namespace Game.Ai.V2
                 ExecutionHex = executionHex,
                 ClaimedAp = realAp,
                 ClaimedEnergy = realEnergy,
-                ClaimedPhysical = new ResourceVector(0f, 0f, realEnergy, 0f, 0f),
+                ClaimedPhysical = debit,
                 StealthApReserved = false,
                 RequiresStealth = false,
                 ExecutorKind = exec.ExecutorKind,
@@ -169,9 +171,23 @@ namespace Game.Ai.V2
         // Only air missions set ClaimedEnergy, so this never double-counts an Economy ledger row.
         // Mandatory aviation recovery is settled before card play and owns no bank hold.
         internal static float AirSpendableEnergyLeft(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisioningSession session) =>
-            StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
-            - (session?.EnergyClaimed ?? 0f);
+            AiTurnContext ctx, ProvisioningSession session, float requiredEnergy = 0f)
+        {
+            float current = StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
+                - (session?.EnergyClaimed ?? 0f);
+            var fuel = new ResourceCost(energy: Mathf.CeilToInt(Mathf.Max(0f, requiredEnergy)));
+            if (requiredEnergy <= current || !TradeFunding.CanFund(player, root, ctx, fuel)) return current;
+            ResourceVector debit = TradeFunding.PricedVector(player, root, ctx, CostVector(fuel));
+            ResourceVector prior = ResourceVector.Zero;
+            foreach (ProvisionedMission mission in session?.Successful.Values ?? Enumerable.Empty<ProvisionedMission>())
+                if (mission.ClaimedEnergy > 0f) prior += mission.ClaimedPhysical;
+            ResourceVector total = prior + debit;
+            // One quote per planning pass. No imaginary Energy or repeated donor draw.
+            if (session?.Successful.Values.Any(m => m.ClaimedEnergy > 0f
+                && m.ClaimedPhysical.Energy + AiConfigV2.allocatorSliceEpsilon < m.ClaimedEnergy) == true) return current;
+            return StrategicSpendability.FitsSpendableResources(player, root, ctx, TradeFunding.CostOf(total))
+                ? Mathf.Max(current, requiredEnergy) : current;
+        }
 
         private static ProvisionFailure? AirSortieReservationAdmission(
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, ProvisioningSession session,
@@ -188,8 +204,10 @@ namespace Game.Ai.V2
                 Mathf.CeilToInt(Mathf.Max(0f, realAp)),
                 Mathf.CeilToInt(Mathf.Max(0f, realEnergy)),
                 exec.RouteScore,
-                AirSpendableEnergyLeft(player, root, ctx, session),
-                Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)));
+                AirSpendableEnergyLeft(player, root, ctx, session, realEnergy),
+                Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)),
+                fundingOpportunityUnits: ActionPrice.Resources(TradeFunding.PricedCost(player, root, ctx,
+                    new ResourceCost(energy: Mathf.CeilToInt(Mathf.Max(0f, realEnergy))))) / AiConfigV2.actionPriceResourceAp);
             AiDebugLog.Write(decision.ToLog(label));
 
             return decision.ShouldReserve
