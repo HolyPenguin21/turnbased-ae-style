@@ -12,7 +12,7 @@ The rate, current-turn activity and turn-open status are part of PlayerEconomySt
 
 ## Scene
 
-`Button_Trade` is authored next to `Button_Data` (Intel). `TradeUI/Modal_Trade` is authored under Canvas_UI. The four resource rows are copied from the initiative purchase presentation, with an independent TradeResourceRowUI: minus selects the resource to give; plus buys one of that row's resource. The help/rate text explains both actions. No scene elements are constructed at runtime.
+`Button_Trade` is authored next to `Button_Data` (Intel). `Panel_Trade` is authored next to the Intel content panel (GameMenuUI/Panel_Data/Panel_Trade); TradeModalUI sits on the always-active GameMenuUI/Panel_Data container, like PlayerDataPanelUI. The four resource rows are copied from the initiative purchase presentation, with an independent TradeResourceRowUI: minus selects the resource to give; plus buys one of that row's resource. The help/rate text explains both actions. No scene elements are constructed at runtime.
 
 TradeModalUI controls visibility, validates the active confirmed human turn, subscribes to economy changes, and closes when the turn, generation or access changes. GameTurnController includes it in map, card and End Turn blocking. Close/Escape and disable release subscriptions.
 
