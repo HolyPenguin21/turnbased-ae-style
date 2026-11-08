@@ -4951,17 +4951,17 @@ MonoBehaviour:
     deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Trading Post
-    art: {fileID: 21300000, guid: a8b7b846b5129fb43b590a25bea3ae05, type: 3}
-    detailArt: {fileID: 21300000, guid: d58d3f29ab617aa4ab0f3a6e7185bf50, type: 3}
+    art: {fileID: 21300000, guid: a0d563e50d56d664a89d5a64efcdc2c2, type: 3}
+    detailArt: {fileID: 21300000, guid: 72c43a7e7bdd33941b590ef2c7d805b9, type: 3}
     faction: 3
     cardType: 2
     tacticEffect: 0
     tacticAmount: 1
     apCost: 2
     resourceCost:
-      human: 1
-      energy: 1
-      materials: 0
+      human: 2
+      energy: 2
+      materials: 2
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 0
@@ -4978,7 +4978,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities:
     - Trade
     resourceYield:
@@ -4988,9 +4988,9 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -5002,4 +5002,4 @@ MonoBehaviour:
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyNamePool:
   - Desert striders
-
+  - 
