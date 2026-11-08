@@ -66,17 +66,16 @@ namespace Game.Ai.V2
             if (a == null || !a.PrimaryArmyId.HasValue
                 || (a.Phase != AttackMissionPhase.Gather && a.Phase != AttackMissionPhase.Assault))
                 return null;
-            // Cheap structural pre-check: a strike card in hand, or a Challenge that mints one.
-            var costs = new List<(ResourceCost Cost, string Source)>();
-            foreach (CardData c in pass.Hand.Hand.Where(c => IsStrikeCard(c?.Definition)))
-                costs.Add((c.EffectivePlayResourceCost, "hand:" + c.Definition.displayName));
-            if (pass.Hand.HasFreeSlot && pass.Reservation.CanGenerateMore)
-                foreach (GenerationStep g in (pass.Snap.Development?.ForecastSources
-                        ?? System.Array.Empty<GenerationStep>()).Where(g => IsStrikeCard(g?.CardDef)))
-                    costs.Add((StrategicCardEvaluator.AddResourceCosts(
-                        new CardData(g.CardDef) { ResearchProductionCreated = true }.EffectivePlayResourceCost,
-                        g.ChallengeCard?.resourceCost), "generate:" + g.CardDef.displayName));
-            if (costs.Count == 0)
+            // Structural sources: a strike card in hand, or a Challenge that mints one, that can
+            // actually reach this target from a legal airfield (the deployment play's own rule).
+            // A source the delivery would refuse must not hold resources for a strike
+            // (2026-11-08: an out-of-range Moth Bomber froze Materials and blocked two upgrades).
+            List<CardData> handSources = pass.Hand.Hand.Where(c => IsStrikeCard(c?.Definition)).ToList();
+            List<GenerationStep> generatedSources = pass.Hand.HasFreeSlot && pass.Reservation.CanGenerateMore
+                ? (pass.Snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
+                    .Where(g => IsStrikeCard(g?.CardDef)).ToList()
+                : new List<GenerationStep>();
+            if (handSources.Count == 0 && generatedSources.Count == 0)
                 return null;
             ArmySnapshot primary = pass.Snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
@@ -86,6 +85,23 @@ namespace Game.Ai.V2
             if (forecast.AirSourceArmyId.HasValue
                 || AttackPreparationPolicy.AssessReadiness(primary, pass.Snap.Self.AttackPeak,
                     forecast.Opposition, forecast.HexBonus).Ready)
+                return null;
+            List<CombatAirSupportRequest> requests = NonCombatCardPlayer.KnownStrikeTargets(pass.Snap,
+                    pass.Player, pass.Root, pass.Ctx,
+                    ReconObjectiveEvaluator.Enumerate(pass.Snap).Where(o => o != null).ToList())
+                .Where(r => r.Target.Equals(a.Target.Hex)).ToList();
+            var costs = new List<(ResourceCost Cost, string Source)>();
+            foreach (CardData c in handSources)
+                if (NonCombatCardPlayer.CanStructurallyStrike(pass.Snap, pass.Player, pass.Root, pass.Ctx, c, requests))
+                    costs.Add((c.EffectivePlayResourceCost, "hand:" + c.Definition.displayName));
+            foreach (GenerationStep g in generatedSources)
+            {
+                var minted = new CardData(g.CardDef) { ResearchProductionCreated = true };
+                if (NonCombatCardPlayer.CanStructurallyStrike(pass.Snap, pass.Player, pass.Root, pass.Ctx, minted, requests))
+                    costs.Add((StrategicCardEvaluator.AddResourceCosts(minted.EffectivePlayResourceCost,
+                        g.ChallengeCard?.resourceCost), "generate:" + g.CardDef.displayName));
+            }
+            if (costs.Count == 0)
                 return null;
             var cheapest = costs.OrderBy(x => Total(x.Cost)).ThenBy(x => x.Source, System.StringComparer.Ordinal).First();
             return new StrikeSupportNeed

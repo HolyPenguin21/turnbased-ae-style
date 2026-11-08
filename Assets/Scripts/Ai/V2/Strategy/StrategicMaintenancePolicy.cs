@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
@@ -271,37 +272,63 @@ namespace Game.Ai.V2
             // upgrade consequence only when the authoritative placement check rejects it for the
             // capacity reason at every owned Base; an AP/resource/ownership failure must not be
             // disguised as a capacity dependency.
-            var blockedFacilities = hand.Hand
-                .Select((card, ordinal) => new { Card = card, Ordinal = ordinal })
-                .Where(x => x.Card?.Definition != null
-                    && x.Card.Definition.cardType == CardType.Facility)
-                .Where(x => !NeedsDevelopment(x.Card))
-                .Where(x => IsBlockedOnlyByCapacity(x.Card, bases, player, hand, ctx))
-                .Select(x => new
+            // Every decision is logged once per turn: this path used to be silent, so a hand
+            // Facility that never got its slot (2026-11-08, Korrin T16-T25) could not be traced.
+            void Decide(string card, string decision, string reason) => AiDebugLog.WriteDeduped(
+                $"capacity-unlock|{player?.Nickname}|{snap?.TurnNumber}|{card}|{decision}|{reason}",
+                $"[AI][V2][Capacity] player={player?.Nickname} card={card} decision={decision} reason={reason}");
+            var blockedFacilities = new List<(CardData Card, int Ordinal, StrategicCardUseCandidate Evaluation)>();
+            for (int ordinal = 0; ordinal < hand.Hand.Count; ordinal++)
+            {
+                CardData card = hand.Hand[ordinal];
+                if (card?.Definition == null || card.Definition.cardType != CardType.Facility
+                    || NeedsDevelopment(card))
+                    continue;
+                if (!IsBlockedOnlyByCapacity(card, bases, player, hand, ctx, out string notCapacity))
                 {
-                    x.Card,
-                    x.Ordinal,
-                    Evaluation = NonCombatCardPlayer.ScoreCapacityUnlock(
-                        snap, player, root, ctx, x.Card, hand, witnessedUsefulApDemand),
-                })
-                .Where(x => x.Evaluation != null)
-                .OrderByDescending(x => x.Evaluation.TotalUseScore)
-                .ThenBy(x => x.Ordinal)
-                .ToList();
+                    Decide(card.Definition.displayName, "SKIP", notCapacity);
+                    continue;
+                }
+                StrategicCardUseCandidate evaluation = NonCombatCardPlayer.ScoreCapacityUnlock(
+                    snap, player, root, ctx, card, hand, witnessedUsefulApDemand);
+                if (evaluation == null || float.IsNaN(evaluation.TotalUseScore)
+                    || float.IsInfinity(evaluation.TotalUseScore))
+                {
+                    Decide(card.Definition.displayName, "SKIP",
+                        $"invalid_facility_score({evaluation?.TotalUseScore.ToString(CultureInfo.InvariantCulture) ?? "null"})");
+                    continue;
+                }
+                blockedFacilities.Add((card, ordinal, evaluation));
+            }
+            blockedFacilities = blockedFacilities.OrderByDescending(x => x.Evaluation.TotalUseScore)
+                .ThenBy(x => x.Ordinal).ToList();
             if (blockedFacilities.Count == 0)
                 yield break;
 
+            bool any = false;
             foreach (BuildingData b in UnlockableBasesInOrder(bases))
             {
                 BaseUpgradeTier tier = CapacityUnlockTierAt(b, ctx);
                 if (tier == null)
+                {
+                    Decide(blockedFacilities[0].Card.Definition.displayName, "SKIP",
+                        $"no_tier@({b.Hex.Q},{b.Hex.R}) level={b.Level}");
                     continue;
+                }
                 // The slot is bought FOR the card: the tier and the card it unlocks must be
                 // jointly payable (directly or through Trade), or the upgrade strands its cost.
                 var bestFacility = blockedFacilities.FirstOrDefault(x => TradeFunding.CanFund(player, root, ctx,
                     StrategicCardEvaluator.AddResourceCosts(tier.cost, x.Card.EffectivePlayResourceCost)));
-                if (bestFacility == null)
+                if (bestFacility.Card == null)
+                {
+                    Decide(blockedFacilities[0].Card.Definition.displayName, "SKIP",
+                        $"tier_and_facility_not_fundable@({b.Hex.Q},{b.Hex.R}) level={b.Level}");
                     continue;
+                }
+                any = true;
+                Decide(bestFacility.Card.Definition.displayName, "CANDIDATE",
+                    $"tier@({b.Hex.Q},{b.Hex.R}) level={b.Level}->{b.Level + 1} "
+                    + $"utility={bestFacility.Evaluation.TotalUseScore.ToString("0.00", CultureInfo.InvariantCulture)}");
                 yield return new CapacityUpgrade
                 {
                     Building = b,
@@ -311,6 +338,8 @@ namespace Game.Ai.V2
                     FacilityBreakdown = bestFacility.Evaluation.Breakdown?.ToCompact() ?? "no breakdown",
                 };
             }
+            if (!any && !UnlockableBasesInOrder(bases).Any())
+                Decide(blockedFacilities[0].Card.Definition.displayName, "SKIP", "no_unlockable_base");
         }
 
         // The ONE "which Base / which tier unlocks the next Facility slot" rule, shared by the
@@ -379,18 +408,30 @@ namespace Game.Ai.V2
         }
 
         private static bool IsBlockedOnlyByCapacity(CardData card, IReadOnlyList<BuildingData> bases,
-            PlayerSetupData player, AiHandData hand, AiTurnContext ctx)
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx) =>
+            IsBlockedOnlyByCapacity(card, bases, player, hand, ctx, out _);
+
+        private static bool IsBlockedOnlyByCapacity(CardData card, IReadOnlyList<BuildingData> bases,
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx, out string why)
         {
+            why = "no_tiered_own_base";
             bool sawCapacityBlock = false;
             foreach (BuildingData b in bases)
             {
                 if (BuildingPlayExecutor.CanPlaceFacilityAt(
                     player, hand, ctx, card, b.Hex, out string reason, resourceForecast: true))
+                {
+                    why = $"placeable@({b.Hex.Q},{b.Hex.R})";
                     return false; // already playable: no dependency to buy
+                }
                 if (reason != InfrastructureActions.NoFreeFacilitySlotReason)
+                {
+                    why = $"other_block@({b.Hex.Q},{b.Hex.R}):{reason}";
                     return false; // affordability or another rule is also blocking it
+                }
                 sawCapacityBlock = true;
             }
+            if (sawCapacityBlock) why = null;
             return sawCapacityBlock;
         }
 

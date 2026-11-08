@@ -51,40 +51,78 @@ namespace Game.EditorTests
 
         private static readonly float[] UselessHuman = { 0.2f, 1.5f, 1.5f, 1.5f };
         private static readonly float[] NoIncome = { 0f, 0f, 0f, 0f };
+        private static readonly float[] NoForecast = { 0f, 0f, 0f, 0f };
 
         [Test] public void AccessIsWorthNothingWithoutProtectedSurplus()
         {
+            // Coverage (5 + 1) / 10 = 0.6 keeps 10 x 0.6 - 1 = 5 of each: nothing to sell.
             float gain = TradeFunding.SimulateConversionGain(new[] { 5f, 5f, 5f, 5f },
-                new[] { 10f, 10f, 10f, 10f }, new[] { 1f, 1f, 1f, 1f }, UselessHuman, 2, 1);
+                new[] { 10f, 10f, 10f, 10f }, NoForecast, new[] { 1f, 1f, 1f, 1f }, UselessHuman, 2, 1);
             Assert.That(gain, Is.EqualTo(0f));
         }
 
-        [Test] public void UnneededResourceIsConvertedOnlyAboveItsProtection()
+        [Test] public void StockNoPlayableCardCanUseIsConvertedWhileProfitable()
         {
-            // Human 20, of which 1 is still needed: 19 surplus pays rates 2+3+4+5; 6 does not fit.
+            // The one Human card also waits on Energy/Materials/Tech that never come (coverage 0):
+            // all 20 Human pay rates 2+3+4+5+6 while each bought unit is still worth more.
             var stock = new[] { 20f, 0f, 0f, 0f };
             float gain = TradeFunding.SimulateConversionGain(stock, new[] { 1f, 10f, 10f, 10f },
-                NoIncome, UselessHuman, 2, 1);
-            Assert.That(gain, Is.EqualTo(1.1f + 0.9f + 0.7f + 0.5f).Within(1e-4f));
+                NoForecast, NoIncome, UselessHuman, 2, 1);
+            Assert.That(gain, Is.EqualTo(1.1f + 0.9f + 0.7f + 0.5f + 0.3f).Within(1e-4f));
             Assert.That(stock[0], Is.EqualTo(20f), "Simulation must not change the caller's stock.");
         }
 
         [Test] public void ProgressiveRateStopsUnprofitableConversion()
         {
             float gain = TradeFunding.SimulateConversionGain(new[] { 100f, 0f, 0f, 0f },
-                new[] { 0f, 10f, 10f, 10f }, NoIncome, new[] { 0.5f, 1.5f, 1.5f, 1.5f }, 2, 1);
+                new[] { 0f, 10f, 10f, 10f }, NoForecast, NoIncome, new[] { 0.5f, 1.5f, 1.5f, 1.5f }, 2, 1);
             Assert.That(gain, Is.EqualTo(0.5f).Within(1e-4f), "rate 3 x 0.5 already equals the bought unit");
         }
 
         [Test] public void ProjectedIncomeAndIdleDecayFeedLaterTurns()
         {
             var income = new[] { 3f, 0f, 0f, 0f };
-            var protect = new[] { 0f, 10f, 10f, 10f };
-            Assert.That(TradeFunding.SimulateConversionGain(new float[4], protect, income, UselessHuman, 6, 1),
+            var need = new[] { 0f, 10f, 10f, 10f };
+            Assert.That(TradeFunding.SimulateConversionGain(new float[4], need, NoForecast, income, UselessHuman, 6, 1),
                 Is.EqualTo(0f));
             // Turn 0 idle (6->5), turn 1 Human 3 < 5 idle (5->4), turn 2 Human 6 pays 4.
-            Assert.That(TradeFunding.SimulateConversionGain(new float[4], protect, income, UselessHuman, 6, 3),
+            Assert.That(TradeFunding.SimulateConversionGain(new float[4], need, NoForecast, income, UselessHuman, 6, 3),
                 Is.EqualTo(1.5f - 4 * 0.2f).Within(1e-4f));
+        }
+
+        [Test] public void IncomeThatCoversTheDeckLeavesStockUnprotected()
+        {
+            // Vessels: 6 Human for the whole deck, 1 Human a turn. Eight turns of income cover it,
+            // so the 4 Human in stock are not needed by any card (the old rule kept all 6).
+            float[] protect = TradeFunding.ProtectedStock(new[] { 4f, 0f, 0f, 0f },
+                new[] { 6f, 10f, 10f, 10f }, NoForecast, new[] { 1f, 2f, 2f, 2f }, 8f);
+            Assert.That(protect[0], Is.EqualTo(0f));
+        }
+
+        [Test] public void BottleneckFreesComplementaryStock()
+        {
+            // Korrin T21: Materials (1 + 0.5 x 8) / 29 covers 17% of the deck. Energy and Tech
+            // beyond that share wait on Materials and are free to trade; Materials stays kept.
+            float[] protect = TradeFunding.ProtectedStock(new[] { 10f, 12f, 1f, 12f },
+                new[] { 4f, 17f, 29f, 20f }, NoForecast, new[] { 1f, 0.5f, 0.5f, 1f }, 8f);
+            Assert.That(protect[1], Is.EqualTo(0f));
+            Assert.That(protect[3], Is.EqualTo(0f));
+            Assert.That(protect[2], Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        [Test] public void FullCoverageKeepsTheNeedNetOfIncome()
+        {
+            float[] protect = TradeFunding.ProtectedStock(new[] { 10f, 10f, 10f, 10f },
+                new[] { 8f, 8f, 8f, 8f }, NoForecast, new[] { 0f, 0f, 0f, 0.5f }, 8f);
+            Assert.That(protect[0], Is.EqualTo(8f));
+            Assert.That(protect[3], Is.EqualTo(4f));
+        }
+
+        [Test] public void OperationalForecastIsAlwaysKept()
+        {
+            float[] protect = TradeFunding.ProtectedStock(new float[4], new float[4],
+                new[] { 0f, 3f, 0f, 0f }, new[] { 0f, 5f, 0f, 0f }, 8f);
+            Assert.That(protect[1], Is.EqualTo(3f), "fuel for a live operation is not netted against income");
         }
     }
 }

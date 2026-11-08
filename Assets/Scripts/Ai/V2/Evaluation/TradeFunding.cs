@@ -38,25 +38,27 @@ namespace Game.Ai.V2
             var hand = AiHandRegistry.Peek(player);
             var forecast = ResourceStarvationRegistry.ForecastOperationalNeed(player, ctx.TurnNumber);
             var free = new int[4]; var donors = new int[4]; var missing = new int[4]; var external = new int[4];
+            var ordinaryFree = new float[4]; var deckNeed = new float[4]; var operational = new float[4]; var income = new float[4];
             long units = 0;
             for (int i = 0; i < 4; i++)
             {
                 var type = (ResourceType)i;
                 if (cost.Get(type) < 0) return false;
                 free[i] = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type, authority)));
-                int ordinaryFree = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type, new SpendAuthority(authority.Owner, false))));
-                double future = forecast.Get(type);
-                if (hand != null)
-                {
-                    future += hand.Hand.Sum(c => (double)(CardCostRules.PlayResources(c)?.Get(type) ?? 0));
-                    future += hand.RemainingDeck.Sum(c => (double)(c?.resourceCost?.Get(type) ?? 0));
-                }
-                // Conservatively protect the full remaining main deck AND non-card operations.
                 // Only this action's own held donor units may be used; foreign holds remain protected.
-                donors[i] = (int)Math.Max(0, ordinaryFree - Math.Max(future, cost.Get(type)));
+                ordinaryFree[i] = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type, new SpendAuthority(authority.Owner, false))));
+                if (hand != null)
+                    deckNeed[i] = hand.Hand.Sum(c => (float)(CardCostRules.PlayResources(c)?.Get(type) ?? 0))
+                        + hand.RemainingDeck.Sum(c => (float)(c?.resourceCost?.Get(type) ?? 0));
+                operational[i] = forecast.Get(type);
+                income[i] = ctx.Map != null ? IncomeProjection.IncomeFor(player, type, ctx.Map) : 0f;
                 missing[i] = Math.Max(0, cost.Get(type) - free[i]); units += missing[i];
                 external[i] = cost.Get(type);
             }
+            float[] protect = ProtectedStock(ordinaryFree, deckNeed, operational, income,
+                AiConfigV2.economyDeckNeedHorizonTurns);
+            for (int i = 0; i < 4; i++)
+                donors[i] = (int)Math.Max(0, Math.Floor(ordinaryFree[i] - Math.Max(protect[i], cost.Get((ResourceType)i))));
             if (units == 0 || units > AiConfigV2.tradeMaxPreviewUnits || (long)root.TradeRate + units > int.MaxValue) return false;
             // Reserve large rates first. Largest-donor-first in chronological order can
             // falsely reject a feasible quote (donors 3+2, rates 2+3).
@@ -158,8 +160,11 @@ namespace Game.Ai.V2
         {
             best = null; give = null; utility = 0f;
             if (snap?.Economy == null || ReferenceEquals(root, null) || root == null || ctx == null) return false;
+            // Units still missing over the economy horizon (income counted, the same supply
+            // ActionPrice.Scarcity reads); income that covers the need is no reason to buy.
             int deficit = Mathf.FloorToInt(snap.Economy.DeckResourceNeed.Get(type)
-                + snap.Economy.ForecastOperationalNeed.Get(type) - root.GetResource(type));
+                + snap.Economy.ForecastOperationalNeed.Get(type) - root.GetResource(type)
+                - Mathf.Max(0f, snap.Self?.PerTurnIncome.Get(type) ?? 0f) * AiConfigV2.economyDeckNeedHorizonTurns);
             if (deficit < 1) return false;
             // Quote against the spendable amount so the batch buys exactly k units.
             int free = Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, type)));
@@ -183,47 +188,84 @@ namespace Game.Ai.V2
             return utility > 0f;
         }
 
+        // Protected stock per resource (one rule for funding quotes, the access value and the
+        // proactive conversion): the share of the hand + remaining deck the economy horizon can
+        // actually play, net of the income that horizon brings, plus the full operational
+        // forecast. The playable share is the bottleneck coverage c* = min over needed types of
+        // (stock + income x horizon) / deck need, at most 1 - supply as ActionPrice.Scarcity reads
+        // it. Energy kept for cards that also wait on Materials the horizon never brings is
+        // useless accumulation (owner TZ 2026-11-08: the Vessels' Human, a spent deck, Korrin E/T).
+        internal static float[] ProtectedStock(float[] stock, float[] deckNeed, float[] operational,
+            float[] income, float horizonTurns)
+        {
+            var protect = new float[4];
+            if (stock == null || deckNeed == null || operational == null || income == null
+                || stock.Length != 4 || deckNeed.Length != 4 || operational.Length != 4 || income.Length != 4)
+                return protect;
+            float horizon = Mathf.Max(0f, horizonTurns);
+            float coverage = 1f;
+            for (int i = 0; i < 4; i++)
+                if (deckNeed[i] > AiConfigV2.allocatorSliceEpsilon)
+                    coverage = Mathf.Min(coverage, (Mathf.Max(0f, stock[i]) + Mathf.Max(0f, income[i]) * horizon)
+                        / deckNeed[i]);
+            coverage = Mathf.Clamp01(coverage);
+            for (int i = 0; i < 4; i++)
+                protect[i] = Mathf.Max(0f, Mathf.Max(0f, deckNeed[i]) * coverage - Mathf.Max(0f, income[i]) * horizon)
+                    + Mathf.Max(0f, operational[i]);
+            return protect;
+        }
+
         // Value of gaining Trade access, in AP-equivalents: what the AI's own conversion policy
         // (TryPlanConversion each turn while a unit's priced gain is positive) realises over
-        // `horizonTurns` of projected income. Donors and deficits use TryPlan's protection
-        // (hand + remaining deck + operational forecast). Zero when access already exists.
+        // `horizonTurns` of projected income, with ProtectedStock's donors and the horizon
+        // shortfall as targets. Zero when access already exists.
         internal static float AccessValueApEquivalents(WorldSnapshot snap, int horizonTurns)
         {
             if (snap?.Self == null || snap.Self.HasTrade || snap.Economy == null) return 0f;
-            var stock = new float[4]; var protect = new float[4]; var income = new float[4]; var scarcity = new float[4];
+            var stock = new float[4]; var deckNeed = new float[4]; var operational = new float[4];
+            var income = new float[4]; var scarcity = new float[4];
             foreach (ResourceType t in ResourceBundle.All)
             {
                 int i = (int)t;
                 stock[i] = snap.Self.Stockpile.Get(t);
-                protect[i] = snap.Economy.DeckResourceNeed.Get(t) + snap.Economy.ForecastOperationalNeed.Get(t);
+                deckNeed[i] = snap.Economy.DeckResourceNeed.Get(t);
+                operational[i] = snap.Economy.ForecastOperationalNeed.Get(t);
                 income[i] = Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t));
                 scarcity[i] = ActionPrice.Scarcity(t, snap);
             }
-            return SimulateConversionGain(stock, protect, income, scarcity, snap.Self.TradeRate, horizonTurns);
+            return SimulateConversionGain(stock, deckNeed, operational, income, scarcity,
+                snap.Self.TradeRate, horizonTurns);
         }
 
-        // Pure: greedy per-turn conversions (best-priced missing unit from the cheapest surplus
-        // donor) with the real progressive rate and its idle-turn decay.
-        internal static float SimulateConversionGain(float[] stock, float[] protect, float[] income,
-            float[] scarcity, int rate, int horizonTurns)
+        // Pure: greedy per-turn conversions (best-priced missing unit from the cheapest donor
+        // above ProtectedStock for the remaining horizon) with the real progressive rate and its
+        // idle-turn decay.
+        internal static float SimulateConversionGain(float[] stock, float[] deckNeed, float[] operational,
+            float[] income, float[] scarcity, int rate, int horizonTurns)
         {
-            if (stock == null || protect == null || income == null || scarcity == null
-                || stock.Length != 4 || protect.Length != 4 || income.Length != 4 || scarcity.Length != 4) return 0f;
+            if (stock == null || deckNeed == null || operational == null || income == null || scarcity == null
+                || stock.Length != 4 || deckNeed.Length != 4 || operational.Length != 4
+                || income.Length != 4 || scarcity.Length != 4) return 0f;
             var s = (float[])stock.Clone();
             int r = Math.Max(TradeActions.MinimumRate, rate);
             float total = 0f;
             for (int turn = 0; turn < horizonTurns; turn++)
             {
-                if (turn > 0) for (int i = 0; i < 4; i++) s[i] += income[i];
+                if (turn > 0) for (int i = 0; i < 4; i++) s[i] += Mathf.Max(0f, income[i]);
+                int horizonLeft = horizonTurns - turn;
                 bool traded = false;
                 for (int n = 0; n < AiConfigV2.tradeMaxPreviewUnits && r < int.MaxValue; n++)
                 {
+                    float[] protect = ProtectedStock(s, deckNeed, operational, income, horizonLeft);
                     int target = -1, donor = -1;
                     for (int i = 0; i < 4; i++)
-                        if (protect[i] - s[i] >= 1f && (target < 0 || scarcity[i] > scarcity[target])) target = i;
+                    {
+                        float shortfall = deckNeed[i] + operational[i] - s[i] - Mathf.Max(0f, income[i]) * horizonLeft;
+                        if (shortfall >= 1f && (target < 0 || scarcity[i] > scarcity[target])) target = i;
+                    }
                     if (target < 0) break;
                     for (int i = 0; i < 4; i++)
-                        if (s[i] - protect[i] >= r && (donor < 0 || scarcity[i] < scarcity[donor])) donor = i;
+                        if (i != target && s[i] - protect[i] >= r && (donor < 0 || scarcity[i] < scarcity[donor])) donor = i;
                     if (donor < 0) break;
                     float gain = (scarcity[target] - r * scarcity[donor]) * AiConfigV2.actionPriceResourceAp;
                     if (gain <= 0f) break;
