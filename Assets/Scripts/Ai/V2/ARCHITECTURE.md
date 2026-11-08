@@ -87,7 +87,11 @@ canonical-seams table below.
 * **One price table.** `Evaluation/ActionPrice` prices everything an action spends in
   AP-equivalents: 1 AP = 1 AP-equivalent for every use (card play, Challenge, activation now
   or on a later turn of a march); 1 H/E/M/T unit = `actionPriceResourceAp` x scarcity
-  (pending hand/deck demand against stock + income). TaskScore and the card score are two
+  (`ActionPrice.ScarcityProfile`, 2026-11-08: effective hand/deck demand against stock + income
+  x `economyDeckNeedHorizonTurns`; `DeckPlayability` pays the cards cheapest first, a blocked card
+  counts only on the types it lacks, its idle bill moves to those types as unlock value - a fully
+  payable deck prices exactly as before; `TradeFunding.ProtectedStock` and the initiative deck
+  appetite read the same `DeckPlayability`). TaskScore and the card score are two
   scales of that table (`taskScorePerApEquivalent`, `cardScorePerApEquivalent`); the only
   converters are `ActionPrice.ToTaskScore` / `ToCardScore` (`TaskScoreEvaluator.Price` for
   the CardPrice and Delivery slots). No caller multiplies an AP or resource weight itself.

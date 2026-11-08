@@ -384,8 +384,12 @@ namespace Game.EditorTests
             float noTech = StrategicCardEvaluator.StrategicResourceCostValue(chainCost, Make(0f));
             float abundantTech = StrategicCardEvaluator.StrategicResourceCostValue(chainCost, Make(100f));
 
-            Assert.That(noTech, Is.EqualTo(abundantTech).Within(0.0001f),
+            Assert.That(noTech, Is.LessThanOrEqualTo(abundantTech + 0.0001f),
                 "A resource with zero cost in the concrete production chain must not create a false operational penalty");
+            // 2026-11-08 (ActionPrice.ScarcityProfile): without Tech the only held card (T20) cannot
+            // be played, so the Energy/Materials it carries are idle - spending them costs less.
+            Assert.That(noTech, Is.LessThan(abundantTech),
+                "Energy/Materials kept only for a card blocked by Tech are idle, not scarce");
         }
 
         [Test]

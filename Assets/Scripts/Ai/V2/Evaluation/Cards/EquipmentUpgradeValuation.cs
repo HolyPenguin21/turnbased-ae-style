@@ -423,14 +423,17 @@ namespace Game.Ai.V2
             s_operatorForecast = true;
             try
             {
-                // The same finite horizon already used by Development. Net out pending ordinary
-                // card demand; use the snapshot's bank-aware spendable stock, never raw reserved funds.
+                // The same finite horizon already used by Development. Net out the ordinary card
+                // demand the deck can still play (ActionPrice.EffectiveCardDemand: cost idle behind
+                // another bottleneck is not netted); use the snapshot's bank-aware spendable stock,
+                // never raw reserved funds.
                 ResourceBundle budget = snap.Economy != null ? snap.Economy.SpendableStockpile : default;
+                float[] cardDemand = ActionPrice.EffectiveCardDemand(snap);
                 foreach (ResourceType type in ResourceBundle.All)
                 {
                     float available = Mathf.Max(0f, budget.Get(type)
                         + snap.Self.PerTurnIncome.Get(type) * AiConfigV2.devChainFundingHorizonTurns
-                        - ActionPrice.PendingCardResourceDemand(snap, type));
+                        - cardDemand[(int)type]);
                     budget.Add(type, available - budget.Get(type));
                 }
                 float ap = Mathf.Max(0f, snap.Development.ForecastActionPoints ?? snap.Self.ActionPoints);

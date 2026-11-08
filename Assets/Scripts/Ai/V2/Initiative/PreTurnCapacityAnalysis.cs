@@ -131,23 +131,26 @@ namespace Game.Ai.V2.Initiative
             // Hand cards are instances: Research/Production may have prepaid their resources.
             // Keep their instance state and use the same physical play-cost rule as execution.
             // Undrawn deck cards are definitions and retain their full printed costs.
-            if (hand != null)
-            {
-                InitiativeDeckDemand.AccumulateHand(hand.Hand, a.DeckDemand);
-                InitiativeDeckDemand.Accumulate(hand.RemainingDeck, a.DeckDemand);
-            }
-            else
-            {
-                InitiativeDeckDemand.Accumulate(deckCatalog != null
+            List<ResourceCost> deckCosts = hand != null
+                ? InitiativeDeckDemand.Costs(hand.Hand, hand.RemainingDeck)
+                : InitiativeDeckDemand.Costs(null, deckCatalog != null
                     ? deckCatalog.BuildDeckPool(player)
-                    : Enumerable.Empty<CardDefinition>(), a.DeckDemand);
-            }
+                    : Enumerable.Empty<CardDefinition>());
 
             for (int i = 0; i < Types.Length; i++)
             {
                 a.Available[i] = Mathf.Max(0, root.GetResource(Types[i]));
                 a.IncomePerTurn[i] = Mathf.Max(0, IncomeProjection.IncomeFor(player, Types[i], map));
             }
+            // Appetite = what the deck can still use (DeckPlayability, the price table's own read on
+            // the economy horizon): a card's bill on a type it does not lack, while another type
+            // blocks it, is idle and does not protect that type from initiative (2026-11-08).
+            var horizonSupply = new float[Types.Length];
+            for (int i = 0; i < Types.Length; i++)
+                horizonSupply[i] = a.Available[i] + a.IncomePerTurn[i] * AiConfigV2.economyDeckNeedHorizonTurns;
+            DeckPlayability playability = DeckPlayability.Of(deckCosts, horizonSupply);
+            for (int i = 0; i < Types.Length; i++)
+                a.DeckDemand[i] = Mathf.CeilToInt(playability.EffectiveDemand(i) - AiConfigV2.allocatorSliceEpsilon);
 
             // A committed build needs its entire H/E/M/T vector. Deck appetite and six-turn
             // projected income are useful prices, but neither can guarantee this turn's payment.

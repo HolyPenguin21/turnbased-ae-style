@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
 using Game.Economy;
 
@@ -58,6 +59,20 @@ namespace Game.Ai.V2.Initiative
                 for (int i = 0; i < Types.Length && i < into.Length; i++)
                     into[i] += d.resourceCost.Get(Types[i]);
             }
+        }
+
+        // The same demand set as card bills (held cards at their physical play cost, undrawn cards
+        // at their printed cost), for DeckPlayability.
+        public static List<ResourceCost> Costs(IEnumerable<CardData> hand, IEnumerable<CardDefinition> deck)
+        {
+            var costs = new List<ResourceCost>();
+            foreach (CardData card in hand ?? Enumerable.Empty<CardData>())
+                if (CountsTowardDemand(card?.Definition) && CardCostRules.PlayResources(card) is ResourceCost c)
+                    costs.Add(c);
+            foreach (CardDefinition d in deck ?? Enumerable.Empty<CardDefinition>())
+                if (CountsTowardDemand(d))
+                    costs.Add(d.resourceCost);
+            return costs;
         }
 
         public static int[] Of(IEnumerable<CardDefinition> defs)

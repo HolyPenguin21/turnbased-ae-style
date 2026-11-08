@@ -170,6 +170,8 @@ namespace Game.Setup
             // flat grid keyed by (map, PathingVersion) + reusable search buffers
             new MatchStateEntry("Game.HexGrid.HexPathfinder", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.WorldAnalysis", MatchStateKind.Cache),
+            // scarcity profile memo, weakly keyed by the WorldSnapshot it was computed for
+            new MatchStateEntry("Game.Ai.V2.ActionPrice", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.CombatOpportunityAnalyzer", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.ForceNeedModel", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EconomyBuilderSelection", MatchStateKind.Cache),
