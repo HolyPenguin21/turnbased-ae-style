@@ -612,6 +612,34 @@ namespace Game.Ai.V2
             return service;
         }
 
+        // Structural strike witness of a not-yet-deployed aviation card: some legal airfield from
+        // which the projected aircraft serves one of `requests` (the same placement and
+        // ProjectService the deployment play uses). Current AP and resources are ignored on
+        // purpose: a strike need is published so they accumulate. A card that can never reach
+        // the target from any airfield is no strike source.
+        internal static bool CanStructurallyStrike(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, CardData card,
+            IReadOnlyList<CombatAirSupportRequest> requests)
+        {
+            CardDefinition def = card?.Definition;
+            if (def == null || !def.isAviation || ctx?.Map == null || requests == null || requests.Count == 0)
+                return false;
+            List<HexCoord> airfields = PlacementRules.EnumerateAviationPlacements(
+                snap, player, root, card, out _, requireCurrentAp: false, resourceForecast: true);
+            if (airfields.Count == 0)
+                return false;
+            List<UnitData> projected = ProjectedAircraft(def, player);
+            foreach (HexCoord airfield in airfields)
+                foreach (CombatAirSupportRequest request in requests)
+                {
+                    var service = GroundCombatAirSupport.ProjectService(snap, player, ctx.Map,
+                        projected, airfield, request);
+                    if (service.HasValue && service.Value.Score.Value > AiConfigV2.allocatorSliceEpsilon)
+                        return true;
+                }
+            return false;
+        }
+
         // Executable support, including independent useful missile-preparation strikes.
         // Every witness has the existing AirSupport proposal/provisioning/flight lifecycle.
         // Inventory is filtered at production/deployment, not rebase (self must not hide demand).
