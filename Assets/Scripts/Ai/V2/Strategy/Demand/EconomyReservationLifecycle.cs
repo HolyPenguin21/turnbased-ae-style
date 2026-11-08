@@ -226,9 +226,10 @@ namespace Game.Ai.V2
                     && liveAp + AiConfigV2.allocatorSliceEpsilon
                         >= build.BuildApCost + (route > 0 ? activationAp : 0f)
                     // Through TurnResourceBook: its own hold and other builds' deferred holds are
-                    // drawable, another owner's completion or the reaction envelope is not.
-                    && StrategicSpendability.FitsSpendableForEconomyCompletion(
-                        player, root, ctx, build.BuildResourceCost, owner);
+                    // drawable, another owner's completion or the reaction envelope is not. The
+                    // completion (InfrastructureFulfillment.TryFulfill) funds a shortage through Trade.
+                    && TradeFunding.CanFund(player, root, ctx, build.BuildResourceCost,
+                        new SpendAuthority(owner, true));
                 ReconcileEconomyCompletionOwner(player, turn, owner, intent, true,
                     completionThisTurn);
             }

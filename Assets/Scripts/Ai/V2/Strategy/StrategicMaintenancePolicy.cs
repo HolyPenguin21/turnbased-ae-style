@@ -293,11 +293,14 @@ namespace Game.Ai.V2
 
             foreach (BuildingData b in UnlockableBasesInOrder(bases))
             {
-                var bestFacility = blockedFacilities.FirstOrDefault();
-                if (bestFacility == null)
-                    continue;
                 BaseUpgradeTier tier = CapacityUnlockTierAt(b, ctx);
                 if (tier == null)
+                    continue;
+                // The slot is bought FOR the card: the tier and the card it unlocks must be
+                // jointly payable (directly or through Trade), or the upgrade strands its cost.
+                var bestFacility = blockedFacilities.FirstOrDefault(x => TradeFunding.CanFund(player, root, ctx,
+                    StrategicCardEvaluator.AddResourceCosts(tier.cost, x.Card.EffectivePlayResourceCost)));
+                if (bestFacility == null)
                     continue;
                 yield return new CapacityUpgrade
                 {
