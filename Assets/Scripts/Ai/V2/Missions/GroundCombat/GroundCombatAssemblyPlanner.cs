@@ -245,7 +245,8 @@ namespace Game.Ai.V2
 
     public static partial class GroundCombatAssemblyPlanner
     {
-        // Legacy/raid-shaped facade. `target` is identity only; the kernel needs the opposition.
+        // Raid-shaped facade. `target` gives the identity and the raid hex the won formation is
+        // left on (RaidPostFightPolicy); the kernel needs the opposition.
         public static GroundCombatAssemblyPlan Plan(WorldSnapshot snap, RaidMissionTarget target,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> excludeArmyIds,
             float defenderHexDefenseBonus = 0f) =>
@@ -255,6 +256,7 @@ namespace Game.Ai.V2
                 WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 ExcludedArmyIds = excludeArmyIds,
                 DefenderHexDefenseBonus = defenderHexDefenseBonus,
+                AcceptPlan = RaidPostFightPolicy.AcceptFor(snap, target),
             });
 
         // The generalized kernel. Prefer an already-sufficient free army; otherwise (when allowed)

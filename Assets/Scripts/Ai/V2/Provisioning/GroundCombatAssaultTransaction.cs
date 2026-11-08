@@ -144,7 +144,10 @@ namespace Game.Ai.V2
                         : proposal.Target is ActiveDefenceMissionTarget defence
                             && defence.InterceptPurpose == ActiveDefenceInterceptPurpose.StrategicDefence
                             ? candidate => ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(
-                                session.Snapshot, defence, candidate) : (System.Func<GroundCombatAssemblyPlan, bool>)null,
+                                session.Snapshot, defence, candidate)
+                        : proposal.Target is RaidMissionTarget raid
+                            ? RaidPostFightPolicy.AcceptFor(session.Snapshot, raid)
+                            : (System.Func<GroundCombatAssemblyPlan, bool>)null,
                 });
             if (!plan.Feasible)
             {

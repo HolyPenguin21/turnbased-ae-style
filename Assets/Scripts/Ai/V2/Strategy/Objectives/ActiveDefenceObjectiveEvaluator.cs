@@ -481,8 +481,8 @@ namespace Game.Ai.V2
 
         // 2026-11-07 (owner, playtest Mordak T19) — a voluntary one-turn fight must not leave the
         // force where it at once needs the safe withdrawal WithdrawalThreats orders: a known hostile
-        // player army other than the struck one that reaches the battle hex within
-        // activeDefenceWithdrawMaxEnemyEta turns, can damage the formation and beats it above
+        // player army other than the struck one that reaches the battle hex within `maxEnemyEta`
+        // turns (activeDefenceWithdrawMaxEnemyEta; Raid passes its own horizon, RaidPostFightPolicy), can damage the formation and beats it above
         // 1 - activeDefenceHoldWinChance. The same threat facts the Army asset is measured with
         // (WorldAnalysis.ContactApproachCost, the shared estimator, no hex bonus in the open);
         // wounds of the won fight are not subtracted, so the read is never more cautious than the
@@ -490,7 +490,8 @@ namespace Game.Ai.V2
         // and her 21.8 Ironfang, and were destroyed with their hero on her next move.
         internal static bool LeavesForceExposed(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefenderProfile> roster, WorthIt.SideCommander commander,
-            HexCoord at, int struckEnemyId, out int exposerId, out float exposerWin)
+            HexCoord at, int struckEnemyId, out int exposerId, out float exposerWin,
+            int maxEnemyEta = AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
         {
             exposerId = -1;
             exposerWin = 0f;
@@ -506,7 +507,7 @@ namespace Game.Ai.V2
                     continue;
                 int? approach = WorldAnalysis.ContactApproachCost(snap.Map, c, at, snap.TurnNumber);
                 if (!approach.HasValue || AiV2Util.CeilDiv(approach.Value, Math.Max(1, c.Army.MaxMovement))
-                        > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                        > maxEnemyEta)
                     continue;
                 if (!WorthIt.CanDamageAll(c.Army.Members, defending, 0f, attackerCommander: c.Army.Commander))
                     continue;
