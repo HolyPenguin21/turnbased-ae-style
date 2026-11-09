@@ -1289,6 +1289,7 @@ namespace Game.Ai.V2
             CardData generatedPreview = attachmentCard ?? ResearchProductionSystem.MintCard(equipment);
 
             int handChecked = 0, mapChecked = 0, noNeed = 0;
+            var inAdvance = new HashSet<DevelopmentOpportunity>();
             string lastReject = null;
             RecipientVerdict? lastNoNeed = null;
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
@@ -1321,7 +1322,7 @@ namespace Game.Ai.V2
                 if (v.PendingCovers) { lastReject = "use_pending_equipment_first"; lastNoNeed = null; return; }
                 string explain = "purpose=" + v.Purpose + " slot=" + equipment.attachmentSlot + " "
                     + v.Gain.Detail;
-                result.Add(new DevelopmentOpportunity
+                var opportunity = new DevelopmentOpportunity
                 {
                     Mode = mode, FacilityHex = facilityHex, Card = equipment, ProducesEquipment = true,
                     SuccessChance = successChance, Generation = generation,
@@ -1330,7 +1331,10 @@ namespace Game.Ai.V2
                     ExpectedGain = v.Gain.Total * powerUnit * productionScale,
                     TacticalGain = v.Gain.Tactical * powerUnit * productionScale,
                     Explain = productionNote + explain,
-                });
+                };
+                result.Add(opportunity);
+                if (v.Purpose == EquipmentUpgradeValuation.InAdvancePurpose)
+                    inAdvance.Add(opportunity);
             }
 
             foreach (var (c, u, army) in Recipients(cardsInHand, player))
@@ -1355,6 +1359,12 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 2026-11-09 (owner, match P6a) — strict recipient order: while an army of an active
+            // task (or a threatened garrison, an operator) can use this item, a recipient nothing
+            // requires is not offered it. The reserve competition (missile, strike support)
+            // applies to what is left (EquipmentUpgradeValuation.PrioritizeRecipient).
+            if (inAdvance.Count > 0 && inAdvance.Count < result.Count)
+                result.RemoveAll(inAdvance.Contains);
             if (result.Count == 0 && lastNoNeed.HasValue)
                 lastReject = "purpose=" + lastNoNeed.Value.Purpose + " slot=" + equipment.attachmentSlot + " "
                     + lastNoNeed.Value.Gain.Detail;

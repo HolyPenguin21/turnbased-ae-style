@@ -32,16 +32,23 @@ namespace Game.Ai.V2
             && (intent.PreferredMoverArmyId == army.Id
                 || GroundCombatLegs.HeldGroundSupportArmyIds(intent).Contains(army.Id));
 
+        // A body its base cannot spare, or an army holding a base under a near threat: never
+        // taken into a strike roster (SelectRosterRecipients).
         private static bool DefenceDuty(WorldSnapshot snap, ArmyData army, UnitData unit)
         {
             if (army == null || unit == null) return false;
             if (army.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(army.Owner, army, unit)) return true;
-            return (snap?.Self?.BaseHexes?.Contains(army.Hex) == true)
-                && (snap.Threat?.Threats ?? Array.Empty<AssetThreatSnapshot>()).Any(t =>
-                    ActiveDefenceObjectiveEvaluator.IsHonestPositionedHostile(t) && t.CanDamage
-                    && t.Asset.Hex.Equals(army.Hex) && t.EnemyEta.HasValue
-                    && t.EnemyEta.Value <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta);
+            return UnderNearThreat(snap, army);
         }
+
+        // The current near-threat threshold on the base hex `army` holds: an honest positioned
+        // hostile that can damage it within ActiveDefence's withdraw ETA.
+        private static bool UnderNearThreat(WorldSnapshot snap, ArmyData army) => army != null
+            && (snap?.Self?.BaseHexes?.Contains(army.Hex) == true)
+            && (snap.Threat?.Threats ?? Array.Empty<AssetThreatSnapshot>()).Any(t =>
+                ActiveDefenceObjectiveEvaluator.IsHonestPositionedHostile(t) && t.CanDamage
+                && t.Asset.Hex.Equals(army.Hex) && t.EnemyEta.HasValue
+                && t.EnemyEta.Value <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta);
 
         private static HashSet<object> SelectRosterRecipients(WorldSnapshot snap,
             IReadOnlyList<StrikeRosterSlot> roster, MissionIntent operation)
@@ -123,7 +130,11 @@ namespace Game.Ai.V2
             if (snap?.Observer == null) return false;
             if (EquipmentPurpose(snap, card, unit) != null) return true;
             ArmyData army = unit == null ? deployment?.Deploy.Army : OwnWorld.Of(snap.Observer).ArmyContaining(unit);
-            if (unit != null && army != null && (DefenceDuty(snap, army, unit)
+            // 2026-11-09 (owner, match P6a) — recipient order: armies of active tasks, then a
+            // potential bomb / missile, then the garrison. A garrison counts as required only
+            // under a near threat (the current threat threshold): one that faces none must not
+            // take the upgrades of active tasks (Ysolde T28 equipped her rear Citadel x3).
+            if (unit != null && army != null && (UnderNearThreat(snap, army)
                 || AiArmyRoles.IsFacilityOperator(snap.Observer, army.Hex, unit))) return true;
             if (army != null && WorldSnapshot.IntentsOf(snap).Any(i => i?.Status == IntentStatus.Active
                 && OwnsArmy(i, army))) return true;
