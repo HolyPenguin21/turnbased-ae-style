@@ -1396,8 +1396,8 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
-    defenseRating: 3
+    attack: 3
+    defenseRating: 2
     range: 2
     hitPoints: 5
     initiative: 1
@@ -2664,8 +2664,8 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 5
-    defenseRating: 3
+    attack: 4
+    defenseRating: 2
     range: 2
     hitPoints: 6
     initiative: 1
@@ -2675,7 +2675,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - AA
     resourceYield:
       human: 0
       energy: 0

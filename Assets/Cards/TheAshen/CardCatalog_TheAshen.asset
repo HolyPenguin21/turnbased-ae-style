@@ -1932,7 +1932,7 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 3
     defenseRating: 2
     range: 2
     hitPoints: 5
