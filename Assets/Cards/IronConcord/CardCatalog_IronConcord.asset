@@ -2465,7 +2465,7 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 2
-      materials: 4
+      materials: 5
       tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 2
