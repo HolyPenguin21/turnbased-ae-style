@@ -234,6 +234,46 @@ namespace Game.EditorTests
                 "a visible member makes the army a contact");
         }
 
+        // Project owner, 2026-11-09 (match P4): a detected enemy on the hex of the player's own
+        // building is fought at the start of that player's turn; the strongest of the player's
+        // armies there initiates. Undetected, nothing happens; off a building, nobody is held.
+        // Scene: Grit Wolves (fully hidden) on Brynn's Citadel beside her garrison, T10-T14.
+        [Test]
+        public void DetectedEnemyOnOwnBuildingIsFoughtByTheStrongestArmyOfTheHex()
+        {
+            // _army (owner, fully hidden) stands on _enemy's building: _enemy is the building owner.
+            UnitData Body(int attack) => new UnitData { Owner = _enemy, Attack = attack, Defense = 2,
+                HitPointsCurrent = 8, HitPointsMax = 8, MoveMax = 3, MoveCurrent = 3 };
+            var garrison = new ArmyData { Owner = _enemy, Hex = _hex, IsGarrison = true };
+            garrison.Members.Add(Body(1));
+            var field = new ArmyData { Owner = _enemy, Hex = _hex };
+            field.Members.Add(Body(9)); field.Members.Add(Body(9)); field.Members.Add(Body(9));
+            ArmyRegistry.Register(garrison);
+            ArmyRegistry.Register(field);
+            _unit.Attack = 2; _unit.Defense = 1; _unit.HitPointsMax = 5;
+
+            Assert.That(Game.Combat.BattleInitiator.TryFindOwnBuildingContact(_enemy, null, out _, out _),
+                Is.False, "an undetected hidden army is not a contact");
+
+            StealthSystem.MarkDetected(_unit, _enemy);
+            Assert.That(Game.Combat.BattleInitiator.TryFindOwnBuildingContact(_enemy, null,
+                out HexCoord hex, out List<ArmyData> participants), Is.True);
+            Assert.That(hex, Is.EqualTo(_hex));
+            Assert.That(participants, Is.EqualTo(new[] { field, _army }),
+                "the strongest army of the hex initiates against the detected enemy");
+            Assert.That(Game.Combat.BattleInitiator.TryFindOwnBuildingContact(_enemy,
+                new HashSet<(int, int)> { (field.Id, _army.Id) }, out _, out _), Is.False,
+                "a pairing already fought this turn start is not repeated");
+            Assert.That(Game.Combat.BattleInitiator.TryFindOwnBuildingContact(_owner, null, out _, out _),
+                Is.False, "only the building owner's turn start fights it");
+
+            BuildingRegistry.Clear();
+            Assert.That(Game.Combat.BattleInitiator.TryFindOwnBuildingContact(_enemy, null, out _, out _),
+                Is.False, "off a building nothing changes");
+            Assert.That(Game.Combat.BattleInitiator.IsHeldByContact(field), Is.False,
+                "and a detected fully hidden army still holds nobody");
+        }
+
         [Test]
         public void FirstVisibleMemberActsWhileOtherMembersStayHidden()
         {
