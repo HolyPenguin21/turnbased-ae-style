@@ -967,7 +967,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 01000000
     grantedAbilities:
     - RapidReaction
     resourceYield:
@@ -1406,7 +1406,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 01000000
     grantedAbilities:
     - Transport
     resourceYield:
@@ -1505,7 +1505,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Repair
     resourceYield:
@@ -1603,7 +1603,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 010000000400000002000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1700,7 +1700,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1895,7 +1895,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Splash
     resourceYield:
@@ -2092,7 +2092,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000400000007000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Pyrokinetic
     resourceYield:
@@ -2384,7 +2384,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000400000002000000
+    unitTypeTags: 0100000002000000
     grantedAbilities:
     - Stealth4
     resourceYield:
@@ -2433,7 +2433,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000005000000
+    unitTypeTags: 010000000200000005000000
     grantedAbilities:
     - Hyperkinetic
     resourceYield:
@@ -2531,7 +2531,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Hyperkinetic
     resourceYield:
@@ -2873,7 +2873,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Splash
     resourceYield:
