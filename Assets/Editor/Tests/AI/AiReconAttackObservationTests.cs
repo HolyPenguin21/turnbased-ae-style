@@ -116,6 +116,71 @@ namespace Game.EditorTests
                 "after the need ends the same cell reverts to ordinary exploration");
         }
 
+        // Match 2026-11-09 P1 (Brynn T12–T15) — the never-seen enemy citadel's Explore had InfoGain
+        // 7.9 (its ring was seen recently, ExploreObservationFreshnessFactor) and lost to home
+        // Refreshes. An observation need that was never seen is maximally unknown: full InfoGain.
+        [Test]
+        public void NeverObservedAttackNeed_GetsFullInfoGainAlthoughItsRingWasSeen()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            ReconIntelSnapshotRegistry.Clear();
+            snap.MapKnowledge.VisibleArrivalBlockedHexes.Clear();
+            var ring = HexGridMath.Neighbors(Site).ToDictionary(h => h, _ => snap.TurnNumber);
+            ReconIntelSnapshotRegistry.Capture(snap.Observer, snap.TurnNumber, snap.KnowledgeVersion, ring);
+
+            ReconObjective needed = ReconObjectiveEvaluator.ExploreAt(snap, Site);
+            Assert.That(needed, Is.Not.Null);
+            Assert.That(needed.TaskScore.InfoGain, Is.EqualTo(TaskScoreEvaluator.InfoGain(1f)));
+
+            MissionIntentRegistry.Clear();
+            snap.Intents = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            ReconObjective ordinary = ReconObjectiveEvaluator.ExploreAt(snap, Site);
+            Assert.That(ordinary.TaskScore.InfoGain, Is.LessThan(needed.TaskScore.InfoGain),
+                "the same cell without the need keeps the freshness discount");
+            Assert.That(needed.BaseValue, Is.GreaterThan(ordinary.BaseValue));
+        }
+
+        // Match 2026-11-09 P1 (Brynn T14, line 12956) — scout #15 two hexes from the citadel was
+        // retired as the stalest surplus lane. A lane on a live observation need is never surplus.
+        [Test]
+        public void SurplusTrim_KeepsTheLaneOnAnObservationNeed()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            Assert.That(AttackObjectiveEvaluator.ObservationNeeds(snap), Does.Contain(Site));
+            snap.Self.Armies = new List<ArmySnapshot>
+            {
+                new ArmySnapshot { ArmyId = 15, Owner = snap.Observer, Hex = new HexCoord(4, 0),
+                    IsSoloRecce = true, MemberCount = 1, MaxMovement = 2, CurrentMovement = 2 },
+                new ArmySnapshot { ArmyId = 17, Owner = snap.Observer, Hex = new HexCoord(1, 0),
+                    IsSoloRecce = true, MemberCount = 1, MaxMovement = 2, CurrentMovement = 2 },
+            };
+            MissionIntent Lane(ScoutTargetKind kind, HexCoord focus, int mover, int lastProgress)
+            {
+                var lane = new MissionIntent
+                {
+                    Kind = MissionKind.Scout, Status = IntentStatus.Active, Funding = CommitmentTier.None,
+                    Objective = new ScoutIntent { Kind = kind, FocusHex = focus },
+                    PreferredMoverArmyId = mover, LastProgressTurn = lastProgress, CreatedTurn = 1,
+                };
+                lane.IntentKey = MissionIntentKey.For(lane);
+                return lane;
+            }
+            MissionIntent need = Lane(ScoutTargetKind.Explore, Site, 15, lastProgress: 5);
+            MissionIntent home = Lane(ScoutTargetKind.Refresh, new HexCoord(1, 1), 17, lastProgress: 9);
+            var state = new MissionIntentState();
+            state.Put(need); state.Put(home);
+            var active = new List<MissionIntent> { need, home };
+            var objectives = new List<ReconObjective>
+            {
+                new ReconObjective { Kind = ReconObjectiveKind.Refresh, FocusHex = new HexCoord(1, 1), BaseValue = 12f },
+            };
+
+            ReconContinuity.TrimSurplusReconLanes(snap.Observer, active, state, snap, objectives);
+
+            Assert.That(active, Is.EqualTo(new[] { need }),
+                "desired 1: the home Refresh is shed, the citadel lane keeps its scout");
+        }
+
         [Test]
         public void StaleTargetCanRequestObservationBeforeAnAttackIntentExists()
         {

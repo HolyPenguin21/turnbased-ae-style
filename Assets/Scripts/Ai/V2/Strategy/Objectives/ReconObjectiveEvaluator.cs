@@ -508,13 +508,14 @@ namespace Game.Ai.V2
         }
 
         internal static TaskScore BuildExploreScore(WorldSnapshot snap, HexCoord hex,
-            float infoGainRaw, int homeDistance, ScoutCostEstimate cost, float detectionRiskRaw)
+            float infoGainRaw, int homeDistance, ScoutCostEstimate cost, float detectionRiskRaw,
+            bool? observationNeed = null)
         {
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
             float homeWeight = Mathf.Lerp(1f, AiConfigV2.scoutExploreHomeProximityWeight,
                 ScoutObjectiveEvaluator.LocalExplorationGap(snap));
-            float relevance = AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex)
+            float relevance = (observationNeed ?? AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex))
                 ? 1f : RuinsRelevance(snap, hex);
             bool eventVisit = ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, hex);
             return new TaskScore(
@@ -557,6 +558,12 @@ namespace Game.Ai.V2
             float infoGainRaw = Mathf.Clamp01(
                 freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
             infoGainRaw *= ExploreObservationFreshnessFactor(snap, hex);
+            // 2026-11-09 (match P1) — a live Attack's observation need that was never seen is
+            // maximally unknown: full InfoGain, the same rule as staleRaw = 1 for a need seen
+            // long ago (AttackNeedRefresh). Without it the enemy citadel scored below home Refreshes.
+            bool observationNeed = AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex);
+            if (observationNeed)
+                infoGainRaw = 1f;
 
             int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, distFromBase);
             StealthRequirement req = enemyExposure ? StealthRequirement.Required : StealthRequirement.None;
@@ -568,7 +575,8 @@ namespace Game.Ai.V2
             ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Explore, req, riskRaw,
                 preferredMoverArmyId);
 
-            TaskScore score = BuildExploreScore(snap, hex, infoGainRaw, homeDist, cost, riskRaw);
+            TaskScore score = BuildExploreScore(snap, hex, infoGainRaw, homeDist, cost, riskRaw,
+                observationNeed);
 
             return new ReconObjective
             {
