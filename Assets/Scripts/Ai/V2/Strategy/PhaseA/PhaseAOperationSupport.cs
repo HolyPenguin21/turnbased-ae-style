@@ -86,10 +86,10 @@ namespace Game.Ai.V2
                 : new List<GenerationStep>();
             // 2026-11-09 (owner, match P6a) — a single-use bomb for an own aircraft is a strike
             // source too: in hand, or a Production source (it needs no hand slot until made).
-            List<CardData> handBombs = pass.Hand.Hand.Where(c => IsAircraftBomb(c?.Definition)).ToList();
+            List<CardData> handBombs = pass.Hand.Hand.Where(c => GroundCombatAirSupport.IsAircraftBomb(c?.Definition)).ToList();
             List<GenerationStep> generatedBombs = pass.Reservation.CanGenerateMore
                 ? (pass.Snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
-                    .Where(g => IsAircraftBomb(g?.CardDef)).ToList()
+                    .Where(g => GroundCombatAirSupport.IsAircraftBomb(g?.CardDef)).ToList()
                 : new List<GenerationStep>();
             if (handSources.Count == 0 && generatedSources.Count == 0
                 && handBombs.Count == 0 && generatedBombs.Count == 0)
@@ -169,7 +169,7 @@ namespace Game.Ai.V2
             int? recipient = play?.EquipHost != null
                 ? OwnWorld.Of(player)?.ArmyContaining(play.EquipHost)?.Id : null;
             // The bomb's own attachment is the strike being prepared, not a competitor for it.
-            if (IsAircraftBomb(play?.Card?.Definition) && need?.Source?.Contains("bomb:") == true)
+            if (GroundCombatAirSupport.IsAircraftBomb(play?.Card?.Definition) && need?.Source?.Contains("bomb:") == true)
             { why = null; return true; }
             return LeavesStrikeSupport(player, root, ctx, need, play?.FundingCost, recipient, "equipment", out why);
         }
@@ -291,73 +291,24 @@ namespace Game.Ai.V2
         private static int Total(ResourceCost c) =>
             c == null ? 0 : c.human + c.energy + c.materials + c.tech;
 
-        // A single-use attachment that gives an aircraft an explosion strike (Air Bomb).
-        internal static bool IsAircraftBomb(Game.Cards.CardDefinition def) =>
-            def?.cardType == Game.Cards.CardType.Equipment && def.equipment != null
-            && Game.Cards.EquipmentSystem.IsSingleUse(def)
-            && def.equipment.hostTypeTags?.Contains(Game.Cards.UnitTypeTag.Aircraft) == true
-            && Game.Combat.ExplosionAttack.TargetLimit(def.equipment.addAbilities) > 0;
-
         // Some own aircraft, carrying `bomb`, serves a strike on the site from where it stands.
         private static bool BombCarrierStrikes(PhaseAPass pass, Game.Cards.CardDefinition bomb,
             IReadOnlyList<CombatAirSupportRequest> requests) =>
             OwnWorld.Of(pass.Player).Armies.Where(a => a != null)
                 .SelectMany(a => a.Members)
                 .Any(u => u != null && u.IsAviation
-                    && BombedService(pass.Snap, pass.Player, pass.Ctx, u, bomb, requests).HasValue);
+                    && GroundCombatAirSupport.BombedService(pass.Snap, pass.Player, pass.Ctx, u, bomb, requests).HasValue);
 
         // The hand bombs' attachment plays whose recipient then serves the operation's site.
         private static IEnumerable<NonCombatCardPlayer.NonCombatPlay> BombPlaysOnSite(PhaseAPass pass,
             StrikeSupportNeed need)
         {
-            foreach (CardData card in pass.Hand.Hand.Where(c => IsAircraftBomb(c?.Definition)).ToList())
+            foreach (CardData card in pass.Hand.Hand.Where(c => GroundCombatAirSupport.IsAircraftBomb(c?.Definition)).ToList())
                 foreach (NonCombatCardPlayer.NonCombatPlay play in NonCombatCardPlayer.EquipmentPlaysFor(card,
                              pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx))
-                    if (play.EquipHost != null && BombedService(pass.Snap, pass.Player, pass.Ctx,
+                    if (play.EquipHost != null && GroundCombatAirSupport.BombedService(pass.Snap, pass.Player, pass.Ctx,
                             play.EquipHost, card.Definition, need.Requests).HasValue)
                         yield return play;
-        }
-
-        // The aircraft as it would fly with `bomb` attached: a detached copy (the live unit and its
-        // attachments are untouched) through the game's own installation.
-        internal static Game.Units.UnitData ProjectedBombCarrier(Game.Units.UnitData aircraft,
-            Game.Cards.CardDefinition bomb)
-        {
-            if (aircraft == null || bomb == null)
-                return null;
-            Game.Units.UnitData carrier = aircraft.CloneForCombat();
-            Game.Cards.EquipmentSystem.ApplyAttachments(carrier, bomb, null);
-            return carrier;
-        }
-
-        // The best service `aircraft` carrying `bomb` gives one of `requests` from where it stands —
-        // a launch from its airfield, or its formed wing — by GroundCombatAirSupport.ProjectService,
-        // the rule the forecast applies once the bomb is on. Null when it cannot serve.
-        internal static CombatAirService? BombedService(WorldSnapshot snap, PlayerSetupData player,
-            AiTurnContext ctx, Game.Units.UnitData aircraft, Game.Cards.CardDefinition bomb,
-            IReadOnlyList<CombatAirSupportRequest> requests)
-        {
-            if (snap == null || player == null || ctx?.Map == null || requests == null || requests.Count == 0
-                || aircraft == null || !aircraft.IsAviation
-                || !Game.Cards.EquipmentSystem.CanAttachPreview(bomb, aircraft, out _))
-                return null;
-            ArmyData army = OwnWorld.Of(player)?.ArmyContaining(aircraft);
-            bool stored = Game.Aviation.AviationRules.IsAirfield(army);
-            if (army == null || !stored && !Game.Aviation.AviationRules.IsAirArmy(army))
-                return null;
-            Game.Units.UnitData carrier = ProjectedBombCarrier(aircraft, bomb);
-            IReadOnlyList<Game.Units.UnitData> flight = stored ? new[] { carrier }
-                : army.Members.Select(u => ReferenceEquals(u, aircraft) ? carrier : u).ToList();
-            CombatAirService? best = null;
-            foreach (CombatAirSupportRequest request in requests)
-            {
-                CombatAirService? service = GroundCombatAirSupport.ProjectService(snap, player, ctx.Map,
-                    flight, army.Hex, request, stored ? null : army);
-                if (service.HasValue && service.Value.Score.Value > AiConfigV2.allocatorSliceEpsilon
-                    && (!best.HasValue || service.Value.Score.Value > best.Value.Score.Value))
-                    best = service;
-            }
-            return best;
         }
 
         // An aircraft that strikes ground (a missile or a bomber), never a recon-only frame.

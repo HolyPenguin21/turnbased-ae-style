@@ -254,19 +254,19 @@ namespace Game.EditorTests
                 equipment = new EquipmentGrant {
                     hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Aircraft },
                     addAbilities = new List<string> { UnitAbilities.Explosion3 } } };
-            Assert.That(PhaseAOperationSupport.IsAircraftBomb(bomb), Is.True);
+            Assert.That(GroundCombatAirSupport.IsAircraftBomb(bomb), Is.True);
             Game.Units.UnitData frame = Game.Units.UnitData.Materialize("Recon frame", _player, 4, 1, false, 0,
                 null, null, attack: 0, typeTags: new[] { UnitTypeTag.Aircraft }, isAviation: true);
             Assert.That(ExplosionAttack.TargetLimit(frame.Abilities), Is.Zero, "the bare frame cannot strike");
 
-            Game.Units.UnitData carrier = PhaseAOperationSupport.ProjectedBombCarrier(frame, bomb);
+            Game.Units.UnitData carrier = GroundCombatAirSupport.ProjectedBombCarrier(frame, bomb);
 
             Assert.That(ExplosionAttack.TargetLimit(carrier.Abilities), Is.GreaterThan(0));
             Assert.That(carrier.Equipment, Is.SameAs(bomb));
             Assert.That(carrier, Is.Not.SameAs(frame));
             Assert.That(frame.Equipment, Is.Null, "the live aircraft keeps its attachments");
             Assert.That(ExplosionAttack.TargetLimit(frame.Abilities), Is.Zero);
-            Assert.That(PhaseAOperationSupport.ProjectedBombCarrier(null, bomb), Is.Null);
+            Assert.That(GroundCombatAirSupport.ProjectedBombCarrier(null, bomb), Is.Null);
         }
 
         // No known defenders: nothing to project, the forecast is the bare package.

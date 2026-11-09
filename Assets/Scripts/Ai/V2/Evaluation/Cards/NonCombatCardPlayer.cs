@@ -890,6 +890,12 @@ namespace Game.Ai.V2
             float ap, ResourceCost resources, float? workload, bool ignoreApForMeasurement = false, SpendAuthority authority = default)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            // 2026-11-09 (owner, match Q4) — an Air Bomb on an aircraft carries the strike it makes
+            // possible, the same operational task an aviation play carries (its best known strike
+            // service, GroundCombatAirSupport.BombedService), so it competes with missiles and
+            // bombers on one scale instead of on the item's generic utility alone.
+            bool bomb = ctx?.Map != null && GroundCombatAirSupport.IsAircraftBomb(card.Definition);
+            List<CombatAirSupportRequest> strikes = null;
             foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.EquipmentOpportunities(
                 ResearchProductionMode.Production, default, card.Definition, 1f, null,
                 snap, inv, player, root, hand, out _, card, ignoreApForMeasurement: true))
@@ -904,6 +910,14 @@ namespace Game.Ai.V2
                 TradeFunding.TryPlan(player, root, ctx, resources, out var funding, authority);
                 // The item's own utility, without production context (no Challenge, repeat or supply).
                 float value = EquipmentUpgradeValuation.EquipmentUpgradeValue(op);
+                TaskScore? strike = null;
+                if (bomb && op.RecipientUnit != null && op.RecipientUnit.IsAviation)
+                {
+                    strikes ??= KnownStrikeTargets(snap, player, root, ctx,
+                        ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList());
+                    strike = GroundCombatAirSupport.BombedService(snap, player, ctx, op.RecipientUnit,
+                        card.Definition, strikes)?.Score;
+                }
                 yield return new NonCombatPlay
                 {
                     Funding = funding, Card = card, Kind = PlayKind.Equipment, EquipHost = op.RecipientUnit,
@@ -912,12 +926,13 @@ namespace Game.Ai.V2
                         ? OwnWorld.Of(player).ArmyContaining(op.RecipientUnit)?.Hex ?? default : default,
                     ApCost = ap, ResCost = resources,
                     Score = Score(snap, player, root, ctx, PlayKind.Equipment, card, hand, value,
-                        ap, funding?.ExternalCost ?? resources, null, workload),
+                        ap, funding?.ExternalCost ?? resources, null, workload, operationalTask: strike),
                     StableKey = "hand:" + GenerationSource.StableCardKey(card)
                         + ":equipment:" + DevelopmentOpportunityEvaluator.RecipientKey(op),
                     Explain = card.Definition.displayName + " -> " + op.RecipientLabel
                         + " purpose=" + EquipmentUpgradeValuation.EquipmentPurposeLabel(snap, op.RecipientCard, op.RecipientUnit)
-                        + $" delta={op.ExpectedGain:0.###} tactical={op.TacticalGain:0.###} " + op.Explain,
+                        + $" delta={op.ExpectedGain:0.###} tactical={op.TacticalGain:0.###}"
+                        + (strike.HasValue ? $" strike={strike.Value.Value:0.##}" : "") + " " + op.Explain,
                 };
             }
         }
