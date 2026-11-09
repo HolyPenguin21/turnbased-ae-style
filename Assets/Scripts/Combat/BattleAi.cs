@@ -180,6 +180,37 @@ namespace Game.Combat
                 if (next == best) break;
                 best = next;
             }
+            // Near-equal layouts over the short horizon are told apart by the whole fight: the one
+            // that comes out better over DeploymentTieHorizonRounds (same scenarios, score only).
+            List<DeploymentCandidate> tied = TiedDeployments(candidates);
+            if (tied.Count > 1)
+            {
+                float LongScore(DeploymentCandidate c)
+                {
+                    float total = 0f;
+                    float weight = 1f / (4 * ArrangementSimulationTrials);
+                    for (int opponentLayout = 0; opponentLayout < 2; opponentLayout++)
+                    {
+                        var trial = CloneGrid(c.Grid);
+                        for (int col = 0; col < BattleGrid.Columns; col++)
+                        {
+                            trial.Set(enemyFrontRow, col, enemyLayouts[opponentLayout].Get(enemyFrontRow, col));
+                            trial.Set(enemyBackRow, col, enemyLayouts[opponentLayout].Get(enemyBackRow, col));
+                        }
+                        for (int policy = 0; policy < 2; policy++)
+                        for (int sample = 0; sample < ArrangementSimulationTrials; sample++)
+                            total -= LossMarginAgainstUs(ownTotalHp, enemyTotalHp, SimulateRounds(trial, army,
+                                enemyArmy, DeploymentTieHorizonRounds, magnitudes, battleDefender,
+                                battleDefenderDefenseBonus, 1, deterministic: true,
+                                holdingArmy: policy == 0 ? null : enemyArmy, firstTrial: sample)) * weight;
+                    }
+                    return total;
+                }
+                if (canCommit != null && !canCommit()) yield break;
+                // Stable: an equal long outcome keeps the short-horizon order.
+                best = tied.Select((c, i) => (c, i, s: LongScore(c)))
+                    .OrderByDescending(x => x.s).ThenBy(x => x.i).First().c;
+            }
             BattleDebugLog.Write($"[ArrangeDiag] army \"{army.Name}\": " +
                 $"candidates={candidates.Count} score={best.Score} openingScore={best.OpeningScore}");
             foreach (UnitData member in army.Members)
@@ -189,6 +220,11 @@ namespace Game.Combat
         }
 
         private static DeploymentCandidate BestDeployment(List<DeploymentCandidate> candidates)
+            => TiedDeployments(candidates)[0];
+
+        // The near-equal best layouts over the short horizon, best first by participation, then
+        // opening, then score (BestDeployment's order).
+        private static List<DeploymentCandidate> TiedDeployments(List<DeploymentCandidate> candidates)
         {
             // A short horizon can otherwise reward avoiding the exchange altogether: fewer
             // shots taken AND fired makes a losing trade look closer to zero. A slower layout
@@ -212,7 +248,7 @@ namespace Game.Combat
             float bestScore = eligible.Max(c => c.Score);
             return eligible.Where(c => c.Score >= bestScore - ScoreTieTolerance)
                 .OrderByDescending(c => c.Participation).ThenByDescending(c => c.OpeningScore)
-                .ThenByDescending(c => c.Score).First();
+                .ThenByDescending(c => c.Score).ToList();
         }
 
         private static IEnumerable<BattleGrid> DeploymentNeighbors(BattleGrid layout, int frontRow, int backRow)
@@ -542,6 +578,12 @@ namespace Game.Combat
         // Two initiative samples per policy/layout: 2 layouts x 2 policies x 2 orders,
         // matching the old initial search's eight playouts per candidate without dice noise.
         private const int ArrangementSimulationTrials = 2;
+        // 2026-11-09 (owner, match Q3) — the whole-fight tie-break of near-equal deployments.
+        // Over three rounds a melee body's walk from the back row is nearly free: Brynn T14
+        // "Rad Brute in the back row" tied "both bodies in front" (0.114 vs 0.117) and won on
+        // participation, then could not reach (tactical win 0.69 vs 0.82). Scoring every layout
+        // over five rounds instead let artillery wait in the back row, so only the tie uses it.
+        private const int DeploymentTieHorizonRounds = 5;
 
         private static Dictionary<UnitData, UnitData> CloneConsumableState(ref BattleGrid grid,
             ref ArmyData own, ref ArmyData enemy, ref ArmyData defender, ref ArmyData holding)
