@@ -87,6 +87,16 @@ namespace Game.EditorTests
             }
         }
 
+        // 2026-11-09 (owner, match P6a): the single-use aircraft bomb is a strike source of a live
+        // Attack (PhaseAOperationSupport); missiles for ground hosts are not.
+        [Test]
+        public void OnlyTheAirBombsAreAircraftStrikeBombs()
+        {
+            foreach (string name in new[] { "Infantry Missile", "Vehicle Missile", "Air Missile", "Air Bomb 3", "Air Bomb 5" })
+                Assert.That(Game.Ai.V2.PhaseAOperationSupport.IsAircraftBomb(Gear(name)),
+                    Is.EqualTo(name.StartsWith("Air Bomb")), name);
+        }
+
         [Test]
         public void LateWeaponsUseExistingExplosionAndConsumptionRulesWithDistinctHosts()
         {

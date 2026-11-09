@@ -75,7 +75,15 @@ namespace Game.Ai.V2
                 ? (pass.Snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
                     .Where(g => IsStrikeCard(g?.CardDef)).ToList()
                 : new List<GenerationStep>();
-            if (handSources.Count == 0 && generatedSources.Count == 0)
+            // 2026-11-09 (owner, match P6a) — a single-use bomb for an own aircraft is a strike
+            // source too: in hand, or a Production source (it needs no hand slot until made).
+            List<CardData> handBombs = pass.Hand.Hand.Where(c => IsAircraftBomb(c?.Definition)).ToList();
+            List<GenerationStep> generatedBombs = pass.Reservation.CanGenerateMore
+                ? (pass.Snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
+                    .Where(g => IsAircraftBomb(g?.CardDef)).ToList()
+                : new List<GenerationStep>();
+            if (handSources.Count == 0 && generatedSources.Count == 0
+                && handBombs.Count == 0 && generatedBombs.Count == 0)
                 return null;
             ArmySnapshot primary = pass.Snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.PrimaryArmyId.Value);
@@ -101,6 +109,13 @@ namespace Game.Ai.V2
                     costs.Add((StrategicCardEvaluator.AddResourceCosts(minted.EffectivePlayResourceCost,
                         g.ChallengeCard?.resourceCost), "generate:" + g.CardDef.displayName));
             }
+            foreach (CardData c in handBombs)
+                if (BombCarrierStrikes(pass, c.Definition, requests))
+                    costs.Add((c.EffectivePlayResourceCost, "hand-bomb:" + c.Definition.displayName));
+            foreach (GenerationStep g in generatedBombs)
+                if (BombCarrierStrikes(pass, g.CardDef, requests))
+                    costs.Add((StrategicCardEvaluator.AddResourceCosts(g.CardDef.resourceCost,
+                        g.ChallengeCard?.resourceCost), "generate-bomb:" + g.CardDef.displayName));
             if (costs.Count == 0)
                 return null;
             var cheapest = costs.OrderBy(x => Total(x.Cost)).ThenBy(x => x.Source, System.StringComparer.Ordinal).First();
@@ -144,6 +159,9 @@ namespace Game.Ai.V2
         {
             int? recipient = play?.EquipHost != null
                 ? OwnWorld.Of(player)?.ArmyContaining(play.EquipHost)?.Id : null;
+            // The bomb's own attachment is the strike being prepared, not a competitor for it.
+            if (IsAircraftBomb(play?.Card?.Definition) && need?.Source?.Contains("bomb:") == true)
+            { why = null; return true; }
             return LeavesStrikeSupport(player, root, ctx, need, play?.FundingCost, recipient, "equipment", out why);
         }
 
@@ -262,6 +280,24 @@ namespace Game.Ai.V2
 
         private static int Total(ResourceCost c) =>
             c == null ? 0 : c.human + c.energy + c.materials + c.tech;
+
+        // A single-use attachment that gives an aircraft an explosion strike (Air Bomb).
+        internal static bool IsAircraftBomb(Game.Cards.CardDefinition def) =>
+            def?.cardType == Game.Cards.CardType.Equipment && def.equipment != null
+            && Game.Cards.EquipmentSystem.IsSingleUse(def)
+            && def.equipment.hostTypeTags?.Contains(Game.Cards.UnitTypeTag.Aircraft) == true
+            && Game.Combat.ExplosionAttack.TargetLimit(def.equipment.addAbilities) > 0;
+
+        // Some own aircraft can carry `bomb` and its frame reaches the site from a legal airfield
+        // (CanStructurallyStrike on the carrier's own card: the same placement + ProjectService).
+        private static bool BombCarrierStrikes(PhaseAPass pass, Game.Cards.CardDefinition bomb,
+            IReadOnlyList<CombatAirSupportRequest> requests) =>
+            OwnWorld.Of(pass.Player).Armies.Where(a => a != null)
+                .SelectMany(a => a.Members)
+                .Any(u => u != null && u.IsAviation && u.OriginatingCard != null
+                    && Game.Cards.EquipmentSystem.CanAttachPreview(bomb, u, out _)
+                    && NonCombatCardPlayer.CanStructurallyStrike(pass.Snap, pass.Player, pass.Root, pass.Ctx,
+                        new CardData(u.OriginatingCard), requests));
 
         // An aircraft that strikes ground (a missile or a bomber), never a recon-only frame.
         private static bool IsStrikeCard(Game.Cards.CardDefinition def) =>
