@@ -34,6 +34,17 @@ namespace Game.Ai.V2
             CapabilityPoolExhaustionRegistry.CarryRetryNextTurn(player, mission);
         }
 
+        // 2026-11-09 (match P2) — an executed step that changed nothing and stopped for a
+        // mover-side reason (OperationalWorkSelection.ParksIdleStep) is out of the running for
+        // the rest of the turn exactly like a NoExecutableStep provisioning failure: the same
+        // turn-wide deferral and the same pass set. Orchestration decides WHEN; this owns HOW.
+        internal void ParkIdleStep(PlayerSetupData player, MissionProposal mission, ExecutionStopReason stop)
+        {
+            CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(player, mission,
+                ProvisionFailure.NoExecutableStep($"settled {stop} without progress"));
+            Park(player, mission);
+        }
+
         internal bool IsParked(StableMissionKey key) => _parkedThisPass.Contains(key);
 
         // The proposals of the next settled admission without the parked ones. A durable leg

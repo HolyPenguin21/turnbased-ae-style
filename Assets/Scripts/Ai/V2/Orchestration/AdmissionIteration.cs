@@ -290,16 +290,14 @@ namespace Game.Ai.V2
                 bool onlyResidualLeft = ResidualWindowPolicy.AfterSettledTask(allocation.Funded, selectedKey);
                 // 2026-11-09 (match P2, Brynn T11) — an idle step (Raid Return MoveRejected) used
                 // to end the admission, dropping the provisioned Explore behind it. It is parked
-                // for the rest of the turn on the provisioning parking path (the turn-wide
-                // NoExecutableStep deferral + this pass's set) and the admission goes on while
-                // positive or committed work remains. NoProgressCycles still bounds the loop.
+                // for the rest of the turn on the provisioning parking path (PassParking.ParkIdleStep)
+                // and the admission goes on while positive or committed work remains.
+                // NoProgressCycles still bounds the loop.
                 SettledIdleVerdict idle = OperationalWorkSelection.AfterUntriggeredStep(progressed,
                     settled?.StopReason, onlyResidualLeft);
                 if (idle != SettledIdleVerdict.Stop)
                 {
-                    CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(_player, selected.Mission,
-                        ProvisionFailure.NoExecutableStep($"settled {settled.StopReason} without progress"));
-                    _passParking.Park(_player, selected.Mission);
+                    _passParking.ParkIdleStep(_player, selected.Mission, settled.StopReason);
                     if (idle == SettledIdleVerdict.ParkAndContinue)
                     {
                         AiDebugLog.Write($"[AI][V2][Loop] parked - {selectedKey} settled "

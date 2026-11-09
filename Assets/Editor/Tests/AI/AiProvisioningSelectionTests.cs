@@ -304,9 +304,7 @@ namespace Game.EditorTests
                 "the second funded job is still outstanding");
 
             // AdmissionIteration's parking of an idle step (ParkAndContinue).
-            CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(Us, idle,
-                ProvisionFailure.NoExecutableStep("settled MoveRejected without progress"));
-            r.Parking.Park(Us, idle);
+            r.Parking.ParkIdleStep(Us, idle, ExecutionStopReason.MoveRejected);
 
             r.Provisioning.Dispose();
             r.Provisioning = new ProvisioningSession(r.Snap);
