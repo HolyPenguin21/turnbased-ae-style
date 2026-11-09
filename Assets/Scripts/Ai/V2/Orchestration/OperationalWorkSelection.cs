@@ -34,8 +34,14 @@ namespace Game.Ai.V2
         // mover cannot act on this turn's world (blocked step, rejected move, no movement left,
         // missing stealth or vantage) repeats the same stop when it is selected again this turn.
         // The loop parks it for the rest of the turn instead of ending the admission with it.
-        // A world event (battle, hex event, discovery, lost mover, invalidated target) or a
-        // completed step is not such a stop.
+        // A world event (battle, hex event, discovery, lost mover, invalidated target) is not
+        // such a stop.
+        // 2026-11-09 (owner, Q5) — neither is a step that settled StepCompleted without progress:
+        // its executor answered "nothing to do for this key now" (Brynn T21: an Attack preparation
+        // reused its empty host, no mutation, 0 AP). Selecting the same key again repeats that
+        // no-op; what follows it is a different key (Assemble / a gather leg, the step kind and
+        // the support are part of StableMissionKey.ForAttack) or comes after another task's world
+        // change. So it is parked like the mover-side stops above.
         internal static SettledIdleVerdict AfterUntriggeredStep(bool progressed, ExecutionStopReason? stop,
             bool onlyResidualLeft) =>
             progressed || !ParksIdleStep(stop) ? SettledIdleVerdict.Stop
@@ -51,6 +57,7 @@ namespace Game.Ai.V2
                 case ExecutionStopReason.OutOfMovement:
                 case ExecutionStopReason.RequiredStealthUnavailable:
                 case ExecutionStopReason.ObservationUnavailable:
+                case ExecutionStopReason.StepCompleted:
                     return true;
                 default:
                     return false;

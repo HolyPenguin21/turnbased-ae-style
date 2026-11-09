@@ -280,7 +280,10 @@ namespace Game.EditorTests
         [TestCase(ExecutionStopReason.RequiredStealthUnavailable, false, SettledIdleVerdict.ParkAndContinue)]
         [TestCase(ExecutionStopReason.ObservationUnavailable, false, SettledIdleVerdict.ParkAndContinue)]
         [TestCase(ExecutionStopReason.NoSafeStep, true, SettledIdleVerdict.ParkAndStop)]
-        [TestCase(ExecutionStopReason.StepCompleted, false, SettledIdleVerdict.Stop)]
+        // Brynn T21 (Q5): Attack(Gather #0 3,2) reused its empty host - StepCompleted, no mutation.
+        [TestCase(ExecutionStopReason.StepCompleted, false, SettledIdleVerdict.ParkAndContinue)]
+        [TestCase(ExecutionStopReason.StepCompleted, true, SettledIdleVerdict.ParkAndStop)]
+        [TestCase(ExecutionStopReason.ReachedGoal, false, SettledIdleVerdict.Stop)]
         [TestCase(ExecutionStopReason.BattleStarted, false, SettledIdleVerdict.Stop)]
         [TestCase(ExecutionStopReason.TargetInvalidated, false, SettledIdleVerdict.Stop)]
         public void AnIdleStepIsParkedAndTheAdmissionGoesOnWhileWorkRemains(ExecutionStopReason stop,
@@ -323,6 +326,34 @@ namespace Game.EditorTests
             Assert.That(CapabilityPoolExhaustionRegistry.CanAttempt(Us, idle, r.Snap), Is.True,
                 "the next turn tries it again");
             r.Provisioning.Dispose();
+        }
+
+        // Q5 — a parked no-progress preparation step (host reused) does not hold the same
+        // operation's next step: the step kind is part of the key, so Assemble stays admissible.
+        [Test]
+        public void AParkedHostReuseDoesNotParkTheSameOperationsAssembleStep()
+        {
+            WorldSnapshot snap = AiReconAuditBugTests.Snapshot(Us, 21, new HexCoord(3, 2));
+            CapabilityPoolExhaustionRegistry.BeginTurn(Us, 21);
+            MissionProposal Prep(AttackPreparationStep step) => new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = new AttackMissionTarget
+                {
+                    Phase = AttackMissionPhase.Gather, PrimaryArmyId = 38, DestinationHex = new HexCoord(3, 2),
+                    Preparation = true, PreparationStep = step,
+                },
+            };
+            MissionProposal reuse = Prep(AttackPreparationStep.CreateHost);
+            MissionProposal assemble = Prep(AttackPreparationStep.Assemble);
+            var parking = new PassParking();
+            parking.ParkIdleStep(Us, reuse, ExecutionStopReason.StepCompleted);
+
+            PassParkingResult same = parking.Filter(new List<MissionProposal> { reuse, assemble }, snap, Us);
+            Assert.That(same.Retained, Is.EqualTo(new[] { assemble }));
+            PassParkingResult later = new PassParking().Filter(new List<MissionProposal> { reuse, assemble }, snap, Us);
+            Assert.That(later.Retained, Is.EqualTo(new[] { assemble }),
+                "a later admission of the turn still skips the reuse and still admits the Assemble step");
         }
 
         // ---- PassParking ----
