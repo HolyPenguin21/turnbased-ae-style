@@ -162,6 +162,57 @@ namespace Game.Ai.V2
                 eta, strikes, outbound + home, known, ap, energy, score, estimate);
         }
 
+        // 2026-11-09 (match Q4) — an Air Bomb is scored and produced by the service its carrier
+        // gives WITH it: Phase A's strike support and every equipment play of a bomb read this.
+        // A single-use attachment that gives an aircraft an explosion strike (Air Bomb).
+        internal static bool IsAircraftBomb(CardDefinition def) =>
+            def?.cardType == CardType.Equipment && def.equipment != null
+            && EquipmentSystem.IsSingleUse(def)
+            && def.equipment.hostTypeTags?.Contains(UnitTypeTag.Aircraft) == true
+            && ExplosionAttack.TargetLimit(def.equipment.addAbilities) > 0;
+
+        // The aircraft as it would fly with `bomb` attached: a detached copy (the live unit and its
+        // attachments are untouched) through the game's own installation.
+        internal static UnitData ProjectedBombCarrier(UnitData aircraft,
+            CardDefinition bomb)
+        {
+            if (aircraft == null || bomb == null)
+                return null;
+            UnitData carrier = aircraft.CloneForCombat();
+            EquipmentSystem.ApplyAttachments(carrier, bomb, null);
+            return carrier;
+        }
+
+        // The best service `aircraft` carrying `bomb` gives one of `requests` from where it stands —
+        // a launch from its airfield, or its formed wing — by GroundCombatAirSupport.ProjectService,
+        // the rule the forecast applies once the bomb is on. Null when it cannot serve.
+        internal static CombatAirService? BombedService(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, UnitData aircraft, CardDefinition bomb,
+            IReadOnlyList<CombatAirSupportRequest> requests)
+        {
+            if (snap == null || player == null || ctx?.Map == null || requests == null || requests.Count == 0
+                || aircraft == null || !aircraft.IsAviation
+                || !EquipmentSystem.CanAttachPreview(bomb, aircraft, out _))
+                return null;
+            ArmyData army = OwnWorld.Of(player)?.ArmyContaining(aircraft);
+            bool stored = AviationRules.IsAirfield(army);
+            if (army == null || !stored && !AviationRules.IsAirArmy(army))
+                return null;
+            UnitData carrier = ProjectedBombCarrier(aircraft, bomb);
+            IReadOnlyList<UnitData> flight = stored ? new[] { carrier }
+                : army.Members.Select(u => ReferenceEquals(u, aircraft) ? carrier : u).ToList();
+            CombatAirService? best = null;
+            foreach (CombatAirSupportRequest request in requests)
+            {
+                CombatAirService? service = ProjectService(snap, player, ctx.Map,
+                    flight, army.Hex, request, stored ? null : army);
+                if (service.HasValue && service.Value.Score.Value > AiConfigV2.allocatorSliceEpsilon
+                    && (!best.HasValue || service.Value.Score.Value > best.Value.Score.Value))
+                    best = service;
+            }
+            return best;
+        }
+
         internal static TaskScore ServiceScore(TaskScore intrinsic, float effect,
             float ap, float energy, int eta, float? resourcePrice = null) => TaskScoreEvaluator.WithResponse(intrinsic, effect,
                 ap + (resourcePrice ?? energy * AiConfigV2.actionPriceResourceAp), 0f, eta);

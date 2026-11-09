@@ -93,7 +93,7 @@ namespace Game.EditorTests
         public void OnlyTheAirBombsAreAircraftStrikeBombs()
         {
             foreach (string name in new[] { "Infantry Missile", "Vehicle Missile", "Air Missile", "Air Bomb 3", "Air Bomb 5" })
-                Assert.That(Game.Ai.V2.PhaseAOperationSupport.IsAircraftBomb(Gear(name)),
+                Assert.That(Game.Ai.V2.GroundCombatAirSupport.IsAircraftBomb(Gear(name)),
                     Is.EqualTo(name.StartsWith("Air Bomb")), name);
         }
 
