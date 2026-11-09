@@ -552,6 +552,51 @@ namespace Game.EditorTests
             Assert.That((c.actor.Attack, c.actor.Defense, c.actor.HitPointsCurrent,
                 c.target.Attack, c.target.Defense, c.target.HitPointsCurrent), Is.EqualTo(before));
         }
+
+        // 2026-11-09 (owner, match Q3) — Brynn T14, the real battle's rosters and ids (seed inputs).
+        // Scored over three rounds, "Rad Brute in the back row" tied "both bodies in front" and
+        // won on participation; the melee body then could not reach (tactical win 0.69 vs 0.82).
+        // The deployment horizon covers the walk from the back row, so the melee body fights.
+        [Test]
+        public void MeleeBodyIsNotParkedInTheBackRowBehindItsHero_BrynnT14()
+        {
+            var brynn = new PlayerSetupData { Nickname = "Brynn" };
+            var neutral = new PlayerSetupData { Nickname = "Neutral" };
+            UnitData Body(PlayerSetupData owner, int id, string name, int attack, int defense, int hp,
+                int initiative, int range, string[] abilities, UnitTypeTag[] tags, bool hero = false, int fate = 0)
+            {
+                UnitData u = UnitData.CreateProjection(id);
+                u.Owner = owner; u.Name = name; u.IsHero = hero;
+                u.Attack = attack; u.Defense = defense; u.Range = range; u.Initiative = initiative;
+                u.HitPointsMax = u.HitPointsCurrent = hp; u.Fate = u.FateMax = fate;
+                u.MoveMax = u.MoveCurrent = 2;
+                foreach (string a in abilities) u.Abilities.Add(a);
+                foreach (UnitTypeTag t in tags) u.TypeTags.Add(t);
+                return u;
+            }
+            UnitTypeTag[] bi = { UnitTypeTag.Bio, UnitTypeTag.Infantry }, bio = { UnitTypeTag.Bio };
+            UnitData elena = Body(brynn, 38, "Elena Hayes", 0, 0, 7, 2, 0, new[] { UnitAbilities.RapidReaction },
+                new[] { UnitTypeTag.Bio, UnitTypeTag.Hero }, hero: true, fate: 5);
+            UnitData radBrute = Body(brynn, 64, "Rad Brute", 5, 2, 6, 2, 1,
+                new[] { UnitAbilities.Regeneration, UnitAbilities.Berserk }, bi);
+            UnitData furnace = Body(brynn, 52, "Furnace Bearer", 4, 3, 5, 1, 1,
+                new[] { UnitAbilities.Regeneration, UnitAbilities.Pyrokinetic, UnitAbilities.Scorcher }, bi);
+            var swarm = ArmyData.WithIdentity(31); swarm.Owner = brynn;
+            swarm.Members.AddRange(new[] { elena, radBrute, furnace });
+            var guard = ArmyData.WithIdentity(33); guard.Owner = neutral;
+            guard.Members.AddRange(new[] {
+                Body(neutral, 69, "Brute", 4, 2, 5, 2, 1, new string[0], bio),
+                Body(neutral, 70, "Brute", 4, 2, 5, 2, 1, new string[0], bio),
+                Body(neutral, 71, "Scav", 3, 1, 4, 1, 2, new string[0], bio) });
+            BattleGrid grid = BattleGrid.FromArmies(swarm, guard);
+
+            BattleAi.ArrangeArmy(grid, swarm, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, guard,
+                AbilityMagnitudes.Default, guard);
+
+            Assert.That(grid.TryFindPosition(radBrute, out int row, out _), Is.True);
+            Assert.That(row, Is.EqualTo(BattleGrid.AttackerFrontRow), "the melee body stands where it can fight");
+            Assert.That(grid.TryFindPosition(furnace, out int furnaceRow, out _) && furnaceRow == BattleGrid.AttackerFrontRow);
+        }
     }
 }
 #endif
