@@ -137,6 +137,75 @@ namespace Game.Combat
             return false;
         }
 
+        // 2026-11-09 (project owner's decision, match P4) — an enemy army `owner` has detected
+        // (at least one member targetable by `owner`, StealthSystem.HasAnyTargetableMember) that
+        // stands on the hex of `owner`'s own building is fought at the start of `owner`'s turn,
+        // when `owner` has a combat-capable ground army on that hex (garrison or not). The
+        // strongest of those armies against that enemy initiates (StrongestInitiatorAgainst).
+        // Match 2026-11-09: Ysolde's fully hidden Grit Wolves sat on Brynn's Citadel T10-T14
+        // beside a 4-8 unit garrison that could not attack its own hex. Elsewhere a detected
+        // fully hidden army still holds nobody (IsHeldByContact) and is attacked only by an
+        // explicit order. `skip` excludes pairings (initiator id, enemy id) already fought.
+        public static bool TryFindOwnBuildingContact(PlayerSetupData owner,
+            System.Collections.Generic.ICollection<(int Initiator, int Enemy)> skip,
+            out HexCoord hex, out System.Collections.Generic.List<ArmyData> participants)
+        {
+            hex = default;
+            participants = null;
+            if (owner == null)
+                return false;
+            foreach (BuildingData building in BuildingRegistry.AllBuildings()
+                .Where(b => b != null && b.Owner == owner)
+                .OrderBy(b => b.Hex.Q).ThenBy(b => b.Hex.R))
+            {
+                foreach (ArmyData enemy in ArmyRegistry.AllAt(building.Hex)
+                    .Where(a => a.Owner != owner && IsEngageable(a, owner))
+                    .OrderBy(a => a.Id))
+                {
+                    ArmyData initiator = StrongestInitiatorAgainst(building.Hex, owner, enemy);
+                    if (initiator == null || skip != null && skip.Contains((initiator.Id, enemy.Id)))
+                        continue;
+                    hex = building.Hex;
+                    participants = new System.Collections.Generic.List<ArmyData> { initiator, enemy };
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // `owner`'s combat-capable ground army on `hex` that beats `enemy`'s members visible to
+        // `owner` most easily — the attacker-side read of the canonical comparator
+        // (CompareDefenderHardness: higher WinChance, then surviving HP, then lower critical
+        // chance, then lower army id).
+        internal static ArmyData StrongestInitiatorAgainst(HexCoord hex, PlayerSetupData owner, ArmyData enemy)
+        {
+            if (owner == null || enemy == null)
+                return null;
+            var visibleMembers = Game.Map.StealthSystem.TargetableMembersFor(enemy, owner)
+                .Where(member => member != null)
+                .ToList();
+            var visibleRoster = visibleMembers.Select(WorthIt.FromLiveUnit).ToList();
+            UnitData commander = enemy.Commander;
+            WorthIt.SideCommander enemyCommander = commander != null && visibleMembers.Contains(commander)
+                ? WorthIt.SideCommander.Of(commander) : default;
+            ArmyData best = null;
+            WorthIt.BattleEstimate bestEstimate = default;
+            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
+            {
+                if (army.Owner != owner || !IsCombatCapable(army))
+                    continue;
+                WorthIt.BattleEstimate estimate = WorthIt.Estimate(army, visibleRoster, 0f, enemyCommander);
+                // Arguments crossed on purpose: `bestEstimate` "harder" than `estimate` means this
+                // army wins more easily; on a full tie the lower army id is kept.
+                if (best == null || CompareDefenderHardness(bestEstimate, army.Id, estimate, best.Id) < 0)
+                {
+                    best = army;
+                    bestEstimate = estimate;
+                }
+            }
+            return best;
+        }
+
         // Contact selection has two forms because many callers only ask the occupancy question
         // ("does any enemy stand here?"), while a committed encounter also knows the concrete
         // mover. Only the latter can answer "which defender is hardest for THIS attacker" without

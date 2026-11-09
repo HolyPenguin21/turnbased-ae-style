@@ -643,51 +643,76 @@ namespace Game.Turns
                 if (!IsStillAGenuineBattle(battle))
                     continue;
 
-                // STEALTH-COMBAT-01: this delayed/contested pairing is a committed encounter the
-                // instant it's drained here — reveal right now, before ShowResolved (or a direct
-                // Show()/BeginCaptureKillEncounter for a no-human pairing) below ever displays it.
-                // The observer can't just be battle.Participants[0].Owner — in a hot-seat game
-                // that's whichever side happened to be the original mover/hunter, which is just
-                // as likely to be an AI as the human this popup is actually about to render for
-                // (see BattleContactPopupUI.ShowSideList's own note) — ResolveHumanObserver finds
-                // the real one. The context this returns is also the single source of truth for
-                // TargetHeroOnly below, instead of a second, separately re-derived bool.
-                Game.Combat.BattleEncounterContext encounter = Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(
-                    battle.Hex, battle.Participants, Game.Combat.BattleEncounterCoordinator.ResolveHumanObserver(battle.Participants));
-
-                // ShowResolved only makes sense when a human is actually there to click its own
-                // "Continue" button — same human-only gating every other contact point in this
-                // project already applies (see HexSelectionController.Movement.cs's own onFight/
-                // onDelay branch). Ordinary AI-vs-Neutral contact no longer reaches this drain
-                // at all (it fights immediately on contact now — see that same branch's own
-                // comment), but TryFindNextContestedBattle's own fallback sweep just above can
-                // still surface a leftover pairing with no human on either side (its own comment:
-                // e.g. a hero that Escaped a Capture Kill Challenge). Without this check that
-                // used to wait on a click nobody was ever going to make — the exact same hang,
-                // just through a rarer door.
-                bool acknowledged = false;
-                bool fastResolve = false;
-                bool anyHuman = encounter.PresentationObserver != null;
-                if (battleContactPopup != null && anyHuman)
-                    battleContactPopup.ShowResolved(battle.Hex, battle.Participants, encounter.PresentationObserver,
-                        automatic => { fastResolve = automatic; acknowledged = true; });
-                else
-                    acknowledged = true;
-                yield return new WaitUntil(() => acknowledged);
-
-                bool closed = false;
-                // Same hero-only branch as HexSelectionController.Movement.cs's own contact
-                // handling — nothing for a Ground Combat round to do against a target with no
-                // units, so this goes straight to a Capture Kill Challenge sequence instead
-                // (see BattleScreenUI.BeginCaptureKillEncounter). Participants[0] is always the
-                // original mover/hunter — see IsStillAGenuineBattle's own comment.
-                if (battleScreen != null)
-                    battleScreen.ShowEncounter(encounter, () => closed = true, fastResolve);
-                else
-                    closed = true;
-                yield return new WaitUntil(() => closed);
+                yield return RunCommittedBattle(battle);
             }
             onDone();
+        }
+
+        // One committed pairing, from the reveal to the closed battle screen: the round-end drain
+        // above and the turn-start own-building contact (ResolveOwnBuildingContacts) share it.
+        private IEnumerator RunCommittedBattle(PendingBattle battle)
+        {
+            // STEALTH-COMBAT-01: this delayed/contested pairing is a committed encounter the
+            // instant it's drained here — reveal right now, before ShowResolved (or a direct
+            // Show()/BeginCaptureKillEncounter for a no-human pairing) below ever displays it.
+            // The observer can't just be battle.Participants[0].Owner — in a hot-seat game
+            // that's whichever side happened to be the original mover/hunter, which is just
+            // as likely to be an AI as the human this popup is actually about to render for
+            // (see BattleContactPopupUI.ShowSideList's own note) — ResolveHumanObserver finds
+            // the real one. The context this returns is also the single source of truth for
+            // TargetHeroOnly below, instead of a second, separately re-derived bool.
+            Game.Combat.BattleEncounterContext encounter = Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(
+                battle.Hex, battle.Participants, Game.Combat.BattleEncounterCoordinator.ResolveHumanObserver(battle.Participants));
+
+            // ShowResolved only makes sense when a human is actually there to click its own
+            // "Continue" button — same human-only gating every other contact point in this
+            // project already applies (see HexSelectionController.Movement.cs's own onFight/
+            // onDelay branch). Ordinary AI-vs-Neutral contact no longer reaches this drain
+            // at all (it fights immediately on contact now — see that same branch's own
+            // comment), but TryFindNextContestedBattle's own fallback sweep just above can
+            // still surface a leftover pairing with no human on either side (its own comment:
+            // e.g. a hero that Escaped a Capture Kill Challenge). Without this check that
+            // used to wait on a click nobody was ever going to make — the exact same hang,
+            // just through a rarer door.
+            bool acknowledged = false;
+            bool fastResolve = false;
+            bool anyHuman = encounter.PresentationObserver != null;
+            if (battleContactPopup != null && anyHuman)
+                battleContactPopup.ShowResolved(battle.Hex, battle.Participants, encounter.PresentationObserver,
+                    automatic => { fastResolve = automatic; acknowledged = true; });
+            else
+                acknowledged = true;
+            yield return new WaitUntil(() => acknowledged);
+
+            bool closed = false;
+            // Same hero-only branch as HexSelectionController.Movement.cs's own contact
+            // handling — nothing for a Ground Combat round to do against a target with no
+            // units, so this goes straight to a Capture Kill Challenge sequence instead
+            // (see BattleScreenUI.BeginCaptureKillEncounter). Participants[0] is always the
+            // original mover/hunter — see IsStillAGenuineBattle's own comment.
+            if (battleScreen != null)
+                battleScreen.ShowEncounter(encounter, () => closed = true, fastResolve);
+            else
+                closed = true;
+            yield return new WaitUntil(() => closed);
+        }
+
+        // 2026-11-09 (project owner's decision, match P4) — at the start of `owner`'s turn, a
+        // detected enemy army on the hex of `owner`'s own building is fought by `owner`'s
+        // strongest army on that hex (BattleInitiator.TryFindOwnBuildingContact). Resolved after
+        // turn-start AA and before the AI plans / the human's input unlocks; the same committed
+        // battle path as the round-end drain (reveal, contact popup for a human, battle screen).
+        // A pairing is fought at most once per turn start.
+        private IEnumerator ResolveOwnBuildingContacts(PlayerSetupData owner)
+        {
+            var fought = new HashSet<(int Initiator, int Enemy)>();
+            while (!_gameOver && CurrentPlayer == owner
+                && Game.Combat.BattleInitiator.TryFindOwnBuildingContact(owner, fought,
+                    out HexCoord hex, out List<ArmyData> participants))
+            {
+                fought.Add((participants[0].Id, participants[1].Id));
+                yield return RunCommittedBattle(new PendingBattle { Hex = hex, Participants = participants });
+            }
         }
 
         // The end-of-drain sweep ResolveDelayedBattlesThen falls back on once
@@ -896,8 +921,9 @@ namespace Game.Turns
             }
         }
 
-        // Turn-start AA (AviationCombatPresenter.ResolveTurnStartAntiAir) resolves before the AI
-        // plans, so the turn starts from the post-AA world.
+        // Turn-start AA (AviationCombatPresenter.ResolveTurnStartAntiAir) and the own-building
+        // contact (ResolveOwnBuildingContacts) resolve before the AI plans, so the turn starts
+        // from the post-AA, post-battle world.
         private IEnumerator RunAiTurnAfterTurnStartAntiAir(PlayerSetupData player, AiTurnContext ctx)
         {
             AviationCombatPresenter presenter = hexSelectionController != null
@@ -905,6 +931,9 @@ namespace Game.Turns
             if (presenter != null)
                 yield return presenter.ResolveTurnStartAntiAir(player);
             if (_gameOver)
+                yield break;
+            yield return ResolveOwnBuildingContacts(player);
+            if (_gameOver || CurrentPlayer != player)
                 yield break;
             long generation=matchGeneration;bool completed=false;
             StartCoroutine(AiTurnController.RunTurn(player,ctx,()=>
@@ -944,6 +973,8 @@ namespace Game.Turns
                     yield break;
                 if (presenter != null && AntiAirRules.CollectTurnStartOpportunities(player).Count > 0)
                     yield return presenter.ResolveTurnStartAntiAir(player);
+                if (!_gameOver && CurrentPlayer == player)
+                    yield return ResolveOwnBuildingContacts(player);
                 if (!_gameOver && CurrentPlayer == player)
                     CompleteTurnConfirmation();
             }
