@@ -185,10 +185,14 @@ namespace Game.Combat
             List<DeploymentCandidate> tied = TiedDeployments(candidates);
             if (tied.Count > 1)
             {
-                float LongScore(DeploymentCandidate c)
+                // Same scenarios as Evaluate, score only, sliced like it (4 ms per frame). Stable:
+                // an equal long outcome keeps the short-horizon order.
+                float weight = 1f / (4 * ArrangementSimulationTrials);
+                DeploymentCandidate longBest = null;
+                float longBestScore = float.NegativeInfinity;
+                foreach (DeploymentCandidate c in tied)
                 {
                     float total = 0f;
-                    float weight = 1f / (4 * ArrangementSimulationTrials);
                     for (int opponentLayout = 0; opponentLayout < 2; opponentLayout++)
                     {
                         var trial = CloneGrid(c.Grid);
@@ -199,17 +203,26 @@ namespace Game.Combat
                         }
                         for (int policy = 0; policy < 2; policy++)
                         for (int sample = 0; sample < ArrangementSimulationTrials; sample++)
+                        {
+                            if (canCommit != null && !canCommit()) yield break;
                             total -= LossMarginAgainstUs(ownTotalHp, enemyTotalHp, SimulateRounds(trial, army,
                                 enemyArmy, DeploymentTieHorizonRounds, magnitudes, battleDefender,
                                 battleDefenderDefenseBonus, 1, deterministic: true,
                                 holdingArmy: policy == 0 ? null : enemyArmy, firstTrial: sample)) * weight;
+                            if (slice.ElapsedMilliseconds >= 4)
+                            {
+                                yield return null;
+                                slice.Restart();
+                            }
+                        }
                     }
-                    return total;
+                    if (longBest == null || total > longBestScore)
+                    {
+                        longBest = c;
+                        longBestScore = total;
+                    }
                 }
-                if (canCommit != null && !canCommit()) yield break;
-                // Stable: an equal long outcome keeps the short-horizon order.
-                best = tied.Select((c, i) => (c, i, s: LongScore(c)))
-                    .OrderByDescending(x => x.s).ThenBy(x => x.i).First().c;
+                best = longBest;
             }
             BattleDebugLog.Write($"[ArrangeDiag] army \"{army.Name}\": " +
                 $"candidates={candidates.Count} score={best.Score} openingScore={best.OpeningScore}");
