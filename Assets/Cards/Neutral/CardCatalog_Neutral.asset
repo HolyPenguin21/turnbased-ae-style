@@ -4959,10 +4959,10 @@ MonoBehaviour:
     tacticAmount: 1
     apCost: 2
     resourceCost:
-      human: 2
-      energy: 2
-      materials: 2
-      tech: 1
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 0
     activationApCost: 0
