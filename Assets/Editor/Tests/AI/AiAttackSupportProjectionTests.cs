@@ -243,6 +243,32 @@ namespace Game.EditorTests
             }
         }
 
+        // 2026-11-09 (Q4) — Phase A attaches a hand Air Bomb to an aircraft whose service on the
+        // site is read WITH the bomb. The projection is a detached copy through the game's own
+        // installation: a frame without a gun gains the explosion strike, the live unit does not.
+        [Test]
+        public void BombCarrierProjection_GivesTheFrameTheStrike_AndLeavesTheLiveAircraftUntouched()
+        {
+            var bomb = new CardDefinition { cardType = CardType.Equipment, attachmentSlot = AttachmentSlot.Equipment,
+                grantedAbilities = new List<string> { UnitAbilities.SingleUse },
+                equipment = new EquipmentGrant {
+                    hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Aircraft },
+                    addAbilities = new List<string> { UnitAbilities.Explosion3 } } };
+            Assert.That(PhaseAOperationSupport.IsAircraftBomb(bomb), Is.True);
+            Game.Units.UnitData frame = Game.Units.UnitData.Materialize("Recon frame", _player, 4, 1, false, 0,
+                null, null, attack: 0, typeTags: new[] { UnitTypeTag.Aircraft }, isAviation: true);
+            Assert.That(ExplosionAttack.TargetLimit(frame.Abilities), Is.Zero, "the bare frame cannot strike");
+
+            Game.Units.UnitData carrier = PhaseAOperationSupport.ProjectedBombCarrier(frame, bomb);
+
+            Assert.That(ExplosionAttack.TargetLimit(carrier.Abilities), Is.GreaterThan(0));
+            Assert.That(carrier.Equipment, Is.SameAs(bomb));
+            Assert.That(carrier, Is.Not.SameAs(frame));
+            Assert.That(frame.Equipment, Is.Null, "the live aircraft keeps its attachments");
+            Assert.That(ExplosionAttack.TargetLimit(frame.Abilities), Is.Zero);
+            Assert.That(PhaseAOperationSupport.ProjectedBombCarrier(null, bomb), Is.Null);
+        }
+
         // No known defenders: nothing to project, the forecast is the bare package.
         [Test]
         public void Forecast_WithoutKnownDefenders_CountsNoSupport()

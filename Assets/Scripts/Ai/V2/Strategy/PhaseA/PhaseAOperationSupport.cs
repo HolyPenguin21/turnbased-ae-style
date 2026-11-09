@@ -37,6 +37,13 @@ namespace Game.Ai.V2
     //      targets fell to 1/1/1/1 while Tech, the one resource a strike needed, stayed at 1;
     //    · a refused strike says why ([AI][V2][Attack][Support] ... not produced: ...).
     //  Upgrades of the fist itself, and every card delivery, keep their priority.
+    //
+    //  2026-11-09 (owner, match Q4) — an Air Bomb in hand is produced here too: Phase A attaches
+    //  it (the Phase B equipment play: same enumeration, score, spendability, executor) to an own
+    //  aircraft whose service on the site WITH the bomb is positive (ProjectService on the
+    //  projected carrier, from its airfield or its formed wing). The forecast then counts that
+    //  aircraft (GroundCombatAirSupport.Options) and the need is gone. The carrier test of Assess
+    //  reads the same projection: the bare frame's own attack was read before.
     // ===========================================================================================
     internal sealed class StrikeSupportNeed
     {
@@ -48,6 +55,8 @@ namespace Game.Ai.V2
         // the card it mints) — what the operation needs left after the card rounds.
         internal ResourceCost Cost;
         internal string Source;
+        // The strike requests on the operation's site (NonCombatCardPlayer.KnownStrikeTargets).
+        internal IReadOnlyList<CombatAirSupportRequest> Requests = System.Array.Empty<CombatAirSupportRequest>();
     }
 
     internal static class PhaseAOperationSupport
@@ -122,7 +131,7 @@ namespace Game.Ai.V2
             return new StrikeSupportNeed
             {
                 Operation = operation, Attack = a, Primary = primary, Forecast = forecast,
-                Cost = cheapest.Cost, Source = cheapest.Source,
+                Cost = cheapest.Cost, Source = cheapest.Source, Requests = requests,
             };
         }
 
@@ -208,6 +217,7 @@ namespace Game.Ai.V2
                 .Where(p => p.Kind == NonCombatCardPlayer.PlayKind.Aviation
                     && p.StrikeTarget.HasValue && p.StrikeTarget.Value.Equals(a.Target.Hex))
                 .ToList();
+            onSite.AddRange(BombPlaysOnSite(pass, need));
             NonCombatCardPlayer.NonCombatPlay best = onSite
                 .Where(p => p.Score > AiConfigV2.devEvMargin
                     && p.ApCost <= spendableAp + AiConfigV2.allocatorSliceEpsilon
@@ -288,16 +298,67 @@ namespace Game.Ai.V2
             && def.equipment.hostTypeTags?.Contains(Game.Cards.UnitTypeTag.Aircraft) == true
             && Game.Combat.ExplosionAttack.TargetLimit(def.equipment.addAbilities) > 0;
 
-        // Some own aircraft can carry `bomb` and its frame reaches the site from a legal airfield
-        // (CanStructurallyStrike on the carrier's own card: the same placement + ProjectService).
+        // Some own aircraft, carrying `bomb`, serves a strike on the site from where it stands.
         private static bool BombCarrierStrikes(PhaseAPass pass, Game.Cards.CardDefinition bomb,
             IReadOnlyList<CombatAirSupportRequest> requests) =>
             OwnWorld.Of(pass.Player).Armies.Where(a => a != null)
                 .SelectMany(a => a.Members)
-                .Any(u => u != null && u.IsAviation && u.OriginatingCard != null
-                    && Game.Cards.EquipmentSystem.CanAttachPreview(bomb, u, out _)
-                    && NonCombatCardPlayer.CanStructurallyStrike(pass.Snap, pass.Player, pass.Root, pass.Ctx,
-                        new CardData(u.OriginatingCard), requests));
+                .Any(u => u != null && u.IsAviation
+                    && BombedService(pass.Snap, pass.Player, pass.Ctx, u, bomb, requests).HasValue);
+
+        // The hand bombs' attachment plays whose recipient then serves the operation's site.
+        private static IEnumerable<NonCombatCardPlayer.NonCombatPlay> BombPlaysOnSite(PhaseAPass pass,
+            StrikeSupportNeed need)
+        {
+            foreach (CardData card in pass.Hand.Hand.Where(c => IsAircraftBomb(c?.Definition)).ToList())
+                foreach (NonCombatCardPlayer.NonCombatPlay play in NonCombatCardPlayer.EquipmentPlaysFor(card,
+                             pass.Snap, pass.Player, pass.Root, pass.Hand, pass.Ctx))
+                    if (play.EquipHost != null && BombedService(pass.Snap, pass.Player, pass.Ctx,
+                            play.EquipHost, card.Definition, need.Requests).HasValue)
+                        yield return play;
+        }
+
+        // The aircraft as it would fly with `bomb` attached: a detached copy (the live unit and its
+        // attachments are untouched) through the game's own installation.
+        internal static Game.Units.UnitData ProjectedBombCarrier(Game.Units.UnitData aircraft,
+            Game.Cards.CardDefinition bomb)
+        {
+            if (aircraft == null || bomb == null)
+                return null;
+            Game.Units.UnitData carrier = aircraft.CloneForCombat();
+            Game.Cards.EquipmentSystem.ApplyAttachments(carrier, bomb, null);
+            return carrier;
+        }
+
+        // The best service `aircraft` carrying `bomb` gives one of `requests` from where it stands —
+        // a launch from its airfield, or its formed wing — by GroundCombatAirSupport.ProjectService,
+        // the rule the forecast applies once the bomb is on. Null when it cannot serve.
+        internal static CombatAirService? BombedService(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, Game.Units.UnitData aircraft, Game.Cards.CardDefinition bomb,
+            IReadOnlyList<CombatAirSupportRequest> requests)
+        {
+            if (snap == null || player == null || ctx?.Map == null || requests == null || requests.Count == 0
+                || aircraft == null || !aircraft.IsAviation
+                || !Game.Cards.EquipmentSystem.CanAttachPreview(bomb, aircraft, out _))
+                return null;
+            ArmyData army = OwnWorld.Of(player)?.ArmyContaining(aircraft);
+            bool stored = Game.Aviation.AviationRules.IsAirfield(army);
+            if (army == null || !stored && !Game.Aviation.AviationRules.IsAirArmy(army))
+                return null;
+            Game.Units.UnitData carrier = ProjectedBombCarrier(aircraft, bomb);
+            IReadOnlyList<Game.Units.UnitData> flight = stored ? new[] { carrier }
+                : army.Members.Select(u => ReferenceEquals(u, aircraft) ? carrier : u).ToList();
+            CombatAirService? best = null;
+            foreach (CombatAirSupportRequest request in requests)
+            {
+                CombatAirService? service = GroundCombatAirSupport.ProjectService(snap, player, ctx.Map,
+                    flight, army.Hex, request, stored ? null : army);
+                if (service.HasValue && service.Value.Score.Value > AiConfigV2.allocatorSliceEpsilon
+                    && (!best.HasValue || service.Value.Score.Value > best.Value.Score.Value))
+                    best = service;
+            }
+            return best;
+        }
 
         // An aircraft that strikes ground (a missile or a bomber), never a recon-only frame.
         private static bool IsStrikeCard(Game.Cards.CardDefinition def) =>

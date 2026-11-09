@@ -874,6 +874,17 @@ namespace Game.Ai.V2
             return set.OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
         }
 
+        // One hand Equipment card's attachment plays (every legal recipient) — the same
+        // enumeration, price and score EnumeratePlays gives Phase B, for a caller that asks about
+        // one card (Phase A strike support: PhaseAOperationSupport.TryProduceStrikeSupport).
+        internal static IEnumerable<NonCombatPlay> EquipmentPlaysFor(CardData card, WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx) =>
+            card?.Definition?.cardType == CardType.Equipment && card.Definition.equipment != null
+                && player != null && root != null && ctx != null
+                ? BuildEquipmentPlays(card, snap, player, root, hand, ctx, card.EffectivePlayApCost,
+                    StrategicCardEvaluator.AddResourceCosts(card.EffectivePlayResourceCost, null), null)
+                : Enumerable.Empty<NonCombatPlay>();
+
         private static IEnumerable<NonCombatPlay> BuildEquipmentPlays(CardData card,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             float ap, ResourceCost resources, float? workload, bool ignoreApForMeasurement = false, SpendAuthority authority = default)
