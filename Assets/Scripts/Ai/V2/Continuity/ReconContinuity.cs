@@ -364,7 +364,7 @@ namespace Game.Ai.V2
         // §P1 — GRADUAL contraction of durable Scout lanes toward desired concurrency: at most
         // maxReconLaneTrimPerTurn shed per turn, only Soft/None-funded lanes, and the target floor
         // already accounts for any Hard-funded lanes that are being kept regardless.
-        private static void TrimSurplusReconLanes(PlayerSetupData player, List<MissionIntent> active,
+        internal static void TrimSurplusReconLanes(PlayerSetupData player, List<MissionIntent> active,
             MissionIntentState state, WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
             var airActorIds = new HashSet<int>((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
@@ -387,10 +387,14 @@ namespace Game.Ai.V2
                 .ThenBy(o => o.IntentKey)
                 .ToList();
             int desired = ReconConcurrencyPolicy.DesiredTotal(snap, runnable);
+            // 2026-11-09 (match P1) — a lane looking at a live Attack's observation need is never
+            // surplus: Brynn's scout two hexes from the enemy citadel was shed as the stalest lane.
+            var observationNeeds = new HashSet<HexCoord>(AttackObjectiveEvaluator.ObservationNeeds(snap));
 
             var shedable = scoutLanes
                 .Where(i => i.Funding < CommitmentTier.Hard
-                    && !IsProductiveReconLaneThisTurn(i, snap.TurnNumber))
+                    && !IsProductiveReconLaneThisTurn(i, snap.TurnNumber)
+                    && !observationNeeds.Contains(i.Scout.FocusHex))
                 // A lane without a bound actor occupies no physical scout, so it is shed first;
                 // then the lane that has gone longest without progress (audit F4). Only after
                 // that the original Funding / newest-first order.
