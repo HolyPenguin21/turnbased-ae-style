@@ -542,6 +542,103 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 10
+    authoredKey: vessels.12.salvage-drone
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Salvage Drone
+    art: {fileID: 21300000, guid: c95b7976c71bb2e4aa14d68f3a02ec93, type: 3}
+    detailArt: {fileID: 21300000, guid: 30c6a1490948f7142a8392c75c716244, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 2
+    range: 1
+    hitPoints: 3
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - CollectMaterials
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 11
+    authoredKey: vessels.15.vessel-rifleman
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Vessel Rifleman
+    art: {fileID: 21300000, guid: 4cc533e9bf2ef354ebea1276d2f81789, type: 3}
+    detailArt: {fileID: 21300000, guid: caa76e0de0b0f6f4792b9a2b2d193d45, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    range: 2
+    hitPoints: 5
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 12
     authoredKey: vessels.10.whisper-scout
     deckPointCost: 2
     deckCopyLimit: 4
@@ -592,56 +689,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 11
-    authoredKey: vessels.12.salvage-drone
-    deckPointCost: 1
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Salvage Drone
-    art: {fileID: 21300000, guid: c95b7976c71bb2e4aa14d68f3a02ec93, type: 3}
-    detailArt: {fileID: 21300000, guid: 30c6a1490948f7142a8392c75c716244, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 2
-    defenseRating: 2
-    range: 1
-    hitPoints: 3
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000007000000
-    grantedAbilities:
-    - CollectMaterials
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 12
+  - id: 13
     authoredKey: vessels.14.shard-wanderer
     deckPointCost: 2
     deckCopyLimit: 4
@@ -690,7 +738,152 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 13
+  - id: 14
+    authoredKey: vessels.unit.halo-kite
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Halo Kite
+    art: {fileID: 21300000, guid: cfbadf049a01d014e9a0d34eff7b477f, type: 3}
+    detailArt: {fileID: 21300000, guid: c166ab18921b7ef4cb6acf4950f29e56, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 6
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 2
+    hitPoints: 3
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 1
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 15
+    authoredKey: vessels.unit.core-tender
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Core Tender
+    art: {fileID: 21300000, guid: 28693058109e6bc40980e8e335816ce8, type: 3}
+    detailArt: {fileID: 21300000, guid: f65ff71272076b449bf87f5501379bdd, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 1
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 16
+    authoredKey: vessels.unit.mantle-skirmisher
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Mantle Skirmisher
+    art: {fileID: 21300000, guid: 61a354e15615a7d4ca285ca7fac573e9, type: 3}
+    detailArt: {fileID: 21300000, guid: 2ffdb0196b4f4cd4c9a19eb3bee1fe01, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    range: 1
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - CriticalDamage
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 17
     authoredKey: vessels.unit.silt-pilgrim
     deckPointCost: 2
     deckCopyLimit: 4
@@ -739,210 +932,14 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 14
-    authoredKey: vessels.15.vessel-rifleman
-    deckPointCost: 1
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Vessel Rifleman
-    art: {fileID: 21300000, guid: 4cc533e9bf2ef354ebea1276d2f81789, type: 3}
-    detailArt: {fileID: 21300000, guid: caa76e0de0b0f6f4792b9a2b2d193d45, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 1
-    range: 2
-    hitPoints: 5
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 15
-    authoredKey: vessels.27.arc-cantor
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Arc Cantor
-    art: {fileID: 21300000, guid: c1e5722ae67722840a49f3d36e0a7cb7, type: 3}
-    detailArt: {fileID: 21300000, guid: a06fbe592e8a13c4db4cf26d5911e5bf, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 3
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities:
-    - Scorcher
-    - Hyperkinetic
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 16
-    authoredKey: vessels.16.bulwark-vessel
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Bulwark Vessel
-    art: {fileID: 21300000, guid: ba8e4cc459e2dd14e919f8b28405d921, type: 3}
-    detailArt: {fileID: 21300000, guid: cc319ccd30a3f5a49ab5b7449ca95fa5, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 4
-    range: 1
-    hitPoints: 5
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities:
-    - Bodyguard
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 17
-    authoredKey: vessels.11.glass-runner
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Glass Runner
-    art: {fileID: 21300000, guid: cfd62e85aaef0dc468d0a4a6d7a25b3b, type: 3}
-    detailArt: {fileID: 21300000, guid: c0982e566af8015498bf9c1713f88490, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 3
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 4
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - r1s5
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
   - id: 18
-    authoredKey: vessels.unit.mantle-skirmisher
+    authoredKey: vessels.unit.spindle-gunner
     deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Mantle Skirmisher
-    art: {fileID: 21300000, guid: 61a354e15615a7d4ca285ca7fac573e9, type: 3}
-    detailArt: {fileID: 21300000, guid: 2ffdb0196b4f4cd4c9a19eb3bee1fe01, type: 3}
+    displayName: Spindle Gunner
+    art: {fileID: 21300000, guid: e195376e66ec305488802f8d164bfb27, type: 3}
+    detailArt: {fileID: 21300000, guid: cefa99ee55abdae49872c5479e2064bb, type: 3}
     faction: 5
     cardType: 1
     tacticEffect: 0
@@ -950,27 +947,26 @@ MonoBehaviour:
     apCost: 2
     resourceCost:
       human: 0
-      energy: 1
+      energy: 0
       materials: 1
-      tech: 0
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 5
     defenseRating: 2
-    range: 1
+    range: 2
     hitPoints: 4
-    initiative: 2
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000003000000
-    grantedAbilities:
-    - CriticalDamage
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
@@ -1033,13 +1029,13 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 20
-    authoredKey: vessels.27.lens-watcher
+    authoredKey: vessels.27.arc-cantor
     deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Lens Watcher
-    art: {fileID: 21300000, guid: 7ee2d51b3a45eeb4dbdfc2b2a6d7887c, type: 3}
-    detailArt: {fileID: 21300000, guid: e61f9b8e2cbbcc64bbd2921cd2dcc6fe, type: 3}
+    displayName: Arc Cantor
+    art: {fileID: 21300000, guid: c1e5722ae67722840a49f3d36e0a7cb7, type: 3}
+    detailArt: {fileID: 21300000, guid: a06fbe592e8a13c4db4cf26d5911e5bf, type: 3}
     faction: 5
     cardType: 1
     tacticEffect: 0
@@ -1055,11 +1051,11 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 6
-    defenseRating: 1
-    range: 3
+    attack: 4
+    defenseRating: 2
+    range: 2
     hitPoints: 4
-    initiative: 2
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -1067,7 +1063,8 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 0100000003000000
     grantedAbilities:
-    - Disruption
+    - Scorcher
+    - Hyperkinetic
     resourceYield:
       human: 0
       energy: 0
@@ -1082,298 +1079,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 21
-    authoredKey: vessels.17.relay-carrier
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Relay Carrier
-    art: {fileID: 21300000, guid: 1e6024ece4a8dda4583a77dd3c5e523f, type: 3}
-    detailArt: {fileID: 21300000, guid: f8c9ec906a566f34aba9841682ac6940, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 4
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities:
-    - r1s5
-    - Transport
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 22
-    authoredKey: vessels.unit.duplex-crawler
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Duplex Crawler
-    art: {fileID: 21300000, guid: ba10563e2541a2d4bb59236d3d9a4132, type: 3}
-    detailArt: {fileID: 21300000, guid: 8517933311e081448ac82d60698ad189, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 23
-    authoredKey: vessels.unit.mirror-duelist
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Mirror Duelist
-    art: {fileID: 21300000, guid: 070da5206b4c615418c82347e3090207, type: 3}
-    detailArt: {fileID: 21300000, guid: d68d44ab82b3d2a40a8bdc7f25f87c8c, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 2
-    range: 1
-    hitPoints: 5
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities:
-    - Counterattack
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 24
-    authoredKey: vessels.unit.pilgrim-strider
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Pilgrim Strider
-    art: {fileID: 21300000, guid: fd69559923606ee4185a7a25121cac80, type: 3}
-    detailArt: {fileID: 21300000, guid: d6b364f655b634e429c7e29b7c8c23d0, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000005000000
-    grantedAbilities:
-    - RapidReaction
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 25
-    authoredKey: vessels.unit.spindle-gunner
-    deckPointCost: 2
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Spindle Gunner
-    art: {fileID: 21300000, guid: e195376e66ec305488802f8d164bfb27, type: 3}
-    detailArt: {fileID: 21300000, guid: cefa99ee55abdae49872c5479e2064bb, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 2
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 26
-    authoredKey: vessels.unit.core-tender
-    deckPointCost: 2
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Core Tender
-    art: {fileID: 21300000, guid: 28693058109e6bc40980e8e335816ce8, type: 3}
-    detailArt: {fileID: 21300000, guid: f65ff71272076b449bf87f5501379bdd, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 2
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 1
-    hitPoints: 5
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 27
     authoredKey: vessels.13.arc-sentry
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1422,105 +1127,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 28
-    authoredKey: vessels.unit.halo-kite
-    deckPointCost: 1
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Halo Kite
-    art: {fileID: 21300000, guid: cfbadf049a01d014e9a0d34eff7b477f, type: 3}
-    detailArt: {fileID: 21300000, guid: c166ab18921b7ef4cb6acf4950f29e56, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 2
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 0
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 6
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    range: 2
-    hitPoints: 3
-    initiative: 2
-    isAviation: 1
-    launchEnergyCost: 1
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 29
-    authoredKey: vessels.25.harmonic-howitzer
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Harmonic Howitzer
-    art: {fileID: 21300000, guid: 97fc3c43922680b458e3e1b01f9781f7, type: 3}
-    detailArt: {fileID: 21300000, guid: 219ed894ee6967b409c894aa65e7c418, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 3
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 1
-    range: 3
-    hitPoints: 3
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000007000000
-    grantedAbilities:
-    - ShockAttack
-    - Splash
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 30
+  - id: 22
     authoredKey: vessels.unit.bell-breacher
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1568,7 +1175,251 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 31
+  - id: 23
+    authoredKey: vessels.unit.chime-suppressor
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Chime Suppressor
+    art: {fileID: 21300000, guid: ea8528852ee8f354698ea42f41a8f78d, type: 3}
+    detailArt: {fileID: 21300000, guid: 2d615d994ca3ddc4890dd50ba667ca34, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 24
+    authoredKey: vessels.11.glass-runner
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Glass Runner
+    art: {fileID: 21300000, guid: cfd62e85aaef0dc468d0a4a6d7a25b3b, type: 3}
+    detailArt: {fileID: 21300000, guid: c0982e566af8015498bf9c1713f88490, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - r1s5
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 25
+    authoredKey: vessels.27.lens-watcher
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Lens Watcher
+    art: {fileID: 21300000, guid: 7ee2d51b3a45eeb4dbdfc2b2a6d7887c, type: 3}
+    detailArt: {fileID: 21300000, guid: e61f9b8e2cbbcc64bbd2921cd2dcc6fe, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 1
+    range: 3
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - Disruption
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 26
+    authoredKey: vessels.unit.anchor-warden
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Anchor Warden
+    art: {fileID: 21300000, guid: 93519e0ce3d82e84fa98194c5093925b, type: 3}
+    detailArt: {fileID: 21300000, guid: 1aeff58901602d849a9fff8173eacd47, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 1
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - ShockAttack
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 27
+    authoredKey: vessels.16.bulwark-vessel
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Bulwark Vessel
+    art: {fileID: 21300000, guid: ba8e4cc459e2dd14e919f8b28405d921, type: 3}
+    detailArt: {fileID: 21300000, guid: cc319ccd30a3f5a49ab5b7449ca95fa5, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 4
+    range: 1
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - Bodyguard
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 28
     authoredKey: vessels.unit.censer-keeper
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1618,7 +1469,55 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 32
+  - id: 29
+    authoredKey: vessels.unit.duplex-crawler
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Duplex Crawler
+    art: {fileID: 21300000, guid: ba10563e2541a2d4bb59236d3d9a4132, type: 3}
+    detailArt: {fileID: 21300000, guid: 8517933311e081448ac82d60698ad189, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 2
+    range: 2
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 30
     authoredKey: vessels.23.echo-mortar
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1667,14 +1566,14 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 33
-    authoredKey: vessels.unit.anchor-warden
+  - id: 31
+    authoredKey: vessels.unit.mirror-duelist
     deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Anchor Warden
-    art: {fileID: 21300000, guid: 93519e0ce3d82e84fa98194c5093925b, type: 3}
-    detailArt: {fileID: 21300000, guid: 1aeff58901602d849a9fff8173eacd47, type: 3}
+    displayName: Mirror Duelist
+    art: {fileID: 21300000, guid: 070da5206b4c615418c82347e3090207, type: 3}
+    detailArt: {fileID: 21300000, guid: d68d44ab82b3d2a40a8bdc7f25f87c8c, type: 3}
     faction: 5
     cardType: 1
     tacticEffect: 0
@@ -1691,10 +1590,10 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 5
-    defenseRating: 3
+    defenseRating: 2
     range: 1
-    hitPoints: 4
-    initiative: 1
+    hitPoints: 5
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -1702,7 +1601,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 0100000003000000
     grantedAbilities:
-    - ShockAttack
+    - Counterattack
     resourceYield:
       human: 0
       energy: 0
@@ -1716,7 +1615,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 34
+  - id: 32
     authoredKey: vessels.27.null-vessel
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1764,14 +1663,14 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 35
-    authoredKey: vessels.unit.chime-grenadier
-    deckPointCost: 4
+  - id: 33
+    authoredKey: vessels.unit.pilgrim-strider
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Chime Grenadier
-    art: {fileID: 21300000, guid: 6e5a0b8611ac6df4f94f7e9ef0f544f8, type: 3}
-    detailArt: {fileID: 21300000, guid: 60facb9d68bd0144da6b045ae84b7294, type: 3}
+    displayName: Pilgrim Strider
+    art: {fileID: 21300000, guid: fd69559923606ee4185a7a25121cac80, type: 3}
+    detailArt: {fileID: 21300000, guid: d6b364f655b634e429c7e29b7c8c23d0, type: 3}
     faction: 5
     cardType: 1
     tacticEffect: 0
@@ -1781,122 +1680,25 @@ MonoBehaviour:
       human: 0
       energy: 1
       materials: 2
-      tech: 2
+      tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 5
-    defenseRating: 3
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities:
-    - Splash
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 36
-    authoredKey: vessels.unit.choir-roller
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Choir Roller
-    art: {fileID: 21300000, guid: a6d55625a03f71c448986e8289ed9927, type: 3}
-    detailArt: {fileID: 21300000, guid: ad51125a412132e4196bf11bb9f0d7f3, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 6
-    defenseRating: 1
-    range: 3
-    hitPoints: 4
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 37
-    authoredKey: vessels.24.prism-engine
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Prism Engine
-    art: {fileID: 21300000, guid: e7898f08ea262af47be635620a2b8254, type: 3}
-    detailArt: {fileID: 21300000, guid: eb054e7ae60fa9b4c971bc7bfcec9c2e, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 1
-      tech: 3
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 6
     defenseRating: 2
-    range: 3
-    hitPoints: 4
+    range: 2
+    hitPoints: 5
     initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000007000000
+    unitTypeTags: 0100000005000000
     grantedAbilities:
-    - Hyperkinetic
+    - RapidReaction
     resourceYield:
       human: 0
       energy: 0
@@ -1910,7 +1712,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 38
+  - id: 34
     authoredKey: vessels.unit.prism-lancer
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1959,55 +1761,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 39
-    authoredKey: vessels.unit.chime-suppressor
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Chime Suppressor
-    art: {fileID: 21300000, guid: ea8528852ee8f354698ea42f41a8f78d, type: 3}
-    detailArt: {fileID: 21300000, guid: 2d615d994ca3ddc4890dd50ba667ca34, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 3
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 3
-    range: 2
-    hitPoints: 4
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000003000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 40
+  - id: 35
     authoredKey: vessels.unit.shear-vessel
     deckPointCost: 3
     deckCopyLimit: 4
@@ -2055,42 +1809,41 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 41
-    authoredKey: vessels.unit.bell-tortoise
-    deckPointCost: 4
+  - id: 36
+    authoredKey: vessels.unit.choir-roller
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Bell Tortoise
-    art: {fileID: 21300000, guid: 53defbed8bdaf3f4f86beb4fe58671a4, type: 3}
-    detailArt: {fileID: 21300000, guid: c413faa2829d191469f45199a60aec59, type: 3}
+    displayName: Choir Roller
+    art: {fileID: 21300000, guid: a6d55625a03f71c448986e8289ed9927, type: 3}
+    detailArt: {fileID: 21300000, guid: ad51125a412132e4196bf11bb9f0d7f3, type: 3}
     faction: 5
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
       energy: 2
-      materials: 3
-      tech: 1
+      materials: 1
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 6
-    defenseRating: 4
-    range: 2
-    hitPoints: 8
-    initiative: 1
+    defenseRating: 1
+    range: 1
+    hitPoints: 4
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
-    grantedAbilities:
-    - Bodyguard
+    unitTypeTags: 0100000004000000
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
@@ -2104,7 +1857,105 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 42
+  - id: 37
+    authoredKey: vessels.unit.halo-interceptor
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Halo Interceptor
+    art: {fileID: 21300000, guid: bf7d5928ce3144248bebd5bd0491d48f, type: 3}
+    detailArt: {fileID: 21300000, guid: 3fce155fe7f9e914f8d88c6eb7fdbbba, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 38
+    authoredKey: vessels.unit.chime-grenadier
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Chime Grenadier
+    art: {fileID: 21300000, guid: 6e5a0b8611ac6df4f94f7e9ef0f544f8, type: 3}
+    detailArt: {fileID: 21300000, guid: 60facb9d68bd0144da6b045ae84b7294, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 39
     authoredKey: vessels.unit.mnemonic-carrier
     deckPointCost: 4
     deckCopyLimit: 4
@@ -2154,91 +2005,43 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 43
-    authoredKey: vessels.27.gyrocopter
+  - id: 40
+    authoredKey: vessels.17.relay-carrier
     deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Gyrocopter
-    art: {fileID: 21300000, guid: 80f64de2c9bea04469b7a0eb38de442c, type: 3}
-    detailArt: {fileID: 21300000, guid: 6f9bf8d5d1e6be644882257e28418780, type: 3}
+    displayName: Relay Carrier
+    art: {fileID: 21300000, guid: 1e6024ece4a8dda4583a77dd3c5e523f, type: 3}
+    detailArt: {fileID: 21300000, guid: f8c9ec906a566f34aba9841682ac6940, type: 3}
     faction: 5
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 5
+    apCost: 4
     resourceCost:
       human: 0
-      energy: 2
-      materials: 1
-      tech: 3
+      energy: 1
+      materials: 2
+      tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 6
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 2
-    isAviation: 1
-    launchEnergyCost: 2
-    turnsWithoutRefuel: 2
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities:
-    - r1s4
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 44
-    authoredKey: vessels.unit.censer-battery
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Censer Battery
-    art: {fileID: 21300000, guid: 74539127e5ab1a641b4e19d5bfeb99e5, type: 3}
-    detailArt: {fileID: 21300000, guid: 22a54de8545decb4cbb360d910117440, type: 3}
-    faction: 5
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 3
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 3
-    defenseRating: 3
-    range: 1
-    hitPoints: 7
+    defenseRating: 2
+    range: 2
+    hitPoints: 5
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000400000007000000
+    unitTypeTags: 0100000004000000
     grantedAbilities:
-    - Drill
+    - r1s5
+    - Transport
     resourceYield:
       human: 0
       energy: 0
@@ -2252,7 +2055,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 45
+  - id: 41
     authoredKey: vessels.unit.chord-tug
     deckPointCost: 4
     deckCopyLimit: 4
@@ -2301,7 +2104,105 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 46
+  - id: 42
+    authoredKey: vessels.unit.bell-tortoise
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Bell Tortoise
+    art: {fileID: 21300000, guid: 53defbed8bdaf3f4f86beb4fe58671a4, type: 3}
+    detailArt: {fileID: 21300000, guid: c413faa2829d191469f45199a60aec59, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 4
+    range: 2
+    hitPoints: 8
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities:
+    - Bodyguard
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 43
+    authoredKey: vessels.unit.censer-battery
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Censer Battery
+    art: {fileID: 21300000, guid: 74539127e5ab1a641b4e19d5bfeb99e5, type: 3}
+    detailArt: {fileID: 21300000, guid: 22a54de8545decb4cbb360d910117440, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 3
+    range: 1
+    hitPoints: 7
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - Drill
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 44
     authoredKey: vessels.unit.counterweight-lobber
     deckPointCost: 4
     deckCopyLimit: 4
@@ -2334,7 +2235,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000400000007000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Disruption
     resourceYield:
@@ -2350,42 +2251,141 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 47
-    authoredKey: vessels.unit.halo-interceptor
-    deckPointCost: 3
+  - id: 45
+    authoredKey: vessels.27.gyrocopter
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
-    displayName: Halo Interceptor
-    art: {fileID: 21300000, guid: bf7d5928ce3144248bebd5bd0491d48f, type: 3}
-    detailArt: {fileID: 21300000, guid: 3fce155fe7f9e914f8d88c6eb7fdbbba, type: 3}
+    displayName: Gyrocopter
+    art: {fileID: 21300000, guid: 80f64de2c9bea04469b7a0eb38de442c, type: 3}
+    detailArt: {fileID: 21300000, guid: 6f9bf8d5d1e6be644882257e28418780, type: 3}
     faction: 5
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
       energy: 2
-      materials: 2
-      tech: 1
+      materials: 1
+      tech: 3
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 6
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 5
     defenseRating: 2
     range: 2
-    hitPoints: 6
-    initiative: 1
+    hitPoints: 5
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 2
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - r1s4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 46
+    authoredKey: vessels.25.harmonic-howitzer
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Harmonic Howitzer
+    art: {fileID: 21300000, guid: 97fc3c43922680b458e3e1b01f9781f7, type: 3}
+    detailArt: {fileID: 21300000, guid: 219ed894ee6967b409c894aa65e7c418, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 1
+    range: 3
+    hitPoints: 3
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
-    - AA
+    - ShockAttack
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 47
+    authoredKey: vessels.24.prism-engine
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Prism Engine
+    art: {fileID: 21300000, guid: e7898f08ea262af47be635620a2b8254, type: 3}
+    detailArt: {fileID: 21300000, guid: eb054e7ae60fa9b4c971bc7bfcec9c2e, type: 3}
+    faction: 5
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 2
+    range: 3
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - Hyperkinetic
     resourceYield:
       human: 0
       energy: 0
@@ -2530,7 +2530,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000005000000
+    unitTypeTags: 0100000007000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2578,7 +2578,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000500000007000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Scorcher
     resourceYield:
@@ -2677,7 +2677,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Ionic
     resourceYield:
@@ -2872,7 +2872,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Hyperkinetic
     resourceYield:
@@ -3069,7 +3069,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000005000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - ShockAttack
     resourceYield:
@@ -3166,7 +3166,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 2
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
+    unitTypeTags: 010000000600000007000000
     grantedAbilities:
     - Airfield
     resourceYield:
