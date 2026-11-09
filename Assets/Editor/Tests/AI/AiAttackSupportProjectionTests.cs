@@ -217,6 +217,20 @@ namespace Game.EditorTests
                 play.ResCost = new ResourceCost(energy: 1);
                 Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(_player, root, pass.Ctx,
                     pass.StrikeSupport, play, out _), Is.True);
+                // 2026-11-09 (P6a) — when the strike is a bomb, attaching that bomb IS the strike.
+                var bomb = new CardDefinition { cardType = CardType.Equipment, attachmentSlot = AttachmentSlot.Equipment,
+                    grantedAbilities = new System.Collections.Generic.List<string> { UnitAbilities.SingleUse },
+                    equipment = new EquipmentGrant {
+                        hostTypeTags = new System.Collections.Generic.List<UnitTypeTag> { UnitTypeTag.Aircraft },
+                        addAbilities = new System.Collections.Generic.List<string> { UnitAbilities.Explosion3 } } };
+                pass.StrikeSupport.Source = "hand-bomb:Air Bomb 3";
+                var attachBomb = new NonCombatCardPlayer.NonCombatPlay { Kind = NonCombatCardPlayer.PlayKind.Equipment,
+                    Card = new CardData(bomb), ResCost = new ResourceCost(tech: 5) };
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(_player, root, pass.Ctx,
+                    pass.StrikeSupport, attachBomb, out _), Is.True);
+                play.ResCost = new ResourceCost(tech: 1);
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(_player, root, pass.Ctx,
+                    pass.StrikeSupport, play, out _), Is.False, "any other equipment still yields to the bomb");
                 pass.StrikeSupport = null;
                 Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass,
                     Upgrade(new ResourceCost(tech: 5), recipient: 4), out _), Is.True);

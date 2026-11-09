@@ -796,12 +796,15 @@ namespace Game.Ai.V2
                 .ThenBy(i => i.IntentKey).FirstOrDefault();
         }
 
+        // The purpose label of a recipient no active task, operator duty or near threat requires.
+        internal const string InAdvancePurpose = "in-advance";
+
         internal static string EquipmentPurposeLabel(WorldSnapshot snap, CardData card, UnitData unit)
         {
             MissionIntent intent = EquipmentPurpose(snap, card, unit);
             if (intent != null && intent.Kind != MissionKind.Economy)
                 return intent.Kind.ToString();
-            return IsRequiredEquipmentRecipient(snap, card, unit) ? "required" : "in-advance";
+            return IsRequiredEquipmentRecipient(snap, card, unit) ? "required" : InAdvancePurpose;
         }
 
         private static List<WorthIt.DefendingArmy> EquipmentOpposition(WorldSnapshot snap, MissionIntent purpose)

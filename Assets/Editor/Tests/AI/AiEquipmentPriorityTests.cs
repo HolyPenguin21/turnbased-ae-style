@@ -160,11 +160,46 @@ namespace Game.EditorTests
             Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(Snap(), null, support), Is.True);
         }
 
+        // 2026-11-09 (owner, match P6a): strict order — while an army of an active task can use
+        // the item, a garrison without a near threat is not offered it (Ysolde T28: Artillery
+        // Cannon, Reflex Genome and Incendiary Rifle went to the rear Citadel's garrison).
         [Test]
-        public void DefenceDutyProtectsTheLastGarrisonMemberAndThreatenedSecondaryBase()
+        public void AnUnthreatenedGarrisonIsNotOfferedAnItemAnActiveTaskArmyCanUse()
+        {
+            var field = Body(3); var fieldArmy = Army(field); fieldArmy.Hex = new HexCoord(3, 0);
+            var rear = Body(3); var rearArmy = Army(rear, Body(3), Body(3)); rearArmy.IsGarrison = true;
+            var item = new CardDefinition { authoredKey = "test.p6a.cannon", displayName = "Cannon",
+                cardType = CardType.Equipment, attachmentSlot = AttachmentSlot.Equipment, activationApCost = 1,
+                equipment = new EquipmentGrant { hostKinds = new System.Collections.Generic.List<EquipmentHostKind> {
+                    EquipmentHostKind.Unit } } };
+            item.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 4 });
+            var snap = Snap();
+            System.Collections.Generic.List<string> Labels() => DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                    ResearchProductionMode.Production, default, item, 1f, null, snap, null, player, null, null,
+                    out _, futureAttachment: true)
+                .Select(o => o.RecipientLabel).Distinct().ToList();
+
+            var before = Labels();
+            Assert.That(before.Any(l => l.StartsWith("garr:")), Is.True, "without an active task the garrison is offered it");
+
+            var scout = new MissionIntent { Kind = MissionKind.Scout, PreferredMoverArmyId = fieldArmy.Id,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = new HexCoord(5, 0) },
+                Status = IntentStatus.Active };
+            scout.IntentKey = MissionIntentKey.For(scout); MissionIntentRegistry.GetOrCreate(player).Put(scout);
+            var after = Labels();
+            Assert.That(after, Is.Not.Empty);
+            Assert.That(after.All(l => l.StartsWith("field:")), Is.True, string.Join(", ", after));
+        }
+
+        // 2026-11-09 (owner, match P6a): a garrison is a required recipient only under a near
+        // threat (the current threat threshold); an unthreatened one (Ysolde T28's rear Citadel)
+        // is the last tier and must not take the upgrades of active tasks.
+        [Test]
+        public void OnlyANearThreatMakesAGarrisonOrBaseArmyARequiredRecipient()
         {
             var defender = Body(3); var garrison = Army(defender); garrison.IsGarrison = true;
-            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(Snap(), null, defender), Is.True);
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(Snap(), null, defender), Is.False,
+                "the last garrison member without a near threat is the garrison tier, not required");
             garrison.IsGarrison = false; garrison.Hex = new HexCoord(7, 0);
             var snap = Snap(); snap.Self.BaseHexes = new[] { default(HexCoord), garrison.Hex };
             snap.Threat = new ThreatModel { Threats = new[] { new AssetThreatSnapshot {
@@ -172,6 +207,9 @@ namespace Game.EditorTests
                 EnemyEta = 0, Contact = new EnemyContactSnapshot { Position = new HexCoord(8, 0),
                     Army = new ArmySnapshot { ArmyId = 9, Owner = new PlayerSetupData() } } } } };
             Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, defender), Is.True);
+            garrison.IsGarrison = true;
+            Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, defender), Is.True,
+                "a garrison under a near threat rises to the required tier");
             snap.Threat.Threats = Array.Empty<AssetThreatSnapshot>();
             Assert.That(EquipmentUpgradeValuation.IsRequiredEquipmentRecipient(snap, null, defender), Is.False);
         }
