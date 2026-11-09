@@ -6,6 +6,9 @@ namespace Game.Ai.V2
     // TaskExecutor; this only names the existing seam so it is decided in one place.
     public enum MissionRoute { Task, AirRecon }
 
+    // What follows a settled step that raised no typed invalidation (AdmissionIteration).
+    public enum SettledIdleVerdict { Stop, ParkAndStop, ParkAndContinue }
+
     // ===========================================================================================
     //  The one selection boundary of the operational loop, after the allocation pack. Pure: it
     //  only orders the work kinds that already existed. An obligation that is already paid
@@ -26,6 +29,33 @@ namespace Game.Ai.V2
         internal static MissionRoute RouteFor(MissionKind kind, ScoutExecutorKind executor) =>
             kind == MissionKind.Scout && executor != ScoutExecutorKind.Ground
                 ? MissionRoute.AirRecon : MissionRoute.Task;
+
+        // 2026-11-09 (match P2) — a settled step that changed nothing and stopped because its
+        // mover cannot act on this turn's world (blocked step, rejected move, no movement left,
+        // missing stealth or vantage) repeats the same stop when it is selected again this turn.
+        // The loop parks it for the rest of the turn instead of ending the admission with it.
+        // A world event (battle, hex event, discovery, lost mover, invalidated target) or a
+        // completed step is not such a stop.
+        internal static SettledIdleVerdict AfterUntriggeredStep(bool progressed, ExecutionStopReason? stop,
+            bool onlyResidualLeft) =>
+            progressed || !ParksIdleStep(stop) ? SettledIdleVerdict.Stop
+            : onlyResidualLeft ? SettledIdleVerdict.ParkAndStop
+            : SettledIdleVerdict.ParkAndContinue;
+
+        internal static bool ParksIdleStep(ExecutionStopReason? stop)
+        {
+            switch (stop)
+            {
+                case ExecutionStopReason.NoSafeStep:
+                case ExecutionStopReason.MoveRejected:
+                case ExecutionStopReason.OutOfMovement:
+                case ExecutionStopReason.RequiredStealthUnavailable:
+                case ExecutionStopReason.ObservationUnavailable:
+                    return true;
+                default:
+                    return false;
+            }
+        }
     }
 
     // The reasons and verdict of one settled work step's typed-trigger fan-out. Transient value

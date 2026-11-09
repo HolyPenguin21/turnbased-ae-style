@@ -270,6 +270,63 @@ namespace Game.EditorTests
             r.Provisioning.Dispose();
         }
 
+        // ---- Idle settled step (match 2026-11-09 P2) ----
+
+        // Brynn T11: Raid(Return) settled MoveRejected without progress and no typed trigger; the
+        // admission stopped and the provisioned Explore behind it never ran (three passes).
+        [TestCase(ExecutionStopReason.MoveRejected, false, SettledIdleVerdict.ParkAndContinue)]
+        [TestCase(ExecutionStopReason.NoSafeStep, false, SettledIdleVerdict.ParkAndContinue)]
+        [TestCase(ExecutionStopReason.OutOfMovement, false, SettledIdleVerdict.ParkAndContinue)]
+        [TestCase(ExecutionStopReason.RequiredStealthUnavailable, false, SettledIdleVerdict.ParkAndContinue)]
+        [TestCase(ExecutionStopReason.ObservationUnavailable, false, SettledIdleVerdict.ParkAndContinue)]
+        [TestCase(ExecutionStopReason.NoSafeStep, true, SettledIdleVerdict.ParkAndStop)]
+        [TestCase(ExecutionStopReason.StepCompleted, false, SettledIdleVerdict.Stop)]
+        [TestCase(ExecutionStopReason.BattleStarted, false, SettledIdleVerdict.Stop)]
+        [TestCase(ExecutionStopReason.TargetInvalidated, false, SettledIdleVerdict.Stop)]
+        public void AnIdleStepIsParkedAndTheAdmissionGoesOnWhileWorkRemains(ExecutionStopReason stop,
+            bool onlyResidualLeft, SettledIdleVerdict expected)
+        {
+            Assert.That(OperationalWorkSelection.AfterUntriggeredStep(false, stop, onlyResidualLeft),
+                Is.EqualTo(expected));
+            Assert.That(OperationalWorkSelection.AfterUntriggeredStep(true, stop, onlyResidualLeft),
+                Is.EqualTo(SettledIdleVerdict.Stop), "a step that progressed keeps the old ending");
+        }
+
+        [Test]
+        public void AnIdleStepIsNotSelectedAgainThisTurnAndTheSecondTaskRuns()
+        {
+            Rig r = Build(2, 9f);
+            ProvisioningSelectionOutcome first = ProvisioningManager.ProvisionNext(Us, r.Snap, r.Session,
+                r.Provisioning, r.Parking, r.Initial, Steps(f => ProvisioningResult.Ok(Prov(f))));
+            StableMissionKey idleKey = first.SelectedKey;
+            MissionProposal idle = first.Selected.Mission;
+            Assert.That(ResidualWindowPolicy.AfterSettledTask(first.FinalAllocation.Funded, idleKey), Is.False,
+                "the second funded job is still outstanding");
+
+            // AdmissionIteration's parking of an idle step (ParkAndContinue).
+            CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(Us, idle,
+                ProvisionFailure.NoExecutableStep("settled MoveRejected without progress"));
+            r.Parking.Park(Us, idle);
+
+            r.Provisioning.Dispose();
+            r.Provisioning = new ProvisioningSession(r.Snap);
+            ProvisioningSelectionOutcome second = ProvisioningManager.ProvisionNext(Us, r.Snap, r.Session,
+                r.Provisioning, r.Parking, r.Session.Pack(), Steps(f => ProvisioningResult.Ok(Prov(f))));
+            Assert.That(second.Selected, Is.Not.Null);
+            Assert.That(second.SelectedKey, Is.Not.EqualTo(idleKey), "the second task runs in the same turn");
+
+            // A later pass of the same turn (after a Phase B round) opens a new parking set.
+            PassParkingResult later = new PassParking().Filter(new List<MissionProposal>(r.Jobs), r.Snap, Us);
+            Assert.That(later.Retained.Select(StableMissionKey.For), Has.No.Member(idleKey),
+                "the idle task is not repeated this turn");
+            Assert.That(later.Retained, Has.Count.EqualTo(1));
+
+            CapabilityPoolExhaustionRegistry.BeginTurn(Us, 4);
+            Assert.That(CapabilityPoolExhaustionRegistry.CanAttempt(Us, idle, r.Snap), Is.True,
+                "the next turn tries it again");
+            r.Provisioning.Dispose();
+        }
+
         // ---- PassParking ----
 
         [Test]
