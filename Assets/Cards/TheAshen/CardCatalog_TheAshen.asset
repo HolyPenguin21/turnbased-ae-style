@@ -965,7 +965,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 01000000
     grantedAbilities:
     - RapidReaction
     resourceYield:
@@ -1453,7 +1453,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Repair
     resourceYield:
@@ -1502,7 +1502,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
+    unitTypeTags: 0100000002000000
     grantedAbilities:
     - Disruption
     resourceYield:
@@ -1519,55 +1519,6 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 30
-    authoredKey: ashen.card.iron-hedgehog
-    deckPointCost: 3
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Iron Hedgehog
-    art: {fileID: 21300000, guid: 455b0460ca4da094ba7f22dc0897b93e, type: 3}
-    detailArt: {fileID: 21300000, guid: 037bf6550de1dc44d8fd94a008722108, type: 3}
-    faction: 4
-    cardType: 1
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 2
-      materials: 3
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 3
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
-    grantedAbilities:
-    - AA
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 31
     authoredKey: ashen.card.rivet-maw
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1615,7 +1566,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 32
+  - id: 31
     authoredKey: ashen.card.rust-breacher
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1664,7 +1615,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 33
+  - id: 32
     authoredKey: ashen.card.rust-tank
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1712,7 +1663,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 34
+  - id: 33
     authoredKey: ashen.card.scab-shield
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1761,7 +1712,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 35
+  - id: 34
     authoredKey: ashen.card.scrap-mortar
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1794,7 +1745,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - ShockAttack
     resourceYield:
@@ -1810,7 +1761,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 36
+  - id: 35
     authoredKey: ashen.card.scrap-shaman
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1859,7 +1810,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 37
+  - id: 36
     authoredKey: ashen.card.rad-brute
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1909,7 +1860,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 38
+  - id: 37
     authoredKey: ashen.card.rad-hunter
     deckPointCost: 4
     deckCopyLimit: 4
@@ -1942,7 +1893,56 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 38
+    authoredKey: ashen.card.iron-hedgehog
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Iron Hedgehog
+    art: {fileID: 21300000, guid: 455b0460ca4da094ba7f22dc0897b93e, type: 3}
+    detailArt: {fileID: 21300000, guid: 037bf6550de1dc44d8fd94a008722108, type: 3}
+    faction: 4
+    cardType: 1
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 3
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
     grantedAbilities:
     - AA
     resourceYield:
@@ -2336,7 +2336,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Disruption
     resourceYield:
@@ -2435,7 +2435,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - Splash
     resourceYield:
@@ -2678,7 +2678,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000004000000
+    unitTypeTags: 0100000007000000
     grantedAbilities:
     - ShockAttack
     - Splash
@@ -2728,7 +2728,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000005000000
+    unitTypeTags: 010000000500000007000000
     grantedAbilities:
     - Hyperkinetic
     resourceYield:
@@ -2826,7 +2826,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 010000000200000005000000
+    unitTypeTags: 0100000002000000
     grantedAbilities:
     - Bodyguard
     - Counterattack
