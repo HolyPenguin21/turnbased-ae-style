@@ -154,13 +154,34 @@ namespace Game.Ai.V2
             var demand = new float[4];
             if (snap?.Self == null)
                 return demand;
+            DeckPlayability play = DeckPlayability.Of(CardCosts(snap), HorizonSupply(snap));
+            for (int i = 0; i < 4; i++) demand[i] = play.EffectiveDemand(i);
+            return demand;
+        }
+
+        // The types the hand + deck waits on: some card the horizon supply cannot pay lacks them
+        // (DeckPlayability on the same supply as EffectiveCardDemand). All false when every card
+        // is payable — a covered economy has no bottleneck. Index = (int)ResourceType.
+        internal static bool[] BottleneckTypes(WorldSnapshot snap)
+        {
+            var blocking = new bool[4];
+            if (snap?.Self == null)
+                return blocking;
+            DeckPlayability play = DeckPlayability.Of(CardCosts(snap), HorizonSupply(snap));
+            foreach (DeckPlayability.BlockedCard card in play.Blocked)
+                for (int i = 0; i < 4; i++)
+                    if (card.Missing[i] > AiConfigV2.allocatorSliceEpsilon)
+                        blocking[i] = true;
+            return blocking;
+        }
+
+        private static float[] HorizonSupply(WorldSnapshot snap)
+        {
             var supply = new float[4];
             foreach (ResourceType t in ResourceBundle.All)
                 supply[(int)t] = snap.Self.Stockpile.Get(t) + Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t))
                     * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
-            DeckPlayability play = DeckPlayability.Of(CardCosts(snap), supply);
-            for (int i = 0; i < 4; i++) demand[i] = play.EffectiveDemand(i);
-            return demand;
+            return supply;
         }
 
         private static float PressurePrice(float demand, float supply)
