@@ -216,6 +216,7 @@ namespace Game.Ai.V2
 
         private void Assign(PhaseAPass pass)
         {
+            PhaseAEconomyHolds.YieldBottleneckToRelief(pass, Options);
             Dictionary<DemandState, DemandCandidate> assigned;
             using (new Game.Core.ProfileScope("AI/PhaseA.BestAssignment"))
                 assigned = Options.Count > 0

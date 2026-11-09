@@ -245,5 +245,109 @@ namespace Game.Ai.V2
                     + $"opDeliver={availability.OperationalCandidates}");
             return live;
         }
+
+        // 2026-11-09 (owner, match Q1 option a) — a card chain that spends a resource the deck is
+        // blocked on (ActionPrice.BottleneckTypes) yields to a live Economy demand for income of
+        // that same resource when the spend would leave the relief's cheapest worthwhile chain
+        // unpayable (pattern 5, "spender ordered before the justified need"). Brynn T2: Human 1,
+        // income 1, every Ashen card costs 1 Human; Nora (Recon) took it at 4.3 arbitration against
+        // the Human extractor's builder hero at 1.1, and Human income came on T8.
+        // Resource-agnostic; with a covered economy nothing is a bottleneck and nothing changes.
+        // Critical spends keep their priority: ActiveDefence, a live Attack's fist, a garrison
+        // under a known threat, and Economy's own chains. Runs on the round's options before the
+        // joint assignment, so the relief and the rest still compete by score among themselves.
+        internal static void YieldBottleneckToRelief(PhaseAPass pass,
+            Dictionary<DemandState, List<DemandCandidate>> options) =>
+            YieldBottleneckToRelief(pass?.Snap, options, (d, type) =>
+                StrategicSpendability.SpendableAmount(pass.Player, pass.Root, pass.Ctx, type, d.SpendAuthority));
+
+        // `spendable`: what a demand's chain may spend of a type (StrategicSpendability under the
+        // demand's own SpendAuthority in the pass).
+        internal static void YieldBottleneckToRelief(WorldSnapshot snap,
+            Dictionary<DemandState, List<DemandCandidate>> options,
+            System.Func<AxisDemand, ResourceType, float> spendable)
+        {
+            if (options == null || options.Count == 0 || snap?.Self == null || spendable == null)
+                return;
+            bool[] bottleneck = ActionPrice.BottleneckTypes(snap);
+            if (!bottleneck.Any(b => b))
+                return;
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+            var reliefCost = new float[4];
+            var reliefSpendable = new float[4];
+            var reliefLabel = new string[4];
+            foreach (KeyValuePair<DemandState, List<DemandCandidate>> kv in options)
+            {
+                AxisDemand d = kv.Key.Demand;
+                if (d == null || d.RequestingAxis != DesireAxis.Economy || !d.EconomyResourceType.HasValue
+                    || kv.Key.Remaining <= eps || !bottleneck[(int)d.EconomyResourceType.Value])
+                    continue;
+                ResourceType type = d.EconomyResourceType.Value;
+                int t = (int)type;
+                float available = spendable(d, type);
+                foreach (DemandCandidate c in kv.Value)
+                {
+                    float need = c.Plan?.FundingCost?.Get(type) ?? 0;
+                    // Only a relief this spend can still take away: worthwhile, paying the type,
+                    // payable now.
+                    if (!c.Worthwhile || need <= eps || available + eps < need)
+                        continue;
+                    if (reliefLabel[t] == null || need < reliefCost[t])
+                    {
+                        reliefCost[t] = need;
+                        reliefSpendable[t] = available;
+                        reliefLabel[t] = d.ToString();
+                    }
+                }
+            }
+            if (reliefLabel.All(l => l == null))
+                return;
+
+            foreach (DemandState state in options.Keys.ToList())
+            {
+                AxisDemand d = state.Demand;
+                if (d == null || d.RequestingAxis == DesireAxis.Economy || IsCriticalSpend(d))
+                    continue;
+                List<DemandCandidate> kept = null;
+                List<DemandCandidate> list = options[state];
+                for (int i = 0; i < list.Count; i++)
+                {
+                    string why = null;
+                    foreach (ResourceType type in ResourceBundle.All)
+                    {
+                        int t = (int)type;
+                        int spends = list[i].Plan?.FundingCost?.Get(type) ?? 0;
+                        if (reliefLabel[t] == null || spends <= 0
+                            || reliefSpendable[t] - spends + eps >= reliefCost[t])
+                            continue;
+                        why = $"{type} {reliefSpendable[t]:0.##} - {spends} < relief {reliefCost[t]:0.##} ({reliefLabel[t]})";
+                        break;
+                    }
+                    if (why == null)
+                    {
+                        kept?.Add(list[i]);
+                        continue;
+                    }
+                    if (kept == null)
+                        kept = list.Take(i).ToList();
+                    AiDebugLog.WriteDeduped($"bottleneck-relief#{d.TraceId}#{list[i].Plan?.StableKey}",
+                        $"[AI][V2]   strat.A economy bottleneck - {d}: chain {list[i].Plan?.StableKey} yields "
+                        + $"to the bottleneck relief: {why}");
+                }
+                if (kept == null)
+                    continue;
+                if (kept.Count == 0) options.Remove(state);
+                else options[state] = kept;
+            }
+        }
+
+        // A spend that keeps its priority over a bottleneck relief: an intercept, a live Attack's
+        // fist, a garrison with a known threat on its base.
+        internal static bool IsCriticalSpend(AxisDemand d) =>
+            d != null && (d.ActiveDefenceEnemyEta.HasValue
+                || d.ConsumerMissionKind == MissionKind.ActiveDefence
+                || d.ConsumerMissionKind == MissionKind.Attack || d.AttackFistArmyId.HasValue
+                || d.ConsumerPurpose == CapabilityConsumerPurpose.HeldBaseGarrison
+                    && (d.WorldTaskScore.ThreatDirection > 0f || d.WorldTaskScore.PreventedDamage > 0f));
     }
 }
