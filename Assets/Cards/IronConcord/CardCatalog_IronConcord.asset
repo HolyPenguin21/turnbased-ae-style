@@ -641,7 +641,7 @@ MonoBehaviour:
       statChanges: []
   - id: 12
     authoredKey: concord.card.scout
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scout
@@ -692,7 +692,7 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     authoredKey: concord.card.scrapper
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scrapper
@@ -1033,7 +1033,7 @@ MonoBehaviour:
       statChanges: []
   - id: 20
     authoredKey: concord.card.at-infantry
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: AT Infantry
@@ -1082,7 +1082,7 @@ MonoBehaviour:
       statChanges: []
   - id: 21
     authoredKey: concord.card.crawler
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Crawler
@@ -1179,7 +1179,7 @@ MonoBehaviour:
       statChanges: []
   - id: 23
     authoredKey: concord.card.rc-vehicle
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: RC Vehicle
@@ -1228,7 +1228,7 @@ MonoBehaviour:
       statChanges: []
   - id: 24
     authoredKey: concord.card.sand-jackal
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Sand Jackal
@@ -1277,7 +1277,7 @@ MonoBehaviour:
       statChanges: []
   - id: 25
     authoredKey: concord.card.at-cannon
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: AT Cannon
@@ -1326,7 +1326,7 @@ MonoBehaviour:
       statChanges: []
   - id: 26
     authoredKey: concord.card.artillery-cannon
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Artillery Cannon
@@ -1424,7 +1424,7 @@ MonoBehaviour:
       statChanges: []
   - id: 28
     authoredKey: concord.card.flamer
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Flamer
@@ -1523,7 +1523,7 @@ MonoBehaviour:
       statChanges: []
   - id: 30
     authoredKey: concord.card.coil-marksman
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Coil Marksman
@@ -1766,7 +1766,7 @@ MonoBehaviour:
       statChanges: []
   - id: 35
     authoredKey: concord.card.siege-grenadier
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Siege Grenadier
@@ -1815,7 +1815,7 @@ MonoBehaviour:
       statChanges: []
   - id: 36
     authoredKey: concord.card.roadwarden-aa
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Roadwarden AA
@@ -1963,7 +1963,7 @@ MonoBehaviour:
       statChanges: []
   - id: 39
     authoredKey: concord.card.atlas
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Atlas

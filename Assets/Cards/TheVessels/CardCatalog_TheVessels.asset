@@ -640,7 +640,7 @@ MonoBehaviour:
       statChanges: []
   - id: 12
     authoredKey: vessels.10.whisper-scout
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Whisper Scout
@@ -691,7 +691,7 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     authoredKey: vessels.14.shard-wanderer
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Shard Wanderer
@@ -788,7 +788,7 @@ MonoBehaviour:
       statChanges: []
   - id: 15
     authoredKey: vessels.unit.core-tender
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Core Tender
@@ -836,7 +836,7 @@ MonoBehaviour:
       statChanges: []
   - id: 16
     authoredKey: vessels.unit.mantle-skirmisher
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Mantle Skirmisher
@@ -885,7 +885,7 @@ MonoBehaviour:
       statChanges: []
   - id: 17
     authoredKey: vessels.unit.silt-pilgrim
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Silt Pilgrim
@@ -1080,7 +1080,7 @@ MonoBehaviour:
       statChanges: []
   - id: 21
     authoredKey: vessels.13.arc-sentry
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Arc Sentry
@@ -1129,7 +1129,7 @@ MonoBehaviour:
       statChanges: []
   - id: 22
     authoredKey: vessels.unit.bell-breacher
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Bell Breacher
@@ -1274,7 +1274,7 @@ MonoBehaviour:
       statChanges: []
   - id: 25
     authoredKey: vessels.27.lens-watcher
-    deckPointCost: 3
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Lens Watcher
@@ -1957,7 +1957,7 @@ MonoBehaviour:
       statChanges: []
   - id: 39
     authoredKey: vessels.unit.mnemonic-carrier
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Mnemonic Carrier
@@ -2007,7 +2007,7 @@ MonoBehaviour:
       statChanges: []
   - id: 40
     authoredKey: vessels.17.relay-carrier
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Relay Carrier
@@ -2106,7 +2106,7 @@ MonoBehaviour:
       statChanges: []
   - id: 42
     authoredKey: vessels.unit.bell-tortoise
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Bell Tortoise
@@ -2204,7 +2204,7 @@ MonoBehaviour:
       statChanges: []
   - id: 44
     authoredKey: vessels.unit.counterweight-lobber
-    deckPointCost: 4
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Counterweight Lobber
