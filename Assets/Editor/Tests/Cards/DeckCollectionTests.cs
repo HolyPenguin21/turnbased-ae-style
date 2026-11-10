@@ -193,6 +193,22 @@ namespace Game.EditorTools
             CollectionAssert.AreEquivalent(expected.equipment.Select(e => e.cardKey + ":" + e.count), deck.equipment.Select(e => e.cardKey + ":" + e.count));
             CollectionAssert.AreEquivalent(expected.mutators.Select(e => e.cardKey + ":" + e.count), deck.mutators.Select(e => e.cardKey + ":" + e.count));
         }
+        [Test] public void NewProfileStartersContainBaselineBlueprintsAndOwnThem()
+        {
+            var profile = new CollectionProfile(); var service = AuthoredCollection(profile);
+            service.InitializeStarters(profile);
+            string[] equipment = { "neutral.equipment.mechanical.armor-plate", "neutral.equipment.infantry.assault-rifle-kit",
+                "neutral.equipment.infantry.mobility-harness", "neutral.equipment.vehicle.turbocharger", "neutral.equipment.bio.flamer",
+                "neutral.equipment.vehicle.autocannon", "neutral.equipment.air-bomb-3" };
+            string[] mutators = { "neutral.mutator.neural-accelerator", "neutral.mutator.fortunate-genome", "neutral.mutator.survivor-strain" };
+            foreach (var deck in profile.savedDecks.Where(d => d.isStarter))
+            {
+                CollectionAssert.IsSubsetOf(equipment, deck.equipment.Select(e => e.cardKey).ToArray());
+                CollectionAssert.IsSubsetOf(mutators, deck.mutators.Select(e => e.cardKey).ToArray());
+                Assert.That(service.Rules.Validate(deck, service.Owned).IsValid, Is.True);
+            }
+            foreach (var key in equipment.Concat(mutators)) Assert.That(service.Owned(key), Is.GreaterThan(0), key);
+        }
         [Test] public void LegacyStartersGainSavedBlueprintsWithoutChangingIdentityOrCustomDecks()
         {
             var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);

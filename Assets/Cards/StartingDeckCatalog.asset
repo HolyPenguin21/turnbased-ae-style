@@ -81,6 +81,26 @@ MonoBehaviour:
       count: 1
     - cardKey: vessels.01.relay-base
       count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
     equipment: []
     mutators: []
   - deckName: The Ashen Starter
@@ -146,6 +166,26 @@ MonoBehaviour:
       count: 1
     - cardKey: ashen.card.ashen-base
       count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
+      count: 1
     equipment: []
     mutators: []
   - deckName: Iron Concord Starter
@@ -210,6 +250,26 @@ MonoBehaviour:
     - cardKey: neutral.equipment.bio.at-launcher
       count: 1
     - cardKey: concord.card.concord-base
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.equipment.infantry.assault-rifle-kit
+      count: 1
+    - cardKey: neutral.equipment.infantry.mobility-harness
+      count: 1
+    - cardKey: neutral.equipment.vehicle.turbocharger
+      count: 1
+    - cardKey: neutral.equipment.bio.flamer
+      count: 1
+    - cardKey: neutral.equipment.vehicle.autocannon
+      count: 1
+    - cardKey: neutral.equipment.air-bomb-3
+      count: 1
+    - cardKey: neutral.mutator.neural-accelerator
+      count: 1
+    - cardKey: neutral.mutator.fortunate-genome
+      count: 1
+    - cardKey: neutral.mutator.survivor-strain
       count: 1
     equipment: []
     mutators: []
