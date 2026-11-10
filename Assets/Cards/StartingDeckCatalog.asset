@@ -321,7 +321,7 @@ MonoBehaviour:
     - cardKey: concord.card.heavy-tank
       count: 1
     - cardKey: concord.card.Mule
-      count: 1
+      count: 2
     - cardKey: concord.card.light-infantry
       count: 4
     - cardKey: concord.card.medium-infantry
@@ -340,6 +340,8 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.watcher-drone
       count: 4
+    - cardKey: concord.card.artillery-cannon
+      count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -501,11 +503,11 @@ MonoBehaviour:
     - cardKey: concord.card.lira-sable
       count: 1
     - cardKey: concord.card.heavy-infantry
-      count: 2
+      count: 3
     - cardKey: concord.card.trench-guardian
       count: 4
     - cardKey: concord.card.siege-grenadier
-      count: 3
+      count: 4
     - cardKey: concord.card.at-infantry
       count: 2
     - cardKey: concord.card.medium-infantry
@@ -530,6 +532,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: concord.card.Mule
+      count: 2
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -697,17 +701,17 @@ MonoBehaviour:
     - cardKey: concord.card.hazard-pioneer
       count: 3
     - cardKey: concord.card.at-infantry
-      count: 3
+      count: 4
     - cardKey: concord.card.coil-marksman
-      count: 3
+      count: 4
     - cardKey: concord.card.flamer
       count: 2
     - cardKey: concord.card.heavy-infantry
-      count: 2
+      count: 3
     - cardKey: concord.card.sand-jackal
       count: 2
     - cardKey: concord.card.crawler
-      count: 2
+      count: 3
     - cardKey: concord.card.dust-medic
       count: 2
     - cardKey: concord.card.scout
@@ -721,6 +725,10 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: concord.card.Mule
+      count: 2
+    - cardKey: concord.card.artillery-cannon
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -891,11 +899,11 @@ MonoBehaviour:
     - cardKey: concord.card.needle-rail-tank
       count: 1
     - cardKey: concord.card.boatswain
-      count: 1
+      count: 2
     - cardKey: concord.card.light-infantry
       count: 3
     - cardKey: concord.card.atlas
-      count: 3
+      count: 4
     - cardKey: concord.card.coil-marksman
       count: 3
     - cardKey: concord.card.crawler
@@ -913,6 +921,10 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.artillery-cannon
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -1083,7 +1095,7 @@ MonoBehaviour:
     - cardKey: concord.card.claimjumper
       count: 2
     - cardKey: concord.card.mantis
-      count: 2
+      count: 3
     - cardKey: concord.card.duelist
       count: 1
     - cardKey: concord.card.arsenal
@@ -1105,6 +1117,10 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: concord.card.barracuda
+      count: 1
+    - cardKey: concord.card.scrapper
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -1269,11 +1285,11 @@ MonoBehaviour:
     - cardKey: concord.card.jackal
       count: 1
     - cardKey: concord.card.grapeshot
-      count: 2
+      count: 3
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.light-tank
-      count: 2
+      count: 3
     - cardKey: concord.card.barracuda
       count: 3
     - cardKey: concord.card.roadwarden-aa
@@ -1283,7 +1299,7 @@ MonoBehaviour:
     - cardKey: concord.card.light-infantry
       count: 4
     - cardKey: concord.card.coil-marksman
-      count: 3
+      count: 4
     - cardKey: concord.card.scout
       count: 4
     - cardKey: concord.card.rc-vehicle
@@ -1295,6 +1311,10 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.artillery-cannon
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -1459,13 +1479,13 @@ MonoBehaviour:
     - cardKey: concord.card.jackal
       count: 4
     - cardKey: concord.card.sandnought
-      count: 1
+      count: 2
     - cardKey: concord.card.medium-infantry
       count: 4
     - cardKey: concord.card.coil-marksman
       count: 3
     - cardKey: concord.card.at-infantry
-      count: 3
+      count: 4
     - cardKey: concord.card.rusty-vulture
       count: 3
     - cardKey: concord.card.crawler
@@ -1486,6 +1506,10 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.watcher-drone
       count: 4
+    - cardKey: concord.card.Mule
+      count: 1
+    - cardKey: concord.card.scrapper
+      count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -1659,7 +1683,7 @@ MonoBehaviour:
     - cardKey: concord.card.pulse-cannon
       count: 1
     - cardKey: concord.card.heavy-tank
-      count: 1
+      count: 2
     - cardKey: concord.card.breakwater-crab
       count: 1
     - cardKey: concord.card.crawler
@@ -1681,6 +1705,8 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: concord.card.atlas
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -1847,13 +1873,13 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 4
     - cardKey: ashen.card.rust-tank
-      count: 1
+      count: 2
     - cardKey: ashen.card.iron-maw
-      count: 1
+      count: 2
     - cardKey: ashen.card.scrap-mortar
       count: 2
     - cardKey: ashen.card.slag-lobber
-      count: 3
+      count: 4
     - cardKey: ashen.card.rad-hunter
       count: 2
     - cardKey: ashen.card.rad-brute
@@ -1863,7 +1889,7 @@ MonoBehaviour:
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
-      count: 1
+      count: 2
     - cardKey: ashen.card.ashen-base
       count: 1
     - cardKey: neutral.facility.lab
@@ -1872,6 +1898,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 3
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -2039,19 +2067,19 @@ MonoBehaviour:
     - cardKey: ashen.card.scab-shield
       count: 1
     - cardKey: ashen.card.rad-brute
-      count: 3
+      count: 4
     - cardKey: ashen.card.furnace-bearer
-      count: 3
+      count: 4
     - cardKey: ashen.card.rad-leaper
       count: 2
     - cardKey: ashen.card.roadbreaker
-      count: 2
+      count: 3
     - cardKey: ashen.card.rad-hunter
-      count: 2
+      count: 3
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
-      count: 1
+      count: 2
     - cardKey: ashen.card.ashen-base
       count: 1
     - cardKey: neutral.facility.lab
@@ -2059,6 +2087,12 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 2
+    - cardKey: ashen.card.flywheel
+      count: 1
+    - cardKey: ashen.card.ash-crossbowman
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -2229,7 +2263,7 @@ MonoBehaviour:
     - cardKey: ashen.card.scrap-locust
       count: 4
     - cardKey: ashen.card.colossus
-      count: 2
+      count: 3
     - cardKey: ashen.card.rivetstorm
       count: 1
     - cardKey: ashen.card.scrap-mountain
@@ -2237,7 +2271,7 @@ MonoBehaviour:
     - cardKey: ashen.card.rad-hunter
       count: 1
     - cardKey: ashen.card.tow-rig
-      count: 1
+      count: 2
     - cardKey: ashen.card.rad-brute
       count: 2
     - cardKey: ashen.card.hooded
@@ -2252,6 +2286,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 2
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -2415,25 +2451,25 @@ MonoBehaviour:
     - cardKey: ashen.card.ash-runner
       count: 3
     - cardKey: ashen.card.cinder-stalker
-      count: 2
+      count: 3
     - cardKey: ashen.card.deadeye
       count: 4
     - cardKey: ashen.card.rad-leaper
-      count: 3
+      count: 4
     - cardKey: ashen.card.rattletrap
       count: 4
     - cardKey: ashen.card.flywheel
-      count: 1
+      count: 2
     - cardKey: ashen.card.carrion
       count: 2
     - cardKey: ashen.card.rad-hunter
-      count: 2
+      count: 3
     - cardKey: ashen.card.scrap-shaman
-      count: 2
+      count: 3
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
-      count: 1
+      count: 2
     - cardKey: ashen.card.ashen-base
       count: 1
     - cardKey: neutral.facility.lab
@@ -2442,6 +2478,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 3
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -2607,9 +2645,9 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 2
     - cardKey: ashen.card.rust-tank
-      count: 1
+      count: 2
     - cardKey: ashen.card.boomstick
-      count: 1
+      count: 2
     - cardKey: ashen.card.iron-maw
       count: 2
     - cardKey: ashen.card.roadbreaker
@@ -2617,7 +2655,7 @@ MonoBehaviour:
     - cardKey: ashen.card.rad-hunter
       count: 2
     - cardKey: ashen.card.furnace-bearer
-      count: 1
+      count: 2
     - cardKey: ashen.card.rad-brute
       count: 2
     - cardKey: ashen.card.tech-scrapper
@@ -2634,6 +2672,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 3
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -2801,9 +2841,9 @@ MonoBehaviour:
     - cardKey: ashen.card.rattletrap
       count: 3
     - cardKey: ashen.card.flywheel
-      count: 1
-    - cardKey: ashen.card.roadbreaker
       count: 2
+    - cardKey: ashen.card.roadbreaker
+      count: 3
     - cardKey: ashen.card.scrapwing
       count: 3
     - cardKey: ashen.card.rad-hunter
@@ -2811,11 +2851,11 @@ MonoBehaviour:
     - cardKey: ashen.card.rad-leaper
       count: 2
     - cardKey: ashen.card.rad-brute
-      count: 1
+      count: 2
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
-      count: 1
+      count: 2
     - cardKey: ashen.card.ashen-base
       count: 1
     - cardKey: neutral.facility.lab
@@ -2823,6 +2863,10 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 2
+    - cardKey: ashen.card.ash-walker
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -2991,23 +3035,23 @@ MonoBehaviour:
     - cardKey: ashen.card.iron-husk
       count: 2
     - cardKey: ashen.card.rad-leaper
-      count: 1
+      count: 2
     - cardKey: ashen.card.rad-brute
-      count: 3
+      count: 4
     - cardKey: ashen.card.spore-drifter
       count: 1
     - cardKey: ashen.card.scrap-shaman
       count: 2
     - cardKey: ashen.card.scab-shield
-      count: 3
+      count: 4
     - cardKey: ashen.card.roadbreaker
-      count: 2
+      count: 3
     - cardKey: ashen.card.rad-hunter
-      count: 2
+      count: 3
     - cardKey: ashen.card.hooded
       count: 3
     - cardKey: ashen.card.dust-runner
-      count: 1
+      count: 2
     - cardKey: ashen.card.ashen-base
       count: 1
     - cardKey: neutral.facility.lab
@@ -3015,6 +3059,10 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 3
+    - cardKey: ashen.card.flywheel
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -3185,11 +3233,11 @@ MonoBehaviour:
     - cardKey: ashen.card.ash-howitzer
       count: 1
     - cardKey: ashen.card.dune-locomotive
-      count: 1
+      count: 2
     - cardKey: ashen.card.grave-engine
       count: 1
     - cardKey: ashen.card.walking-refinery
-      count: 1
+      count: 2
     - cardKey: ashen.card.rad-hunter
       count: 1
     - cardKey: ashen.card.tow-rig
@@ -3210,6 +3258,8 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: ashen.card.blister-juggernaut
+      count: 3
     equipment:
     - cardKey: neutral.tactic.tactical-missile
       count: 1
@@ -3379,7 +3429,7 @@ MonoBehaviour:
     - cardKey: vessels.unit.censer-keeper
       count: 1
     - cardKey: vessels.21.resonance-tank
-      count: 3
+      count: 4
     - cardKey: vessels.unit.halo-kite
       count: 2
     - cardKey: vessels.unit.moth-bomber
@@ -3401,6 +3451,8 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.16.bulwark-vessel
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -3587,10 +3639,12 @@ MonoBehaviour:
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 1
+      count: 2
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.16.bulwark-vessel
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -3777,10 +3831,14 @@ MonoBehaviour:
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 1
+      count: 2
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.17.relay-carrier
+      count: 1
+    - cardKey: vessels.unit.bell-breacher
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -3955,7 +4013,7 @@ MonoBehaviour:
     - cardKey: vessels.unit.reliquary-crab
       count: 1
     - cardKey: vessels.13.arc-sentry
-      count: 2
+      count: 3
     - cardKey: vessels.unit.mnemonic-carrier
       count: 1
     - cardKey: vessels.unit.silt-pilgrim
@@ -3969,6 +4027,8 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.12.salvage-drone
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -4145,7 +4205,7 @@ MonoBehaviour:
     - cardKey: vessels.unit.mnemonic-carrier
       count: 2
     - cardKey: vessels.13.arc-sentry
-      count: 2
+      count: 3
     - cardKey: vessels.10.whisper-scout
       count: 4
     - cardKey: vessels.11.glass-runner
@@ -4153,10 +4213,14 @@ MonoBehaviour:
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 1
+      count: 2
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.17.relay-carrier
+      count: 1
+    - cardKey: vessels.12.salvage-drone
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -4337,14 +4401,18 @@ MonoBehaviour:
     - cardKey: vessels.10.whisper-scout
       count: 3
     - cardKey: vessels.11.glass-runner
-      count: 1
+      count: 2
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 1
+      count: 2
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.16.bulwark-vessel
+      count: 1
+    - cardKey: vessels.27.lens-watcher
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -4529,10 +4597,14 @@ MonoBehaviour:
     - cardKey: vessels.01.relay-base
       count: 1
     - cardKey: vessels.20.siege-walker
-      count: 1
+      count: 2
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.16.bulwark-vessel
+      count: 1
+    - cardKey: vessels.12.salvage-drone
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
@@ -4705,7 +4777,7 @@ MonoBehaviour:
     - cardKey: vessels.25.harmonic-howitzer
       count: 3
     - cardKey: vessels.unit.palisade-frame
-      count: 1
+      count: 2
     - cardKey: vessels.13.arc-sentry
       count: 2
     - cardKey: vessels.unit.mnemonic-carrier
@@ -4721,6 +4793,10 @@ MonoBehaviour:
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+    - cardKey: vessels.17.relay-carrier
+      count: 1
+    - cardKey: vessels.27.lens-watcher
       count: 1
     equipment:
     - cardKey: neutral.tactic.tactical-missile
