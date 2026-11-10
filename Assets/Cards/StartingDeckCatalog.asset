@@ -101,6 +101,10 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.mutator.survivor-strain
       count: 1
+    - cardKey: vessels.14.shard-wanderer
+      count: 3
+    - cardKey: vessels.unit.silt-pilgrim
+      count: 1
     equipment: []
     mutators: []
   - deckName: The Ashen Starter
@@ -186,6 +190,10 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.mutator.survivor-strain
       count: 1
+    - cardKey: ashen.card.bone-picker
+      count: 2
+    - cardKey: ashen.unit.ashdrifter
+      count: 3
     equipment: []
     mutators: []
   - deckName: Iron Concord Starter
@@ -270,6 +278,8 @@ MonoBehaviour:
     - cardKey: neutral.mutator.fortunate-genome
       count: 1
     - cardKey: neutral.mutator.survivor-strain
+      count: 1
+    - cardKey: concord.card.jackal
       count: 1
     equipment: []
     mutators: []
