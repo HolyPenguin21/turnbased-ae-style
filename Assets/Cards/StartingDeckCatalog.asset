@@ -44,7 +44,7 @@ MonoBehaviour:
     - cardKey: vessels.11.glass-runner
       count: 1
     - cardKey: vessels.15.vessel-rifleman
-      count: 2
+      count: 4
     - cardKey: vessels.16.bulwark-vessel
       count: 1
     - cardKey: vessels.unit.bell-breacher
@@ -105,6 +105,10 @@ MonoBehaviour:
       count: 3
     - cardKey: vessels.unit.silt-pilgrim
       count: 1
+    - cardKey: vessels.27.null-vessel
+      count: 1
+    - cardKey: vessels.20.siege-walker
+      count: 1
     equipment: []
     mutators: []
   - deckName: The Ashen Starter
@@ -133,7 +137,7 @@ MonoBehaviour:
     - cardKey: ashen.card.dust-runner
       count: 1
     - cardKey: ashen.card.ash-runner
-      count: 2
+      count: 4
     - cardKey: ashen.card.iron-husk
       count: 1
     - cardKey: ashen.card.scab-shield
@@ -194,6 +198,14 @@ MonoBehaviour:
       count: 2
     - cardKey: ashen.unit.ashdrifter
       count: 3
+    - cardKey: ashen.card.ash-walker
+      count: 1
+    - cardKey: ashen.card.spore-drifter
+      count: 1
+    - cardKey: ashen.card.rad-brute
+      count: 2
+    - cardKey: ashen.card.leviathan
+      count: 1
     equipment: []
     mutators: []
   - deckName: Iron Concord Starter
@@ -222,13 +234,13 @@ MonoBehaviour:
     - cardKey: concord.card.rc-vehicle
       count: 1
     - cardKey: concord.card.light-infantry
-      count: 2
+      count: 4
     - cardKey: concord.card.medium-infantry
-      count: 1
+      count: 2
     - cardKey: concord.card.trench-guardian
       count: 1
     - cardKey: concord.card.at-infantry
-      count: 1
+      count: 2
     - cardKey: concord.card.sand-jackal
       count: 1
     - cardKey: concord.card.crawler
@@ -236,7 +248,7 @@ MonoBehaviour:
     - cardKey: concord.card.light-tank
       count: 2
     - cardKey: concord.card.medium-tank
-      count: 1
+      count: 2
     - cardKey: concord.card.heavy-tank
       count: 1
     - cardKey: concord.card.artillery-cannon
@@ -280,6 +292,10 @@ MonoBehaviour:
     - cardKey: neutral.mutator.survivor-strain
       count: 1
     - cardKey: concord.card.jackal
+      count: 1
+    - cardKey: concord.card.at-cannon
+      count: 1
+    - cardKey: concord.card.mantis
       count: 1
     equipment: []
     mutators: []
