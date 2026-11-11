@@ -2657,7 +2657,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 8
+    apCost: 7
     resourceCost:
       human: 0
       energy: 4
@@ -2707,7 +2707,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 8
+    apCost: 7
     resourceCost:
       human: 0
       energy: 3
@@ -2756,7 +2756,7 @@ MonoBehaviour:
     cardType: 1
     tacticEffect: 0
     tacticAmount: 1
-    apCost: 8
+    apCost: 7
     resourceCost:
       human: 0
       energy: 3
