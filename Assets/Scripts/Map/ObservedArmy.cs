@@ -50,12 +50,17 @@ namespace Game.Map
                 DefenseBonus = (IsAirArmy ? 0 : MapObservationSystem.TerrainDefenseAt(hex)) + ConstructionDefense.Value;
             }
         }
+        // The army as seen stepping onto an unobserved hex. Defense belongs to where it now
+        // stands: the destination's terrain (terrain is always public), and no construction
+        // defense because that hex's building was never observed — the origin's values would
+        // show a bonus the army no longer has, the live building would leak hidden state.
         private ObservedArmy(ObservedArmy observed, HexCoord hex)
         {
             Name = observed.Name; Owner = observed.Owner; Hex = hex;
             IsGarrison = observed.IsGarrison; IsPrison = observed.IsPrison; IsAirfield = observed.IsAirfield;
             IsAirArmy = observed.IsAirArmy; Activated = observed.Activated;
-            DefenseBonus = observed.DefenseBonus; ConstructionDefense = observed.ConstructionDefense;
+            ConstructionDefense = 0;
+            DefenseBonus = IsAirArmy ? 0 : MapObservationSystem.TerrainDefenseAt(hex);
             CurrentMovement = observed.CurrentMovement; MaxMovement = observed.MaxMovement; Members = observed.Members;
         }
         internal ObservedArmy AtObservedEndpoint(HexCoord hex) => new ObservedArmy(this, hex);

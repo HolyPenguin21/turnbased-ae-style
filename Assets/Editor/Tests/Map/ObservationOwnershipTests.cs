@@ -174,6 +174,22 @@ namespace Game.EditorTests
             HumanVisualMemory.EndTurn(viewer);
             Assert.That(VisionSystem.HasEverSeen(viewer, hex), Is.False);
         }
+        // The ghost's defense is the destination's: an army leaving its own Base must not carry
+        // that Base's construction defense onto the hex it walked to.
+        [Test] public void DepartureIntoFogDropsOriginConstructionDefense()
+        {
+            var from = new HexCoord(0, 0);
+            Army(viewer, from);
+            BuildingRegistry.Register(from, new BuildingData { Owner = enemy, Hex = from, IsBase = true, Defense = 5 });
+            var live = Army(enemy, from);
+            HumanVisualMemory.TryGetArmySighting(viewer, live.Id, out var before);
+            Assert.That(before.Army.VisualSnapshotConstructionDefense, Is.EqualTo(5), "Observed on its own Base.");
+            ArmyRegistry.MoveArmy(live, hex);
+            Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, live.Id, out var seen), Is.True);
+            Assert.That(seen.Hex, Is.EqualTo(hex));
+            Assert.That(seen.Army.VisualSnapshotConstructionDefense, Is.EqualTo(0));
+            Assert.That(seen.Army.VisualSnapshotDefenseBonus, Is.EqualTo(0), "Destination terrain only (none configured here).");
+        }
         [Test] public void ObservedAircraftRetainsEffectiveMovementOnEveryDisplayRead()
         {
             var live = Army(enemy, hex); live.Members[0].IsAviation = true;
