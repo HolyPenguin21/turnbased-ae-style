@@ -117,7 +117,7 @@ namespace Game.UI
         private void CancelAttackPresentation()
         {
             _attackPresentationGeneration++;
-            if (_explosionAttackRoutine != null) StopCoroutine(_explosionAttackRoutine);
+            if (_explosionAttackRoutine != null) StopBattleRoutine(_explosionAttackRoutine);
             _explosionAttackRoutine = null;
             _isPresentingAttack = false;
             foreach (var effect in _attackEffectLayers)

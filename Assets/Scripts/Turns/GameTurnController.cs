@@ -216,7 +216,7 @@ namespace Game.Turns
                 _suspendedOtherTurnPlayer = null;
                 if (!_gameOver && !IsAiObserverPaused
                     && (CurrentPlayer == null || !CurrentPlayer.IsHuman))
-                    popupPanel.ShowForOther(CurrentPlayer);
+                    popupPanel.ShowForOther(CurrentPlayer, _otherTurnActivity);
             }
 
             bool newInputBlocked = IsMapModalShowing || (popupPanel != null && popupPanel.IsShowing);
@@ -359,6 +359,7 @@ namespace Game.Turns
             if (researchProductionModal != null) researchProductionModal.VisibilityChanged += RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged += RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged += RecomputeBlockedState;
+            Game.Ai.AiActivityFeed.Reported += OnAiActivityReported;
             if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged += RecomputeBlockedState;
             if (eventRewardPopup != null) eventRewardPopup.VisibilityChanged += RecomputeBlockedState;
             if (aviationAttackPopup != null) aviationAttackPopup.VisibilityChanged += RecomputeBlockedState;
@@ -379,6 +380,7 @@ namespace Game.Turns
             if (researchProductionModal != null) researchProductionModal.VisibilityChanged -= RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged -= RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged -= RecomputeBlockedState;
+            Game.Ai.AiActivityFeed.Reported -= OnAiActivityReported;
             if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged -= RecomputeBlockedState;
             if (eventRewardPopup != null) eventRewardPopup.VisibilityChanged -= RecomputeBlockedState;
             if (aviationAttackPopup != null) aviationAttackPopup.VisibilityChanged -= RecomputeBlockedState;
@@ -864,6 +866,7 @@ namespace Game.Turns
             HumanVisualMemory.EndTurn(CurrentPlayer);
             MapObservationSystem.ObserveVisible(CurrentPlayer);
             TurnChanging?.Invoke();
+            _otherTurnActivity = null;
             _currentPlayerIndex = index;
             TurnConfirmed = false;
             if (endTurnButton != null)
@@ -1136,6 +1139,24 @@ namespace Game.Turns
                 if (legacy != null)
                     legacy.text = label;
             }
+        }
+
+        // General phrase for what the current AI/Neutral player is doing (Game.Ai.AiActivityFeed:
+        // planning, developing, exploring, fighting...) — no army, place or outcome. Shown under
+        // "Current turn: X"; cleared when the next player's turn begins.
+        private string _otherTurnActivity;
+
+        private void OnAiActivityReported(Game.Ai.AiActivity activity)
+        {
+            if (_gameOver || CurrentPlayer == null || CurrentPlayer.IsHuman)
+                return;
+            string phrase = Game.Ai.AiActivityFeed.Phrase(activity);
+            if (phrase == _otherTurnActivity)
+                return;
+            _otherTurnActivity = phrase;
+            // Never over a hint or a human confirmation; a suspended banner picks it up on reshow.
+            if (popupPanel != null && popupPanel.IsOtherTurnShowing)
+                popupPanel.ShowForOther(CurrentPlayer, _otherTurnActivity);
         }
 
         private void ShowNextAviationMessage()

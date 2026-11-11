@@ -51,6 +51,7 @@ namespace Game.Ai.V2
             // revalidates its holds before the next pass.
             StrategicManager.BeforeTempoSpend(_player, _frame.IntentState, _root, _hand, _ctx);
             var phaseBRound = new StrategicPhaseResult();
+            AiActivityFeed.Report(AiActivity.Developing);
             yield return StrategicManager.UseSurplus(_frame.Snapshot, _player, _root, _hand, _ctx,
                 _frame.PostCommitments, _phases.Carried,
                 phaseBRound, _frame.Recon);

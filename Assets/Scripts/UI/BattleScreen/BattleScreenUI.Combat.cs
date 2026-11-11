@@ -50,7 +50,7 @@ namespace Game.UI
             if (ExplosionAttack.TargetLimit(attacker.Abilities) > 0)
             {
                 if (!isCounterattack) _battleEngine?.CommitGroundAttack(attacker);
-                _explosionAttackRoutine = StartCoroutine(RunExplosionAttack(attacker));
+                _explosionAttackRoutine = StartBattleRoutine(RunExplosionAttack(attacker));
                 return;
             }
 
@@ -78,6 +78,31 @@ namespace Game.UI
             UnitData interceptor = !isCounterattack
                 ? _battleEngine?.FindInterceptingBodyguard(attacker, defender) : null;
 
+            var session = new BattleChallengeSession(BattleChallengeMode.GroundCombat, attacker, defender,
+                attacker.Attack, (defender.IsHero ? defender.FateMax : defender.Defense) + defense.TotalBonus,
+                attackerHero?.Fate ?? 0, defenderHero?.Fate ?? 0, engine.Magnitudes,
+                defenderIsRetreating, tacticsCritical: _tacticsCritical);
+            if (_presentationSuppressed)
+            {
+                // Off-screen fight: the popup's own headless equivalent (roll, AI Fate/tactic
+                // decisions, accept), then the exact callback the popup's Ok would fire.
+                BattleChallengeRollResult roll;
+                using (session)
+                {
+                    session.Roll();
+                    session.ResolveAiDecisions(interceptor);
+                    session.TryAccept(out _);
+                    roll = session.ToRollResult();
+                }
+                BattleAttackPlan offscreenPlan = engine.PrepareGroundAttack(request, roll, attackerHero, defenderHero);
+                BattleDebugLog.Write($"[ResolveDiag] offscreen {attacker.Name} -> {defender.Name}: " +
+                    $"attacker={BattleDebugLog.TokenString(session.AttackerTokens)} " +
+                    $"defender={BattleDebugLog.TokenString(session.DefenderTokens)} " +
+                    $"victim={offscreenPlan?.Victim?.Name} damage={offscreenPlan?.Damage}");
+                OnAttackResolved(attacker, defender, attackerHero, defenderHero, roll, isCounterattack, offscreenPlan);
+                return;
+            }
+
             // Heroes on the tactical grid are ordinary attack targets. Their base defense pool
             // is FateMax (resolved by BattleAttackPopupUI/BattleCombatOdds); Capture/Kill remains
             // a separate post-combat/hero-only encounter mechanic.
@@ -96,10 +121,7 @@ namespace Game.UI
                 groundHitEffects: (victim, damage) =>
                     engine.PreviewGroundHitEffects(attacker, victim, damage, isCounterattack),
                 groundAttackPlan: roll => engine.PrepareGroundAttack(request, roll, attackerHero, defenderHero),
-                session: new BattleChallengeSession(BattleChallengeMode.GroundCombat, attacker, defender,
-                    attacker.Attack, (defender.IsHero ? defender.FateMax : defender.Defense) + defense.TotalBonus,
-                    attackerHero?.Fate ?? 0, defenderHero?.Fate ?? 0, engine.Magnitudes,
-                    defenderIsRetreating, tacticsCritical: _tacticsCritical));
+                session: session);
         }
 
         private IEnumerator RunExplosionAttack(UnitData attacker)
@@ -111,7 +133,8 @@ namespace Game.UI
             if (explosion == null) yield break;
             try
             {
-                yield return ExplosionAttackPresenter.Run(explosion, attackPopup, hexSelectionController,
+                yield return ExplosionAttackPresenter.Run(explosion,
+                    _presentationSuppressed ? null : attackPopup, hexSelectionController,
                     _battleEngine, _fastResolve, _tacticsCritical, (target, application) =>
                     {
                         foreach (var removal in application.Removals) ShowUnitRemovalThought(removal);
@@ -212,7 +235,7 @@ namespace Game.UI
             void ShowNext()
             {
                 if (generation != _attackPresentationGeneration) return;
-                if (attackPopup == null || index >= hits.Count)
+                if (attackPopup == null || _presentationSuppressed || index >= hits.Count)
                 {
                     onDone();
                     return;
@@ -328,9 +351,14 @@ namespace Game.UI
             // RecomputeBlockedState's own battleScreen.IsShowing term).
             _onClosed = onClosed;
             _fastResolve = false;
+            _presentationSuppressed = ShouldSuppressPresentation(hunterArmy, targetArmy);
+            SelectRoutineHost();
+            if (_presentationSuppressed)
+                AiActivityFeed.Report(AiActivity.HuntingHero);
             _tacticsCritical = TacticBattleContext.IsCritical(hunterArmy.Hex, hunterArmy, targetArmy);
             hexSelectionController?.Deselect();
-            rtsCamera?.SetPanningEnabled(false);
+            if (!_presentationSuppressed)
+                TakeMapChrome(hideCardHand: false);
 
             _localArmy = null;
             if (hunterArmy.Owner != null && hunterArmy.Owner.IsHuman)
@@ -422,22 +450,48 @@ namespace Game.UI
 
             BattleState expectedState = _battleState;
             int generation = _attackPresentationGeneration;
+            void OnRolled(BattleChallengeRollResult roll)
+            {
+                if (_battleState != expectedState || generation != _attackPresentationGeneration) return;
+                if (!sequence.TryResolveCurrent(next, roll, map, hexSelectionController, out var step)) return;
+                RefreshGrid();
+
+                if (step.Retreat.ContactParticipants != null)
+                    _pendingRetreatContacts.Enqueue((
+                        step.Retreat.Destination, step.Retreat.ContactParticipants));
+
+                RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts);
+            }
+            if (_presentationSuppressed)
+            {
+                StartBattleRoutine(ResolveCaptureKillOffscreen(next, OnRolled));
+                return;
+            }
             attackPopup.BeginCaptureKill(next.HunterArmy, next.Hero,
                 ResolveCatalog(next.HunterArmy?.Owner)?.logo, ResolveCatalog(next.Hero?.Owner)?.logo,
-                roll =>
-                {
-                    if (_battleState != expectedState || generation != _attackPresentationGeneration) return;
-                    if (!sequence.TryResolveCurrent(next, roll, map, hexSelectionController, out var step)) return;
-                    RefreshGrid();
-
-                    if (step.Retreat.ContactParticipants != null)
-                        _pendingRetreatContacts.Enqueue((
-                            step.Retreat.Destination, step.Retreat.ContactParticipants));
-
-                    RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts);
-                },
+                OnRolled,
                 suppressAiThoughts ? null : ShowAiThought, automateHumanSides: _fastResolve,
                 tacticsCritical: _tacticsCritical, magnitudes: _battleEngine?.Magnitudes);
+        }
+
+        // Headless counterpart of the popup's Capture Kill challenge. One frame first, so an
+        // off-screen hero-only encounter still completes after ShowEncounter returns, like the
+        // presented one.
+        private IEnumerator ResolveCaptureKillOffscreen(BattleCaptureKillTarget next,
+            Action<BattleChallengeRollResult> onRolled)
+        {
+            yield return null;
+            BattleChallengeRollResult roll;
+            using (BattleChallengeSession session = BattleAttackPopupUI.CreateCaptureKillSession(
+                next.HunterArmy, next.Hero,
+                _battleEngine != null ? _battleEngine.Magnitudes : AbilityMagnitudes.Default, _tacticsCritical))
+            {
+                session.Roll();
+                session.ResolveAiDecisions();
+                session.TryAccept(out _);
+                roll = session.ToRollResult();
+            }
+            onRolled(roll);
         }
 
         private void FinishBattleEnd(bool attackerAlive, bool defenderAlive)
@@ -471,7 +525,7 @@ namespace Game.UI
             // No human involved in this fight (AI vs. neutrals/event guards/another AI) — nobody's
             // there to click Ok, so the popup closes itself after a beat instead of stalling the
             // AI's turn (see BattleOutcomePopupUI.Show's own comment).
-            if (outcomePopup != null)
+            if (outcomePopup != null && !_presentationSuppressed)
                 outcomePopup.Show(title, message, OutcomeAcknowledgment(), autoCloseNoHuman: _localArmy == null);
             else
                 OnBattleOutcomeAcknowledged();

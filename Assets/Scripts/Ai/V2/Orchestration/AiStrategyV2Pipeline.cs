@@ -90,6 +90,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write("[AI][V2] missing player/root/ctx/map - nothing to do.");
                 yield break;
             }
+            AiActivityFeed.Report(AiActivity.Planning);
 
             // Correlation scope for this whole main pass (T{turn}-P{colorIndex}-M) + the physical
             // resource totals it opens with, for the end-of-Main [STATE] control line (spec §2.7).
@@ -209,6 +210,7 @@ namespace Game.Ai.V2
             {
                 // The demand rebuild above and Phase A's card rounds each get their own frames.
                 yield return frame.Checkpoint();
+                AiActivityFeed.Report(AiActivity.Developing);
                 yield return StrategicManager.FulfillDemandsPaced(frame.Snapshot, player, root, hand,
                     ctx, apBudget, frame.Demands, frame.Commitments, frame.IntentState, phaseA, frame.Pacer,
                     frame.Intents, frame.Recon, radar: radar, deferFreshZeroRadar: true);

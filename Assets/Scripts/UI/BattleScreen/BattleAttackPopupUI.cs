@@ -445,11 +445,8 @@ namespace Game.UI
         {
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
             UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
-            int hunterUnits = hunterArmy?.Members.FindAll(m => !m.IsHero).Count ?? 0;
-            int hunterTokenPool = BattleRules.CaptureKillHunterPool(hunterUnits);
-            var captureSession = new BattleChallengeSession(BattleChallengeMode.CaptureKill, hunterFace,
-                targetHero, hunterTokenPool, targetHero?.FateMax ?? 0,
-                hunterHero?.Fate ?? 0, targetHero?.Fate ?? 0, magnitudes ?? Magnitudes, tacticsCritical: tacticsCritical);
+            var captureSession = CreateCaptureKillSession(hunterArmy, targetHero, magnitudes ?? Magnitudes, tacticsCritical);
+            int hunterTokenPool = captureSession.AttackerPoolSize;
 
             // The manual: "the target hero receives a tokens pool equal to his fate" — his FULL
             // Fate stat, not whatever he happens to have left after spending some earlier this
@@ -459,6 +456,19 @@ namespace Game.UI
                 attackerPoolSize: hunterTokenPool, defenderPoolSize: targetHero?.FateMax ?? 0,
                 automateHumanSides: automateHumanSides, tacticsCritical: tacticsCritical,
                 challengeTitle: "CAPTURE/KILL CHALLENGE", session: captureSession);
+        }
+
+        // The Capture Kill session BeginCaptureKill presents; BattleScreenUI resolves the same
+        // session off-screen for a fight it does not show (see its _presentationSuppressed).
+        internal static BattleChallengeSession CreateCaptureKillSession(ArmyData hunterArmy, UnitData targetHero,
+            AbilityMagnitudes magnitudes, bool tacticsCritical)
+        {
+            UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
+            UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
+            int hunterUnits = hunterArmy?.Members.FindAll(m => !m.IsHero).Count ?? 0;
+            return new BattleChallengeSession(BattleChallengeMode.CaptureKill, hunterFace,
+                targetHero, BattleRules.CaptureKillHunterPool(hunterUnits), targetHero?.FateMax ?? 0,
+                hunterHero?.Fate ?? 0, targetHero?.Fate ?? 0, magnitudes, tacticsCritical: tacticsCritical);
         }
 
         public void Hide()

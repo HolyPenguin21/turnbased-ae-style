@@ -50,13 +50,17 @@ namespace Game.UI
                 confirmButton.onClick.Invoke();
         }
 
-        // AI/Neutral turn — informational only, no Confirm button.
-        public void ShowForOther(PlayerSetupData player)
+        // AI/Neutral turn — informational only, no Confirm button. activity: what that player is
+        // doing that the human would not otherwise see (off-screen battles, see
+        // GameTurnController.OnOffscreenBattleReported), shown under the turn line.
+        public void ShowForOther(PlayerSetupData player, string activity = null)
         {
             decision?.Cancel();
             _isOtherTurn = true;
             SetButton(false, null);
-            Display($"Current turn: {NameOf(player)}");
+            Display(string.IsNullOrEmpty(activity)
+                ? $"Current turn: {NameOf(player)}"
+                : $"Current turn: {NameOf(player)}\n{activity}");
         }
 
         // Human turn — Confirm is what unlocks map input; hiding the popup is left to onConfirm

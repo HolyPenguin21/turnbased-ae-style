@@ -154,7 +154,10 @@ namespace Game.Map
                 string choice = !shouldExplore ? "Skip" : entry.HasResolvedGuard ? "Explore" : "Explore (unguarded)";
                 AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} (#{mover.Id}) visited event '{entry.Definition.name}' at {hex} - {choice}.");
                 if (shouldExplore)
+                {
+                    Game.Ai.AiActivityFeed.Report(Game.Ai.AiActivity.ExploringEvent);
                     return ResolveEventExplore(mover, hex, entry);
+                }
                 HexEventRegistry.MarkSkipped(hex, mover.Owner);
                 onSkip();
                 return false;

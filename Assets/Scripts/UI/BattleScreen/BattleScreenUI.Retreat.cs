@@ -68,7 +68,7 @@ namespace Game.UI
 
             // Same auto-close-if-no-human as FinishBattleEnd (BattleScreenUI.Combat.cs) — a
             // retreat resolved between two AI-owned armies has nobody there to click Ok either.
-            if (outcomePopup != null)
+            if (outcomePopup != null && !_presentationSuppressed)
                 outcomePopup.Show(title, message, OutcomeAcknowledgment(), autoCloseNoHuman: _localArmy == null);
             else
                 OnBattleOutcomeAcknowledged();

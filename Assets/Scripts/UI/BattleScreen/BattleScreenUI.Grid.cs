@@ -111,7 +111,7 @@ namespace Game.UI
 
         private void RefreshGrid()
         {
-            if (_isPresentingAttack) return;
+            if (_isPresentingAttack || _presentationSuppressed) return;
             foreach (BattleGridCellUI oldCell in _cells)
                 if (oldCell != null) oldCell.gameObject.SetActive(false);
             UIUtility.DestroyAndClear(_cells);
@@ -210,7 +210,7 @@ namespace Game.UI
         {
             if (_isAnimatingMove)
                 return;
-            StartCoroutine(AnimateThenMove(fromRow, fromCol, toRow, toCol));
+            StartBattleRoutine(AnimateThenMove(fromRow, fromCol, toRow, toCol));
         }
 
         // Fast but smooth, per the user's own spec — the moving cell's own card slides from the

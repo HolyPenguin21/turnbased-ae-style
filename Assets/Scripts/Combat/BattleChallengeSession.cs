@@ -75,7 +75,8 @@ namespace Game.Combat
         }
 
         // Headless presentation runs the same Fate/tactic state machine as the popup.
-        public void ResolveAiDecisions()
+        // interceptor: the Bodyguard that takes this hit, as the popup passes to ChooseAiTactic.
+        public void ResolveAiDecisions(UnitData interceptor = null)
         {
             while (TryNextFateTurn(out bool defenderTurn))
             {
@@ -85,7 +86,7 @@ namespace Game.Combat
                     spent = true;
                     if (!defenderTurn && !hit) break;
                 }
-                var tactic = ChooseAiTactic(defenderTurn);
+                var tactic = ChooseAiTactic(defenderTurn, interceptor);
                 if (tactic != null && TryPlayTactic(defenderTurn, tactic)) spent = true;
                 ReportFateTurn(spent);
             }

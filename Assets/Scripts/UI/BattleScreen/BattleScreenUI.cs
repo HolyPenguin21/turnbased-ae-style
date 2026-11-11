@@ -125,6 +125,28 @@ namespace Game.UI
         // Fast Resolve delegates human decisions to the existing AI battle loop. Ownership
         // stays intact so results, captures, rewards and strategic notifications keep their identity.
         private bool _fastResolve;
+        // A fight with no human side, fought on an AI player's turn of a match a human plays, is
+        // resolved off-screen: no battle panel, challenge or outcome popups. Same engine loop and
+        // AI decisions; challenges resolve through BattleChallengeSession's headless path. An
+        // AI-only match (no human at all) and the human's own Fast Resolve keep the quick view.
+        private bool _presentationSuppressed;
+        // This screen hid the card hand and/or locked camera panning and owes their restore in
+        // Hide(). Survives a chained fight, which may differ in visibility from the first one.
+        private bool _mapChromeTaken;
+        private Game.Turns.GameTurnController _turnController;
+        // This component lives on panelRoot (BattleScreen_Panel), which an off-screen fight never
+        // activates, and an inactive object cannot run coroutines. Such a fight runs its routines
+        // on the always-active map controller instead. Chosen per encounter, after the previous
+        // encounter's routines were stopped on the host that started them.
+        private MonoBehaviour _routineHost;
+        private MonoBehaviour RoutineHost => _routineHost != null ? _routineHost : this;
+        private Coroutine StartBattleRoutine(IEnumerator routine) => RoutineHost.StartCoroutine(routine);
+        private void StopBattleRoutine(Coroutine routine)
+        {
+            if (routine != null) RoutineHost.StopCoroutine(routine);
+        }
+        private void SelectRoutineHost() =>
+            _routineHost = _presentationSuppressed ? hexSelectionController : this;
         private bool _tacticsCritical;
         private bool HasInteractiveParticipant => _localArmy != null && !_fastResolve;
         private bool IsHumanAction(UnitData unit) => !_fastResolve && unit?.Owner != null && unit.Owner.IsHuman;
@@ -340,6 +362,28 @@ namespace Game.UI
             _idleNudgeShown = false;
         }
 
+        private bool ShouldSuppressPresentation(ArmyData first, ArmyData second)
+        {
+            if (first?.Owner?.IsHuman == true || second?.Owner?.IsHuman == true
+                || GameSession.FindHumanPlayer() == null
+                || hexSelectionController == null || !hexSelectionController.isActiveAndEnabled)
+                return false;
+            if (_turnController == null)
+                _turnController = FindAnyObjectByType<Game.Turns.GameTurnController>(FindObjectsInactive.Include);
+            // A chained AI-vs-AI fight that follows the human's own battle on the human's turn stays
+            // visible: map input is blocked only while the battle presentation is showing.
+            PlayerSetupData current = _turnController != null ? _turnController.CurrentPlayer : null;
+            return current == null || !current.IsHuman;
+        }
+
+        private void TakeMapChrome(bool hideCardHand)
+        {
+            if (hideCardHand)
+                cardHand?.Hide();
+            rtsCamera?.SetPanningEnabled(false);
+            _mapChromeTaken = true;
+        }
+
         // One entry point for direct, delayed and chained contact; both fight buttons use it.
         public void ShowEncounter(BattleEncounterContext encounter, Action onClosed, bool fastResolve = false)
         {
@@ -363,9 +407,14 @@ namespace Game.UI
             _defenderMarkerAtStart = ArmyDestructionEffect.Capture(defender?.Controller?.Visual);
             CancelAttackPresentation();
             _fastResolve = fastResolve;
+            _presentationSuppressed = ShouldSuppressPresentation(attacker, defender);
+            SelectRoutineHost();
+            // General activity line for the human on an AI turn (no army, place or outcome).
+            if (_presentationSuppressed)
+                Game.Ai.AiActivityFeed.Report(Game.Ai.AiActivity.Fighting);
             _unpacedBattleFrameStart = -1f;
             _onClosed = onClosed;
-            if (panelRoot != null)
+            if (panelRoot != null && !_presentationSuppressed)
                 panelRoot.SetActive(true);
             VisibilityChanged?.Invoke();
 
@@ -373,8 +422,8 @@ namespace Game.UI
             // army was selected there is stale the moment combat starts (see
             // HexSelectionController.Deselect's own comment).
             hexSelectionController?.Deselect();
-            cardHand?.Hide();
-            rtsCamera?.SetPanningEnabled(false);
+            if (!_presentationSuppressed)
+                TakeMapChrome(hideCardHand: true);
 
             _tacticsCritical = TacticBattleContext.IsCritical(hex, attacker, defender);
             var tacticHand = GetComponentInChildren<BattleHandUI>(true);
@@ -475,7 +524,7 @@ namespace Game.UI
             // The player can arrange while the AI plans from roster stats only. Ready and
             // automatic round start wait for the complete, atomically committed AI layout.
             if (IsAutomatedSide(_attacker) || IsAutomatedSide(_defender))
-                _aiArrangementRoutine = StartCoroutine(ArrangeAiAndContinue(_battleEngine));
+                _aiArrangementRoutine = StartBattleRoutine(ArrangeAiAndContinue(_battleEngine));
 
             if (HasInteractiveParticipant && arrangePopup != null)
             {
@@ -546,7 +595,7 @@ namespace Game.UI
         private void CancelAiArrangement()
         {
             if (_aiArrangementRoutine == null) return;
-            StopCoroutine(_aiArrangementRoutine);
+            StopBattleRoutine(_aiArrangementRoutine);
             _aiArrangementRoutine = null;
         }
 
@@ -750,7 +799,7 @@ namespace Game.UI
             foreach (BattleTurnOrderIconUI oldIcon in _queueIcons)
                 if (oldIcon != null) oldIcon.gameObject.SetActive(false);
             UIUtility.DestroyAndClear(_queueIcons);
-            if (turnQueueContainer != null && turnQueueIconPrefab != null && _turnOrder != null)
+            if (!_presentationSuppressed && turnQueueContainer != null && turnQueueIconPrefab != null && _turnOrder != null)
                 for (int i = 0; i < _turnOrder.Count; i++)
                 {
                     UnitData queued = _turnOrder[i];
@@ -761,9 +810,12 @@ namespace Game.UI
                     _queueIcons.Add(icon);
                 }
 
-            RevealCurrentTurnIcon();
             UnitData current = _turnOrder != null && _turnIndex < _turnOrder.Count ? _turnOrder[_turnIndex] : null;
-            ShowUnitDetail(current);
+            if (!_presentationSuppressed)
+            {
+                RevealCurrentTurnIcon();
+                ShowUnitDetail(current);
+            }
             // Drives BattleGridCellUI's own yellow acting-unit ring — rebuilding the whole grid
             // on every Pass (not just every round) is the same "destroy and rebuild" pattern
             // already used for the queue icons above, just for the battlefield instead.
@@ -780,11 +832,11 @@ namespace Game.UI
 
             if (_aiAutoPassRoutine != null)
             {
-                StopCoroutine(_aiAutoPassRoutine);
+                StopBattleRoutine(_aiAutoPassRoutine);
                 _aiAutoPassRoutine = null;
             }
             if (current != null && !isHumanTurn)
-                _aiAutoPassRoutine = StartCoroutine(AutoActAfterDelay(current));
+                _aiAutoPassRoutine = StartBattleRoutine(AutoActAfterDelay(current));
         }
 
         // Replaces the old auto-pass stub — after the same pacing beat, asks BattleAi what this
@@ -801,7 +853,7 @@ namespace Game.UI
             // Resolve keeps the budget-packed pacing.
             if (HasInteractiveParticipant && aiActionDelay > 0f)
                 yield return new WaitForSeconds(aiActionDelay);
-            else if (_localArmy == null && unpacedActionInterval > 0f)
+            else if (_localArmy == null && !_presentationSuppressed && unpacedActionInterval > 0f)
                 yield return new WaitForSeconds(unpacedActionInterval);
             else if (_unpacedBattleFrameStart < 0f
                 || Time.realtimeSinceStartup - _unpacedBattleFrameStart >= UnpacedBattleFrameBudgetSeconds)
@@ -899,7 +951,7 @@ namespace Game.UI
                 panelRoot.SetActive(false);
             if (_aiAutoPassRoutine != null)
             {
-                StopCoroutine(_aiAutoPassRoutine);
+                StopBattleRoutine(_aiAutoPassRoutine);
                 _aiAutoPassRoutine = null;
             }
             arrangePopup?.Hide();
@@ -922,6 +974,7 @@ namespace Game.UI
             _currentActingUnit = null;
             _localArmy = null;
             _fastResolve = false;
+            _presentationSuppressed = false;
             _unpacedBattleFrameStart = -1f;
             _arranging = false;
             _arrangeInteractive = false;
@@ -1004,8 +1057,12 @@ namespace Game.UI
         {
             ResetBattlePanel();
             VisibilityChanged?.Invoke();
-            cardHand?.Show();
-            rtsCamera?.SetPanningEnabled(true);
+            if (_mapChromeTaken)
+            {
+                _mapChromeTaken = false;
+                cardHand?.Show();
+                rtsCamera?.SetPanningEnabled(true);
+            }
 
             Action callback = _onClosed;
             _onClosed = null;

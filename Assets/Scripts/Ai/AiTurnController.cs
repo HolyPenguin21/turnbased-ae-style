@@ -315,6 +315,7 @@ namespace Game.Ai
             {
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" (movement={army.CurrentMovement}/{army.MaxMovement}) "
                 + $"from ({army.Hex.Q},{army.Hex.R}) heads to ({decision.TargetHex.Q},{decision.TargetHex.R}) - {decision.Reason}.");
+            AiActivityFeed.Report(AviationRules.IsAirArmy(army) ? AiActivity.AirOperations : AiActivity.ExploringWorld);
 
             yield return PanTo(ctx, army.Hex);
             yield return WaitStep(ctx);
