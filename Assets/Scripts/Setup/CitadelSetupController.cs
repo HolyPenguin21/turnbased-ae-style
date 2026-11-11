@@ -60,12 +60,13 @@ namespace Game.Setup
         [Header("Intro")]
         // New match reveal: black curtain hold, then zoom in from the camera's zoom-out limit
         // onto the map centre, then pan to the first human's region while the vignette eases
-        // from introVignetteStart back to the Global Volume's own value.
+        // from introVignetteStart/introVignetteSmoothnessStart back to the Global Volume's values.
         [SerializeField] private float introBlackHold = 1f;
         [SerializeField] private float introZoomDuration = 1f;
         [SerializeField] private float introPanDuration = 1f;
         [SerializeField] private float introCurtainFade = 0.3f;
-        [SerializeField, Range(0f, 1f)] private float introVignetteStart = 1f;
+        [SerializeField, Range(0f, 1f)] private float introVignetteStart = 0.5f;
+        [SerializeField, Range(0.01f, 1f)] private float introVignetteSmoothnessStart = 1f;
 
         [Header("Config")]
         // Starting-hex rule, highlight prefabs/height, ground raycast layer, citadel marker
@@ -251,13 +252,14 @@ namespace Game.Setup
             _introLandedOn = target;
         }
 
-        // Temporary higher-priority global volume overriding only vignette intensity; its weight
-        // blends that intensity back to whatever the scene's Global Volume sets.
+        // Temporary higher-priority global volume overriding only vignette intensity and
+        // smoothness; its weight blends both back to whatever the scene's Global Volume sets.
         private Volume CreateIntroVignette()
         {
             _introProfile = ScriptableObject.CreateInstance<VolumeProfile>();
             Vignette vignette = _introProfile.Add<Vignette>();
             vignette.intensity.Override(introVignetteStart);
+            vignette.smoothness.Override(introVignetteSmoothnessStart);
             var go = new GameObject("IntroVignette");
             go.transform.SetParent(transform, false);
             var volume = go.AddComponent<Volume>();
