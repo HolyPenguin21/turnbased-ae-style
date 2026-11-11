@@ -110,6 +110,26 @@ namespace Game.Cameras
             _panRoutine = StartCoroutine(PanRoutine(worldPosition, duration, onComplete));
         }
 
+        // Player zoom setting and the zoom-out limit, for scripted framing (setup intro).
+        public float PlayerOrthoSize => orthoSize;
+        public float MaxOrthoSize => maxOrthoSize;
+
+        // Instant scripted framing for a sequence that drives the camera every frame itself.
+        // Leaves the player's own zoom setting alone; the sequence ends on PlayerOrthoSize.
+        public void SetFraming(Vector3 worldPosition, float size)
+        {
+            InitializeForMatch();
+            if (_panRoutine != null)
+            {
+                StopCoroutine(_panRoutine);
+                _panRoutine = null;
+            }
+            _groundTarget = new Vector3(worldPosition.x, 0f, worldPosition.z);
+            if (_camera != null)
+                _camera.orthographicSize = size;
+            ApplyPosition();
+        }
+
         private IEnumerator PanRoutine(Vector3 worldPosition, float duration, Action onComplete)
         {
             Vector3 start = _groundTarget;

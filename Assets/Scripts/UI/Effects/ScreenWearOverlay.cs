@@ -29,6 +29,7 @@ namespace Game.UI
         [SerializeField, Range(0f, 2f)] private float intensity = 1f;
         [SerializeField] private Color tint = Color.white;
 
+        private static ScreenWearOverlay _instance;
         private Material _material;
         private Texture2D _texture;
         private RawImage _image;
@@ -101,6 +102,16 @@ namespace Game.UI
             _image.color = Color.white;
             _image.raycastTarget = false;
             _image.maskable = false;
+            // Hidden through the setup intro and citadel placement; CitadelSetupController
+            // reveals it once the match is assembled (or restored).
+            _image.enabled = false;
+            _instance = this;
+        }
+
+        public static void Reveal()
+        {
+            if (_instance != null && _instance._image != null)
+                _instance._image.enabled = true;
         }
 
         // The scene's controllers already reference the shared GameConfig, so it is loaded by
@@ -121,6 +132,7 @@ namespace Game.UI
 
         private void OnDestroy()
         {
+            if (_instance == this) _instance = null;
             if (_material != null)
                 Destroy(_material);
         }

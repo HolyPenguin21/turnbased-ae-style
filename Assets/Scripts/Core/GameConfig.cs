@@ -25,6 +25,10 @@ namespace Game.Core
         // Full-screen HUD wear texture drawn by ScreenWearOverlay (edge scratches/grime, clean centre).
         public Texture2D screenWearTexture;
 
+        [Header("Loading screen")]
+        // Optional picture over the black curtain while the Game scene loads (SceneLoadCurtain).
+        public Sprite loadingScreenImage;
+
         [Header("Collection content")]
         public Game.Cards.StartingDeckCatalog collectionDeckCatalog;
         public Game.Cards.ResearchProductionCatalog collectionResearchCatalog;

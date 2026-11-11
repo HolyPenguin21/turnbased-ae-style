@@ -28,6 +28,9 @@
     <Reference Include="$(UnityLibrary)/Unity.InputSystem.dll" />
     <Reference Include="$(UnityLibrary)/UnityEngine.UI.dll" />
     <Reference Include="$(UnityLibrary)/UnityEditor.UI.dll" />
+    <!-- URP post-processing volumes (setup intro vignette). -->
+    <Reference Include="$(UnityLibrary)/Unity.RenderPipelines.Core.Runtime.dll" />
+    <Reference Include="$(UnityLibrary)/Unity.RenderPipelines.Universal.Runtime.dll" />
     <!-- LogAssert (UnityEngine.TestTools); its calls only run inside Unity. -->
     <Reference Include="$(UnityLibrary)/UnityEngine.TestRunner.dll" />
     <!-- The NUnit the editor compiles the tests against (com.unity.ext.nunit): its API is older

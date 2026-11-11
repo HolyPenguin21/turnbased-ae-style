@@ -20,7 +20,7 @@ namespace Game.Saves
             HexSelectionController selection,Action<string> navigate=null)
         {
             store=new MatchSaveStore(directory);this.config=config;this.map=map;this.turns=turns;this.selection=selection;
-            this.navigate=navigate ?? (scene=>SceneManager.LoadScene(scene));
+            this.navigate=navigate ?? (scene=>{if(scene==SceneNames.Game)Game.UI.SceneLoadCurtain.Show(config!=null?config.loadingScreenImage:null);SceneManager.LoadScene(scene);});
         }
         internal static MatchSaveApplication ForScene(GameConfig config,GameTurnController turns) =>
             new MatchSaveApplication(Path.Combine(Application.persistentDataPath,"Matches"),config,
