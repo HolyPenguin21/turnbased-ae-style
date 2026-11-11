@@ -12,7 +12,7 @@ namespace Game.Turns
     // Kept apart from the turn loop so a networked client can replace it with its own version
     // (the seat there is fixed on the local player and the curtain never shows).
     //
-    // Order invariant (risk P3): curtain first (seat = null, opaque backdrop), and only after the
+    // Order invariant (risk P3): curtain first (seat = null), and only after the
     // named player confirms: viewer -> player, seat -> player, then the curtain hides.
     // Never VisionSystem.CurrentViewer = null in a match with humans (null = whole map visible).
     public partial class GameTurnController : IDecisionHandoff
@@ -55,7 +55,7 @@ namespace Game.Turns
         }
 
         private static string TurnHandoffText(PlayerSetupData player)
-            => $"Turn of {player?.Nickname}\nPass the screen to {player?.Nickname}.";
+            => $"Turn of {player?.Nickname}";
 
         // ResumeGame: a hotseat save opens behind the current human's curtain; the world was
         // restored, so no BeginPlayerTurn (it would refill movement/AA).
@@ -85,7 +85,7 @@ namespace Game.Turns
             }
             // Placement runs with no viewer (the whole map is shown to every placer, as before):
             // only the seat changes here.
-            ShowHandoffCurtain(player, $"Citadel placement: {player.Nickname}\nPass the screen to {player.Nickname}.", () =>
+            ShowHandoffCurtain(player, $"Citadel placement: {player.Nickname}", () =>
             {
                 popupPanel?.Hide();
                 onSeated?.Invoke();
@@ -100,7 +100,8 @@ namespace Game.Turns
             if (owner == null || LocalSeat.Is(owner)) yield break;
             bool seated = false;
             long generation = GameSession.Generation;
-            ShowHandoffCurtain(owner, $"{reason}\nPass the screen to {owner.Nickname}.", () =>
+            yield return WaitForOpenHint(generation);
+            ShowHandoffCurtain(owner, reason, () =>
             {
                 popupPanel?.Hide();
                 seated = true;
@@ -114,7 +115,9 @@ namespace Game.Turns
             if (player == null || LocalSeat.Is(player) || _gameOver) yield break;
             bool seated = false;
             long generation = GameSession.Generation;
-            ShowHandoffCurtain(player, $"Return the screen to {player.Nickname}.", () =>
+            yield return WaitForOpenHint(generation);
+            if (_gameOver || !GameSession.IsCurrent(generation)) yield break;
+            ShowHandoffCurtain(player, CurrentPlayer == player ? TurnHandoffText(player) : player.Nickname, () =>
             {
                 popupPanel?.Hide();
                 seated = true;
@@ -125,6 +128,15 @@ namespace Game.Turns
             if (seated && popupPanel != null && !popupPanel.IsShowing && !_aiObserverMatch
                 && (CurrentPlayer == null || !CurrentPlayer.IsHuman))
                 popupPanel.ShowForOther(CurrentPlayer, _otherTurnActivity);
+        }
+
+        // A handoff replaces whatever the shared popup shows: let an open hint (e.g. "citadel has
+        // fallen" right after a battle) be read first. The other-turn banner is not waited for.
+        private IEnumerator WaitForOpenHint(long generation)
+        {
+            while (popupPanel != null && popupPanel.IsShowing && !popupPanel.IsOtherTurnShowing
+                && !_gameOver && GameSession.IsCurrent(generation))
+                yield return null;
         }
 
         // R5: a message meant for `owner`. Shown now when owner holds the screen (or when no seat

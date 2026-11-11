@@ -920,7 +920,7 @@ namespace Game.Turns
             CurrentPlayer = player;
             StrategicTurnEffects.BeginPlayer(player);
             // Hotseat: the next human's fog is applied only AFTER their curtain is confirmed
-            // (risk P3); until then the previous picture stays behind the opaque curtain.
+            // (risk P3); until then the previous picture stays on screen.
             bool handoff = player.IsHuman && IsHotseat;
             if (!handoff && (player.IsHuman || debugWatchAiTurns || _aiObserverMatch))
                 VisionSystem.CurrentViewer = player;
