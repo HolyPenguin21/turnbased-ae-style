@@ -186,10 +186,13 @@ namespace Game.Saves
                     expected.Add((entry.PlayerId, false, 0, hex.Q, hex.R));
                 }
                 var sourceIds = new HashSet<int>();
+                // A sighting may stand on a hex the viewer never observed: an army seen walking
+                // into fog is remembered at its destination without revealing that hex
+                // (MapObservationSystem.CaptureDeparture), so only the map bounds apply here.
                 foreach (var army in entry.Armies)
                 {
                     if (army == null || army.Members == null || army.SourceArmyId < 0 || army.SourceArmyId > identity.ArmyHighWaterMark
-                        || !sourceIds.Add(army.SourceArmyId) || !map.Contains(new HexCoord(army.Q, army.R)) || !seen.Contains(new HexCoord(army.Q, army.R)))
+                        || !sourceIds.Add(army.SourceArmyId) || !map.Contains(new HexCoord(army.Q, army.R)))
                         throw new ArgumentException("Invalid historical army identity or location.");
                     StateReference.Player(army.OwnerId, player);
                     if (army.HasCurrentMovement && army.CurrentMovement < 0 || army.HasMaxMovement && army.MaxMovement < 0)

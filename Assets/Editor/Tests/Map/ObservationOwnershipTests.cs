@@ -148,9 +148,31 @@ namespace Game.EditorTests
             Assert.That(HumanVisualMemory.TryGetArmySighting(viewer, live.Id, out var seen), Is.True);
             Assert.That(seen.Hex, Is.EqualTo(hex));
             Assert.That(seen.Army.VisualSnapshotConstructionDefense, Is.EqualTo(0), "Hidden destination building was never observed.");
-            Assert.That(VisionSystem.HasEverSeen(viewer, hex), Is.True, "The witnessed endpoint must be a valid historical observation for the save codec.");
+            Assert.That(VisionSystem.HasEverSeen(viewer, hex), Is.False, "Seeing where an army went never observes the destination hex.");
             live.Members[0].HitPointsCurrent = 1; VisionSystem.NotifyContentChanged(hex);
             Assert.That(seen.Army.Members[0].HitPointsCurrent, Is.EqualTo(3));
+        }
+        // Fog leak: the ghost of an army that walked out of sight used to put its destination
+        // into EverSeen — the tier that reveals resource types (MapResourceDisplay) and, in an
+        // AI-vs-AI observer match, the AI's "ever observed" knowledge (MapKnowledge.EverSeenHexSet,
+        // which refutes a never-seen enemy starting Citadel). Kept for the rest of the match.
+        [Test] public void DepartureIntoFogNeverRevealsDestinationHexToAnyTrackedViewer()
+        {
+            HumanVisualMemory.ObserverMatch = true;
+            var aiViewer = new PlayerSetupData { PlayerId = "ai" };
+            var from = new HexCoord(0, 0);
+            Army(viewer, from); Army(aiViewer, from);
+            var live = Army(enemy, from);
+            ArmyRegistry.MoveArmy(live, hex);
+            foreach (var witness in new[] { viewer, aiViewer })
+            {
+                Assert.That(HumanVisualMemory.TryGetArmySighting(witness, live.Id, out var seen), Is.True);
+                Assert.That(seen.Hex, Is.EqualTo(hex));
+                Assert.That(VisionSystem.HasEverSeen(witness, hex), Is.False);
+                Assert.That(VisionSystem.IsVisited(witness, hex), Is.False);
+            }
+            HumanVisualMemory.EndTurn(viewer);
+            Assert.That(VisionSystem.HasEverSeen(viewer, hex), Is.False);
         }
         [Test] public void ObservedAircraftRetainsEffectiveMovementOnEveryDisplayRead()
         {

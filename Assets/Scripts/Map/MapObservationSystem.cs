@@ -58,6 +58,9 @@ namespace Game.Map
         }
         // Capture the permitted payload before leaving visibility, publish it only after the
         // relocation commits. Never consult the hidden destination's building/roster/appearance.
+        // The witness saw only WHERE the army went: the destination hex itself stays unobserved
+        // (no EverSeen tier), so its resource types, event marker and any AI "ever observed"
+        // inference (AttackObjectiveEvaluator.EverObserved) are not unlocked by the sighting.
         internal static Action CaptureDeparture(ArmyData army, HexCoord from, HexCoord to)
         {
             if (Game.Setup.MatchRestoreScope.IsRestoring) return null;
@@ -72,9 +75,7 @@ namespace Game.Map
                 foreach (var entry in observations)
                 {
                     HumanVisualMemory.StoreObservation(entry.Viewer, sourceId, entry.Payload);
-                    bool firstObservation = VisionSystem.RecordObservedHex(entry.Viewer, to);
                     VisionSystem.PublishAfterMutation(Observed, entry.Viewer, to);
-                    if (firstObservation) VisionSystem.NotifyObservationChanged(entry.Viewer);
                 }
             };
         }

@@ -83,15 +83,6 @@ namespace Game.Map
 
         internal static IEnumerable<PlayerSetupData> KnownViewers() => new List<PlayerSetupData>(Visible.Keys);
 
-        // A witnessed step endpoint is historical sight, never a new ongoing vision source or
-        // a ground visit. This keeps remembered positions consistent with presentation saves.
-        internal static bool RecordObservedHex(PlayerSetupData viewer, HexCoord hex)
-        {
-            if (!EverSeen.TryGetValue(viewer, out var seen)) EverSeen[viewer] = seen = new HashSet<HexCoord>();
-            return seen.Add(hex);
-        }
-        internal static void NotifyObservationChanged(PlayerSetupData viewer) => PublishAfterMutation(VisibilityChanged, viewer);
-
         public static bool IsVisible(PlayerSetupData player, HexCoord hex)
         {
             return player != null && Visible.TryGetValue(player, out HashSet<HexCoord> set) && set.Contains(hex);

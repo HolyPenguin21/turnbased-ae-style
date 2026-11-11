@@ -81,6 +81,15 @@ namespace Game.EditorTests
             Assert.That(restored.Army.Members.Single().IsAviation, Is.True);
             Assert.That(VisionSystem.IsVisible(viewer, new HexCoord(2, 0)), Is.True);
         }
+        // An army seen walking into fog is remembered at a destination the viewer never observed.
+        [Test] public void Validate_AcceptsHistoricalArmyOnUnobservedMapHex()
+        {
+            var data = Remembered(out _);
+            data.Vision.Single().EverSeen.RemoveAll(h => h.Q == 1 && h.R == 0);
+            Assert.DoesNotThrow(() => Validate(data));
+            data.Memory.Single().Armies.Single().Q = 5; data.Visuals.Single().Q = 5;
+            Assert.Throws<ArgumentException>(() => Validate(data), "Still bounded by the playable map.");
+        }
         [Test] public void Validate_RejectsMissingAndDuplicateAppearanceBeforeKnowledgeMutation()
         {
             var data = Remembered(out var live);
