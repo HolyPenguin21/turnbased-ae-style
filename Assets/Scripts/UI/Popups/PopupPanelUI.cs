@@ -74,6 +74,17 @@ namespace Game.UI
             if (player != null && player.IsHuman) HumanTurnShown?.Invoke();
         }
 
+        // Hotseat handoff ("Turn of B", "Anti-air decision for B"): blocks input until confirmed.
+        // onConfirm decides when to hide (the caller first switches the viewer/seat while the
+        // popup is still up).
+        public void ShowHandoff(string message, Action onConfirm)
+        {
+            _isOtherTurn = false;
+            decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
+            SetButton(true, () => {if(request.TryComplete())onConfirm?.Invoke();});
+            Display(message);
+        }
+
         // A one-off blocking hint — dismissing it just closes it, no external callback.
         public void ShowHint(string message)
         {

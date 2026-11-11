@@ -143,7 +143,7 @@ namespace Game.Map
         private void NotifyBuildBlocked(PlayerSetupData owner, string message)
         {
             if (owner != null && owner.IsHuman)
-                turnController?.ShowSpawnHint(message);
+                turnController?.NotifyPlayer(owner, message);
             else
                 AiDebugLog.Write($"[AI] {owner?.Nickname ?? "Neutral"}: extraction build rejected - {message}");
         }

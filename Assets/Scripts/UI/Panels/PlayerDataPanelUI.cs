@@ -81,7 +81,7 @@ namespace Game.UI
 
         private bool UpdateAccess()
         {
-            bool access = ObserverMatch || TacticalIntelligence.HasAccess(GameSession.FindHumanPlayer());
+            bool access = ObserverMatch || TacticalIntelligence.HasAccess(Game.Players.LocalSeat.Current);
             if (dataButton != null && dataButton.gameObject.activeSelf != access)
                 dataButton.gameObject.SetActive(access);
             if (!access)
@@ -101,7 +101,7 @@ namespace Game.UI
                 RefreshObserverReport();
                 return;
             }
-            PlayerSetupData observer = GameSession.FindHumanPlayer();
+            PlayerSetupData observer = Game.Players.LocalSeat.Current;
             // CompletedTurns advances at END of our turn. Keep that report during other
             // players' turns; reveal the next one only when our next turn actually starts.
             long personalTurn = turnController.CompletedTurnsFor(observer);

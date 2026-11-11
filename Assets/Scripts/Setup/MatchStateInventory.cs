@@ -194,8 +194,13 @@ namespace Game.Setup
             new MatchStateEntry("Game.Aviation.AviationRules", MatchStateKind.Wiring),
             new MatchStateEntry("Game.Cards.UnitAbilityCatalog", MatchStateKind.Wiring),
             new MatchStateEntry("Game.Core.GameAssetCatalog", MatchStateKind.Wiring),
+            // The running match's hotseat curtain, set/cleared by GameTurnController OnEnable/OnDisable.
+            new MatchStateEntry("Game.Core.PlayerDecisionRouter", MatchStateKind.Wiring),
             new MatchStateEntry("Game.Map.HexShaderHighlight", MatchStateKind.Wiring),
             new MatchStateEntry("Game.Audio.GameAudioManager", MatchStateKind.Presentation),
+            // Whose private UI this screen shows. Never saved: a load seats the saved current human.
+            new MatchStateEntry("Game.Players.LocalSeat", MatchStateKind.Presentation,
+                resetNote: "GameSession clears it with the session's players (ClearMatch, new launch, prepared restore)."),
             new MatchStateEntry("Game.Aviation.AviationCombatPresenter", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Campaign.CampaignRegionGraphic", MatchStateKind.Presentation),
             new MatchStateEntry("Game.Combat.BattleAiPhraseBank", MatchStateKind.Presentation),

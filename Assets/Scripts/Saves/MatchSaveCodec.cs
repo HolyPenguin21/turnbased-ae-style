@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Game.Campaign;
 using Game.Core;
 using Game.Map;
+using Game.Players;
 using Game.Setup;
 using Game.Turns;
 using UnityEngine;
@@ -79,7 +81,7 @@ namespace Game.Saves
             {
                 version = SchemaVersion, format = Format, schemaHash = MatchSaveSchema.Hash,
                 matchId = data.matchId, savedUtc = DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
-                summary = "Round " + data.turn.Round + " · " + (GameSession.FindHumanPlayer()?.Nickname ?? "Human"),
+                summary = SlotSummary(data.turn.Round, turns.CurrentPlayer, GameSession.Players),
                 payload = payload, payloadSha256 = Sha256(payload),
             };
             byte[] bytes = Utf8.GetBytes(MatchSaveJson.Serialize(envelope));
@@ -136,6 +138,13 @@ namespace Game.Saves
                 return BitConverter.ToString(hash.ComputeHash(Utf8.GetBytes(value))).Replace("-", "").ToLowerInvariant();
         }
 
+        // "Round N · <current human>" (+ " · Hotseat" with several humans).
+        internal static string SlotSummary(int round, PlayerSetupData current, IEnumerable<PlayerSetupData> players)
+        {
+            string text = "Round " + round + " · " + (current?.Nickname ?? "Human");
+            return players != null && players.Count(p => p != null && p.IsHuman) > 1 ? text + " · Hotseat" : text;
+        }
+
         internal static MatchWorldGraph ValidateData(MatchSaveData data, GameConfig config)
         {
             if (data == null || config == null || !data.settledHumanTurn || string.IsNullOrWhiteSpace(data.matchId)
@@ -145,23 +154,28 @@ namespace Game.Saves
             HexMapGenerator.ValidateLayout(data.map, config);
             var graph = MatchWorldCodec.Decode(data.world, config, data.identity);
             graph.ValidateMap(data.map);
+            // Hotseat saves carry several humans (the campaign exactly one). The settled turn is
+            // a living human's; the saved perspective is that current human's.
             var humans = graph.Players.Where(p => p.IsHuman).ToArray();
-            if (humans.Length != 1 || humans[0].IsEliminated || humans[0].Hand == null) throw new ArgumentException("The save needs one living human and a prepared hand.");
+            if (humans.Length == 0 || (data.hasCampaign && humans.Length != 1) || humans.Any(h => h.Hand == null))
+                throw new ArgumentException("The save needs a living human and prepared human hands.");
             foreach (var player in graph.Players)
                 if (!data.world.players.Single(p => p.id == player.PlayerId).hasEconomy)
                     throw new ArgumentException("A match participant is missing its saved economy.");
-            var human = humans[0];
-            if (data.presentation.CurrentViewerId != human.PlayerId
-                || data.presentation.Vision == null || !data.presentation.Vision.Any(v => v != null && v.PlayerId == human.PlayerId))
+            var current = data.turn.ValidateHumanTurn(graph.Players);
+            if (data.presentation.CurrentViewerId != current.PlayerId || data.presentation.Vision == null
+                || humans.Any(h => !data.presentation.Vision.Any(v => v != null && v.PlayerId == h.PlayerId)))
                 throw new ArgumentException("The saved human perspective and vision are missing or mismatched.");
-            if (human.MatchLoadout == null || human.BlueprintQuota == null || human.MatchLoadout.Faction != human.Faction)
-                throw new ArgumentException("The saved human loadout and blueprint quota are missing or mismatched.");
-            var quota = human.BlueprintQuota.CaptureState();
-            var expectedBlueprints = new Game.Cards.BlueprintQuota(human.MatchLoadout).CaptureState().unlockedKeys;
-            if (quota.pendingKeys.Count != 0 || !quota.unlockedKeys.OrderBy(k => k, StringComparer.Ordinal)
-                .SequenceEqual(expectedBlueprints.OrderBy(k => k, StringComparer.Ordinal)))
-                throw new ArgumentException("The saved blueprint quota is unsettled or differs from the frozen loadout.");
-            data.turn.Validate(graph.Players.Select(p => p.PlayerId), humans[0].PlayerId);
+            foreach (var human in humans)
+            {
+                if (human.MatchLoadout == null || human.BlueprintQuota == null || human.MatchLoadout.Faction != human.Faction)
+                    throw new ArgumentException("The saved human loadout and blueprint quota are missing or mismatched.");
+                var quota = human.BlueprintQuota.CaptureState();
+                var expectedBlueprints = new Game.Cards.BlueprintQuota(human.MatchLoadout).CaptureState().unlockedKeys;
+                if (quota.pendingKeys.Count != 0 || !quota.unlockedKeys.OrderBy(k => k, StringComparer.Ordinal)
+                    .SequenceEqual(expectedBlueprints.OrderBy(k => k, StringComparer.Ordinal)))
+                    throw new ArgumentException("The saved blueprint quota is unsettled or differs from the frozen loadout.");
+            }
             // Eliminated slots can remain in this round's order. Every living participant
             // must still have a slot, and a finished match cannot claim a settled turn.
             var living = graph.Players.Where(p => !p.IsEliminated).ToArray();

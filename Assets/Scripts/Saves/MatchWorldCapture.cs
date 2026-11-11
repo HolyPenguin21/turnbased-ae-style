@@ -82,7 +82,7 @@ namespace Game.Saves
             };
             if (player.CitadelHexQ.HasValue != player.CitadelHexR.HasValue) throw new InvalidOperationException("Partial citadel coordinate.");
             data.players.Add(saved);
-            var hand = player.IsHuman ? player.Hand : AiHandRegistry.Peek(player);
+            var hand = MatchHands.Peek(player);
             if (!player.IsHuman && player.Hand != null && !ReferenceEquals(player.Hand, hand)) throw new InvalidOperationException("AI has conflicting hand owners.");
             if (hand != null)
             {

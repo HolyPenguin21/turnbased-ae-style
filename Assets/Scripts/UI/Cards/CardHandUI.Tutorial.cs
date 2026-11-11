@@ -26,8 +26,8 @@ namespace Game.UI
             foreach (var id in new[] { TutorialHintId.Upgrade, TutorialHintId.BuildBase, TutorialHintId.BuildFacility })
                 TutorialHintController.Withdraw(id);
             if (!TutorialHintController.HandInteractionReady || !TutorialInputReady) return;
-            var root = FindHumanRoot();
-            var owner = FindHumanPlayer();
+            var root = SeatRoot();
+            var owner = HumanPlayer;
             if (root == null || owner == null) return;
             // These searches only run after committed hand/world/resource changes, not per frame.
             foreach (var view in _cards)
@@ -77,8 +77,8 @@ namespace Game.UI
         {
             if (!TutorialInputReady || _humanHand.RemainingDeckCount == 0 || !_humanHand.HasFreeSlot)
                 return false;
-            var root = FindHumanRoot();
-            var owner = FindHumanPlayer();
+            var root = SeatRoot();
+            var owner = HumanPlayer;
             if (root == null || owner == null || !root.CanSpendActionPoints(drawApCost))
                 return false;
 

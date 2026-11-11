@@ -139,6 +139,8 @@ namespace Game.UI
         // a drag.
         private readonly List<CardUI> _scratchVisible = new List<CardUI>();
         private int _scrollOffset;
+        // The displayed hand: the seated player's own PlayerHandData, or an unowned placeholder
+        // while nobody holds the screen. A placeholder is never attached to a player here.
         private PlayerHandData _humanHand = new PlayerHandData(null, 0);
         private bool _handAwake;
         private bool _handEnabled;
@@ -160,25 +162,14 @@ namespace Game.UI
         // HoverRaycastMoveThreshold from here. -1 means "no raycast fired yet this stretch".
         private Vector2 _lastHoverRaycastScreenPos = new Vector2(-1f, -1f);
         private const float HoverRaycastMoveThreshold = 4f;
-        // Resolved once and cached rather than re-looked-up via GameSession.FindHumanRoot()
-        // every Update() — same fix as ResourceBarUI's own _humanRoot (see its comment); the
-        // human's PlayerRoot never changes once registered. Falls back to re-resolving if still
-        // null (Update can run before setup registers it).
+        // The seated player's PlayerRoot / PlayerSetupData (Game.Players.LocalSeat), rebound on
+        // LocalSeat.Changed by BindSeat — never "the first human" (hotseat: several humans).
         private PlayerRoot _humanRoot;
-        // Cached the same way as _humanRoot above, and for the same reason: the human's
-        // PlayerSetupData is fixed once the match is running, but UpdateDragHoverValidity used
-        // to re-run the FindHumanPlayer() list scan on every hex change during a drag. Lazily
-        // (re)resolved via HumanPlayer since Awake can run before the session registers it.
         private PlayerSetupData _humanPlayer;
-        private PlayerSetupData HumanPlayer
-        {
-            get
-            {
-                if (_humanPlayer == null)
-                    _humanPlayer = FindHumanPlayer();
-                return _humanPlayer;
-            }
-        }
+        private bool _seatBound;
+        // Lazily resolved while unbound (Awake can run before the session's players exist);
+        // once BindSeat ran, exactly the seat it bound (null while the curtain is up).
+        private PlayerSetupData HumanPlayer => _seatBound ? _humanPlayer : LocalSeat.Current;
         // Guards deckCountText's per-frame text set — the deck count only actually changes on a
         // draw, not every frame, so re-formatting and re-assigning the string when nothing
         // changed was pure waste.
@@ -206,23 +197,28 @@ namespace Game.UI
                 armyViewerModal.SetCardHand(this);
 
             _handAwake = true;
-            // Debug-only spectator mode (GameTurnController.debugWatchAiTurns) can run with no
-            // human in the match at all — FindHumanPlayer() returns null. Dealing a starting
-            // deck/hand to nobody there just creates a phantom hand that ShowAiHandDebug has to
-            // fight to keep hidden, so skip dealing entirely rather than falling back to a
-            // faction no one plays.
-            PlayerSetupData human = FindHumanPlayer();
-            if (human != null)
-            {
-                if (human.Hand != null)
-                    BindHumanHand(human.Hand);
+            LocalSeat.Changed -= OnSeatChanged;
+            LocalSeat.Changed += OnSeatChanged;
+            // No seat (AI observer / debug spectator): an unowned placeholder, never dealt.
+            BindSeat(LocalSeat.Current);
+        }
 
-            }
-            else
+        private void OnSeatChanged() => BindSeat(LocalSeat.Current);
+
+        // R2: the one binding of this hand panel to a player — hand model, resources, tactics.
+        // Called on Awake and on every LocalSeat change; the previous player's subscriptions
+        // are dropped, so a stale human's HandChanged/ResourcesChanged can never repaint it.
+        public void BindSeat(PlayerSetupData seat)
+        {
+            _seatBound = true;
+            _humanPlayer = seat;
+            PlayerHandData hand = seat?.Hand;
+            if (hand == null)
             {
-                _humanHand.SetCapacity(maxHandSize);
-                BindHumanHand(_humanHand);
+                hand = new PlayerHandData(null, 0);
+                hand.SetCapacity(maxHandSize);
             }
+            BindHand(hand);
         }
 
         // One empty RectTransform per MaxVisible slot, permanently in place at the position a
@@ -292,10 +288,18 @@ namespace Game.UI
         }
 
         // May be called before Awake by a load coordinator: retain the restored model without
-        // dealing, spending RNG, or rebuilding cards through the ordinary grant boundary.
+        // dealing, spending RNG, or rebuilding cards through the ordinary grant boundary. The
+        // displayed hand becomes the seated player's hand (the seat is its owner).
         public void BindHumanHand(PlayerHandData hand)
         {
             if (hand == null) throw new System.ArgumentNullException(nameof(hand));
+            var seat = HumanPlayer;
+            if (seat != null) seat.Hand = hand;
+            BindHand(hand);
+        }
+
+        private void BindHand(PlayerHandData hand)
+        {
             if (_handAwake)
             {
                 CancelAttachMode();
@@ -306,30 +310,25 @@ namespace Game.UI
             _humanHand.HandChanged -= OnHumanHandChanged;
             _humanHand = hand;
             maxHandSize = hand.Capacity;
-            var human = FindHumanPlayer();
-            _humanPlayer = human;
-            if (human != null) human.Hand = hand;
             if (_humanRoot != null) _humanRoot.ResourcesChanged -= RefreshDrawButtonInteractable;
-            _humanRoot = FindHumanRoot();
+            _humanRoot = SeatRoot();
             if (_handEnabled && _humanRoot != null) _humanRoot.ResourcesChanged += RefreshDrawButtonInteractable;
             if (_handEnabled) BindTacticInventory();
             _humanHand.HandChanged += OnHumanHandChanged;
             if (_handAwake) OnHumanHandChanged();
         }
 
-        private void ObserveHumanHand()
+        // Grants for a human that has no hand model yet (only before match hands exist / in
+        // isolated scenes): the displayed placeholder, and only while it belongs to nobody else.
+        // Never another seated human's hand.
+        public PlayerHandData UnclaimedHandFor(PlayerSetupData owner)
         {
-            // Event/production grants can arrive while the panel is still inactive and Awake
-            // has not run. Preserve both their model state and the existing hidden-view behavior.
-            if (!_handAwake)
-            {
-                var owner = HumanPlayer;
-                if (owner?.Hand != null && !ReferenceEquals(owner.Hand, _humanHand)) BindHumanHand(owner.Hand);
-                else if (owner != null) owner.Hand = _humanHand;
-                _humanHand.SetCapacity(maxHandSize);
-            }
-            _humanHand.HandChanged -= OnHumanHandChanged;
-            _humanHand.HandChanged += OnHumanHandChanged;
+            if (owner == null) return null;
+            if (owner.Hand != null) return owner.Hand;
+            var seat = HumanPlayer;
+            if (seat != null && !ReferenceEquals(seat, owner)) return null;
+            if (seat != null && seat.Hand != null) return null;
+            return _humanHand;
         }
 
         private void OnHumanHandChanged()
@@ -386,8 +385,9 @@ namespace Game.UI
         // reactivation is the first point the coroutine can run at all.
         public void Show()
         {
-            var preparedHand = GameSession.FindHumanPlayer()?.Hand;
-            if (preparedHand != null && !ReferenceEquals(preparedHand, _humanHand)) BindHumanHand(preparedHand);
+            // Hands are created after Awake may have bound a placeholder (BeginGame): rebind.
+            var preparedHand = HumanPlayer?.Hand;
+            if (preparedHand != null && !ReferenceEquals(preparedHand, _humanHand)) BindHand(preparedHand);
             gameObject.SetActive(true);
             if (resourceBar != null)
                 resourceBar.gameObject.SetActive(true);
@@ -415,6 +415,9 @@ namespace Game.UI
             return turnController != null
                 && turnController.CurrentPlayer != null
                 && turnController.CurrentPlayer.IsHuman
+                // Only the acting human's own hand can be played (hotseat: the screen may be lent
+                // to another human for a decision during this turn).
+                && (!LocalSeat.IsManaged || LocalSeat.Is(turnController.CurrentPlayer))
                 && turnController.TurnConfirmed
                 && !_showingTactics && !_tacticFlipping && !_tacticChallengeActive && !turnController.CardDraggingBlocked;
         }
@@ -429,7 +432,7 @@ namespace Game.UI
             _handEnabled = true;
             RefreshHandLayout();
             BindTacticInventory();
-            _humanRoot = FindHumanRoot();
+            _humanRoot = SeatRoot();
             if (_humanRoot != null)
                 _humanRoot.ResourcesChanged += RefreshDrawButtonInteractable;
             if (turnController != null)
@@ -478,6 +481,7 @@ namespace Game.UI
         private void OnDestroy()
         {
             _humanHand.HandChanged -= OnHumanHandChanged;
+            LocalSeat.Changed -= OnSeatChanged;
             if (_debugHand != null)
                 _debugHand.HandChanged -= OnDebugHandChanged;
             _debugHand = null;
@@ -586,18 +590,19 @@ namespace Game.UI
             if (drawButton == null)
                 return;
             if (_humanRoot == null)
-                _humanRoot = FindHumanRoot();
+                _humanRoot = SeatRoot();
             drawButton.interactable = _humanHand.RemainingDeckCount > 0
                 && CanDragCards()
                 && _humanRoot != null
                 && _humanRoot.CanSpendActionPoints(drawApCost);
         }
 
-        // Thin local aliases for GameSession's own versions — kept so this file's many call
-        // sites don't all need touching, now that the lookup itself lives in one shared place.
-        private static PlayerSetupData FindHumanPlayer() => GameSession.FindHumanPlayer();
-
-        private static PlayerRoot FindHumanRoot() => GameSession.FindHumanRoot();
+        // The seated player's root (null while nobody holds the screen).
+        private PlayerRoot SeatRoot()
+        {
+            var seat = HumanPlayer;
+            return seat != null ? PlayerRootRegistry.FindFor(seat) : null;
+        }
 
         // The AiHandData currently backing the debug view, if any — kept only so ShowAiHandDebug/
         // HideAiHandDebug can subscribe/unsubscribe HandChanged on the right instance (same
@@ -713,7 +718,6 @@ namespace Game.UI
         // blocked until enough cards have left the hand.
         public bool AddProducedCardToHand(CardData data)
         {
-            ObserveHumanHand();
             if (data?.Definition == null || !data.ResearchProductionCreated)
                 return false;
             return _humanHand.TryAddCard(data);
@@ -723,30 +727,6 @@ namespace Game.UI
         // AiTurnContext.HandCapacity the same way StartingHandSize/DrawApCost already are, so the
         // AI's Development planner refuses a Research/Production Create into a full AiHandData.
         public int MaxHandSize => maxHandSize;
-
-        // Single entry point for a card entering the human's hand from OUTSIDE the normal draw —
-        // challenge rewards, event rewards (via HexSelectionController.GrantCard), returned
-        // aircraft. Enforces the hand cap; returns false (card lost, hint shown) if the hand is
-        // already full. Equipment cards reach the hand only through here (temporarily also via a
-        // StartingDeck entry for testing — see StartingDeckCatalog).
-        // The card instance is preserved as-is rather than rebuilt from its definition — an
-        // aircraft returning from an airfield/air army
-        // still carries its attached Equipment on the CardData (see AviationActions.
-        // ReturnAircraftToDeck). The Equipment's cost was already paid when it was attached, so
-        // this is a restore, not a fresh attach — nothing is charged here.
-        public bool AddCardToHand(CardData data)
-        {
-            ObserveHumanHand();
-            if (data?.Definition == null) return false;
-            if (data.Definition.cardType == CardType.Tactic)
-                return HumanPlayer?.Tactics.Add(data) == true;
-            if (!_humanHand.HasFreeSlot)
-            {
-                turnController?.ShowSpawnHint($"Hand full ({maxHandSize}). {data.Definition.displayName} was lost.");
-                return false;
-            }
-            return _humanHand.TryAddCard(data);
-        }
 
         // Called by a CardUI every time it moves while dragged — reorders the hand live so the
         // rest of the cards make room for it immediately, instead of waiting for the drop.

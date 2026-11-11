@@ -185,6 +185,11 @@ namespace Game.Combat
         {
             if (participants == null)
                 return null;
+            // Hotseat: the human holding the screen when they take part (a human-vs-human
+            // encounter is presented to that seat), otherwise the first human participant.
+            foreach (ArmyData army in participants)
+                if (army?.Owner != null && army.Owner.IsHuman && Game.Players.LocalSeat.Is(army.Owner))
+                    return army.Owner;
             foreach (ArmyData army in participants)
                 if (army?.Owner != null && army.Owner.IsHuman)
                     return army.Owner;

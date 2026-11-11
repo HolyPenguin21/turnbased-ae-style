@@ -340,7 +340,7 @@ namespace Game.Map
         private void NotifyMoveBlocked(ArmyData army, string message)
         {
             if (army?.Owner != null && army.Owner.IsHuman)
-                turnController?.ShowSpawnHint(message);
+                turnController?.NotifyPlayer(army.Owner, message);
             else
                 AiDebugLog.Write($"[AI] {army?.Owner?.Nickname ?? "Neutral"}: move order for {army?.Name} rejected - {message}");
         }

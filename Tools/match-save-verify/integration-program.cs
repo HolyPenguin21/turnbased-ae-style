@@ -32,7 +32,11 @@ internal static class IntegrationNative
         for(Type type=typeof(T);type!=null && type.Assembly==typeof(GameConfig).Assembly;type=type.BaseType)
             foreach(var field in type.GetFields(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.DeclaredOnly))
             {
-                if(!field.FieldType.IsGenericType || field.FieldType.GetConstructor(Type.EmptyTypes)==null) continue;
+                // Unity runs a MonoBehaviour's field initializers; emulate them for collections and
+                // for readonly game-model fields (e.g. GameTurnController._accountOutcome).
+                bool modelField=field.IsInitOnly && field.FieldType.IsClass && field.FieldType.Assembly==typeof(GameConfig).Assembly
+                    && !typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType);
+                if((!field.FieldType.IsGenericType && !modelField) || field.FieldType.GetConstructor(Type.EmptyTypes)==null) continue;
                 field.SetValue(value,Activator.CreateInstance(field.FieldType));
             }
         if(value is PlayerRoot root) root.RestoreEconomyState(new PlayerEconomyState());
@@ -117,7 +121,7 @@ internal static class IntegrationProgram
         {
             identity=MatchIdentityState.Capture();
             var source=store.Load(3,data=>MatchSaveCodec.Decode(data,config),out string notice);SameIds(identity);
-            Check(notice==null && ReferenceEquals(GameSession.FindHumanPlayer(),human),"read modified current session");
+            Check(notice==null && ReferenceEquals(GameSession.FirstHuman,human),"read modified current session");
             Check(!ReferenceEquals(source.Players.Single(p=>p.IsHuman),human),"decoded player aliases current graph");
             int transitions=0;
             new MatchSaveApplication(directory,config,map,turns,selection,scene=>{Check(scene==SceneNames.Game,"wrong scene");transitions++;}).Load(3);
@@ -128,7 +132,7 @@ internal static class IntegrationProgram
             Invoke(setup,"Awake");Check(!ArmyRegistry.IsRegistered(army),"scene reset retained outgoing graph");
             int starts=0,changes=0;incomingTurns.TurnStarted+=_=>starts++;source.Players.Single(p=>p.IsHuman).Hand.HandChanged+=()=>changes++;
             Check(setup.TryRestorePreparedMatch(),GameSession.SetupError);
-            human=GameSession.FindHumanPlayer();army=ArmyRegistry.AllAt(Home).Single();unit=army.Members.Single();
+            human=GameSession.FirstHuman;army=ArmyRegistry.AllAt(Home).Single();unit=army.Members.Single();
             Check(GameSession.PendingRestore==null && GameSession.MatchId=="full-file-match","restore completion identity");
             Check(incomingTurns.CurrentTurnOrder.Select(p=>p.PlayerId).SequenceEqual(new[]{"ai","eliminated","human"}) && GameSession.Players.Single(p=>p.PlayerId=="eliminated").IsEliminated,"same-round eliminated order slot changed");
             var restoredAi=GameSession.Players.Single(p=>p.PlayerId=="ai");

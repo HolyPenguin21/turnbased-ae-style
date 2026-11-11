@@ -404,8 +404,12 @@ namespace Game.Map
                     HexEventRegistry.MarkSkipped(hex, recipient.Owner);
                     VisionSystem.NotifyContentChanged(hex);
                     if (recipient.Owner.IsHuman)
-                        eventRewardPopup?.ShowMessage(EventChoicePopupUI.ResolvePortrait(recipient), entry.Definition.image,
-                            outcome.FailReason + " Revisit the command post to try again.");
+                    {
+                        string failText = outcome.FailReason + " Revisit the command post to try again.";
+                        if (ShowsPrivatePopupFor(recipient.Owner))
+                            eventRewardPopup?.ShowMessage(EventChoicePopupUI.ResolvePortrait(recipient), entry.Definition.image, failText);
+                        else turnController?.NotifyPlayer(recipient.Owner, failText);
+                    }
                     return;
                 }
                 grantedText.Add("a base on the event hex");
@@ -436,7 +440,11 @@ namespace Game.Map
 
             if (recipient.Owner.IsHuman)
             {
-                eventRewardPopup?.Show(entry, recipient);
+                if (ShowsPrivatePopupFor(recipient.Owner))
+                    eventRewardPopup?.Show(entry, recipient);
+                else
+                    turnController?.NotifyPlayer(recipient.Owner, $"{recipient.Name} received the reward of "
+                        + $"'{entry.Definition.name}': {(grantedText.Count > 0 ? string.Join(", ", grantedText) : "nothing")}.");
             }
             else
             {
@@ -475,7 +483,7 @@ namespace Game.Map
             if (card != null)
             {
                 entry.ResolvedCardRewards.Add((new RewardEntry { type = RewardType.Card, cardKey = card.authoredKey }, card));
-                PlayerHandData hand = recipient.Owner.Hand ?? cardHandUI?.HumanHandModel;
+                PlayerHandData hand = recipient.Owner.Hand ?? cardHandUI?.UnclaimedHandFor(recipient.Owner);
                 if (hand != null)
                     addedToHand = hand.HasFreeSlot && hand.TryAddCard(new CardData(card));
             }
@@ -490,6 +498,11 @@ namespace Game.Map
             HexEventRegistry.MarkSkipped(hex, recipient.Owner);
             eventRewardPopup?.Show(entry, recipient);
         }
+
+        // Hotseat: an owner's private event popup (rewards, reasons) is shown only on that
+        // owner's screen; otherwise it waits as a text report for their turn (NotifyPlayer).
+        private static bool ShowsPrivatePopupFor(PlayerSetupData owner)
+            => !LocalSeat.IsManaged || LocalSeat.Is(owner);
 
         // Public so Game.Aviation.AviationActions can hand a stored/flying aircraft's card back
         // to its owner the same way a hex-event reward does (see ReturnAircraftToDeck) — same
@@ -513,11 +526,22 @@ namespace Game.Map
                 owner.Tactics.Add(card);
                 return;
             }
-            if (cardHandUI == null) return;
             if (owner.IsHuman)
-                cardHandUI.AddCardToHand(card);
-            else
-                AiHandRegistry.GetOrCreate(owner, cardHandUI.StartingDeckCatalog, cardHandUI.StartingHandSize)?.AddCard(card);
+            {
+                // The OWNER's hand, never the hand the UI currently displays (hotseat: another
+                // human may hold the screen). The hand view follows through HandChanged.
+                PlayerHandData hand = owner.Hand ?? cardHandUI?.UnclaimedHandFor(owner);
+                if (hand == null) return;
+                if (!hand.HasFreeSlot)
+                {
+                    turnController?.NotifyPlayer(owner, $"Hand full ({hand.Capacity}). {card.Definition.displayName} was lost.");
+                    return;
+                }
+                hand.TryAddCard(card);
+                return;
+            }
+            if (cardHandUI == null) return;
+            MatchHands.GetOrCreate(owner, cardHandUI.StartingDeckCatalog, cardHandUI.StartingHandSize)?.AddCard(card);
         }
     }
 }

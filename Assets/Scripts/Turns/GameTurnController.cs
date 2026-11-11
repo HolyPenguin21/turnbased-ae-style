@@ -334,15 +334,23 @@ namespace Game.Turns
 
         public event System.Action<Game.Progression.ParticipantResult> ParticipantFinished;
         public event System.Action<Game.Campaign.CompletedMatchResult> MatchFinished;
+        // Non-campaign account reward rule (owner D2): one reward per match, defeat only when
+        // the last living human falls. The campaign keeps its own branch below (one human).
+        private readonly Game.Progression.MatchAccountOutcome _accountOutcome = new Game.Progression.MatchAccountOutcome();
         private void PublishOutcome(PlayerSetupData player, Game.Progression.MatchOutcome outcome)
         {
             if (player == null || !player.IsHuman || !GameSession.RewardsEligible || (debugWatchAiTurns && GameSession.CampaignContext == null)) return;
             ParticipantFinished?.Invoke(new Game.Progression.ParticipantResult(GameSession.MatchId, player, outcome));
         }
+        private void PublishOutcome(Game.Progression.ParticipantResult? result)
+        {
+            if (result.HasValue) PublishOutcome(result.Value.Player, result.Value.Outcome);
+        }
 
         private void OnEnable()
         {
             UIFocusUtility.BlockingChanged += RecomputeBlockedState;
+            PlayerDecisionRouter.Handoff = this;
             if (GetComponent<CollectionRewardUI>() == null)
                 gameObject.AddComponent<CollectionRewardUI>().Configure(this, gameConfig);
             // OnValidate already applies this on every Inspector edit, but that never fires on a
@@ -370,6 +378,7 @@ namespace Game.Turns
         private void OnDisable()
         {
             UIFocusUtility.BlockingChanged -= RecomputeBlockedState;
+            if (ReferenceEquals(PlayerDecisionRouter.Handoff, this)) PlayerDecisionRouter.Handoff = null;
             BuildingRegistry.BuildingDestroyed -= OnBuildingDestroyed;
             if (gameMenu != null) gameMenu.VisibilityChanged -= RecomputeBlockedState;
             if (popupPanel != null) popupPanel.VisibilityChanged -= RecomputeBlockedState;
@@ -412,7 +421,10 @@ namespace Game.Turns
         {
             if (!StrategicTurnEffects.Eliminate(player, hexSelectionController)) return;
             long generation = GameSession.Generation;
-            if (GameSession.CampaignContext == null) PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
+            // A human falling while another human still lives publishes nothing (hotseat): the
+            // reward screen returns to the menu and would end the match for the survivor.
+            if (GameSession.CampaignContext == null)
+                PublishOutcome(_accountOutcome.OnEliminated(GameSession.MatchId, player, GameSession.Players));
             if (!GameSession.IsCurrent(generation)) return;
 
             ShowSpawnHint($"{player.Nickname}'s citadel has fallen - {player.Nickname} is defeated.");
@@ -439,10 +451,14 @@ namespace Game.Turns
             if (GameSession.CampaignContext != null)
             {
                 Game.Campaign.CampaignMatchBridge.RecordFinalResult(out _);
-                if (survivors.Count == 0) PublishOutcome(GameSession.FindHumanPlayer(), Game.Progression.MatchOutcome.Draw);
+                if (survivors.Count == 0) PublishOutcome(GameSession.FirstHuman, Game.Progression.MatchOutcome.Draw);
                 else if (player.IsHuman) PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
             }
-            if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
+            if (GameSession.CampaignContext != null)
+            {
+                if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
+            }
+            else PublishOutcome(_accountOutcome.OnMatchFinished(GameSession.MatchId, survivors));
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw - no citadels remain.");
         }
 
@@ -534,6 +550,7 @@ namespace Game.Turns
             _completedTurns.Clear();
             _matchGreetingsShown.Clear();
             _turnConfirmationInProgress = false;
+            _accountOutcome.Reset();
             Game.Ai.AiMatchStats.BeginMatch(GameSession.Players);
             ConfigureStealthTurnProviders();
             BeginNewTurn();
@@ -545,7 +562,7 @@ namespace Game.Turns
                 cardHand != null ? cardHand.GetComponent<RectTransform>() : null, gameConfig != null ? gameConfig.armyRadioChatter : null, hexSelectionController);
             _aiObserverMatch = GameSession.Players != null
                 && GameSession.Players.Count > 0
-                && GameSession.FindHumanPlayer() == null;
+                && !GameSession.HasHuman;
             HumanVisualMemory.ObserverMatch = _aiObserverMatch;
             _aiObserverPauseRequested = false;
             _aiObserverPauseEngaged = false;
@@ -676,6 +693,13 @@ namespace Game.Turns
             // e.g. a hero that Escaped a Capture Kill Challenge). Without this check that
             // used to wait on a click nobody was ever going to make — the exact same hang,
             // just through a rarer door.
+            // Hotseat: a participating human who is not at this screen takes it for the whole
+            // committed encounter (contact report + battle) and gives it back afterwards.
+            PlayerSetupData returnTo = null;
+            if (encounter.PresentationObserver != null)
+                yield return PlayerDecisionRouter.TakeScreenFor(encounter.PresentationObserver,
+                    $"Battle of {encounter.PresentationObserver.Nickname}", p => returnTo = p);
+            if (_gameOver || !GameSession.IsCurrent(matchGeneration)) yield break;
             bool acknowledged = false;
             bool fastResolve = false;
             bool anyHuman = encounter.PresentationObserver != null;
@@ -697,6 +721,8 @@ namespace Game.Turns
             else
                 closed = true;
             yield return new WaitUntil(() => closed);
+            if (returnTo != null)
+                yield return PlayerDecisionRouter.GiveScreenBack(returnTo);
         }
 
         // 2026-11-09 (project owner's decision, match P4) — at the start of `owner`'s turn, a
@@ -889,9 +915,14 @@ namespace Game.Turns
             if (_gameOver) return;
             if (player.IsEliminated) { BeginPlayerTurn(index + 1); return; }
 
+            if (player.Control == PlayerControl.RemoteHuman)
+                throw new NotSupportedException("A remote player's turn needs the network layer.");
             CurrentPlayer = player;
             StrategicTurnEffects.BeginPlayer(player);
-            if (player.IsHuman || debugWatchAiTurns || _aiObserverMatch)
+            // Hotseat: the next human's fog is applied only AFTER their curtain is confirmed
+            // (risk P3); until then the previous picture stays on screen.
+            bool handoff = player.IsHuman && IsHotseat;
+            if (!handoff && (player.IsHuman || debugWatchAiTurns || _aiObserverMatch))
                 VisionSystem.CurrentViewer = player;
             TurnStateChanged?.Invoke();
 
@@ -900,11 +931,12 @@ namespace Game.Turns
                 Phase=StrategicTurnPhase.AwaitingConfirmation;
                 cardHand?.HideAiHandDebug();
                 resourceBar?.HideRootDebug();
-                if (popupPanel != null)
-                {
-                    long generation = matchGeneration;
-                    popupPanel.ShowForHuman(player, () => { if (GameSession.IsCurrent(generation) && CurrentPlayer == player) OnTurnConfirmed(); });
-                }
+                long generation = matchGeneration;
+                Action confirm = () => { if (GameSession.IsCurrent(generation) && CurrentPlayer == player) OnTurnConfirmed(); };
+                if (handoff)
+                    ShowHandoffCurtain(player, TurnHandoffText(player), confirm);
+                else if (popupPanel != null)
+                    popupPanel.ShowForHuman(player, confirm);
             }
             else
             {
@@ -1063,7 +1095,11 @@ namespace Game.Turns
             Phase=StrategicTurnPhase.EndingPlayer;
             var aviationMessages = StrategicTurnEffects.EndPlayer(CurrentPlayer, hexSelectionController);
             if (aviationMessages.Count > 0)
-                _pendingAviationMessages[CurrentPlayer] = aviationMessages;
+            {
+                // Append: NotifyPlayer may already hold reports for this player.
+                if (_pendingAviationMessages.TryGetValue(CurrentPlayer, out List<string> held)) held.AddRange(aviationMessages);
+                else _pendingAviationMessages[CurrentPlayer] = aviationMessages;
+            }
 
             if (CurrentPlayer != null)
             {
@@ -1165,6 +1201,8 @@ namespace Game.Turns
             // queue once the blocking popup closes.
             if (_gameOver || popupPanel == null || popupPanel.IsShowing || _otherTurnPopupSuspended
                 || (CurrentPlayer != null && CurrentPlayer.IsHuman && !TurnConfirmed)
+                // Hotseat: the current human's reports wait while the screen is lent to another.
+                || (CurrentPlayer != null && CurrentPlayer.IsHuman && LocalSeat.IsManaged && !LocalSeat.Is(CurrentPlayer))
                 || (eventRewardPopup != null && eventRewardPopup.IsShowing)
                 || IsAiObserverPaused || IsCombatPresentationActive || _aviationMessageQueue.Count == 0)
                 return;

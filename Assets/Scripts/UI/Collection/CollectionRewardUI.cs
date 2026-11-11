@@ -71,7 +71,7 @@ namespace Game.UI
                 if (returnToMenu && GameSession.CampaignContext != null)
                 {
                     if (!Game.Campaign.CampaignMatchBridge.RecoverReward(config, out error))
-                    { retryResult = new ParticipantResult(GameSession.MatchId, GameSession.FindHumanPlayer(), MatchOutcome.Draw); Draw(); return; }
+                    { retryResult = new ParticipantResult(GameSession.MatchId, GameSession.FirstHuman, MatchOutcome.Draw); Draw(); return; }
                     Close(); Game.Setup.MatchStateInventory.EndMatch(turns); SceneManager.LoadScene(SceneNames.Campaign); return;
                 }
                 Close(); var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); return;
