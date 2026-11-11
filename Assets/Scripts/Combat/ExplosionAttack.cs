@@ -44,7 +44,8 @@ namespace Game.Combat
             Func<UnitData, float> hitPoints = null, Func<UnitData, int> defenseBonus = null)
         {
             bool expendUnit = IsSingleUseUnit(actor);
-            var pool = targets.Where(t => t != null && (!expendUnit || t != actor)
+            // The launcher (a missile body or the unit that drops the bomb) is never its own target.
+            var pool = targets.Where(t => t != null && t != actor
                 && (hitPoints?.Invoke(t) ?? t.HitPointsCurrent) > 0).Distinct().ToList();
             if (pool.Count == 0) return 0;
             float value = 0;
@@ -180,7 +181,7 @@ namespace Game.Combat
             var pool = CollectTargets(hex, participatingArmies);
             if (launcher.IsAviation) pool.RemoveAll(t => t.Unit != null
                 && !AviationRules.CanTargetFromAir(t.Unit, t.Army));
-            if (IsSingleUseUnit(launcher)) pool.RemoveAll(t => t.Unit == launcher);
+            pool.RemoveAll(t => t.Unit == launcher);
             int count = Math.Min(TargetLimit(launcher.Abilities), pool.Count);
             // Partial Fisher-Yates: every distinct occupant has the same inclusion chance.
             for (int i = 0; i < count; i++)

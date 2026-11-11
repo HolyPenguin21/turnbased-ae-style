@@ -491,7 +491,7 @@ namespace Game.Combat
             float value = 0;
             void Add(BattleUnit target, bool friendly, bool self)
             {
-                if (target.Hp <= 0 || self && actor.SingleUseUnit) return;
+                if (target.Hp <= 0 || self) return;
                 count++;
                 value += (friendly ? -1 : 1) * ExplosionAttack.ExpectedDamageValue(actor.Abilities,
                     Mathf.RoundToInt(target.Defense), target.TypeTags, target.Abilities, target.Hp, target.MaxHp,
@@ -524,9 +524,9 @@ namespace Game.Combat
         {
             var pool = new List<(bool attacking, int index)>();
             for (int i = 0; i < attackers.Count; i++)
-                if (attackers[i].Hp > 0 && !(actor.SingleUseUnit && actorIsAttacker && i == actorIndex)) pool.Add((true, i));
+                if (attackers[i].Hp > 0 && !(actorIsAttacker && i == actorIndex)) pool.Add((true, i));
             for (int i = 0; i < defenders.Count; i++)
-                if (defenders[i].Hp > 0 && !(actor.SingleUseUnit && !actorIsAttacker && i == actorIndex)) pool.Add((false, i));
+                if (defenders[i].Hp > 0 && !(!actorIsAttacker && i == actorIndex)) pool.Add((false, i));
             int count = System.Math.Min(ExplosionAttack.TargetLimit(actor.Abilities), pool.Count);
             // Area hits neither intercept nor create Splash/Counterattack chains.
             actor.Attack = ExplosionAttack.AttackTokens;

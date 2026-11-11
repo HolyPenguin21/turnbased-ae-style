@@ -294,16 +294,17 @@ namespace Game.EditorTests
             EquipmentSystem.ApplyAttachments(actor, gear, null);
             var army = Army(new PlayerSetupData(), actor, Body("ally"), Body("other"));
             var attack = new ExplosionAttack(actor, Hex, new Random(1), army);
-            Assert.That(attack.Targets.Count, Is.EqualTo(3));
+            Assert.That(attack.Targets.Count, Is.EqualTo(2));
+            Assert.That(attack.Targets.Select(t => t.Unit), Has.No.Member(actor), "The bomb never hits its carrier.");
             foreach (var t in attack.Targets)
             {
                 attack.Resolve(t, t.Unit, Roll(10), AbilityMagnitudes.Default);
                 Assert.That(actor.Equipment, Is.SameAs(gear), "All targets use the armed snapshot.");
             }
-            Assert.That(army.Members.Select(u => u.HitPointsCurrent), Is.EquivalentTo(new[] { 40, 10, 10 }));
+            Assert.That(army.Members.Select(u => u.HitPointsCurrent), Is.EquivalentTo(new[] { 50, 10, 10 }));
             attack.Complete(); attack.Complete();
             Assert.That(actor.Equipment, Is.Null);
-            Assert.That(actor.HitPointsCurrent, Is.EqualTo(40));
+            Assert.That(actor.HitPointsCurrent, Is.EqualTo(50));
             Assert.That(actor.HasAbility(UnitAbilities.Explosion10), Is.False);
             Assert.That(gear.equipment.addAbilities, Does.Contain(UnitAbilities.Explosion10));
         }
@@ -439,32 +440,32 @@ namespace Game.EditorTests
             var actor = Body("host", 20);
             var gear = Bomb(); gear.grantedAbilities.Clear();
             EquipmentSystem.ApplyAttachments(actor, gear, null);
-            var army = Army(new PlayerSetupData(), actor);
+            var army = Army(new PlayerSetupData(), actor, Body("ally"));
             for (int i = 0; i < 2; i++)
             {
                 var attack = new ExplosionAttack(actor, Hex, new Random(i), army);
-                ResolveAll(attack); attack.Complete();
+                ResolveAll(attack); Assert.That(attack.ResolvedCount, Is.EqualTo(1)); attack.Complete();
                 Assert.That(actor.Equipment, Is.SameAs(gear));
                 Assert.That(army.Members, Does.Contain(actor));
             }
         }
 
         [Test]
-        public void LaunchedSeriesContinuesAfterSelfDestructionAndRetainsItsModifiers()
+        public void BombCarrierIsNeverATargetAndTheSeriesRetainsItsModifiers()
         {
             var actor = Body("bomber", 1); var gear = Bomb(UnitAbilities.Explosion10);
             gear.equipment.addAbilities.Add(UnitAbilities.CriticalDamage);
             EquipmentSystem.ApplyAttachments(actor, gear, null);
             var own = Army(new PlayerSetupData(), actor, Body("ally", 30), Body("other", 30));
             var attack = new ExplosionAttack(actor, Hex, new Random(2), own);
-            var self = attack.Targets.Single(t => t.Unit == actor);
-            attack.Resolve(self, actor, Roll(2), AbilityMagnitudes.Default);
-            Assert.That(own.Members, Has.No.Member(actor));
-            foreach (var target in attack.Targets.Where(t => t != self))
+            Assert.That(attack.Targets.Select(t => t.Unit), Has.No.Member(actor));
+            foreach (var target in attack.Targets)
                 Assert.That(attack.Resolve(target, target.Unit, Roll(2), AbilityMagnitudes.Default).Damage, Is.EqualTo(4));
-            Assert.That(attack.ResolvedCount, Is.EqualTo(3));
+            Assert.That(attack.ResolvedCount, Is.EqualTo(2));
             attack.Complete();
             Assert.That(actor.Equipment, Is.Null);
+            Assert.That(own.Members, Does.Contain(actor));
+            Assert.That(actor.HitPointsCurrent, Is.EqualTo(1));
         }
 
         [Test]
@@ -475,9 +476,14 @@ namespace Game.EditorTests
             var empty = new ExplosionAttack(actor, new HexCoord(8, 8), new Random(1));
             empty.Complete();
             Assert.That(actor.Equipment, Is.SameAs(gear));
+            var alone = new ExplosionAttack(actor, Hex, new Random(1), army);
+            Assert.That(alone.Targets, Is.Empty, "A lone bomber has nothing to hit but itself.");
+            alone.Complete();
+            Assert.That(actor.Equipment, Is.SameAs(gear));
+            var ally = Body("ally"); ally.Owner = army.Owner; army.Members.Add(ally);
             var attack = new ExplosionAttack(actor, Hex, new Random(1), army);
-            attack.Resolve(attack.Targets[0], actor, Roll(0), AbilityMagnitudes.Default);
-            Assert.Throws<InvalidOperationException>(() => attack.Resolve(attack.Targets[0], actor, Roll(0), AbilityMagnitudes.Default));
+            attack.Resolve(attack.Targets[0], ally, Roll(0), AbilityMagnitudes.Default);
+            Assert.Throws<InvalidOperationException>(() => attack.Resolve(attack.Targets[0], ally, Roll(0), AbilityMagnitudes.Default));
             attack.Complete(); Assert.That(actor.Equipment, Is.Null);
         }
 
@@ -505,7 +511,8 @@ namespace Game.EditorTests
                 Assert.That(result.SecondaryHits, Is.Empty);
             }
             Assert.That(state.TurnOrder, Is.EqualTo(new[] { actor }));
-            Assert.That(actor.HitPointsCurrent, Is.EqualTo(49));
+            Assert.That(attack.Targets.Select(t => t.Unit), Has.No.Member(actor));
+            Assert.That(actor.HitPointsCurrent, Is.EqualTo(50), "The bomber is not hit by its own blast.");
         }
 
         [Test]
@@ -513,10 +520,13 @@ namespace Game.EditorTests
         {
             var actor = Body("bomber", 50, UnitAbilities.Explosion10);
             var own = new PlayerSetupData(); var enemy = new PlayerSetupData();
-            Army(own, actor); var victim = Body("enemy", 10); victim.Owner = enemy;
+            var friend = Body("ally", 10);
+            Army(own, actor, friend); var victim = Body("enemy", 10); victim.Owner = enemy;
             float enemies = ExplosionAttack.ExpectedNetValue(actor, new[] { victim });
-            float allies = ExplosionAttack.ExpectedNetValue(actor, new[] { actor, victim });
+            float allies = ExplosionAttack.ExpectedNetValue(actor, new[] { friend, victim });
             Assert.That(allies, Is.LessThan(enemies));
+            Assert.That(ExplosionAttack.ExpectedNetValue(actor, new[] { actor, victim }),
+                Is.EqualTo(enemies).Within(0.00001f), "The bomb carrier is not part of its own blast pool.");
             int id = new UnitData().RuntimeId;
             ExplosionAttack.ExpectedNetValue(actor, new[] { victim });
             Assert.That(new UnitData().RuntimeId, Is.EqualTo(id + 1));
@@ -684,7 +694,7 @@ namespace Game.EditorTests
             var actor = Body("bomber", 50, UnitAbilities.Explosion10);
             var own = Army(new PlayerSetupData(), actor);
             var attack = new ExplosionAttack(actor, Hex, new Random(3), own);
-            Assert.That(attack.Targets.Count, Is.EqualTo(3));
+            Assert.That(attack.Targets.Count, Is.EqualTo(2));
             ResolveAll(attack, 1);
             Assert.That(BuildingRegistry.FindAt(Hex), Is.SameAs(building));
             attack.Complete();
