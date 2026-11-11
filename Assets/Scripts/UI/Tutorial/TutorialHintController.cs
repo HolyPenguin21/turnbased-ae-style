@@ -90,7 +90,7 @@ namespace Game.UI
         }
 
         private bool HumanTurnReady => turn != null && turn.CurrentPlayer != null
-            && turn.CurrentPlayer == GameSession.FindHumanPlayer() && turn.TurnConfirmed;
+            && Game.Players.LocalSeat.Is(turn.CurrentPlayer) && turn.TurnConfirmed;
         private bool MapInputReady => HumanTurnReady && !turn.InputBlocked;
 
         internal static void Invalidate() { if (instance != null) instance.dirty = true; }
@@ -98,15 +98,15 @@ namespace Game.UI
         private void OnBlockedChanged(bool blocked) => MarkDirty();
         private void OnContentChanged(PlayerSetupData owner, HexCoord hex)
         {
-            if (owner == GameSession.FindHumanPlayer()) MarkDirty();
+            if (Game.Players.LocalSeat.Is(owner)) MarkDirty();
         }
         private void OnVisibilityChanged(PlayerSetupData owner)
         {
-            if (owner == GameSession.FindHumanPlayer()) MarkDirty();
+            if (Game.Players.LocalSeat.Is(owner)) MarkDirty();
         }
         private void BindRoot()
         {
-            var root = GameSession.FindHumanRoot();
+            var root = GameSession.SeatRoot();
             if (humanRoot == root) return;
             if (humanRoot != null) humanRoot.ResourcesChanged -= MarkDirty;
             humanRoot = root;
@@ -122,7 +122,7 @@ namespace Game.UI
         private void OnUnitDeployed(ArmyData army, UnitData unit)
         {
             MarkDirty();
-            if (unit == null || !unit.IsAviation || army?.Owner != GameSession.FindHumanPlayer()
+            if (unit == null || !unit.IsAviation || !Game.Players.LocalSeat.Is(army?.Owner)
                 || !TutorialHintProgress.Enabled || TutorialHintProgress.HasSeen(TutorialHintId.Aircraft)) return;
             aircraftPending = true;
             Offer(TutorialHintId.Aircraft, hand.TutorialAircraftAnchor,

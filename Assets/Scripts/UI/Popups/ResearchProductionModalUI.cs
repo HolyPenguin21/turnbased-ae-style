@@ -359,7 +359,7 @@ namespace Game.UI
                 createButton.interactable = _selected != null && !_busy;
             TutorialHintController.Offer(TutorialHintId.AttemptCost, createButton?.transform as RectTransform,
                 () => this != null && IsShowing && !_busy && _selected != null
-                    && _player != null && _player == GameSession.FindHumanPlayer()
+                    && Game.Players.LocalSeat.Is(_player)
                     && TutorialHintController.HumanTurnIsReady
                     && ResearchProductionSystem.CanAffordCard(PlayerRootRegistry.FindFor(_player), _selected));
         }

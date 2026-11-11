@@ -45,7 +45,11 @@ namespace Game.UI
             finally { FinalizeResearchProduction(false); }
         }
 
-        private PlayerSetupData HumanParticipant() => IsHumanSide(_defender) ? _defender?.Owner
+        // Hotseat human-vs-human: the seated participant's hand between turns (the acting
+        // side's hand is bound while it decides, see BindTacticHand); otherwise the human side.
+        private PlayerSetupData HumanParticipant() =>
+            IsHumanSide(_attacker) && IsHumanSide(_defender) && Game.Players.LocalSeat.Is(_attacker?.Owner) ? _attacker.Owner
+            : IsHumanSide(_defender) ? _defender?.Owner
             : IsHumanSide(_attacker) ? _attacker?.Owner : null;
 
         private void PrepareTacticPresentation(PlayerSetupData owner)

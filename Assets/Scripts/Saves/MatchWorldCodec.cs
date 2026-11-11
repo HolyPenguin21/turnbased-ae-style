@@ -80,7 +80,7 @@ namespace Game.Saves
                 }
                 if (x.hasEconomy) { ValidateEconomy(x.economy); economies.Add(p, CopyEconomy(x.economy)); }
             }
-            if (humans != 1 || active.Count < 2) throw Invalid("A local match requires one human and at least two players.");
+            if (humans < 1 || active.Count < 2) throw Invalid("A local match requires a human and at least two players.");
             Players = active.AsReadOnly();
             foreach (var x in data.cards)
             {

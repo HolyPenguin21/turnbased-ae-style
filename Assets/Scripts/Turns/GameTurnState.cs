@@ -29,6 +29,24 @@ namespace Game.Turns
         public string[] GreetingsShown;
         public PlayerTurnMessages[] PendingMessages;
 
+        // The player whose settled turn this is (null when the index is out of range).
+        public string CurrentPlayerId => PlayerOrder != null && CurrentPlayerIndex >= 0
+            && CurrentPlayerIndex < PlayerOrder.Length ? PlayerOrder[CurrentPlayerIndex] : null;
+
+        // Hotseat: the settled turn may belong to ANY living human, not one fixed player.
+        // Returns that human after the full structural validation.
+        public Game.Players.PlayerSetupData ValidateHumanTurn(IEnumerable<Game.Players.PlayerSetupData> players)
+        {
+            var list = players?.ToArray() ?? throw new ArgumentNullException(nameof(players));
+            if (list.Any(p => p == null)) throw new ArgumentException("Invalid match player identities.");
+            string currentId = CurrentPlayerId;
+            var current = currentId == null ? null : list.FirstOrDefault(p => p.PlayerId == currentId);
+            if (current == null || !current.IsHuman || current.IsEliminated)
+                throw new ArgumentException("Saved turn is not a settled human turn.");
+            Validate(list.Select(p => p.PlayerId), current.PlayerId);
+            return current;
+        }
+
         public void Validate(IEnumerable<string> playerIds, string humanPlayerId)
         {
             var ids = playerIds?.ToArray() ?? throw new ArgumentNullException(nameof(playerIds));

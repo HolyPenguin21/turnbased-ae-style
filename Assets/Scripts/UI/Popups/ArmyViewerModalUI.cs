@@ -161,7 +161,7 @@ namespace Game.UI
 
         private bool TutorialArmyReady => IsShowing && !IsReadOnly && !_hideArmySwitcher
             && !IsRenamePopupShowing && _draggingCard == null
-            && _currentArmy?.Owner == GameSession.FindHumanPlayer()
+            && Game.Players.LocalSeat.Is(_currentArmy?.Owner)
             && TutorialHintController.HandInteractionReady;
 
         internal void RefreshContextTutorials()

@@ -200,6 +200,20 @@ namespace Game.Setup
                 return;
             }
 
+            // Hotseat: every human places their own citadel after taking the screen.
+            if (turnController != null && turnController.IsHotseat && !LocalSeat.Is(player))
+            {
+                turnController.ShowSetupHandoff(player, () =>
+                {
+                    if (this != null && _currentPlayerIndex == index) BeginHumanPlacement(player);
+                });
+                return;
+            }
+            BeginHumanPlacement(player);
+        }
+
+        private void BeginHumanPlacement(PlayerSetupData player)
+        {
             BuildValidHexes(_currentCandidate);
             if (_regionHighlights.TryGetValue(player, out GameObject region) && region != null)
                 region.SetActive(true);
@@ -676,7 +690,9 @@ namespace Game.Setup
             // eventually reaches a human. GameTurnController's own turn loop still owns
             // CurrentViewer from here on (see its BeginPlayerTurn) — this is only the interim
             // value for the window before that loop's first human turn actually begins.
-            PlayerSetupData viewer = GameSession.FindHumanPlayer();
+            // The human holding the screen (hotseat: the last one who placed; one human: that
+            // human). Each later human turn switches it behind that human's curtain.
+            PlayerSetupData viewer = LocalSeat.Current ?? GameSession.FirstHuman;
             if (viewer != null)
             {
                 VisionSystem.CurrentViewer = viewer;

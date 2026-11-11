@@ -492,7 +492,10 @@ namespace Game.Map
             // needing a second check here.
             if (turnController.IsAiObserverInspectionMode)
                 return !turnController.InputBlocked;
+            // Hotseat: only the acting human at their own screen (never while the screen is lent
+            // to another human for a decision).
             return turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman
+                && (!LocalSeat.IsManaged || LocalSeat.Is(turnController.CurrentPlayer))
                 && turnController.TurnConfirmed && !turnController.InputBlocked;
         }
 
@@ -948,7 +951,7 @@ namespace Game.Map
 
         private bool CanOfferFacilityTutorial(HexCoord hex, ResearchProductionMode mode)
         {
-            var human = GameSession.FindHumanPlayer();
+            var human = LocalSeat.Current;
             var building = BuildingRegistry.FindAt(hex);
             return human != null && building != null && building.Owner == human
                 && building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))

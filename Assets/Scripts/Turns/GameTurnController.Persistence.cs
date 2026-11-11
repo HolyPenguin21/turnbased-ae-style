@@ -56,9 +56,8 @@ namespace Game.Turns
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             var players = GameSession.Players;
-            var human = GameSession.FindHumanPlayer();
-            state.Validate(players.Select(p => p.PlayerId), human?.PlayerId);
-            if (human.IsEliminated) throw new ArgumentException("Cannot resume an eliminated human player.");
+            // The settled turn is whichever living human's turn was saved (hotseat: any of them).
+            var human = state.ValidateHumanTurn(players);
             var byId = players.ToDictionary(p => p.PlayerId, StringComparer.Ordinal);
             if(exiting)throw new InvalidOperationException("Cannot resume an outgoing scene controller.");
             matchStarted = true;Phase=StrategicTurnPhase.Ready; matchGeneration = GameSession.Generation;
@@ -83,6 +82,7 @@ namespace Game.Turns
             _turnConfirmedFrame = Time.frameCount;
             ConfigureStealthTurnProviders();
             VisionSystem.CurrentViewer = human;
+            _accountOutcome.Reset();
             // Round/AP/income/movement/AA are already restored by their owners. Do not call
             // BeginGame, BeginNewTurn, BeginPlayerTurn or CompleteTurnConfirmation here.
             InitializeMatchPresentation();
@@ -90,6 +90,9 @@ namespace Game.Turns
             resourceBar?.HideRootDebug();
             RecomputeBlockedState();
             TurnStateChanged?.Invoke();
+            // Hotseat: the loaded human takes the screen through the curtain (no BeginPlayerTurn —
+            // that would refill movement/AA). One human: seated implicitly, nothing shown.
+            ResumeSeatAfterLoad(human);
         }
     }
 }

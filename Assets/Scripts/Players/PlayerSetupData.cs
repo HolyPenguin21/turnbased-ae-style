@@ -8,7 +8,7 @@ namespace Game.Players
         public PlayerSetupData CopySetupDraft() => new PlayerSetupData
         {
             Nickname = Nickname, ColorIndex = ColorIndex, Faction = Faction,
-            IsHuman = IsHuman, SelectedDeckId = SelectedDeckId, AiDeckName = AiDeckName,
+            Control = Control, SelectedDeckId = SelectedDeckId, AiDeckName = AiDeckName,
         };
 
         // Stable match-local key, assigned by setup and preserved by a future save envelope.
@@ -18,7 +18,16 @@ namespace Game.Players
         public string Nickname;
         public int ColorIndex;
         public Faction Faction;
-        public bool IsHuman;
+        // Who drives this player. The single source of truth; IsHuman is derived from it.
+        public PlayerControl Control;
+        // "Controlled by a person" (local or remote) — game rules read this, never LocalSeat.
+        // Setter kept so setup/tests can still write `IsHuman = true` (= LocalHuman).
+        public bool IsHuman
+        {
+            get => Control != PlayerControl.Ai;
+            set => Control = value ? PlayerControl.LocalHuman : PlayerControl.Ai;
+        }
+        public bool IsLocalHuman => Control == PlayerControl.LocalHuman;
         // Collection deck id. Human: the deck played. AI: set only by a manual pick on the setup
         // row; the AI then plays that deck (MatchLoadout + AiBlueprints) instead of AiDeckName.
         public string SelectedDeckId;

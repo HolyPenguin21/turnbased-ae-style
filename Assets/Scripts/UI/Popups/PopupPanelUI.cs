@@ -19,6 +19,11 @@ namespace Game.UI
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text infoText;
         [SerializeField] private Button confirmButton;
+        // Hotseat handoff curtain: a full-screen OPAQUE image placed by hand in the scene as a
+        // sibling right before panelRoot (same Canvas), inactive by default. While a handoff is
+        // shown it hides the map, hand, resources and every panel. Optional: without it a
+        // handoff behaves like the ordinary small popup (the map stays visible behind it).
+        [SerializeField] private GameObject handoffBackdrop;
 
         // Message area while the Confirm button is hidden ("Current turn: X"), as anchors in the
         // panel's normalized space; the text stretches to them with zero offsets.
@@ -35,6 +40,9 @@ namespace Game.UI
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
         private bool _isOtherTurn;
         public bool IsOtherTurnShowing => IsShowing && _isOtherTurn;
+        private bool _isHandoff;
+        public bool IsHandoffShowing => IsShowing && _isHandoff;
+        public bool HasHandoffBackdrop => handoffBackdrop != null;
 
         // Lets GameTurnController react to this popup opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
@@ -55,6 +63,7 @@ namespace Game.UI
         // GameTurnController.OnOffscreenBattleReported), shown under the turn line.
         public void ShowForOther(PlayerSetupData player, string activity = null)
         {
+            ClearHandoff();
             decision?.Cancel();
             _isOtherTurn = true;
             SetButton(false, null);
@@ -67,6 +76,7 @@ namespace Game.UI
         // (see GameTurnController.OnTurnConfirmed), not done automatically here.
         public void ShowForHuman(PlayerSetupData player, Action onConfirm)
         {
+            ClearHandoff();
             _isOtherTurn = false;
             decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
             SetButton(true, () => {if(request.TryComplete())onConfirm?.Invoke();});
@@ -74,19 +84,49 @@ namespace Game.UI
             if (player != null && player.IsHuman) HumanTurnShown?.Invoke();
         }
 
+        // Hotseat curtain ("Turn of B", "Decision for B", "Return to A"): the opaque backdrop
+        // covers the whole screen until the named player confirms. onConfirm decides when to
+        // hide (the caller first switches the viewer/seat behind the curtain).
+        public void ShowHandoff(string message, Action onConfirm)
+        {
+            _isOtherTurn = false;
+            decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
+            SetButton(true, () => {if(request.TryComplete())onConfirm?.Invoke();});
+            _isHandoff = true;
+            SetBackdrop(true);
+            Display(message);
+        }
+
+        private void SetBackdrop(bool visible)
+        {
+            if (handoffBackdrop == null) return;
+            if (handoffBackdrop.activeSelf != visible) handoffBackdrop.SetActive(visible);
+            // Draw order on the shared Canvas: backdrop right under the popup, over everything else.
+            if (visible && panelRoot != null && handoffBackdrop.transform.parent == panelRoot.transform.parent)
+                handoffBackdrop.transform.SetAsLastSibling();
+        }
+
         // A one-off blocking hint — dismissing it just closes it, no external callback.
         public void ShowHint(string message)
         {
+            ClearHandoff();
             _isOtherTurn = false;
             decision?.Cancel();var request=decision=new Game.Core.MatchDecision();
             SetButton(true, () => {if(request.TryComplete())Hide();});
             Display(message);
         }
 
+        private void ClearHandoff()
+        {
+            _isHandoff = false;
+            SetBackdrop(false);
+        }
+
         public void Hide()
         {
             decision?.Cancel();
             _isOtherTurn = false;
+            ClearHandoff();
             if (panelRoot != null)
                 panelRoot.SetActive(false);
             VisibilityChanged?.Invoke();

@@ -27,8 +27,7 @@ namespace Game.Core
             if (players == null || players.Count == 0 || players.Any(p => p == null || p.IsNeutral))
             { error = "Configure at least one non-neutral player."; return false; }
             players = players.Select(p => p.CopySetupDraft()).ToList();
-            if (players.FindAll(p => p.IsHuman).Count > 1)
-            { error = "Only one human player is supported. Set other players to AI."; return false; }
+            // Several humans = local hotseat. The campaign bridge always builds exactly one human.
             // An AI player plays a collection deck only when one was chosen on its setup row
             // (SelectedDeckId); Random and campaign enemies always resolve to authored AI decks.
             if (!players.Exists(p => p.IsHuman || !string.IsNullOrEmpty(p.SelectedDeckId)))
@@ -50,7 +49,9 @@ namespace Game.Core
                 var deck = player.IsHuman && string.IsNullOrEmpty(player.SelectedDeckId) ? collection.DefaultDeck(player.Faction)
                     : collection.GetDeck(player.SelectedDeckId, player.Faction);
                 if (deck == null) { error = "Select a saved deck for " + player.Nickname + "."; return false; }
-                if (player.IsHuman) selectedHumanDeck = deck;
+                // Hotseat: the collection remembers the deck of the first human in setup order,
+                // exactly what a single-player start remembers.
+                if (player.IsHuman && selectedHumanDeck == null) selectedHumanDeck = deck;
                 try { snapshots[player] = new Game.Cards.MatchLoadout(deck, collection.Rules, collection.Owned); }
                 catch (System.Exception ex)
                 {
@@ -122,6 +123,7 @@ namespace Game.Core
             initializedScene = null;
             RestoreNotice = null;
             Players = new List<PlayerSetupData>();
+            LocalSeat.Reset();
             ClearMapConditions();
             MatchId = null;
             RewardsEligible = false;
@@ -152,18 +154,20 @@ namespace Game.Core
 
         public static Biome ResolveBiome() => SelectedBiome ?? Biome.Arid;
 
-        // The one local human player, if any — every AI/Neutral slot is never IsHuman. Was
-        // reimplemented independently as `GameSession.Players?.Find(p => p != null &&
-        // p.IsHuman)` in several unrelated files; centralized here since they're all reading the
-        // exact same list, not just coincidentally-similar code.
-        public static PlayerSetupData FindHumanPlayer() => Players?.Find(p => p != null && p.IsHuman);
+        // Every human (local or remote) in the match, in setup order. "Any human in the match"
+        // questions use these; "whose screen is this" questions use Game.Players.LocalSeat.
+        public static IEnumerable<PlayerSetupData> HumanPlayers =>
+            Players?.Where(p => p != null && p.IsHuman) ?? Enumerable.Empty<PlayerSetupData>();
+        public static bool HasHuman => Players?.Exists(p => p != null && p.IsHuman) == true;
+        // First human in setup order — only for one-human contexts (campaign: exactly one human).
+        public static PlayerSetupData FirstHuman => Players?.Find(p => p != null && p.IsHuman);
 
-        // The human's PlayerRoot (action points/resources) — null if there's no human player yet
-        // (e.g. before setup finishes) or no PlayerRoot registered for them yet.
-        public static PlayerRoot FindHumanRoot()
+        // The seated player's PlayerRoot (action points/resources) — null when nobody holds the
+        // screen (curtain, AI observer, before setup) or no root is registered yet.
+        public static PlayerRoot SeatRoot()
         {
-            PlayerSetupData human = FindHumanPlayer();
-            return human != null ? PlayerRootRegistry.FindFor(human) : null;
+            PlayerSetupData seat = LocalSeat.Current;
+            return seat != null ? PlayerRootRegistry.FindFor(seat) : null;
         }
     }
 }

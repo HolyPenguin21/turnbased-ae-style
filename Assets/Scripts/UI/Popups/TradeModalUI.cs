@@ -54,7 +54,7 @@ namespace Game.UI
             if (IsShowing && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) Hide();
             if (Time.unscaledTime < nextAccessCheck) return;
             nextAccessCheck = Time.unscaledTime + 0.2f;
-            var human = GameSession.FindHumanPlayer();
+            var human = Game.Players.LocalSeat.Current;
             bool access = TradeActions.HasAccess(human);
             tradeButton.gameObject.SetActive(access);
             tradeButton.interactable = access && turnController != null && turnController.CurrentPlayer == human
@@ -66,7 +66,7 @@ namespace Game.UI
         {
             if (IsShowing) return;
             generation = GameSession.Generation;
-            Bind(PlayerRootRegistry.FindFor(GameSession.FindHumanPlayer()));
+            Bind(PlayerRootRegistry.FindFor(Game.Players.LocalSeat.Current));
             if (!CanTrade || turnController.InputBlocked) { Bind(null); return; }
             if (settingsGeneration != generation) { give = receive = null; settingsGeneration = generation; }
             notice = null;

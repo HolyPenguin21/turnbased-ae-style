@@ -80,7 +80,8 @@ namespace Game.EditorTests
             var players=new List<PlayerSetupData>{new PlayerSetupData {PlayerId="live"}};
             var campaign=new CampaignMatchContext {MatchId="live-match"};
             GameSession.Players=players;GameSession.SetCampaignContext(campaign);GameSession.SelectedMapSize=MapSize.Small;
-            Assert.That(GameSession.TryPrepareMatch(new List<PlayerSetupData>{new PlayerSetupData{IsHuman=true},new PlayerSetupData{IsHuman=true}},null,out _),Is.False);
+            // Several humans are a valid hotseat launch now; a neutral-only roster is still rejected.
+            Assert.That(GameSession.TryPrepareMatch(new List<PlayerSetupData>{new PlayerSetupData{IsNeutral=true}},null,out _),Is.False);
             Assert.That(GameSession.MatchId,Is.EqualTo("live-match"));Assert.That(GameSession.CampaignContext,Is.SameAs(campaign));
             Assert.That(GameSession.Players,Is.SameAs(players));Assert.That(GameSession.SelectedMapSize,Is.EqualTo(MapSize.Small));
         }

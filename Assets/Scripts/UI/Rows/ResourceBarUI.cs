@@ -34,18 +34,29 @@ namespace Game.UI
         // and ResourcesChanged is subscribed to; SetDisplayedRoot is the only place that changes.
         private PlayerRoot _displayedRoot;
 
+        // R3: the debug override (acting AI's root) wins; otherwise the seat's root.
+        private PlayerRoot _debugRoot;
+
         private void OnEnable()
         {
-            _humanRoot = GameSession.FindHumanRoot();
-            SetDisplayedRoot(_humanRoot);
+            Game.Players.LocalSeat.Changed += RebindSeat;
+            RebindSeat();
             if (turnController == null)
                 return;
             turnController.TurnStarted += OnTurnStarted;
             OnTurnStarted(turnController.TurnNumber);
         }
 
+        // Hotseat: the bar follows whoever holds the screen (blank while nobody does).
+        private void RebindSeat()
+        {
+            _humanRoot = GameSession.SeatRoot();
+            SetDisplayedRoot(_debugRoot != null ? _debugRoot : _humanRoot);
+        }
+
         private void OnDisable()
         {
+            Game.Players.LocalSeat.Changed -= RebindSeat;
             if (_displayedRoot != null)
                 _displayedRoot.ResourcesChanged -= RefreshResourceText;
             _displayedRoot = null;
@@ -59,11 +70,13 @@ namespace Game.UI
         // normal.
         public void ShowRootDebug(PlayerRoot root)
         {
+            _debugRoot = root;
             SetDisplayedRoot(root != null ? root : _humanRoot);
         }
 
         public void HideRootDebug()
         {
+            _debugRoot = null;
             SetDisplayedRoot(_humanRoot);
         }
 
@@ -92,7 +105,13 @@ namespace Game.UI
         private void RefreshResourceText()
         {
             if (_displayedRoot == null)
+            {
+                // Nobody's resources are on screen (curtain/no seat): never leave the previous
+                // player's numbers behind.
+                foreach (var text in new[] { apText, humanText, energyText, materialsText, techText })
+                    if (text != null) text.text = string.Empty;
                 return;
+            }
 
             if (apText != null)
                 apText.text = _displayedRoot.ActionPoints.ToString();

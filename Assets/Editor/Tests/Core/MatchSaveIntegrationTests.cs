@@ -334,9 +334,9 @@ namespace Game.EditorTests
             PlayerRootRegistry.FindFor(outgoingHuman).AddResource(ResourceType.Tech, 99);
             var first = ReadSlot();
             Assert.That(first.Players.Single(p => p.IsHuman), Is.Not.SameAs(outgoingHuman));
-            Assert.That(GameSession.FindHumanPlayer(), Is.SameAs(outgoingHuman), "Read/validation cannot replace the active session.");
+            Assert.That(GameSession.FirstHuman, Is.SameAs(outgoingHuman), "Read/validation cannot replace the active session.");
             LoadScene(first, out var turns, out var selection);
-            var firstHuman = GameSession.FindHumanPlayer();
+            var firstHuman = GameSession.FirstHuman;
             var firstArmy = ArmyRegistry.AllAt(Home).Single(a => a.Id == armyId);
             var firstHidden = ArmyRegistry.AllAt(Hidden).Single(a => a.Id == hiddenId);
             AssertRestored(turns, selection, destroyedBuilding, armyId, hiddenId, unitId, cardId, savedHand);
@@ -358,7 +358,7 @@ namespace Game.EditorTests
             var second = ReadSlot();
             LoadScene(second, out var secondTurns, out var secondSelection);
             AssertRestored(secondTurns, secondSelection, destroyedBuilding, armyId, hiddenId, unitId, cardId, savedHand);
-            Assert.That(GameSession.FindHumanPlayer(), Is.Not.SameAs(firstHuman));
+            Assert.That(GameSession.FirstHuman, Is.Not.SameAs(firstHuman));
             Assert.That(ArmyRegistry.AllAt(Home).Single(a => a.Id == armyId), Is.Not.SameAs(firstArmy));
             Assert.That(File.ReadAllBytes(SlotPath(0)), Is.EqualTo(bytes), "Loads and live mutations cannot rewrite the snapshot.");
             Assert.That(new ArmyData().Id, Is.GreaterThan(second.Identity.ArmyHighWaterMark));
@@ -368,8 +368,8 @@ namespace Game.EditorTests
             var reloadedCollection = new CollectionService(collection.Rules, new CollectionProfileStore(profileDirectory), persisted);
             Assert.That(reloadedCollection.TryGrantRandomCollectionCard(GameSession.MatchId, "0:0", out var replay, out error), Is.True, error);
             Assert.That(replay, Is.SameAs(firstReward));
-            GameSession.FindHumanPlayer().Hand.AddCard(new CardData(replay));
-            Assert.That(GameSession.FindHumanPlayer().Hand.Hand.Count, Is.EqualTo(2), "Each tactical timeline can receive its original event card once.");
+            GameSession.FirstHuman.Hand.AddCard(new CardData(replay));
+            Assert.That(GameSession.FirstHuman.Hand.Hand.Count, Is.EqualTo(2), "Each tactical timeline can receive its original event card once.");
             Assert.That(reloadedCollection.Owned("restore.card"), Is.EqualTo(1));
             Assert.That(reloadedCollection.Snapshot.eventRewards.Count, Is.EqualTo(1));
             Assert.That(reloadedCollection.GetDeck("profile-deck").name, Is.EqualTo("Edited after saving"));
@@ -379,7 +379,7 @@ namespace Game.EditorTests
         private void AssertRestored(GameTurnController turns, HexSelectionController selection, bool destroyedBuilding,
             int armyId, int hiddenId, int unitId, int cardId, HandState hand)
         {
-            var human = GameSession.FindHumanPlayer();
+            var human = GameSession.FirstHuman;
             var ai = GameSession.Players.Single(p => !p.IsHuman);
             var root = PlayerRootRegistry.FindFor(human);
             var army = ArmyRegistry.AllAt(Home).Single(a => a.Id == armyId);
@@ -509,7 +509,7 @@ namespace Game.EditorTests
             var application=new MatchSaveApplication(Path.Combine(profileDirectory,"matches"),config,outgoingMap,outgoingTurns,outgoingSelection,_=>navigations++);
             Assert.That(()=>application.Load(0),Throws.Exception);Assert.That(navigations,Is.Zero);
             Assert.That(outgoingTurns.CanSaveMatch(out _),Is.True);
-            Assert.That(GameSession.Players, Is.SameAs(players)); Assert.That(GameSession.FindHumanPlayer().Hand, Is.SameAs(hand));
+            Assert.That(GameSession.Players, Is.SameAs(players)); Assert.That(GameSession.FirstHuman.Hand, Is.SameAs(hand));
             Assert.That(GameSession.MatchId, Is.EqualTo("native-file-match")); Assert.That(GameSession.PendingRestore, Is.Null);
             Assert.That(ArmyRegistry.AllAt(Home).Single(), Is.SameAs(outgoingArmy));
             Assert.That(ArmyRegistry.AllAt(Hidden).Single(), Is.SameAs(outgoingHiddenArmy));
@@ -566,7 +566,7 @@ namespace Game.EditorTests
             var recovered = store.Load(0, data => MatchSaveCodec.Decode(data, config), out string notice);
             Assert.That(recovered.MatchId, Is.EqualTo("native-file-match")); Assert.That(notice, Does.Contain("backup"));
             AssertCounters(before);
-            Assert.That(GameSession.FindHumanPlayer(), Is.SameAs(outgoingHuman));
+            Assert.That(GameSession.FirstHuman, Is.SameAs(outgoingHuman));
             store.Save(0, DamageFile(bytes, Damage.FutureVersion));
             Assert.That(() => store.Load(0, data => MatchSaveCodec.Decode(data, config), out _), Throws.TypeOf<NotSupportedException>());
             Assert.That(File.ReadAllBytes(SlotPath(0)), Is.EqualTo(DamageFile(bytes, Damage.FutureVersion)));
@@ -605,7 +605,7 @@ namespace Game.EditorTests
             Assert.Throws<NotSupportedException>(() => store.Load(0, bytes => MatchSaveCodec.Decode(bytes, config), out _));
             Assert.That(File.ReadAllBytes(SlotPath(0)), Is.EqualTo(primary));
             Assert.That(File.ReadAllBytes(SlotPath(0) + ".bak"), Is.EqualTo(backup));
-            Assert.That(GameSession.FindHumanPlayer(), Is.SameAs(outgoingHuman));
+            Assert.That(GameSession.FirstHuman, Is.SameAs(outgoingHuman));
             Assert.That(GameSession.PendingRestore, Is.Null); AssertCounters(before);
         }
 
@@ -643,7 +643,7 @@ namespace Game.EditorTests
                 Assert.That(() => store.Save(0, MatchSaveCodec.Capture(config, outgoingMap, outgoingTurns, outgoingSelection)),
                     Throws.TypeOf<InvalidOperationException>());
                 Assert.That(store.Exists(0), Is.False);
-                Assert.That(GameSession.FindHumanPlayer(), Is.SameAs(outgoingHuman));
+                Assert.That(GameSession.FirstHuman, Is.SameAs(outgoingHuman));
             }
             finally
             {

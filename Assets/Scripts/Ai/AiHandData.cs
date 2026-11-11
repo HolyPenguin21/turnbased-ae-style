@@ -102,4 +102,17 @@ namespace Game.Ai
             return hand;
         }
     }
+
+    // One answer to "the match hand of this player" (hotseat R4): a human's
+    // PlayerSetupData.Hand, an AI's registry hand. Never the hand the UI happens to display.
+    public static class MatchHands
+    {
+        // Non-creating read; null when the player has no hand yet.
+        public static PlayerHandData Peek(PlayerSetupData owner) =>
+            owner == null ? null : owner.IsHuman ? owner.Hand : AiHandRegistry.Peek(owner);
+
+        // An AI hand is dealt on first use; a human hand is created at match start, never here.
+        public static PlayerHandData GetOrCreate(PlayerSetupData owner, StartingDeckCatalog catalog, int startingHandSize) =>
+            owner == null ? null : owner.IsHuman ? owner.Hand : AiHandRegistry.GetOrCreate(owner, catalog, startingHandSize);
+    }
 }

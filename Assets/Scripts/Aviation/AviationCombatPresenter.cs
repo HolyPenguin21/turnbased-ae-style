@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Game.Combat;
+using Game.Core;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -124,11 +125,21 @@ namespace Game.Aviation
                     lifetime.AaDecision = aa;
                     if (aa.Reaction.AaOwner?.IsHuman == true && aaChoicePopup != null)
                     {
-                        aaChoicePopup.Show(aa.Reaction.AaUnit, aa.Reaction.AirArmy,
-                            onAttack: () => aa.Complete(true), onSkip: () => aa.Complete(false),
-                            onCancelled: lifetime.Cancel);
-                        yield return new WaitUntil(() => lifetime.IsCancelled || aa.IsCompleted
-                            || aaChoicePopup == null || !aaChoicePopup.IsShowing);
+                        // The AA owner decides, and it is never their own turn here: hotseat hands
+                        // the screen to them behind the curtain and back afterwards.
+                        PlayerSetupData owner = aa.Reaction.AaOwner, returnTo = null;
+                        yield return PlayerDecisionRouter.TakeScreenFor(owner,
+                            $"Anti-air decision for {owner.Nickname}", p => returnTo = p);
+                        if (!lifetime.IsCancelled && !aa.IsCompleted)
+                        {
+                            aaChoicePopup.Show(aa.Reaction.AaUnit, aa.Reaction.AirArmy,
+                                onAttack: () => aa.Complete(true), onSkip: () => aa.Complete(false),
+                                onCancelled: lifetime.Cancel);
+                            yield return new WaitUntil(() => lifetime.IsCancelled || aa.IsCompleted
+                                || aaChoicePopup == null || !aaChoicePopup.IsShowing);
+                        }
+                        if (aa.IsCompleted && returnTo != null)
+                            yield return PlayerDecisionRouter.GiveScreenBack(returnTo);
                         if (!aa.IsCompleted) { lifetime.Cancel(); yield break; }
                     }
                     else aa.Complete(aa.SuggestedFire);
@@ -137,6 +148,13 @@ namespace Game.Aviation
                 else if (iterator.Current is AviationCombatOperation.ChallengeRequest challenge)
                 {
                     lifetime.Challenge = challenge;
+                    // An interactive challenge of a human who is not at this screen (e.g. an AI
+                    // strike on another hotseat human): that human takes the screen for it.
+                    PlayerSetupData challengeReturn = null;
+                    if (attackPopup != null)
+                        yield return PlayerDecisionRouter.TakeScreenFor(PlayerDecisionRouter.EncounterHandoffTarget(new[]
+                            { challenge.Attacker?.Owner, challenge.Defender?.Owner }), "Air strike", p => challengeReturn = p);
+                    if (lifetime.IsCancelled) yield break;
                     if (attackPopup != null)
                     {
                         attackPopup.Begin(challenge.Attacker, challenge.AttackerHero, challenge.Defender,
@@ -148,6 +166,8 @@ namespace Game.Aviation
                         yield return new WaitUntil(() => lifetime.IsCancelled || challenge.IsCompleted
                             || challenge.Session.IsCancelled || attackPopup == null
                             || !attackPopup.PresentsSession(challenge.Session));
+                        if (challenge.IsCompleted && challengeReturn != null)
+                            yield return PlayerDecisionRouter.GiveScreenBack(challengeReturn);
                         if (!challenge.IsCompleted) { lifetime.Cancel(); yield break; }
                     }
                     else AviationCombatHeadlessAdapter.Resolve(challenge);

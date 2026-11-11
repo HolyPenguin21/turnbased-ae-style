@@ -223,9 +223,9 @@ namespace Game.EditorTests
         public void FullInMemoryRestoreRebindsOwnersAndResumesWithoutNewTurnSideEffects()
         {
             var source = Capture();
-            var oldHumanHand = GameSession.FindHumanPlayer().Hand;
+            var oldHumanHand = GameSession.FirstHuman.Hand;
             Assert.That(GameSession.TryPrepareRestore(source, config, out string error), Is.True, error);
-            Assert.That(GameSession.FindHumanPlayer(), Is.SameAs(source.Human));
+            Assert.That(GameSession.FirstHuman, Is.SameAs(source.Human));
             Assert.That(source.Human.Hand, Is.Not.SameAs(oldHumanHand));
             var setup = PrepareScene(source, out var map, out var turns, out var selection);
             int starts = 0, notices = 0, cardChanges = 0;

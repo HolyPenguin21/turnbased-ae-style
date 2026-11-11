@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Game.Core;
 using Game.Map;
 using Game.Players;
 using Game.Turns;
@@ -33,6 +34,10 @@ namespace Game.UI
         private readonly Dictionary<PlayerSetupData, TokenRowUI> _rowByPlayer = new Dictionary<PlayerSetupData, TokenRowUI>();
         private List<PlayerSetupData> _players;
         private List<PlayerSetupData> _pendingOrder;
+        // The human whose purchases the buy panel currently shows.
+        private PlayerSetupData _buyer;
+        // Hotseat: humans buy one after another (curtain -> panel -> Continue), then one roll.
+        private bool _hotseatBuying;
         private Action<List<PlayerSetupData>> _onResolved;
 
         private void Awake()
@@ -65,7 +70,7 @@ namespace Game.UI
             if (rollButton != null && rollButton.gameObject.activeSelf)
                 RollAll();
             else if (continueButton != null && continueButton.gameObject.activeSelf)
-                Finish(_pendingOrder);
+                continueButton.onClick.Invoke();
         }
 
         public void Show(List<PlayerSetupData> players, Action<List<PlayerSetupData>> onResolved)
@@ -91,10 +96,16 @@ namespace Game.UI
                 }
             }
 
-            ShowBuyPanel(players);
-
             if (panelRoot != null)
                 panelRoot.SetActive(true);
+
+            var buyers = players.FindAll(p => p != null && p.IsLocalHuman && !p.IsEliminated);
+            if (buyers.Count > 1 && PlayerDecisionRouter.Handoff != null)
+            {
+                StartCoroutine(HotseatPurchases(buyers));
+                return;
+            }
+            ShowBuyPanel(players);
 
             if (continueButton != null)
                 continueButton.gameObject.SetActive(false);
@@ -126,37 +137,70 @@ namespace Game.UI
                 Finish(order);
         }
 
-        // Only the human player buys tokens through this panel. AI purchases are already
+        // Only the seated human buys tokens through this panel. AI purchases are already
         // applied by InitiativeCoordinatorV2 before Show is called.
         private void ShowBuyPanel(List<PlayerSetupData> players)
         {
-            if (buyPanel == null)
-                return;
-
-            buyPanel.TokenCountChanged -= OnBuyPanelTokenCountChanged;
-            buyPanel.TokenCountChanged += OnBuyPanelTokenCountChanged;
-
-            PlayerSetupData human = players.Find(p => p != null && p.IsHuman);
-            if (human != null)
-            {
-                buyPanel.Show(human, PlayerRootRegistry.FindFor(human));
-                return;
-            }
-            buyPanel.Show(null, null);
+            PlayerSetupData seat = LocalSeat.Current;
+            ShowBuyPanelFor(seat != null && players.Contains(seat) ? seat : null);
         }
 
-        // The human just bought/refunded a die — resize their row's tokens slots to match so
+        private void ShowBuyPanelFor(PlayerSetupData human)
+        {
+            _buyer = human;
+            if (buyPanel == null)
+                return;
+            buyPanel.TokenCountChanged -= OnBuyPanelTokenCountChanged;
+            buyPanel.TokenCountChanged += OnBuyPanelTokenCountChanged;
+            buyPanel.Show(human, human != null ? PlayerRootRegistry.FindFor(human) : null);
+        }
+
+        // Hotseat: every local human takes the screen and buys in turn; the shared roll starts
+        // only after the last one pressed Continue. Final token counts are public, as at a roll.
+        private IEnumerator HotseatPurchases(List<PlayerSetupData> buyers)
+        {
+            _hotseatBuying = true;
+            if (rollButton != null) rollButton.gameObject.SetActive(false);
+            foreach (PlayerSetupData buyer in buyers)
+            {
+                yield return PlayerDecisionRouter.TakeScreenFor(buyer, $"Initiative purchase: {buyer.Nickname}", null);
+                ShowBuyPanelFor(buyer);
+                bool done = false;
+                if (continueButton != null)
+                {
+                    continueButton.gameObject.SetActive(true);
+                    Game.UI.UIUtility.ResetRuntimeListeners(continueButton);
+                    continueButton.onClick.AddListener(() => done = true);
+                }
+                else done = true;
+                while (!done) yield return null;
+                if (continueButton != null) continueButton.gameObject.SetActive(false);
+                buyPanel?.Lock();
+            }
+            _hotseatBuying = false;
+            ShowBuyPanelFor(null);
+            if (rollButton != null)
+            {
+                rollButton.gameObject.SetActive(true);
+                Game.UI.UIUtility.ResetRuntimeListeners(rollButton);
+                rollButton.onClick.AddListener(RollAll);
+            }
+            if (IsAutoRollEnabled)
+                StartCoroutine(AutoRollAfterDelay());
+        }
+
+        // The buyer just bought/refunded a die — resize their row's tokens slots to match so
         // Roll doesn't visually snap the count when it's actually pressed.
         private void OnBuyPanelTokenCountChanged()
         {
-            PlayerSetupData human = _players?.Find(p => p != null && p.IsHuman);
+            PlayerSetupData human = _buyer;
             if (human != null && _rowByPlayer.TryGetValue(human, out TokenRowUI row))
                 row.SetPlayer(human, TurnOrderResolver.TokenCountFor(human));
         }
 
         private void RollAll()
         {
-            if (rollButton != null && !rollButton.gameObject.activeSelf)
+            if (_hotseatBuying || (rollButton != null && !rollButton.gameObject.activeSelf))
                 return;
             if (buyPanel != null)
                 buyPanel.Lock();

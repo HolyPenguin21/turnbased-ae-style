@@ -149,6 +149,13 @@ namespace Game.UI
             _routineHost = _presentationSuppressed ? hexSelectionController : this;
         private bool _tacticsCritical;
         private bool HasInteractiveParticipant => _localArmy != null && !_fastResolve;
+        // R7: a side a person controls in this battle (fast resolve automates every side).
+        private bool IsInteractiveSide(ArmyData army) => army?.Owner != null && army.Owner.IsHuman && !_fastResolve;
+        // Human-vs-human (owner decision D3: open, one screen): the second human side, which
+        // arranges and answers the round-start prompt right after the first one.
+        private ArmyData _secondLocalArmy;
+        private bool _secondSideArranged;
+        private bool IsHumanVsHuman => _secondLocalArmy != null;
         private bool IsHumanAction(UnitData unit) => !_fastResolve && unit?.Owner != null && unit.Owner.IsHuman;
         private bool IsAutomatedSide(ArmyData army) => army?.Owner != null && (_fastResolve || !army.Owner.IsHuman);
         // The hex this whole battle is happening on — captured once from Show's own `hex`
@@ -298,7 +305,10 @@ namespace Game.UI
         // BeginCaptureKillEncounter) — that one deliberately never activates panelRoot at all
         // (no grid/Arrangement chrome for a hero-only encounter, per the user's own spec), but
         // GameTurnController.InputBlocked still needs to know something modal is showing.
-        public bool HasUnsettledEncounter => _battleState != null || _pendingRetreatContacts.Count > 0;
+        public bool HasUnsettledEncounter => _battleState != null || _pendingRetreatContacts.Count > 0 || _screenHandoffPending;
+        // Hotseat: an encounter waits for its human participant to take the screen, or the
+        // screen is being given back after it. Counts as unsettled so the AI turn keeps waiting.
+        private bool _screenHandoffPending;
         public bool IsShowing => (panelRoot != null && panelRoot.activeSelf)
             || (attackPopup != null && attackPopup.IsShowing)
             || (outcomePopup != null && outcomePopup.IsShowing);
@@ -365,7 +375,7 @@ namespace Game.UI
         private bool ShouldSuppressPresentation(ArmyData first, ArmyData second)
         {
             if (first?.Owner?.IsHuman == true || second?.Owner?.IsHuman == true
-                || GameSession.FindHumanPlayer() == null
+                || !GameSession.HasHuman
                 || hexSelectionController == null || !hexSelectionController.isActiveAndEnabled)
                 return false;
             if (_turnController == null)
@@ -392,10 +402,53 @@ namespace Game.UI
                 onClosed?.Invoke();
                 return;
             }
+            // Hotseat: an interactive encounter of a human who is not at this screen (e.g. an AI
+            // attack on another human) is handed to that human first and given back afterwards.
+            // A human-vs-human fight that includes the seat stays open (owner decision D3).
+            PlayerSetupData handTo = fastResolve ? null
+                : PlayerDecisionRouter.EncounterHandoffTarget(encounter.Participants.Select(a => a?.Owner));
+            if (handTo != null && PlayerDecisionRouter.Handoff != null
+                && hexSelectionController != null && hexSelectionController.isActiveAndEnabled)
+            {
+                _screenHandoffPending = true;
+                hexSelectionController.StartCoroutine(ShowEncounterAfterHandoff(encounter, onClosed, handTo));
+                return;
+            }
+            StartEncounter(encounter, onClosed, fastResolve);
+        }
+
+        private void StartEncounter(BattleEncounterContext encounter, Action onClosed, bool fastResolve)
+        {
             if (encounter.TargetHeroOnly)
                 BeginCaptureKillEncounter(encounter.Initiator, encounter.Target, onClosed);
             else
                 Show(encounter.Hex, encounter.Participants.ToList(), onClosed, fastResolve);
+        }
+
+        private IEnumerator ShowEncounterAfterHandoff(BattleEncounterContext encounter, Action onClosed, PlayerSetupData owner)
+        {
+            PlayerSetupData returnTo = null;
+            long generation = GameSession.Generation;
+            try
+            {
+                yield return PlayerDecisionRouter.TakeScreenFor(owner, $"Battle of {owner.Nickname}", p => returnTo = p);
+            }
+            finally { _screenHandoffPending = false; }
+            if (!GameSession.IsCurrent(generation)) yield break;
+            if (returnTo == null) { StartEncounter(encounter, onClosed, false); yield break; }
+            StartEncounter(encounter, () =>
+            {
+                // Still unsettled until the screen is back: the AI must not act behind the curtain.
+                _screenHandoffPending = true;
+                hexSelectionController.StartCoroutine(GiveScreenBackThen(returnTo, onClosed, generation));
+            }, false);
+        }
+
+        private IEnumerator GiveScreenBackThen(PlayerSetupData player, Action onClosed, long generation)
+        {
+            try { yield return PlayerDecisionRouter.GiveScreenBack(player); }
+            finally { _screenHandoffPending = false; }
+            if (GameSession.IsCurrent(generation)) onClosed?.Invoke();
         }
 
         public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed, bool fastResolve = false)
@@ -427,6 +480,7 @@ namespace Game.UI
 
             _tacticsCritical = TacticBattleContext.IsCritical(hex, attacker, defender);
             var tacticHand = GetComponentInChildren<BattleHandUI>(true);
+            // The acting human's hand; a human-vs-human fight rebinds it on every turn change.
             tacticHand?.Bind((attacker?.Owner?.IsHuman == true ? attacker.Owner
                 : defender?.Owner?.IsHuman == true ? defender.Owner : null)?.Tactics);
             int battleSeed;
@@ -505,20 +559,21 @@ namespace Game.UI
             _aiFavorableThisRound.Clear();
 
             _localArmy = null;
+            _secondLocalArmy = null;
+            _secondSideArranged = false;
             _currentActingUnit = null;
             _arranging = false;
             _arrangeInteractive = false;
             if (_attacker?.Owner != null && _attacker.Owner.IsHuman)
             {
-                _localArmy = _attacker;
-                _localFrontRow = BattleGrid.AttackerFrontRow;
-                _localBackRow = BattleGrid.AttackerBackRow;
+                SetLocalSide(_attacker);
+                // Both sides human and interactive: the defender arranges after the attacker.
+                if (IsInteractiveSide(_attacker) && IsInteractiveSide(_defender) && _defender.Owner != _attacker.Owner)
+                    _secondLocalArmy = _defender;
             }
             else if (_defender?.Owner != null && _defender.Owner.IsHuman)
             {
-                _localArmy = _defender;
-                _localFrontRow = BattleGrid.DefenderFrontRow;
-                _localBackRow = BattleGrid.DefenderBackRow;
+                SetLocalSide(_defender);
             }
 
             // The player can arrange while the AI plans from roster stats only. Ready and
@@ -562,6 +617,14 @@ namespace Game.UI
                     passButton.gameObject.SetActive(true);
                 if (_aiArrangementRoutine == null) BeginRound();
             }
+        }
+
+        private void SetLocalSide(ArmyData army)
+        {
+            _localArmy = army;
+            bool attacker = army == _attacker;
+            _localFrontRow = attacker ? BattleGrid.AttackerFrontRow : BattleGrid.DefenderFrontRow;
+            _localBackRow = attacker ? BattleGrid.AttackerBackRow : BattleGrid.DefenderBackRow;
         }
 
         private IEnumerator ArrangeAiAndContinue(BattleEngine engine)
@@ -623,6 +686,19 @@ namespace Game.UI
                 if (!member.IsSummoned && _grid.TryFindPosition(member, out int row, out int col))
                     _localArmy.SavedArrangement[member] = (row, col);
 
+            // Human-vs-human: the second side arranges now, on the same screen (D3).
+            if (IsHumanVsHuman && !_secondSideArranged)
+            {
+                _secondSideArranged = true;
+                SetLocalSide(_secondLocalArmy);
+                _arrangeInteractive = false;
+                if (readyButton != null) readyButton.interactable = false;
+                ShowUnitDetail(_localArmy.Members.Count > 0 ? _localArmy.Members[0] : null);
+                RefreshGrid();
+                arrangePopup.Show(BeginArrangement);
+                return;
+            }
+
             _arranging = false;
             if (readyButton != null)
                 readyButton.gameObject.SetActive(false);
@@ -640,7 +716,14 @@ namespace Game.UI
         {
             BattleDebugLog.BeginRound(_round);
             ConsiderAiRetreat();
+            // Human-vs-human: each side gets its own round-start prompt (and Retreat button),
+            // attacker first; only one side retreats per round.
+            if (IsHumanVsHuman) SetLocalSide(_attacker);
+            ShowRoundStartForLocalSide();
+        }
 
+        private void ShowRoundStartForLocalSide()
+        {
             // Garrisons can never retreat (per the manual); a battle with no local human side
             // has nobody to click the button anyway — canRetreat covers both. Also off once the
             // AI side has already committed to its own retreat this round — only one side
@@ -659,7 +742,7 @@ namespace Game.UI
             if (roundStartPopup != null && HasInteractiveParticipant)
                 roundStartPopup.Show(_round, _grid, _attacker, _defender,
                     ResolveCatalog(_attacker?.Owner)?.logo, ResolveCatalog(_defender?.Owner)?.logo,
-                    canRetreat, OnStartRoundClicked, OnRetreatClicked,
+                    canRetreat, OnRoundStartAcknowledged, OnRetreatClicked,
                     _retreatingArmy != _localArmy ? _retreatingArmy?.Name : null,
                     unchecked(_battleSeed * 31 + _round));
             else
@@ -734,6 +817,17 @@ namespace Game.UI
             }
             ShowArmyThought(army, AiThoughtCategory.FightDecision);
             return false;
+        }
+
+        private void OnRoundStartAcknowledged()
+        {
+            if (IsHumanVsHuman && _localArmy == _attacker && _retreatingArmy == null)
+            {
+                SetLocalSide(_secondLocalArmy);
+                ShowRoundStartForLocalSide();
+                return;
+            }
+            OnStartRoundClicked();
         }
 
         private void OnStartRoundClicked()
@@ -820,6 +914,13 @@ namespace Game.UI
             // on every Pass (not just every round) is the same "destroy and rebuild" pattern
             // already used for the queue icons above, just for the battlefield instead.
             _currentActingUnit = current;
+            // Human-vs-human: the tactic hand and interactive rows follow the acting side.
+            if (IsHumanVsHuman && current?.Owner != null && current.Owner.IsHuman)
+            {
+                ArmyData actingSide = current.Owner == _attacker?.Owner ? _attacker : _defender;
+                if (actingSide != _localArmy) SetLocalSide(actingSide);
+                GetComponentInChildren<BattleHandUI>(true)?.Bind(current.Owner.Tactics);
+            }
             RefreshGrid();
 
             // Pass only ever acts for the CURRENT unit — an AI-owned unit's turn isn't the
@@ -973,6 +1074,8 @@ namespace Game.UI
             _defenderMarkerAtStart = null;
             _currentActingUnit = null;
             _localArmy = null;
+            _secondLocalArmy = null;
+            _secondSideArranged = false;
             _fastResolve = false;
             _presentationSuppressed = false;
             _unpacedBattleFrameStart = -1f;
@@ -1051,7 +1154,7 @@ namespace Game.UI
 
         internal void CancelForExit()
         {
-            _onClosed=null;_pendingRetreatContacts.Clear();ResetBattlePanel();StopAllCoroutines();
+            _onClosed=null;_screenHandoffPending=false;_pendingRetreatContacts.Clear();ResetBattlePanel();StopAllCoroutines();
         }
         public void Hide()
         {

@@ -31,6 +31,7 @@ namespace Game.Core
             // Commit only after the entire detached input is accepted. No reset, deck
             // validation against today's profile, new MatchId or reward transaction here.
             Players = source.Players.ToList();
+            Game.Players.LocalSeat.Reset();
             MatchId = source.MatchId;
             RewardsEligible = source.RewardsEligible;
             CampaignContext = source.CampaignContext;
@@ -49,11 +50,14 @@ namespace Game.Core
             if (string.IsNullOrWhiteSpace(source.MatchId) || source.Map == null || source.Turn == null || source.Identity == null
                 || source.Players == null || source.Players.Count == 0 || source.Players.Any(p => p == null || p.IsNeutral))
                 throw new ArgumentException("Incomplete saved match.");
+            // Hotseat saves carry several humans; the campaign is strictly one. Every human keeps
+            // a hand (an eliminated one too); the settled turn belongs to a living human.
             var humans = source.Players.Where(p => p.IsHuman).ToArray();
-            if (humans.Length != 1 || humans[0].IsEliminated || humans[0].Hand == null)
-                throw new ArgumentException("A saved match requires one living human and its restored hand.");
+            if (humans.Length == 0 || (source.CampaignContext != null && humans.Length != 1)
+                || humans.Any(h => h.Hand == null) || humans.All(h => h.IsEliminated))
+                throw new ArgumentException("A saved match requires a living human and the restored human hands.");
             source.Identity.Validate();
-            source.Turn.Validate(source.Players.Select(p => p.PlayerId), humans[0].PlayerId);
+            source.Turn.ValidateHumanTurn(source.Players);
             if (source.CampaignContext != null && source.CampaignContext.MatchId != source.MatchId)
                 throw new ArgumentException("Campaign and match identities differ.");
             Game.Map.HexMapGenerator.ValidateLayout(source.Map, config);

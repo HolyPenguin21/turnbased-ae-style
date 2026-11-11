@@ -22,7 +22,7 @@ namespace Game.Core
         private static void CommitNewLaunch(List<PlayerSetupData> players, bool rewardsEligible)
         {
             PendingRestore = null; RestoreNotice = null; CampaignContext = null; FinalResult = null; SetupError = null;
-            ClearMapConditions(); Players = players; PreparedLaunch = new MatchLaunchRequest(players);
+            ClearMapConditions(); Players = players; LocalSeat.Reset(); PreparedLaunch = new MatchLaunchRequest(players);
             MatchId = Guid.NewGuid().ToString("N"); RewardsEligible = rewardsEligible; Stage = MatchSessionStage.Prepared;
         }
         // Generator and setup share this entry; repeated component activation does not reset
