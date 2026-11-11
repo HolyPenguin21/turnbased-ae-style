@@ -41,10 +41,10 @@ descriptions). No scene/prefab wiring or image assets are required.
 
 One uniformly random subset is selected at launch. Every living unit from every army
 physically on the target hex is eligible, including allies, heroes, hidden units,
-aircraft containers and event guards already in play. An innate SingleUse launcher is
-excluded entirely: it gets no self-challenge and does not occupy a target slot. Other
-SingleUse units remain eligible. A reusable host carrying a disposable bomb can still
-be hit by its own explosion when present on the hex.
+aircraft containers and event guards already in play. The launcher is excluded
+entirely (2026-11-11): neither an innate SingleUse missile nor the unit that drops a bomb
+gets a self-challenge or occupies a target slot. Other units of its army, including other
+missiles and bomb carriers, remain eligible. A launcher alone on the hex has no targets.
 The building and each installed facility with positive structure points are separate
 targets. Merely remembered/unspawned event guards are not physical occupants.
 Ground encounters include both participating armies even while the attacker is still
@@ -65,7 +65,8 @@ AI does not spend attacking tactics to increase damage to its own units.
 The equipped bomb remains until the full series ends, including misses. Then only its
 Equipment slot is cleared; a surviving host keeps its Mutator and ordinary state.
 An innate `SingleUse` Unit is instead removed from its army after the full series.
-The attack continues if the launcher was itself killed earlier in the series.
+The launcher's own blast never damages it; the frozen profile still lets the series
+finish if the launcher is removed by any other path.
 For a missile card, configure the ordinary Unit **Is Aviation** flag and add the desired
 Explosion tag plus SingleUse to **Granted Abilities**. It uses existing airfield deployment
 and takeoff rules. At the destination hex it performs the aviation strike, then disappears
@@ -117,7 +118,7 @@ those costs. Repeated production remains legitimate resupply.
 ## Verification
 
 `ExplosionAttackTests` covers limits/distinct selection, allies, short pools, complete
-series before consumption, misses, launcher self-destruction, armed modifiers, invalid
+series before consumption, misses, launcher (missile and bomb carrier) exclusion, armed modifiers, invalid
 repeat hits, ground removals/reaction exclusion, friendly-fire valuation, ground/air
 forecasts, equipment scoring and cache identity. It also covers both equipment marker
 selectors, the simultaneous innate/equipment SingleUse case, Mutator provenance in live
