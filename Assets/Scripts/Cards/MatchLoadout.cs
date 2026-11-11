@@ -61,6 +61,11 @@ namespace Game.Cards
             return new MatchLoadout(state, rules, null, false);
         }
 
+        // AI players with a manually chosen collection deck draw from these rows; the human
+        // path keeps the validating TryBuildPool.
+        internal List<DeckCardEntry> MainEntries() =>
+            deck.mainCards.ConvertAll(e => new DeckCardEntry { cardKey = e.cardKey, count = e.count });
+
         internal List<DeckCardEntry> BlueprintEntries()
         {
             var result = new List<DeckCardEntry>();

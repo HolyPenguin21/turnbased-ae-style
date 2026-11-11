@@ -19,6 +19,11 @@ namespace Game.Ai
             : base(deckCatalog?.BuildAiDeckPool(faction, aiDeckName, grantedLeaderKey), startingHandSize,
                 capacity, reserveRapidHero: true) { }
 
+        // Match hands follow the player's own deck source (authored AI deck or a collection deck
+        // chosen on the setup row) through the one StartingDeckCatalog.BuildDeckPool rule.
+        public AiHandData(StartingDeckCatalog deckCatalog, PlayerSetupData player, int startingHandSize, int capacity)
+            : base(deckCatalog?.BuildDeckPool(player), startingHandSize, capacity, reserveRapidHero: true) { }
+
         protected override void OnAcquired(CardData card) => card.AcquiredTurn = CurrentTurn;
 
         public static int AgeInTurns(CardData card, int turnNumber) =>
@@ -83,7 +88,7 @@ namespace Game.Ai
                 return null;
             if (!ByPlayer.TryGetValue(player, out AiHandData hand))
             {
-                hand = new AiHandData(deckCatalog, player.Faction, startingHandSize, capacity ?? 10, player.AiDeckName, player.AiGrantedLeaderKey);
+                hand = new AiHandData(deckCatalog, player, startingHandSize, capacity ?? 10);
                 ByPlayer[player] = hand;
                 OwnerByHand[hand] = player;
             }

@@ -65,9 +65,12 @@ namespace Game.UI
                 if (refreshingDecks) return;
                 if (!Data.IsHuman)
                 {
-                    var options = startingDeckCatalog?.GetAiDecks(Data.Faction).ToList();
-                    Data.AiDeckName = options != null && index > 0 && index <= options.Count
-                        ? options[index - 1].deckName : null;
+                    // Options: Random, authored AI decks, then the player's collection decks.
+                    var options = AuthoredAiDecks();
+                    var custom = AiCollectionDecks();
+                    Data.AiDeckName = index > 0 && index <= options.Count ? options[index - 1].deckName : null;
+                    int customIndex = index - 1 - options.Count;
+                    Data.SelectedDeckId = customIndex >= 0 && customIndex < custom.Count ? custom[customIndex].deckId : null;
                     return;
                 }
                 var decks = Game.Progression.ProgressionContext.Collection.Decks(Data.Faction);
@@ -98,14 +101,18 @@ namespace Game.UI
             if (editDecksButton != null) editDecksButton.gameObject.SetActive(Data.IsHuman);
             if (!Data.IsHuman)
             {
-                Data.SelectedDeckId = null;
-                var options = startingDeckCatalog?.GetAiDecks(Data.Faction).ToList()
-                    ?? new List<Game.Cards.StartingDeck>();
+                var options = AuthoredAiDecks();
+                var custom = AiCollectionDecks();
                 int selected = options.FindIndex(d => d.deckName == Data.AiDeckName);
+                int customSelected = selected >= 0 ? -1 : custom.FindIndex(d => d.deckId == Data.SelectedDeckId);
                 if (selected < 0) Data.AiDeckName = null;
-                deckDropdown.AddOptions(new List<string> { "Random" }.Concat(options.Select(d => d.deckName)).ToList());
-                deckDropdown.interactable = options.Count > 0;
-                deckDropdown.SetValueWithoutNotify(selected + 1);
+                if (customSelected < 0) Data.SelectedDeckId = null;
+                var profile = Game.Progression.ProgressionContext.Collection;
+                deckDropdown.AddOptions(new List<string> { "Random" }
+                    .Concat(options.Select(d => d.deckName))
+                    .Concat(custom.Select(d => "My deck: " + DeckLabel(profile, d))).ToList());
+                deckDropdown.interactable = options.Count + custom.Count > 0;
+                deckDropdown.SetValueWithoutNotify(customSelected >= 0 ? 1 + options.Count + customSelected : selected + 1);
                 deckDropdown.RefreshShownValue();
                 refreshingDecks = false; return;
             }
@@ -117,11 +124,29 @@ namespace Game.UI
             var collection = Game.Progression.ProgressionContext.Collection;
             var decks = collection.Decks(Data.Faction);
             if (!decks.Any(d => d.deckId == Data.SelectedDeckId)) Data.SelectedDeckId = collection.DefaultDeck(Data.Faction)?.deckId;
-            deckDropdown.AddOptions(decks.Count == 0 ? new List<string> { "No saved decks - open editor" } : decks.Select(d =>
-            { var validation = collection.Rules.Validate(d, collection.Owned); return d.name + " - " + validation.Points + "/100" + (validation.IsValid ? "" : " - " + string.Join("; ", validation.Errors)); }).ToList());
+            deckDropdown.AddOptions(decks.Count == 0 ? new List<string> { "No saved decks - open editor" }
+                : decks.Select(d => DeckLabel(collection, d)).ToList());
             deckDropdown.SetValueWithoutNotify(Mathf.Max(0, decks.FindIndex(d => d.deckId == Data.SelectedDeckId)));
             deckDropdown.interactable = decks.Count > 0;
             refreshingDecks = false;
+        }
+
+        private static string DeckLabel(Game.Progression.CollectionService collection, Game.Progression.SavedDeck d)
+        {
+            var validation = collection.Rules.Validate(d, collection.Owned);
+            return d.name + " - " + validation.Points + "/100" + (validation.IsValid ? "" : " - " + string.Join("; ", validation.Errors));
+        }
+
+        private List<Game.Cards.StartingDeck> AuthoredAiDecks() =>
+            startingDeckCatalog?.GetAiDecks(Data.Faction).ToList() ?? new List<Game.Cards.StartingDeck>();
+
+        // The human's saved decks are offered to an AI row only for a concrete faction; Random
+        // faction/deck never resolves to them (GameSession.AssignAiDecks picks authored decks).
+        private List<Game.Progression.SavedDeck> AiCollectionDecks()
+        {
+            if (Data.Faction == Faction.Random || !Game.Progression.ProgressionContext.Initialize(deckConfig))
+                return new List<Game.Progression.SavedDeck>();
+            return Game.Progression.ProgressionContext.Collection.Decks(Data.Faction);
         }
 
         public PlayerSetupData Data { get; private set; }
@@ -223,6 +248,8 @@ namespace Game.UI
             controllerDropdown.onValueChanged.AddListener(value =>
             {
                 Data.IsHuman = value == 0;
+                // A collection deck reaches an AI row only by an explicit pick on that row.
+                Data.SelectedDeckId = null; Data.AiDeckName = null;
                 RefreshDeckOptions();
                 _onChanged?.Invoke();
             });

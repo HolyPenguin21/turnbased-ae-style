@@ -137,8 +137,17 @@ namespace Game.Cards
             return keys;
         }
 
-        public List<CardDefinition> BuildDeckPool(PlayerSetupData player) =>
-            player.IsHuman ? BuildDeckPool(player.Faction) : BuildAiDeckPool(player.Faction, player.AiDeckName, player.AiGrantedLeaderKey);
+        // An AI player with a frozen MatchLoadout plays a human-built collection deck chosen
+        // manually on the setup row; otherwise it plays its authored AI deck.
+        public List<CardDefinition> BuildDeckPool(PlayerSetupData player)
+        {
+            if (player.IsHuman) return BuildDeckPool(player.Faction);
+            if (player.MatchLoadout == null)
+                return BuildAiDeckPool(player.Faction, player.AiDeckName, player.AiGrantedLeaderKey);
+            if (TryBuildDeckPool(player.MatchLoadout.MainEntries(), out var pool, out string error)) return pool;
+            Debug.LogError($"AI player '{player.Nickname}': {error}", this);
+            return new List<CardDefinition>();
+        }
 
         private List<CardDefinition> BuildPool(StartingDeck deck)
         {

@@ -19,6 +19,8 @@ namespace Game.Players
         public int ColorIndex;
         public Faction Faction;
         public bool IsHuman;
+        // Collection deck id. Human: the deck played. AI: set only by a manual pick on the setup
+        // row; the AI then plays that deck (MatchLoadout + AiBlueprints) instead of AiDeckName.
         public string SelectedDeckId;
         // AI players only: the StartingDeckCatalog.aiDecks entry chosen for this match.
         public string AiDeckName;

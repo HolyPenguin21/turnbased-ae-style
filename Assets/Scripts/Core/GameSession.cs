@@ -29,7 +29,9 @@ namespace Game.Core
             players = players.Select(p => p.CopySetupDraft()).ToList();
             if (players.FindAll(p => p.IsHuman).Count > 1)
             { error = "Only one human player is supported. Set other players to AI."; return false; }
-            if (!players.Exists(p => p.IsHuman))
+            // An AI player plays a collection deck only when one was chosen on its setup row
+            // (SelectedDeckId); Random and campaign enemies always resolve to authored AI decks.
+            if (!players.Exists(p => p.IsHuman || !string.IsNullOrEmpty(p.SelectedDeckId)))
             {
                 AssignAiDecks(players, config?.collectionDeckCatalog);
                 foreach (var player in players) { player.Tactics.Clear(); player.MatchLoadout = null; player.BlueprintQuota = null; }
@@ -44,25 +46,27 @@ namespace Game.Core
             var snapshots = new Dictionary<PlayerSetupData, Game.Cards.MatchLoadout>();
             foreach (var player in players)
             {
-                if (!player.IsHuman) continue;
-                var deck = string.IsNullOrEmpty(player.SelectedDeckId) ? collection.DefaultDeck(player.Faction)
+                if (!player.IsHuman && string.IsNullOrEmpty(player.SelectedDeckId)) continue;
+                var deck = player.IsHuman && string.IsNullOrEmpty(player.SelectedDeckId) ? collection.DefaultDeck(player.Faction)
                     : collection.GetDeck(player.SelectedDeckId, player.Faction);
                 if (deck == null) { error = "Select a saved deck for " + player.Nickname + "."; return false; }
-                selectedHumanDeck = deck;
+                if (player.IsHuman) selectedHumanDeck = deck;
                 try { snapshots[player] = new Game.Cards.MatchLoadout(deck, collection.Rules, collection.Owned); }
                 catch (System.Exception ex)
                 {
                     UnityEngine.Debug.LogWarning(ex);
-                    error = "Could not load this deck. Check it in Collection & Decks.";
+                    error = "Could not load the deck of " + player.Nickname + ". Check it in Collection & Decks.";
                     return false;
                 }
             }
-            if (!collection.SelectDeck(selectedHumanDeck, out error)) return false;
+            if (selectedHumanDeck != null && !collection.SelectDeck(selectedHumanDeck, out error)) return false;
             foreach (var player in players)
             {
                 player.MatchLoadout = snapshots.TryGetValue(player, out var snapshot) ? snapshot : null;
                 player.Tactics.Clear();
-                player.BlueprintQuota = player.MatchLoadout == null ? null : new Game.Cards.BlueprintQuota(player.MatchLoadout);
+                // AI production is gated by AiBlueprints (AssignAiDecks), never by a human quota.
+                player.BlueprintQuota = player.IsHuman && player.MatchLoadout != null
+                    ? new Game.Cards.BlueprintQuota(player.MatchLoadout) : null;
             }
             // Resolve Random only after validation/persistence succeeds. A rejected start must
             // leave the setup row's Random choice intact instead of pinning the next attempt.
@@ -79,6 +83,16 @@ namespace Game.Core
             {
                 player.AiGrantedLeaderKey = null;
                 if (player.IsHuman || player.IsNeutral) { player.AiDeckName = null; player.AiBlueprints = null; continue; }
+                if (player.MatchLoadout != null)
+                {
+                    // Collection deck chosen for this AI: its blueprints unlock unlimited AI
+                    // production, exactly as an authored AI deck's blueprint lists do.
+                    player.AiDeckName = null;
+                    player.AiBlueprints = new HashSet<string>(System.StringComparer.Ordinal);
+                    foreach (var e in player.MatchLoadout.BlueprintEntries())
+                        if (e.count > 0 && !string.IsNullOrEmpty(e.cardKey)) player.AiBlueprints.Add(e.cardKey);
+                    continue;
+                }
                 if (catalog == null) continue;
                 bool valid = player.AiDeckName != null && System.Linq.Enumerable.Any(
                     catalog.GetAiDecks(player.Faction), d => d.deckName == player.AiDeckName);

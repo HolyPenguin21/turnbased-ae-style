@@ -46,6 +46,42 @@ public sealed class CampaignCollectionIntegrationTests
         finally { typeof(ProgressionContext).GetProperty("Collection").SetValue(null, previous); }
     }
 
+    // A collection deck reaches an AI only by a manual pick (SelectedDeckId); a Random AI row
+    // still resolves to an authored AI deck.
+    [Test] public void AiPlaysManuallyPickedCollectionDeckAndRandomStaysAuthored()
+    {
+        var previous = ProgressionContext.Collection; var players = GameSession.Players;
+        var config = AssetDatabase.LoadAssetAtPath<GameConfig>("Assets/Config/GameConfig.asset");
+        try
+        {
+            typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
+            var picked = collection.DefaultDeck(Faction.IronConcord); Assert.IsNotNull(picked);
+            var draft = new System.Collections.Generic.List<PlayerSetupData> {
+                new PlayerSetupData { Nickname = "Human", Faction = Faction.Ashen, IsHuman = true },
+                new PlayerSetupData { Nickname = "Custom", Faction = Faction.IronConcord, SelectedDeckId = picked.deckId },
+                new PlayerSetupData { Nickname = "Random", Faction = Faction.IronConcord } };
+            Assert.IsTrue(GameSession.TryPrepareMatch(draft, config, out string error), error);
+            var custom = GameSession.Players.Single(p => p.Nickname == "Custom");
+            var random = GameSession.Players.Single(p => p.Nickname == "Random");
+            Assert.IsNotNull(custom.MatchLoadout); Assert.IsNull(custom.BlueprintQuota); Assert.IsNull(custom.AiDeckName);
+            CollectionAssert.AreEquivalent(picked.equipment.Concat(picked.mutators).Where(e => e.count > 0).Select(e => e.cardKey).Distinct(), custom.AiBlueprints);
+            CollectionAssert.AreEquivalent(picked.mainCards.SelectMany(e => Enumerable.Repeat(e.cardKey, e.count)),
+                config.collectionDeckCatalog.BuildDeckPool(custom).Select(c => c.authoredKey));
+            Assert.IsNull(random.MatchLoadout); Assert.IsNotNull(random.AiDeckName);
+            Assert.IsNotNull(config.collectionDeckCatalog.FindAiDeck(Faction.IronConcord, random.AiDeckName));
+
+            var aiOnly = new System.Collections.Generic.List<PlayerSetupData> {
+                new PlayerSetupData { Nickname = "Custom", Faction = Faction.IronConcord, SelectedDeckId = picked.deckId },
+                new PlayerSetupData { Nickname = "Wrong", Faction = Faction.Ashen, SelectedDeckId = picked.deckId } };
+            Assert.IsFalse(GameSession.TryPrepareMatch(aiOnly, config, out _), "A deck of another faction is rejected.");
+        }
+        finally
+        {
+            typeof(ProgressionContext).GetProperty("Collection").SetValue(null, previous);
+            GameSession.Players = players;
+        }
+    }
+
     [Test] public void SelectedSavedDeckUsesExistingValidatorAndDetachedLoadout()
     {
         foreach (var faction in DeckRules.PlayableFactions)
