@@ -83,7 +83,7 @@ namespace UnityEngine.Rendering
 }
 namespace UnityEngine.Rendering.Universal
 {
-    public class Vignette : UnityEngine.Rendering.VolumeComponent { public UnityEngine.Rendering.ClampedFloatParameter intensity; }
+    public class Vignette : UnityEngine.Rendering.VolumeComponent { public UnityEngine.Rendering.ClampedFloatParameter intensity, smoothness; }
 }
 namespace UnityEditor
 {
