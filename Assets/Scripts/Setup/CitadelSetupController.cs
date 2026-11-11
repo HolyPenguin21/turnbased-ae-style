@@ -64,6 +64,9 @@ namespace Game.Setup
         [SerializeField] private float introBlackHold = 1f;
         [SerializeField] private float introZoomDuration = 1f;
         [SerializeField] private float introPanDuration = 1f;
+        // Zoom-in keeps going through the pan and finishes at this share of the pan path,
+        // so the camera settles on its zoom just before it arrives instead of snapping early.
+        [SerializeField, Range(0f, 1f)] private float introZoomFinishAt = 0.85f;
         [SerializeField] private float introCurtainFade = 0.3f;
         [SerializeField, Range(0f, 1f)] private float introVignetteStart = 0.5f;
         [SerializeField, Range(0.01f, 1f)] private float introVignetteSmoothnessStart = 1f;
@@ -225,6 +228,7 @@ namespace Game.Setup
             float zoomTime = Mathf.Max(0f, introZoomDuration);
             float panTime = target.HasValue ? Mathf.Max(0f, introPanDuration) : 0f;
             float total = zoomTime + panTime;
+            float zoomEnd = zoomTime + panTime * introZoomFinishAt;
             float startSize = cameraController != null ? cameraController.MaxOrthoSize : 0f;
             float endSize = cameraController != null ? cameraController.PlayerOrthoSize : 0f;
 
@@ -236,10 +240,9 @@ namespace Game.Setup
             {
                 if (cameraController != null)
                 {
-                    if (t < zoomTime)
-                        cameraController.SetFraming(centre, Mathf.Lerp(startSize, endSize, Mathf.SmoothStep(0f, 1f, t / zoomTime)));
-                    else
-                        cameraController.SetFraming(Vector3.Lerp(centre, destination, Mathf.SmoothStep(0f, 1f, (t - zoomTime) / panTime)), endSize);
+                    float zoom = zoomEnd > 0f ? Mathf.SmoothStep(0f, 1f, t / zoomEnd) : 1f;
+                    float pan = t < zoomTime || panTime <= 0f ? 0f : Mathf.SmoothStep(0f, 1f, (t - zoomTime) / panTime);
+                    cameraController.SetFraming(Vector3.Lerp(centre, destination, pan), Mathf.Lerp(startSize, endSize, zoom));
                 }
                 vignette.weight = 1f - Mathf.SmoothStep(0f, 1f, t / total);
                 yield return null;
