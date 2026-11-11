@@ -977,8 +977,7 @@ namespace Game.Combat
             ArmyData ownArmy, ArmyData enemyArmy, Dictionary<UnitData, float> dealtByUnit,
             HashSet<UnitData> suppressed, List<UnitData> order, int actingIndex)
         {
-            bool expendUnit = ExplosionAttack.IsSingleUseUnit(actor);
-            var pool = grid.AllUnits().Where(u => (!expendUnit || u != actor)
+            var pool = grid.AllUnits().Where(u => u != actor
                 && hp.TryGetValue(u, out float h) && h > 0).ToList();
             int count = Mathf.Min(ExplosionAttack.TargetLimit(actor.Abilities), pool.Count);
             float probability = count / (float)Mathf.Max(1, pool.Count);

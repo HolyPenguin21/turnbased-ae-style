@@ -310,12 +310,13 @@ namespace Game.Combat
                                     plane.Abilities, extra[i].TypeTags, extra[i].Abilities, magnitudes) >= extraHp[i])) continue;
                             var pool = alive.Where(Eligible).Select(i => (kind: 0, index: i)).ToList();
                             for (int i = 0; i < planeHp.Length; i++)
-                                if (planeHp[i] > 0 && !(plane.SingleUseUnit && i == aircraftIndex)) pool.Add((1, i));
+                                if (planeHp[i] > 0 && i != aircraftIndex) pool.Add((1, i));
                             for (int i = 0; i < extraHp.Length; i++) if (extraHp[i] > 0 && EligibleExtra(i)) pool.Add((2, i));
                             int count = Mathf.Min(explosion, pool.Count);
                             // Match the live AI's refusal to launch a losing blast, including
                             // one sacrifice of an innate missile. Do not value an attack that
-                            // execution would skip, or charge its self-hit and sacrifice twice.
+                            // execution would skip, or charge its sacrifice twice. The launching
+                            // aircraft (missile or bomb carrier) is never in its own pool.
                             float value = 0;
                             foreach (var target in pool)
                             {
