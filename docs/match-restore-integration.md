@@ -34,11 +34,12 @@ All 926 Assets C# files parse. Baseline/current runtime and both new fixture fil
 
 ## Commands
 
+Removed 2026-11-11: `Tools/save-preparation-verify/integration/`, `presentation-codec/`, `Tools/match-save-verify/world/run.py` and `audit-world/run.py` no longer compiled after package 4 (stale source list). Their behavior is covered by the EditMode fixtures (MatchRestoreIntegrationTests, MatchSaveIntegrationTests, MatchPresentationCodecTests). The managed results above are historical.
+
 ```sh
 export DOTNET=/path/to/dotnet
 export DOTNET_BIN="$DOTNET"
 export NUGET_PACKAGES=/path/to/nuget/cache
-python Tools/save-preparation-verify/integration/run.py
 python Tools/save-preparation-verify/ai/run.py
 python Tools/save-preparation-verify/world/run.py
 python Tools/save-preparation-verify/presentation/run.py

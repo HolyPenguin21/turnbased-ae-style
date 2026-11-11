@@ -24,5 +24,7 @@ namespace UnityEngine.TestTools
     {
         public static void Expect(LogType type, Regex message) =>
             throw new NotSupportedException("Native log expectations require Unity Test Framework.");
+        public static void Expect(LogType type, string message) =>
+            throw new NotSupportedException("Native log expectations require Unity Test Framework.");
     }
 }

@@ -5,8 +5,12 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser();p.add_argument('--runtime',required=True);p.add_argument('--work',required=True);p.add_argument('--base');p.add_argument('--where',default='cat != UnityNative && cat != Extended');a=p.parse_args()
 runtime=Path(a.runtime);work=Path(a.work);work.mkdir(parents=True,exist_ok=True)
-dotnet=Path(os.environ['DOTNET']);sdk=sorted((dotnet.parent/'sdk').glob('8.*'))[-1]
-refs=list((sorted((dotnet.parent/'packs/Microsoft.NETCore.App.Ref').glob('8.*'))[-1]/'ref/net8.0').glob('*.dll'));netrefs=refs[:]
+dotnet=Path(os.environ['DOTNET'])
+# Highest installed .NET (8 or newer), compared numerically; matches integration-run.py.
+latest=lambda paths:max(paths,key=lambda p:tuple(int(x) if x.isdigit() else -1 for x in p.name.replace('-','.').split('.')))
+sdk=latest([x for x in (dotnet.parent/'sdk').iterdir() if (x/'Roslyn/bincore/csc.dll').is_file()])
+refpack=latest([x for x in (dotnet.parent/'packs/Microsoft.NETCore.App.Ref').iterdir() if (x/'ref').is_dir()])
+refs=list(latest([x for x in (refpack/'ref').iterdir() if x.name.startswith('net')]).glob('*.dll'));netrefs=refs[:]
 cache=Path(os.environ['NUGET_PACKAGES']);engine=cache/'unityengine.modules/2021.3.33/lib/netstandard2.0';ui=next((cache/'unity3d.unityengine.ui/2020.3.21').rglob('UnityEngine.UI.dll'))
 nunit=cache/'nunit/3.14.0/lib/netstandard2.0/nunit.framework.dll';lite=cache/'nunitlite/3.14.0/lib/netstandard2.0/nunitlite.dll';refs += [*engine.glob('*.dll'),ui,nunit,lite]
 root=ROOT

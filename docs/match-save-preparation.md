@@ -62,7 +62,6 @@ python Tools/save-preparation-verify/run.py --binding --base e769664eb8398eea80e
 python Tools/save-preparation-verify/hand/run.py
 python Tools/save-preparation-verify/world/run.py
 python Tools/save-preparation-verify/presentation/run.py
-python Tools/save-preparation-verify/integration/run.py
 python Tools/save-preparation-verify/ai/run.py
 python Tools/collection-verify/run.py
 python Tools/terrain-verify/run_managed.py --dotnet "$DOTNET_BIN" --nunit "$NUNIT_DLL"

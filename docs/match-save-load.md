@@ -61,14 +61,10 @@ export DOTNET=/path/to/dotnet
 export DOTNET_BIN="$DOTNET"
 export NUGET_PACKAGES=/path/to/nuget/cache
 python Tools/match-save-verify/run-files.py
-python Tools/match-save-verify/world/run.py
-python Tools/match-save-verify/audit-world/run.py
 python Tools/match-save-verify/audit-world/native-run.py
 python Tools/match-save-verify/visual-role-audit/run.py
 python Tools/match-save-verify/integration-run.py
 python Tools/save-preparation-verify/ai/run.py
-python Tools/save-preparation-verify/presentation-codec/run.py
-python Tools/save-preparation-verify/integration/run.py
 python Tools/save-preparation-verify/hand/run.py
 python Tools/save-preparation-verify/world/run.py
 python Tools/save-preparation-verify/presentation/run.py

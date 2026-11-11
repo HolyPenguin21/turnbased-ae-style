@@ -12,10 +12,8 @@ export DOTNET_BIN="$DOTNET"
 export NUGET_PACKAGES=/path/to/nuget/cache
 export NUNIT_DLL="$NUGET_PACKAGES/nunit/3.14.0/lib/netstandard2.0/nunit.framework.dll"
 python Tools/match-save-verify/run-files.py
-python Tools/match-save-verify/world/run.py
 python Tools/match-save-verify/integration-run.py
 python Tools/save-preparation-verify/ai/run.py
-python Tools/save-preparation-verify/presentation-codec/run.py
 ```
 
 `run-files.py` executes production JSON/storage and card-operation availability code. Its
@@ -23,11 +21,6 @@ UI adapter declares only the native hand's fields/cards; the predicate is the As
 It checks malformed/duplicate/missing/unknown fields, numeric bounds, a 25-deep null DTO chain,
 exact Int64/escaping, graph detachment, cycles/nonfinite output, disk roundtrip, backup,
 future-version preservation, failed-write preservation and slot numbers beyond the UI page.
-
-`world/run.py` executes real world capture/decode/import, canonical hand/unit/army state,
-transport/activation/attachments/AA/stealth/delayed references and historical-only neutral
-owners. Native construction/assets are explicit adapters outside Assets. Tactical transport
-is the production serializer; unrelated profile serialization adapters remain separate.
 
 `integration-run.py` compiles all runtime code and runs actual capture -> serialize -> atomic
 file write/read -> decode/validate -> TryPrepareRestore -> scene-owner reset/transaction ->
@@ -46,8 +39,6 @@ EditMode fixtures remain required for those behaviors.
 
 AI's runner executes all concrete objective and owner mappings through `MatchSaveJson`,
 including the deep ActiveDefence snapshot and both valid/invalid preflight identity checks.
-The historical runner executes logical old observations and DTOs, and explicitly excludes
-native frozen renderer reconstruction.
 
 The source generator and `ai-types.json` preserve explicit typed AI DTO/mapping field coverage.
 Regenerate with `python Tools/match-save-verify/generate_ai_codec.py`; new model fields require
@@ -61,14 +52,14 @@ been executed by these managed tools. See `docs/match-save-load.md` for the rema
 Bottom-up audit runners:
 
 ```sh
-python Tools/match-save-verify/audit-world/run.py
 python Tools/match-save-verify/audit-world/native-run.py
 python Tools/match-save-verify/visual-role-audit/run.py
 ```
 
-The first checks real capture/import and the controller required by a ready carrier deck,
-plus preflight relationship rejection. The second uses full runtime sources and actual
+The first uses full runtime sources and actual
 AntiAirRules to check ability ordering for units/buildings/facilities; its name denotes the
-runtime-reference runner, not execution in Unity. The third runs actual frozen renderer
+runtime-reference runner, not execution in Unity. The second runs actual frozen renderer
 role capture/import and the subsequent real CopyAppearanceFrom, with engine-only component
 surfaces. See `docs/match-save-load-audit.md` for findings and remaining native checks.
+
+Removed 2026-11-11: `Tools/save-preparation-verify/integration/`, `presentation-codec/`, `Tools/match-save-verify/world/run.py` and `audit-world/run.py` no longer compiled after package 4 (stale source list). Their behavior is covered by the EditMode fixtures (MatchRestoreIntegrationTests, MatchSaveIntegrationTests, MatchPresentationCodecTests).

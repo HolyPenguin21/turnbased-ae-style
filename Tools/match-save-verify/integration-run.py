@@ -7,8 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 DOTNET = Path(os.environ['DOTNET']).resolve()
-SDK = sorted((DOTNET.parent/'sdk').glob('8.*'))[-1]
-REF = sorted((DOTNET.parent/'packs/Microsoft.NETCore.App.Ref').glob('8.*'))[-1]/'ref/net8.0'
+def latest(paths):
+    # Highest installed version (.NET 8 or newer); a lexical sort would put 8.x above 10.x.
+    return max(paths, key=lambda p: tuple(int(x) if x.isdigit() else -1 for x in re.split(r'[.-]', p.name)))
+SDK = latest([p for p in (DOTNET.parent/'sdk').iterdir() if (p/'Roslyn/bincore/csc.dll').is_file()])
+REF = latest([p for p in (latest([p for p in (DOTNET.parent/'packs/Microsoft.NETCore.App.Ref').iterdir() if (p/'ref').is_dir()])/'ref').iterdir() if p.name.startswith('net')])
+RUNTIME = latest([p for p in (DOTNET.parent/'shared/Microsoft.NETCore.App').iterdir() if p.is_dir()])
 PACKAGES = Path(os.environ['NUGET_PACKAGES'])
 ENGINE = PACKAGES/'unityengine.modules/2021.3.33/lib/netstandard2.0'
 UI = next((PACKAGES/'unity3d.unityengine.ui/2020.3.21').rglob('UnityEngine.UI.dll'))
@@ -35,6 +39,8 @@ for file in SOURCE.rglob('*.cs'):
     # destroyed Unity handles in this managed fixture: use CLR identity for null checks only.
     text=re.sub(r'(?<![\w?.])([A-Za-z_]\w*(?:\??\.[A-Za-z_]\w*)*)\s*([!=]=)\s*null',lambda m:('!' if m[2]=='!=' else '')+'object.ReferenceEquals('+m[1]+', null)',text)
     text=text.replace('Time.frameCount','IntegrationNative.Frame')
+    # Unity 6 SceneHandle is a struct (GetRawData); the legacy reference DLL has an int handle.
+    text=text.replace('gameObject.scene.handle.GetRawData()','(ulong)IntegrationNative.SceneHandle++')
     file.write_text(text)
 # Scene identity is the only native reset input adapted here.
 if 'gameObject.scene.handle' in (SOURCE/'Setup/CitadelSetupController.cs').read_text():
@@ -73,7 +79,7 @@ refs=[*REF.glob('*.dll'), *ENGINE.glob('*.dll'), UI]
 def compile(name, sources, references):
     rsp=WORK/(name+'.rsp'); rsp.write_text('\n'.join('"'+str(x)+'"' for x in ['-nologo','-target:exe','-langversion:9','-unsafe','-define:UNITY_EDITOR;UNITY_6000_0_OR_NEWER','-nowarn:0436,0618,0649,0414,0169,0219,0162,0168,8632','-out:'+str(WORK/(name+'.dll')),*['-r:'+str(r) for r in references],*sources]))
     subprocess.run([str(DOTNET),str(SDK/'Roslyn/bincore/csc.dll'),'@'+str(rsp)],check=True)
-    (WORK/(name+'.runtimeconfig.json')).write_text(json.dumps({'runtimeOptions':{'tfm':'net8.0','framework':{'name':'Microsoft.NETCore.App','version':'8.0.0'}}}))
+    (WORK/(name+'.runtimeconfig.json')).write_text(json.dumps({'runtimeOptions':{'tfm':REF.name,'framework':{'name':'Microsoft.NETCore.App','version':RUNTIME.name}}}))
 compile('Integration', [*SOURCE.rglob('*.cs'), WORK/'EngineStubs.cs', WORK/'Math.cs', HERE/'integration-program.cs'], refs)
 for file in [*ENGINE.glob('*.dll'), UI]: shutil.copy2(file,WORK/file.name)
 compile('ReferenceAdapter',[ROOT/'Tools/save-preparation-verify/ai/ReferenceAdapter.cs'],list(REF.glob('*.dll')))

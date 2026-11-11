@@ -5,7 +5,7 @@ DOTNET=/path/to/dotnet NUGET_PACKAGES=/path/to/nuget \
   python Tools/match-save-verify/integration-run.py
 ```
 
-Requires .NET 8, the cached UnityEngine.Modules 2021.3.33 / Unity UI references used by `Tools/ai-verify`, and the actual runtime source. `MATCH_INTEGRATION_WORK` optionally retains the disposable compile tree at a chosen path.
+Requires .NET 8 or newer (the highest installed SDK/runtime is used), the cached UnityEngine.Modules 2021.3.33 / Unity UI references used by `Tools/ai-verify`, and the actual runtime source. `MATCH_INTEGRATION_WORK` optionally retains the disposable compile tree at a chosen path.
 
 The runner compiles the entire current runtime, including the concrete world, AI, historical presentation and strict JSON codecs. It executes production `MatchSaveCodec.Capture`, `MatchSaveJson`, `MatchSaveStore`, `AtomicJsonFile`, `Decode`, `GameSession.TryPrepareRestore`, the scene setup's actual early `Awake` reset, `TryRestorePreparedMatch`, `MatchRestoreCoordinator` and `ResumeGame`. No test restore source, entity/objective codec, JSON adapter, graph-validation substitute or direct registration-based substitute for restoration is used.
 
