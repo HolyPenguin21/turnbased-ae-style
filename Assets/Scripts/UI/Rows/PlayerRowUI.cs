@@ -107,10 +107,9 @@ namespace Game.UI
                 int customSelected = selected >= 0 ? -1 : custom.FindIndex(d => d.deckId == Data.SelectedDeckId);
                 if (selected < 0) Data.AiDeckName = null;
                 if (customSelected < 0) Data.SelectedDeckId = null;
-                var profile = Game.Progression.ProgressionContext.Collection;
                 deckDropdown.AddOptions(new List<string> { "Random" }
                     .Concat(options.Select(d => d.deckName))
-                    .Concat(custom.Select(d => "My deck: " + DeckLabel(profile, d))).ToList());
+                    .Concat(custom.Select(d => d.name)).ToList());
                 deckDropdown.interactable = options.Count + custom.Count > 0;
                 deckDropdown.SetValueWithoutNotify(customSelected >= 0 ? 1 + options.Count + customSelected : selected + 1);
                 deckDropdown.RefreshShownValue();
@@ -140,13 +139,13 @@ namespace Game.UI
         private List<Game.Cards.StartingDeck> AuthoredAiDecks() =>
             startingDeckCatalog?.GetAiDecks(Data.Faction).ToList() ?? new List<Game.Cards.StartingDeck>();
 
-        // The human's saved decks are offered to an AI row only for a concrete faction; Random
-        // faction/deck never resolves to them (GameSession.AssignAiDecks picks authored decks).
+        // The human's own (non-starter) saved decks are offered to an AI row only for a concrete
+        // faction; Random faction/deck never resolves to them (AssignAiDecks picks authored decks).
         private List<Game.Progression.SavedDeck> AiCollectionDecks()
         {
             if (Data.Faction == Faction.Random || !Game.Progression.ProgressionContext.Initialize(deckConfig))
                 return new List<Game.Progression.SavedDeck>();
-            return Game.Progression.ProgressionContext.Collection.Decks(Data.Faction);
+            return Game.Progression.ProgressionContext.Collection.Decks(Data.Faction).FindAll(d => !d.isStarter);
         }
 
         public PlayerSetupData Data { get; private set; }

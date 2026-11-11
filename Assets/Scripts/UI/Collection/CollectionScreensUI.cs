@@ -357,7 +357,7 @@ namespace Game.UI
             var validation = collection.Rules.Validate(draft, collection.Owned);
             // Main cards only (buildings, heroes, units); equipment and mutators are blueprints and not counted.
             int cardTotal = DeckRules.Entries(draft, DeckCategory.Main).Where(e => e != null && collection.Rules.Resolve(e.cardKey) != null).Sum(e => e.count);
-            pointsLabel.text = $"{validation.Points} / {DeckRules.MaximumPoints} points - {cardTotal} cards" + (dirty ? " - unsaved" : "");
+            pointsLabel.text = $"{validation.Points} / {DeckRules.MaximumPoints} points - {cardTotal} cards";
             budgetFill.anchorMax = new Vector2(Mathf.Clamp01(validation.Points / (float)DeckRules.MaximumPoints), 1);
             // Keep the fill inside the new frame, including a zero-width empty budget.
             budgetFill.offsetMin = new Vector2(4f, 4f);
