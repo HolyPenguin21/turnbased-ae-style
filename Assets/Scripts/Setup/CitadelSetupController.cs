@@ -17,6 +17,8 @@ using Game.Units;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 
 namespace Game.Setup
@@ -54,6 +56,16 @@ namespace Game.Setup
         // Camera feel/pacing stays local, not on GameConfig — this is this step's own pan
         // timing, not a shared setting.
         [SerializeField] private float cameraPanDuration = 1.5f;
+
+        [Header("Intro")]
+        // New match reveal: black curtain hold, then zoom in from the camera's zoom-out limit
+        // onto the map centre, then pan to the first human's region while the vignette eases
+        // from introVignetteStart back to the Global Volume's own value.
+        [SerializeField] private float introBlackHold = 1f;
+        [SerializeField] private float introZoomDuration = 1f;
+        [SerializeField] private float introPanDuration = 1f;
+        [SerializeField] private float introCurtainFade = 0.3f;
+        [SerializeField, Range(0f, 1f)] private float introVignetteStart = 1f;
 
         [Header("Config")]
         // Starting-hex rule, highlight prefabs/height, ground raycast layer, citadel marker
@@ -98,6 +110,8 @@ namespace Game.Setup
         private int _currentPlayerIndex = -1;
         private bool _canPlace;
         private long setupGeneration;
+        private HexCoord? _introLandedOn;
+        private VolumeProfile _introProfile;
 
         private void Awake()
         {
@@ -106,6 +120,14 @@ namespace Game.Setup
             // Prepared GameSession players, map choices and campaign context stay intact.
             GameSession.InitializeWorld(gameObject.scene.handle.GetRawData());
             setupGeneration = GameSession.Generation;
+            // Black until the intro (or a restore) is ready; loaders already showed it before
+            // the load, a direct scene start gets it here.
+            SceneLoadCurtain.Hold(gameObject.scene, gameConfig != null ? gameConfig.loadingScreenImage : null);
+        }
+
+        private void OnDestroy()
+        {
+            if (_introProfile != null) Destroy(_introProfile);
         }
 
         private IEnumerator Start()
@@ -134,6 +156,8 @@ namespace Game.Setup
                         string restoreNotice = GameSession.RestoreNotice;
                         GameSession.RestoreNotice = null;
                         if (!string.IsNullOrEmpty(restoreNotice)) Game.UI.CollectionScreensUI.ShowMessage(transform, restoreNotice);
+                        SceneLoadCurtain.Release(introCurtainFade);
+                        ScreenWearOverlay.Reveal();
                         Destroy(gameObject);
                     }
                     else
@@ -164,6 +188,19 @@ namespace Game.Setup
                 cameraController?.InitializeForMatch();
                 ConfigureWorldSystems(); AssignStartingHexes(GameSession.Players);
                 _allPlayers.Clear(); _allPlayers.AddRange(GameSession.Players);
+            }
+            catch (System.Exception ex)
+            {
+                FailMatchLaunch(ex);
+                UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
+                yield break;
+            }
+
+            yield return PlayIntro();
+            if (this == null || !GameSession.IsCurrent(setupGeneration)) yield break;
+
+            try
+            {
                 BeginPlayerTurn(0);
             }
             catch (System.Exception ex)
@@ -171,7 +208,64 @@ namespace Game.Setup
                 FailMatchLaunch(ex);
                 UnityEngine.SceneManagement.SceneManager.LoadScene(SceneNames.MainMenu);
             }
-            yield break;
+        }
+
+        // Black hold, then zoom onto the map centre and pan to the first human's region while
+        // the vignette relaxes. The region glow and popup appear only after this ends.
+        private IEnumerator PlayIntro()
+        {
+            yield return new WaitForSecondsRealtime(introBlackHold);
+            if (this == null || !GameSession.IsCurrent(setupGeneration)) yield break;
+
+            PlayerSetupData firstHuman = _allPlayers.FirstOrDefault(p => p.IsHuman);
+            HexCoord? target = firstHuman != null && _startHexes.TryGetValue(firstHuman, out HexCoord hex) ? hex : (HexCoord?)null;
+            Vector3 centre = Vector3.zero;
+            Vector3 destination = target.HasValue && map != null ? map.HexToWorld(target.Value) : centre;
+            float zoomTime = Mathf.Max(0f, introZoomDuration);
+            float panTime = target.HasValue ? Mathf.Max(0f, introPanDuration) : 0f;
+            float total = zoomTime + panTime;
+            float startSize = cameraController != null ? cameraController.MaxOrthoSize : 0f;
+            float endSize = cameraController != null ? cameraController.PlayerOrthoSize : 0f;
+
+            Volume vignette = CreateIntroVignette();
+            cameraController?.SetFraming(centre, startSize);
+            SceneLoadCurtain.Release(introCurtainFade);
+
+            for (float t = 0f; t < total; t += Time.deltaTime)
+            {
+                if (cameraController != null)
+                {
+                    if (t < zoomTime)
+                        cameraController.SetFraming(centre, Mathf.Lerp(startSize, endSize, Mathf.SmoothStep(0f, 1f, t / zoomTime)));
+                    else
+                        cameraController.SetFraming(Vector3.Lerp(centre, destination, Mathf.SmoothStep(0f, 1f, (t - zoomTime) / panTime)), endSize);
+                }
+                vignette.weight = 1f - Mathf.SmoothStep(0f, 1f, t / total);
+                yield return null;
+            }
+
+            cameraController?.SetFraming(destination, endSize);
+            Destroy(vignette.gameObject);
+            Destroy(_introProfile);
+            _introProfile = null;
+            _introLandedOn = target;
+        }
+
+        // Temporary higher-priority global volume overriding only vignette intensity; its weight
+        // blends that intensity back to whatever the scene's Global Volume sets.
+        private Volume CreateIntroVignette()
+        {
+            _introProfile = ScriptableObject.CreateInstance<VolumeProfile>();
+            Vignette vignette = _introProfile.Add<Vignette>();
+            vignette.intensity.Override(introVignetteStart);
+            var go = new GameObject("IntroVignette");
+            go.transform.SetParent(transform, false);
+            var volume = go.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 1000f;
+            volume.weight = 1f;
+            volume.sharedProfile = _introProfile;
+            return volume;
         }
 
         private void ConfigureWorldSystems()
@@ -236,10 +330,12 @@ namespace Game.Setup
                 _selectedHighlight.SetColor(TechnicalColors.HexSelection);
             }
 
-            if (cameraController != null)
+            bool introFramed = _introLandedOn.HasValue && _introLandedOn.Value.Equals(_currentCandidate);
+            _introLandedOn = null;
+            if (cameraController != null && !introFramed)
                 cameraController.PanTo(map.HexToWorld(_currentCandidate), cameraPanDuration, ShowPopup);
             else
-                ShowPopup(); // no camera configured — just show it immediately
+                ShowPopup(); // already framed by the intro, or no camera configured
         }
 
         private void FinalizePlayer(PlayerSetupData player, HexCoord hex)
@@ -649,7 +745,7 @@ namespace Game.Setup
 
         private void FinishAllPlacements()
         {
-            try { CompleteNewMatchAssembly(); }
+            try { CompleteNewMatchAssembly(); ScreenWearOverlay.Reveal(); }
             catch (System.Exception ex)
             {
                 FailMatchLaunch(ex);

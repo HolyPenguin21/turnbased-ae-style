@@ -88,6 +88,7 @@ namespace Game.Setup
 
         public void OnStartGameClicked()
         {
+            if (Game.UI.SceneLoadCurtain.IsLoading) return;
             ResolveRandomFactions();
             if (!GameSession.TryPrepareMatch(_model.Players, gameConfig, out var error))
             {
@@ -97,7 +98,7 @@ namespace Game.Setup
             }
             GameSession.SelectedMapSize = _model.MapSize;
             GameSession.SelectedBiome = _model.Biome;
-            SceneManager.LoadScene(SceneNames.Game);
+            Game.UI.SceneLoadCurtain.LoadScene(SceneNames.Game, gameConfig.loadingScreenImage);
         }
 
         // MapSize's own int values are ring radii (5/6/7/8, see MapSize), not 0-based dropdown

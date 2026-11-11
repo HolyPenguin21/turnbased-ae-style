@@ -73,6 +73,18 @@ namespace UnityEngine.InputSystem
     public enum Key { None, Space, Enter, Escape, Tab, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Digit0, LeftShift, RightShift, LeftCtrl, UpArrow, DownArrow, LeftArrow, RightArrow }
     public class Mouse { public static Mouse current; public ButtonControl leftButton, rightButton, middleButton; public Vector2Control position; public Vector2Control scroll; }
 }
+namespace UnityEngine.Rendering
+{
+    public class VolumeParameter<T> { public bool overrideState; public T value; public void Override(T v) { overrideState = true; value = v; } }
+    public class ClampedFloatParameter : VolumeParameter<float> { }
+    public class VolumeComponent : UnityEngine.ScriptableObject { }
+    public class VolumeProfile : UnityEngine.ScriptableObject { public T Add<T>(bool overrides = false) where T : VolumeComponent => null; }
+    public class Volume : UnityEngine.MonoBehaviour { public bool isGlobal; public float priority, weight; public VolumeProfile sharedProfile; }
+}
+namespace UnityEngine.Rendering.Universal
+{
+    public class Vignette : UnityEngine.Rendering.VolumeComponent { public UnityEngine.Rendering.ClampedFloatParameter intensity; }
+}
 namespace UnityEditor
 {
     public class MenuItem : System.Attribute { public MenuItem(string name) {} }
