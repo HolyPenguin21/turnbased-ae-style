@@ -66,10 +66,23 @@ namespace Game.UI
         // lookup as ShowArmySummary's own Terrain Def/Construction Def lines, just as one number
         // for per-unit card display (see ArmyUnitCardUI.RefreshStatsRow). Every member of
         // _currentArmy shares this same hex, so it's one value for the whole grid, not per-unit.
+        // Weather applied: a sandstorm on the army's hex zeroes this bonus (BattleEnvironment.HexDefense),
+        // exactly as a battle on this hex would. A last-seen snapshot keeps its recorded clear-weather
+        // bonus; the storm is the current one on that hex (storms are shown on the map to everyone).
         public int CurrentArmyDefenseBonus =>
             _currentArmy == null || AviationRules.IsAirArmy(_currentArmy)
                 ? 0
-                : _currentArmy.VisualSnapshotDefenseBonus ?? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map, _currentArmy.Owner));
+                : _currentArmy.VisualSnapshotDefenseBonus is int recorded
+                    ? CurrentArmyEnvironment.HexDefense(recorded, 0)
+                    : Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map, _currentArmy.Owner));
+
+        // The weather a battle on this army's hex would be fought in (sandstorm: hex defence 0,
+        // every unit's attack Range -1, never below 1).
+        public BattleEnvironment CurrentArmyEnvironment =>
+            _currentArmy == null ? BattleEnvironment.Clear : BattleEnvironment.At(_currentArmy.Hex, map);
+
+        public int CurrentArmyAttackRange(UnitData unit) =>
+            unit == null ? 0 : CurrentArmyEnvironment.AttackRange(unit.Range);
 
         private readonly List<ArmyUnitCardUI> _cards = new List<ArmyUnitCardUI>();
         private ArmyData _currentArmy;
@@ -468,7 +481,10 @@ namespace Game.UI
                 // Defense includes this army's own terrain/Base-building bonus — same figure it
                 // would actually defend with if attacked on this hex right now (see
                 // CurrentArmyDefenseBonus's own comment).
-                detailText.text = UnitDetailFormatter.Format(unit, gameConfig, CurrentArmyDefenseBonus);
+                // Range is the one this unit would attack with on this hex (sandstorm -1) — the
+                // battle's final values, same as the battle screen's detail.
+                detailText.text = UnitDetailFormatter.Format(unit, gameConfig, CurrentArmyDefenseBonus,
+                    CurrentArmyAttackRange(unit));
             }
         }
 
