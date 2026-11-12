@@ -968,8 +968,11 @@ namespace Game.Ai.V2
                     continue;
                 if (a.Hex.Equals(hex))
                     return true;
+                // "Reaches it this turn" by the real route price (terrain, storm exits), the
+                // geometric distance only as the cheap lower bound that rules it out first.
                 if (!a.IsGarrison && a.CurrentMovement > 0
-                    && HexGridMath.Distance(a.Hex, hex) <= a.CurrentMovement)
+                    && HexGridMath.Distance(a.Hex, hex) <= a.CurrentMovement
+                    && AiV2Util.TravelCost(snap, a, hex, terrainOnly: true) <= a.CurrentMovement)
                     return true;
             }
             // The bank's spendable view (reservations excluded), never the raw stockpile.

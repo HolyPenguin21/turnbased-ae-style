@@ -573,8 +573,8 @@ namespace Game.EditorTests
                 attack: 1, hitPoints: 4, initiative: 0), 6).ToArray();
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
             var convert = typeof(WorthIt).GetMethod("ToBattleUnits", flags);
-            object own = convert.Invoke(null, new object[] { new[] { rocket }, 0f, 0, default(WorthIt.SideCommander) });
-            object enemy = convert.Invoke(null, new object[] { victims, 0f, 0, default(WorthIt.SideCommander) });
+            object own = convert.Invoke(null, new object[] { new[] { rocket }, 0f, 0, default(WorthIt.SideCommander), false });
+            object enemy = convert.Invoke(null, new object[] { victims, 0f, 0, default(WorthIt.SideCommander), false });
             typeof(WorthIt).GetMethod("SimulateOneBattle", flags).Invoke(null,
                 new object[] { own, enemy, new Random(42), 0, 0, (AbilityMagnitudes?)AbilityMagnitudes.Default, null });
             float Hp(object u) => (float)u.GetType().GetField("Hp").GetValue(u);

@@ -270,19 +270,12 @@ namespace Game.Combat
             public DefenderProfile WithState(float hitPoints, float attack, float defense) =>
                 new DefenderProfile(this, hitPoints, attack, defense);
 
-            // The same body with another attack Range (battle weather, WorthIt.UnderWeather).
-            public DefenderProfile WithRange(int range) =>
-                range == Range ? this : new DefenderProfile(this, HitPoints, Attack, Defense, range);
-
             private DefenderProfile(DefenderProfile p, float hitPoints, float attack, float defense)
-                : this(p, hitPoints, attack, defense, p.Range) { }
-
-            private DefenderProfile(DefenderProfile p, float hitPoints, float attack, float defense, int range)
             {
                 SingleUseUnit = p.SingleUseUnit;
                 CanDisruptBuilding = p.CanDisruptBuilding;
                 Consumption = p.Consumption;
-                Range = range;
+                Range = p.Range;
                 IsGroundCombatant = p.IsGroundCombatant;
                 IsSummoned = p.IsSummoned;
                 IsHero = p.IsHero;

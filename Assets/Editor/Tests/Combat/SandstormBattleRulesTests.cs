@@ -131,27 +131,33 @@ namespace Game.EditorTests
         private static List<WorthIt.DefenderProfile> Side(params int[] ranges) => ranges.Select(r => P(r)).ToList();
 
         [Test]
-        public void Forecast_AppliesWeatherOnce_ToBothSides_AndZeroesHexBonus()
+        public void Forecast_StormIsItsOwnCachedAnswer_AndZeroesTheHexBonus()
         {
-            var attackers = Side(2, 3, 1);
-            var defenders = Side(2, 2, 3);
-            var reducedAttackers = Side(1, 2, 1);
-            var reducedDefenders = Side(1, 1, 2);
+            // Range-2 shooters on both sides: in a storm they must approach (effective range 1).
+            var attackers = Side(2, 2, 3);
+            var defenders = Side(2, 2, 2);
+            float coldClear, coldStorm;
+            WorthIt.BeginEstimateCacheScope();
+            try { coldStorm = WorthIt.Estimate(attackers, defenders, 3f, environment: BattleEnvironment.Sandstorm).WinChance; }
+            finally { WorthIt.EndEstimateCacheScope(); }
+            WorthIt.BeginEstimateCacheScope();
+            try { coldClear = WorthIt.Estimate(attackers, defenders, 3f).WinChance; }
+            finally { WorthIt.EndEstimateCacheScope(); }
             WorthIt.BeginEstimateCacheScope();
             try
             {
-                float clear = WorthIt.Estimate(attackers, defenders, 3f).WinChance;
-                float storm = WorthIt.Estimate(attackers, defenders, 3f, environment: BattleEnvironment.Sandstorm).WinChance;
-                float manual = WorthIt.Estimate(reducedAttackers, reducedDefenders, 0f).WinChance;
-                Assert.That(storm, Is.EqualTo(manual), "storm = both rosters' Range - 1 and no hex bonus, applied once");
-                Assert.That(WorthIt.Estimate(attackers, defenders, 3f).WinChance, Is.EqualTo(clear),
-                    "the cache keeps the clear answer apart from the storm one");
+                Assert.That(WorthIt.Estimate(attackers, defenders, 3f).WinChance, Is.EqualTo(coldClear));
+                Assert.That(WorthIt.Estimate(attackers, defenders, 3f, environment: BattleEnvironment.Sandstorm).WinChance,
+                    Is.EqualTo(coldStorm), "a storm estimate after a clear one in the same scope is the storm's own answer");
+                Assert.That(WorthIt.Estimate(attackers, defenders, 0f, environment: BattleEnvironment.Sandstorm).WinChance,
+                    Is.EqualTo(coldStorm), "the hex bonus is 0 in a storm, whatever the caller passed");
             }
             finally { WorthIt.EndEstimateCacheScope(); }
+            Assert.That(attackers.Select(p => p.Range), Is.EqualTo(new[] { 2, 2, 3 }), "profiles are never rewritten");
         }
 
         [Test]
-        public void SequentialForecast_ReadsTheHexWeatherFromTheOpposition_Once()
+        public void SequentialForecast_ReadsTheHexWeatherFromTheOpposition()
         {
             var attackers = Side(3, 2);
             var first = Side(3, 2);
@@ -161,27 +167,26 @@ namespace Game.EditorTests
                 new WorthIt.DefendingArmy(first, default, 2f, 1, 1f, environment: BattleEnvironment.Sandstorm),
                 new WorthIt.DefendingArmy(second, default, 2f, 2, 1f, environment: BattleEnvironment.Sandstorm),
             };
-            var manualOpposition = new List<WorthIt.DefendingArmy>
+            var clearOpposition = stormOpposition.Select(a => a.WithEnvironment(default)).ToList();
+            var zeroBonusClear = new List<WorthIt.DefendingArmy>
             {
-                new WorthIt.DefendingArmy(Side(2, 1), default, 0f, 1, 0f),
-                new WorthIt.DefendingArmy(Side(1), default, 0f, 2, 0f),
+                new WorthIt.DefendingArmy(first, default, 0f, 1, 0f),
+                new WorthIt.DefendingArmy(second, default, 0f, 2, 0f),
             };
             float fromOpposition = WorthIt.EstimateSequential(attackers, default, stormOpposition, 2f).WinChance;
-            float explicitStorm = WorthIt.EstimateSequential(attackers, default,
-                stormOpposition.Select(a => a.WithEnvironment(default)).ToList(), 2f,
+            float explicitStorm = WorthIt.EstimateSequential(attackers, default, clearOpposition, 2f,
                 environment: BattleEnvironment.Sandstorm).WinChance;
-            float manual = WorthIt.EstimateSequential(Side(2, 1), default, manualOpposition, 0f).WinChance;
-            Assert.That(fromOpposition, Is.EqualTo(manual));
-            Assert.That(explicitStorm, Is.EqualTo(manual));
-            Assert.That(WorthIt.FightOrder(attackers, default, stormOpposition, 2f).Select(a => a.ArmyId),
-                Is.EquivalentTo(new int?[] { 1, 2 }), "ordering returns the caller's own armies");
+            float zeroBonusStorm = WorthIt.EstimateSequential(attackers, default, zeroBonusClear, 0f,
+                environment: BattleEnvironment.Sandstorm).WinChance;
+            Assert.That(fromOpposition, Is.EqualTo(explicitStorm));
+            Assert.That(fromOpposition, Is.EqualTo(zeroBonusStorm), "every hex bonus and building part is 0 in a storm");
+            Assert.That(WorthIt.FightOrder(attackers, default, stormOpposition, 2f).Select(a => a.Environment.InSandstorm),
+                Is.All.True, "ordering returns the caller's own armies");
         }
 
         [Test]
-        public void UnknownRange_StaysUnknown_AndDisruptionNeverGoesNegative()
+        public void StormArmies_NeverGoNegativeWithDisruption()
         {
-            var weathered = WorthIt.UnderWeather(new[] { P(-1), P(0), P(2) }, BattleEnvironment.Sandstorm);
-            Assert.That(weathered.Select(p => p.Range), Is.EqualTo(new[] { -1, 0, 1 }));
             var army = WorthIt.UnderWeather(new[]
             {
                 new WorthIt.DefendingArmy(Side(2), default, 5f, 1, 3f, environment: BattleEnvironment.Sandstorm),
@@ -189,7 +194,7 @@ namespace Game.EditorTests
             var carrier = new WorthIt.DefenderProfile(2f, false, attack: 3f, hitPoints: 4f,
                 abilities: new[] { UnitAbilities.Disruption });
             Assert.That(army.DefenseBonus(5f, new[] { carrier }), Is.Zero);
-            Assert.That(army.Environment.InSandstorm, Is.False, "applied weather is marked as applied");
+            Assert.That(army.Environment.InSandstorm, Is.False, "the storm is applied by the estimate, once");
         }
     }
 }

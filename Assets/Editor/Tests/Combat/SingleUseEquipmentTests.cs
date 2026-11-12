@@ -303,9 +303,9 @@ namespace Game.EditorTests
             var simulate = typeof(WorthIt).GetMethod("SimulateOneBattle", flags);
             int Run(WorthIt.DefenderProfile actor)
             {
-                var own = convert.Invoke(null, new object[] { new[] { actor }, 0f, 0, default(WorthIt.SideCommander) });
+                var own = convert.Invoke(null, new object[] { new[] { actor }, 0f, 0, default(WorthIt.SideCommander), false });
                 var enemy = convert.Invoke(null, new object[] {
-                    new[] { WorthIt.FromLiveUnit(Body(Host(0, 0, 100))) }, 0f, 0, default(WorthIt.SideCommander) });
+                    new[] { WorthIt.FromLiveUnit(Body(Host(0, 0, 100))) }, 0f, 0, default(WorthIt.SideCommander), false });
                 return (int)simulate.Invoke(null, new object[] { own, enemy, new System.Random(8),
                     0, 0, (AbilityMagnitudes?)AbilityMagnitudes.Default, null });
             }

@@ -196,24 +196,25 @@ namespace Game.Combat
             float hexDefenseBonus = 0f, SideCommander defenderCommander = default,
             AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
-            enemyUnits = UnderWeather(WithBattleSummons(enemyUnits), environment);
+            enemyUnits = WithBattleSummons(enemyUnits);
             hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
+            bool storm = environment.InSandstorm;
             if (!enemyUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
             SideCommander attackerCommander = SideCommander.Of(attacker?.Commander);
             List<BattleUnit> baseline = ToAttackerBattleUnits(attacker, attackerCommander.Initiative);
             var liveProfiles = TacticalTargetsOf(attacker.Members).Select(FromLiveUnit).ToList();
-            List<DefenderProfile> liveWithSummons = UnderWeather(WithBattleSummons(liveProfiles), environment).ToList();
+            List<DefenderProfile> liveWithSummons = WithBattleSummons(liveProfiles);
             for (int i = 0; i < baseline.Count; i++)
             {
                 BattleUnit unit = baseline[i];
-                unit.Range = environment.AttackRange(unit.Range);
+                unit.InSandstorm = storm;
                 baseline[i] = unit;
             }
             if (liveWithSummons.Count > liveProfiles.Count)
                 baseline.AddRange(ToBattleUnits(
-                    liveWithSummons.Skip(liveProfiles.Count).ToList(), 0f, attackerCommander.Initiative));
+                    liveWithSummons.Skip(liveProfiles.Count).ToList(), 0f, attackerCommander.Initiative, inSandstorm: storm));
             if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
@@ -224,7 +225,7 @@ namespace Game.Combat
             int seed = BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus,
                 attackerCommander, defenderCommander);
             return EstimateCore(baseline, enemyUnits, hexDefenseBonus, seed,
-                attackerCommander, defenderCommander, magnitudes);
+                attackerCommander, defenderCommander, magnitudes, storm);
         }
 
         // Roster-vs-roster overload (2026-09-14, Housekeeping contact-selection sync) — the same
@@ -237,8 +238,8 @@ namespace Game.Combat
             SideCommander attackerCommander = default, SideCommander defenderCommander = default,
             AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
-            attackerUnits = UnderWeather(WithBattleSummons(attackerUnits), environment);
-            defenderUnits = UnderWeather(WithBattleSummons(defenderUnits), environment);
+            attackerUnits = WithBattleSummons(attackerUnits);
+            defenderUnits = WithBattleSummons(defenderUnits);
             hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
             if (!defenderUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
@@ -249,7 +250,7 @@ namespace Game.Combat
             int seed = BuildRosterSeed(attackerUnits, defenderUnits, hexDefenseBonus,
                 attackerCommander, defenderCommander);
             return EstimateCore(attackerUnits, defenderUnits, hexDefenseBonus, seed,
-                attackerCommander, defenderCommander, magnitudes);
+                attackerCommander, defenderCommander, magnitudes, environment.InSandstorm);
         }
 
         // THE quick "how much fight is in this body" stat sum (Attack + Defense + HitPoints +
@@ -381,29 +382,25 @@ namespace Game.Combat
                 DisruptionRules.KnownBuildingDefenseFor(hex, defenderOwner, incomingAttacker));
 
         // ---- Battle weather -----------------------------------------------------------------------
-        // The forecast reads the same rule as the live battle (BattleRules.EffectiveAttackRange,
-        // BattleEnvironment.HexDefense), applied ONCE at the public entry points to both sides —
-        // before fight order, seeds and estimate-cache keys, so a cached clear-weather answer is
-        // never returned for a storm. Unknown range (-1) stays unknown. WorthIt has no positions:
-        // this gives the model the right inputs; it does not make it a tactical-grid simulation.
-        internal static IReadOnlyCollection<DefenderProfile> UnderWeather(
-            IReadOnlyCollection<DefenderProfile> units, BattleEnvironment environment)
-        {
-            if (!environment.InSandstorm || units == null || units.Count == 0)
-                return units;
-            return units.Select(p => p.WithRange(environment.AttackRange(p.Range))).ToList();
-        }
+        // The forecast reads the same rules as the live battle: BattleEnvironment.HexDefense for the
+        // defender's hex bonuses, and BattleRules.EffectiveAttackRange applied by the simulation to
+        // every body's CURRENT range at the point of use (BattleUnit.InSandstorm/EffectiveRange) -
+        // both sides, summons included, consumed equipment recomputed from its new base, never
+        // twice. Profiles themselves are never rewritten. The storm flag is part of every
+        // estimate-cache key, so a clear-weather answer is never returned for a storm. Unknown
+        // range (-1) stays unknown. WorthIt has no positions: this gives the model the right
+        // inputs; it does not make it a tactical-grid simulation.
 
-        // Defending armies under weather: rosters as above; every hex-derived bonus (the shared
-        // fallback, a per-army override and its building part) is 0 — so a projected Disruption
-        // carrier can never subtract a building bonus the storm already removed.
+        // Defending armies under a storm: every hex-derived bonus (the shared fallback, a per-army
+        // override and its building part) is 0 - a projected Disruption carrier can never subtract
+        // a building bonus the storm already removed. Rosters are untouched; the result carries
+        // Environment.Clear because the caller now owns the storm flag (never applied twice).
         internal static IReadOnlyList<DefendingArmy> UnderWeather(IReadOnlyList<DefendingArmy> armies,
             BattleEnvironment environment)
         {
             if (!environment.InSandstorm || armies == null || armies.Count == 0)
                 return armies;
-            // The result carries Environment.Clear: the weather is now applied, never twice.
-            return armies.Select(a => new DefendingArmy(UnderWeather(a.Units, environment), a.Commander,
+            return armies.Select(a => new DefendingArmy(a.Units, a.Commander,
                 a.DefenseBonusOverride.HasValue ? 0f : (float?)null, a.ArmyId, 0f, a.IsEventGuard)).ToList();
         }
 

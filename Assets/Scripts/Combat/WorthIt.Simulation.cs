@@ -247,7 +247,7 @@ namespace Game.Combat
                     {
                         BattleUnit victim = enemyList[targetIndex];
                         if (BattleSimulationKernel.TriggersCounterattack(victim.Abilities, victim.IsHero,
-                                victim.Hp, actor.Range <= 1,
+                                victim.Hp, actor.EffectiveRange <= 1,
                                 exchange.Damage, actor.Abilities))
                         {
                             BattleUnit answered = ownList[turn.index];
@@ -284,26 +284,21 @@ namespace Game.Combat
             var order = new List<DefendingArmy>(armies?.Count ?? 0);
             if (armies == null)
                 return order;
-            // A hex under a storm is ranked under the storm's rules; the caller gets its own
-            // (unweathered) armies back in that order, so a later estimate applies weather once.
-            BattleEnvironment weather = BattleWeather(default, armies);
-            if (weather.InSandstorm)
-            {
-                IReadOnlyList<DefendingArmy> weathered = UnderWeather(armies, weather);
-                List<DefendingArmy> ranked = FightOrder(UnderWeather(WithBattleSummons(attackerUnits), weather),
-                    attackerCommander, weathered.ToList(),
-                    weather.HexDefense(hexDefenseBonus), magnitudes);
-                var used = new bool[armies.Count];
-                foreach (DefendingArmy a in ranked)
-                    for (int i = 0; i < weathered.Count; i++)
-                        if (!used[i] && ReferenceEquals(weathered[i].Units, a.Units))
-                        {
-                            used[i] = true;
-                            order.Add(armies[i]);
-                            break;
-                        }
+            return FightOrder(attackerUnits, attackerCommander, armies, hexDefenseBonus, magnitudes,
+                BattleWeather(default, armies));
+        }
+
+        // A hex under a storm is ranked under the storm's rules (zero hex bonuses, the storm flag
+        // on every estimate); the caller always gets its OWN armies back, in that order.
+        private static List<DefendingArmy> FightOrder(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            SideCommander attackerCommander, IReadOnlyList<DefendingArmy> armies, float hexDefenseBonus,
+            AbilityMagnitudes? magnitudes, BattleEnvironment environment)
+        {
+            var order = new List<DefendingArmy>(armies?.Count ?? 0);
+            if (armies == null)
                 return order;
-            }
+            IReadOnlyList<DefendingArmy> ranked = UnderWeather(armies, environment);
+            hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
             int fieldArmies = 0;
             for (int i = 0; i < armies.Count; i++)
                 if (!armies[i].IsEventGuard) fieldArmies++;
@@ -311,9 +306,9 @@ namespace Game.Combat
                 order.AddRange(armies
                     .Select((a, i) => (a, i))
                     .Where(x => !x.a.IsEventGuard)
-                    .Select(x => (x.a, x.i, win: Estimate(attackerUnits, x.a.Units,
-                        x.a.DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander),
-                        attackerCommander, x.a.Commander, magnitudes).WinChance))
+                    .Select(x => (x.a, x.i, win: Estimate(attackerUnits, ranked[x.i].Units,
+                        ranked[x.i].DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander),
+                        attackerCommander, ranked[x.i].Commander, magnitudes, environment).WinChance))
                     .OrderBy(x => x.win).ThenBy(x => x.i)
                     .Select(x => x.a));
             else
@@ -342,14 +337,14 @@ namespace Game.Combat
                         armies[0].DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander), attackerCommander,
                         armies[0].Commander, magnitudes, environment);
 
-            armies = UnderWeather(armies, environment).ToList();
-            attackerUnits = UnderWeather(WithBattleSummons(attackerUnits), environment);
-            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander);
+            bool storm = environment.InSandstorm;
+            attackerUnits = WithBattleSummons(attackerUnits);
+            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander, storm);
             if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
-            List<DefendingArmy> order = FightOrder(attackerUnits, attackerCommander, armies,
-                hexDefenseBonus, magnitudes);
+            List<DefendingArmy> order = UnderWeather(FightOrder(attackerUnits, attackerCommander, armies,
+                hexDefenseBonus, magnitudes, environment), environment).ToList();
 
             int seed = BuildRosterSeed(attackerUnits,
                 order.SelectMany(a => a.Units).ToList(), hexDefenseBonus, attackerCommander, default);
@@ -360,7 +355,7 @@ namespace Game.Combat
             // Each defending army converted once; every trial fights a fresh copy (same values the
             // per-trial conversion produced).
             var defenderTemplates = order
-                .Select(a => ToBattleUnits(a.Units, a.DefenseBonus(hexDefenseBonus), a.Commander.Initiative, a.Commander))
+                .Select(a => ToBattleUnits(a.Units, a.DefenseBonus(hexDefenseBonus), a.Commander.Initiative, a.Commander, storm))
                 .ToList();
             return CachedEstimate(2, seed, m,
                 buf =>
@@ -465,7 +460,7 @@ namespace Game.Combat
         private static BattleEstimate EstimateCore(List<BattleUnit> baseline,
             IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus, int seed,
             SideCommander attackerCommander, SideCommander defenderCommander,
-            AbilityMagnitudes? magnitudes)
+            AbilityMagnitudes? magnitudes, bool inSandstorm)
         {
             AbilityMagnitudes m = magnitudes ?? AbilityMagnitudes.Default;
             return CachedEstimate(1, seed, m,
@@ -474,33 +469,33 @@ namespace Game.Combat
                     AppendKey(buf, attackerCommander);
                     AppendKey(buf, baseline);
                     AppendKey(buf, defenderCommander);
-                    AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
+                    AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative, inSandstorm);
                     // The simulated commander healing heroes also receive the hex bonus.
                     buf.Add(System.BitConverter.SingleToInt32Bits(hexDefenseBonus));
                 },
                 () => SimulateSingle(baseline,
-                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander), seed, attackerCommander,
-                    defenderCommander, m));
+                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander, inSandstorm),
+                    seed, attackerCommander, defenderCommander, m));
         }
 
         private static BattleEstimate EstimateCore(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus, int seed,
             SideCommander attackerCommander, SideCommander defenderCommander,
-            AbilityMagnitudes? magnitudes)
+            AbilityMagnitudes? magnitudes, bool inSandstorm)
         {
             AbilityMagnitudes m = magnitudes ?? AbilityMagnitudes.Default;
             return CachedEstimate(1, seed, m,
                 buf =>
                 {
                     AppendKey(buf, attackerCommander);
-                    AppendKey(buf, attackerUnits, 0f, attackerCommander.Initiative);
+                    AppendKey(buf, attackerUnits, 0f, attackerCommander.Initiative, inSandstorm);
                     AppendKey(buf, defenderCommander);
-                    AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
+                    AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative, inSandstorm);
                     // The simulated commander healing heroes also receive the hex bonus.
                     buf.Add(System.BitConverter.SingleToInt32Bits(hexDefenseBonus));
                 },
-                () => SimulateSingle(ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander),
-                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander), seed,
+                () => SimulateSingle(ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander, inSandstorm),
+                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander, inSandstorm), seed,
                     attackerCommander, defenderCommander, m));
         }
 
