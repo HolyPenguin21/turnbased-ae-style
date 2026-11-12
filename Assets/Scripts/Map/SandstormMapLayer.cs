@@ -11,15 +11,23 @@ namespace Game.Map
     // dims it over hexes the viewer can't see, exactly as it dims the terrain. Added and
     // configured at runtime by HexMapGenerator next to MapTerrainAnimator.
     //
-    // The rules change a storm instantly; this layer only eases the picture. Per storm, a sprite
-    // whose hex stays stormy does not move; the other sprites pair up with the new hexes nearest
-    // first and glide there, each at its own random moment within
-    // SandstormVisualStyle.moveSeconds; sprites left over fade out where they stand, hexes left
-    // over fade in. The rules never let two storms share a hex, so at rest every stormy hex shows
-    // exactly one sprite. Nothing here feeds back into the game.
+    // The rules change a storm instantly; this layer only eases the picture, as a crawl:
+    //  - a hex that stays stormy and is not needed by a chain keeps its sprite still;
+    //  - every new hex is filled by a chain of one-hex steps: the storm sprite nearest to it
+    //    steps in, the sprite behind steps into the hex just vacated, and so on back to a hex the
+    //    storm left. No sprite ever moves further than to a neighbouring hex of its own storm, so
+    //    it never sweeps across another storm;
+    //  - a sprite enters a hex only once the sprite leaving that hex (any storm) is under way;
+    //  - hexes no chain can reach fade in, sprites no chain needs fade out where they stand.
+    // The whole change settles within SandstormVisualStyle.moveSeconds. The rules never let two
+    // storms share a hex, so at rest every stormy hex shows exactly one sprite. Nothing here
+    // feeds back into the game.
     [RequireComponent(typeof(HexMap))]
     public class SandstormMapLayer : MonoBehaviour
     {
+        // The next step of a chain starts when the step ahead of it is this far along.
+        private const float FollowAt = 0.4f;
+
         private sealed class Puff
         {
             public SpriteRenderer Renderer;
@@ -30,6 +38,16 @@ namespace Game.Map
             public float FromAlpha, ToAlpha, CurrentAlpha;
             public float Start, Duration;
             public bool Retiring;
+        }
+
+        // One scheduled change of one sprite: a one-hex step, a fade-in or a fade-out.
+        private sealed class Change
+        {
+            public Puff Puff;
+            public HexCoord? Leaves;
+            public HexCoord? Enters;
+            public bool FadeOut;
+            public float Start;
         }
 
         private HexMap _map;
@@ -80,17 +98,18 @@ namespace Game.Map
             Animate();
         }
 
+        // ---- Planning one weather change ------------------------------------------------------------
         private void Place(SandstormSnapshot weather, bool animate)
         {
-            float now = Time.time;
-            var bySlot = new Dictionary<int, List<Puff>>();
+            var bySlot = new Dictionary<int, Dictionary<HexCoord, Puff>>();
             foreach (Puff puff in _puffs)
             {
                 if (puff.Retiring) continue;
-                if (!bySlot.TryGetValue(puff.Slot, out List<Puff> list)) bySlot[puff.Slot] = list = new List<Puff>();
-                list.Add(puff);
+                if (!bySlot.TryGetValue(puff.Slot, out var map)) bySlot[puff.Slot] = map = new Dictionary<HexCoord, Puff>();
+                map[puff.Hex] = puff;
             }
 
+            var changes = new List<Change>();
             var live = new HashSet<int>();
             if (weather != null)
             {
@@ -98,79 +117,149 @@ namespace Game.Map
                 {
                     if (view.Body.Count == 0) continue;
                     live.Add(view.SlotId);
-                    if (!bySlot.TryGetValue(view.SlotId, out List<Puff> old)) old = new List<Puff>();
-
-                    // 1. A hex that stays stormy keeps its sprite where it is.
-                    var fresh = new List<HexCoord>();
-                    foreach (HexCoord cell in view.Body)
-                    {
-                        int same = old.FindIndex(p => p.Hex.Equals(cell));
-                        if (same < 0) { fresh.Add(cell); continue; }
-                        Retarget(old[same], _map.HexToWorld(cell), 1f, animate, now);
-                        old.RemoveAt(same);
-                    }
-
-                    // 2. Freed sprites glide to the new hexes, the closest pair first.
-                    while (fresh.Count > 0 && old.Count > 0)
-                    {
-                        int bestCell = 0, bestPuff = 0;
-                        float best = float.MaxValue;
-                        for (int c = 0; c < fresh.Count; c++)
-                        {
-                            Vector3 target = _map.HexToWorld(fresh[c]);
-                            for (int p = 0; p < old.Count; p++)
-                            {
-                                float distance = (old[p].Current - target).sqrMagnitude;
-                                if (distance >= best) continue;
-                                best = distance;
-                                bestCell = c;
-                                bestPuff = p;
-                            }
-                        }
-                        Puff moving = old[bestPuff];
-                        moving.Hex = fresh[bestCell];
-                        Retarget(moving, _map.HexToWorld(fresh[bestCell]), 1f, animate, now);
-                        old.RemoveAt(bestPuff);
-                        fresh.RemoveAt(bestCell);
-                    }
-
-                    // 3. The storm grew: new sprites fade in on their hexes.
-                    foreach (HexCoord cell in fresh)
-                    {
-                        Vector3 target = _map.HexToWorld(cell);
-                        Retarget(Spawn(view.SlotId, cell, target), target, 1f, animate, now);
-                    }
-
-                    // 4. The storm shrank: the sprites left over fade out where they stand.
-                    foreach (Puff gone in old) Retire(gone, animate, now);
+                    if (!bySlot.TryGetValue(view.SlotId, out var old)) old = new Dictionary<HexCoord, Puff>();
+                    PlanStorm(view, old, changes);
                 }
             }
-
             foreach (var pair in bySlot)
             {
                 if (live.Contains(pair.Key)) continue;
-                foreach (Puff gone in pair.Value) Retire(gone, animate, now);
+                float start = RandomStart();
+                foreach (Puff gone in pair.Value.Values)
+                    changes.Add(new Change { Puff = gone, Leaves = gone.Hex, FadeOut = true, Start = start });
+            }
+
+            Schedule(changes, animate);
+        }
+
+        // One storm: chains of one-hex steps from the hexes it left to the hexes it gained.
+        private void PlanStorm(SandstormInstanceView view, Dictionary<HexCoord, Puff> old, List<Change> changes)
+        {
+            var body = new HashSet<HexCoord>(view.Body);
+            var left = new List<HexCoord>();          // old sprites whose hex is no longer stormy
+            foreach (HexCoord hex in old.Keys) if (!body.Contains(hex)) left.Add(hex);
+            var gained = new List<HexCoord>();        // new hexes with no sprite yet
+            foreach (HexCoord hex in view.Body) if (!old.ContainsKey(hex)) gained.Add(hex);
+            var staying = new HashSet<HexCoord>();    // stormy before and after: chains may pass
+            foreach (HexCoord hex in view.Body) if (old.ContainsKey(hex)) staying.Add(hex);
+
+            // Shortest chain first, until no gained hex can be reached from a left one.
+            while (gained.Count > 0 && left.Count > 0)
+            {
+                List<HexCoord> best = null;
+                foreach (HexCoord target in gained)
+                {
+                    List<HexCoord> path = ShortestChain(target, left, staying);
+                    if (path != null && (best == null || path.Count < best.Count)) best = path;
+                }
+                if (best == null) break;
+                // best = target, s1, ..., source. Step k moves the sprite on best[k + 1] into best[k].
+                float start = RandomStart();
+                for (int k = 0; k + 1 < best.Count; k++)
+                {
+                    Puff mover = old[best[k + 1]];
+                    changes.Add(new Change { Puff = mover, Leaves = best[k + 1], Enters = best[k], Start = start });
+                    mover.Hex = best[k];
+                }
+                for (int k = 1; k + 1 < best.Count; k++) staying.Remove(best[k]); // each sprite steps once
+                gained.Remove(best[0]);
+                left.Remove(best[best.Count - 1]);
+            }
+
+            foreach (HexCoord hex in left)
+                changes.Add(new Change { Puff = old[hex], Leaves = hex, FadeOut = true, Start = RandomStart() });
+            foreach (HexCoord hex in gained)
+            {
+                Puff puff = Spawn(view.SlotId, hex, _map.HexToWorld(hex));
+                changes.Add(new Change { Puff = puff, Enters = hex, Start = RandomStart() });
             }
         }
 
-        private void Retarget(Puff puff, Vector3 to, float alpha, bool animate, float now)
+        // Breadth-first from `target` through hexes the storm keeps (each passable once) to the
+        // nearest hex it left; neighbours only. Returns target..source, or null.
+        private static List<HexCoord> ShortestChain(HexCoord target, List<HexCoord> left, HashSet<HexCoord> staying)
         {
+            var sources = new HashSet<HexCoord>(left);
+            var cameFrom = new Dictionary<HexCoord, HexCoord> { [target] = target };
+            var queue = new Queue<HexCoord>();
+            queue.Enqueue(target);
+            while (queue.Count > 0)
+            {
+                HexCoord hex = queue.Dequeue();
+                for (int d = 0; d < 6; d++)
+                {
+                    HexCoord next = SandstormRules.Step(hex, d);
+                    if (cameFrom.ContainsKey(next)) continue;
+                    if (sources.Contains(next))
+                    {
+                        var path = new List<HexCoord> { next };
+                        for (HexCoord at = hex; ; at = cameFrom[at])
+                        {
+                            path.Add(at);
+                            if (at.Equals(target)) break;
+                        }
+                        path.Reverse();
+                        return path;
+                    }
+                    if (!staying.Contains(next)) continue;
+                    cameFrom[next] = hex;
+                    queue.Enqueue(next);
+                }
+            }
+            return null;
+        }
+
+        private float StepSeconds => _moveSeconds * _spriteMoveShare;
+
+        private float RandomStart() => (float)_random.NextDouble() * Mathf.Max(0f, _moveSeconds - StepSeconds);
+
+        // A sprite enters a hex only once the sprite leaving it is FollowAt under way (this also
+        // orders every chain front to back), then the whole change is squeezed into moveSeconds.
+        private void Schedule(List<Change> changes, bool animate)
+        {
+            float now = Time.time;
+            float step = StepSeconds;
+            if (!animate || _moveSeconds <= 0f)
+            {
+                foreach (Change c in changes) Apply(c, now, 0f);
+                return;
+            }
+
+            var leaver = new Dictionary<HexCoord, Change>();
+            foreach (Change c in changes)
+                if (c.Leaves.HasValue) leaver[c.Leaves.Value] = c;
+            // Relaxation; a cycle (two storms swapping hexes) just stops tightening after the cap.
+            for (int pass = 0; pass < 16; pass++)
+            {
+                bool changed = false;
+                foreach (Change c in changes)
+                {
+                    if (!c.Enters.HasValue || !leaver.TryGetValue(c.Enters.Value, out Change before) || before == c) continue;
+                    float earliest = before.Start + FollowAt * step;
+                    if (c.Start < earliest - 1e-4f) { c.Start = earliest; changed = true; }
+                }
+                if (!changed) break;
+            }
+
+            float end = 0f;
+            foreach (Change c in changes) end = Mathf.Max(end, c.Start + step);
+            float squeeze = end > _moveSeconds ? _moveSeconds / end : 1f;
+            foreach (Change c in changes) Apply(c, now + c.Start * squeeze, step * squeeze);
+        }
+
+        private void Apply(Change change, float start, float duration)
+        {
+            Puff puff = change.Puff;
+            if (change.FadeOut) puff.Retiring = true;
             puff.From = puff.Current;
             puff.FromAlpha = puff.CurrentAlpha;
-            puff.To = to;
-            puff.ToAlpha = alpha;
-            float duration = animate ? _moveSeconds * _spriteMoveShare : 0f;
-            float window = animate ? Mathf.Max(0f, _moveSeconds - duration) : 0f;
+            puff.To = change.FadeOut ? puff.Current : _map.HexToWorld(puff.Hex);
+            puff.ToAlpha = change.FadeOut ? 0f : 1f;
+            puff.Start = start;
             puff.Duration = duration;
-            puff.Start = now + (float)_random.NextDouble() * window;
         }
 
-        private void Retire(Puff puff, bool animate, float now)
-        {
-            puff.Retiring = true;
-            Retarget(puff, puff.Current, 0f, animate, now);
-        }
-
+        // ---- Sprites ----------------------------------------------------------------------------------
         private Puff Spawn(int slot, HexCoord hex, Vector3 position)
         {
             SpriteRenderer renderer = _idle.Count > 0 ? _idle.Pop() : CreateRenderer();
@@ -179,7 +268,7 @@ namespace Game.Map
             {
                 Renderer = renderer, Slot = slot, Hex = hex,
                 Phase = _frames.Length > 0 ? _random.Next(phaseSlots) * _startFrameStep % _frames.Length : 0,
-                Current = position, CurrentAlpha = 0f,
+                Current = position, To = position, CurrentAlpha = 0f,
             };
             renderer.sprite = null;
             renderer.transform.position = position;
