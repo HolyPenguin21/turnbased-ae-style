@@ -1,4 +1,5 @@
 using System;
+using Game.Map;
 using System.Collections.Generic;
 using Game.Players;
 using Game.Terrain;
@@ -18,6 +19,9 @@ namespace Game.Campaign
         public Biome Biome { get => (Biome)(BiomeId - 1); set => BiomeId = (int)value + 1; }
         public ResourceSpecialization Specialization;
         public ResourceRichness Richness;
+        // Fixed for the whole campaign: who owns or attacks the region never changes it. Zero is not
+        // a profile, so a missing JSON field is rejected rather than read as clear weather.
+        public MatchWeatherProfile Weather;
         public RegionResourceConditions ResourceConditions => new RegionResourceConditions(Specialization, Richness);
         public List<Vector2> PolygonVertices = new List<Vector2>();
         public List<int> NeighborIds = new List<int>();
@@ -38,6 +42,11 @@ namespace Game.Campaign
         public CampaignOutcome Outcome;
         public double AttackerScore, DefenderScore, WinChance, Roll;
         public string AttackerDeckName, DefenderDeckName;
+        // The TARGET region's weather, taken when the operation is created (never the source's).
+        // Its storms' seed derives from RandomSeed (MatchWeatherConditions.DeriveSeed).
+        public MatchWeatherProfile Weather;
+        public MatchWeatherConditions WeatherConditions =>
+            new MatchWeatherConditions(Weather, MatchWeatherConditions.DeriveSeed(RandomSeed));
         // Unity's inline serializer represents a null custom class as its default
         // field values. Recognize only that exact placeholder, never a real receipt.
         internal bool IsEmptyInlineValue => string.IsNullOrEmpty(OperationId) && string.IsNullOrEmpty(MatchId)
@@ -45,7 +54,8 @@ namespace Game.Campaign
             && AttackerFaction == default(Faction) && DefenderFaction == default(Faction)
             && SourceRegionId == 0 && TargetRegionId == 0 && RandomSeed == 0
             && !Manual && !TestAutoResolve && !ResultRecorded && !OwnershipApplied && !RewardAcknowledged
-            && Outcome == default(CampaignOutcome) && AttackerScore == 0 && DefenderScore == 0 && WinChance == 0 && Roll == 0;
+            && Outcome == default(CampaignOutcome) && AttackerScore == 0 && DefenderScore == 0 && WinChance == 0 && Roll == 0
+            && Weather == default(MatchWeatherProfile);
     }
     [Serializable] public sealed class CampaignBattleRecord
     {
@@ -58,7 +68,9 @@ namespace Game.Campaign
     }
     [Serializable] public sealed class CampaignState
     {
-        public const int CurrentSchema = 2;
+        // 3: regional weather (RegionState.Weather, CampaignOperation.Weather). Versions 1-2 are
+        // obsolete campaigns, never silently given clear weather.
+        public const int CurrentSchema = 3;
         public int SchemaVersion = CurrentSchema;
         public string CampaignId, PlanetName;
         public int Seed, RandomSequence, RoundNumber = 1, CurrentTurnIndex;

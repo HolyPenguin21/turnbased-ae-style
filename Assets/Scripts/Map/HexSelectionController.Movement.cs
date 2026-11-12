@@ -87,15 +87,14 @@ namespace Game.Map
             _lastPreviewedHover = hoverCoord;
             _lastPreviewedPathingVersion = map.PathingVersion;
 
-            // flatCost for an air army — an aircraft pays a flat 1 MP per hex regardless of
-            // terrain (see AviationRules.MovementCost, what ArmyMovementOperation actually
-            // charges), so the route search must rank routes by hex count too. Without it the
-            // ground-weighted search hands back a longer detour AROUND expensive terrain
-            // (mountains) that the aircraft would never actually fly, and ShowPathArrow then draws
-            // that bent route (2026-09-03 fix, project owner's own report — the displayed cost
-            // number was already corrected via PathMoveCost, but not the route geometry).
+            // Air profile for an air army — an aircraft pays 1 MP per transition regardless of
+            // terrain (+1 leaving a storm hex, like any mover: MovementRules, what
+            // ArmyMovementOperation actually charges), so the route search must rank routes by
+            // that cost too. Without it the ground-weighted search hands back a detour AROUND
+            // mountains the aircraft would never actually fly (2026-09-03 fix). PathingVersion
+            // also changes with the storm area, so the preview refreshes on a weather change.
             HexPath path = HexPathfinder.FindPath(map, army.Hex, hoverCoord.Value, AvoidEnemyHex(army),
-                flatCost: AviationRules.IsAirArmy(army));
+                airborne: AviationRules.IsAirArmy(army));
             if (path == null)
             {
                 HidePathPreview();
@@ -176,14 +175,13 @@ namespace Game.Map
             }
             else
             {
-                path = TruncateAtEnemyContact(path, army, out ArmyData enemyArmy);
+                path = TruncateAtEnemyContact(map, path, army, out ArmyData enemyArmy);
                 color = enemyArmy != null ? gameConfig.moveArrowAttackColor : gameConfig.moveArrowMoveColor;
             }
 
-            // path.TotalCost is always terrain-weighted (see HexPathfinder.FindPath) — an air
-            // army actually spends flat 1 MP per hex (see AviationRules.MovementCost, what
-            // ArmyMovementOperation really charges), so the preview must show that instead.
-            int moveCost = AviationRules.PathMoveCost(army, path);
+            // The cost of exactly the drawn route (after any contact truncation), by the one
+            // rule ArmyMovementOperation charges (MovementRules: profile + storm exits).
+            int moveCost = MovementRules.RouteCostOrMax(map, path.Hexes, MovementRules.ProfileOf(army));
             if (moveCost > army.CurrentMovement)
                 color = gameConfig.moveArrowUnreachableColor;
 
@@ -218,7 +216,7 @@ namespace Game.Map
         // the path is first computed; discovering it is what ArmyMovementOperation's own
         // shouldStopEarly callback (see HandleVisionStep below) is for, mid-move, one hex at a
         // time, same as the real game.
-        private static HexPath TruncateAtEnemyContact(HexPath path, ArmyData mover, out ArmyData enemyArmy)
+        private static HexPath TruncateAtEnemyContact(HexMap map, HexPath path, ArmyData mover, out ArmyData enemyArmy)
         {
             enemyArmy = null;
             // A fully hidden army still walks through without initiating contact.
@@ -230,7 +228,11 @@ namespace Game.Map
                     continue;
                 enemyArmy = BattleInitiator.FindEnemyAt(path.Hexes[i], mover);
                 if (enemyArmy != null)
-                    return new HexPath(path.Hexes.GetRange(0, i + 1), path.TotalCost);
+                {
+                    // The prefix's own cost, recomputed — never the full route's TotalCost.
+                    List<HexCoord> prefix = path.Hexes.GetRange(0, i + 1);
+                    return new HexPath(prefix, MovementRules.RouteCostOrMax(map, prefix, MovementRules.ProfileOf(mover)));
+                }
             }
             return path;
         }
@@ -392,13 +394,10 @@ namespace Game.Map
             if (destination.Equals(army.Hex))
                 return MoveOrderResult.AlreadyAtDestination;
 
-            // flatCost for an air army — see UpdateMovePreview's own comment: an aircraft's real
-            // charge is a flat 1 MP/hex, so the route it's actually ordered along must be the
-            // shortest hex-count route, not a ground-weighted detour around mountains. The move
-            // itself (ArmyMovementOperation) already charges flat per hex; only the route
-            // SELECTION here was still terrain-weighted.
+            // Air profile for an air army — see UpdateMovePreview's own comment: the route is
+            // searched by the same MovementRules cost ArmyMovementOperation charges.
             HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, AvoidEnemyHex(army),
-                flatCost: AviationRules.IsAirArmy(army));
+                airborne: AviationRules.IsAirArmy(army));
             if (path == null)
                 return MoveOrderResult.NoPath;
 
@@ -408,16 +407,16 @@ namespace Game.Map
             // preview arrow (see ShowPathArrow) so it always shows exactly where the army will
             // actually stop.
             if (!AviationRules.IsAirArmy(army))
-                path = TruncateAtEnemyContact(path, army, out _);
+                path = TruncateAtEnemyContact(map, path, army, out _);
 
             // An army only ever stops short of a hex it can't fully afford (see
             // ArmyMovementOperation) — never enters it partway "in debt" any more. Caught
             // here specifically for the very next step: if that alone is already unaffordable,
             // MoveAlong would do nothing at all and the player would see no feedback for why the
             // order silently failed.
-            map.TryGetTerrainAt(path.Hexes[1], out TerrainTypeEntry firstStepEntry);
-            int terrainFirstStepCost = firstStepEntry != null ? Mathf.Max(1, firstStepEntry.moveCost) : 1;
-            int firstStepCost = AviationRules.MovementCost(army, terrainFirstStepCost);
+            if (!MovementRules.TryGetStepCost(map, path.Hexes[0], path.Hexes[1], MovementRules.ProfileOf(army),
+                    out int firstStepCost))
+                return MoveOrderResult.NoPath;
             if (army.CurrentMovement < firstStepCost)
             {
                 NotifyMoveBlocked(army,

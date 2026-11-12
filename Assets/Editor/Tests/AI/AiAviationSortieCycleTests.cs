@@ -22,6 +22,9 @@ namespace Game.EditorTests
     // ActiveDefence air-support identity.
     public class AiAviationSortieCycleTests
     {
+        // Clear-weather routes: every transition costs 1 MP.
+        private static int[] Edges(int count) => System.Linq.Enumerable.Repeat(1, count).ToArray();
+
         private PlayerSetupData _owner;
         private GameObject _rootObject;
         private PlayerRoot _root;
@@ -520,7 +523,7 @@ namespace Game.EditorTests
         public void StrikeTurns_FollowTheFlightCalendar(int move, int endurance, int outbound,
             int back, int expected)
         {
-            Assert.That(AviationRange.StrikeTurns(move, move, endurance, outbound, back),
+            Assert.That(AviationRange.StrikeTurns(move, move, endurance, Edges(outbound), Edges(back)),
                 Is.EqualTo(expected));
         }
 
@@ -534,7 +537,7 @@ namespace Game.EditorTests
             };
             int ends = AviationRange.SafeUnlandedEndsRemaining(group);
             Assert.That(ends, Is.Zero);
-            Assert.That(AviationRange.StrikeTurns(5, 5, ends, 2, 2), Is.EqualTo(1));
+            Assert.That(AviationRange.StrikeTurns(5, 5, ends, Edges(2), Edges(2)), Is.EqualTo(1));
         }
 
         [Test]

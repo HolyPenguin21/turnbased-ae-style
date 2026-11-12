@@ -20,7 +20,7 @@ namespace Game.EditorTests
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); AiHandRegistry.Clear(); PlayerRootRegistry.Clear();
             Game.Combat.DelayedBattleRegistry.Clear(); HexResourceBonusRegistry.Clear(); HexEventRegistry.Clear();
-            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear();
+            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear(); Game.Map.SandstormState.ResetForMatch(); Game.Map.SandstormState.Initialize(new Game.Map.MatchWeatherConditions(Game.Map.MatchWeatherProfile.Clear, 0), null);
             var config = ScriptableObject.CreateInstance<GameConfig>();
             var catalog = ScriptableObject.CreateInstance<StartingDeckCatalog>(); config.collectionDeckCatalog = catalog;
             var human = new PlayerSetupData { PlayerId = "human", IsHuman = true, Hand = new PlayerHandData(null, 0) };
@@ -47,7 +47,7 @@ namespace Game.EditorTests
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); AiHandRegistry.Clear(); PlayerRootRegistry.Clear();
             Game.Combat.DelayedBattleRegistry.Clear(); HexResourceBonusRegistry.Clear(); HexEventRegistry.Clear();
-            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear();
+            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear(); Game.Map.SandstormState.ResetForMatch(); Game.Map.SandstormState.Initialize(new Game.Map.MatchWeatherConditions(Game.Map.MatchWeatherProfile.Clear, 0), null);
             var config = ScriptableObject.CreateInstance<GameConfig>();
             var catalog = ScriptableObject.CreateInstance<StartingDeckCatalog>(); config.collectionDeckCatalog = catalog;
             var human = new PlayerSetupData { PlayerId = "human", IsHuman = true, Hand = new PlayerHandData(null, 0) };
@@ -67,7 +67,7 @@ namespace Game.EditorTests
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); AiHandRegistry.Clear(); PlayerRootRegistry.Clear();
             Game.Combat.DelayedBattleRegistry.Clear(); HexResourceBonusRegistry.Clear(); HexEventRegistry.Clear();
-            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear();
+            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear(); Game.Map.SandstormState.ResetForMatch(); Game.Map.SandstormState.Initialize(new Game.Map.MatchWeatherConditions(Game.Map.MatchWeatherProfile.Clear, 0), null);
             var config = ScriptableObject.CreateInstance<GameConfig>();
             var catalog = ScriptableObject.CreateInstance<StartingDeckCatalog>();
             var faction = ScriptableObject.CreateInstance<FactionCardCatalog>();

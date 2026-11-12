@@ -207,7 +207,7 @@ namespace Game.Ai.V2
                     WorthIt.BattleEstimate selection = WorthIt.Estimate(threat.Members, defenders, 0f,
                         threat.Commander,
                         commanderUnit != null && threat.TargetableUnitKeys.Contains(commanderUnit.Key)
-                            ? commander : default);
+                            ? commander : default, environment: state.Environment);
                     ranked.Add((kv.Key, selection, defenders, commander));
                 }
 
@@ -252,7 +252,7 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)
         {
             WorthIt.BattleEstimate estimate = WorthIt.Estimate(threat.Members, defenders,
-                state.HexDefenseBonus, threat.Commander, commander);
+                state.HexDefenseBonus, threat.Commander, commander, environment: state.Environment);
             float success = WorthIt.CanDamageAll(
                     threat.Members, defenders, state.HexDefenseBonus)
                 ? estimate.WinChance

@@ -183,7 +183,8 @@ namespace Game.UI
                 // what the unit would actually roll with right now (see
                 // BattleScreenUI.GetDisplayedDefenseBonus's own comment).
                 slot2 = unit.Defense + (_screen != null ? _screen.GetDisplayedDefenseBonus(unit) : 0);
-                slot5 = unit.Range;
+                // The battle's attack range (weather included), as target legality reads it.
+                slot5 = _screen != null ? _screen.GetDisplayedAttackRange(unit) : unit.Range;
             }
 
             if (attackStatText != null) attackStatText.text = slot1.ToString();

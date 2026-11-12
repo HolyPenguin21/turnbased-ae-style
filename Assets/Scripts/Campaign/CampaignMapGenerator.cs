@@ -1,4 +1,5 @@
 using System;
+using Game.Map;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,6 +14,8 @@ namespace Game.Campaign
     {
         public int RegionCount = 33;
         public int BiomeZoneCount = 4, SpecializationZoneCount = 6, RichnessZoneCount = 5;
+        // Clear / one / two sandstorms: two zone centers of each profile by default.
+        public int WeatherZoneCount = 6;
         public float MinimumRegionArea = .018f;
         public float MinimumRegionWidth = .07f;
         public float BorderIrregularity = .85f;
@@ -28,6 +31,7 @@ namespace Game.Campaign
             settings = settings ?? new CampaignGenerationSettings();
             if (settings.BiomeZoneCount < 2 || settings.SpecializationZoneCount < 4 || settings.RichnessZoneCount < 3
                 || settings.BiomeZoneCount > 128 || settings.SpecializationZoneCount > 128 || settings.RichnessZoneCount > 128
+                || settings.WeatherZoneCount < 3 || settings.WeatherZoneCount > 128
                 || !CampaignRules.IsPlayable(human) || settings.RegionCount < 3 || settings.RegionCount > 128
                 || settings.PointSpacing < 0 || settings.MinimumRegionArea <= 0 || settings.MinimumRegionWidth <= 0
                 || settings.BorderIrregularity < 0 || settings.BorderIrregularity > 1
@@ -63,6 +67,10 @@ namespace Game.Campaign
                 new[] { ResourceSpecialization.Balanced, ResourceSpecialization.Human, ResourceSpecialization.Energy, ResourceSpecialization.Materials }, (r, v) => r.Specialization = v);
             GrowZones(regions, seed, 0x524943, settings.RichnessZoneCount,
                 new[] { ResourceRichness.Poor, ResourceRichness.Normal, ResourceRichness.Rich }, (r, v) => r.Richness = v);
+            // Weather is not tied to the biome: its own stream assigns every profile to both biomes.
+            GrowZones(regions, seed, 0x574541, settings.WeatherZoneCount,
+                new[] { MatchWeatherProfile.Clear, MatchWeatherProfile.OneSandstorm, MatchWeatherProfile.TwoSandstorms },
+                (r, v) => r.Weather = v);
         }
 
         private static void GrowZones<T>(List<RegionState> regions, int seed, int salt, int requestedCenters,

@@ -270,9 +270,13 @@ namespace Game.Ai.V2
                 // 2026-10-16, Kryll T11/T17).
                 int returnCost = AiAirSortiePlanner.CheapestLandingRouteCost(player, ctx.Map, air,
                     choice.Value.Hex);
-                int mpSlackAfterStep = returnCost == int.MaxValue
+                // The step's own real price (MovementRules: +1 leaving a storm), never the hex
+                // distance standing in for MP.
+                int stepCost = AiAirSortiePlanner.AirRouteCost(ctx.Map,
+                    HexPathfinder.FindPath(ctx.Map, air.Hex, choice.Value.Hex, airborne: true));
+                int mpSlackAfterStep = returnCost == int.MaxValue || stepCost == int.MaxValue
                     ? air.CurrentMovement - choice.Value.RouteCost
-                    : air.CurrentMovement - HexGridMath.Distance(air.Hex, choice.Value.Hex) - returnCost;
+                    : air.CurrentMovement - stepCost - returnCost;
                 bool marginalDrop = bestOutbound > 0.01f
                     && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * bestOutbound;
                 bool returnReserve = TurnsForReturnReserve(choice.Value.RequiredTurns,

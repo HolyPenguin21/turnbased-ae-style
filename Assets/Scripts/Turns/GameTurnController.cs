@@ -553,6 +553,9 @@ namespace Game.Turns
             _accountOutcome.Reset();
             Game.Ai.AiMatchStats.BeginMatch(GameSession.Players);
             ConfigureStealthTurnProviders();
+            // The match's weather is fixed before the first tick and any AI reasoning.
+            if (!SandstormState.IsInitialized)
+                SandstormState.Initialize(GameSession.ResolveWeather(), map);
             BeginNewTurn();
         }
 
@@ -832,6 +835,10 @@ namespace Game.Turns
 
             Phase=StrategicTurnPhase.PreparingRound;
             TurnNumber++;
+            // One weather tick per FULL round: after the previous round's delayed battles
+            // (ResolveDelayedBattlesThen ran before this), before every TurnStarted subscriber,
+            // the round's preparation and the players' turns - so all of them see the new storms.
+            SandstormState.AdvanceRound(map, TurnNumber);
             TurnStarted?.Invoke(TurnNumber);
             if(_gameOver||!GameSession.IsCurrent(matchGeneration))return;
             Game.Ai.AiMatchStats.OnRoundStarted(TurnNumber);

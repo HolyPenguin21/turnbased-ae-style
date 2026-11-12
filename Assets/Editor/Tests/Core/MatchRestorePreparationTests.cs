@@ -63,15 +63,26 @@ namespace Game.EditorTests
         [TestCase("recordedResult", false)]
         [TestCase("ownershipApplied", false)]
         [TestCase("automatic", false)]
+        [TestCase("contextWeather", false)]
+        [TestCase("contextWeatherSeed", false)]
+        [TestCase("operationWeather", false)]
+        [TestCase("regionWeather", false)]
         public void CampaignRestoreRequiresTheSameUnfinishedManualOperation(string change, bool expected)
         {
-            var context = new CampaignMatchContext {CampaignId="campaign",OperationId="op",MatchId="match",SelectedHumanDeckId="deck",
-                HumanFaction=Faction.IronConcord,AttackerFaction=Faction.IronConcord,DefenderFaction=Faction.Ashen,SourceRegionId=1,TargetRegionId=2};
             var op = new CampaignOperation {OperationId="op",MatchId="match",SelectedHumanDeckId="deck",Manual=true,
-                AttackerFaction=Faction.IronConcord,DefenderFaction=Faction.Ashen,SourceRegionId=1,TargetRegionId=2};
-            var state = new CampaignState {CampaignId="campaign",HumanFaction=Faction.IronConcord,PendingOperation=op};
+                AttackerFaction=Faction.IronConcord,DefenderFaction=Faction.Ashen,SourceRegionId=1,TargetRegionId=2,
+                RandomSeed=1234,Weather=Game.Map.MatchWeatherProfile.TwoSandstorms};
+            var context = new CampaignMatchContext {CampaignId="campaign",OperationId="op",MatchId="match",SelectedHumanDeckId="deck",
+                HumanFaction=Faction.IronConcord,AttackerFaction=Faction.IronConcord,DefenderFaction=Faction.Ashen,SourceRegionId=1,TargetRegionId=2,
+                Weather=op.Weather,WeatherSeed=op.WeatherConditions.Seed};
+            var state = new CampaignState {CampaignId="campaign",HumanFaction=Faction.IronConcord,PendingOperation=op,
+                Regions=new System.Collections.Generic.List<RegionState>{new RegionState{RegionId=2,Weather=Game.Map.MatchWeatherProfile.TwoSandstorms}}};
             switch (change)
             {
+                case "contextWeather":context.Weather=Game.Map.MatchWeatherProfile.Clear;break;
+                case "contextWeatherSeed":context.WeatherSeed++;break;
+                case "operationWeather":op.Weather=Game.Map.MatchWeatherProfile.OneSandstorm;break;
+                case "regionWeather":state.Regions[0].Weather=Game.Map.MatchWeatherProfile.Clear;break;
                 case "differentCampaign":state.CampaignId="other";break;
                 case "differentMatch":op.MatchId="other";break;
                 case "differentDeck":op.SelectedHumanDeckId="other";break;

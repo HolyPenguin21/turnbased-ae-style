@@ -63,7 +63,7 @@ namespace Game.EditorTests
             rocket.IsAviation = true; rocket.MoveMax = rocket.MoveCurrent = 4;
             rocket.TurnsWithoutRefuel = safeEnds;
             var path = Enumerable.Range(0, distance + 1).Select(q => new HexCoord(q, 0)).ToList();
-            Assert.That(AviationRange.TrySimulateHexSequence(path, distance, 4, new[] { rocket },
+            Assert.That(AviationRange.TrySimulateTransitions(path, Enumerable.Repeat(1, distance).ToList(), distance, 4, new[] { rocket },
                 safeEnds, new PlayerSetupData(), out _, out _, out _, out _, out _), Is.EqualTo(allowed));
             Assert.That(rocket.ConsecutiveUnlandedEnds, Is.Zero, "route proof is read-only");
         }
@@ -573,8 +573,8 @@ namespace Game.EditorTests
                 attack: 1, hitPoints: 4, initiative: 0), 6).ToArray();
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
             var convert = typeof(WorthIt).GetMethod("ToBattleUnits", flags);
-            object own = convert.Invoke(null, new object[] { new[] { rocket }, 0f, 0, default(WorthIt.SideCommander) });
-            object enemy = convert.Invoke(null, new object[] { victims, 0f, 0, default(WorthIt.SideCommander) });
+            object own = convert.Invoke(null, new object[] { new[] { rocket }, 0f, 0, default(WorthIt.SideCommander), false });
+            object enemy = convert.Invoke(null, new object[] { victims, 0f, 0, default(WorthIt.SideCommander), false });
             typeof(WorthIt).GetMethod("SimulateOneBattle", flags).Invoke(null,
                 new object[] { own, enemy, new Random(42), 0, 0, (AbilityMagnitudes?)AbilityMagnitudes.Default, null });
             float Hp(object u) => (float)u.GetType().GetField("Hp").GetValue(u);

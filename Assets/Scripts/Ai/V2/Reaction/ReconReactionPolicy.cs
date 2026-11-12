@@ -119,7 +119,8 @@ namespace Game.Ai.V2
                 // fog. Terrain is immutable/public and safe; structural defence is added only when
                 // the hex is currently visible to this player.
                 float hexBonus = HonestHexDefenseBonus(player, map, sighting.Hex);
-                float win = WorthIt.WinChance(army, sighting.Defenders, hexBonus, sighting.Commander);
+                float win = WorthIt.WinChance(army, sighting.Defenders, hexBonus, sighting.Commander,
+                    environment: Game.Combat.BattleEnvironment.At(sighting.Hex, map));
                 if (win < StrongEnemyFleeWinChance)
                     threats.Add(sighting);
                 if (HexGridMath.Distance(army.Hex, sighting.Hex) <= AiConfig.scoutFleeRadius
@@ -202,8 +203,8 @@ namespace Game.Ai.V2
             float bestWin = AttackOpportunityWinChance;
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain)
-                    || AviationRules.MovementCost(army, terrain.moveCost) > army.CurrentMovement
+                if (!MovementRules.TryGetStepCost(map, army.Hex, h, MovementRules.ProfileOf(army), out int stepCost)
+                    || stepCost > army.CurrentMovement
                     || !TryScoutingForceFight(player, map, army, h, out int targetId, out float win)
                     || win < bestWin)
                     continue;
@@ -245,7 +246,8 @@ namespace Game.Ai.V2
             if (!WorthIt.CanDamageAll(army, profiles, hexBonus))
                 return false;
             WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus,
-                visible.Contains(target.Commander) ? WorthIt.SideCommander.Of(target.Commander) : default);
+                visible.Contains(target.Commander) ? WorthIt.SideCommander.Of(target.Commander) : default,
+                environment: Game.Combat.BattleEnvironment.At(h, map));
             if (est.WinChance < AttackOpportunityWinChance
                 || est.CriticalAfterBattleChance > AiConfigV2.scoutReactionAttackMaxCriticalAfter
                 || PostCombatPositionUnsafe(player, map, army, h, target.Id))
@@ -309,7 +311,7 @@ namespace Game.Ai.V2
         {
             if (player == null || map == null || army == null || !AiArmyRoles.IsSoloRecce(army)
                 || HexGridMath.Distance(army.Hex, hex) > 1 || !VisionSystem.IsVisible(player, hex)
-                || !map.CanEnter(hex, army) || !map.TryGetTerrainAt(hex, out var terrain)) return false;
+                || !map.CanEnter(hex, army)) return false;
             // Visible arrivals have already run the canonical contact rule. Only a hidden
             // resident needs a separate reveal action on its current hex.
             if (army.Hex.Equals(hex) && !StealthSystem.IsArmyFullyHidden(army)) return false;
@@ -319,7 +321,8 @@ namespace Game.Ai.V2
             return building.HasValue && building.Value.Owner != null
                 && building.Value.Owner != player && !building.Value.Owner.IsNeutral
                 && AiMapMemory.KnownUndefendedForeignStructureAt(player, hex)
-                && (army.Hex.Equals(hex) || Math.Max(1, terrain?.moveCost ?? 1) <= army.CurrentMovement)
+                && (army.Hex.Equals(hex) || (MovementRules.TryGetStepCost(map, army.Hex, hex, MovementRules.ProfileOf(army), out int stepCost)
+                    && stepCost <= army.CurrentMovement))
                 && !PostCombatPositionUnsafe(player, map, army, hex, -1);
         }
 
@@ -336,7 +339,8 @@ namespace Game.Ai.V2
                 if (s.ArmyId == excludeArmyId || s.Owner == null || s.Owner.IsNeutral || s.IsGarrison)
                     continue;
                 float hexBonus = HonestHexDefenseBonus(player, map, s.Hex);
-                float win = WorthIt.WinChance(army, s.Defenders, hexBonus, s.Commander);
+                float win = WorthIt.WinChance(army, s.Defenders, hexBonus, s.Commander,
+                    environment: Game.Combat.BattleEnvironment.At(s.Hex, map));
                 if (win < StrongEnemyFleeWinChance)
                     return true;
             }
@@ -353,9 +357,8 @@ namespace Game.Ai.V2
 
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain))
+                if (!MovementRules.TryGetStepCost(map, army.Hex, h, MovementRules.ProfileOf(army), out int cost))
                     continue;
-                int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > army.CurrentMovement
                     || ScoutRiskModel.StepBlocked(player, army, h))
                     continue;

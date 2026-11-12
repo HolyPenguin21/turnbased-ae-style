@@ -100,7 +100,8 @@ namespace Game.Ai.V2
                 // The same fight admission priced (KnownOpposition.ForRaid): the live target plus
                 // every other known body on its hex.
                 var fight = new List<WorthIt.DefendingArmy>
-                    { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
+                    { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander,
+                        environment: Game.Combat.BattleEnvironment.At(targetHex, ctx?.Map)) };
                 KnownOpposition.AddCoOccupants(snap, targetHex, raidTarget.ArmyId, fight);
                 opposition = fight;
                 targetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral;

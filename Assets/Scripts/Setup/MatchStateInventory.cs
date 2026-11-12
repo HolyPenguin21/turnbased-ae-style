@@ -99,6 +99,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Map.HumanVisualMemory", MatchStateKind.World, resetBy: ByVision),
             new MatchStateEntry("Game.Map.MapObservationSystem", MatchStateKind.Wiring, resetBy: ByVision),
             World("Game.Map.StealthSystem", StealthSystem.ResetForMatch),
+            // Profile/seed + 0/1/2 storm slots; advanced once per full round, restored exactly.
+            World("Game.Map.SandstormState", SandstormState.ResetForMatch),
             World("Game.Turns.InitiativePublicHistory", InitiativePublicHistory.Clear),
             new MatchStateEntry("Game.Core.GameSession", MatchStateKind.World,
                 resetNote: "EndMatch clears session inputs on exit. ResetForNewMatch preserves prepared players, map choices and campaign context until generation."),
@@ -216,6 +218,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Progression.ProgressionContext", MatchStateKind.Profile),
             new MatchStateEntry("Game.Campaign.CampaignMatchBridge", MatchStateKind.Profile),
             new MatchStateEntry("Game.Ai.V2.StrategicEffectRegistry", MatchStateKind.Constant),
+            // the immutable empty-weather snapshot; live weather belongs to SandstormState
+            new MatchStateEntry("Game.Map.SandstormSnapshot", MatchStateKind.Constant),
             new MatchStateEntry("Game.Saves.MatchSaveSchema", MatchStateKind.Constant),
         };
 

@@ -211,7 +211,7 @@ namespace Game.Combat
                 if (net <= 0) return false;
                 bestTarget = grid.AllUnits().FirstOrDefault(u => u.Owner != actor.Owner && hp.TryGetValue(u, out float h)
                     && h > 0 && grid.TryFindPosition(u, out int r, out int c)
-                    && BattleGrid.IsInRange(actorRow, actorCol, r, c, actor.Range));
+                    && BattleGrid.IsInRange(actorRow, actorCol, r, c, grid.AttackRange(actor)));
                 bestDamage = net;
                 return bestTarget != null;
             }
@@ -223,7 +223,7 @@ namespace Game.Combat
                     || !hp.TryGetValue(candidate, out float candidateHp) || candidateHp <= 0f)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol)
-                    || !BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, actor.Range))
+                    || !BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, grid.AttackRange(actor)))
                     continue;
 
                 bool notYetActed = order != null && order.IndexOf(candidate) > currentIndex;
@@ -285,7 +285,7 @@ namespace Game.Combat
                     defenseBonus: u => BattleRules.GetTotalDefenseBonus(grid, u, battleDefender, battleDefenderDefenseBonus));
                 var victim = net > 0 ? grid.AllUnits().FirstOrDefault(u => u.Owner != actor.Owner
                     && grid.TryFindPosition(u, out int r, out int c)
-                    && BattleGrid.IsInRange(actorRow, actorCol, r, c, actor.Range)) : null;
+                    && BattleGrid.IsInRange(actorRow, actorCol, r, c, grid.AttackRange(actor))) : null;
                 action = default;
                 if (victim == null || !grid.TryFindPosition(victim, out int vr, out int vc)) return false;
                 action = new BattleAi.AiAction { Kind = BattleAi.AiActionKind.Attack, Target = victim,
@@ -310,10 +310,10 @@ namespace Game.Combat
                 }
                 if (!CanDamage(actor, candidate, magnitudes))
                     continue;
-                if (!BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, actor.Range))
+                if (!BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, grid.AttackRange(actor)))
                 {
                     BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: out of range " +
-                        $"(actor=({actorRow},{actorCol}) range={actor.Range}, target=({candRow},{candCol}))");
+                        $"(actor=({actorRow},{actorCol}) range={grid.AttackRange(actor)}, target=({candRow},{candCol}))");
                     continue;
                 }
 

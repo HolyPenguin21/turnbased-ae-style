@@ -19,7 +19,7 @@ namespace Game.Ai
     public static class HexEventGuardEstimate
     {
         public static bool ShouldExplore(ArmyData mover, HexEventRegistry.Entry entry, bool allowGuardCombat = true,
-            float guardHexDefenseBonus = 0f)
+            float guardHexDefenseBonus = 0f, Game.HexGrid.HexCoord? eventHex = null)
         {
             if (entry == null || entry.Consumed || entry.Definition?.CanVisit(mover?.Owner) != true)
                 return false;
@@ -37,7 +37,11 @@ namespace Game.Ai
 
             // Win chance over 50% AND able to scratch every defender. A guard with no fighting body
             // is a trivial win for the roster estimator (nothing to fight).
-            return WorthIt.WinChance(mover, guardDefenders, guardHexDefenseBonus, GuardCommander(entry)) > 0.5f
+            // The guard fights on the event hex under its public weather.
+            var weather = eventHex.HasValue ? Game.Combat.BattleEnvironment.At(eventHex.Value) : default;
+            guardHexDefenseBonus = weather.HexDefense(guardHexDefenseBonus);
+            return WorthIt.WinChance(mover, guardDefenders, guardHexDefenseBonus, GuardCommander(entry),
+                    environment: weather) > 0.5f
                 && WorthIt.CanDamageAll(mover, guardDefenders, guardHexDefenseBonus);
         }
 

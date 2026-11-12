@@ -284,10 +284,10 @@ namespace Game.Ai.V2
                 if (attackers.Count == 0)
                     continue;
 
-                int strikeTurns = StrikeTurns(wing, targetHex, landing.Value);
+                int strikeTurns = StrikeTurns(snap, wing, targetHex, landing.Value);
                 if (strikeTurns <= 0)
                     continue;
-                int eta = SortieEta(wing, targetHex);
+                int eta = SortieEta(snap, wing, targetHex);
                 ArmyData liveWing = eta <= 1 ? OwnWorld.Of(snap.Observer).Army(wing.ArmyId) : null;
                 bool[] firstPassSpent = liveWing == null ? null :
                     (wing.RecoveryMembers ?? Array.Empty<RaidRecoveryMemberSnapshot>())
@@ -410,7 +410,8 @@ namespace Game.Ai.V2
                 return false;
             if (!source.IsAirfield)
             {
-                eta = SortieEta(source, targetHex);
+                eta = SortieEta(snap, source, targetHex);
+                if (eta == int.MaxValue) return false;
                 requirements = LegRequirements(source, targetHex, eta);
                 return true;
             }
@@ -448,12 +449,28 @@ namespace Game.Ai.V2
                 .ThenBy(o => o.WingArmyId)
                 .ToList();
 
-        // Strike turns this wing can deliver at `target` and still land at `landing`
-        // (geometric planning read; provisioning and execution re-prove the live route).
-        internal static int StrikeTurns(ArmySnapshot wing, HexCoord target, HexCoord landing) =>
-            wing == null ? 0 : AviationRange.StrikeTurns(wing.CurrentMovement,
-                Math.Max(1, wing.MaxMovement), wing.SafeUnlandedEndsRemaining,
-                HexGridMath.Distance(wing.Hex, target), HexGridMath.Distance(target, landing));
+        // Strike turns this wing can deliver at `target` and still land at `landing`, over the
+        // real air routes' transitions (the shared calendar). Provisioning and execution still
+        // re-prove the live route.
+        internal static int StrikeTurns(WorldSnapshot snap, ArmySnapshot wing, HexCoord target, HexCoord landing)
+        {
+            if (wing == null) return 0;
+            List<int> outbound = AirLegCosts(snap, wing.Hex, target);
+            List<int> home = AirLegCosts(snap, target, landing);
+            return outbound == null || home == null ? 0 : AviationRange.StrikeTurns(wing.CurrentMovement,
+                Math.Max(1, wing.MaxMovement), wing.SafeUnlandedEndsRemaining, outbound, home);
+        }
+
+        // The transitions of the air route from -> to, priced by MovementRules (Air profile,
+        // current weather). Null when no air route exists. Only a map-less synthetic snapshot
+        // stands in a straight line of one point per hex, the same convention as
+        // AiV2Util.TravelRoute; a real map never falls back to geometry.
+        private static List<int> AirLegCosts(WorldSnapshot snap, HexCoord from, HexCoord to)
+        {
+            if (ReferenceEquals(snap?.Map, null))
+                return Enumerable.Repeat(1, HexGridMath.Distance(from, to)).ToList();
+            return AviationRange.StepCostsOrNull(snap.Map, HexPathfinder.FindPath(snap.Map, from, to, airborne: true));
+        }
 
         // The opposition after a strike: each survivor goes back to the army it came from (by its
         // index in UnitsOf(opposition)); an army with no survivor leaves the fight.
@@ -502,9 +519,15 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.Q).ThenBy(x => x.R).First();
         }
 
-        // Turns the wing needs to reach `target`: this turn's remaining movement first.
-        internal static int SortieEta(ArmySnapshot wing, HexCoord target) =>
-            AiV2Util.TurnsToCover(wing, HexGridMath.Distance(wing.Hex, target));
+        // Own turns the wing needs to reach `target`: whole transitions of the real air route out
+        // of this turn's remaining movement first, then a full turn's each. int.MaxValue when the
+        // route cannot be flown.
+        internal static int SortieEta(WorldSnapshot snap, ArmySnapshot wing, HexCoord target)
+        {
+            List<int> costs = AirLegCosts(snap, wing.Hex, target);
+            return costs == null ? int.MaxValue
+                : AviationRange.TurnsToFly(costs, Math.Max(0, wing.CurrentMovement), Math.Max(1, wing.MaxMovement));
+        }
 
         // The requirements of a support sortie leg: the sortie launch (0 / 0 on a paid sortie, on
         // every turn of it), its distance and ETA.

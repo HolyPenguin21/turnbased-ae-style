@@ -79,7 +79,7 @@ namespace Game.Ai
             // Air routes neither use remembered ground-arrival blockers nor ground costs.
             // Keep them out of the ground-only route/field caches.
             if (Game.Aviation.AviationRules.IsAirArmy(army))
-                return HexPathfinder.FindPath(map, army.Hex, targetHex, flatCost: true)?.TotalCost ?? int.MaxValue;
+                return HexPathfinder.FindPath(map, army.Hex, targetHex, airborne: true)?.TotalCost ?? int.MaxValue;
             return FindSafePathCost(map, army.Owner, army.Hex, targetHex, army.MaxMovement);
         }
 

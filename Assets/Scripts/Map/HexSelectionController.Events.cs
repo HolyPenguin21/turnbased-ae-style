@@ -150,7 +150,7 @@ namespace Game.Map
                 // human-only gating a few lines above this call site (see the user's own
                 // explicit instruction: no popup ever renders/waits for an AI-only army).
                 bool shouldExplore = HexEventGuardEstimate.ShouldExplore(mover, entry, allowAiExplore,
-                    MapObservationSystem.TerrainDefenseAt(hex));
+                    MapObservationSystem.TerrainDefenseAt(hex), hex);
                 string choice = !shouldExplore ? "Skip" : entry.HasResolvedGuard ? "Explore" : "Explore (unguarded)";
                 AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} (#{mover.Id}) visited event '{entry.Definition.name}' at {hex} - {choice}.");
                 if (shouldExplore)

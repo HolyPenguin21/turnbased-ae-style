@@ -39,6 +39,7 @@ namespace Game.Saves
         private readonly List<DelayedBattleState> battles = new List<DelayedBattleState>();
         private readonly AntiAirTurnState aa = new AntiAirTurnState();
         private readonly StealthState stealth;
+        private readonly SandstormStateData weather;
         private readonly MatchIdentityState identity;
         private readonly GameConfig config;
         private readonly MatchContentResolver content;
@@ -180,6 +181,8 @@ namespace Game.Saves
             }
             RestoreAntiAir(data.antiAir);
             stealth = ValidateStealth(data.stealth);
+            weather = data.weather ?? throw Invalid("Missing weather state.");
+            WeatherConditions = ValidateWeather(System.Array.Empty<HexCoord>(), structureOnly: true);
             ValidateUnitLinks();
             ValidateMarkerContent();
         }
@@ -405,8 +408,11 @@ namespace Game.Saves
             foreach (var b in bonuses) RequireMapHex(map, b.Hex);
             foreach (var e in events) RequireMapHex(map, e.Hex);
             foreach (var b in battles) RequireMapHex(map, b.Hex);
+            ValidateWeather(map.AllCoords);
             using (MatchRestoreScope.Begin())
             {
+                // Exact saved storms (bodies, ages, pauses, random streams) — no tick, no new pick.
+                SandstormState.RestoreState(map, weather);
                 identity.Reserve();
                 foreach (var p in players.Values)
                 {
@@ -423,12 +429,33 @@ namespace Game.Saves
                 worldRestored = true;
             }
         }
+        // The saved weather's profile and initial seed (campaign restore checks them against the
+        // pending operation before anything is restored).
+        internal MatchWeatherConditions WeatherConditions { get; }
+
+        // SandstormState.Validate owns the rules; a damaged weather DTO is a data error, never
+        // healed into a new random storm. Without the map yet, only the map-free part is checked.
+        private MatchWeatherConditions ValidateWeather(IEnumerable<HexCoord> mapHexes, bool structureOnly = false)
+        {
+            try
+            {
+                if (!structureOnly) return SandstormState.Validate(weather, mapHexes);
+                var profile = (MatchWeatherProfile)weather.profile;
+                if (!MatchWeatherConditions.IsValid(profile) || weather.slots == null
+                    || weather.slots.Count != SandstormRules.ConfiguredCount(profile))
+                    throw new ArgumentException("Invalid weather profile or slots.");
+                return new MatchWeatherConditions(profile, weather.seed);
+            }
+            catch (ArgumentException ex) { throw Invalid("Invalid weather state: " + ex.Message); }
+        }
+
         internal void ValidateMap(HexMapLayout layout)
         {
             if (layout?.Cells == null) throw Invalid("Missing logical map layout.");
             var hexes = new HashSet<HexCoord>();
             foreach (var cell in layout.Cells)
                 if (cell != null) hexes.Add(new HexCoord(cell.Q, cell.R));
+            ValidateWeather(hexes);
             foreach (var a in registered) RequireLayoutHex(hexes, a.Hex);
             foreach (var b in buildings.Values) RequireLayoutHex(hexes, b.Hex);
             foreach (var b in bonuses) RequireLayoutHex(hexes, b.Hex);

@@ -10677,9 +10677,8 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_text: "Region: Salt Crown\nOperation: DEFENCE\nAttacker: The Vessels  \xB7  Defender:
-    Iron Concord\nArid badlands \xB7 Balanced \xB7 Normal\nGeneration target: 4 far
-    hexes, H/E/M: 1\u20132 each (random remainder); Tech: 2\nInterrupted battle:
-    restart with a fresh tactical map. Territory unchanged."
+    Iron Concord\nArid badlands \xB7 Balanced \xB7 Normal\nWeather: Sandstorms \u2014
+    up to 1\nInterrupted battle: restart with a fresh tactical map. Territory unchanged."
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: d095f7d087314d42b29a06f3d95b8e2b, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: d095f7d087314d42b29a06f3d95b8e2b, type: 2}
@@ -14914,7 +14913,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "Biome: \u2014\nSpecialization: \u2014\nRichness: \u2014"
+  m_text: "Biome: \u2014\nSpecialization: \u2014\nRichness: \u2014\nWeather: \u2014"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
   m_sharedMaterial: {fileID: 2542230976815431383, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}

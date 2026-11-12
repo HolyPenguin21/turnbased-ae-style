@@ -117,10 +117,14 @@ namespace Game.Combat
             // A hex event's guard: it fights only once every army on the hex is beaten
             // (ResolveHexAfterVictory -> TriggerHexEventIfClear), so FightOrder puts it last.
             public readonly bool IsEventGuard;
+            // The weather of the hex this army defends - the battle hex. Set where the opposition
+            // is built from a known hex (KnownOpposition, the analyzers); EstimateSequential and
+            // FightOrder apply it to both sides. Clear by default (no storm, or already applied).
+            public readonly BattleEnvironment Environment;
 
             public DefendingArmy(IReadOnlyCollection<DefenderProfile> units, SideCommander commander,
                 float? defenseBonusOverride = null, int? armyId = null, float buildingDefenseBonus = 0f,
-                bool isEventGuard = false)
+                bool isEventGuard = false, BattleEnvironment environment = default)
             {
                 Units = units ?? System.Array.Empty<DefenderProfile>();
                 Commander = commander;
@@ -128,15 +132,22 @@ namespace Game.Combat
                 ArmyId = armyId;
                 BuildingDefenseBonus = buildingDefenseBonus;
                 IsEventGuard = isEventGuard;
+                Environment = environment;
             }
 
             // The same army with another roster/commander/bonus — every projection that rebuilds a
-            // defending army keeps its identity (id, event guard) through here.
+            // defending army keeps its identity (id, event guard, hex weather) through here.
             public DefendingArmy With(IReadOnlyCollection<DefenderProfile> units, SideCommander commander,
                 float? defenseBonusOverride, float buildingDefenseBonus) =>
-                new DefendingArmy(units, commander, defenseBonusOverride, ArmyId, buildingDefenseBonus, IsEventGuard);
+                new DefendingArmy(units, commander, defenseBonusOverride, ArmyId, buildingDefenseBonus, IsEventGuard, Environment);
+
+            public DefendingArmy WithEnvironment(BattleEnvironment environment) =>
+                new DefendingArmy(Units, Commander, DefenseBonusOverride, ArmyId, BuildingDefenseBonus, IsEventGuard, environment);
 
             public float DefenseBonus(float fallback) => DefenseBonusOverride ?? fallback;
+            // A known incoming Disruption carrier removes only the building part. Under a storm
+            // both the bonus and its building part are 0 (weather-aware sources, UnderWeather),
+            // so the building is never subtracted twice.
             public float DefenseBonus(float fallback, IReadOnlyCollection<DefenderProfile> attackers,
                 SideCommander attackerCommander = default) =>
                 DefenseBonus(fallback) - (DisruptionRules.HasCarrier(attackers)

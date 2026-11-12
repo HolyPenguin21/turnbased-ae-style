@@ -61,6 +61,10 @@ namespace Game.Combat
             // Attack range (-1: unknown). Positions do not exist here, so a Range-1 (or unknown)
             // attacker is the one that stands within reach of a Counterattack answer.
             public int Range;
+            // Fights under a sandstorm: the battle rule turns Range into EffectiveRange at use.
+            public bool InSandstorm;
+            public int EffectiveRange => BattleRules.EffectiveAttackRange(Range,
+                InSandstorm ? BattleEnvironment.Sandstorm : BattleEnvironment.Clear);
 
             public bool HasAbility(string ability) => Abilities != null && Abilities.Contains(ability);
 
@@ -69,7 +73,7 @@ namespace Game.Combat
             // enemy front row from its deployment and spends a turn stepping into the neutral row
             // first; Range 2+ shoots from deployment at once. Unknown range (-1) keeps the old
             // positionless reading (always in reach).
-            public bool NeedsApproach => !IsHero && Range >= 0 && Range <= 1;
+            public bool NeedsApproach => !IsHero && EffectiveRange >= 0 && EffectiveRange <= 1;
 
             // True max HP the unit entered this simulated battle with — separate from Hp (which
             // Estimate() below mutates round by round) because CriticalAfterBattleChance needs to
@@ -104,24 +108,26 @@ namespace Game.Combat
         private const int MaxSimulatedRounds = 50;
 
         private static List<BattleUnit> ToBattleUnits(IReadOnlyCollection<DefenderProfile> profiles,
-            float extraDefense = 0f, int initiativeBonus = 0, SideCommander commander = default)
+            float extraDefense = 0f, int initiativeBonus = 0, SideCommander commander = default,
+            bool inSandstorm = false)
         {
             var list = new List<BattleUnit>();
             if (profiles == null)
                 return list;
             foreach (DefenderProfile p in profiles)
             {
-                list.Add(ToBattleUnit(p, extraDefense, initiativeBonus));
+                list.Add(ToBattleUnit(p, extraDefense, initiativeBonus, inSandstorm));
             }
             int represented = list.Count(u => u.IsHero && IsSupportHero(u.Abilities));
             for (int i = represented; i < (commander.SupportHeroes?.Count ?? 0); i++)
-                list.Add(ToBattleUnit(commander.SupportHeroes[i], extraDefense, 0));
+                list.Add(ToBattleUnit(commander.SupportHeroes[i], extraDefense, 0, inSandstorm));
             return list;
         }
 
         // Both key construction and miss computation use this exact conversion. A cache hit
         // needs its values, not a temporary list containing them.
-        private static BattleUnit ToBattleUnit(DefenderProfile p, float extraDefense, int initiativeBonus)
+        private static BattleUnit ToBattleUnit(DefenderProfile p, float extraDefense, int initiativeBonus,
+            bool inSandstorm = false)
         {
             float hp = Mathf.Max(1f, p.HitPoints);
             return new BattleUnit
@@ -137,6 +143,7 @@ namespace Game.Combat
                 HeroFate = p.FateMax,
                 IsSummoned = p.IsSummoned,
                 Range = p.Range,
+                InSandstorm = inSandstorm,
                 Consumption = p.Consumption,
                 SingleUseUnit = p.SingleUseUnit,
                 CanDisruptBuilding = p.CanDisruptBuilding && p.HitPoints > 0f,
@@ -191,8 +198,10 @@ namespace Game.Combat
                 return;
 
             DefenderProfile profile = ProfileFromCard(template);
+            // A summon joins the battle it is raised in, under that battle's weather.
+            bool inSandstorm = side.Any(u => u.InSandstorm);
             for (int i = 0; i < count; i++)
-                side.AddRange(ToBattleUnits(new[] { profile }, 0f, initiativeBonus));
+                side.AddRange(ToBattleUnits(new[] { profile }, 0f, initiativeBonus, inSandstorm: inSandstorm));
         }
 
         // Aggregate-roster mirror of BattleScreenUI.Combat.cs's ResolveSplashSkills for

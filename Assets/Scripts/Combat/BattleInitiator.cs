@@ -194,7 +194,8 @@ namespace Game.Combat
             {
                 if (army.Owner != owner || !IsCombatCapable(army))
                     continue;
-                WorthIt.BattleEstimate estimate = WorthIt.Estimate(army, visibleRoster, 0f, enemyCommander);
+                WorthIt.BattleEstimate estimate = WorthIt.Estimate(army, visibleRoster, 0f, enemyCommander,
+                    environment: BattleEnvironment.At(hex));
                 // Arguments crossed on purpose: `bestEstimate` "harder" than `estimate` means this
                 // army wins more easily; on a full tie the lower army id is kept.
                 if (best == null || CompareDefenderHardness(bestEstimate, army.Id, estimate, best.Id) < 0)
@@ -251,7 +252,7 @@ namespace Game.Combat
                 UnitData commander = army.Commander;
                 WorthIt.BattleEstimate estimate = WorthIt.Estimate(mover, visibleRoster, 0f,
                     commander != null && visibleMembers.Contains(commander)
-                        ? WorthIt.SideCommander.Of(commander) : default);
+                        ? WorthIt.SideCommander.Of(commander) : default, environment: BattleEnvironment.At(hex));
 
                 if (best == null || IsHarderDefender(estimate, army.Id, bestEstimate, best.Id))
                 {

@@ -189,10 +189,8 @@ namespace Game.Ai.V2
             out StepChoice choice)
         {
             choice = default;
-            if (!map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain))
+            if (!MovementRules.TryGetStepCost(map, army.Hex, h, MovementRules.ProfileOf(army), out int moveCost))
                 return false;
-
-            int moveCost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
             if (moveCost > army.CurrentMovement)
                 return false;
             // Owner-facing stealth state. We deliberately do not ask whether some enemy has
@@ -243,15 +241,15 @@ namespace Game.Ai.V2
             {
                 // A real safe route is a decreasing potential, even on a geometric detour.
                 // Geometric progress can regenerate on every other leg of a fresh ABAB loop.
+                // A transition costing more than MaxMovement is dropped by the search itself
+                // (maxStepCost: the full edge cost, storm exit included).
                 bool Block(HexCoord cell) => !map.CanEnter(cell, army)
-                    || (map.TryGetTerrainAt(cell, out var entry) && entry != null
-                        && Math.Max(1, entry.moveCost) > army.MaxMovement)
                     || ScoutRiskModel.StepBlocked(player, cell, hidden)
                     || (hidden && ScoutRiskModel.DetectorRiskLive(player, cell) >= 1f);
                 var before = HexPathfinder.FindPath(map, army.Hex, assignment.StrategicAnchor,
-                    blockHex: Block);
+                    blockHex: Block, maxStepCost: army.MaxMovement);
                 var after = HexPathfinder.FindPath(map, h, assignment.StrategicAnchor,
-                    blockHex: Block);
+                    blockHex: Block, maxStepCost: army.MaxMovement);
                 anchorProgress = before != null && after != null
                     ? Mathf.Max(0, before.TotalCost - after.TotalCost) : 0f;
             }
@@ -327,9 +325,8 @@ namespace Game.Ai.V2
             float best = 0f;
             foreach (HexCoord h in HexGridMath.Neighbors(from))
             {
-                if (seen.Contains(h) || !map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain))
+                if (seen.Contains(h) || !MovementRules.TryGetStepCost(map, from, h, MovementRules.ProfileOf(army), out int cost))
                     continue;
-                int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > movementLeft || ScoutRiskModel.StepBlocked(player, h, hidden))
                     continue;
                 float detectorRisk = ScoutRiskModel.DetectorRiskLive(player, h);

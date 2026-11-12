@@ -192,23 +192,9 @@ namespace Game.Aviation
             return unit.HasEmergencyFlightPenalty ? Mathf.FloorToInt(unit.MoveMax * 0.5f) : unit.MoveMax;
         }
 
-        public static int MovementCost(ArmyData army, int terrainCost)
-        {
-            return IsAirArmy(army) ? 1 : Mathf.Max(1, terrainCost);
-        }
-
-        // Same per-hex flattening as MovementCost above, applied to a whole HexPathfinder route
-        // at once — an air army spends exactly 1 MP per hex regardless of terrain, so its route's
-        // real cost is just the hex count, not HexPath.TotalCost (which is always terrain-weighted,
-        // see HexPathfinder.FindPath's own comment on why it never bakes in a mover-specific rule).
-        // Shared by the move-preview arrow and anything else that needs to show/check a route's
-        // actual MP cost for `army` instead of assuming a ground army's terrain-weighted one.
-        public static int PathMoveCost(ArmyData army, Game.HexGrid.HexPath path)
-        {
-            if (path == null)
-                return 0;
-            return IsAirArmy(army) ? path.Hexes.Count - 1 : path.TotalCost;
-        }
+        // Movement cost is not an aviation rule: Game.Map.MovementRules prices every directed
+        // transition for both profiles (an aircraft pays 1 per transition regardless of terrain,
+        // every mover +1 leaving a storm hex). There is no hex-only cost here any more.
 
         // Live delta between normal and penalized movement, for UI display only — derived from
         // the same EffectiveMoveCurrent this unit's actual move budget already uses, so a rule

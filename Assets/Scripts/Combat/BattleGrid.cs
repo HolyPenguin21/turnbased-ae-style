@@ -34,6 +34,18 @@ namespace Game.Combat
 
         private readonly UnitData[,] _cells = new UnitData[Rows, Columns];
 
+        public BattleGrid() { }
+
+        // A shadow/candidate grid of the same battle keeps its weather.
+        public BattleGrid(BattleEnvironment environment) { Environment = environment; }
+
+        // The encounter's weather (BattleEngine sets it from the frozen BattleRulesSnapshot).
+        // Every attack-range question on this battlefield goes through AttackRange.
+        public BattleEnvironment Environment { get; internal set; }
+
+        // A unit's attack Range on this battlefield: its current Range under the battle's weather.
+        public int AttackRange(UnitData unit) => unit == null ? 0 : Environment.AttackRange(unit.Range);
+
         public UnitData Get(int row, int col) => InBounds(row, col) ? _cells[row, col] : null;
 
         public void Set(int row, int col, UnitData unit)

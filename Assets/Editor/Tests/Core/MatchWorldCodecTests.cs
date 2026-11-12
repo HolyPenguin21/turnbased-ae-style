@@ -28,7 +28,7 @@ namespace Game.EditorTests
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); AiHandRegistry.Clear(); PlayerRootRegistry.Clear();
             DelayedBattleRegistry.Clear(); HexResourceBonusRegistry.Clear(); HexEventRegistry.Clear();
-            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear();
+            Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear(); Game.Map.SandstormState.ResetForMatch(); Game.Map.SandstormState.Initialize(new Game.Map.MatchWeatherConditions(Game.Map.MatchWeatherProfile.Clear, 0), null);
             config = ScriptableObject.CreateInstance<GameConfig>();
             starting = ScriptableObject.CreateInstance<StartingDeckCatalog>(); faction = ScriptableObject.CreateInstance<FactionCardCatalog>();
             definition = new CardDefinition { authoredKey = "codec-unit", cardType = CardType.Unit, displayName = "Card" };
@@ -39,7 +39,7 @@ namespace Game.EditorTests
         [TearDown] public void TearDown()
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); AiHandRegistry.Clear(); PlayerRootRegistry.Clear();
-            DelayedBattleRegistry.Clear(); HexResourceBonusRegistry.Clear(); HexEventRegistry.Clear(); Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear();
+            DelayedBattleRegistry.Clear(); HexResourceBonusRegistry.Clear(); HexEventRegistry.Clear(); Game.Aviation.AntiAirState.Clear(); StealthSystem.Clear(); Game.Map.SandstormState.ResetForMatch();
             UnityEngine.Object.DestroyImmediate(config); UnityEngine.Object.DestroyImmediate(starting); UnityEngine.Object.DestroyImmediate(faction);
         }
         private MatchWorldData Json(MatchWorldData value) => MatchSaveJson.Deserialize<MatchWorldData>(MatchSaveJson.Serialize(value));

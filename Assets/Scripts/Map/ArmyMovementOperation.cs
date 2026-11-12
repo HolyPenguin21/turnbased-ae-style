@@ -28,7 +28,9 @@ namespace Game.Map
         private readonly ArmyData army;
         private readonly PlayerSetupData owner;
         private readonly HexCoord[] path;
-        private readonly Func<HexCoord, int?> terrainCost;
+        // Full MP cost of the directed transition from -> to for this mover (MovementRules), or
+        // null when the step is illegal. Asked again before every step: never cached.
+        private readonly Func<HexCoord, HexCoord, int?> stepCost;
         private readonly Func<bool> activate;
         private readonly Action arrival;
         private readonly bool registered;
@@ -45,12 +47,12 @@ namespace Game.Map
         public event Action<ArmyMovementResult> Completed;
 
         public ArmyMovementOperation(ArmyData army, IEnumerable<HexCoord> path,
-            Func<HexCoord, int?> terrainCost, Func<bool> activate = null, Action arrival = null)
+            Func<HexCoord, HexCoord, int?> stepCost, Func<bool> activate = null, Action arrival = null)
         {
             this.army = army ?? throw new ArgumentNullException(nameof(army));
             if (army.Movement?.IsBusy == true) throw new InvalidOperationException("Army already has an active move.");
             this.path = path?.ToArray() ?? Array.Empty<HexCoord>();
-            this.terrainCost = terrainCost ?? throw new ArgumentNullException(nameof(terrainCost));
+            this.stepCost = stepCost ?? throw new ArgumentNullException(nameof(stepCost));
             this.activate = activate; this.arrival = arrival;
             owner = army.Owner; registered = ArmyRegistry.IsRegistered(army); CurrentHex = army.Hex;
             army.Movement = this;
@@ -58,12 +60,10 @@ namespace Game.Map
 
         public static ArmyMovementOperation ForMap(ArmyData army, HexMap map, IEnumerable<HexCoord> path,
             Func<bool> activate = null, Action arrival = null)
-            => new ArmyMovementOperation(army, path, hex =>
-            {
-                if (map == null || !map.CanEnter(hex, army)) return null;
-                map.TryGetTerrainAt(hex, out var terrain);
-                return terrain != null ? Math.Max(1, terrain.moveCost) : 1;
-            }, activate, arrival);
+            // The profile is read at each step: activation may turn a stored launch into a wing.
+            => new ArmyMovementOperation(army, path, (from, to) =>
+                MovementRules.TryGetStepCost(map, from, to, MovementRules.ProfileOf(army), out int mp) ? mp : (int?)null,
+                activate, arrival);
 
         private bool Eligible => army.Members.Count > 0 && ReferenceEquals(owner, army.Owner)
             && !army.IsGarrison && !army.IsPrison && !army.IsAirfield
@@ -76,9 +76,10 @@ namespace Game.Map
                 || !path[index].Equals(CurrentHex)) return false;
             next = path[index + 1];
             if (HexGridMath.Distance(CurrentHex, next) != 1) return false;
-            int? terrain = terrainCost(next);
-            if (!terrain.HasValue) return false;
-            cost = AviationRules.MovementCost(army, Math.Max(1, terrain.Value));
+            int? step = stepCost(CurrentHex, next);
+            if (!step.HasValue) return false;
+            cost = Math.Max(1, step.Value);
+            // A whole transition or none: never a partial step on the last MP.
             return army.CurrentMovement >= cost;
         }
         // Evaluated again after AA/stealth/contact; never cache a pre-reaction roster or MP.

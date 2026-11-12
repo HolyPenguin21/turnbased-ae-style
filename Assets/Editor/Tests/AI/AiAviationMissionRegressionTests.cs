@@ -20,6 +20,9 @@ namespace Game.EditorTests
 {
     public class AiAviationMissionRegressionTests
     {
+        // Clear-weather routes: every transition costs 1 MP.
+        private static int[] Edges(int count) => System.Linq.Enumerable.Repeat(1, count).ToArray();
+
         private PlayerSetupData owner;
         private readonly HexCoord target = new HexCoord(4, 2);
 
@@ -67,7 +70,7 @@ namespace Game.EditorTests
                 Assert.That(plane.HasAirAttackedThisTurn, Is.False);
                 Assert.That(plane.MoveCurrent, Is.EqualTo(6));
             }
-            Assert.That(AviationRange.StrikeTurns(6, 6, 1, 4, 4), Is.EqualTo(2),
+            Assert.That(AviationRange.StrikeTurns(6, 6, 1, Edges(4), Edges(4)), Is.EqualTo(2),
                 "transit must leave the full planned strike series available");
         }
 
@@ -133,8 +136,8 @@ namespace Game.EditorTests
         [TestCase(2, 3)]
         public void StrikeSeries_IncludesAFreeStationaryStrikeBeforeTheLastReturn(int ends, int strikes)
         {
-            Assert.That(AviationRange.StrikeTurns(6, 6, ends, 2, 2), Is.EqualTo(strikes));
-            Assert.That(AviationRange.StrikeTurns(6, 6, ends, 2, 2), Is.EqualTo(strikes),
+            Assert.That(AviationRange.StrikeTurns(6, 6, ends, Edges(2), Edges(2)), Is.EqualTo(strikes));
+            Assert.That(AviationRange.StrikeTurns(6, 6, ends, Edges(2), Edges(2)), Is.EqualTo(strikes),
                 "unchanged flight conditions yield the same calendar");
         }
 
@@ -142,7 +145,7 @@ namespace Game.EditorTests
         public void MixedWing_CannotBorrowAnotherAircraftsEndurance()
         {
             var group = new[] { Plane(2), Plane(0) };
-            Assert.That(AviationRange.StrikeTurns(6, 6, AviationRange.SafeUnlandedEndsRemaining(group), 2, 2), Is.EqualTo(1));
+            Assert.That(AviationRange.StrikeTurns(6, 6, AviationRange.SafeUnlandedEndsRemaining(group), Edges(2), Edges(2)), Is.EqualTo(1));
         }
 
         private WorldSnapshot Stored(int energy = 2) => new WorldSnapshot

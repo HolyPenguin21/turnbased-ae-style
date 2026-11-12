@@ -29,14 +29,14 @@ namespace Game.Combat
     // coroutine cannot carry entries into the next turn.
     public static partial class WorthIt
     {
-        private const int EstimateKeyVersion = 7;
+        private const int EstimateKeyVersion = 8;
         private const int EstimateCacheMaxEntries = 50000;
 
         // The field sets the key covers. WorthItEstimateCacheTests compares them against the real
         // struct fields by reflection, so adding a field without deciding its key fate fails a test.
         internal static readonly string[] EstimateKeyBattleUnitFields =
             { "Attack", "Defense", "Abilities", "TypeTags", "Initiative", "Hp", "MaxHp",
-                "IsHero", "HeroFate", "IsSummoned", "Range", "Consumption", "SingleUseUnit", "CanDisruptBuilding" };
+                "IsHero", "HeroFate", "IsSummoned", "Range", "InSandstorm", "Consumption", "SingleUseUnit", "CanDisruptBuilding" };
         internal static readonly string[] EstimateKeySideCommanderFields =
             { "Present", "Initiative", "Fate", "SupportHeroes" };
         internal static readonly string[] EstimateKeyAbilityMagnitudesFields =
@@ -205,15 +205,15 @@ namespace Game.Combat
         }
 
         private static void AppendKey(List<int> buf, IReadOnlyCollection<DefenderProfile> profiles,
-            float defenseBonus, int initiativeBonus)
+            float defenseBonus, int initiativeBonus, bool inSandstorm)
         {
             buf.Add(-1000 - profiles.Count);
             if (profiles is IReadOnlyList<DefenderProfile> indexed)
                 for (int i = 0; i < indexed.Count; i++)
-                    AppendKey(buf, ToBattleUnit(indexed[i], defenseBonus, initiativeBonus));
+                    AppendKey(buf, ToBattleUnit(indexed[i], defenseBonus, initiativeBonus, inSandstorm));
             else
                 foreach (DefenderProfile p in profiles)
-                    AppendKey(buf, ToBattleUnit(p, defenseBonus, initiativeBonus));
+                    AppendKey(buf, ToBattleUnit(p, defenseBonus, initiativeBonus, inSandstorm));
         }
 
         private static void AppendKey(List<int> buf, BattleUnit u)
@@ -227,6 +227,7 @@ namespace Game.Combat
             buf.Add(u.HeroFate);
             buf.Add(u.IsSummoned ? 1 : 0);
             buf.Add(u.Range);
+            buf.Add(u.InSandstorm ? 1 : 0);
             buf.Add(u.CanDisruptBuilding ? 1 : 0);
             if (u.SingleUseUnit) { buf.Add(-19019); buf.Add(1); }
             AppendConsumptionKey(buf, u.Consumption);

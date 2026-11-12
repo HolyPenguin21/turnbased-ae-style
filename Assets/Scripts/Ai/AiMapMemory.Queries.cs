@@ -150,15 +150,20 @@ namespace Game.Ai
             PlayerSetupData defendingOwner) => KnownBuildingDefenseBonusFor(actor, _map, hex, defendingOwner);
 
         public static float KnownBuildingDefenseBonusFor(PlayerSetupData actor, HexMap map, HexCoord hex,
-            PlayerSetupData defendingOwner) => BuildingDefenseBonus(actor, hex, defendingOwner, false);
+            PlayerSetupData defendingOwner) =>
+            Game.Combat.BattleEnvironment.At(hex, map ?? _map).HexDefense(BuildingDefenseBonus(actor, hex, defendingOwner, false));
 
+        // Weather is public map data like terrain: a storm over the hex removes the terrain and
+        // building parts for every defender (the same rule as BattleRulesSnapshot). It reveals
+        // nothing about hidden armies or buildings - the building part is still knowledge-gated.
         private static float HexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex,
             PlayerSetupData defendingOwner, bool anyOwner)
         {
             float terrainBonus = 0f;
             if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
                 terrainBonus = terrain.defenseModifier;
-            return terrainBonus + BuildingDefenseBonus(actor, hex, defendingOwner, anyOwner);
+            return Game.Combat.BattleEnvironment.At(hex, map ?? _map)
+                .HexDefense(terrainBonus + BuildingDefenseBonus(actor, hex, defendingOwner, anyOwner));
         }
 
         private static float BuildingDefenseBonus(PlayerSetupData actor, HexCoord hex,

@@ -31,7 +31,7 @@ namespace Game.EditorTests
             var building=new BuildingData{Owner=player,Hex=home,IsBase=true};
             var army=new ArmyData{Owner=player,Hex=home};army.Members.Add(new Game.Units.UnitData{Owner=player});
             BuildingRegistry.Register(home,building);ArmyRegistry.Register(army);
-            var decision=new MatchDecision();var operation=new ArmyMovementOperation(army,new[]{home},_=>1);
+            var decision=new MatchDecision();var operation=new ArmyMovementOperation(army,new[]{home},(_,__)=>1);
             bool cancelled=false,staleRejected=false,present=false;
             operation.Completed+=result=>{cancelled=result.Kind==ArmyMovementEnd.Cancelled;staleRejected=!decision.TryComplete();present=ReferenceEquals(BuildingRegistry.FindAt(home),building);};
             MatchStateInventory.EndMatch();

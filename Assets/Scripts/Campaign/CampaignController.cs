@@ -30,7 +30,8 @@ namespace Game.Campaign
             {
                 s.PendingOperation = new CampaignOperation { OperationId = Guid.NewGuid().ToString("N"), MatchId = manual ? Guid.NewGuid().ToString("N") : null,
                     AttackerFaction = s.CurrentFaction, DefenderFaction = target.OwnerFaction, SourceRegionId = sourceId, TargetRegionId = targetId,
-                    RandomSeed = CampaignRandom.Derive(s.Seed, s.RandomSequence++), Manual = manual };
+                    RandomSeed = CampaignRandom.Derive(s.Seed, s.RandomSequence++), Manual = manual,
+                    Weather = target.Weather };
                 s.Phase = CampaignPhase.PreparingBattle;
             });
         }
