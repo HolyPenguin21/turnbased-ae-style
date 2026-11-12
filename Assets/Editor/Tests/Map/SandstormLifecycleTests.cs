@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Sandstorm schedule (spec 3.1): one tick per full round; six active rounds (sizes 1,5,5,5,5,5),
+    // Sandstorm schedule (spec 3.1): one tick per full round; six active rounds (spot sizes 1,5,5,5,5,5),
     // two empty rounds, then a new birth. Driven on plain coordinates — no HexMap, no engine.
     public sealed class SandstormLifecycleTests
     {

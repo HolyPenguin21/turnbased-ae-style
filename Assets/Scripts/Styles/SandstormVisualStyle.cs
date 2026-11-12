@@ -15,5 +15,14 @@ namespace Game.Styles
         // Sprite width in hex widths (1 = the hex's corner-to-corner width).
         [Min(0.01f)] public float sizeInHexes = 1f;
         public Color tint = Color.white;
+        // Each sprite starts its loop on a random frame that is a multiple of this step, so
+        // neighbouring tiles never pulse in lockstep.
+        [Min(1)] public int startFrameStep = 2;
+        // Purely visual: when the storm moves (the rules have already moved it), every sprite
+        // glides to its new hex; the whole storm settles within moveSeconds. Each sprite flies
+        // for moveSeconds * spriteMoveShare and starts at its own random moment, so the sprites
+        // leave one after another without waiting for each other.
+        [Min(0f)] public float moveSeconds = 5f;
+        [Range(0.05f, 1f)] public float spriteMoveShare = 0.5f;
     }
 }

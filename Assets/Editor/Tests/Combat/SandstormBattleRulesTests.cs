@@ -26,7 +26,7 @@ namespace Game.EditorTests
         {
             var data = new SandstormStateData { profile = (int)MatchWeatherProfile.OneSandstorm, seed = 1, lastRound = 3 };
             var slot = new SandstormSlotData { id = 0, phase = (int)SandstormPhase.Active, age = 2, course = 0, random = 5 };
-            for (int q = -4; q <= 0; q++) { slot.bodyQ.Add(q); slot.bodyR.Add(0); }
+            foreach (HexCoord h in SandstormRules.SpotCells(new HexCoord(-1, 0), 0, grown: true)) { slot.bodyQ.Add(h.Q); slot.bodyR.Add(h.R); }
             data.slots.Add(slot);
             SandstormState.RestoreState(SandstormLifecycleTests.Field(6), data);
             Assume.That(SandstormState.Snapshot.Contains(BattleHex), Is.True);
