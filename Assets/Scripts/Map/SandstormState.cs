@@ -209,7 +209,7 @@ namespace Game.Map
                         }
                         else
                         {
-                            notes.Add($"storm {slot.Id}: no legal 2-3 hex advance from {slot.Body[slot.Body.Count - 1]} (course {slot.Course}); stays this round");
+                            notes.Add($"storm {slot.Id}: no legal one-hex advance from {slot.Body[slot.Body.Count - 1]} (course {slot.Course}); stays this round");
                         }
                         break;
                     case SandstormPhase.Cooldown:
@@ -218,7 +218,7 @@ namespace Game.Map
                 }
             }
 
-            // Phase 2: births in slot order; the half spot never covers a hex another storm now covers.
+            // Phase 2: births in slot order, never on a hex another storm now covers.
             var occupied = new HashSet<HexCoord>(work.Where(s => s.Phase == SandstormPhase.Active).SelectMany(s => s.Body));
             foreach (Slot slot in work)
             {

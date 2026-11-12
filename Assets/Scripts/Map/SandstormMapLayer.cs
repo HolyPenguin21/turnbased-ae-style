@@ -101,12 +101,25 @@ namespace Game.Map
                     HexCoord centre = SandstormRules.CentreOf(view.Body);
                     bool hadCentre = _centres.TryGetValue(view.SlotId, out HexCoord oldCentre);
                     bySlot.TryGetValue(view.SlotId, out List<Puff> old);
+                    // Same place in the spot first; a turned spot hands its other sprites to
+                    // the nearest free new hexes, so they glide instead of blinking.
+                    var unmatched = new List<(HexCoord Cell, HexCoord Offset)>();
                     foreach (HexCoord cell in view.Body)
                     {
                         var offset = new HexCoord(cell.Q - centre.Q, cell.R - centre.R);
+                        Puff same = Take(old, offset);
+                        if (same != null) Retarget(same, _map.HexToWorld(cell), 1f, animate, now);
+                        else unmatched.Add((cell, offset));
+                    }
+                    foreach (var (cell, offset) in unmatched)
+                    {
                         Vector3 target = _map.HexToWorld(cell);
-                        Puff puff = Take(old, offset);
-                        if (puff == null)
+                        Puff puff = TakeNearest(old, target);
+                        if (puff != null)
+                        {
+                            puff.Offset = offset;
+                        }
+                        else
                         {
                             // A new part of the spot: it appears where it would have stood in the
                             // old spot and travels with the others while fading in.
@@ -142,6 +155,17 @@ namespace Game.Map
                 return found;
             }
             return null;
+        }
+
+        private static Puff TakeNearest(List<Puff> old, Vector3 target)
+        {
+            if (old == null || old.Count == 0) return null;
+            int best = 0;
+            for (int i = 1; i < old.Count; i++)
+                if ((old[i].Current - target).sqrMagnitude < (old[best].Current - target).sqrMagnitude) best = i;
+            Puff found = old[best];
+            old.RemoveAt(best);
+            return found;
         }
 
         private void Retarget(Puff puff, Vector3 to, float alpha, bool animate, float now)

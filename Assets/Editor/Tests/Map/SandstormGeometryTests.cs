@@ -7,9 +7,9 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Sandstorm geometry invariants: only interior hexes, a round spot (half size at birth,
-    // then the centre and its whole ring), 2-3 centre steps per round, course change <= 60
-    // degrees, look-ahead that never drives the spot into a dead end. Geometry depends only on the coordinates, so the
+    // Sandstorm geometry invariants: only interior hexes, a spot (one hex at birth, then the
+    // centre and four neighbours), one centre step per round, course change <= 60 degrees,
+    // look-ahead that never drives the spot into a dead end. Geometry depends only on the coordinates, so the
     // standard field radii cover both biomes.
     public sealed class SandstormGeometryTests
     {
@@ -55,7 +55,7 @@ namespace Game.EditorTests
                         if (view.Age > 0 && previous != null)
                         {
                             int moved = HexGridMath.Distance(SandstormRules.CentreOf(previous.Body), SandstormRules.CentreOf(view.Body));
-                            Assert.That(moved, Is.InRange(2, 3), at);
+                            Assert.That(moved, Is.EqualTo(1), at);
                             Assert.That(TurnDistance(previous.Course, view.Course), Is.LessThanOrEqualTo(1), at);
                         }
                     }
@@ -71,13 +71,13 @@ namespace Game.EditorTests
         [Test]
         public void SmallMap_LookAheadRejectsAnAdvanceIntoADeadEnd()
         {
-            // Small field: spot centres within radius 3. A spot centred on (0,0) moving along
-            // (1,0) could step straight to (3,0), from where no 2-3 hex advance with <= 60
+            // Small field: spot centres within radius 3. A spot centred on (2,0) moving along
+            // (1,0) could step straight to (3,0), from where no one-hex advance with <= 60
             // degrees keeps the spot inside.
             var topology = new SandstormRules.Topology(SandstormLifecycleTests.Field(5));
-            var body = SandstormRules.SpotCells(new HexCoord(0, 0), 0, grown: true);
-            Assert.That(SandstormRules.TryAdvance(topology, body, 0, new SandstormRules.AdvancePlan(3, 3, 0), out var dead, out int deadCourse), Is.True,
-                "the straight 3-step plan is locally legal");
+            var body = SandstormRules.SpotCells(new HexCoord(2, 0), 0, grown: true);
+            Assert.That(SandstormRules.TryAdvance(topology, body, 0, SandstormRules.Plans[0], out var dead, out int deadCourse), Is.True,
+                "the straight step is locally legal");
             Assert.That(SandstormRules.HasContinuation(topology, dead.Last(), deadCourse, 1, new SandstormRules.ContinuationMemo()), Is.False);
             for (ulong seed = 0; seed < 200; seed++)
             {
@@ -89,15 +89,16 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ThreeStepLoopWithOneHexDisplacement_IsNeverAPlan()
+        public void EveryPlan_MovesTheCentreOneHex_TurningAtMostSixtyDegrees()
         {
-            foreach (int steps in new[] { 2, 3 })
-                foreach (var plan in SandstormRules.PlansFor(steps))
-                {
-                    HexCoord head = new HexCoord(0, 0);
-                    for (int i = 0; i < plan.Steps; i++) head = SandstormRules.Step(head, plan.DirectionOf(0, i));
-                    Assert.That(HexGridMath.Distance(new HexCoord(0, 0), head), Is.EqualTo(steps), plan.ToString());
-                }
+            Assert.That(SandstormRules.Plans.Count, Is.EqualTo(3));
+            foreach (var plan in SandstormRules.Plans)
+            {
+                HexCoord centre = new HexCoord(0, 0);
+                for (int i = 0; i < plan.Steps; i++) centre = SandstormRules.Step(centre, plan.DirectionOf(0, i));
+                Assert.That(HexGridMath.Distance(new HexCoord(0, 0), centre), Is.EqualTo(1), plan.ToString());
+                Assert.That(TurnDistance(0, plan.FinalCourse(0)), Is.LessThanOrEqualTo(1), plan.ToString());
+            }
         }
 
         [Test]
@@ -120,10 +121,10 @@ namespace Game.EditorTests
         [Test]
         public void NoLegalAdvance_StaysInPlace_AndStillAges()
         {
-            // A body restored on a field that leaves no 2-3 hex advance: diagnosable stall.
-            var field = SandstormLifecycleTests.Field(3);
-            // Radius 3 field: spot centres within radius 1, so every 2-3 hex advance of a spot
-            // centred on (0,0) leaves the interior.
+            // A body restored on a field that leaves no advance: diagnosable stall.
+            var field = SandstormLifecycleTests.Field(2);
+            // Radius 2 field: only (0,0) can hold a spot, so every one-hex advance leaves the
+            // interior.
             var body = SandstormRules.SpotCells(new HexCoord(0, 0), 5, grown: true);
             var topology = new SandstormRules.Topology(field);
             Assume.That(SandstormRules.IsValidBody(topology, body, 5, grown: true), Is.True);

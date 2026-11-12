@@ -37,7 +37,7 @@ namespace Game.EditorTests
                     SandstormState.AdvanceRound(field, round);
                     var views = SandstormState.Snapshot.Instances;
                     Assert.That(views.Select(v => v.SlotId), Is.EqualTo(new[] { 0, 1 }));
-                    int expected = new[] { 4, 7, 7, 7, 7, 7, 0, 0, 4 }[round - 1];
+                    int expected = new[] { 1, 5, 5, 5, 5, 5, 0, 0, 1 }[round - 1];
                     Assert.That(views.Select(v => v.Body.Count), Is.EqualTo(new[] { expected, expected }));
                     Assert.That(SandstormState.Snapshot.Cells.Count, Is.LessThanOrEqualTo(2 * expected));
                     if (round == 1 || round == 9)
@@ -72,7 +72,7 @@ namespace Game.EditorTests
             var a = new SandstormInstanceView(0, SandstormPhase.Active, 2, 0, Spot(0, 0));
             var b = new SandstormInstanceView(1, SandstormPhase.Active, 3, 0, Spot(1, 0));
             var snapshot = new SandstormSnapshot(MatchWeatherProfile.TwoSandstorms, 1, new[] { b, a });
-            Assert.That(snapshot.Cells.Count, Is.EqualTo(10), "two adjacent spots share four hexes");
+            Assert.That(snapshot.Cells.Count, Is.EqualTo(8), "two adjacent spots share two hexes");
             Assert.That(snapshot.Contains(new HexCoord(1, 0)), Is.True);
             Assert.That(snapshot.Instances.Select(i => i.SlotId), Is.EqualTo(new[] { 0, 1 }));
             Assert.That(snapshot.Cells, Is.Ordered.Using((IComparer<HexCoord>)Comparer<HexCoord>.Create(SandstormRules.CompareCoords)));
@@ -86,12 +86,13 @@ namespace Game.EditorTests
             // still stormy because slot 1 now covers it. Slot 1's old hexes it left are cleared.
             var field = SandstormLifecycleTests.Field(7);
             var topology = new SandstormRules.Topology(field);
-            SandstormSlotData mover = Active(1, 2, 1, Spot(0, 0));
+            var start = SandstormRules.SpotCells(new HexCoord(0, 0), 1, grown: true).ToArray();
+            SandstormSlotData mover = Active(1, 2, 1, start);
             var random = new SandstormRandom(unchecked((ulong)mover.random));
-            Assume.That(SandstormRules.TryPlanAdvance(topology, Spot(0, 0), 1, SandstormRules.LastActiveAge - 3, ref random,
-                new SandstormRules.ContinuationMemo(), out List<HexCoord> arrival, out _, out _), Is.True);
+            Assume.That(SandstormRules.TryPlanAdvance(topology, start, 1, SandstormRules.LastActiveAge - 3, ref random,
+                new SandstormRules.ContinuationMemo(), out List<HexCoord> arrival, out int arrivalCourse, out _), Is.True);
             var data = new SandstormStateData { profile = (int)MatchWeatherProfile.TwoSandstorms, seed = 8, lastRound = 6 };
-            data.slots.Add(Active(0, 5, 0, arrival.ToArray()));
+            data.slots.Add(Active(0, 5, arrivalCourse, arrival.ToArray()));
             data.slots.Add(mover);
             SandstormState.RestoreState(field, data);
             SandstormState.AdvanceRound(field, 7);
@@ -99,7 +100,7 @@ namespace Game.EditorTests
             Assert.That(SandstormState.Snapshot.Instances[1].Body, Is.EqualTo(arrival));
             foreach (var hex in arrival)
                 Assert.That(SandstormState.Snapshot.Contains(hex), Is.True, hex.ToString());
-            foreach (var hex in Spot(0, 0).Where(h => !arrival.Contains(h)))
+            foreach (var hex in start.Where(h => !arrival.Contains(h)))
                 Assert.That(SandstormState.Snapshot.Contains(hex), Is.False, hex.ToString());
         }
 

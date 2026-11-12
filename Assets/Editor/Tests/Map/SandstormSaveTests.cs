@@ -58,7 +58,7 @@ namespace Game.EditorTests
             var a = new SandstormSlotData { id = 0, phase = (int)SandstormPhase.Active, age = 3, course = 0, random = -5 };
             var b = new SandstormSlotData { id = 1, phase = (int)SandstormPhase.Active, age = 0, course = 2, random = 6 };
             foreach (HexCoord h in SandstormRules.SpotCells(new HexCoord(0, 0), 0, grown: true)) { a.bodyQ.Add(h.Q); a.bodyR.Add(h.R); }
-            // A half spot inside slot 0's spot: overlap is valid.
+            // A birth on slot 0's centre: overlap is valid.
             foreach (HexCoord h in SandstormRules.SpotCells(new HexCoord(0, 0), 2, grown: false)) { b.bodyQ.Add(h.Q); b.bodyR.Add(h.R); }
             data.slots.Add(a); data.slots.Add(b);
             SandstormState.RestoreState(field, data);
@@ -83,9 +83,10 @@ namespace Game.EditorTests
             ("clear with a slot", d => d.profile = (int)MatchWeatherProfile.Clear),
             ("duplicate body hex", d => d.slots[0].bodyQ[4] = d.slots[0].bodyQ[2]),
             ("outer row", d => { for (int i = 0; i < d.slots[0].bodyQ.Count; i++) d.slots[0].bodyQ[i] += 5; }),
-            ("gap", d => d.slots[0].bodyQ[6] += 1),
-            ("size 5", d => { d.slots[0].bodyQ.RemoveRange(0, 2); d.slots[0].bodyR.RemoveRange(0, 2); }),
-            ("half spot after birth", d => { d.slots[0].bodyQ.RemoveRange(0, 3); d.slots[0].bodyR.RemoveRange(0, 3); }),
+            ("gap", d => d.slots[0].bodyQ[4] += 1),
+            ("size 3", d => { d.slots[0].bodyQ.RemoveRange(0, 2); d.slots[0].bodyR.RemoveRange(0, 2); }),
+            ("birth hex after birth", d => { d.slots[0].bodyQ.RemoveRange(0, 4); d.slots[0].bodyR.RemoveRange(0, 4); }),
+            ("spot facing another course", d => d.slots[0].course = 1),
             ("full spot at birth", d => { d.slots[0].age = 0; d.lastRound = 1; }),
             ("age 6", d => d.slots[0].age = 6),
             ("born before round 1", d => d.lastRound = 3),
