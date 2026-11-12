@@ -130,7 +130,7 @@ namespace Game.Ai.V2
                     if (c.Knowledge == ContactKnowledge.Exact && !approachCost.HasValue) continue;
                     bool canDamage = WorthIt.CanDamageAll(c.Army.Members,
                         asset.Opposition, asset.HexDefenseBonus, attackerCommander: c.Army.Commander);
-                    float winChance = WorthIt.EstimateSequential(c.Army.Members, c.Army.Commander,
+                    float winChance = WorthIt.EstimateHexControl(c.Army.Members, c.Army.Commander,
                         asset.Opposition, asset.HexDefenseBonus).WinChance;
 
                     int? enemyEta = null;

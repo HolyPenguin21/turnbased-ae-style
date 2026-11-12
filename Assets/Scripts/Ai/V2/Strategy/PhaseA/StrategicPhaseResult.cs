@@ -5,6 +5,7 @@ namespace Game.Ai.V2
     public sealed class StrategicPhaseResult
     {
         public bool StateChanged;
+        internal bool OpeningDeploymentConsidered;
         public int CardsPlayed;
         public int CardsDrawn;
 
@@ -69,6 +70,7 @@ namespace Game.Ai.V2
         {
             if (other == null) return;
             StateChanged |= other.StateChanged;
+            OpeningDeploymentConsidered |= other.OpeningDeploymentConsidered;
             CardsPlayed += other.CardsPlayed;
             CardsDrawn += other.CardsDrawn;
             MaterializationAttempts += other.MaterializationAttempts;

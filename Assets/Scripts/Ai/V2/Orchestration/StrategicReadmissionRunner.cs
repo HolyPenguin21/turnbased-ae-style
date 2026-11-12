@@ -126,6 +126,27 @@ namespace Game.Ai.V2
             mark = StagePerfTelemetry.Mark(_frame.Pacer);
             yield return _frame.RefreshOperationalDecision();
             StagePerfTelemetry.Log(_frame.Pacer, mark, "readmission.refresh", axesLabel);
+            // Returning/rebasing aviation may have revealed new sites or changed capability.
+            // Rebuild every need before the postponed opening can spend against those facts.
+            if (!_phases.PhaseA.OpeningDeploymentConsidered
+                && !AviationObligations.Pending(_player, _ctx))
+            {
+                dirtyAxes = new HashSet<DesireAxis>(DesireAxes.All);
+                yield return _frame.RebuildDemandsPaced(dirtyAxes);
+            }
+            WorldAnalysis.StepObservationStamp beforeCapabilities =
+                WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
+            var opening = new StrategicPhaseResult { Reservation = _phases.Carried };
+            bool openingChanged = !_phases.PhaseA.OpeningDeploymentConsidered
+                && HighImpactDeployment.TryPlay(new PhaseAPass(_frame.Snapshot, _player, _root, _hand,
+                    _ctx, _apBudget, _frame.Demands, _frame.Commitments, _frame.IntentState,
+                    _frame.Intents, _frame.Recon, null, _radar, true, opening));
+            _phases.PhaseA.Accumulate(opening);
+            if (openingChanged)
+            {
+                yield return _frame.AcceptChangedReentry();
+                dirtyAxes = new HashSet<DesireAxis>(DesireAxes.All);
+            }
             // T03 — the baseline is the input Generate actually evaluates: taken after
             // continuity resolved (a completed target, a handed-off donor), before any
             // follow-up delivery. Post-delivery state is judged by the delta it publishes,
@@ -146,8 +167,6 @@ namespace Game.Ai.V2
             // build-card claims only when Economy is among them — "Economy resolved" versus
             // "Economy wasn't part of this dirty-axis subset".
             yield return _frame.Checkpoint();
-            WorldAnalysis.StepObservationStamp beforeCapabilities =
-                WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
             mark = StagePerfTelemetry.Mark(_frame.Pacer);
             var followup = new StrategicPhaseResult();
             yield return StrategicManager.FulfillDemandsPaced(
@@ -166,12 +185,12 @@ namespace Game.Ai.V2
             }
             WorldAnalysis.StepObservationStamp afterCapabilities =
                 WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
-            WorldAnalysis.PublishStepObservationDelta(_player, _ctx.TurnNumber,
-                beforeCapabilities, afterCapabilities, null);
+            outcome.StateChanged = CompleteCapabilityAdmission(_player, _ctx.TurnNumber,
+                beforeCapabilities, afterCapabilities, openingChanged, followup);
             _readmission.Commit(dirtyAxes, admittedFingerprints);
             AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission "
                 + $"axes={string.Join(",", dirtyAxes)} triggers={reasons} "
-                + $"changed={(followup.StateChanged ? 1 : 0)}");
+                + $"changed={(outcome.StateChanged ? 1 : 0)}");
             foreach (DesireAxis axis in dirtyAxes)
             {
                 string after = DemandIdentityDigest(regenerated, axis);
@@ -180,7 +199,14 @@ namespace Game.Ai.V2
                         ? $"unchanged count={regenerated.Count(d => d?.RequestingAxis == axis)}"
                         : $"old=[{demandsBefore[axis]}] new=[{after}]"));
             }
-            outcome.StateChanged = followup.StateChanged;
+        }
+
+        internal static bool CompleteCapabilityAdmission(PlayerSetupData player, int turn,
+            WorldAnalysis.StepObservationStamp before, WorldAnalysis.StepObservationStamp after,
+            bool openingChanged, StrategicPhaseResult followup)
+        {
+            WorldAnalysis.PublishStepObservationDelta(player, turn, before, after, null);
+            return openingChanged || followup.StateChanged;
         }
 
 

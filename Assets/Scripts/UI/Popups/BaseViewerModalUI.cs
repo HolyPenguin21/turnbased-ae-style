@@ -33,6 +33,7 @@ namespace Game.UI
         private BuildingData _currentBuilding;
         private Canvas _canvas;
         private bool _readOnly;
+        private ScrollRect _detailScroll;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
         public bool CanManageCurrentBuilding => !_readOnly && _currentBuilding != null
@@ -65,6 +66,7 @@ namespace Game.UI
         private void Awake()
         {
             _canvas = GetComponentInParent<Canvas>();
+            _detailScroll = UIUtility.EnsureDetailScroll(detailText2, "BaseDetailViewport");
             if (closeButton != null)
                 closeButton.onClick.AddListener(Hide);
         }
@@ -155,6 +157,7 @@ namespace Game.UI
 
         public void ShowBaseSummary()
         {
+            UIUtility.ResetDetailScroll(_detailScroll);
             if (detailArt != null)
             {
                 detailArt.sprite = _currentBuilding != null ? _currentBuilding.DetailArt : null;
@@ -180,6 +183,7 @@ namespace Game.UI
                 ShowBaseSummary();
                 return;
             }
+            UIUtility.ResetDetailScroll(_detailScroll);
             if (detailArt != null)
             {
                 detailArt.sprite = facility.DetailArt;

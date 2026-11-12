@@ -380,9 +380,9 @@ namespace Game.Ai.V2
                     lastYield = System.Diagnostics.Stopwatch.GetTimestamp();
                 }
                 IReadOnlyList<WorthIt.DefendingArmy> opposition = target.Opposition;
-                // The same opposition estimate Analyze reads (a lone hero is a Capture/Kill, not free).
+                // Warm the same territorial outcome Analyze reads; hero escape still yields the hex.
                 using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
-                    WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, target.HexBonus);
+                    WorthIt.EstimateHexControl(readyRoster, readyCommander, opposition, target.HexBonus);
                 if (commanders.Count == 0)
                 {
                     if (BudgetExpired())
@@ -471,7 +471,7 @@ namespace Game.Ai.V2
                     snap.Observer, t.Hex, t.Owner);
                 IReadOnlyList<WorthIt.DefendingArmy> opposition =
                     TargetFight(snap, defenders, t.Commander, hexBonus, t.Hex, t.ArmyId);
-                float readyWin = WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, hexBonus).WinChance;
+                float readyWin = WorthIt.EstimateHexControl(readyRoster, readyCommander, opposition, hexBonus).WinChance;
                 HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
                     opposition, hexBonus);
                 float asmWin = assembly.WinChance;
@@ -521,7 +521,7 @@ namespace Game.Ai.V2
                         snap.Observer, g.Hex, defendingOwner: null);
                     IReadOnlyList<WorthIt.DefendingArmy> opposition =
                         TargetFight(snap, defenders, g.Commander, hexBonus, g.Hex, null);
-                    float readyWin = WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, hexBonus).WinChance;
+                    float readyWin = WorthIt.EstimateHexControl(readyRoster, readyCommander, opposition, hexBonus).WinChance;
                     HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
                         opposition, hexBonus);
                     float asmWin = assembly.WinChance;

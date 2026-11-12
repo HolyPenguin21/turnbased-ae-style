@@ -293,12 +293,23 @@ namespace Game.EditorTests
                 "CaptureStepObservation(", "StrategicManager.FulfillDemandsPaced(", "PhaseA.Accumulate(",
                 "AcceptChangedCold(", "WaitAtObserverActionBoundary()", "sink.Changed = true");
 
-            // re-admission
-            InOrder(Code("StrategicReadmissionRunner.cs"), "re-admission", "_readmission.Decide(",
-                "_frame.RefreshOperationalDecision()", "admittedFingerprints", "_frame.GenerateDemandsPaced(",
-                "ReplaceDemandFamilies(", "CaptureStepObservation(", "StrategicManager.FulfillDemandsPaced(",
-                "ReservationInvariants.CheckBoundary(", "AcceptChangedReentry()", "PublishStepObservationDelta(",
+            // The deferred opening is part of this admission: observe BEFORE it can spend,
+            // refresh its deliveries before generating needs, then publish both spending stages.
+            string readmission = Code("StrategicReadmissionRunner.cs");
+            InOrder(readmission, "re-admission", "_readmission.Decide(",
+                "_frame.RefreshOperationalDecision()", "_frame.RebuildDemandsPaced(",
+                "CaptureStepObservation(", "HighImpactDeployment.TryPlay(", "PhaseA.Accumulate(opening)",
+                "AcceptChangedReentry()", "admittedFingerprints", "_frame.GenerateDemandsPaced(",
+                "ReplaceDemandFamilies(", "StrategicManager.FulfillDemandsPaced(",
+                "PhaseA.Accumulate(followup)", "ReservationInvariants.CheckBoundary(",
+                "AcceptChangedReentry()", "CaptureStepObservation(", "CompleteCapabilityAdmission(",
                 "_readmission.Commit(");
+            InOrder(readmission.Substring(readmission.IndexOf("internal static bool CompleteCapabilityAdmission",
+                    StringComparison.Ordinal)), "admission observation", "PublishStepObservationDelta(",
+                "return openingChanged || followup.StateChanged");
+            InOrder(Code("AiStrategyV2Pipeline.cs"), "initial opening", "HighImpactDeployment.TryPlay(",
+                "phaseA.Accumulate(opening)", "AcceptChangedPhaseA()", "RebuildDemandsPaced(demandAxes)",
+                "StrategicManager.FulfillDemandsPaced(");
 
             // the tail of the turn: loop -> recall -> final ownership -> settle -> Housekeeping (Reaction inside)
             // -> audit -> release

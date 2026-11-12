@@ -148,7 +148,7 @@ namespace Game.Ai.V2
                 .ToList();
             float win = opposition == null || opposition.Count == 0
                 ? 1f
-                : WorthIt.EstimateSequential(roster, commander, opposition, defenderHexDefenseBonus).WinChance;
+                : WorthIt.EstimateHexControl(roster, commander, opposition, defenderHexDefenseBonus).WinChance;
             return new CommandProjection(win, slots, roster, commander);
         }
 

@@ -208,12 +208,22 @@ namespace Game.Ai.V2
             }
             else
             {
+                var opening = new StrategicPhaseResult { Reservation = phaseA.Reservation };
+                bool openingChanged = HighImpactDeployment.TryPlay(new PhaseAPass(frame.Snapshot,
+                    player, root, hand, ctx, apBudget, frame.Demands, frame.Commitments,
+                    frame.IntentState, frame.Intents, frame.Recon, null, radar, true, opening));
+                phaseA.Accumulate(opening);
+                if (openingChanged)
+                {
+                    yield return frame.AcceptChangedPhaseA();
+                    yield return frame.RebuildDemandsPaced(demandAxes);
+                }
                 // The demand rebuild above and Phase A's card rounds each get their own frames.
                 yield return frame.Checkpoint();
                 AiActivityFeed.Report(AiActivity.Developing);
                 yield return StrategicManager.FulfillDemandsPaced(frame.Snapshot, player, root, hand,
                     ctx, apBudget, frame.Demands, frame.Commitments, frame.IntentState, phaseA, frame.Pacer,
-                    frame.Intents, frame.Recon, radar: radar, deferFreshZeroRadar: true);
+                    frame.Intents, frame.Recon, carriedReservation: phaseA.Reservation, radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
             phaseA.CardsDrawn += replenishDrawn;

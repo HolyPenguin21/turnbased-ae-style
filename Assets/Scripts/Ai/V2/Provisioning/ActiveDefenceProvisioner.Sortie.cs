@@ -89,7 +89,7 @@ namespace Game.Ai.V2
                 || !(VisionSystem.IsVisible(player, p.EnemyHex)
                     || ActiveDefenceObjectiveEvaluator.OnFreshOwnRuin(player, ctx.TurnNumber, p.EnemyHex,
                         sighting.Value.SeenTurn))
-                || ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(knowledge, p.EnemyHex))
+                || ActiveDefenceObjectiveEvaluator.BlocksImmediateIntercept(knowledge, p.EnemyHex))
             { why = "sortie target moved, became hidden or moved onto a foreign structure"; return false; }
             var opposition = new List<WorthIt.DefendingArmy>();
             KnownOpposition.AddCoOccupants(knowledge, p.EnemyHex, -1, opposition);

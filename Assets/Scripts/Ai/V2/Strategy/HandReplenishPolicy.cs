@@ -54,7 +54,8 @@ namespace Game.Ai.V2
 
             int apBefore = SpendableAp(player, root, ctx);
             int aviationAp = AviationObligations.ActivationAp(player, ctx);
-            int apToKeep = AiConfigV2.handReplenishMinApLeft + aviationAp;
+            int heavyAp = HighImpactDeployment.RefillApToKeep(player, root, hand, ctx);
+            int apToKeep = System.Math.Max(AiConfigV2.handReplenishMinApLeft, heavyAp) + aviationAp;
             int wanted = DrawsWanted(handBefore, ctx.HandCapacity - handBefore, deckCount,
                 apBefore, apToKeep, ctx.DrawApCost, budget.DrawActionsUsed);
 

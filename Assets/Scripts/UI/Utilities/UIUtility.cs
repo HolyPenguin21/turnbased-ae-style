@@ -39,6 +39,47 @@ namespace Game.UI
             return resized || rescaled;
         }
 
+        // The viewport retains the authored text rectangle; only its content grows.
+        public static ScrollRect EnsureDetailScroll(TMPro.TMP_Text detailText, string viewportName)
+        {
+            if (detailText == null) return null;
+            var content = detailText.rectTransform;
+            ScrollRect detailScroll = content.GetComponentInParent<ScrollRect>(true);
+            if (detailScroll != null && detailScroll.content == content) return detailScroll;
+            var viewportObject = new GameObject(viewportName, typeof(RectTransform),
+                typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+            viewportObject.layer = content.gameObject.layer;
+            var viewport = (RectTransform)viewportObject.transform;
+            viewport.SetParent(content.parent, false);
+            viewport.SetSiblingIndex(content.GetSiblingIndex());
+            viewport.anchorMin = content.anchorMin; viewport.anchorMax = content.anchorMax;
+            viewport.pivot = content.pivot; viewport.sizeDelta = content.sizeDelta;
+            viewport.anchoredPosition = content.anchoredPosition;
+            var background = viewportObject.GetComponent<Image>();
+            background.color = Color.clear; background.raycastTarget = true;
+            content.SetParent(viewport, false);
+            content.anchorMin = new Vector2(0f, 1f); content.anchorMax = Vector2.one;
+            content.pivot = new Vector2(.5f, 1f);
+            content.anchoredPosition = Vector2.zero; content.sizeDelta = Vector2.zero;
+            var fitter = content.GetComponent<ContentSizeFitter>();
+            if (fitter == null) fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            detailScroll = viewportObject.GetComponent<ScrollRect>();
+            detailScroll.viewport = viewport; detailScroll.content = content;
+            detailScroll.horizontal = false; detailScroll.vertical = true;
+            detailScroll.movementType = ScrollRect.MovementType.Clamped;
+            detailScroll.scrollSensitivity = 24f;
+            return detailScroll;
+        }
+
+        public static void ResetDetailScroll(ScrollRect scroll)
+        {
+            if (scroll == null || scroll.content == null) return;
+            scroll.StopMovement();
+            scroll.content.anchoredPosition = Vector2.zero;
+        }
+
         // ---- Lists ----
         // Shared by every UI component that instantiates a list of child components and needs to
         // tear them all down before repopulating (ArmyButtonRowUI's button row, ArmyViewerModalUI's

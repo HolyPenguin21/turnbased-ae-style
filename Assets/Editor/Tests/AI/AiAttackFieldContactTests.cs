@@ -270,7 +270,7 @@ namespace Game.EditorTests
         // Playtest 2026-11-01 (Draven T16/T20): a lone hero on the path cannot damage the march;
         // its low chance is the Capture/Kill escape chance, so it is bypassed, never a Retreat.
         [Test]
-        public void HeroOnlyContactOnThePath_IsBypassedNotARetreat()
+        public void HeroOnlyContactOnThePath_IsDisplacedNotBypassed()
         {
             ArmySnapshot us = Army(7, Origin, new[] { Body(2, 2, 6) });
             var hero = new WorthIt.DefenderProfile(0f, false, null, 0f, 6f, 0, null, 6f,
@@ -279,13 +279,12 @@ namespace Game.EditorTests
             WorldSnapshot snap = Snap(us, Sight(5, hex, Red, new[] { hero }));
             AttackTacticalOpportunity.ClearsContact(us.Members, us.Commander,
                 KnownOpposition.OnHex(snap, hex), 0f, out float win, out _);
-            Assert.That(win, Is.LessThan(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate),
-                "precondition: the hero is likely to escape");
+            Assert.That(win, Is.EqualTo(1f), "escape still frees the route");
 
             AttackLocalAction action = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null);
 
             Assert.That(action.Kind, Is.Not.EqualTo(AttackLocalActionKind.Retreat));
-            Assert.That(action.FightsPathContact, Is.False);
+            Assert.That(action.FightsPathContact, Is.True);
         }
 
         // A beatable army sharing its hex with an escape-prone lone hero: the package win carries
@@ -303,8 +302,8 @@ namespace Game.EditorTests
             List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, hex);
             AttackTacticalOpportunity.ClearsContact(us.Members, us.Commander, opposition, 0f,
                 out float packageWin, out _);
-            Assert.That(packageWin, Is.LessThan(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate),
-                "precondition: the hero is likely to escape");
+            Assert.That(packageWin, Is.GreaterThanOrEqualTo(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate),
+                "the escaping hero does not prevent control of the hex");
             Assert.That(AttackTacticalOpportunity.FightWin(us.Members, us.Commander, opposition, 0f,
                 packageWin), Is.GreaterThanOrEqualTo(GroundCombatAdmissionPolicy.AttackLocalWinChanceGate));
             Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null).Kind,
@@ -358,7 +357,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void SoloHeroContact_UsesCaptureKillOdds_InsteadOfAnEmptyBattleWin()
+        public void SoloHeroContact_IsWorthDisplacingEvenWhenCaptureIsUnlikely()
         {
             var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
                 isGroundCombatant: false, isHero: true, fateMax: 10);
@@ -366,12 +365,14 @@ namespace Game.EditorTests
             bool clears = AttackTacticalOpportunity.ClearsContact(new[] { Body(900, 900, 900) },
                 default, opposition, 0, out float chance, out bool cover);
             Assert.That(cover, Is.True);
-            Assert.That(chance, Is.LessThan(0.40f));
-            Assert.That(clears, Is.False, "Attack/Defense damage stats do not win a Capture/Kill roll");
+            Assert.That(chance, Is.EqualTo(1f));
+            Assert.That(clears, Is.True, "the hero must leave even when it escapes");
+            Assert.That(WorthIt.EstimateCaptureKill(new[] { Body(900, 900, 900) }, default, opposition).WinChance,
+                Is.LessThan(0.40f), "capture odds remain separate");
         }
 
         [Test]
-        public void SoloHero_IsPricedAsCaptureKillByTheSharedGate_NotOnlyByTheLocalContactWrapper()
+        public void SoloHeroDisplacement_UsesTheSharedTerritorialGate()
         {
             var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
                 isGroundCombatant: false, isHero: true, fateMax: 10);
@@ -380,7 +381,7 @@ namespace Game.EditorTests
                 0f, 0f, out float shared, out _);
             AttackTacticalOpportunity.ClearsContact(new[] { Body(900, 900, 900) }, default, opposition,
                 0f, out float local, out _);
-            Assert.That(shared, Is.LessThan(0.40f), "preparation / Raid / ActiveDefence read the same odds");
+            Assert.That(shared, Is.EqualTo(1f), "preparation / Raid / ActiveDefence value hex control");
             Assert.That(shared, Is.EqualTo(local));
         }
 
@@ -674,7 +675,7 @@ namespace Game.EditorTests
         // against such an army (an army reduced to its hero, an older save) no longer holds the
         // Attack. The Capture/Kill chance itself stays the estimator's (no empty battle win).
         [Test]
-        public void HeroOnlyRetreatWitness_IsLifted_WithoutGrantingAnEmptyBattleWin()
+        public void HeroOnlyRetreatWitness_IsLifted_WhenDisplacementClearsTheRoute()
         {
             var state = MissionIntentRegistry.GetOrCreate(Us);
             ArmySnapshot us = Army(7, Origin, Strong());
@@ -686,7 +687,7 @@ namespace Game.EditorTests
             List<WorthIt.DefendingArmy> opposition = KnownOpposition.OnHex(snap, hex);
             AttackTacticalOpportunity.ClearsContact(us.Members.ToList(), us.Commander, opposition, 0,
                 out float win, out _);
-            Assert.That(win, Is.LessThan(1f), "Capture/Kill is priced, not an empty battle win");
+            Assert.That(win, Is.EqualTo(1f), "escape clears the blocked route");
             Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null).Kind,
                 Is.Not.EqualTo(AttackLocalActionKind.Retreat));
 
@@ -813,6 +814,56 @@ namespace Game.EditorTests
             Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
             Assert.That(intent.Status, Is.EqualTo(IntentStatus.Active));
             // the claim is derived from this very Active intent (ActorCommitments), so it survives with it
+        }
+
+        [Test]
+        public void HeroBesideRealDefenders_DoesNotReduceTheChanceToControlTheirHex()
+        {
+            var attackers = Strong();
+            var bodies = new[] { new WorthIt.DefendingArmy(new[] { Body(4, 2, 5) }, default) };
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 20);
+            var mixed = bodies.Concat(new[] { new WorthIt.DefendingArmy(new[] { hero },
+                new WorthIt.SideCommander(0, 20)) }).ToArray();
+            GroundCombatFeasibility.Clears(attackers, default, bodies, .8f, 0, out float bodyWin, out _);
+            GroundCombatFeasibility.Clears(attackers, default, mixed, .8f, 0, out float mixedWin, out _);
+            Assert.That(mixedWin, Is.EqualTo(bodyWin));
+        }
+
+        [Test]
+        public void SoloScoutDisplacement_DoesNotEnterOrdinaryCombatLanesWithoutPermission()
+        {
+            var scout = new WorthIt.DefenderProfile(1, false, attack: 2, hitPoints: 3,
+                abilities: new[] { UnitAbilities.R1S0 });
+            var us = Army(7, Origin, new[] { scout });
+            us.IsSoloRecce = true; us.IsStructuralRaidActor = false;
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 20);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { hero }, default) };
+            var request = new GroundCombatAssemblyRequest { Opposition = opposition,
+                AllowSameHexAssembly = false };
+            Assert.That(GroundCombatAssemblyPlanner.Plan(Snap(us), request).Feasible, Is.False,
+                "ordinary Raid/Attack do not own the immediate scout-displacement contract");
+        }
+
+        [Test]
+        public void SoloScout_CanBePlannedToDisplaceHero_ButNotToFightHisEscort()
+        {
+            var scout = new WorthIt.DefenderProfile(1, false, attack: 2, hitPoints: 3,
+                abilities: new[] { UnitAbilities.R1S0 });
+            var us = Army(7, Origin, new[] { scout });
+            us.IsSoloRecce = true;
+            us.IsStructuralRaidActor = false;
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 20);
+            var snap = Snap(us);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { hero }, default) };
+            Assert.That(GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
+                Opposition = opposition, AllowSameHexAssembly = false, AllowHeroDisplacement = true }).Feasible, Is.True);
+            Assert.That(GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition, 7, .8f, allowHeroDisplacement: true).Feasible, Is.True);
+            Assert.That(GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
+                Opposition = new[] { new WorthIt.DefendingArmy(new[] { hero, Body(2, 1, 3) }, default) },
+                AllowSameHexAssembly = false, AllowHeroDisplacement = true }).Feasible, Is.False);
         }
 
         // ---- world revision: a decision is not a mutation -----------------------------------------

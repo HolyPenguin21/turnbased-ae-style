@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Players;
 using NUnit.Framework;
@@ -20,6 +21,29 @@ namespace Game.EditorTests
             Dictionary<DesireAxis, string> keys, out HashSet<DesireAxis> axes, List<DesireAxis> unchanged = null) =>
             r.Decide(cause, reasons, dirty, () => pending, a => keys[a],
                 (a, k) => unchanged?.Add(a), out axes);
+
+        [Test]
+        public void DeferredOpeningPublishesAllChanges_EvenWhenDemandFollowupDoesNothing()
+        {
+            var player = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(player, null, null, null, 10);
+            var before = new WorldSnapshot { Observer = player, TurnNumber = 10,
+                Self = new SelfSnapshot { Armies = System.Array.Empty<ArmySnapshot>() } };
+            var after = new WorldSnapshot { Observer = player, TurnNumber = 10,
+                Self = new SelfSnapshot { Armies = new[] { new ArmySnapshot {
+                    ArmyId = 7, Owner = player, MemberCount = 1, IsStructuralRaidActor = true } } } };
+            var hand = (AiHandData)System.Runtime.Serialization.FormatterServices
+                .GetUninitializedObject(typeof(AiHandData));
+            bool changed = StrategicReadmissionRunner.CompleteCapabilityAdmission(player, 10,
+                new WorldAnalysis.StepObservationStamp(before, new V2ResourceStamp(12, 3, 3, 3, 3), null),
+                new WorldAnalysis.StepObservationStamp(after, new V2ResourceStamp(3, 1, 3, 1, 3), hand),
+                true, new StrategicPhaseResult());
+            Assert.That(changed, Is.True, "the opening already deployed a unit");
+            Assert.That(session.PendingInvalidations.Reasons.HasFlag(StrategicInvalidationReason.Actor), Is.True);
+            Assert.That(session.PendingInvalidations.Reasons.HasFlag(StrategicInvalidationReason.Hand), Is.True);
+            Assert.That(session.PendingInvalidations.Reasons.HasFlag(StrategicInvalidationReason.Resources), Is.True);
+            Assert.That(session.PendingInvalidations.ActorIds, Does.Contain(7));
+        }
 
         // ---- unchanged fingerprint ---------------------------------------------------------------
 

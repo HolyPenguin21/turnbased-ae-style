@@ -309,7 +309,7 @@ namespace Game.Ai.V2
                     var candidate = GroundCombatReinforcement.FinalRoster(gathered, handoff);
                     List<WorthIt.DefenderProfile> projected = candidate
                         .Where(AiArmyRoles.IsGroundBattleBody).Select(WorthIt.FromLiveUnit).ToList();
-                    float projectedWin = WorthIt.EstimateSequential(projected, commander, opposition,
+                    float projectedWin = WorthIt.EstimateHexControl(projected, commander, opposition,
                         defenderHexDefenseBonus).WinChance;
                     if (minimumArmyPower <= 0f && projectedWin <= win + .001f) continue;
                     List<int> incomingIdx = handoff.Incoming.Select(u => s.Units.IndexOf(u)).ToList();

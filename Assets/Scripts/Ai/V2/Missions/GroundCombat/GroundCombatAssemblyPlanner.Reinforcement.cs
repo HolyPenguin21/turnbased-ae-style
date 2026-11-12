@@ -205,9 +205,9 @@ namespace Game.Ai.V2
             }
 
             // Handoffs move ground bodies only: the primary's commander leads before and after.
-            float winBefore = WorthIt.EstimateSequential(before, primaryCommander, opposition,
+            float winBefore = WorthIt.EstimateHexControl(before, primaryCommander, opposition,
                 defenderHexDefenseBonus).WinChance;
-            float winAfter = WorthIt.EstimateSequential(projected, primaryCommander, opposition,
+            float winAfter = WorthIt.EstimateHexControl(projected, primaryCommander, opposition,
                 defenderHexDefenseBonus).WinChance;
             projectedWin = winAfter;
             if (requireWinGain && winAfter <= winBefore + 0.001f)
