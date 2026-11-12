@@ -392,7 +392,9 @@ namespace Game.UI
                 // what the army would actually defend with on its current hex (see
                 // ArmyViewerModalUI.CurrentArmyDefenseBonus's own comment).
                 slot2 = unit.Defense + (_modal != null ? _modal.CurrentArmyDefenseBonus : 0);
-                slot5 = unit.Range;
+                // The range it would attack with on this hex (sandstorm -1, never below 1) — the
+                // same weather rule a battle here applies (ArmyViewerModalUI.CurrentArmyAttackRange).
+                slot5 = _modal != null ? _modal.CurrentArmyAttackRange(unit) : unit.Range;
             }
 
             if (attackStatText != null) attackStatText.text = slot1.ToString();
