@@ -734,16 +734,26 @@ namespace Game.Ai.V2
                 // An AirSweep is served by flying TOWARD its anchor as deep as these aircraft's
                 // refuel endurance allows (plane: half its move; helicopter: its whole move) and
                 // returning — prove that sortie, not a flight all the way to the anchor.
-                HexCoord sweepPoint = ReconAirCapacityPolicy.SweepEndpoint(airfield, objective.FocusHex,
-                    AviationRange.FirstTurnOutboundBudget(projected));
-                if (sweepPoint.Equals(airfield))
-                    continue;
-                Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortieFromStorage(
-                    airfield, projected, sweepPoint, ctx.Map, player);
-                MultiTurnSortie? multiTurn = sameTurn.HasValue ? null
-                    : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(
+                // FirstTurnOutboundBudget is only the coarse depth to try first; the real route
+                // proof decides. When weather makes that depth unflyable (a dearer way home),
+                // shallower sweep points along the same line are proved before giving up.
+                HexCoord sweepPoint = airfield;
+                Sortie? sameTurn = null;
+                MultiTurnSortie? multiTurn = null;
+                for (int depth = AviationRange.FirstTurnOutboundBudget(projected); depth > 0; depth--)
+                {
+                    sweepPoint = ReconAirCapacityPolicy.SweepEndpoint(airfield, objective.FocusHex, depth);
+                    if (sweepPoint.Equals(airfield))
+                        break;
+                    sameTurn = AiAirSortiePlanner.TryPlanSortieFromStorage(
                         airfield, projected, sweepPoint, ctx.Map, player);
-                if (!sameTurn.HasValue && !multiTurn.HasValue)
+                    multiTurn = sameTurn.HasValue ? null
+                        : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(
+                            airfield, projected, sweepPoint, ctx.Map, player);
+                    if (sameTurn.HasValue || multiTurn.HasValue)
+                        break;
+                }
+                if (sweepPoint.Equals(airfield) || (!sameTurn.HasValue && !multiTurn.HasValue))
                     continue;
                 if (!LaunchServesObjective(snap, player, ctx, projected, airfield, objective.FocusHex))
                     continue;

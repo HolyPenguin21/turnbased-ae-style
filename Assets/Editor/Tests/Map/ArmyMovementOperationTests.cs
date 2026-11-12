@@ -26,8 +26,8 @@ namespace Game.EditorTests
             ArmyRegistry.Register(army);
         }
         [TearDown] public void TearDown() { ArmyRegistry.Clear(); VisionSystem.Clear(); BuildingRegistry.Clear(); }
-        private ArmyMovementOperation Move(Action arrival = null, Func<bool> activate = null, Func<HexCoord, int?> terrain = null)
-            => new ArmyMovementOperation(army, new[] { origin, first, last }, terrain ?? (_ => 1), activate, arrival);
+        private ArmyMovementOperation Move(Action arrival = null, Func<bool> activate = null, Func<HexCoord, HexCoord, int?> terrain = null)
+            => new ArmyMovementOperation(army, new[] { origin, first, last }, terrain ?? ((_, __) => 1), activate, arrival);
         [Test] public void CancelledMoveNeverRunsArrivalOrChargesUnstartedStep()
         {
             int arrivals = 0, activations = 0, results = 0;
@@ -62,7 +62,7 @@ namespace Game.EditorTests
         [Test] public void IllegalFirstStepNeverPaysActivation()
         {
             int paid = 0;
-            var move = Move(activate: () => { paid++; return true; }, terrain: _ => null);
+            var move = Move(activate: () => { paid++; return true; }, terrain: (_, __) => null);
             Assert.That(move.TryEnterNextStep(out _, out _), Is.False);
             Assert.That(paid, Is.Zero); Assert.That(army.CurrentMovement, Is.EqualTo(5));
             Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Rejected));
@@ -82,7 +82,7 @@ namespace Game.EditorTests
         [Test] public void RouteIsCopiedAndChangedEligibilityStopsAtLastLegalHex()
         {
             var route = new List<HexCoord> { origin, first, last };
-            var move = new ArmyMovementOperation(army, route, _ => 1);
+            var move = new ArmyMovementOperation(army, route, (_, __) => 1);
             route[1] = new HexCoord(8, 8);
             Assert.That(move.TryEnterNextStep(out _, out _), Is.True);
             army.IsGarrison = true;

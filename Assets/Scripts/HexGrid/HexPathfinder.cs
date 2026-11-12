@@ -121,6 +121,9 @@ namespace Game.HexGrid
             internal int Version;
             internal int MinQ, MinR, Width;
             internal TerrainTypeEntry[] Terrain; // null where the bounding box has no map hex
+            // The map's weather at this version: true where a storm covers the hex. A weather
+            // area change bumps HexMap.PathingVersion, so a grid never mixes two snapshots.
+            internal bool[] Storm;
 
             internal int Count => Terrain.Length;
 
@@ -137,6 +140,10 @@ namespace Game.HexGrid
             // The one terrain-entry rule (HexMap.CanEnter) on the array.
             internal bool CanEnter(int i, bool airborne) =>
                 i >= 0 && (airborne || !Terrain[i].blocksGroundMovement);
+
+            // MovementRules.StepCost on the arrays: the directed edge from -> to.
+            internal int StepCost(int from, int to, bool airborne) =>
+                MovementRules.StepCost(Terrain[to], from >= 0 && Storm[from], MovementRules.ProfileOf(airborne));
         }
 
         private static Grid _grid;
@@ -157,6 +164,7 @@ namespace Game.HexGrid
             if (minQ > maxQ)
             {
                 grid.Terrain = new TerrainTypeEntry[0];
+                grid.Storm = new bool[0];
             }
             else
             {
@@ -164,9 +172,15 @@ namespace Game.HexGrid
                 grid.MinR = minR;
                 grid.Width = maxQ - minQ + 1;
                 grid.Terrain = new TerrainTypeEntry[grid.Width * (maxR - minR + 1)];
+                grid.Storm = new bool[grid.Terrain.Length];
+                SandstormSnapshot weather = map.Weather ?? SandstormSnapshot.Clear;
                 foreach (HexCoord c in map.AllCoords)
                     if (map.TryGetTerrainAt(c, out TerrainTypeEntry entry))
-                        grid.Terrain[(c.R - minR) * grid.Width + (c.Q - minQ)] = entry;
+                    {
+                        int index = (c.R - minR) * grid.Width + (c.Q - minQ);
+                        grid.Terrain[index] = entry;
+                        grid.Storm[index] = weather.Contains(c);
+                    }
             }
             _grid = grid;
             return grid;
@@ -288,9 +302,10 @@ namespace Game.HexGrid
         private static int NeighbourIndex(Grid grid, HexCoord at, int dq, int dr) =>
             grid.IndexOf(new HexCoord(at.Q + dq, at.R + dr));
 
-        // avoidHex is a soft penalty; the returned TotalCost is terrain cost only. blockHex
-        // forbids entry outright. flatCost is used by aviation (one MP per hex). maxStepCost
-        // forbids entering any hex whose terrain costs more than it (a mover's MaxMovement).
+        // avoidHex is a soft penalty; the returned TotalCost is the real MP cost of the route
+        // (MovementRules: terrain or 1 for aircraft, +1 leaving a storm hex). blockHex forbids
+        // entry outright. airborne selects the Air movement profile. maxStepCost forbids any
+        // transition whose full cost exceeds it (a mover's MaxMovement).
         // A* with the hex distance as the remaining-cost bound: every step costs at least 1, so
         // the bound never overestimates and the returned path is still a cheapest one. Among
         // equally cheap paths the destination-line straightness decides as far as the search
@@ -298,14 +313,14 @@ namespace Game.HexGrid
         // the earlier full Dijkstra in exchange for not flooding the whole map per query).
         public static HexPath FindPath(HexMap map, HexCoord start, HexCoord destination,
             Func<HexCoord, bool> avoidHex = null, Func<HexCoord, bool> blockHex = null,
-            bool flatCost = false, int? maxStepCost = null)
+            bool airborne = false, int? maxStepCost = null)
         {
             if (map == null)
                 return null;
             Grid grid = GridFor(map);
             int startIndex = grid.IndexOf(start);
             int destIndex = grid.IndexOf(destination);
-            if (!grid.CanEnter(startIndex, flatCost) || !grid.CanEnter(destIndex, flatCost))
+            if (!grid.CanEnter(startIndex, airborne) || !grid.CanEnter(destIndex, airborne))
                 return null;
             if (start.Equals(destination))
                 return new HexPath(new List<HexCoord> { start }, 0);
@@ -347,16 +362,14 @@ namespace Game.HexGrid
                     foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
                     {
                         int next = NeighbourIndex(grid, at, dq, dr);
-                        if (!grid.CanEnter(next, flatCost) || b.Closed[next] == gen)
+                        if (!grid.CanEnter(next, airborne) || b.Closed[next] == gen)
                             continue;
-                        TerrainTypeEntry entry = grid.Terrain[next];
-                        int terrainCost = Mathf.Max(1, entry.moveCost);
-                        if (!flatCost && maxStepCost.HasValue && terrainCost > maxStepCost.Value)
+                        int stepCost = grid.StepCost(current, next, airborne);
+                        if (maxStepCost.HasValue && stepCost > maxStepCost.Value)
                             continue;
                         HexCoord nextHex = grid.CoordOf(next);
                         if (blockHex != null && blockHex(nextHex))
                             continue;
-                        int stepCost = flatCost ? 1 : terrainCost;
                         if (avoidHex != null && avoidHex(nextHex))
                             stepCost += AvoidPenalty;
                         int newCost = currentCost + stepCost;
@@ -386,7 +399,7 @@ namespace Game.HexGrid
                 for (int walk = destIndex; walk >= 0; walk = b.Parent[walk])
                     hexes.Add(grid.CoordOf(walk));
                 hexes.Reverse();
-                return new HexPath(hexes, RealCost(grid, hexes, flatCost));
+                return new HexPath(hexes, RealCost(grid, hexes, airborne));
             }
             finally
             {
@@ -394,16 +407,12 @@ namespace Game.HexGrid
             }
         }
 
-        private static int RealCost(Grid grid, List<HexCoord> hexes, bool flatCost)
+        // Sum of the route's directed transitions (never the hex count): one rule for every search.
+        private static int RealCost(Grid grid, List<HexCoord> hexes, bool airborne)
         {
-            if (flatCost)
-                return hexes.Count - 1;
             int realCost = 0;
             for (int i = 1; i < hexes.Count; i++)
-            {
-                int index = grid.IndexOf(hexes[i]);
-                realCost += index >= 0 ? Mathf.Max(1, grid.Terrain[index].moveCost) : 1;
-            }
+                realCost += grid.StepCost(grid.IndexOf(hexes[i - 1]), grid.IndexOf(hexes[i]), airborne);
             return realCost;
         }
 
@@ -498,7 +507,7 @@ namespace Game.HexGrid
                         int next = NeighbourIndex(grid, at, dq, dr);
                         if (!grid.CanEnter(next, false) || b.Closed[next] == gen)
                             continue;
-                        int stepCost = Mathf.Max(1, grid.Terrain[next].moveCost);
+                        int stepCost = grid.StepCost(current, next, false);
                         if (maxStepCost.HasValue && stepCost > maxStepCost.Value)
                             continue;
                         int newCost = currentCost + stepCost;
@@ -538,6 +547,7 @@ namespace Game.HexGrid
         {
             if (map == null || maxMovement <= 0 || !map.CanEnter(start) || !map.CanEnter(destination))
                 return null;
+            Grid grid = GridFor(map);
             if (start.Equals(destination))
                 return new HexPath(new List<HexCoord> { start }, 0);
             currentMovement = Mathf.Clamp(currentMovement, 0, maxMovement);
@@ -577,11 +587,13 @@ namespace Game.HexGrid
                 foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
                 {
                     var next = new HexCoord(node.Hex.Q + dq, node.Hex.R + dr);
-                    if (!map.CanEnter(next) || !map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
+                    int nextIndex = grid.IndexOf(next);
+                    if (!grid.CanEnter(nextIndex, false))
                         continue;
                     if (blockHex != null && blockHex(next))
                         continue;
-                    int step = Mathf.Max(1, entry.moveCost);
+                    // A whole transition or none: a 2-MP storm exit never splits over two turns.
+                    int step = grid.StepCost(grid.IndexOf(node.Hex), nextIndex, false);
                     if (step > maxMovement)
                         continue;
                     int turns = node.Label.Turns;
@@ -614,13 +626,7 @@ namespace Game.HexGrid
                 hexes.Add(walk.Item1);
             }
             hexes.Reverse();
-            int realCost = 0;
-            for (int i = 1; i < hexes.Count; i++)
-            {
-                map.TryGetTerrainAt(hexes[i], out TerrainTypeEntry stepEntry);
-                realCost += stepEntry != null ? Mathf.Max(1, stepEntry.moveCost) : 1;
-            }
-            return new HexPath(hexes, realCost);
+            return new HexPath(hexes, RealCost(grid, hexes, false));
         }
 
         private readonly struct TurnLabel
@@ -668,19 +674,21 @@ namespace Game.HexGrid
         // Cost-only Dijkstra for a fixed base (forward) or the nearest of several bases
         // (reverse). A blocked hex is allowed as an ENDPOINT but never expanded as transit;
         // this is exactly FindSafePathCost's destination exemption for every queried endpoint.
-        // Reverse edges charge the terrain of 'current', not 'next': entering a hex is directed,
-        // so cost(A -> B) cannot be inferred from cost(B -> A).
+        // Reverse edges are the original directed edge next -> current: the terrain of 'current'
+        // plus the storm penalty of 'next' (the hex being left). cost(A -> B) cannot be inferred
+        // from cost(B -> A).
         public static Dictionary<HexCoord, int> FindCosts(HexMap map,
             IEnumerable<HexCoord> sources, Func<HexCoord, bool> blockHex = null,
-            int? maxMovement = null, bool reverse = false, bool flatCost = false)
+            int? maxMovement = null, bool reverse = false, bool airborne = false)
         {
             var costs = new Dictionary<HexCoord, int>();
             if (map == null || sources == null)
                 return costs;
+            Grid grid = GridFor(map);
             var sourceSet = new HashSet<HexCoord>();
             var frontier = new Frontier();
             foreach (HexCoord start in sources)
-                if (map.CanEnter(start, flatCost) && sourceSet.Add(start))
+                if (map.CanEnter(start, airborne) && sourceSet.Add(start))
                 {
                     costs[start] = 0;
                     frontier.AddOrDecrease(start, 0, 0f);
@@ -692,23 +700,18 @@ namespace Game.HexGrid
                 if (!sourceSet.Contains(current) && blockHex != null && blockHex(current))
                     continue;
                 int currentCost = costs[current];
-                int reverseStepCost = 0;
-                if (reverse)
-                {
-                    map.TryGetTerrainAt(current, out TerrainTypeEntry currentEntry);
-                    reverseStepCost = flatCost ? 1 : Mathf.Max(1, currentEntry.moveCost);
-                    // Even a destination-exempt base cannot be ENTERED if its terrain costs
-                    // more than the mover can ever pay; standing on it still costs zero.
-                    if (maxMovement.HasValue && reverseStepCost > maxMovement.Value)
-                        continue;
-                }
+                int currentIndex = grid.IndexOf(current);
                 foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
                 {
                     var next = new HexCoord(current.Q + dq, current.R + dr);
-                    if (!map.CanEnter(next, flatCost) || !map.TryGetTerrainAt(next, out TerrainTypeEntry nextEntry))
+                    int nextIndex = grid.IndexOf(next);
+                    if (!grid.CanEnter(nextIndex, airborne))
                         continue;
-                    int stepCost = flatCost ? 1 : reverse ? reverseStepCost : Mathf.Max(1, nextEntry.moveCost);
-                    if (!reverse && maxMovement.HasValue && stepCost > maxMovement.Value)
+                    // Even a destination-exempt base cannot be ENTERED by a transition costing
+                    // more than the mover can ever pay; standing on it still costs zero.
+                    int stepCost = reverse ? grid.StepCost(nextIndex, currentIndex, airborne)
+                        : grid.StepCost(currentIndex, nextIndex, airborne);
+                    if (maxMovement.HasValue && stepCost > maxMovement.Value)
                         continue;
                     int newCost = currentCost + stepCost;
                     if (costs.TryGetValue(next, out int oldCost) && oldCost <= newCost)

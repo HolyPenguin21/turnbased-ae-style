@@ -62,7 +62,7 @@ namespace Game.Combat
                 // No opposing roster to weigh candidates against (shouldn't happen in a real
                 // battle) — keep the usual short-range front and long-range rear as a fallback.
                 PlaceTankAnchoredSplit(grid, army, frontRow, backRow, FormationPattern.CenterOut,
-                    enemyArmy: null, frontCount: army.Members.Count(u => u.IsGroundCombatant && u.Range <= 2));
+                    enemyArmy: null, frontCount: army.Members.Count(u => u.IsGroundCombatant && grid.AttackRange(u) <= 2));
                 yield break;
             }
 
@@ -82,7 +82,7 @@ namespace Game.Combat
             };
             var candidates = new List<DeploymentCandidate>();
             var evaluated = new Dictionary<string, DeploymentCandidate>();
-            var enemyLayouts = new[] { new BattleGrid(), new BattleGrid() };
+            var enemyLayouts = new[] { new BattleGrid(grid.Environment), new BattleGrid(grid.Environment) };
             PlaceRangeSplit(enemyLayouts[0], enemyArmy, enemyFrontRow, enemyBackRow);
             PlaceTankAnchoredSplit(enemyLayouts[1], enemyArmy, enemyFrontRow, enemyBackRow,
                 FormationPattern.CenterOut, army, CountDeploymentCombatants(enemyArmy));
@@ -152,13 +152,13 @@ namespace Game.Combat
             int heroCount = army.Members.Count(u => u.IsHero);
             int minFrontCount = Mathf.Min(maxFrontCount,
                 Mathf.Max(0, combatantCount - Mathf.Max(0, BattleGrid.Columns - heroCount)));
-            if (army.Members.Any(u => u.IsGroundCombatant && u.Range <= 2))
+            if (army.Members.Any(u => u.IsGroundCombatant && grid.AttackRange(u) <= 2))
                 minFrontCount = Mathf.Max(minFrontCount, 1);
             for (int frontCount = minFrontCount; frontCount <= maxFrontCount; frontCount++)
                 foreach (FormationPattern pattern in formationCandidates)
                 {
                     if (canCommit != null && !canCommit()) yield break;
-                    var layout = new BattleGrid();
+                    var layout = new BattleGrid(grid.Environment);
                     PlaceTankAnchoredSplit(layout, army, frontRow, backRow, pattern, enemyArmy, frontCount);
                     yield return Evaluate(layout);
                 }
@@ -328,13 +328,14 @@ namespace Game.Combat
         // Same "is the back row actually a safe haven this round" read ArrangeArmy always did —
         // extracted so both PlaceTankAnchoredSplit (real placement) and the hypothetical shapes
         // built for scoring can share it.
-        private static bool BackRowExposed(int frontRow, int backRow, ArmyData enemyArmy)
+        private static bool BackRowExposed(int frontRow, int backRow, ArmyData enemyArmy,
+            BattleEnvironment environment)
         {
             int enemyMaxRange = 0;
             if (enemyArmy != null)
                 foreach (UnitData enemyMember in enemyArmy.Members)
-                    if (enemyMember.IsGroundCombatant && enemyMember.Range > enemyMaxRange)
-                        enemyMaxRange = enemyMember.Range;
+                    if (enemyMember.IsGroundCombatant && environment.AttackRange(enemyMember.Range) > enemyMaxRange)
+                        enemyMaxRange = environment.AttackRange(enemyMember.Range);
 
             bool weAreAttackerSide = frontRow == BattleGrid.AttackerFrontRow;
             int enemyFrontRow = weAreAttackerSide ? BattleGrid.DefenderFrontRow : BattleGrid.AttackerFrontRow;
@@ -358,7 +359,7 @@ namespace Game.Combat
         {
             var heroes = army.Members.Where(u => u.IsHero).ToList();
             var combatants = army.Members.Where(u => u.IsGroundCombatant)
-                .OrderBy(u => IsRearSupport(u, army) ? 2 : u.Range <= 2 ? 0 : 1)
+                .OrderBy(u => IsRearSupport(u, army) ? 2 : grid.AttackRange(u) <= 2 ? 0 : 1)
                 .ThenByDescending(TankScore).ToList();
             UnitData commander = army.Commander;
             if (commander != null && heroes.Remove(commander)) heroes.Insert(0, commander);
@@ -417,7 +418,7 @@ namespace Game.Combat
                 forBack = backPool.GetRange(0, backColumns.Count);
                 overflow.AddRange(backPool.GetRange(backColumns.Count, backPool.Count - backColumns.Count));
             }
-            if (BackRowExposed(frontRow, backRow, enemyArmy))
+            if (BackRowExposed(frontRow, backRow, enemyArmy, grid.Environment))
                 forBack.Sort((a, b) => TankScore(b).CompareTo(TankScore(a)));
 
             int backIndex = 0;
@@ -447,7 +448,7 @@ namespace Game.Combat
             foreach (UnitData member in army.Members)
             {
                 if (member.IsHero) { heroes.Add(member); continue; }
-                if (member.Range <= 2) melee.Add(member);
+                if (grid.AttackRange(member) <= 2) melee.Add(member);
                 else ranged.Add(member);
             }
             UnitData commander = army.Commander;
@@ -619,7 +620,7 @@ namespace Game.Combat
             own = Army(own); enemy = Army(enemy);
             defender = defender == oldOwn ? own : defender == oldEnemy ? enemy : defender;
             holding = holding == oldOwn ? own : holding == oldEnemy ? enemy : holding;
-            var copyGrid = new BattleGrid();
+            var copyGrid = new BattleGrid(grid.Environment);
             foreach (UnitData u in grid.AllUnits())
                 if (grid.TryFindPosition(u, out int r, out int c)) copyGrid.Set(r, c, Unit(u));
             grid = copyGrid;
@@ -655,7 +656,7 @@ namespace Game.Combat
                 ArmyData trialOwn = ownArmy, trialEnemy = enemyArmy, trialDefender = battleDefender,
                     trialHolding = holdingArmy;
                 CloneConsumableState(ref sourceGrid, ref trialOwn, ref trialEnemy, ref trialDefender, ref trialHolding);
-                var grid = new BattleGrid();
+                var grid = new BattleGrid(sourceGrid.Environment);
                 var hp = new Dictionary<UnitData, float>();
                 var ownUnits = new List<UnitData>();
                 var enemyUnits = new List<UnitData>();
@@ -1368,7 +1369,7 @@ namespace Game.Combat
                 {
                     UnitData target = grid.Get(r, c);
                     if (target != null && target.Owner != actor.Owner && target.HitPointsCurrent > 0
-                        && BattleGrid.IsInRange(row, col, r, c, actor.Range)
+                        && BattleGrid.IsInRange(row, col, r, c, grid.AttackRange(actor))
                         && BattleTargetSelector.CanDamage(actor, target, magnitudes, attackOverride)) return 0;
                 }
             return FiringDistances(grid, actor, magnitudes, attackOverride)[row, col];
@@ -1397,7 +1398,7 @@ namespace Game.Combat
                     distance[row, col] = unreachable;
                     if (grid.Get(row, col) != null && grid.Get(row, col) != actor) continue;
                     foreach (var target in targets)
-                        if (BattleGrid.IsInRange(row, col, target.row, target.col, actor.Range))
+                        if (BattleGrid.IsInRange(row, col, target.row, target.col, grid.AttackRange(actor)))
                         {
                             distance[row, col] = 0;
                             queue.Enqueue((row, col));
@@ -1569,7 +1570,7 @@ namespace Game.Combat
 
         private static BattleGrid CloneGrid(BattleGrid source)
         {
-            var clone = new BattleGrid();
+            var clone = new BattleGrid(source.Environment);
             for (int row = 0; row < BattleGrid.Rows; row++)
                 for (int col = 0; col < BattleGrid.Columns; col++)
                     clone.Set(row, col, source.Get(row, col));

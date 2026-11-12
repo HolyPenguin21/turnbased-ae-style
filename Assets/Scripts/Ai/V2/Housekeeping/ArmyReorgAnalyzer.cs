@@ -133,6 +133,7 @@ namespace Game.Ai.V2
                     Q = hexGroup.Key.Q,
                     R = hexGroup.Key.R,
                     HexDefenseBonus = WorthIt.HexDefenseBonus(groupHex, ctx?.Map, player),
+                    Environment = Game.Combat.BattleEnvironment.At(groupHex, ctx?.Map),
                     Containers = containers,
                     ThreatBenchmarks = BuildThreatBenchmarks(snapshot, groupHex, containers, unitByKey),
                 };

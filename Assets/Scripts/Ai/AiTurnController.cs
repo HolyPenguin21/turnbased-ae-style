@@ -648,43 +648,27 @@ namespace Game.Ai
         {
             if (map == null || army == null || destination.Equals(army.Hex))
                 return null;
-            // An air army's real per-hex charge is always 1, regardless of terrain (see
-            // AviationRules.MovementCost) — routing it through the ground-weighted Dijkstra search
-            // can hand back a longer detour around expensive terrain than the true shortest air
-            // route, and wrongly reject a step that's actually affordable (2026-08-26 fix, project
-            // owner's own report). flatCost makes the search itself rank routes the same way an
-            // aircraft actually pays for them.
+            // One cost rule for the search and the step (MovementRules): an air army pays 1 per
+            // transition regardless of terrain, so it is routed by the Air profile rather than
+            // around expensive ground terrain it would never pay for (2026-08-26 fix); every mover
+            // pays +1 leaving a storm hex. A transition costing more than the mover's
+            // MaxMovement can never be made, however long it waits: both searches drop such an
+            // EDGE (full cost, storm included) so they find a usable detour instead of the
+            // globally cheapest impossible route (bd283fb).
             bool isAirArmy = AviationRules.IsAirArmy(army);
-            // A ground hex whose entry cost exceeds this mover's MaxMovement can never be
-            // entered in a single step no matter how many turns it waits — hard-block it so
-            // the search itself finds a usable detour. Without this, Dijkstra still returns
-            // whatever route is globally cheapest by total cost (e.g. straight through an
-            // expensive mountain) even when a longer-but-affordable detour exists, and this
-            // method then has no way to reject just that one hex and keep searching — it can
-            // only report the whole step unaffordable (see WorldAnalysis's own per-hex
-            // MaxMovement check, bd283fb, which caught this same class of route only after
-            // the fact, once already returned).
-            System.Func<HexCoord, bool> effectiveBlock = blockHex;
-            if (!isAirArmy)
-            {
-                int maxMovement = projectedMaxMovement ?? army.MaxMovement;
-                effectiveBlock = hex => (blockHex != null && blockHex(hex))
-                    || (map.TryGetTerrainAt(hex, out TerrainTypeEntry stepEntry)
-                        && Mathf.Max(1, stepEntry.moveCost) > maxMovement);
-            }
+            int maxMovement = projectedMaxMovement ?? army.MaxMovement;
             // Ground: the fastest route in TURNS from the mover's real movement left (a step the
             // army cannot pay waits for the next turn), not merely the cheapest by total cost.
             HexPath path = isAirArmy
-                ? HexPathfinder.FindPath(map, army.Hex, destination, blockHex: effectiveBlock, flatCost: true)
+                ? HexPathfinder.FindPath(map, army.Hex, destination, blockHex: blockHex, airborne: true,
+                    maxStepCost: maxMovement)
                 : HexPathfinder.FindPathByTurns(map, army.Hex, destination,
-                    projectedCurrentMovement ?? army.CurrentMovement,
-                    projectedMaxMovement ?? army.MaxMovement, effectiveBlock);
+                    projectedCurrentMovement ?? army.CurrentMovement, maxMovement, blockHex);
             if (path == null || path.Hexes.Count < 2)
                 return null;
             HexCoord step = path.Hexes[1];
-            map.TryGetTerrainAt(step, out TerrainTypeEntry entry);
-            int terrainCost = entry != null ? entry.moveCost : 1;
-            int cost = AviationRules.MovementCost(army, terrainCost);
+            if (!MovementRules.TryGetStepCost(map, army.Hex, step, MovementRules.ProfileOf(army), out int cost))
+                return null;
             return (projectedCurrentMovement ?? army.CurrentMovement) >= cost ? step : (HexCoord?)null;
         }
 

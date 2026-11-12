@@ -886,8 +886,11 @@ namespace Game.UI
 
         private void RefreshTurnOrder()
         {
+            // The battle's frozen weather: a short note in the existing header (its effects show in
+            // each unit's Range "(-1)" and in the defence bonus, both read from the same rules).
             if (roundText != null)
-                roundText.text = $"Round {_round}";
+                roundText.text = _battleEngine != null && _battleEngine.Rules.Environment.InSandstorm
+                    ? $"Round {_round} · Sandstorm" : $"Round {_round}";
 
             // Destroy is deferred. Retire old entries before a synchronous layout rebuild.
             foreach (BattleTurnOrderIconUI oldIcon in _queueIcons)

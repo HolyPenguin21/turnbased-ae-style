@@ -324,14 +324,15 @@ namespace Game.Combat
             state.EncounterMagnitudes = magnitudes;
             _magnitudes = magnitudes;
             _rules = BattleRulesSnapshot.Capture(state, magnitudes, map);
+            if (state.Grid != null) state.Grid.Environment = _rules.Environment;
             _random = random ?? new System.Random(state.BattleSeed);
             string disruption = DescribeDisruption(state);
             BattleDebugLog.Write($"[Encounter] seed={state.BattleSeed} hex=({state.BattleHex.Q},{state.BattleHex.R}) "
                 + $"attacker={state.Attacker?.Id} defender={state.Defender?.Id} "
-                + $"buildingDefense={state.DefenderBuildingDefenseBonus}{disruption} "
+                + $"buildingDefense={state.DefenderBuildingDefenseBonus}{disruption} weather={_rules.Environment} "
                 + $"attackerRoster={DescribeSides(state.Attacker)} defenderRoster={DescribeSides(state.Defender)}");
             AiDebugLog.Write($"[BATTLE] seed={state.BattleSeed} attackerId={state.Attacker?.Id} "
-                + $"defenderId={state.Defender?.Id} buildingDefense={state.DefenderBuildingDefenseBonus}{disruption} "
+                + $"defenderId={state.Defender?.Id} buildingDefense={state.DefenderBuildingDefenseBonus}{disruption} weather={_rules.Environment} "
                 + $"({state.BattleHex.Q},{state.BattleHex.R}) start: attacker "
                 + $"{DescribeSides(state.Attacker)} vs defender {DescribeSides(state.Defender)}");
             if (state.Grid != null && BattleInitiator.IsCombatCapable(state.Attacker) && BattleInitiator.IsCombatCapable(state.Defender))
@@ -600,7 +601,7 @@ namespace Game.Combat
                 || !_state.Grid.TryFindPosition(attacker, out int ar, out int ac)
                 || !_state.Grid.TryFindPosition(defender, out int dr, out int dc))
                 return false;
-            return BattleGrid.IsInRange(ar, ac, dr, dc, attacker.Range);
+            return BattleGrid.IsInRange(ar, ac, dr, dc, _state.Grid.AttackRange(attacker));
         }
 
         public bool TryMoveUnit(UnitData unit, int fromRow, int fromCol, int toRow, int toCol)

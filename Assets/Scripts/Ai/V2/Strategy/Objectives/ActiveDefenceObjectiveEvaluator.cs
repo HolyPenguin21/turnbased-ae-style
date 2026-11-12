@@ -350,8 +350,8 @@ namespace Game.Ai.V2
             int cost = 0;
             for (int i = 1; i < route.Hexes.Count; i++)
             {
-                int step = map.TryGetTerrainAt(route.Hexes[i], out var entry)
-                    ? Math.Max(1, entry.moveCost) : 1;
+                if (!MovementRules.TryGetStepCost(map, route.Hexes[i - 1], route.Hexes[i], MovementProfile.Ground, out int step))
+                    return false;
                 if (step > maxMovement)
                     return false;
                 cost += step;
@@ -498,7 +498,8 @@ namespace Game.Ai.V2
             if (snap?.Threat?.Contacts == null || roster == null || roster.Count == 0
                 || ReferenceEquals(snap.Map, null))
                 return false;
-            var defending = new[] { new WorthIt.DefendingArmy(roster, commander) };
+            var defending = new[] { new WorthIt.DefendingArmy(roster, commander,
+                environment: KnownOpposition.WeatherAt(snap, at)) };
             foreach (EnemyContactSnapshot c in snap.Threat.Contacts)
             {
                 if (c?.Army == null || c.Army.ArmyId < 0 || c.Army.ArmyId == struckEnemyId
@@ -747,8 +748,9 @@ namespace Game.Ai.V2
             for (int i = 1; i < route.Hexes.Count; i++)
             {
                 int cost = 1;
-                if (!ReferenceEquals(snap?.Map, null) && snap.Map.TryGetTerrainAt(route.Hexes[i], out var entry))
-                    cost = Math.Max(1, entry.moveCost);
+                if (!ReferenceEquals(snap?.Map, null)
+                    && !MovementRules.TryGetStepCost(snap.Map, route.Hexes[i - 1], route.Hexes[i], MovementProfile.Ground, out cost))
+                    return int.MaxValue;
                 if (cost > maxMovement) return int.MaxValue;
                 if (cost > remaining) { turns++; remaining = maxMovement; }
                 remaining -= cost;
@@ -875,7 +877,7 @@ namespace Game.Ai.V2
                     || !seen.Add(a.ArmyId))
                     return;
                 defenders.Add(new WorthIt.DefendingArmy(a.Members, a.Commander, bonus, a.ArmyId,
-                    buildingBonus));
+                    buildingBonus, environment: KnownOpposition.WeatherAt(snap, hex)));
             }
             foreach (ArmySnapshot original in snap.Self.Armies)
             {

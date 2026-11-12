@@ -53,6 +53,20 @@ namespace Game.Map
         // Only the existing map-data owner increments this revision, no parallel terrain registry.
         public int PathingVersion { get; private set; }
 
+        // The current public weather on this map, published only by its owner SandstormState.
+        // A change of the stormy AREA invalidates every route/cost cache through the same
+        // PathingVersion the terrain uses — one invalidation mechanism, not a second key that
+        // some caches would miss. Ageing without an area change keeps the version.
+        public SandstormSnapshot Weather { get; private set; } = SandstormSnapshot.Clear;
+
+        internal void PublishWeather(SandstormSnapshot snapshot)
+        {
+            snapshot = snapshot ?? SandstormSnapshot.Clear;
+            bool areaChanged = !snapshot.SameArea(Weather);
+            Weather = snapshot;
+            if (areaChanged) PathingVersion++;
+        }
+
         // Every hex actually on the map — used by post-generation passes (resources, neutral
         // armies, ...) that need to enumerate the whole map rather than look up one hex at a
         // time. Live view over _hexData's own keys, not a snapshot.

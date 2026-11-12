@@ -34,10 +34,11 @@ namespace Game.Ai.V2
 
         private static int EconomyMaximumStepCost(AiTurnContext ctx, IReadOnlyList<HexCoord> path)
         {
+            // The largest single transition (MovementRules: terrain + storm exit), not a hex read.
             int maximum = 0;
-            foreach (HexCoord hex in path.Skip(1))
-                maximum = Mathf.Max(maximum, ctx.Map.TryGetTerrainAt(hex, out TerrainTypeEntry entry)
-                    ? Mathf.Max(1, entry.moveCost) : 1);
+            for (int i = 1; i < path.Count; i++)
+                maximum = Mathf.Max(maximum, MovementRules.TryGetStepCost(ctx.Map, path[i - 1], path[i],
+                    MovementProfile.Ground, out int step) ? step : 1);
             return maximum;
         }
 
@@ -226,9 +227,9 @@ namespace Game.Ai.V2
                 bool everyStepAffordable = true;
                 for (int i = 1; i < route.Hexes.Count && everyStepAffordable; i++)
                 {
-                    if (!ctx.Map.TryGetTerrainAt(route.Hexes[i], out TerrainTypeEntry stepEntry))
+                    if (!MovementRules.TryGetStepCost(ctx.Map, route.Hexes[i - 1], route.Hexes[i],
+                            MovementProfile.Ground, out int stepCost))
                         continue;
-                    int stepCost = Mathf.Max(1, stepEntry.moveCost);
                     if (stepCost > army.MaxMovement)
                         everyStepAffordable = false;
                 }

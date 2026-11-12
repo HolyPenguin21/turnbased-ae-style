@@ -111,10 +111,11 @@ namespace Game.Ai.V2
             public readonly HashSet<int> MovedUnitKeys = new HashSet<int>();
             public readonly List<ReorgThreatBenchmark> ThreatBenchmarks = new List<ReorgThreatBenchmark>();
             public float HexDefenseBonus;
+            public Game.Combat.BattleEnvironment Environment;
 
             public VState Clone()
             {
-                var v = new VState { HexDefenseBonus = HexDefenseBonus };
+                var v = new VState { HexDefenseBonus = HexDefenseBonus, Environment = Environment };
                 v.ThreatBenchmarks.AddRange(ThreatBenchmarks);
                 foreach (var kv in Meta) v.Meta[kv.Key] = kv.Value;
                 foreach (var kv in Roster) v.Roster[kv.Key] = new List<ReorgUnit>(kv.Value);
@@ -135,7 +136,7 @@ namespace Game.Ai.V2
                 return plan;
             }
 
-            var state = new VState { HexDefenseBonus = group.HexDefenseBonus };
+            var state = new VState { HexDefenseBonus = group.HexDefenseBonus, Environment = group.Environment };
             state.ThreatBenchmarks.AddRange(group.ThreatBenchmarks);
             foreach (ReorgContainer c in group.Containers)
             {

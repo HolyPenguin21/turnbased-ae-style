@@ -90,11 +90,11 @@ namespace Game.Ai.V2
             if (actor == null) return null;
             if (snap?.Map == null) return StraightLine(actor.Hex, target);
             int budget = maxMovement ?? actor.MaxMovement;
-            bool Block(HexCoord h) => !actor.IsAir &&
-                ((!terrainOnly && !h.Equals(target) && snap.MapKnowledge?.IsBlockedForScout(h, arrivesHidden) == true)
-                || (snap.Map.TryGetTerrainAt(h, out var entry) && entry.moveCost > budget));
+            bool Block(HexCoord h) => !actor.IsAir
+                && !terrainOnly && !h.Equals(target) && snap.MapKnowledge?.IsBlockedForScout(h, arrivesHidden) == true;
+            // A transition costing more than the budget (terrain + storm exit) is never entered.
             return HexPathfinder.FindPath(snap.Map, actor.Hex, target, blockHex: Block,
-                flatCost: actor.IsAir);
+                airborne: actor.IsAir, maxStepCost: budget);
         }
 
         internal static HexPath StraightLine(HexCoord from, HexCoord to)

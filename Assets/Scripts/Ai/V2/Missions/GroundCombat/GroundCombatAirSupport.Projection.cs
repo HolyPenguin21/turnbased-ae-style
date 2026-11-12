@@ -120,12 +120,16 @@ namespace Game.Ai.V2
                 ? AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, request.Target, map, player, additionalClaims, singleUseStrike: true)
                 : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(start, aircraft, request.Target, map, player, singleUseStrike: true);
             if (!same.HasValue && !multi.HasValue) return null;
-            int outbound = (same?.OutboundPath ?? multi.Value.PathToAction).Hexes.Count - 1;
-            int home = (same?.ReturnPath ?? multi.Value.PathFromActionToLanding).Hexes.Count - 1;
+            // ETA and strike turns from the proven routes' real transitions (MovementRules), the
+            // same calendar the sortie planners use — never a hex count or ceil(distance / MP).
+            List<int> outbound = AviationRange.StepCostsOrNull(map, same?.OutboundPath ?? multi.Value.PathToAction);
+            List<int> home = AviationRange.StepCostsOrNull(map, same?.ReturnPath ?? multi.Value.PathFromActionToLanding);
+            if (outbound == null || home == null) return null;
             int movement = wing?.CurrentMovement ?? aircraft.Min(AviationRules.EffectiveMoveCurrent);
             int maxMovement = aircraft.Min(AviationRules.EffectiveMoveMax);
-            if (maxMovement <= 0 || (movement <= 0 && outbound > 0)) return null;
-            int eta = 1 + Mathf.CeilToInt(Mathf.Max(0, outbound - movement) / (float)maxMovement);
+            if (maxMovement <= 0) return null;
+            int eta = AviationRange.TurnsToFly(outbound, movement, maxMovement);
+            if (eta == int.MaxValue) return null;
             if (firstStrikeThisTurnOnly && eta != 1) return null;
             int strikes = AiAirSortiePlanner.IsExpendableWing(aircraft) ? 1 : AviationRange.StrikeTurns(movement, maxMovement,
                 AviationRange.SafeUnlandedEndsRemaining(aircraft), outbound, home);
@@ -159,7 +163,7 @@ namespace Game.Ai.V2
                 new ResourceCost(energy: Mathf.CeilToInt(energy)));
             TaskScore score = ServiceScore(request.Score, effect, ap, energy, eta, ActionPrice.Resources(bill));
             return new CombatAirService(same?.LandingHex ?? multi.Value.LandingHex,
-                eta, strikes, outbound + home, known, ap, energy, score, estimate);
+                eta, strikes, outbound.Sum() + home.Sum(), known, ap, energy, score, estimate);
         }
 
         // 2026-11-09 (match Q4) — an Air Bomb is scored and produced by the service its carrier

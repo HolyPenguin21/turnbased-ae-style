@@ -38,6 +38,14 @@ namespace Game.UI
                 : 0;
         }
 
+        // The range this unit attacks with in this battle (BattleGrid.AttackRange: the battle's
+        // weather applied to its current Range) - the same number target legality uses.
+        public int GetDisplayedAttackRange(UnitData unit)
+        {
+            BattleGrid grid = _battleEngine?.State?.Grid;
+            return grid != null ? grid.AttackRange(unit) : unit?.Range ?? 0;
+        }
+
         // isCounterattack: a UnitAbilities.Counterattack answer started by OnAttackResolved — it
         // commits no strategic movement, is never intercepted and is never answered itself.
         private void BeginAttack(UnitData attacker, UnitData defender, bool isCounterattack = false)

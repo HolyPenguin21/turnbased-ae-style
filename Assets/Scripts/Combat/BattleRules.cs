@@ -81,6 +81,14 @@ namespace Game.Combat
             => battleDefender != null && unit != null && battleDefender.Members.Contains(unit)
                 ? defenderHexBonus : 0;
 
+        // ---- Weather ----
+        // The one attack-range rule of a battle: the CURRENT range (after equipment, abilities,
+        // summons) reduced by 1 in a sandstorm, never below 1. Applied once, at the point of use,
+        // never written into UnitData.Range. A range of 0 (no ranged attack) and the AI's unknown
+        // range (-1) stay exactly what they are.
+        public static int EffectiveAttackRange(int currentRange, BattleEnvironment environment) =>
+            environment.InSandstorm && currentRange > 1 ? currentRange - 1 : currentRange;
+
         // Terrain part of the hex bonus (frozen per encounter by BattleRulesSnapshot; the building
         // part is DisruptionRules.BuildingDefenseAtEncounterStart). An air defender gets neither.
         public static int TerrainDefenseBonus(HexCoord hex, HexMap map)

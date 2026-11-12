@@ -153,7 +153,7 @@ namespace Game.Ai.V2
             for (int i = 1; i < route.Hexes.Count; i++)
             {
                 HexCoord h = route.Hexes[i];
-                cumulative += StepCost(map, h);
+                cumulative += StepCost(map, route.Hexes[i - 1], h);
                 if (h.Equals(mainHex) || (cumulative > window && !departure))
                     break;
                 List<AiMapMemory.KnownEnemySighting> bodies = KnownBodiesOn(snap, player, h);
@@ -614,14 +614,14 @@ namespace Game.Ai.V2
                 && intent?.ActiveDefence != null && intent.Status == IntentStatus.Active;
         }
 
-        // What entering `step` actually charges a ground mover — the same per-hex terrain read the
-        // movement owner itself applies (AiTurnController.FindAffordableStep).
-        private static int StepCost(HexMap map, HexCoord step)
+        // What the transition from -> step actually charges a ground mover — the one rule the
+        // movement owner applies (MovementRules: terrain + storm exit). A map-less fixture
+        // keeps the straight-line one point per hex.
+        private static int StepCost(HexMap map, HexCoord from, HexCoord step)
         {
             if (map == null)
                 return 1;
-            map.TryGetTerrainAt(step, out TerrainTypeEntry entry);
-            return entry != null ? Mathf.Max(1, entry.moveCost) : 1;
+            return MovementRules.TryGetStepCost(map, from, step, MovementProfile.Ground, out int mp) ? mp : 1;
         }
 
         // The ground route the decision reasons on. A snapshot without a map (the synthetic analysis

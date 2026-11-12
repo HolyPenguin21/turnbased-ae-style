@@ -63,7 +63,7 @@ namespace Game.EditorTests
             rocket.IsAviation = true; rocket.MoveMax = rocket.MoveCurrent = 4;
             rocket.TurnsWithoutRefuel = safeEnds;
             var path = Enumerable.Range(0, distance + 1).Select(q => new HexCoord(q, 0)).ToList();
-            Assert.That(AviationRange.TrySimulateHexSequence(path, distance, 4, new[] { rocket },
+            Assert.That(AviationRange.TrySimulateTransitions(path, Enumerable.Repeat(1, distance).ToList(), distance, 4, new[] { rocket },
                 safeEnds, new PlayerSetupData(), out _, out _, out _, out _, out _), Is.EqualTo(allowed));
             Assert.That(rocket.ConsecutiveUnlandedEnds, Is.Zero, "route proof is read-only");
         }

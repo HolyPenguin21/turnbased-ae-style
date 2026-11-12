@@ -63,7 +63,8 @@ namespace Game.Ai.V2
                     AiMapMemory.KnownHexDefenseBonusFor(player, ctx?.Map, sighting.Value.Hex,
                         sighting.Value.Owner), sighting.Value.ArmyId,
                     AiMapMemory.KnownBuildingDefenseBonusFor(player, ctx?.Map, sighting.Value.Hex,
-                        sighting.Value.Owner)),
+                        sighting.Value.Owner),
+                    environment: Game.Combat.BattleEnvironment.At(sighting.Value.Hex, ctx?.Map)),
             };
             KnownOpposition.AddCoOccupants(session.Snapshot, sighting.Value.Hex, target.EnemyArmyId, opposition);
             bool immediate = target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity;

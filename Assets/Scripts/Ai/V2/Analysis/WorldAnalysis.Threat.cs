@@ -72,7 +72,8 @@ namespace Game.Ai.V2
                     .OrderBy(a => a.ArmyId)
                     .Select(a => new WorthIt.DefendingArmy(a.Members, a.Commander,
                         AiMapMemory.KnownHexDefenseBonusFor(player, snap.Map, b.Hex, player), a.ArmyId,
-                        AiMapMemory.KnownBuildingDefenseBonusFor(player, snap.Map, b.Hex, player)))
+                        AiMapMemory.KnownBuildingDefenseBonusFor(player, snap.Map, b.Hex, player),
+                        environment: KnownOpposition.WeatherAt(snap, b.Hex)))
                     .ToList();
 
                 AssetKind kind = ClassifyBuildingAsset(b);
@@ -100,7 +101,8 @@ namespace Game.Ai.V2
                     Hex = a.Hex,
                     Kind = AssetKind.Army,
                     HexDefenseBonus = 0f,
-                    Opposition = new[] { new WorthIt.DefendingArmy(a.Members, a.Commander) },
+                    Opposition = new[] { new WorthIt.DefendingArmy(a.Members, a.Commander,
+                        environment: KnownOpposition.WeatherAt(snap, a.Hex)) },
                     Value = ArmyAssetValue(a),
                 });
             }
@@ -199,7 +201,7 @@ namespace Game.Ai.V2
             var key = (source, maxMovement, flat);
             if (!_terrainFields.TryGetValue(key, out Dictionary<HexCoord, int> field))
                 _terrainFields[key] = field = HexPathfinder.FindCosts(map, new[] { source },
-                    maxMovement: maxMovement, flatCost: flat);
+                    maxMovement: maxMovement, airborne: flat);
             return field;
         }
 

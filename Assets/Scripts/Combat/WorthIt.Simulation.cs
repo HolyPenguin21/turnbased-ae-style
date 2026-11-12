@@ -284,6 +284,26 @@ namespace Game.Combat
             var order = new List<DefendingArmy>(armies?.Count ?? 0);
             if (armies == null)
                 return order;
+            // A hex under a storm is ranked under the storm's rules; the caller gets its own
+            // (unweathered) armies back in that order, so a later estimate applies weather once.
+            BattleEnvironment weather = BattleWeather(default, armies);
+            if (weather.InSandstorm)
+            {
+                IReadOnlyList<DefendingArmy> weathered = UnderWeather(armies, weather);
+                List<DefendingArmy> ranked = FightOrder(UnderWeather(WithBattleSummons(attackerUnits), weather),
+                    attackerCommander, weathered.ToList(),
+                    weather.HexDefense(hexDefenseBonus), magnitudes);
+                var used = new bool[armies.Count];
+                foreach (DefendingArmy a in ranked)
+                    for (int i = 0; i < weathered.Count; i++)
+                        if (!used[i] && ReferenceEquals(weathered[i].Units, a.Units))
+                        {
+                            used[i] = true;
+                            order.Add(armies[i]);
+                            break;
+                        }
+                return order;
+            }
             int fieldArmies = 0;
             for (int i = 0; i < armies.Count; i++)
                 if (!armies[i].IsEventGuard) fieldArmies++;
@@ -306,21 +326,24 @@ namespace Game.Combat
 
         private static BattleEstimate EstimateSequentialFights(IReadOnlyCollection<DefenderProfile> attackerUnits,
             SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
-            float hexDefenseBonus, AbilityMagnitudes? magnitudes)
+            float hexDefenseBonus, AbilityMagnitudes? magnitudes, BattleEnvironment environment)
         {
             var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
                 .Select(a => a.With(WithBattleSummons(a.Units), a.Commander,
                     a.DefenseBonusOverride, a.BuildingDefenseBonus))
                 .Where(a => a.Units.Any(p => p.IsGroundCombatant))
                 .ToList();
+            // One army: the public single estimate applies the weather itself (and its HexDefense
+            // turns any building/Disruption arithmetic into 0 in a storm).
             if (armies.Count <= 1)
                 return armies.Count == 0
                     ? new BattleEstimate(1f, 1f, 0f)
                     : Estimate(attackerUnits, armies[0].Units,
                         armies[0].DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander), attackerCommander,
-                        armies[0].Commander, magnitudes);
+                        armies[0].Commander, magnitudes, environment);
 
-            attackerUnits = WithBattleSummons(attackerUnits);
+            armies = UnderWeather(armies, environment).ToList();
+            attackerUnits = UnderWeather(WithBattleSummons(attackerUnits), environment);
             List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander);
             if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);

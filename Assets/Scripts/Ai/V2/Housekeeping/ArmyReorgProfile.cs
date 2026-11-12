@@ -165,6 +165,8 @@ namespace Game.Ai.V2
         public int Q;
         public int R;
         public float HexDefenseBonus;
+        // The public weather of the group's hex: a fight there is fought under it.
+        public Game.Combat.BattleEnvironment Environment;
         public List<ReorgContainer> Containers = new List<ReorgContainer>();
         public List<ReorgThreatBenchmark> ThreatBenchmarks = new List<ReorgThreatBenchmark>();
 

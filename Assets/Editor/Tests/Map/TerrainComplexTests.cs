@@ -160,7 +160,7 @@ namespace Game.EditorTests
             var a = new HexCoord(-1, 0); var b = new HexCoord(1, 0);
             _map.SetTerrainAt(_origin, _lake);
             HexPath ground = HexPathfinder.FindPath(_map, a, b);
-            HexPath air = HexPathfinder.FindPath(_map, a, b, flatCost: true);
+            HexPath air = HexPathfinder.FindPath(_map, a, b, airborne: true);
             Assert.That(ground.Hexes.Contains(_origin), Is.False);
             Assert.That(ground.TotalCost, Is.GreaterThan(2));
             Assert.That(air.Hexes.Contains(_origin), Is.True);
@@ -179,13 +179,13 @@ namespace Game.EditorTests
             var start = new HexCoord(-1, 0);
             Assert.That(HexPathfinder.FindCosts(_map, new[] { start }).ContainsKey(_origin), Is.False);
             Assert.That(HexPathfinder.FindCosts(_map, new[] { start }, reverse: true).ContainsKey(_origin), Is.False);
-            Assert.That(HexPathfinder.FindCosts(_map, new[] { start }, flatCost: true)[_origin], Is.EqualTo(1));
+            Assert.That(HexPathfinder.FindCosts(_map, new[] { start }, airborne: true)[_origin], Is.EqualTo(1));
         }
         [Test] public void WallMakesGroundTargetUnreachable()
         {
             foreach (HexCoord h in _map.AllCoords.ToList()) if (h.Q == 0) _map.SetTerrainAt(h, _lake);
             Assert.That(HexPathfinder.FindPath(_map, new HexCoord(-1, 0), new HexCoord(1, 0)), Is.Null);
-            Assert.That(HexPathfinder.FindPath(_map, new HexCoord(-1, 0), new HexCoord(1, 0), flatCost: true), Is.Not.Null);
+            Assert.That(HexPathfinder.FindPath(_map, new HexCoord(-1, 0), new HexCoord(1, 0), airborne: true), Is.Not.Null);
         }
         [Test] public void TerrainMutationBumpsRevisionIncludingMutatedSharedEntry()
         {

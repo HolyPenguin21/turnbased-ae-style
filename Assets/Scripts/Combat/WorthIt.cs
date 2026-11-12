@@ -118,9 +118,9 @@ namespace Game.Combat
         public static float WinChance(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus = 0f,
             SideCommander attackerCommander = default, SideCommander defenderCommander = default,
-            AbilityMagnitudes? magnitudes = null) =>
+            AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default) =>
             Estimate(attackerUnits, enemyUnits, hexDefenseBonus, attackerCommander, defenderCommander,
-                magnitudes).WinChance;
+                magnitudes, environment).WinChance;
 
         // Converts a real UnitData into the same per-combatant snapshot DefenderProfile carries for
         // a remembered/cheat-read enemy — used both for our own army (never behind fog of war) and
@@ -194,16 +194,23 @@ namespace Game.Combat
         // The attacker's commander is read off the live army itself (ArmyData.Commander).
         public static BattleEstimate Estimate(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits,
             float hexDefenseBonus = 0f, SideCommander defenderCommander = default,
-            AbilityMagnitudes? magnitudes = null)
+            AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
-            enemyUnits = WithBattleSummons(enemyUnits);
+            enemyUnits = UnderWeather(WithBattleSummons(enemyUnits), environment);
+            hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
             if (!enemyUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
             SideCommander attackerCommander = SideCommander.Of(attacker?.Commander);
             List<BattleUnit> baseline = ToAttackerBattleUnits(attacker, attackerCommander.Initiative);
             var liveProfiles = TacticalTargetsOf(attacker.Members).Select(FromLiveUnit).ToList();
-            List<DefenderProfile> liveWithSummons = WithBattleSummons(liveProfiles);
+            List<DefenderProfile> liveWithSummons = UnderWeather(WithBattleSummons(liveProfiles), environment).ToList();
+            for (int i = 0; i < baseline.Count; i++)
+            {
+                BattleUnit unit = baseline[i];
+                unit.Range = environment.AttackRange(unit.Range);
+                baseline[i] = unit;
+            }
             if (liveWithSummons.Count > liveProfiles.Count)
                 baseline.AddRange(ToBattleUnits(
                     liveWithSummons.Skip(liveProfiles.Count).ToList(), 0f, attackerCommander.Initiative));
@@ -228,10 +235,11 @@ namespace Game.Combat
         public static BattleEstimate Estimate(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus,
             SideCommander attackerCommander = default, SideCommander defenderCommander = default,
-            AbilityMagnitudes? magnitudes = null)
+            AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
-            attackerUnits = WithBattleSummons(attackerUnits);
-            defenderUnits = WithBattleSummons(defenderUnits);
+            attackerUnits = UnderWeather(WithBattleSummons(attackerUnits), environment);
+            defenderUnits = UnderWeather(WithBattleSummons(defenderUnits), environment);
+            hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
             if (!defenderUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
@@ -331,10 +339,14 @@ namespace Game.Combat
         // defence bonus applies to every defending army. A single army is exactly Estimate().
         public static BattleEstimate EstimateSequential(IReadOnlyCollection<DefenderProfile> attackerUnits,
             SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
-            float hexDefenseBonus, AbilityMagnitudes? magnitudes = null)
+            float hexDefenseBonus, AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
+            // Weather is applied once inside the fights, right after the summons join each side
+            // and before fight order, seeds and cache keys. Capture/Kill has no range or defence.
+            environment = BattleWeather(environment, defendingArmies);
+            hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
             BattleEstimate fights = EstimateSequentialFights(attackerUnits, attackerCommander,
-                defendingArmies, hexDefenseBonus, magnitudes);
+                defendingArmies, hexDefenseBonus, magnitudes, environment);
             // Hero-only armies are no battle, they are Capture/Kill challenges taken after the fights.
             // The opposition-based AI estimate only: the flat Estimate overloads stay as they are, since
             // BattleInitiator.FindEnemyAt ranks real defenders through them.
@@ -354,8 +366,8 @@ namespace Game.Combat
         // Estimate() (2026-08-24) — every pass/fail caller here keeps working unchanged.
         public static float WinChance(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits,
             float hexDefenseBonus = 0f, SideCommander defenderCommander = default,
-            AbilityMagnitudes? magnitudes = null) =>
-            Estimate(attacker, enemyUnits, hexDefenseBonus, defenderCommander, magnitudes).WinChance;
+            AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default) =>
+            Estimate(attacker, enemyUnits, hexDefenseBonus, defenderCommander, magnitudes, environment).WinChance;
 
         // The hex's bonus for a defender owned by `defenderOwner`: terrain (defender's pool only, in
         // every real fight) plus that owner's own Base Defense. Same rule as a live battle
@@ -365,7 +377,44 @@ namespace Game.Combat
         // gated by the caller.
         public static float HexDefenseBonus(HexCoord hex, HexMap map, PlayerSetupData defenderOwner,
             ArmyData incomingAttacker = null)
-            => BattleRules.TerrainDefenseBonus(hex, map)
-                + DisruptionRules.KnownBuildingDefenseFor(hex, defenderOwner, incomingAttacker);
+            => BattleEnvironment.At(hex, map).HexDefense(BattleRules.TerrainDefenseBonus(hex, map),
+                DisruptionRules.KnownBuildingDefenseFor(hex, defenderOwner, incomingAttacker));
+
+        // ---- Battle weather -----------------------------------------------------------------------
+        // The forecast reads the same rule as the live battle (BattleRules.EffectiveAttackRange,
+        // BattleEnvironment.HexDefense), applied ONCE at the public entry points to both sides —
+        // before fight order, seeds and estimate-cache keys, so a cached clear-weather answer is
+        // never returned for a storm. Unknown range (-1) stays unknown. WorthIt has no positions:
+        // this gives the model the right inputs; it does not make it a tactical-grid simulation.
+        internal static IReadOnlyCollection<DefenderProfile> UnderWeather(
+            IReadOnlyCollection<DefenderProfile> units, BattleEnvironment environment)
+        {
+            if (!environment.InSandstorm || units == null || units.Count == 0)
+                return units;
+            return units.Select(p => p.WithRange(environment.AttackRange(p.Range))).ToList();
+        }
+
+        // Defending armies under weather: rosters as above; every hex-derived bonus (the shared
+        // fallback, a per-army override and its building part) is 0 — so a projected Disruption
+        // carrier can never subtract a building bonus the storm already removed.
+        internal static IReadOnlyList<DefendingArmy> UnderWeather(IReadOnlyList<DefendingArmy> armies,
+            BattleEnvironment environment)
+        {
+            if (!environment.InSandstorm || armies == null || armies.Count == 0)
+                return armies;
+            // The result carries Environment.Clear: the weather is now applied, never twice.
+            return armies.Select(a => new DefendingArmy(UnderWeather(a.Units, environment), a.Commander,
+                a.DefenseBonusOverride.HasValue ? 0f : (float?)null, a.ArmyId, 0f, a.IsEventGuard)).ToList();
+        }
+
+        // The battle's weather: the explicit one, or the weather of the hex the opposition holds.
+        internal static BattleEnvironment BattleWeather(BattleEnvironment explicitEnvironment,
+            IReadOnlyList<DefendingArmy> armies)
+        {
+            if (explicitEnvironment.InSandstorm || armies == null) return explicitEnvironment;
+            for (int i = 0; i < armies.Count; i++)
+                if (armies[i].Environment.InSandstorm) return armies[i].Environment;
+            return explicitEnvironment;
+        }
     }
 }

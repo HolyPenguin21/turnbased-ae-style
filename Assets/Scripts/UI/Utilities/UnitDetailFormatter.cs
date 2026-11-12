@@ -14,21 +14,23 @@ namespace Game.UI
         private static readonly Color DefaultBonusColor = new Color(0.243f, 0.851f, 0.486f);
         private static readonly Color DefaultPenaltyColor = new Color(1f, 0.361f, 0.361f);
 
-        internal static string Format(UnitData unit, GameConfig gameConfig, int defenseBonus)
+        // `attackRange`: the range this unit attacks with in the current context (a battle's
+        // weather, BattleGrid.AttackRange); null outside a battle shows the unit's own Range.
+        internal static string Format(UnitData unit, GameConfig gameConfig, int defenseBonus, int? attackRange = null)
             => unit == null ? string.Empty : Format(unit, defenseBonus,
                 gameConfig != null ? gameConfig.statBonusColor : DefaultBonusColor,
                 gameConfig != null ? gameConfig.statPenaltyColor : DefaultPenaltyColor,
-                gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null);
+                gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null, attackRange);
 
         internal static string Format(UnitData unit, int defenseBonus,
-            Color bonusColor, Color penaltyColor, string abilities)
+            Color bonusColor, Color penaltyColor, string abilities, int? attackRange = null)
         {
             if (unit == null) return string.Empty;
 
             string text = $"{unit.Name}\n";
             if (unit.TypeTags.Count > 0)
                 text += $"{string.Join(", ", unit.TypeTags)}\n";
-            return text + FormatBody(unit, defenseBonus, bonusColor, penaltyColor, abilities);
+            return text + FormatBody(unit, defenseBonus, bonusColor, penaltyColor, abilities, attackRange);
         }
 
         // Stats, then abilities: everything below the name / type-tag header lines. The collection
@@ -40,8 +42,10 @@ namespace Game.UI
                 gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null);
 
         private static string FormatBody(UnitData unit, int defenseBonus,
-            Color bonusColor, Color penaltyColor, string abilities)
+            Color bonusColor, Color penaltyColor, string abilities, int? attackRange = null)
         {
+            int range = attackRange ?? unit.Range;
+            string rangeLine = WithPenaltySuffix($"Range {range}", unit.Range - range, penaltyColor);
             string defenseLine = WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus, bonusColor);
             string hpLine = WithPenaltySuffix(
                 $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit), penaltyColor);
@@ -55,7 +59,7 @@ namespace Game.UI
                 text +=
                     $"Attack {unit.Attack}\n" +
                     $"{defenseLine}\n" +
-                    $"Range {unit.Range}\n";
+                    $"{rangeLine}\n";
             text +=
                 $"{hpLine}\n" +
                 $"{moveLine}\n" +

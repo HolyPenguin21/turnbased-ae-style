@@ -829,11 +829,13 @@ namespace Game.Ai.V2
                 .Concat(snap?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>()))
                 if ((at.HasValue && sighting.Hex.Equals(at.Value)
                     || enemyId.HasValue && sighting.ArmyId == enemyId.Value) && sighting.Defenders?.Count > 0)
-                    scoped.Add(new WorthIt.DefendingArmy(sighting.Defenders, sighting.Commander));
+                    scoped.Add(new WorthIt.DefendingArmy(sighting.Defenders, sighting.Commander,
+                        environment: KnownOpposition.WeatherAt(snap, sighting.Hex)));
             if (at.HasValue)
                 foreach (var guard in snap?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
                     if (guard.Hex.Equals(at.Value) && guard.Defenders?.Count > 0)
-                        scoped.Add(new WorthIt.DefendingArmy(guard.Defenders, guard.Commander, isEventGuard: true));
+                        scoped.Add(new WorthIt.DefendingArmy(guard.Defenders, guard.Commander, isEventGuard: true,
+                            environment: KnownOpposition.WeatherAt(snap, guard.Hex)));
             return scoped.Count > 0 ? scoped : EquipmentValuationThreats(snap);
         }
 

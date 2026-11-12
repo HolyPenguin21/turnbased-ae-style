@@ -115,21 +115,62 @@ namespace Game.Aviation
             return SafeUnlandedEndsRemaining(aircraft) > 0 ? movement : movement / 2;
         }
 
-        // How many of its own turns a group can strike one target in a single sortie: fly
-        // `outboundHexes` out (this turn's `firstTurnMovement`, then `maxMovement` per later turn),
-        // strike on arrival, hold over the target for further strike turns, then fly
-        // `returnHexes` home. Every turn-end away from an airfield consumes one of `safeEnds`;
-        // the plan never exceeds them (no fuel damage). Approach and return turns therefore eat
-        // into the strike turns — it is NOT simply safeEnds + 1. Intermediate airfields are
-        // ignored (conservative). 0 when not even one strike-and-return fits.
-        public static int StrikeTurns(int firstTurnMovement, int maxMovement, int safeEnds,
-            int outboundHexes, int returnHexes)
+        // ---- Route calendar over whole transitions ---------------------------------------------
+        // The one aviation flight calendar (spec 2026-11-11 §5): every transition of the route is
+        // priced by MovementRules (Air profile: 1 MP, +1 leaving a storm hex) and paid WHOLE out of
+        // this turn's budget; a transition that does not fit ends the own turn on the last reached
+        // hex and is tried again with the next turn's full budget. Never `index += movement`,
+        // never a hex count or a geometric distance standing in for MP.
+
+        // The route's transition costs (Air profile, the map's current weather); false when the
+        // route is not flyable.
+        public static bool TryStepCosts(HexMap map, IReadOnlyList<HexCoord> hexes, List<int> costs) =>
+            MovementRules.TryGetStepCosts(map, hexes, MovementProfile.Air, map?.Weather, costs);
+
+        public static List<int> StepCostsOrNull(HexMap map, HexPath path)
         {
+            var costs = new List<int>();
+            return path != null && TryStepCosts(map, path.Hexes, costs) ? costs : null;
+        }
+
+        // Own turns needed to fly `costs` (1 = arrives this turn), spending whole transitions out
+        // of firstTurnMovement now and maxMovement each later turn. int.MaxValue when some
+        // transition exceeds even a full turn's budget. An empty route takes 1 (already there).
+        public static int TurnsToFly(IReadOnlyList<int> costs, int firstTurnMovement, int maxMovement)
+        {
+            if (costs == null) return int.MaxValue;
+            int turns = 1;
+            int mp = Mathf.Max(0, firstTurnMovement);
+            foreach (int cost in costs)
+            {
+                if (cost > mp)
+                {
+                    if (cost > maxMovement) return int.MaxValue;
+                    turns++;
+                    mp = maxMovement;
+                }
+                mp -= cost;
+            }
+            return turns;
+        }
+
+        // How many of its own turns a group can strike one target in a single sortie: fly the
+        // outbound transitions (this turn's `firstTurnMovement`, then `maxMovement` per later
+        // turn), strike on arrival, hold over the target for further strike turns, then fly the
+        // return transitions home. Every turn-end away from an airfield consumes one of
+        // `safeEnds`; the plan never exceeds them (no fuel damage). Approach and return turns
+        // therefore eat into the strike turns — it is NOT simply safeEnds + 1. Intermediate
+        // airfields are ignored (conservative). 0 when not even one strike-and-return fits.
+        public static int StrikeTurns(int firstTurnMovement, int maxMovement, int safeEnds,
+            IReadOnlyList<int> outboundCosts, IReadOnlyList<int> returnCosts)
+        {
+            if (outboundCosts == null || returnCosts == null)
+                return 0;
             int best = 0;
             for (int strikes = 1; strikes <= Mathf.Max(0, safeEnds) + 1; strikes++)
             {
-                if (!StrikeCalendarFits(firstTurnMovement, maxMovement, safeEnds, outboundHexes,
-                        returnHexes, strikes))
+                if (!StrikeCalendarFits(firstTurnMovement, maxMovement, safeEnds, outboundCosts,
+                        returnCosts, strikes))
                     break;
                 best = strikes;
             }
@@ -137,27 +178,25 @@ namespace Game.Aviation
         }
 
         private static bool StrikeCalendarFits(int firstTurnMovement, int maxMovement, int safeEnds,
-            int outboundHexes, int returnHexes, int strikes)
+            IReadOnlyList<int> outboundCosts, IReadOnlyList<int> returnCosts, int strikes)
         {
             int mp = Mathf.Max(0, firstTurnMovement);
             int ends = 0;
-            bool Fly(int hexes)
+            bool Fly(IReadOnlyList<int> costs)
             {
-                int left = Mathf.Max(0, hexes);
-                while (left > 0)
+                foreach (int cost in costs)
                 {
-                    int step = Mathf.Min(mp, left);
-                    left -= step;
-                    mp -= step;
-                    if (left <= 0)
-                        break;
-                    if (++ends > safeEnds || maxMovement <= 0)
-                        return false;
-                    mp = maxMovement;
+                    if (cost > mp)
+                    {
+                        if (++ends > safeEnds || cost > maxMovement)
+                            return false;
+                        mp = maxMovement;
+                    }
+                    mp -= cost;
                 }
                 return true;
             }
-            if (!Fly(outboundHexes))
+            if (!Fly(outboundCosts))
                 return false;
             for (int held = 1; held < strikes; held++)
             {
@@ -165,7 +204,7 @@ namespace Game.Aviation
                     return false;
                 mp = maxMovement;
             }
-            return Fly(returnHexes);
+            return Fly(returnCosts);
         }
 
         public static IReadOnlyList<HexCoord> CombineRoute(HexPath outbound, HexPath returnPath)
@@ -175,49 +214,81 @@ namespace Game.Aviation
             return hexes;
         }
 
-        // Turn-by-turn feasibility core shared by PlanMultiTurnSortieCore (a two-leg start->action->
-        // landing route) and TryReplanMultiTurnReturn (a single landing-only leg, actionIndex 0 —
-        // "the action already happened, everything from here on is the return"). Walks the route
-        // hex-by-hex, spending firstTurnMovement this turn and each aircraft's own fresh
-        // EffectiveMoveMax (min across the group) every turn after — mirrors ArmyData.CurrentMovement/
-        // MaxMovement's own "min across members" rule (spec point 2/14), never a per-member split.
-        // A turn-end hex that IS an owned airfield fully resets the simulated fuel counter (matching
-        // AviationRules.ResetAfterLanding — landing anywhere owned refuels, not just the original
-        // launch field); any other turn-end increments it, and the route is rejected the instant that
-        // running count would exceed safeRemaining — exactly the live game's own
-        // "ConsecutiveUnlandedEnds > TurnsWithoutRefuel" damage rule (AviationTurnLifecycle.
-        // ResolveEndOfTurn), simulated here as a pure query, never touching real unit state (spec
-        // point 15 — "не менять fuel-damage механику").
-        public static bool TrySimulateHexSequence(IReadOnlyList<HexCoord> hexes, int actionIndex, int firstTurnMovement,
-            IReadOnlyList<UnitData> aircraft, int safeRemaining, PlayerSetupData owner,
+        // Turn-by-turn feasibility core shared by every multi-turn plan (a two-leg start->action->
+        // landing route, an expendable strike, a rebase, a landing-only return with actionIndex 0).
+        // Walks the route's transitions (MovementRules on `map`'s current weather), paying each
+        // one whole from firstTurnMovement this turn and from the group's own fresh
+        // EffectiveMoveMax (min across members) every later turn. A turn that cannot pay its next
+        // transition ends on the last reached hex — including the start hex when this turn has
+        // no budget left, a real end of turn that consumes fuel like any other.
+        //
+        // Ending a turn on an owned airfield is a real landing (AviationTurnLifecycle): it closes
+        // the sortie, and going on needs a new paid launch. A single route proof therefore never
+        // refuels at an intermediate airfield and flies on for free: a plan whose turn first ends
+        // on an owned airfield before its last hex is REJECTED (the caller may plan that landing
+        // as its own leg). Every other turn-end away from the final hex increments the unlanded
+        // count, and the route is rejected the instant it would exceed safeRemaining — the live
+        // "ConsecutiveUnlandedEnds > TurnsWithoutRefuel" damage rule, simulated as a pure query
+        // that never touches unit state. `turnEnds` (optional) receives the route index where each
+        // own turn ends, the last one being the final hex.
+        public static bool TrySimulateHexSequence(HexMap map, IReadOnlyList<HexCoord> hexes, int actionIndex,
+            int firstTurnMovement, IReadOnlyList<UnitData> aircraft, int safeRemaining, PlayerSetupData owner,
             out int requiredTurns, out int requiredUnlandedEnds, out HexCoord turn1Destination,
-            out bool reachesActionThisTurn, out bool landsThisTurn)
+            out bool reachesActionThisTurn, out bool landsThisTurn, List<int> turnEnds = null)
         {
             requiredTurns = 0;
             requiredUnlandedEnds = 0;
-            turn1Destination = hexes.Count > 0 ? hexes[0] : default;
+            turn1Destination = hexes != null && hexes.Count > 0 ? hexes[0] : default;
             reachesActionThisTurn = actionIndex <= 0;
             landsThisTurn = false;
+            turnEnds?.Clear();
+            var costs = new List<int>();
+            if (hexes == null || hexes.Count == 0 || (hexes.Count > 1 && !TryStepCosts(map, hexes, costs)))
+                return false;
+            return TrySimulateTransitions(hexes, costs, actionIndex, firstTurnMovement, aircraft, safeRemaining,
+                owner, out requiredTurns, out requiredUnlandedEnds, out turn1Destination,
+                out reachesActionThisTurn, out landsThisTurn, turnEnds);
+        }
+
+        // The calendar core over transition costs already priced by MovementRules (costs[i] is
+        // hexes[i] -> hexes[i + 1]). TrySimulateHexSequence prices the route on the map first.
+        public static bool TrySimulateTransitions(IReadOnlyList<HexCoord> hexes, IReadOnlyList<int> costs,
+            int actionIndex, int firstTurnMovement, IReadOnlyList<UnitData> aircraft, int safeRemaining,
+            PlayerSetupData owner, out int requiredTurns, out int requiredUnlandedEnds, out HexCoord turn1Destination,
+            out bool reachesActionThisTurn, out bool landsThisTurn, List<int> turnEnds = null)
+        {
+            requiredTurns = 0;
+            requiredUnlandedEnds = 0;
+            turn1Destination = hexes != null && hexes.Count > 0 ? hexes[0] : default;
+            reachesActionThisTurn = actionIndex <= 0;
+            landsThisTurn = false;
+            turnEnds?.Clear();
+            if (hexes == null || hexes.Count == 0 || aircraft == null || aircraft.Count == 0
+                || costs == null || costs.Count != hexes.Count - 1)
+                return false;
 
             int lastIndex = hexes.Count - 1;
-            if (lastIndex <= 0)
+            if (lastIndex == 0)
             {
                 landsThisTurn = true;
+                turnEnds?.Add(0);
                 return true;
             }
 
             int idx = 0;
             int used = 0;
-            int turnMovement = firstTurnMovement;
+            int mp = Mathf.Max(0, firstTurnMovement);
             int maxEffective = aircraft.Min(AviationRules.EffectiveMoveMax);
             bool first = true;
-
             while (idx < lastIndex)
             {
-                if (turnMovement <= 0)
-                    return false; // no movement at all this turn and the route isn't finished yet
-                idx = Mathf.Min(lastIndex, idx + turnMovement);
+                while (idx < lastIndex && costs[idx] <= mp)
+                {
+                    mp -= costs[idx];
+                    idx++;
+                }
                 requiredTurns++;
+                turnEnds?.Add(idx);
                 HexCoord stop = hexes[idx];
                 if (first)
                 {
@@ -225,18 +296,18 @@ namespace Game.Aviation
                     reachesActionThisTurn = idx >= actionIndex;
                     first = false;
                 }
-                if (idx == lastIndex || AviationRules.IsOwnedAirfieldAt(stop, owner))
-                {
-                    used = 0;
-                }
-                else
-                {
-                    used++;
-                    if (used > safeRemaining)
-                        return false;
-                    requiredUnlandedEnds = Mathf.Max(requiredUnlandedEnds, used);
-                }
-                turnMovement = maxEffective;
+                if (idx == lastIndex)
+                    break;
+                if (AviationRules.IsOwnedAirfieldAt(stop, owner))
+                    return false; // an intermediate landing would close this sortie
+                used++;
+                if (used > safeRemaining)
+                    return false;
+                requiredUnlandedEnds = Mathf.Max(requiredUnlandedEnds, used);
+                // A transition the next full budget cannot pay either never becomes possible.
+                if (maxEffective <= 0 || costs[idx] > maxEffective)
+                    return false;
+                mp = maxEffective;
             }
             landsThisTurn = requiredTurns == 1;
             return true;

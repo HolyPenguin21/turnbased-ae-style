@@ -312,7 +312,7 @@ namespace Game.EditorTests
             var wing = new ArmyData { Owner = owner, Hex = hex, IsAirArmy = true }; wing.Members.Add(first); wing.Members.Add(last); ArmyRegistry.Register(wing);
             catalog.armyPrefab = catalog.airArmyPrefab = marker.GetComponent<MapObjectVisual>();
             var controller = selection.CreateArmyMarker(wing);
-            var movement = new ArmyMovementOperation(wing, new[] { hex, destination }, _ => 1);
+            var movement = new ArmyMovementOperation(wing, new[] { hex, destination }, (_, __) => 1);
             Assert.That(movement.TryEnterNextStep(out _, out _), Is.True);
             Bind(controller, "<IsMoving>k__BackingField", true);
             var originViewer = new PlayerSetupData { PlayerId = "origin-viewer" };

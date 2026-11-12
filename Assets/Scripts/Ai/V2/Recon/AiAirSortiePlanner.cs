@@ -63,40 +63,38 @@ namespace Game.Ai.V2
             aircraft != null && aircraft.Count > 0
             && aircraft.All(u => AviationRules.IsAviation(u) && ExplosionAttack.IsSingleUseUnit(u));
 
-        // End-of-turn landing closes the flight. A later takeoff is another paid launch,
-        // represented by the next rebase edge rather than hidden inside a single route proof.
-        private static bool HasIntermediateLanding(HexPath path, int movement,
-            IReadOnlyList<UnitData> aircraft, PlayerSetupData owner)
-        {
-            int refreshed = aircraft.Min(AviationRules.EffectiveMoveMax);
-            if (movement <= 0 || refreshed <= 0) return false;
-            for (int stop = movement; stop < path.Hexes.Count - 1; stop += refreshed)
-                if (AviationRules.IsOwnedAirfieldAt(path.Hexes[stop], owner)) return true;
-            return false;
-        }
+        // The one air route search and its real MP cost (MovementRules, Air profile, the map's
+        // current weather): never the hex count. End-of-turn landing closes a flight; the shared
+        // calendar (AviationRange.TrySimulateHexSequence) rejects a route whose turn would end on
+        // an owned airfield before its last hex, so no plan here refuels mid-route for free.
+        private static HexPath AirRoute(HexMap map, HexCoord from, HexCoord to) =>
+            HexPathfinder.FindPath(map, from, to, airborne: true);
+
+        internal static int AirRouteCost(HexMap map, HexPath path) =>
+            path == null ? int.MaxValue : MovementRules.RouteCostOrMax(map, path.Hexes, MovementProfile.Air);
 
         private static Sortie? PlanExpendableStrike(HexCoord start, int movement, HexCoord target, HexMap map, PlayerSetupData owner)
         {
             if (map == null || owner == null) return null;
-            HexPath outbound = HexPathfinder.FindPath(map, start, target, flatCost: true);
-            if (outbound == null || outbound.Hexes.Count - 1 > movement) return null;
+            HexPath outbound = AirRoute(map, start, target);
+            int cost = AirRouteCost(map, outbound);
+            if (outbound == null || cost > movement) return null;
             // A zero-length second leg keeps the shared route consumers honest: the attack
             // consumes every member, so there is no landing reservation or flight home.
-            return new Sortie(target, target, outbound,
-                HexPathfinder.FindPath(map, target, target, flatCost: true), outbound.Hexes.Count - 1);
+            return new Sortie(target, target, outbound, AirRoute(map, target, target), cost);
         }
 
         private static MultiTurnSortie? PlanExpendableMultiTurnStrike(HexCoord start,
             IReadOnlyList<UnitData> aircraft, int movement, HexCoord target, HexMap map, PlayerSetupData owner)
         {
             if (map == null || owner == null) return null;
-            HexPath outbound = HexPathfinder.FindPath(map, start, target, flatCost: true);
-            if (outbound == null || HasIntermediateLanding(outbound, movement, aircraft, owner)
-                || !AviationRange.TrySimulateHexSequence(outbound.Hexes,
+            HexPath outbound = AirRoute(map, start, target);
+            if (outbound == null
+                || !AviationRange.TrySimulateHexSequence(map, outbound.Hexes,
                 outbound.Hexes.Count - 1, movement, aircraft, AviationRange.SafeUnlandedEndsRemaining(aircraft),
                 owner, out int turns, out int ends, out HexCoord first, out bool reaches, out _)) return null;
             return new MultiTurnSortie(target, target, outbound,
-                HexPathfinder.FindPath(map, target, target, flatCost: true), outbound.Hexes.Count - 1,
+                AirRoute(map, target, target), AirRouteCost(map, outbound),
                 turns, ends, first, reaches, false);
         }
 
@@ -109,10 +107,9 @@ namespace Game.Ai.V2
                 || !IsExpendableWing(wing.Members)) return false;
             int safeEnds = AviationRange.SafeUnlandedEndsRemaining(wing);
             if (safeEnds < 1) return false;
-            HexPath path = HexPathfinder.FindPath(map, wing.Hex, target, flatCost: true);
+            HexPath path = AirRoute(map, wing.Hex, target);
             return path != null
-                && !HasIntermediateLanding(path, wing.Members.Min(AviationRules.EffectiveMoveMax), wing.Members, owner)
-                && AviationRange.TrySimulateHexSequence(path.Hexes,
+                && AviationRange.TrySimulateHexSequence(map, path.Hexes,
                 path.Hexes.Count - 1, wing.Members.Min(AviationRules.EffectiveMoveMax),
                 wing.Members, safeEnds - 1, owner, out _, out _, out _, out _, out _);
         }
@@ -153,13 +150,13 @@ namespace Game.Ai.V2
             {
                 if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
                     continue;
-                HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
+                HexPath path = AirRoute(map, airArmy.Hex, landing);
                 if (path == null)
                     continue;
                 // Simulate the return starting NEXT turn from the current hex: firstTurnMovement is
                 // the refreshed EffectiveMoveMax (not this turn's spent CurrentMovement), and only
                 // marginForReturn further unlanded ends are allowed.
-                if (AviationRange.TrySimulateHexSequence(path.Hexes, 0, freshMovement, airArmy.Members, marginForReturn,
+                if (AviationRange.TrySimulateHexSequence(map, path.Hexes, 0, freshMovement, airArmy.Members, marginForReturn,
                     owner, out _, out _, out _, out _, out _))
                     return true;
             }
@@ -174,7 +171,7 @@ namespace Game.Ai.V2
                 return null;
             if (singleUseStrike && IsExpendableWing(airArmy.Members))
                 return PlanExpendableStrike(airArmy.Hex, airArmy.CurrentMovement, actionHex, map, owner);
-            return PlanSortieCore(airArmy.Hex, airArmy, army => army.CurrentMovement, path => AviationRules.PathMoveCost(airArmy, path),
+            return PlanSortieCore(airArmy.Hex, airArmy, airArmy.CurrentMovement,
                 airArmy.Members.Count, 0, actionHex, map, owner, additionalLandingClaims);
         }
 
@@ -182,11 +179,10 @@ namespace Game.Ai.V2
         // that haven't launched yet (still sitting in an airfield's own stored container — see
         // AirStrikeTask.FindLaunchCandidates) — used to decide whether launching at all is even
         // worth it, and to pick the target/landing pair a LaunchAirStrike/LaunchAirRecon candidate
-        // carries. No ArmyData exists yet to read CurrentMovement/PathMoveCost off, so this uses
-        // each aircraft's own EffectiveMoveCurrent. Freshly deployed cards have their full
-        // budget; aircraft that landed/transferred back this turn retain their spent movement and a flat 1-MP-per-hex cost (see
-        // AviationRules.PathMoveCost's own comment — every air army pays exactly that, regardless
-        // of terrain).
+        // carries. No ArmyData exists yet to read CurrentMovement off, so this uses each
+        // aircraft's own EffectiveMoveCurrent. Freshly deployed cards have their full budget;
+        // aircraft that landed/transferred back this turn retain their spent movement. The route
+        // is priced by the same Air-profile MovementRules a formed wing pays (no phantom army).
         public static Sortie? TryPlanSortieFromStorage(HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft,
             HexCoord actionHex, HexMap map, PlayerSetupData owner, bool singleUseStrike = false)
         {
@@ -195,7 +191,7 @@ namespace Game.Ai.V2
             int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
             if (singleUseStrike && IsExpendableWing(aircraft))
                 return PlanExpendableStrike(airfieldHex, movement, actionHex, map, owner);
-            return PlanSortieCore(airfieldHex, null, _ => movement, path => path.Hexes.Count - 1,
+            return PlanSortieCore(airfieldHex, null, movement,
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
 
@@ -231,19 +227,18 @@ namespace Game.Ai.V2
                 || !AviationRules.IsOwnedAirfieldAt(destinationHex, owner)
                 || FreeLandingCapacity(destinationHex, owner, excluding) < requiredSlots)
                 return null;
-            HexPath path = HexPathfinder.FindPath(map, startHex, destinationHex, flatCost: true);
+            HexPath path = AirRoute(map, startHex, destinationHex);
             if (path == null)
                 return null;
-            int cost = excluding != null
-                ? AviationRules.PathMoveCost(excluding, path)
-                : path.Hexes.Count - 1;
+            int cost = AirRouteCost(map, path);
             if (cost <= firstTurnMovement)
                 return new RebaseRoute(destinationHex, destinationHex, cost, 1);
 
+            // A rebase ends only at the explicitly selected airfield: the calendar rejects a turn
+            // that would end (land) on another owned airfield first.
             int safeRemaining = AviationRange.SafeUnlandedEndsRemaining(aircraft);
-            if ((IsExpendableWing(aircraft) && HasIntermediateLanding(path, firstTurnMovement, aircraft, owner))
-                || safeRemaining <= 0
-                || !AviationRange.TrySimulateHexSequence(path.Hexes, path.Hexes.Count - 1,
+            if (safeRemaining <= 0
+                || !AviationRange.TrySimulateHexSequence(map, path.Hexes, path.Hexes.Count - 1,
                     firstTurnMovement, aircraft, safeRemaining, owner, out int turns, out _,
                     out HexCoord firstDestination, out _, out _))
                 return null;
@@ -263,19 +258,19 @@ namespace Game.Ai.V2
         // Landing choice is purely physical: every reachable owned airfield is ranked by
         // forwardness, then total route cost. Anti-air remains a live gameplay reaction and does
         // not participate in strategic route admission.
+        // A same-turn round trip: the summed real cost of both legs against this turn's budget
+        // (a single-turn comparison, so the sum is exact; turn boundaries need the calendar).
         private static Sortie? PlanSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
-            System.Func<ArmyData, int> movementBudget, System.Func<HexPath, int> pathCost,
-            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner,
+            int movement, int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner,
             System.Func<HexCoord, int> additionalLandingClaims = null)
         {
             if (map == null || owner == null)
                 return null;
 
-            HexPath outbound = HexPathfinder.FindPath(map, startHex, actionHex, flatCost: true);
+            HexPath outbound = AirRoute(map, startHex, actionHex);
             if (outbound == null)
                 return null;
-            int outboundCost = pathCost(outbound);
-            int movement = movementBudget(excludingFromCapacity);
+            int outboundCost = AirRouteCost(map, outbound);
 
             Sortie? best = null;
             int bestForward = int.MaxValue;
@@ -288,12 +283,13 @@ namespace Game.Ai.V2
                     freeSlots += vacatingAtStart;
                 if (freeSlots < requiredSlots)
                     continue;
-                HexPath ret = HexPathfinder.FindPath(map, actionHex, landing, flatCost: true);
+                HexPath ret = AirRoute(map, actionHex, landing);
                 if (ret == null)
                     continue;
-                int totalCost = outboundCost + pathCost(ret);
-                if (totalCost > movement)
+                long totalLong = (long)outboundCost + AirRouteCost(map, ret);
+                if (totalLong > movement)
                     continue;
+                int totalCost = (int)totalLong;
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || forward < bestForward
                     || (forward == bestForward && totalCost < bestCost);
@@ -316,7 +312,7 @@ namespace Game.Ai.V2
             if (singleUseStrike && IsExpendableWing(airArmy.Members))
                 return PlanExpendableMultiTurnStrike(airArmy.Hex, airArmy.Members, airArmy.CurrentMovement, actionHex, map, owner);
             return PlanMultiTurnSortieCore(airArmy.Hex, airArmy, airArmy.Members, airArmy.CurrentMovement,
-                path => AviationRules.PathMoveCost(airArmy, path), airArmy.Members.Count, 0, actionHex, map, owner, additionalLandingClaims);
+                airArmy.Members.Count, 0, actionHex, map, owner, additionalLandingClaims);
         }
 
         public static MultiTurnSortie? TryPlanMultiTurnSortieFromStorage(HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft,
@@ -327,7 +323,7 @@ namespace Game.Ai.V2
             int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
             if (singleUseStrike && IsExpendableWing(aircraft))
                 return PlanExpendableMultiTurnStrike(airfieldHex, aircraft, movement, actionHex, map, owner);
-            return PlanMultiTurnSortieCore(airfieldHex, null, aircraft, movement, path => path.Hexes.Count - 1,
+            return PlanMultiTurnSortieCore(airfieldHex, null, aircraft, movement,
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
 
@@ -341,7 +337,7 @@ namespace Game.Ai.V2
         // tier. Returns null outright whenever this group has no safe unlanded-end margin at all
         // (SafeUnlandedEndsRemaining <= 0) — such wings use the single-turn route proof.
         private static MultiTurnSortie? PlanMultiTurnSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
-            IReadOnlyList<UnitData> aircraft, int firstTurnMovement, System.Func<HexPath, int> pathCost,
+            IReadOnlyList<UnitData> aircraft, int firstTurnMovement,
             int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner,
             System.Func<HexCoord, int> additionalLandingClaims = null)
         {
@@ -351,7 +347,7 @@ namespace Game.Ai.V2
             if (safeRemaining <= 0)
                 return null;
 
-            HexPath outbound = HexPathfinder.FindPath(map, startHex, actionHex, flatCost: true);
+            HexPath outbound = AirRoute(map, startHex, actionHex);
             if (outbound == null)
                 return null;
             MultiTurnSortie? best = null;
@@ -366,14 +362,16 @@ namespace Game.Ai.V2
                     freeSlots += vacatingAtStart;
                 if (freeSlots < requiredSlots)
                     continue;
-                HexPath ret = HexPathfinder.FindPath(map, actionHex, landing, flatCost: true);
+                HexPath ret = AirRoute(map, actionHex, landing);
                 if (ret == null)
                     continue;
-                if (!AviationRange.TrySimulateHexSequence(AviationRange.CombineRoute(outbound, ret), outbound.Hexes.Count - 1, firstTurnMovement,
+                // One calendar over the combined route: the action hex appears once, no MP is
+                // lost or double-counted at the outbound/return cut.
+                if (!AviationRange.TrySimulateHexSequence(map, AviationRange.CombineRoute(outbound, ret), outbound.Hexes.Count - 1, firstTurnMovement,
                     aircraft, safeRemaining, owner, out int requiredTurns, out int requiredUnlandedEnds,
                     out HexCoord turn1Destination, out bool reachesActionThisTurn, out bool landsThisTurn))
                     continue;
-                int totalCost = pathCost(outbound) + pathCost(ret);
+                int totalCost = AirRouteCost(map, outbound) + AirRouteCost(map, ret);
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || requiredTurns < bestTurns
                     || (requiredTurns == bestTurns && forward < bestForward)
@@ -411,14 +409,14 @@ namespace Game.Ai.V2
             {
                 if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
                     continue;
-                HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
+                HexPath path = AirRoute(map, airArmy.Hex, landing);
                 if (path == null)
                     continue;
-                if (!AviationRange.TrySimulateHexSequence(path.Hexes, 0, airArmy.CurrentMovement, airArmy.Members, safeRemaining, owner,
+                if (!AviationRange.TrySimulateHexSequence(map, path.Hexes, 0, airArmy.CurrentMovement, airArmy.Members, safeRemaining, owner,
                     out int requiredTurns, out int requiredUnlandedEnds, out HexCoord turn1Destination, out _, out bool landsThisTurn))
                     continue;
 
-                int cost = AviationRules.PathMoveCost(airArmy, path);
+                int cost = AirRouteCost(map, path);
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || requiredTurns < bestTurns
                     || (requiredTurns == bestTurns && cost < bestCost)
@@ -504,21 +502,16 @@ namespace Game.Ai.V2
                 return int.MaxValue;
             if (FreeLandingCapacity(landing, player, air) < air.Members.Count)
                 return int.MaxValue;
-            HexPath path = HexPathfinder.FindPath(map, from, landing, flatCost: true);
-            return path != null ? AviationRules.PathMoveCost(air, path) : int.MaxValue;
+            return AirRouteCost(map, AirRoute(map, from, landing));
         }
 
-        public static int ReturnPathCostOrMax(HexMap map, ArmyData air, HexCoord landing)
-        {
-            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
-            return path != null ? AviationRules.PathMoveCost(air, path) : int.MaxValue;
-        }
+        public static int ReturnPathCostOrMax(HexMap map, ArmyData air, HexCoord landing) =>
+            AirRouteCost(map, AirRoute(map, air.Hex, landing));
 
         public static HexCoord? FirstRouteStep(HexMap map, HexCoord from, HexCoord to)
         {
             if (from.Equals(to)) return to;
-            HexPath path = HexPathfinder.FindPath(map, from, to, flatCost: true);
-            return FirstRouteStep(path);
+            return FirstRouteStep(AirRoute(map, from, to));
         }
 
         public static HexCoord? FirstRouteStep(HexPath path) =>

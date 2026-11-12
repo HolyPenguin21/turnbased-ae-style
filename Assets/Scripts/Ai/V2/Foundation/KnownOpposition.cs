@@ -40,7 +40,8 @@ namespace Game.Ai.V2
                 new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander,
                     Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, contact.Position.Value,
                         contact.Army.Owner), enemyArmyId,
-                    Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, contact.Position.Value, contact.Army.Owner)),
+                    Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, contact.Position.Value, contact.Army.Owner),
+                    environment: WeatherAt(snap, contact.Position.Value)),
             };
             AddCoOccupants(snap, contact.Position.Value, enemyArmyId, result);
             return result;
@@ -133,7 +134,8 @@ namespace Game.Ai.V2
                     && s.Defenders.Count > 0 && !s.IsAir && s.Owner != snap.Observer)
                     into.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
                         Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId,
-                        Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, s.Owner)));
+                        Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, s.Owner),
+                        environment: WeatherAt(snap, hex)));
             AddRememberedSiteResidents(snap, hex, excludeArmyId, into);
         }
 
@@ -168,9 +170,15 @@ namespace Game.Ai.V2
                     continue;
                 into.Add(new WorthIt.DefendingArmy(army.Members, army.Commander,
                     Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, army.Owner), army.ArmyId,
-                    Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, army.Owner)));
+                    Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, army.Owner),
+                    environment: WeatherAt(snap, hex)));
             }
         }
+
+        // Public weather of the battle hex (like terrain). A raid that may meet the army anywhere
+        // (includeSite false) has no known battle hex and stays Clear.
+        internal static Game.Combat.BattleEnvironment WeatherAt(WorldSnapshot snap, HexCoord hex) =>
+            Game.Combat.BattleEnvironment.At(hex, snap?.Map);
 
         private static IReadOnlyList<WorthIt.DefendingArmy> BuildRaid(WorldSnapshot snap, RaidTargetRef target, bool includeSite)
         {
@@ -196,7 +204,8 @@ namespace Game.Ai.V2
                 excludeArmyId = target.ArmyId;
                 result.Add(new WorthIt.DefendingArmy(own.Value.Defenders, own.Value.Commander,
                     includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, own.Value.Owner) : 0f, own.Value.ArmyId,
-                    includeSite ? Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, own.Value.Owner) : 0f));
+                    includeSite ? Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, own.Value.Owner) : 0f,
+                    environment: includeSite ? WeatherAt(snap, hex) : default));
                 if (includeSite) AddEventGuard(snap, hex, result);
             }
 
@@ -217,7 +226,7 @@ namespace Game.Ai.V2
                         includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null) : 0f,
                         buildingDefenseBonus: includeSite ? Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(
                             snap.Observer, g.Hex, defendingOwner: null) : 0f,
-                        isEventGuard: true));
+                        isEventGuard: true, environment: includeSite ? WeatherAt(snap, g.Hex) : default));
                     return;
                 }
         }
