@@ -111,11 +111,20 @@ public sealed class CampaignWeatherTests
     [Test]
     public void CaptureAndAutoResolve_NeverChangeTheRegionsWeather()
     {
-        var s = HumanTurn(Planet());
-        var pair = CampaignRules.LegalAttacks(s).First();
+        // An AI-vs-AI operation: the one kind the coarse auto-resolve model settles.
+        var s = Planet();
+        (int Source, int Target) pair = default;
+        foreach (Faction ai in s.TurnOrder.Where(f => f != s.HumanFaction))
+        {
+            s.CurrentTurnIndex = s.TurnOrder.IndexOf(ai);
+            pair = CampaignRules.LegalAttacks(s).FirstOrDefault(p =>
+                s.Regions.Find(r => r.RegionId == p.Target).OwnerFaction != s.HumanFaction);
+            if (!pair.Equals(default((int, int)))) break;
+        }
+        if (pair.Equals(default((int, int)))) Assert.Inconclusive("No AI-vs-AI border on this planet.");
         var before = Weathers(s);
         var c = Controller(s);
-        c.BeginAttack(pair.Source, pair.Target, true);
+        c.BeginAttack(pair.Source, pair.Target, false);
         var op = c.Snapshot.PendingOperation;
         c.ResolveFast(Deck(), Deck(), new CampaignBattleResolver());
         Assert.That(Weathers(c.Snapshot), Is.EqualTo(before), "the coarse auto-resolve model never touches weather");

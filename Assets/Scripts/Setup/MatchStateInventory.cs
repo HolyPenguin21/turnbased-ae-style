@@ -218,6 +218,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Progression.ProgressionContext", MatchStateKind.Profile),
             new MatchStateEntry("Game.Campaign.CampaignMatchBridge", MatchStateKind.Profile),
             new MatchStateEntry("Game.Ai.V2.StrategicEffectRegistry", MatchStateKind.Constant),
+            // the immutable empty-weather snapshot; live weather belongs to SandstormState
+            new MatchStateEntry("Game.Map.SandstormSnapshot", MatchStateKind.Constant),
             new MatchStateEntry("Game.Saves.MatchSaveSchema", MatchStateKind.Constant),
         };
 
