@@ -1,4 +1,5 @@
 using System;
+using Game.Map;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Core;
@@ -310,7 +311,7 @@ namespace Game.Campaign
                 }
             }
             SetLogo(ownerLogo, region.OwnerFaction); ownerName.text = FactionName(region.OwnerFaction);
-            regionConditionsText.text = $"Biome: {BiomeName(region.Biome)}\nSpecialization: {region.Specialization}\nRichness: {region.Richness}";
+            regionConditionsText.text = $"Biome: {BiomeName(region.Biome)}\nSpecialization: {region.Specialization}\nRichness: {region.Richness}\n{MatchWeatherConditions.Describe(region.Weather)}";
             if (attacksContent != null && attackRowPrefab != null)
                 RenderAttacks(s, region, region.OwnerFaction == s.HumanFaction ? "No attacks available from this region." : "Attack unavailable this turn.");
         }
@@ -420,7 +421,7 @@ namespace Game.Campaign
             bool attack = op.AttackerFaction == s.HumanFaction;
             string message = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name + "\nOperation: " + (attack ? "ATTACK" : "DEFENCE")
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);
-            message += BattleConditions(s.Regions.Find(r => r.RegionId == op.TargetRegionId));
+            message += BattleConditions(s.Regions.Find(r => r.RegionId == op.TargetRegionId), op.Weather);
             if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
             deckInfo.text = message;
             ClearChildren(deckListContent);
@@ -449,12 +450,10 @@ namespace Game.Campaign
             deckAutoResolve.gameObject.SetActive(enableHumanTestAutoResolve || op.TestAutoResolve);
         }
         private static string BiomeName(Biome biome) => biome == Biome.Arid ? "Arid badlands" : "Desert";
-        private string BattleConditions(RegionState target)
-        {
-            // Campaign battles already use two participants and the configured default radius.
-            var budget = MapGenerationSettings.ResourceBudget(2, gameConfig.mapGeneration.radius, target.ResourceConditions);
-            return $"\n{BiomeName(target.Biome)} · {target.Specialization} · {target.Richness}\n{budget.DescribeTarget()}";
-        }
+        // The player-facing battle conditions: the target region's properties and its weather (a
+        // pending operation passes its own weather snapshot). No generator internals here.
+        private static string BattleConditions(RegionState target, MatchWeatherProfile? weather = null) =>
+            $"\n{BiomeName(target.Biome)} · {target.Specialization} · {target.Richness}\n{MatchWeatherConditions.Describe(weather ?? target.Weather)}";
         private void StartBattle()
         {
             if (SceneLoadCurtain.IsLoading) return;

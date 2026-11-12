@@ -61,6 +61,7 @@ namespace Game.Saves
             data.antiAir.fired.AddRange(aa.FiredUnitIds); data.antiAir.prompted.AddRange(aa.Prompted);
             foreach (var gunner in aa.FacilityGunners) data.antiAir.gunners.Add(new MatchGunnerData { q = gunner.BuildingHex.Q, r = gunner.BuildingHex.R, slot = gunner.Slot, unitId = gunner.UnitId });
             data.stealth = StealthSystem.CaptureState(IncludeUnit);
+            data.weather = SandstormState.CaptureState();
         }
         private static string PlayerId(PlayerSetupData player) => player == null ? null : StateReference.PlayerId(player);
         internal void IncludePlayer(PlayerSetupData player)

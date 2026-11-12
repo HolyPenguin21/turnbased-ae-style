@@ -145,8 +145,17 @@ namespace Game.Core
         public static MapSize? SelectedMapSize { get; set; }
         public static Biome? SelectedBiome { get; set; }
         public static RegionResourceConditions? SelectedResourceConditions { get; set; }
+        // A campaign battle's weather (the target region's profile + the operation's seed). Null =
+        // no explicit choice: a standalone match gets the default profile with a fresh seed; an
+        // explicit Clear is never replaced by that default.
+        public static MatchWeatherConditions? SelectedWeather { get; set; }
         public static void ClearMapConditions()
-        { SelectedMapSize = null; SelectedBiome = null; SelectedResourceConditions = null; }
+        { SelectedMapSize = null; SelectedBiome = null; SelectedResourceConditions = null; SelectedWeather = null; }
+
+        // The weather a NEW match starts with (read once by GameTurnController.BeginGame).
+        public static MatchWeatherConditions ResolveWeather() =>
+            SelectedWeather ?? new MatchWeatherConditions(MatchWeatherConditions.StandaloneDefault,
+                unchecked(((long)System.Guid.NewGuid().GetHashCode() << 32) ^ (uint)System.Environment.TickCount));
 
         // fallbackRadius is MapGenerationSettings.radius — its own design-time default.
         public static int ResolveMapRadius(int fallbackRadius) =>

@@ -1,4 +1,5 @@
 using System;
+using Game.Map;
 using System.Collections.Generic;
 using Game.Core;
 using Game.Players;
@@ -13,6 +14,10 @@ namespace Game.Campaign
         public string CampaignId, OperationId, MatchId, SelectedHumanDeckId;
         public Faction AttackerFaction, DefenderFaction, HumanFaction;
         public int SourceRegionId, TargetRegionId;
+        // The target region's weather and the operation's weather seed this battle started with.
+        public MatchWeatherProfile Weather;
+        public long WeatherSeed;
+        public MatchWeatherConditions WeatherConditions => new MatchWeatherConditions(Weather, WeatherSeed);
     }
     // Authoritative whole-match result, produced only at GameTurnController's game-over boundary.
     public readonly struct CompletedMatchResult
@@ -99,11 +104,15 @@ namespace Game.Campaign
                 Controller.RegisterMatch(deckId, deck.name, GameSession.Players.Find(p => !p.IsHuman).AiDeckName ?? collection.Rules.Starting.GetDeck(enemy)?.deckName ?? "Standard " + enemy);
                 GameSession.SetCampaignContext(new CampaignMatchContext { CampaignId = s.CampaignId, OperationId = op.OperationId,
                     MatchId = op.MatchId, AttackerFaction = op.AttackerFaction, DefenderFaction = op.DefenderFaction, HumanFaction = s.HumanFaction,
-                    SourceRegionId = op.SourceRegionId, TargetRegionId = op.TargetRegionId, SelectedHumanDeckId = deckId });
+                    SourceRegionId = op.SourceRegionId, TargetRegionId = op.TargetRegionId, SelectedHumanDeckId = deckId,
+                    Weather = op.Weather, WeatherSeed = op.WeatherConditions.Seed });
                 var target = s.Regions.Find(r => r.RegionId == op.TargetRegionId);
+                if (target.Weather != op.Weather) throw new InvalidOperationException("Battle weather does not match its region.");
+                // After TryPrepareMatch: its CommitNewLaunch clears every previous map condition.
                 GameSession.SelectedMapSize = null;
                 GameSession.SelectedBiome = target.Biome;
                 GameSession.SelectedResourceConditions = target.ResourceConditions;
+                GameSession.SelectedWeather = op.WeatherConditions;
                 return true;
             }
             catch (Exception ex)

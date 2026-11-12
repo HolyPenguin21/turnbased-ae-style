@@ -24,18 +24,22 @@ namespace Game.Saves
         public string campaignId, operationId, matchId, selectedHumanDeckId;
         public Game.Players.Faction attacker, defender, human;
         public int sourceRegion, targetRegion;
+        public int weather;
+        public long weatherSeed;
         internal static MatchCampaignData Capture(CampaignMatchContext context) => context == null ? new MatchCampaignData() : new MatchCampaignData
         {
             campaignId = context.CampaignId, operationId = context.OperationId, matchId = context.MatchId,
             selectedHumanDeckId = context.SelectedHumanDeckId, attacker = context.AttackerFaction,
             defender = context.DefenderFaction, human = context.HumanFaction,
             sourceRegion = context.SourceRegionId, targetRegion = context.TargetRegionId,
+            weather = (int)context.Weather, weatherSeed = context.WeatherSeed,
         };
         internal CampaignMatchContext Restore() => new CampaignMatchContext
         {
             CampaignId = campaignId, OperationId = operationId, MatchId = matchId, SelectedHumanDeckId = selectedHumanDeckId,
             AttackerFaction = attacker, DefenderFaction = defender, HumanFaction = human,
             SourceRegionId = sourceRegion, TargetRegionId = targetRegion,
+            Weather = (Game.Map.MatchWeatherProfile)weather, WeatherSeed = weatherSeed,
         };
     }
     [Serializable] internal sealed class MatchSaveData
@@ -163,6 +167,10 @@ namespace Game.Saves
                 if (!data.world.players.Single(p => p.id == player.PlayerId).hasEconomy)
                     throw new ArgumentException("A match participant is missing its saved economy.");
             var current = data.turn.ValidateHumanTurn(graph.Players);
+            // The weather was last advanced by this very round's start; anything else is not the
+            // state of this turn.
+            if (data.world.weather == null || data.world.weather.lastRound != data.turn.Round)
+                throw new ArgumentException("The saved weather does not belong to the saved round.");
             if (data.presentation.CurrentViewerId != current.PlayerId || data.presentation.Vision == null
                 || humans.Any(h => !data.presentation.Vision.Any(v => v != null && v.PlayerId == h.PlayerId)))
                 throw new ArgumentException("The saved human perspective and vision are missing or mismatched.");
@@ -188,6 +196,12 @@ namespace Game.Saves
             MatchPresentationCodec.Validate(data.presentation, config, graph.Player, data.map, data.identity);
             var campaign = data.hasCampaign ? data.campaign.Restore() : null;
             if (campaign != null && campaign.MatchId != data.matchId) throw new ArgumentException("Campaign match identity mismatch.");
+            // World weather <-> campaign context (the context <-> operation <-> region half is
+            // CanRestoreContext). Separately valid parts never combine: World=Clear with a
+            // Two-storm battle is rejected before any world mutation.
+            if (campaign != null && (!MatchWeatherConditions.IsValid(campaign.Weather)
+                || !graph.WeatherConditions.Equals(campaign.WeatherConditions)))
+                throw new ArgumentException("The saved weather does not match its campaign battle.");
             // Durable campaign progress can make an intact tactical save unavailable.
             // Do not classify that as corruption and load a different match from .bak.
             if (!CampaignMatchBridge.CanRestoreContext(campaign, out var error)) throw new NotSupportedException(error);

@@ -23,6 +23,8 @@ namespace Game.Saves
         public List<MatchBattleData> battles = new List<MatchBattleData>();
         public MatchAntiAirData antiAir = new MatchAntiAirData();
         public StealthState stealth = new StealthState();
+        // The match weather: profile, seed and every storm slot exactly (SandstormState).
+        public SandstormStateData weather = new SandstormStateData();
     }
     [Serializable] internal sealed class MatchPlayerData
     {

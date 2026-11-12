@@ -169,6 +169,9 @@ namespace Game.EditorTests
             var oldMap = oldMapObject.AddComponent<HexMap>();
             var generator = oldMapObject.AddComponent<HexMapGenerator>(); Set(generator, "gameConfig", config);
             generator.Generate();
+            // A real match owns its weather from BeginGame; this one has reached round 7.
+            SandstormState.Initialize(new MatchWeatherConditions(MatchWeatherProfile.OneSandstorm, 11), oldMap);
+            SandstormState.AdvanceRound(oldMap, SavedTurn().Round);
             var human = new PlayerSetupData { PlayerId = "human", IsHuman = true, Faction = Faction.IronConcord };
             var ai = new PlayerSetupData { PlayerId = "ai", ColorIndex = 1, Faction = Faction.IronConcord };
             human.Hand = new PlayerHandData(new[] { faction.cards[0], faction.cards[0], faction.cards[0] }, 1, 4);

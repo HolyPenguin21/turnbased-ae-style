@@ -1,4 +1,5 @@
 using System;
+using Game.Map;
 using System.IO;
 using System.Linq;
 using Game.Cards;
@@ -76,7 +77,7 @@ namespace Game.Campaign
         private static void ValidateSchema(int version)
         {
             if (version > CampaignState.CurrentSchema) throw new NotSupportedException("Campaign needs a newer game version.");
-            if (version == 1) throw new ObsoleteCampaignException();
+            if (version == 1 || version == 2) throw new ObsoleteCampaignException();
             if (version != CampaignState.CurrentSchema) throw new InvalidDataException("Invalid campaign schema.");
         }
         private static CampaignState Read(string file)
@@ -102,7 +103,8 @@ namespace Game.Campaign
             foreach (var region in s.Regions)
                 if (!Enum.IsDefined(typeof(Biome), region.Biome)
                     || !Enum.IsDefined(typeof(ResourceSpecialization), region.Specialization)
-                    || !Enum.IsDefined(typeof(ResourceRichness), region.Richness))
+                    || !Enum.IsDefined(typeof(ResourceRichness), region.Richness)
+                    || !MatchWeatherConditions.IsValid(region.Weather))
                     throw new InvalidDataException("Invalid region conditions.");
             foreach (var f in s.Factions) if (f.Eliminated == s.Regions.Any(r => r.OwnerFaction == f.Faction)) throw new InvalidDataException("Elimination mismatch.");
             if (s.BattleHistory.Any(h => h == null || !Guid.TryParseExact(h.OperationId, "N", out _) || h.Round < 1 || h.Round > s.RoundNumber
@@ -130,6 +132,7 @@ namespace Game.Campaign
             if (!Guid.TryParseExact(op.OperationId, "N", out _) || (op.Manual ? !Guid.TryParseExact(op.MatchId, "N", out _) : !string.IsNullOrEmpty(op.MatchId))
                 || !CampaignRules.IsPlayable(op.AttackerFaction) || !CampaignRules.IsPlayable(op.DefenderFaction) || op.AttackerFaction == op.DefenderFaction
                 || source == null || target == null || source.OwnerFaction != op.AttackerFaction || !source.NeighborIds.Contains(target.RegionId)
+                || !MatchWeatherConditions.IsValid(op.Weather) || op.Weather != target.Weather
                 || op.AttackerFaction != s.CurrentFaction || (op.TestAutoResolve && (!op.Manual || string.IsNullOrWhiteSpace(op.SelectedHumanDeckId))) || op.Manual != (op.AttackerFaction == s.HumanFaction || op.DefenderFaction == s.HumanFaction)
                 || !Enum.IsDefined(typeof(CampaignOutcome), op.Outcome) || (op.OwnershipApplied && !op.ResultRecorded)
                 || (op.RewardAcknowledged && !op.ResultRecorded)

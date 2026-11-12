@@ -1,4 +1,5 @@
 using System;
+using Game.Map;
 
 namespace Game.Campaign
 {
@@ -24,7 +25,11 @@ namespace Game.Campaign
                 || op.OperationId != context.OperationId || op.MatchId != context.MatchId
                 || op.AttackerFaction != context.AttackerFaction || op.DefenderFaction != context.DefenderFaction
                 || op.SourceRegionId != context.SourceRegionId || op.TargetRegionId != context.TargetRegionId
-                || op.SelectedHumanDeckId != context.SelectedHumanDeckId)
+                || op.SelectedHumanDeckId != context.SelectedHumanDeckId
+                // Weather: the saved context, the pending operation and the target region agree.
+                || !MatchWeatherConditions.IsValid(context.Weather) || op.Weather != context.Weather
+                || op.WeatherConditions.Seed != context.WeatherSeed
+                || state.Regions?.Find(r => r.RegionId == op.TargetRegionId)?.Weather != op.Weather)
             {
                 error = "This save no longer matches the campaign's pending battle.";
                 return false;

@@ -106,7 +106,7 @@ internal static class IntegrationProgram
         AntiAirState.RecordPrompted(unit,army.Id,true);
         VisionSystem.RestoreState(new VisionState{CurrentViewerId="human",Players=new List<PlayerVisionState>{new PlayerVisionState{PlayerId="human",Visible=new List<HexCoord>{Home},Visited=new List<HexCoord>{Home},EverSeen=new List<HexCoord>{Home}}}},id=>id=="human"?human:ai);
         OperationContinuationWindow.HoldMobilization(ai,6);
-        var map=Map(config,layout);var selection=IntegrationNative.New<HexSelectionController>();Set(selection,"map",map);Set(selection,"gameConfig",config);
+        var map=Map(config,layout);SandstormState.Initialize(new MatchWeatherConditions(MatchWeatherProfile.Clear,5),map);SandstormState.AdvanceRound(map,7);var selection=IntegrationNative.New<HexSelectionController>();Set(selection,"map",map);Set(selection,"gameConfig",config);
         var turns=Turns(config,selection);
         turns.ResumeGame(new GameTurnState{Round=7,PlayerOrder=new[]{"ai","eliminated","human"},CurrentPlayerIndex=2,Completed=new[]{new PlayerTurnCount{PlayerId="ai",CompletedTurns=7},new PlayerTurnCount{PlayerId="eliminated",CompletedTurns=6},new PlayerTurnCount{PlayerId="human",CompletedTurns=6}},GreetingsShown=new[]{"human"},PendingMessages=Array.Empty<PlayerTurnMessages>()});
         Check(turns.CanSaveMatch(out string reason),reason);
