@@ -461,7 +461,8 @@ namespace Game.Ai.V2
                     break;
                 planExcluded.Add(plan.BaseArmyId);
             }
-            if (!pinnedActor.HasValue)
+            // A hero-only contact is a free scout's job (IsScoutDisplacementOnly): no sortie.
+            if (!pinnedActor.HasValue && !GroundCombatActorEligibility.IsHeroOnlyOpposition(opposition))
             {
                 response.Sortie = PlanGarrisonSortie(snap, objective, opposition, planExcluded);
                 ArmySnapshot detachment = response.Sortie?.Detachment;
@@ -544,26 +545,38 @@ namespace Game.Ai.V2
         internal static bool IsSignificantHostilePower(float effectiveArmyPower) =>
             effectiveArmyPower >= AiConfigV2.activeDefenceMinEnemyPower;
 
-        // An enemy standing on a structure this player remembers as someone else's is never an
-        // intercept. A fight there could capture/destroy the building; Attack owns only hostile
-        // Bases/Citadels (AttackObjectiveEvaluator.IsHostileStrategicStructure). The ground-move gate also
-        // refuses a foreign takeover by an Intercept. Deciding it here, at admission, keeps
-        // the planner, Demand and Continuity on one answer: no objective, no pursuit.
+        // An enemy standing on a structure this player remembers as someone else's is an
+        // ImmediateOpportunity only on a live opponent's extractor that was seen collecting
+        // (DeniedIncome > 0): winning there razes it and ends that income (2026-11-12). Every
+        // other foreign structure blocks: Bases/Citadels are Attack's
+        // (AttackObjectiveEvaluator.IsHostileStrategicStructure), and a neutral, eliminated or
+        // idle structure has no income to deny. The strategic Intercept keeps the plain rule
+        // (OnKnownForeignStructure). Deciding it here, at admission, keeps the planner, Demand
+        // and Continuity on one answer: no objective, no pursuit.
         internal static bool BlocksImmediateIntercept(WorldSnapshot snap, HexCoord hex) =>
             snap?.Known?.Buildings?.Any(b => b.Hex.Equals(hex) && b.Owner != null
-                && b.Owner != snap.Observer
-                && (b.Owner.IsNeutral || b.Owner.IsEliminated || b.IsBase || b.IsStartingCitadel)) == true;
+                && b.Owner != snap.Observer && DeniedIncome(snap, b) <= 0f) == true;
+
+        // Observed per-turn collection of a live opponent's extractor; 0 for anything else.
+        private static float DeniedIncome(WorldSnapshot snap, AiMapMemory.KnownBuilding b)
+        {
+            if (b.Owner == null || b.Owner == snap?.Observer || b.Owner.IsNeutral || b.Owner.IsEliminated
+                || b.IsBase || b.IsStartingCitadel)
+                return 0f;
+            float income = 0f;
+            foreach (int amount in b.CollectedAmounts ?? Array.Empty<int>())
+                income += Math.Max(0, amount);
+            return income;
+        }
 
         private static float ExtractorDenial(WorldSnapshot snap, HexCoord hex)
         {
-            var structure = snap.Known.Buildings?.FirstOrDefault(b => b.Hex.Equals(hex)
-                && b.Owner != null && b.Owner != snap.Observer && !b.Owner.IsNeutral
-                && !b.IsBase && !b.IsStartingCitadel);
-            if (!structure.HasValue || structure.Value.Owner == null) return 0f;
             float income = 0f;
-            foreach (int amount in structure.Value.CollectedAmounts ?? Array.Empty<int>())
-                income += Math.Max(0, amount);
-            return TaskScoreEvaluator.EconomicHexBenefit(income, 0f);
+            foreach (AiMapMemory.KnownBuilding b in snap.Known?.Buildings
+                ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>())
+                if (b.Hex.Equals(hex))
+                    income = Math.Max(income, DeniedIncome(snap, b));
+            return income <= 0f ? 0f : TaskScoreEvaluator.EconomicHexBenefit(income, 0f);
         }
 
         internal static bool OnKnownForeignStructure(WorldSnapshot snap, HexCoord hex)

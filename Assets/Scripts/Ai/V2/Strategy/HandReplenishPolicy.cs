@@ -39,10 +39,23 @@ namespace Game.Ai.V2
             return System.Math.Max(0, wanted);
         }
 
+        // The draws the opening card's kept AP alone took away from the turn-start refill.
+        internal static int WithheldForOpening(int wantedKeepingOpening, int wantedWithoutOpening) =>
+            System.Math.Max(0, wantedWithoutOpening - wantedKeepingOpening);
+
+        // After the opening: never more than was withheld, never past today's ordinary limits.
+        internal static int MadeUpDraws(int withheld, int wantedNow) =>
+            System.Math.Max(0, System.Math.Min(withheld, wantedNow));
+
         // Draws the wanted cards; returns how many were drawn. Each draw debits the shared
         // per-turn tempo budget, so Phase B's terminal draws see the reduced allowance.
-        internal static int Run(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        // `withheldForOpening` — draws this refill skipped only to keep the opening heavy card
+        // affordable (HighImpactDeployment.RefillApToKeep); RunWithheld makes them up once the
+        // opening has decided, so a card the opening declines never starves the hand.
+        internal static int Run(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            out int withheldForOpening)
         {
+            withheldForOpening = 0;
             if (player == null || root == null || hand == null || ctx == null)
                 return 0;
             StrategicTempoBudget budget = StrategicTempoBudget.For(player, ctx.TurnNumber);
@@ -58,12 +71,42 @@ namespace Game.Ai.V2
             int apToKeep = System.Math.Max(AiConfigV2.handReplenishMinApLeft, heavyAp) + aviationAp;
             int wanted = DrawsWanted(handBefore, ctx.HandCapacity - handBefore, deckCount,
                 apBefore, apToKeep, ctx.DrawApCost, budget.DrawActionsUsed);
+            withheldForOpening = WithheldForOpening(wanted, DrawsWanted(handBefore, ctx.HandCapacity - handBefore,
+                deckCount, apBefore, AiConfigV2.handReplenishMinApLeft + aviationAp, ctx.DrawApCost,
+                budget.DrawActionsUsed));
 
             int drawn = Draw(player, root, hand, ctx, budget, wanted, "strat.replenish");
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: hand replenish - hand {handBefore}->{hand.Hand.Count}"
                 + $"/{ctx.HandCapacity}, drew {drawn}, spendable AP {apBefore}->{SpendableAp(player, root, ctx)} "
                 + $"(target {AiConfigV2.handReplenishTargetCards}, keep {apToKeep} AP = "
-                + $"{AiConfigV2.handReplenishMinApLeft} + aviation {aviationAp})");
+                + $"{AiConfigV2.handReplenishMinApLeft} + aviation {aviationAp}, opening card {heavyAp}"
+                + $"; withheld {withheldForOpening})");
+            return drawn;
+        }
+
+        // 2026-11-12 — the turn-start draws held back for the opening heavy card, made up as soon as
+        // the opening has decided (played it, or its own gates declined it: siege, no military need,
+        // not a peak body, low utility). The turn-start refill cannot read those gates (no snapshot
+        // yet); Phase B gets only the AP missions leave, so without this a declined card would cut
+        // the refill every turn. Same per-turn caps, free slots and kept AP (+ promised follow-up).
+        internal static int RunWithheld(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, int withheld, float reservedFollowupAp = 0f)
+        {
+            if (withheld <= 0 || player == null || root == null || hand == null || ctx == null
+                || !hand.HasFreeSlot)
+                return 0;
+            int handBefore = hand.Hand.Count;
+            int deckCount = hand.RemainingDeck?.Count ?? 0;
+            if (handBefore >= AiConfigV2.handReplenishTargetCards || deckCount <= 0)
+                return 0;
+            StrategicTempoBudget budget = StrategicTempoBudget.For(player, ctx.TurnNumber);
+            int apToKeep = AiConfigV2.handReplenishMinApLeft + AviationObligations.ActivationAp(player, ctx)
+                + (int)System.Math.Ceiling(System.Math.Max(0f, reservedFollowupAp));
+            int wanted = MadeUpDraws(withheld, DrawsWanted(handBefore, ctx.HandCapacity - handBefore,
+                deckCount, SpendableAp(player, root, ctx), apToKeep, ctx.DrawApCost, budget.DrawActionsUsed));
+            int drawn = Draw(player, root, hand, ctx, budget, wanted, "strat.replenish-withheld");
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: hand replenish after opening - withheld {withheld}, "
+                + $"drew {drawn}, hand {handBefore}->{hand.Hand.Count}/{ctx.HandCapacity} (keep {apToKeep} AP)");
             return drawn;
         }
 

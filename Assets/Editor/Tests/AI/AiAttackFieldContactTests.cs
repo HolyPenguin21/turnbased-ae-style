@@ -267,15 +267,18 @@ namespace Game.EditorTests
             finally { visible.Remove(Us); }
         }
 
-        // Playtest 2026-11-01 (Draven T16/T20): a lone hero on the path cannot damage the march;
-        // its low chance is the Capture/Kill escape chance, so it is bypassed, never a Retreat.
-        [Test]
-        public void HeroOnlyContactOnThePath_IsDisplacedNotBypassed()
+        // Playtest 2026-11-01 (Draven T16/T20): a lone hero on the path cannot damage the march,
+        // never a Retreat. 2026-11-12 (owner): it yields its hex, but the battle ends today's
+        // movement, so it is fought only at the end of today's march (HeroDisplacementPays):
+        // mid-day it is bypassed, on the last MP it is cleared.
+        [TestCase(2, false)]
+        [TestCase(3, true)]
+        public void HeroOnlyContactOnThePath_IsDisplacedOnlyOnTheLastMovementPoint(int q, bool fights)
         {
             ArmySnapshot us = Army(7, Origin, new[] { Body(2, 2, 6) });
             var hero = new WorthIt.DefenderProfile(0f, false, null, 0f, 6f, 0, null, 6f,
                 isGroundCombatant: false, isHero: true, fateMax: 12);
-            var hex = new HexCoord(2, 0);
+            var hex = new HexCoord(q, 0);
             WorldSnapshot snap = Snap(us, Sight(5, hex, Red, new[] { hero }));
             AttackTacticalOpportunity.ClearsContact(us.Members, us.Commander,
                 KnownOpposition.OnHex(snap, hex), 0f, out float win, out _);
@@ -284,8 +287,21 @@ namespace Game.EditorTests
             AttackLocalAction action = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null);
 
             Assert.That(action.Kind, Is.Not.EqualTo(AttackLocalActionKind.Retreat));
-            Assert.That(action.FightsPathContact, Is.True);
+            Assert.That(action.FightsPathContact, Is.EqualTo(fights));
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null, null,
+                departure: true).FightsPathContact, Is.False, "a start never stops on a lone hero");
         }
+
+        [TestCase(2, 12, 3, 12, false, TestName = "HeroDisplacement_MidDay_DetourKeepsMoreProgress")]
+        [TestCase(3, 12, 3, 12, true, TestName = "HeroDisplacement_LastMovementPoint_Pays")]
+        [TestCase(4, 12, 3, 12, false, TestName = "HeroDisplacement_BeyondTodaysMovement_WaitsForTomorrow")]
+        [TestCase(2, 3, 3, 3, false, TestName = "HeroDisplacement_TargetReachableTodayAround_Bypasses")]
+        [TestCase(1, 12, 3, -1, true, TestName = "HeroDisplacement_NoDetour_ClearsTheRoute")]
+        [TestCase(2, 12, 3, 14, true, TestName = "HeroDisplacement_LongDetour_Pays")]
+        public void HeroDisplacementPays_ComparesProgressTowardTheTarget(int contact, int route, int mp,
+            int detour, bool pays) =>
+            Assert.That(AttackTacticalOpportunity.HeroDisplacementPays(contact, route, mp,
+                detour < 0 ? (int?)null : detour), Is.EqualTo(pays));
 
         // A beatable army sharing its hex with an escape-prone lone hero: the package win carries
         // the Capture/Kill chance, the Retreat rule asks only the fight. An unbeatable army there
@@ -864,6 +880,28 @@ namespace Game.EditorTests
             Assert.That(GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
                 Opposition = new[] { new WorthIt.DefendingArmy(new[] { hero, Body(2, 1, 3) }, default) },
                 AllowSameHexAssembly = false, AllowHeroDisplacement = true }).Feasible, Is.False);
+        }
+
+        // 2026-11-12 (owner) — displacing a lone hero is the free scout's job: a real army would
+        // trade its whole day (every battle ends movement) for a hex the hero may re-enter.
+        [Test]
+        public void HeroOnlyDisplacement_IsNeverAnArmysJob_EvenWhenNoScoutExists()
+        {
+            ArmySnapshot army = Army(7, Origin, Strong());
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 20);
+            var snap = Snap(army);
+            var heroOnly = new[] { new WorthIt.DefendingArmy(new[] { hero }, default) };
+            Assert.That(GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
+                Opposition = heroOnly, AllowHeroDisplacement = true }).Feasible, Is.False);
+            Assert.That(GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, heroOnly, 7, .8f,
+                allowHeroDisplacement: true).Feasible, Is.False, "continuation releases an army on it too");
+            Assert.That(GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest {
+                Opposition = heroOnly, AllowHeroDisplacement = true }), Is.Empty);
+            var escorted = new[] { new WorthIt.DefendingArmy(new[] { hero, Body(2, 1, 3) }, default) };
+            Assert.That(GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest {
+                Opposition = escorted, AllowHeroDisplacement = true }).Feasible, Is.True,
+                "an escorted hero is an ordinary fight for an ordinary army");
         }
 
         // ---- world revision: a decision is not a mutation -----------------------------------------

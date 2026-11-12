@@ -6,6 +6,9 @@ namespace Game.Ai.V2
     {
         public bool StateChanged;
         internal bool OpeningDeploymentConsidered;
+        // Turn-start refill draws held back for the opening card (HandReplenishPolicy.RunWithheld).
+        // Set once on the turn's aggregate; consumed when the opening has decided.
+        internal int OpeningRefillWithheld;
         public int CardsPlayed;
         public int CardsDrawn;
 

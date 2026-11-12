@@ -14,6 +14,24 @@ namespace Game.EditorTests
             HandReplenishPolicy.DrawsWanted(handCount, freeSlots, deckCount, ap,
                 apToKeep < 0 ? Keep : apToKeep, DrawCost, drawsUsed);
 
+        // 2026-11-12 — a heavy hand card keeps its AP through the turn-start refill; the draws that
+        // cost are made up once the opening has decided, within the limits of that moment.
+        [Test]
+        public void OpeningCardWithholdsOnlyTheDrawsItsApTakes_AndTheyAreMadeUpAfterwards()
+        {
+            int keeping = Wanted(ap: 12, apToKeep: 10);
+            int plain = Wanted(ap: 12);
+            int withheld = HandReplenishPolicy.WithheldForOpening(keeping, plain);
+            Assert.AreEqual(1, keeping);
+            Assert.AreEqual(plain - keeping, withheld);
+            Assert.That(withheld, Is.GreaterThan(0));
+            Assert.AreEqual(withheld, HandReplenishPolicy.MadeUpDraws(withheld, Wanted(ap: 10)),
+                "declined card: its AP is spendable again");
+            Assert.AreEqual(0, HandReplenishPolicy.MadeUpDraws(withheld, Wanted(ap: 3)),
+                "played card: the floor still holds");
+            Assert.AreEqual(0, HandReplenishPolicy.WithheldForOpening(plain, plain));
+        }
+
         [Test]
         public void EmptyHand_DrawsUpToTarget()
         {

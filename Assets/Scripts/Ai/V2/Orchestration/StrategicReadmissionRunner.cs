@@ -142,7 +142,16 @@ namespace Game.Ai.V2
                     _ctx, _apBudget, _frame.Demands, _frame.Commitments, _frame.IntentState,
                     _frame.Intents, _frame.Recon, null, _radar, true, opening));
             _phases.PhaseA.Accumulate(opening);
-            if (openingChanged)
+            // The deferred opening has decided: make up the refill draws held back for it.
+            int madeUp = 0;
+            if (_phases.PhaseA.OpeningDeploymentConsidered && _phases.PhaseA.OpeningRefillWithheld > 0)
+            {
+                madeUp = HandReplenishPolicy.RunWithheld(_player, _root, _hand, _ctx,
+                    _phases.PhaseA.OpeningRefillWithheld, _apBudget.ReservedFollowup());
+                _phases.PhaseA.OpeningRefillWithheld = 0;
+                _phases.PhaseA.CardsDrawn += madeUp;
+            }
+            if (openingChanged || madeUp > 0)
             {
                 yield return _frame.AcceptChangedReentry();
                 dirtyAxes = new HashSet<DesireAxis>(DesireAxes.All);

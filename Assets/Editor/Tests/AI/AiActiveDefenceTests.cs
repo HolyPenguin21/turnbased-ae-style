@@ -2116,18 +2116,25 @@ namespace Game.EditorTests
         private static ActiveDefenceObjective ImmediateObjective(WorldSnapshot snap) =>
             ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap).Single();
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Immediate_HeroOnExtractorCanBeDisplaced_StrongholdStaysWithAttack(bool stronghold)
+        // 2026-11-12 — only a live opponent's extractor seen collecting is denied; a stronghold
+        // stays Attack's, an idle or neutral structure has no income to deny and blocks.
+        [TestCase("extractor")]
+        [TestCase("stronghold")]
+        [TestCase("idle")]
+        [TestCase("neutral")]
+        public void Immediate_ContactOnForeignStructure_OnlyAnEarningEnemyExtractorIsDenied(string kind)
         {
             var owner = new PlayerSetupData();
             var actor = DefenceActor(owner, 7, new HexCoord(0, 0));
             var hex = new HexCoord(-2, 0);
             var snap = ImmediateWorld(owner, hex, true, true, actor);
             var contact = snap.Threat.Contacts[0];
-            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(hex, contact.Army.Owner,
-                false, null, collectedAmounts: new[] { 0, 0, 2, 0 }, isBase: stronghold) };
-            if (stronghold)
+            PlayerSetupData structureOwner = kind == "neutral"
+                ? new PlayerSetupData { IsNeutral = true } : contact.Army.Owner;
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(hex, structureOwner,
+                false, null, collectedAmounts: kind == "idle" ? new[] { 0, 0, 0, 0 } : new[] { 0, 0, 2, 0 },
+                isBase: kind == "stronghold") };
+            if (kind != "extractor")
                 Assert.That(ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap), Is.Empty);
             else
             {

@@ -29,8 +29,9 @@ namespace Game.Ai.V2
             var bases = world.Buildings.Where(b => b.IsBase).Select(b => b.Hex).ToHashSet();
             var armies = world.Armies.Where(a => !a.IsGarrison && !a.IsPrison
                 && bases.Contains(a.Hex)).ToList();
+            // The same body set IsCandidate compares with: every non-prison ground battle body.
             float strongest = world.Armies.Where(a => !a.IsPrison).SelectMany(a => a.Members)
-                .Where(u => u != null && !u.IsHero && !u.IsAviation && !u.IsPrisoner)
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u) && !u.IsHero)
                 .Select(u => AiPower.EffectiveArmyPower(new[] { AiPower.ToPowerUnit(u) }))
                 .DefaultIfEmpty(0f).Max();
             int keep = 0;
@@ -88,10 +89,13 @@ namespace Game.Ai.V2
             float incoming = AiPower.EffectiveArmyPower(new[] { AiPower.ToPowerUnit(card) });
             float strongest = 0f;
             foreach (ArmySnapshot army in snap.Self.Armies ?? Array.Empty<ArmySnapshot>())
-                foreach (var body in army?.Members ?? Array.Empty<Game.Combat.WorthIt.DefenderProfile>())
-                    if (body.IsGroundCombatant && !body.IsHero)
+            {
+                if (army == null || army.IsPrison) continue;
+                foreach (var body in army.Members ?? Array.Empty<Game.Combat.WorthIt.DefenderProfile>())
+                    if (AiArmyRoles.IsGroundBattleBody(body) && !body.IsHero)
                         strongest = Mathf.Max(strongest,
                             AiPower.EffectiveArmyPowerFromProfiles(new[] { body }));
+            }
             return incoming > 0f && incoming > strongest * MinimumPowerImprovement;
         }
 
@@ -101,6 +105,26 @@ namespace Game.Ai.V2
             PhaseAEconomyHolds.ClaimDemandBuildCards(pass);
             pass.Partition();
             PhaseAEconomyHolds.HoldPreIntentBuild(pass);
+        }
+
+        // The live demands claim cards for `read` only, then leave the carried residual pool as
+        // they found it (residuals already there stay; nothing new survives, even on a throw).
+        internal static T WithTemporaryClaims<T>(MaterializationReservation reservation,
+            IEnumerable<AxisDemand> demands, Func<T> read)
+        {
+            var added = new List<AxisDemand>();
+            foreach (AxisDemand demand in demands ?? Array.Empty<AxisDemand>())
+                if (demand != null && !reservation.UnresolvedDemands.Contains(demand))
+                {
+                    reservation.UnresolvedDemands.Add(demand);
+                    added.Add(demand);
+                }
+            try { return read(); }
+            finally
+            {
+                foreach (AxisDemand demand in added)
+                    reservation.UnresolvedDemands.Remove(demand);
+            }
         }
 
         internal static bool TryPlay(PhaseAPass pass)
@@ -128,13 +152,15 @@ namespace Game.Ai.V2
             if (PhaseAOperationSupport.Assess(pass) != null) return pass.Result.StateChanged;
             // Unresolved operational claims must constrain the surplus placement as they do later
             // in the turn. Do not deploy a card into a reserve that its real consumer cannot use.
-            foreach (AxisDemand demand in pass.Demands)
-                if (!pass.Reservation.UnresolvedDemands.Contains(demand))
-                    pass.Reservation.UnresolvedDemands.Add(demand);
+            // The claims are this ranking's input only: the carried reservation is the turn's
+            // residual pool, and these live demands are not residuals (Phase A publishes its own;
+            // after a delivery the demand frame is rebuilt), so they leave it right after ranking.
             float available = StrategicSpendability.SpendableAp(pass.Player, pass.Root, pass.Ctx)
                 - pass.ApBudget.ReservedFollowup();
-            foreach (var candidate in MaterializationCandidateBuilder.RankedSurplus(pass.Snap,
-                pass.Player, pass.Root, pass.Hand, pass.Ctx, inventory, pass.Commitments, pass.Reservation))
+            List<(MaterializationPlan plan, float utility)> ranked = WithTemporaryClaims(pass.Reservation,
+                pass.Demands, () => MaterializationCandidateBuilder.RankedSurplus(pass.Snap, pass.Player,
+                    pass.Root, pass.Hand, pass.Ctx, inventory, pass.Commitments, pass.Reservation));
+            foreach (var candidate in ranked)
             {
                 MaterializationPlan plan = candidate.plan;
                 float activation = AiPower.ProjectMaterialization(plan).ActivationApCost

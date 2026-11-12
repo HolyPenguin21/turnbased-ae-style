@@ -149,6 +149,7 @@ namespace Game.Ai.V2
             AttackLocalAction pathFight = default;
             bool hasPathFight = false;
             bool pathContactBypassed = false;
+            int? detourCost = null;
             int cumulative = 0;
             for (int i = 1; i < route.Hexes.Count; i++)
             {
@@ -179,6 +180,31 @@ namespace Game.Ai.V2
                 float bonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, h);
                 bool fightable = ClearsContact(attackers, army.Commander, opposition,
                     bonus, out float win, out bool cover);
+                // 2026-11-12 (owner) — a hero-only contact always yields its hex, but every battle
+                // ends today's movement and the hero usually escapes to stand in the way again.
+                // It is fought when that is a likely kill (the Capture/Kill odds clear the local
+                // gate: the hero leaves the game — the pre-2026-11-12 rule) or when the march loses
+                // nothing by it (HeroDisplacementPays); otherwise bypassed like any contact we do
+                // not fight. A start never holds on it, so the walk goes on to the contacts behind.
+                if (fightable && GroundCombatActorEligibility.IsHeroOnlyOpposition(opposition)
+                    && (departure || WorthIt.EstimateCaptureKill(attackers, army.Commander, opposition).WinChance
+                        < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate))
+                {
+                    if (!departure)
+                        detourCost ??= RouteOf(snap, player, army.Hex, mainHex, currentMovement, maxMovement,
+                            SafeRouteProfile.Combat)?.TotalCost ?? int.MaxValue;
+                    if (departure || !HeroDisplacementPays(cumulative, route.TotalCost, currentMovement,
+                            detourCost.Value == int.MaxValue ? (int?)null : detourCost.Value))
+                    {
+                        pathContactBypassed = true;
+                        AiDebugLog.WriteDeduped($"atk-path-{main.DiagnosticLabel}-{h.Q},{h.R}-hero",
+                            $"[AI][V2][Attack][Contact] decision=BYPASS target={main.DiagnosticLabel} "
+                            + $"at ({h.Q},{h.R}) reason=hero_displacement_costs_the_march "
+                            + $"contactCost={cumulative} mp={currentMovement} route={route.TotalCost} "
+                            + $"detour={(!detourCost.HasValue ? "departure" : detourCost.Value == int.MaxValue ? "none" : detourCost.Value.ToString(CultureInfo.InvariantCulture))}");
+                        continue;
+                    }
+                }
                 // 2026-11-01 — only an army that fields a ground combatant can beat us: a hero-only
                 // contact's low chance is its Capture/Kill escape chance, never a lost fight, so it
                 // is bypassed like any other contact we do not fight.
@@ -228,7 +254,7 @@ namespace Game.Ai.V2
             {
                 // The straight path is spoiled by a contact we will not fight: reachability is that
                 // of the route that goes around it (Combat profile blocks every remembered army).
-                int around = RouteOf(snap, player, army.Hex, mainHex, currentMovement, maxMovement,
+                int around = detourCost ?? RouteOf(snap, player, army.Hex, mainHex, currentMovement, maxMovement,
                     SafeRouteProfile.Combat)?.TotalCost ?? int.MaxValue;
                 reachableNow = around != int.MaxValue && around <= currentMovement;
             }
@@ -468,6 +494,25 @@ namespace Game.Ai.V2
                 if (b.Hex.Equals(hex) && b.Owner == holder.Value.Owner)
                     return true;
             return false;
+        }
+
+        // 2026-11-12 (owner) — whether clearing a hero-only contact on the path is worth the day.
+        // The fight ends today's movement on the contact hex (every battle does) and the hero is
+        // usually not captured, so it pays only when it costs the march nothing:
+        //  · the hex is within today's movement (beyond it: decide tomorrow, the hero may move);
+        //  · the target is not reachable today around it (that is the day the bypass wins);
+        //  · from the contact hex no more route is left than after a full day on the detour —
+        //    the hero stands at the end of today's march, or there is no way around at all.
+        internal static bool HeroDisplacementPays(int contactCost, int straightRouteCost,
+            int currentMovement, int? detourRouteCost)
+        {
+            if (contactCost > currentMovement)
+                return false;
+            if (!detourRouteCost.HasValue)
+                return true;
+            if (detourRouteCost.Value <= currentMovement)
+                return false;
+            return straightRouteCost - contactCost <= detourRouteCost.Value - currentMovement;
         }
 
         // The local-contact gate values control of the hex. A hero that escapes still

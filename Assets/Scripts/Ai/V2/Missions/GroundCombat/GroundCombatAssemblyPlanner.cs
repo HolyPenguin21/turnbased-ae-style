@@ -296,7 +296,8 @@ namespace Game.Ai.V2
                     return exact;
             }
 
-            if (!request.AllowSameHexAssembly)
+            if (!request.AllowSameHexAssembly
+                || GroundCombatActorEligibility.IsScoutDisplacementOnly(request.AllowHeroDisplacement, opposition))
                 return GroundCombatAssemblyPlan.Infeasible(
                     "no already-formed free ground force clears the shared combat estimator "
                     + "(same-hex assembly not permitted for this request)");
@@ -346,7 +347,8 @@ namespace Game.Ai.V2
                     && (request.AcceptPlan == null || request.AcceptPlan(exact)))
                     ids.Add(a.ArmyId);
             }
-            if (!request.AllowSameHexAssembly)
+            if (!request.AllowSameHexAssembly
+                || GroundCombatActorEligibility.IsScoutDisplacementOnly(request.AllowHeroDisplacement, opposition))
                 return ids;
 
             var excluded = request.ExcludedArmyIds == null
@@ -377,8 +379,12 @@ namespace Game.Ai.V2
         private static List<ArmySnapshot> OrderedEligible(WorldSnapshot snap,
             GroundCombatAssemblyRequest request)
         {
-            IEnumerable<ArmySnapshot> ready = GroundCombatActorEligibility
-                .EligibleArmies(snap, request.ExcludedArmyIds, request.RequireReadyThisTurn,
+            bool scoutOnly = GroundCombatActorEligibility.IsScoutDisplacementOnly(
+                request.AllowHeroDisplacement, request.Opposition);
+            IEnumerable<ArmySnapshot> ready = scoutOnly
+                ? Enumerable.Empty<ArmySnapshot>()
+                : GroundCombatActorEligibility.EligibleArmies(snap, request.ExcludedArmyIds,
+                    request.RequireReadyThisTurn,
                     allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f);
             if (request.AllowHeroDisplacement)
                 ready = ready.Concat(snap.Self.Armies.Where(a =>
@@ -389,7 +395,7 @@ namespace Game.Ai.V2
             // A pinned stronghold defender joins the candidates only for a request that allows a
             // decisive departure and only while its stronghold stays covered; Plan then accepts it
             // only for a decisive fight (DecisiveIfPinned).
-            if (request.AllowDecisivePinnedDefender)
+            if (request.AllowDecisivePinnedDefender && !scoutOnly)
                 ready = ready.Concat(snap.Self.Armies.Where(a => a != null && a.IsStructuralRaidActor
                     && (!request.RequireReadyThisTurn || a.CurrentMovement > 0)
                     && (request.ExcludedArmyIds == null || !request.ExcludedArmyIds.Contains(a.ArmyId))
@@ -457,6 +463,10 @@ namespace Game.Ai.V2
             if (a == null || !a.IsStructuralRaidActor
                 && !(allowHeroDisplacement && GroundCombatActorEligibility.CanDisplaceHeroes(a, opposition)))
                 return GroundCombatAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
+            if (GroundCombatActorEligibility.IsScoutDisplacementOnly(allowHeroDisplacement, opposition)
+                && !GroundCombatActorEligibility.CanDisplaceHeroes(a, opposition))
+                return GroundCombatAssemblyPlan.Infeasible(
+                    $"#{armyId}: a hero-only contact is a free scout's displacement, not an army's day");
 
             ArmyData live = LiveArmy(a);
             if (live != null && !preserveDepartureRoster)

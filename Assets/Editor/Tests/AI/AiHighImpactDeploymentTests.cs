@@ -93,6 +93,33 @@ namespace Game.EditorTests
             }
             finally { StrategicResourceReservationLedger.ClearAll(); MissionIntentRegistry.Clear(); }
         }
+        // 2026-11-12 — the opening's claims constrain its own ranking only: the carried pool that
+        // Phase A and Phase B read afterwards holds exactly the residuals it held before.
+        [Test]
+        public void OpeningClaimsDoNotStayInTheCarriedResidualPool()
+        {
+            var reservation = new MaterializationReservation();
+            var residual = new AxisDemand { RequestingAxis = DesireAxis.Recon, DesiredAmount = 1 };
+            var live = new AxisDemand { RequestingAxis = DesireAxis.Aggression, DesiredAmount = 2 };
+            reservation.UnresolvedDemands.Add(residual);
+            int seen = HighImpactDeployment.WithTemporaryClaims(reservation, new[] { residual, live },
+                () => reservation.UnresolvedDemands.Count);
+            Assert.That(seen, Is.EqualTo(2), "the ranking sees every live claim");
+            Assert.That(reservation.UnresolvedDemands, Is.EqualTo(new[] { residual }));
+            Assert.Throws<InvalidOperationException>(() => HighImpactDeployment.WithTemporaryClaims<int>(
+                reservation, new[] { live }, () => throw new InvalidOperationException()));
+            Assert.That(reservation.UnresolvedDemands, Is.EqualTo(new[] { residual }));
+        }
+
+        [Test]
+        public void APrisonerIsNotTheStrongestBodyTheOpeningMustBeat()
+        {
+            var snap = World(); var plan = Heavy();
+            snap.Self.Armies = new[] { new ArmySnapshot { IsPrison = true, Members = new[] {
+                AiPower.ToDefenderProfile(plan.BaseCardInHand.Definition) } } };
+            Assert.That(HighImpactDeployment.IsCandidate(snap, plan, 1f, 20, 0), Is.True);
+        }
+
         [Test]
         public void CriticalDefenceKeepsPriorityOverAnOpeningHeavyUnit()
         {

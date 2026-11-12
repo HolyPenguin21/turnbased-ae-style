@@ -27,6 +27,13 @@ namespace Game.Ai.V2
             && actor.Members?.Any(AiArmyRoles.IsGroundBattleBody) == true
             && IsHeroOnlyOpposition(opposition);
 
+        // 2026-11-12 (owner) — a hero-only contact is the free scout's displacement job only.
+        // Every battle ends the mover's movement and such a hero usually escapes, so a real army
+        // (or a garrison sortie) would trade its whole day for a hex the hero may re-enter.
+        internal static bool IsScoutDisplacementOnly(bool allowHeroDisplacement,
+            IReadOnlyList<Game.Combat.WorthIt.DefendingArmy> opposition) =>
+            allowHeroDisplacement && IsHeroOnlyOpposition(opposition);
+
         // Free, structurally-eligible ground combat armies for this cycle, mobility-first:
         // already-activated / cheaper activation first, then the least powerful sufficient host
         // (avoids feeding an already-winning raid into an ever larger, ever more expensive stack).

@@ -110,7 +110,7 @@ namespace Game.Ai.V2
 
             // 1b. A thin hand is refilled BEFORE the scan, so the drawn cards are in this turn's
             //     demand fulfilment instead of waiting for leftover AP in Phase B.
-            int replenishDrawn = HandReplenishPolicy.Run(player, root, hand, ctx);
+            int replenishDrawn = HandReplenishPolicy.Run(player, root, hand, ctx, out int refillWithheld);
             // The opening stages run before the decision frame (and its pacer) exist.
             var openingPacer = new FramePacer();
             yield return openingPacer.Checkpoint();
@@ -200,7 +200,7 @@ namespace Game.Ai.V2
             //     axis is then admitted in one re-admission pass.
             int handAtStart = (hand?.Hand?.Count ?? 0) - replenishDrawn;
             var readmission = new StrategicReadmission();
-            var phaseA = new StrategicPhaseResult();
+            var phaseA = new StrategicPhaseResult { OpeningRefillWithheld = refillWithheld };
             if (AviationObligations.Pending(player, ctx))
             {
                 readmission.Deferred.Defer(demandAxes);
@@ -213,7 +213,13 @@ namespace Game.Ai.V2
                     player, root, hand, ctx, apBudget, frame.Demands, frame.Commitments,
                     frame.IntentState, frame.Intents, frame.Recon, null, radar, true, opening));
                 phaseA.Accumulate(opening);
-                if (openingChanged)
+                // The opening has decided: the refill draws it held back are made up now, before
+                // the demand-driven pass reads the hand.
+                int madeUp = HandReplenishPolicy.RunWithheld(player, root, hand, ctx,
+                    phaseA.OpeningRefillWithheld, apBudget.ReservedFollowup());
+                phaseA.OpeningRefillWithheld = 0;
+                replenishDrawn += madeUp;
+                if (openingChanged || madeUp > 0)
                 {
                     yield return frame.AcceptChangedPhaseA();
                     yield return frame.RebuildDemandsPaced(demandAxes);
