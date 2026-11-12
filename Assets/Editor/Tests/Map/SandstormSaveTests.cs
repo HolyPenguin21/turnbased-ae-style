@@ -51,26 +51,28 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void TwoStorms_InDifferentPhasesAndOverlapping_RoundTrip()
+        public void TwoStorms_InDifferentPhases_RoundTrip_AndOverlapIsRejected()
         {
             var field = SandstormLifecycleTests.Field(7);
             var data = new SandstormStateData { profile = (int)MatchWeatherProfile.TwoSandstorms, seed = 4, lastRound = 9 };
             var a = new SandstormSlotData { id = 0, phase = (int)SandstormPhase.Active, age = 3, course = 0, random = -5 };
             var b = new SandstormSlotData { id = 1, phase = (int)SandstormPhase.Active, age = 0, course = 2, random = 6 };
-            foreach (HexCoord h in SandstormRules.SpotCells(new HexCoord(0, 0), 0, grown: true)) { a.bodyQ.Add(h.Q); a.bodyR.Add(h.R); }
-            // A birth on slot 0's centre: overlap is valid.
-            foreach (HexCoord h in SandstormRules.SpotCells(new HexCoord(0, 0), 2, grown: false)) { b.bodyQ.Add(h.Q); b.bodyR.Add(h.R); }
+            foreach (HexCoord h in SandstormRules.BodyOf(new HexCoord(0, 0), new[] { 0, 1, 3, 5 })) { a.bodyQ.Add(h.Q); a.bodyR.Add(h.R); }
+            b.bodyQ.Add(3); b.bodyR.Add(0); // a birth clear of slot 0
             data.slots.Add(a); data.slots.Add(b);
             SandstormState.RestoreState(field, data);
             Assert.That(SandstormLifecycleTests.Dump(SandstormState.CaptureState()), Is.EqualTo(SandstormLifecycleTests.Dump(data)));
-            Assert.That(SandstormState.Snapshot.Cells.Count, Is.EqualTo(SandstormRules.SpotSize));
+            Assert.That(SandstormState.Snapshot.Cells.Count, Is.EqualTo(6));
+            // Two storms never share a hex: a birth on slot 0's hex is damaged data.
+            b.bodyQ[0] = 1;
+            Assert.Throws<ArgumentException>(() => SandstormState.Validate(data, field));
         }
 
         private static SandstormStateData ValidOne()
         {
             var data = new SandstormStateData { profile = (int)MatchWeatherProfile.OneSandstorm, seed = 4, lastRound = 9 };
             var slot = new SandstormSlotData { id = 0, phase = (int)SandstormPhase.Active, age = 3, course = 0, random = 9 };
-            foreach (HexCoord h in SandstormRules.SpotCells(new HexCoord(0, 0), 0, grown: true)) { slot.bodyQ.Add(h.Q); slot.bodyR.Add(h.R); }
+            foreach (HexCoord h in SandstormRules.BodyOf(new HexCoord(0, 0), new[] { 0, 1, 3, 5 })) { slot.bodyQ.Add(h.Q); slot.bodyR.Add(h.R); }
             data.slots.Add(slot);
             return data;
         }
@@ -84,9 +86,8 @@ namespace Game.EditorTests
             ("duplicate body hex", d => d.slots[0].bodyQ[4] = d.slots[0].bodyQ[2]),
             ("outer row", d => { for (int i = 0; i < d.slots[0].bodyQ.Count; i++) d.slots[0].bodyQ[i] += 5; }),
             ("gap", d => d.slots[0].bodyQ[4] += 1),
-            ("size 3", d => { d.slots[0].bodyQ.RemoveRange(0, 2); d.slots[0].bodyR.RemoveRange(0, 2); }),
-            ("birth hex after birth", d => { d.slots[0].bodyQ.RemoveRange(0, 4); d.slots[0].bodyR.RemoveRange(0, 4); }),
-            ("spot facing another course", d => d.slots[0].course = 1),
+            ("too big for its age", d => { d.slots[0].age = 5; }),
+            ("ring out of order", d => { (d.slots[0].bodyQ[0], d.slots[0].bodyQ[1]) = (d.slots[0].bodyQ[1], d.slots[0].bodyQ[0]); (d.slots[0].bodyR[0], d.slots[0].bodyR[1]) = (d.slots[0].bodyR[1], d.slots[0].bodyR[0]); }),
             ("full spot at birth", d => { d.slots[0].age = 0; d.lastRound = 1; }),
             ("age 6", d => d.slots[0].age = 6),
             ("born before round 1", d => d.lastRound = 3),

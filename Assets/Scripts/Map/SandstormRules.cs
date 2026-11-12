@@ -39,19 +39,28 @@ namespace Game.Map
             new SandstormRandom(Mix(unchecked((ulong)weatherSeed) ^ Mix(unchecked((ulong)(slotId + 1) * 0xD1B54A32D192ED03UL))));
     }
 
-    // Pure sandstorm geometry and schedule: which hexes may host a storm, how a spot is born on
-    // one hex, grows to the full spot (the centre and four neighbours) and drifts one hex per
-    // full round, turning by at most 60 degrees. No armies, renderer, Unity or global random.
+    // Pure sandstorm geometry and schedule: which hexes may host a storm, how it lives and how it
+    // changes shape. A storm is a centre plus some of its six neighbours (always connected
+    // through the centre). Its size follows its age (it gathers strength, peaks and fades), the
+    // centre drifts one hex per round (turning by at most 60 degrees) or lulls in place, and the
+    // shape is redrawn every round: hexes the storm already covers tend to linger, the rest is
+    // filled from the front. Two storms never share a hex. No armies, renderer, Unity or global
+    // random.
     public static class SandstormRules
     {
-        // The full spot: the centre and four neighbours (ahead, both sides ahead, behind).
-        public const int SpotSize = 5;
-        // The birth spot: the centre alone.
-        public const int BirthSize = 1;
+        // Hexes (centre included) by age: birth on one hex, peak at age 3, fading out at age 5.
+        private static readonly int[] SizeByAge = { 1, 3, 5, 6, 5, 3 };
         // Ages 0..5: the birth round plus five later rounds — six active rounds in all.
         public const int LastActiveAge = 5;
         // Empty rounds after a storm disappears before the slot may give birth again.
         public const int CooldownRounds = 2;
+        // Chance (percent) that a storm lulls in place for a round instead of drifting.
+        public const int LullPercent = 20;
+        // Chance (percent) that a hex the storm covered stays stormy, when it still touches the centre.
+        public const int LingerPercent = 60;
+
+        public static int SizeAt(int age) =>
+            age >= 0 && age <= LastActiveAge ? SizeByAge[age] : throw new ArgumentOutOfRangeException(nameof(age));
 
         public static int ConfiguredCount(MatchWeatherProfile profile)
         {
@@ -72,6 +81,13 @@ namespace Game.Map
 
         public static int Rotate(int direction, int delta) => ((direction + delta) % 6 + 6) % 6;
 
+        // 0..3: how many 60-degree turns separate two directions.
+        public static int TurnDistance(int a, int b)
+        {
+            int d = ((a - b) % 6 + 6) % 6;
+            return d > 3 ? 6 - d : d;
+        }
+
         public static int DirectionBetween(HexCoord from, HexCoord to)
         {
             for (int d = 0; d < 6; d++)
@@ -82,7 +98,7 @@ namespace Game.Map
         // ---- Where a storm may be ---------------------------------------------------------------
         // The outer playable row is found from the real topology: a map hex missing any of its
         // six neighbours. On the standard hexagonal field this is exactly the ring FieldRadius.
-        // A spot centre must keep its whole ring off that row (CanHoldSpot), whatever the course.
+        // A storm centre must keep its whole ring off that row (CanHoldSpot).
         public sealed class Topology
         {
             private readonly HashSet<HexCoord> _all;
@@ -120,24 +136,41 @@ namespace Game.Map
         public static int CompareCoords(HexCoord a, HexCoord b) =>
             a.Q != b.Q ? a.Q.CompareTo(b.Q) : a.R.CompareTo(b.R);
 
-        // ---- Spot shape -------------------------------------------------------------------------
-        // Neighbours first, the centre last (Body[Count - 1] is always the centre). Full: the
-        // neighbours ahead (course), ahead-left/right (course+1, course+5) and behind
-        // (course+3). Birth: the centre alone.
-        private static readonly int[] SpotTurns = { 0, 1, 3, 5 };
-
-        public static List<HexCoord> SpotCells(HexCoord centre, int course, bool grown)
+        // ---- Body ---------------------------------------------------------------------------------
+        // Canonical body: the covered neighbours in ascending direction order, the centre last
+        // (Body[Count - 1] is always the centre).
+        public static List<HexCoord> BodyOf(HexCoord centre, IEnumerable<int> directions)
         {
-            var cells = new List<HexCoord>(grown ? SpotSize : BirthSize);
-            if (grown)
-                foreach (int turn in SpotTurns) cells.Add(Step(centre, Rotate(course, turn)));
+            var dirs = new List<int>(directions ?? Array.Empty<int>());
+            dirs.Sort();
+            var cells = new List<HexCoord>(dirs.Count + 1);
+            foreach (int d in dirs) cells.Add(Step(centre, d));
             cells.Add(centre);
             return cells;
         }
 
         public static HexCoord CentreOf(IReadOnlyList<HexCoord> body) => body[body.Count - 1];
 
-        // ---- One round's advance ------------------------------------------------------------------
+        // Body invariants: the centre holds a whole ring inside the interior; the other cells are
+        // distinct neighbours of the centre in ascending direction order; 1 hex at birth, then
+        // 1..SizeAt(age) hexes (fewer only where another storm stood in the way).
+        public static bool IsValidBody(Topology topology, IReadOnlyList<HexCoord> body, int age)
+        {
+            if (topology == null || body == null || body.Count == 0 || age < 0 || age > LastActiveAge) return false;
+            if (age == 0 ? body.Count != 1 : body.Count > SizeAt(age)) return false;
+            HexCoord centre = CentreOf(body);
+            if (!topology.CanHoldSpot(centre)) return false;
+            int previous = -1;
+            for (int i = 0; i < body.Count - 1; i++)
+            {
+                int d = DirectionBetween(centre, body[i]);
+                if (d <= previous) return false;
+                previous = d;
+            }
+            return true;
+        }
+
+        // ---- One round's drift --------------------------------------------------------------------
         // `Steps` centre moves; the first `BendAt` keep the course, the rest turn once by 60 degrees
         // (BendSign -1/+1) and stay on the new course. Straight: BendAt == Steps, BendSign 0.
         public readonly struct AdvancePlan
@@ -159,7 +192,7 @@ namespace Game.Map
             public override string ToString() => Straight ? $"{Steps} straight" : $"{Steps} bend@{BendAt}{(BendSign > 0 ? "+" : "-")}60";
         }
 
-        // A round moves the centre by exactly one hex: straight, or turned by 60 degrees.
+        // A drifting round moves the centre by exactly one hex: straight, or turned by 60 degrees.
         public const int AdvanceSteps = 1;
 
         // Fixed order: the straight plan first, then both 60-degree turns.
@@ -170,8 +203,8 @@ namespace Game.Map
             new AdvancePlan(AdvanceSteps, 0, +1),
         };
 
-        // Centre trace: every centre passed must hold the whole spot inside the interior, so the
-        // spot never sweeps over the outer row.
+        // Centre trace: every centre passed must hold a whole ring inside the interior, so the
+        // storm never reaches the outer row.
         private static bool TryTraceCentre(Topology topology, HexCoord centre, int course, AdvancePlan plan,
             out HexCoord newCentre)
         {
@@ -184,28 +217,6 @@ namespace Game.Map
             return HexGridMath.Distance(centre, newCentre) == plan.Steps;
         }
 
-        // The full spot after one plan: the centre drifts and the whole spot moves with it.
-        // Returns false (outputs unused) on any violated rule.
-        public static bool TryAdvance(Topology topology, IReadOnlyList<HexCoord> body, int course,
-            AdvancePlan plan, out List<HexCoord> newBody, out int newCourse)
-        {
-            newBody = null;
-            newCourse = course;
-            if (topology == null || body == null || body.Count == 0) return false;
-            if (!TryTraceCentre(topology, CentreOf(body), course, plan, out HexCoord centre)) return false;
-            newCourse = plan.FinalCourse(course);
-            newBody = SpotCells(centre, newCourse, grown: true);
-            return true;
-        }
-
-        // The first update after birth: the birth hex grows to the full spot around the same
-        // centre (that update's advance follows).
-        public static bool TryExpand(Topology topology, HexCoord centre, int course, out List<HexCoord> body)
-        {
-            body = topology != null && topology.CanHoldSpot(centre) ? SpotCells(centre, course, grown: true) : null;
-            return body != null;
-        }
-
         // Memo for one evaluation pass (one tick): (centre, course, updates left) -> continuation
         // exists. Pure: never draws random numbers, never reserves future hexes.
         public sealed class ContinuationMemo
@@ -214,9 +225,9 @@ namespace Game.Map
             public int Evaluations { get; internal set; }
         }
 
-        // Can a storm whose centre stands on `centre` facing `course` still perform `remaining`
-        // one-hex advances (turning by at most 60 degrees each)? Other storms are ignored: later
-        // overlaps are allowed.
+        // Can a storm whose centre stands on `centre` facing `course` still drift `remaining`
+        // rounds in a row (one hex each, turning by at most 60 degrees)? Lulls only make this
+        // easier; other storms are ignored here (they are avoided round by round).
         public static bool HasContinuation(Topology topology, HexCoord centre, int course, int remaining,
             ContinuationMemo memo)
         {
@@ -238,8 +249,8 @@ namespace Game.Map
             return found;
         }
 
-        // A birth is legal on `hex` with `course` when the full spot fits around it and all
-        // five later active updates have a legal continuation from there.
+        // A birth is legal on `hex` with `course` when a whole ring fits around it and all five
+        // later active updates could drift from there.
         public static bool IsValidBirth(Topology topology, HexCoord hex, int course, ContinuationMemo memo) =>
             topology != null && topology.CanHoldSpot(hex)
             && HasContinuation(topology, hex, course, LastActiveAge, memo);
@@ -253,46 +264,79 @@ namespace Game.Map
             return courses;
         }
 
-        // Body invariants: exactly the birth hex (grown == false) or the full spot around the
-        // last cell facing `course`, in SpotCells order, with the whole ring inside the interior.
-        public static bool IsValidBody(Topology topology, IReadOnlyList<HexCoord> body, int course, bool grown)
+        public enum DriftKind
         {
-            if (topology == null || body == null || body.Count == 0) return false;
-            HexCoord centre = CentreOf(body);
-            if (!topology.CanHoldSpot(centre)) return false;
-            List<HexCoord> expected = SpotCells(centre, course, grown);
-            if (expected.Count != body.Count) return false;
-            for (int i = 0; i < body.Count; i++)
-                if (!expected[i].Equals(body[i])) return false;
-            return true;
+            Moved = 1,
+            // A random lull: the storm stays and only reshapes.
+            Lull = 2,
+            // No legal drift (edge or dead end): stays this round — diagnosable, never routine.
+            Stuck = 3,
+            // Every otherwise legal drift enters another storm's centre: waits for it to move on.
+            Blocked = 4,
         }
 
-        // One round's advance for a spot with `remainingAfter` updates still to come after this
-        // one: the straight plan whenever it keeps a continuation, otherwise a uniform pick among
-        // the legal turns. False = no legal plan: the caller keeps the spot in place
-        // (diagnosable exception, never the routine result).
-        public static bool TryPlanAdvance(Topology topology, IReadOnlyList<HexCoord> body, int course,
-            int remainingAfter, ref SandstormRandom random, ContinuationMemo memo,
-            out List<HexCoord> newBody, out int newCourse, out AdvancePlan chosen)
+        // The centre's move for one round with `remainingAfter` updates still to come. A lull
+        // with LullPercent chance; otherwise the straight step whenever it keeps a continuation,
+        // else a uniform pick among the legal turns. `blocked` = other storms' centres, which a
+        // centre never enters. Random draws: the lull roll, then (only for a turn) the pick.
+        public static DriftKind ChooseDrift(Topology topology, HexCoord centre, int course, int remainingAfter,
+            ICollection<HexCoord> blocked, ref SandstormRandom random, ContinuationMemo memo,
+            out HexCoord newCentre, out int newCourse)
         {
-            newBody = null;
+            newCentre = centre;
             newCourse = course;
-            chosen = default;
-            var legal = new List<(AdvancePlan Plan, List<HexCoord> Body, int Course)>();
+            if (random.Next(100) < LullPercent) return DriftKind.Lull;
+            var legal = new List<(AdvancePlan Plan, HexCoord Centre)>();
+            bool blockedByStorm = false;
             foreach (AdvancePlan plan in Plans)
             {
-                if (!TryAdvance(topology, body, course, plan, out List<HexCoord> candidate, out int candidateCourse))
-                    continue;
-                if (!HasContinuation(topology, CentreOf(candidate), candidateCourse, remainingAfter, memo))
-                    continue;
-                legal.Add((plan, candidate, candidateCourse));
+                if (!TryTraceCentre(topology, centre, course, plan, out HexCoord next)) continue;
+                if (!HasContinuation(topology, next, plan.FinalCourse(course), remainingAfter, memo)) continue;
+                if (blocked != null && blocked.Contains(next)) { blockedByStorm = true; continue; }
+                legal.Add((plan, next));
             }
-            if (legal.Count == 0) return false;
+            if (legal.Count == 0) return blockedByStorm ? DriftKind.Blocked : DriftKind.Stuck;
             int pick = legal[0].Plan.Straight ? 0 : random.Next(legal.Count);
-            chosen = legal[pick].Plan;
-            newBody = legal[pick].Body;
-            newCourse = legal[pick].Course;
-            return true;
+            newCentre = legal[pick].Centre;
+            newCourse = legal[pick].Plan.FinalCourse(course);
+            return DriftKind.Moved;
+        }
+
+        // The storm's shape this round: `size` hexes around `centre`. Hexes of `previous` that
+        // still touch the centre linger with LingerPercent chance each (a random few drop when
+        // the storm is shrinking); the rest is filled nearest to the course first (ahead, then
+        // the front sides, the rear sides, behind), ties in random order. `blocked` hexes (other
+        // storms) are never taken, so the storm may come out smaller next to another one.
+        public static List<HexCoord> ChooseShape(HexCoord centre, int course, int size,
+            IReadOnlyList<HexCoord> previous, ICollection<HexCoord> blocked, ref SandstormRandom random)
+        {
+            int want = Math.Max(0, size - 1);
+            var chosen = new List<int>(want);
+            if (previous != null)
+                foreach (HexCoord cell in previous)
+                {
+                    int d = DirectionBetween(centre, cell);
+                    if (d < 0 || (blocked != null && blocked.Contains(cell))) continue;
+                    if (random.Next(100) < LingerPercent) chosen.Add(d);
+                }
+            while (chosen.Count > want) chosen.RemoveAt(random.Next(chosen.Count));
+            for (int turns = 0; turns <= 3 && chosen.Count < want; turns++)
+            {
+                var ring = new List<int>(2);
+                for (int d = 0; d < 6; d++)
+                {
+                    if (TurnDistance(d, course) != turns || chosen.Contains(d)) continue;
+                    if (blocked != null && blocked.Contains(Step(centre, d))) continue;
+                    ring.Add(d);
+                }
+                while (ring.Count > 0 && chosen.Count < want)
+                {
+                    int k = random.Next(ring.Count);
+                    chosen.Add(ring[k]);
+                    ring.RemoveAt(k);
+                }
+            }
+            return BodyOf(centre, chosen);
         }
     }
 }

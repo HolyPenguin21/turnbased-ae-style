@@ -6,15 +6,17 @@ using UnityEngine;
 namespace Game.Map
 {
     // Presentation of the public weather published on HexMap.Weather (owner: SandstormState):
-    // one flat sprite per hex of every storm spot at MapSortingOrder.Sandstorm. Weather is public
-    // map data, like terrain, so this layer is never vision-gated; the fog overlay (drawn above
-    // it) dims it over hexes the viewer can't see, exactly as it dims the terrain. Added and
+    // one flat sprite per hex of every storm at MapSortingOrder.Sandstorm. Weather is public map
+    // data, like terrain, so this layer is never vision-gated; the fog overlay (drawn above it)
+    // dims it over hexes the viewer can't see, exactly as it dims the terrain. Added and
     // configured at runtime by HexMapGenerator next to MapTerrainAnimator.
     //
-    // The rules move a storm instantly; this layer only eases the picture: each sprite keeps its
-    // place in the spot (offset from the storm centre) and glides to its new hex at its own
-    // random moment within SandstormVisualStyle.moveSeconds. A growing spot fades its new
-    // sprites in, a vanishing storm fades out. Nothing here feeds back into the game.
+    // The rules change a storm instantly; this layer only eases the picture. Per storm, a sprite
+    // whose hex stays stormy does not move; the other sprites pair up with the new hexes nearest
+    // first and glide there, each at its own random moment within
+    // SandstormVisualStyle.moveSeconds; sprites left over fade out where they stand, hexes left
+    // over fade in. The rules never let two storms share a hex, so at rest every stormy hex shows
+    // exactly one sprite. Nothing here feeds back into the game.
     [RequireComponent(typeof(HexMap))]
     public class SandstormMapLayer : MonoBehaviour
     {
@@ -22,7 +24,7 @@ namespace Game.Map
         {
             public SpriteRenderer Renderer;
             public int Slot;
-            public HexCoord Offset;
+            public HexCoord Hex;
             public int Phase;
             public Vector3 From, To, Current;
             public float FromAlpha, ToAlpha, CurrentAlpha;
@@ -43,7 +45,6 @@ namespace Game.Map
         private Transform _root;
         private readonly List<Puff> _puffs = new List<Puff>();
         private readonly Stack<SpriteRenderer> _idle = new Stack<SpriteRenderer>();
-        private readonly Dictionary<int, HexCoord> _centres = new Dictionary<int, HexCoord>();
         // Visual-only randomness: never UnityEngine.Random, whose shared state other systems use.
         private readonly System.Random _random = new System.Random();
         private int _lastFrame = -1;
@@ -60,7 +61,6 @@ namespace Game.Map
             _spriteMoveShare = style != null ? Mathf.Clamp(style.spriteMoveShare, 0.05f, 1f) : 0.5f;
             // A new map (or a loaded match) shows its weather at once, without a glide.
             for (int i = _puffs.Count - 1; i >= 0; i--) Release(i);
-            _centres.Clear();
             _shown = null;
             _lastFrame = -1;
         }
@@ -98,41 +98,51 @@ namespace Game.Map
                 {
                     if (view.Body.Count == 0) continue;
                     live.Add(view.SlotId);
-                    HexCoord centre = SandstormRules.CentreOf(view.Body);
-                    bool hadCentre = _centres.TryGetValue(view.SlotId, out HexCoord oldCentre);
-                    bySlot.TryGetValue(view.SlotId, out List<Puff> old);
-                    // Same place in the spot first; a turned spot hands its other sprites to
-                    // the nearest free new hexes, so they glide instead of blinking.
-                    var unmatched = new List<(HexCoord Cell, HexCoord Offset)>();
+                    if (!bySlot.TryGetValue(view.SlotId, out List<Puff> old)) old = new List<Puff>();
+
+                    // 1. A hex that stays stormy keeps its sprite where it is.
+                    var fresh = new List<HexCoord>();
                     foreach (HexCoord cell in view.Body)
                     {
-                        var offset = new HexCoord(cell.Q - centre.Q, cell.R - centre.R);
-                        Puff same = Take(old, offset);
-                        if (same != null) Retarget(same, _map.HexToWorld(cell), 1f, animate, now);
-                        else unmatched.Add((cell, offset));
+                        int same = old.FindIndex(p => p.Hex.Equals(cell));
+                        if (same < 0) { fresh.Add(cell); continue; }
+                        Retarget(old[same], _map.HexToWorld(cell), 1f, animate, now);
+                        old.RemoveAt(same);
                     }
-                    foreach (var (cell, offset) in unmatched)
+
+                    // 2. Freed sprites glide to the new hexes, the closest pair first.
+                    while (fresh.Count > 0 && old.Count > 0)
+                    {
+                        int bestCell = 0, bestPuff = 0;
+                        float best = float.MaxValue;
+                        for (int c = 0; c < fresh.Count; c++)
+                        {
+                            Vector3 target = _map.HexToWorld(fresh[c]);
+                            for (int p = 0; p < old.Count; p++)
+                            {
+                                float distance = (old[p].Current - target).sqrMagnitude;
+                                if (distance >= best) continue;
+                                best = distance;
+                                bestCell = c;
+                                bestPuff = p;
+                            }
+                        }
+                        Puff moving = old[bestPuff];
+                        moving.Hex = fresh[bestCell];
+                        Retarget(moving, _map.HexToWorld(fresh[bestCell]), 1f, animate, now);
+                        old.RemoveAt(bestPuff);
+                        fresh.RemoveAt(bestCell);
+                    }
+
+                    // 3. The storm grew: new sprites fade in on their hexes.
+                    foreach (HexCoord cell in fresh)
                     {
                         Vector3 target = _map.HexToWorld(cell);
-                        Puff puff = TakeNearest(old, target);
-                        if (puff != null)
-                        {
-                            puff.Offset = offset;
-                        }
-                        else
-                        {
-                            // A new part of the spot: it appears where it would have stood in the
-                            // old spot and travels with the others while fading in.
-                            Vector3 from = animate && hadCentre
-                                ? _map.HexToWorld(new HexCoord(oldCentre.Q + offset.Q, oldCentre.R + offset.R))
-                                : target;
-                            puff = Spawn(view.SlotId, offset, from);
-                        }
-                        Retarget(puff, target, 1f, animate, now);
+                        Retarget(Spawn(view.SlotId, cell, target), target, 1f, animate, now);
                     }
-                    if (old != null)
-                        foreach (Puff gone in old) Retire(gone, animate, now);
-                    _centres[view.SlotId] = centre;
+
+                    // 4. The storm shrank: the sprites left over fade out where they stand.
+                    foreach (Puff gone in old) Retire(gone, animate, now);
                 }
             }
 
@@ -140,32 +150,7 @@ namespace Game.Map
             {
                 if (live.Contains(pair.Key)) continue;
                 foreach (Puff gone in pair.Value) Retire(gone, animate, now);
-                _centres.Remove(pair.Key);
             }
-        }
-
-        private static Puff Take(List<Puff> old, HexCoord offset)
-        {
-            if (old == null) return null;
-            for (int i = 0; i < old.Count; i++)
-            {
-                if (!old[i].Offset.Equals(offset)) continue;
-                Puff found = old[i];
-                old.RemoveAt(i);
-                return found;
-            }
-            return null;
-        }
-
-        private static Puff TakeNearest(List<Puff> old, Vector3 target)
-        {
-            if (old == null || old.Count == 0) return null;
-            int best = 0;
-            for (int i = 1; i < old.Count; i++)
-                if ((old[i].Current - target).sqrMagnitude < (old[best].Current - target).sqrMagnitude) best = i;
-            Puff found = old[best];
-            old.RemoveAt(best);
-            return found;
         }
 
         private void Retarget(Puff puff, Vector3 to, float alpha, bool animate, float now)
@@ -186,13 +171,13 @@ namespace Game.Map
             Retarget(puff, puff.Current, 0f, animate, now);
         }
 
-        private Puff Spawn(int slot, HexCoord offset, Vector3 position)
+        private Puff Spawn(int slot, HexCoord hex, Vector3 position)
         {
             SpriteRenderer renderer = _idle.Count > 0 ? _idle.Pop() : CreateRenderer();
             int phaseSlots = _frames.Length > 0 ? Mathf.Max(1, (_frames.Length + _startFrameStep - 1) / _startFrameStep) : 1;
             var puff = new Puff
             {
-                Renderer = renderer, Slot = slot, Offset = offset,
+                Renderer = renderer, Slot = slot, Hex = hex,
                 Phase = _frames.Length > 0 ? _random.Next(phaseSlots) * _startFrameStep % _frames.Length : 0,
                 Current = position, CurrentAlpha = 0f,
             };
