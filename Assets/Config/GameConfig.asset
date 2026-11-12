@@ -970,18 +970,18 @@ MonoBehaviour:
     badgeTextColor: {r: 1, g: 1, b: 1, a: 1}
     badgeBorderThickness: 0.015
     badgeBorderColor: {r: 1, g: 1, b: 1, a: 1}
-    outlineSortingOrder: 11
-    fillSortingOrder: 12
-    badgeBorderSortingOrder: 13
-    badgeSortingOrder: 14
-    badgeTextSortingOrder: 15
+    outlineSortingOrder: 12
+    fillSortingOrder: 13
+    badgeBorderSortingOrder: 14
+    badgeSortingOrder: 15
+    badgeTextSortingOrder: 16
   moveArrowMoveColor: {r: 0.3025988, g: 0.754717, b: 0.37942943, a: 1}
   moveArrowAttackColor: {r: 0.8207547, g: 0.31359026, b: 0.31359026, a: 1}
   moveArrowUnreachableColor: {r: 0.95, g: 0.8, b: 0.2, a: 1}
   armyVisionRadius: 0
   buildingVisionRadius: 1
   fogOfWarStyle:
-    sortingOrder: 16
+    sortingOrder: 17
     coordLabelFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     coordLabelFontSize: 2.5
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
