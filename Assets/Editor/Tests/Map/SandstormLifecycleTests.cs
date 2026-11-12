@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Sandstorm schedule (spec 3.1): one tick per full round; six active rounds (sizes 1,5,5,5,5,5),
+    // Sandstorm schedule (spec 3.1): one tick per full round; six active rounds (spot sizes 4,7,7,7,7,7),
     // two empty rounds, then a new birth. Driven on plain coordinates — no HexMap, no engine.
     public sealed class SandstormLifecycleTests
     {
@@ -34,7 +34,7 @@ namespace Game.EditorTests
                 Assert.That(SandstormState.AdvanceRound(field, round), Is.True);
                 sizes.Add(SandstormState.Snapshot.Instances.Single().Body.Count);
             }
-            Assert.That(sizes, Is.EqualTo(new[] { 1, 5, 5, 5, 5, 5, 0, 0, 1 }));
+            Assert.That(sizes, Is.EqualTo(new[] { 4, 7, 7, 7, 7, 7, 0, 0, 4 }));
             Assert.That(SandstormState.LastTickDiagnostics, Is.Empty);
         }
 

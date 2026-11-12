@@ -7,9 +7,9 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Sandstorm geometry invariants (spec 3.2/3.3): only interior hexes, a connected body of 1
-    // then 5 unique hexes, 2-3 head steps per round, course change <= 60 degrees, look-ahead that
-    // never drives the head into a dead end. Geometry depends only on the coordinates, so the
+    // Sandstorm geometry invariants: only interior hexes, a round spot (half size at birth,
+    // then the centre and its whole ring), 2-3 centre steps per round, course change <= 60
+    // degrees, look-ahead that never drives the spot into a dead end. Geometry depends only on the coordinates, so the
     // standard field radii cover both biomes.
     public sealed class SandstormGeometryTests
     {
@@ -49,24 +49,14 @@ namespace Game.EditorTests
                     SandstormInstanceView view = SandstormState.Snapshot.Instances.Single();
                     if (view.Phase == SandstormPhase.Active)
                     {
-                        Assert.That(view.Body.Count, Is.EqualTo(view.Age == 0 ? 1 : SandstormRules.BodyLength), at);
-                        Assert.That(SandstormRules.IsValidBody(topology, view.Body), Is.True, at);
+                        Assert.That(view.Body.Count, Is.EqualTo(view.Age == 0 ? SandstormRules.BirthSize : SandstormRules.SpotSize), at);
+                        Assert.That(SandstormRules.IsValidBody(topology, view.Body, view.Course, grown: view.Age > 0), Is.True, at);
+                        Assert.That(view.Body.All(topology.IsInterior), Is.True, at);
                         if (view.Age > 0 && previous != null)
                         {
-                            HexCoord oldHead = previous.Body[previous.Body.Count - 1];
-                            int moved = HexGridMath.Distance(oldHead, view.Body[view.Body.Count - 1]);
+                            int moved = HexGridMath.Distance(SandstormRules.CentreOf(previous.Body), SandstormRules.CentreOf(view.Body));
                             Assert.That(moved, Is.InRange(2, 3), at);
                             Assert.That(TurnDistance(previous.Course, view.Course), Is.LessThanOrEqualTo(1), at);
-                            // The body is the head's trail: every earlier cell that is still part of
-                            // the body moved toward the tail, nothing jumped.
-                            if (previous.Body.Count == SandstormRules.BodyLength)
-                                Assert.That(view.Body.Take(SandstormRules.BodyLength - moved),
-                                    Is.EqualTo(previous.Body.Skip(moved)), at);
-                        }
-                        if (view.Age == 1)
-                        {
-                            // Birth hex stays on the body line behind the new head.
-                            Assert.That(previous.Body.Single(), Is.EqualTo(view.Body[view.Body.Count - 1 - HexGridMath.Distance(previous.Body.Single(), view.Body.Last())]), at);
                         }
                     }
                     else
@@ -81,10 +71,11 @@ namespace Game.EditorTests
         [Test]
         public void SmallMap_LookAheadRejectsAnAdvanceIntoADeadEnd()
         {
-            // Small field: interior radius 4. A head at (1,0) moving along (1,0) could step
-            // straight to (4,0), from where no 2-3 hex advance with <= 60 degrees exists.
+            // Small field: spot centres within radius 3. A spot centred on (0,0) moving along
+            // (1,0) could step straight to (3,0), from where no 2-3 hex advance with <= 60
+            // degrees keeps the spot inside.
             var topology = new SandstormRules.Topology(SandstormLifecycleTests.Field(5));
-            var body = new List<HexCoord> { new HexCoord(-3, 0), new HexCoord(-2, 0), new HexCoord(-1, 0), new HexCoord(0, 0), new HexCoord(1, 0) };
+            var body = SandstormRules.SpotCells(new HexCoord(0, 0), 0, grown: true);
             Assert.That(SandstormRules.TryAdvance(topology, body, 0, new SandstormRules.AdvancePlan(3, 3, 0), out var dead, out int deadCourse), Is.True,
                 "the straight 3-step plan is locally legal");
             Assert.That(SandstormRules.HasContinuation(topology, dead.Last(), deadCourse, 1, new SandstormRules.ContinuationMemo()), Is.False);
@@ -93,7 +84,7 @@ namespace Game.EditorTests
                 var random = new SandstormRandom(SandstormRandom.Mix(seed));
                 Assert.That(SandstormRules.TryPlanAdvance(topology, body, 0, 1, ref random, new SandstormRules.ContinuationMemo(),
                     out var next, out _, out _), Is.True);
-                Assert.That(next.Last(), Is.Not.EqualTo(new HexCoord(4, 0)), "seed " + seed);
+                Assert.That(next.Last(), Is.Not.EqualTo(new HexCoord(3, 0)), "seed " + seed);
             }
         }
 
@@ -112,7 +103,7 @@ namespace Game.EditorTests
         [Test]
         public void NoBirthPossible_WaitsWithoutHangingOrLeavingTheMap()
         {
-            // Radius 2: interior radius 1 cannot hold a five-hex body.
+            // Radius 2: only (0,0) can hold a spot, and it has nowhere to drift.
             var field = SandstormLifecycleTests.Field(2);
             SandstormState.Initialize(new MatchWeatherConditions(MatchWeatherProfile.TwoSandstorms, 1), null);
             for (int round = 1; round <= 4; round++)
@@ -131,11 +122,11 @@ namespace Game.EditorTests
         {
             // A body restored on a field that leaves no 2-3 hex advance: diagnosable stall.
             var field = SandstormLifecycleTests.Field(3);
-            // Radius 3 field (interior radius 2); head (2,-1) facing (1,-1): every 2-3 hex plan
-            // with at most one 60-degree bend leaves the interior.
-            var body = new[] { new HexCoord(-2, 1), new HexCoord(-1, 1), new HexCoord(0, 1), new HexCoord(1, 0), new HexCoord(2, -1) };
+            // Radius 3 field: spot centres within radius 1, so every 2-3 hex advance of a spot
+            // centred on (0,0) leaves the interior.
+            var body = SandstormRules.SpotCells(new HexCoord(0, 0), 5, grown: true);
             var topology = new SandstormRules.Topology(field);
-            Assume.That(SandstormRules.IsValidBody(topology, body), Is.True);
+            Assume.That(SandstormRules.IsValidBody(topology, body, 5, grown: true), Is.True);
             var data = new SandstormStateData { profile = (int)MatchWeatherProfile.OneSandstorm, seed = 1, lastRound = 4 };
             var slot = new SandstormSlotData { id = 0, phase = (int)SandstormPhase.Active, age = 2, course = 5, random = 77 };
             foreach (var h in body) { slot.bodyQ.Add(h.Q); slot.bodyR.Add(h.R); }

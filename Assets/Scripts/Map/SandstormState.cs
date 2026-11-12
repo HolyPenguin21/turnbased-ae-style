@@ -20,7 +20,7 @@ namespace Game.Map
         public SandstormPhase Phase { get; }
         public int Age { get; }
         public int Course { get; }
-        // tail -> head; empty outside the Active phase.
+        // SandstormRules.SpotCells order (ring, then the centre last); empty outside the Active phase.
         public IReadOnlyList<HexCoord> Body { get; }
 
         internal SandstormInstanceView(int slotId, SandstormPhase phase, int age, int course, IEnumerable<HexCoord> body)
@@ -192,12 +192,13 @@ namespace Game.Map
                             break;
                         }
                         slot.Age++;
-                        if (slot.Body.Count == 1)
+                        if (slot.Age == 1)
                         {
-                            if (SandstormRules.TryExpand(topology, slot.Body[0], slot.Course, out List<HexCoord> expanded))
+                            HexCoord centre = SandstormRules.CentreOf(slot.Body);
+                            if (SandstormRules.TryExpand(topology, centre, slot.Course, out List<HexCoord> expanded))
                                 slot.Body = expanded;
                             else
-                                notes.Add($"storm {slot.Id}: no room to form its body behind {slot.Body[0]}");
+                                notes.Add($"storm {slot.Id}: no room to grow its spot around {centre}");
                         }
                         if (SandstormRules.TryPlanAdvance(topology, slot.Body, slot.Course,
                                 SandstormRules.LastActiveAge - slot.Age, ref slot.Random, memo,
@@ -217,7 +218,7 @@ namespace Game.Map
                 }
             }
 
-            // Phase 2: births in slot order, never on a hex another storm now covers.
+            // Phase 2: births in slot order; the half spot never covers a hex another storm now covers.
             var occupied = new HashSet<HexCoord>(work.Where(s => s.Phase == SandstormPhase.Active).SelectMany(s => s.Body));
             foreach (Slot slot in work)
             {
@@ -227,6 +228,7 @@ namespace Game.Map
                 {
                     if (occupied.Contains(hex)) continue;
                     List<int> courses = SandstormRules.BirthCourses(topology, hex, memo);
+                    courses.RemoveAll(c => SandstormRules.SpotCells(hex, c, grown: false).Any(occupied.Contains));
                     if (courses.Count > 0) candidates.Add((hex, courses));
                 }
                 if (candidates.Count == 0)
@@ -239,9 +241,9 @@ namespace Game.Map
                 slot.Phase = SandstormPhase.Active;
                 slot.Age = 0;
                 slot.Course = pick.Courses[slot.Random.Next(pick.Courses.Count)];
-                slot.Body = new List<HexCoord> { pick.Hex };
+                slot.Body = SandstormRules.SpotCells(pick.Hex, slot.Course, grown: false);
                 slot.NextSpawnRound = 0;
-                occupied.Add(pick.Hex);
+                occupied.UnionWith(slot.Body);
             }
 
             bool geometryChanged = work.Count != _slots.Count
@@ -309,8 +311,7 @@ namespace Game.Map
                     case SandstormPhase.Active:
                         if (slot.age < 0 || slot.age > SandstormRules.LastActiveAge || slot.course < 0 || slot.course > 5
                             || data.lastRound - slot.age < 1 || slot.nextSpawnRound != 0
-                            || (slot.age == 0 ? body.Count != 1 : body.Count != SandstormRules.BodyLength && body.Count != 1)
-                            || !SandstormRules.IsValidBody(topology, body))
+                            || !SandstormRules.IsValidBody(topology, body, slot.course, grown: slot.age > 0))
                             throw new ArgumentException("Invalid active storm.");
                         break;
                     case SandstormPhase.Cooldown:
