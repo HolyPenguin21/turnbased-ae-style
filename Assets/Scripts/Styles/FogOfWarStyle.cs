@@ -15,8 +15,9 @@ namespace Game.Styles
     {
         [Header("Fog Overlay")]
         // Same draw-order role as HexHighlightStyle.sortingOrder — everything sits flat at Y=0,
-        // so this keeps the fog quad above the terrain tiles (sortingOrder 0).
-        public int sortingOrder = 16;
+        // so this keeps the fog quad above the terrain tiles (sortingOrder 0), the sandstorm
+        // layer and the move arrows (see Game.Map.MapSortingOrder).
+        public int sortingOrder = 17;
 
         // Tint, edge erosion/sharpness and patina texture are NOT exposed here on purpose: they
         // live entirely as Custom/FogOfWar's own shader Properties defaults. A previous version

@@ -280,6 +280,11 @@ namespace Game.Map
                 FogOfWarController fogOfWar = GetComponent<FogOfWarController>();
                 if (fogOfWar != null)
                     fogOfWar.RefreshAll();
+
+                // Public weather layer; follows HexMap.Weather on its own from here on.
+                SandstormMapLayer sandstormLayer = GetComponent<SandstormMapLayer>();
+                if (sandstormLayer == null) sandstormLayer = gameObject.AddComponent<SandstormMapLayer>();
+                sandstormLayer.Configure(gameConfig.sandstormVisualStyle);
             }
 
             // Editor-time regeneration (tuning textures/blend/etc.) must keep working, so only

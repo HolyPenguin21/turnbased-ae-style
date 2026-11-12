@@ -213,6 +213,10 @@ namespace Game.Core
         // Dimming overlay + coordinate-label tunables (see Game.Map.FogOfWarController /
         // Custom/FogOfWar.shader) — one shared style, same pattern as every other style block.
         public FogOfWarStyle fogOfWarStyle = new FogOfWarStyle();
+
+        [Header("Weather")]
+        // Sandstorm map art (see Game.Map.SandstormMapLayer). Empty frames = layer draws nothing.
+        public SandstormVisualStyle sandstormVisualStyle = new SandstormVisualStyle();
     }
 }
 

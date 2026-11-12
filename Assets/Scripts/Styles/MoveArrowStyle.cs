@@ -83,12 +83,13 @@ namespace Game.Styles
         // Above every army marker's own sorting order (Game.Map.MapSortingOrder.ArmyIcon = 10,
         // the highest currently in use) — the arrow and its badges must never draw behind an
         // army icon they happen to pass under or sit beside, or that info reads as missing
-        // instead of just covered.
+        // instead of just covered. Also above the sandstorm layer (MapSortingOrder.Sandstorm =
+        // 11) and below the fog overlay (FogOfWarStyle.sortingOrder = 17).
         [Header("Sorting (order in layer - see Game.Map.MapSortingOrder for map/army values)")]
-        public int outlineSortingOrder = 11;
-        public int fillSortingOrder = 12;
-        public int badgeBorderSortingOrder = 13;
-        public int badgeSortingOrder = 14;
-        public int badgeTextSortingOrder = 15;
+        public int outlineSortingOrder = 12;
+        public int fillSortingOrder = 13;
+        public int badgeBorderSortingOrder = 14;
+        public int badgeSortingOrder = 15;
+        public int badgeTextSortingOrder = 16;
     }
 }
