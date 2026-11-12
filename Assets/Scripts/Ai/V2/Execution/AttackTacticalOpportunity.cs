@@ -470,8 +470,8 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // The local-contact gate of the one ground-combat check. A standalone hero is priced as a
-        // Capture/Kill inside the estimator itself (WorthIt), so this needs no hero rule of its own.
+        // The local-contact gate values control of the hex. A hero that escapes still
+        // clears the route; capture odds remain a separate WorthIt query.
         internal static bool ClearsContact(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             WorthIt.SideCommander commander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             float bonus, out float win, out bool cover) =>

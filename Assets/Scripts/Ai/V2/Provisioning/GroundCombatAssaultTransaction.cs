@@ -126,6 +126,8 @@ namespace Game.Ai.V2
                 new GroundCombatAssemblyRequest
                 {
                     Opposition = opposition,
+                    AllowHeroDisplacement = proposal.Target is ActiveDefenceMissionTarget immediate
+                        && immediate.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity,
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
@@ -187,6 +189,9 @@ namespace Game.Ai.V2
             if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0
                 || host.IsPrison || host.IsAirfield || AviationRules.IsAirArmy(host)
                 || AiArmyRoles.IsSoloRecce(host)
+                    && (!(m.Target is ActiveDefenceMissionTarget immediate)
+                        || immediate.InterceptPurpose != ActiveDefenceInterceptPurpose.ImmediateOpportunity
+                        || !GroundCombatActorEligibility.IsHeroOnlyOpposition(opposition))
                 || AiArmyRoles.IsSoloHeroAwaitingEscort(host) && !plan.NeedsAssembly)
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.MoverContended(

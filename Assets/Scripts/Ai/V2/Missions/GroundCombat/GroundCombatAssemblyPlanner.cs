@@ -216,6 +216,8 @@ namespace Game.Ai.V2
         // May the kernel build a package out of same-hex donors, or must it find an
         // already-sufficient army?
         public bool AllowSameHexAssembly = true;
+        // Only Immediate ActiveDefence owns the same-turn scout displacement lifecycle.
+        public bool AllowHeroDisplacement;
         // Demand may count next-turn capability. Nomination/provisioning keep today's movement
         // and activation constraints; physical capacity, duties and donor safety always apply.
         public bool RequireReadyThisTurn = true;
@@ -283,7 +285,8 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(
                     snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus, request.RequireCoverage,
-                    request.MinimumArmyPower, request.PreserveDepartureRoster, request.RequireReadyThisTurn);
+                    request.MinimumArmyPower, request.PreserveDepartureRoster, request.RequireReadyThisTurn,
+                    request.AllowHeroDisplacement);
                 if (!exact.Feasible && strongestRefusal == null)
                     strongestRefusal = exact.Reason;
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
@@ -336,7 +339,7 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(snap, opposition,
                     a.ArmyId, request.WinChanceGate, request.DefenderHexDefenseBonus,
                     request.RequireCoverage, request.MinimumArmyPower, request.PreserveDepartureRoster,
-                    request.RequireReadyThisTurn);
+                    request.RequireReadyThisTurn, request.AllowHeroDisplacement);
                 if (exact.Feasible && AttackForceReadiness.ClearsFloor(exact.ProjectedPower,
                     request.MinimumArmyPower, exact.ProjectedWinChance, opposition)
                     && DecisiveIfPinned(snap, request, a, exact, opposition)
@@ -377,6 +380,12 @@ namespace Game.Ai.V2
             IEnumerable<ArmySnapshot> ready = GroundCombatActorEligibility
                 .EligibleArmies(snap, request.ExcludedArmyIds, request.RequireReadyThisTurn,
                     allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f);
+            if (request.AllowHeroDisplacement)
+                ready = ready.Concat(snap.Self.Armies.Where(a =>
+                    GroundCombatActorEligibility.CanDisplaceHeroes(a, request.Opposition)
+                    && (!request.RequireReadyThisTurn || a.CurrentMovement > 0)
+                    && (request.ExcludedArmyIds == null || !request.ExcludedArmyIds.Contains(a.ArmyId))
+                    && !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)));
             // A pinned stronghold defender joins the candidates only for a request that allows a
             // decisive departure and only while its stronghold stays covered; Plan then accepts it
             // only for a decisive fight (DecisiveIfPinned).
@@ -439,13 +448,14 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, int armyId, float minWinChance,
             float defenderHexDefenseBonus = 0f, bool? requireCoverage = null,
             float minimumArmyPower = 0f, bool preserveDepartureRoster = false,
-            bool requireReadyThisTurn = true)
+            bool requireReadyThisTurn = true, bool allowHeroDisplacement = false)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatAssemblyPlan.Infeasible("no own-force snapshot");
 
             ArmySnapshot a = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == armyId);
-            if (a == null || !a.IsStructuralRaidActor)
+            if (a == null || !a.IsStructuralRaidActor
+                && !(allowHeroDisplacement && GroundCombatActorEligibility.CanDisplaceHeroes(a, opposition)))
                 return GroundCombatAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
 
             ArmyData live = LiveArmy(a);

@@ -20,6 +20,49 @@ namespace Game.EditorTests
                 new List<string>(), hp, true, true, 0);
 
         [Test]
+        public void EmptyHexControl_DoesNotInventARequiredFight()
+        {
+            var empty = new[] { new WorthIt.DefendingArmy(new WorthIt.DefenderProfile[0], default) };
+            Assert.That(WorthIt.EstimateHexControl(new[] { Hero(4) }, default, empty, 0).WinChance,
+                Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void HeroAlone_CannotDisplaceAnotherHero()
+        {
+            var defenders = new[] { new WorthIt.DefendingArmy(new[] { Hero(4) }, default) };
+            Assert.That(WorthIt.EstimateHexControl(new[] { Hero(4) }, default, defenders, 0).WinChance,
+                Is.Zero);
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        public void HexControlReadsStormFromOpposition_AndMatchesExplicitWeather(int armyCount)
+        {
+            var attackers = new[] { new WorthIt.DefenderProfile(2, false, attack: 3,
+                hitPoints: 6, initiative: 1, range: 3),
+                new WorthIt.DefenderProfile(2, false, attack: 3, hitPoints: 6, initiative: 1, range: 2) };
+            var body = new[] { new WorthIt.DefenderProfile(2, false, attack: 3,
+                hitPoints: 6, initiative: 1, range: 2) };
+            var storm = new List<WorthIt.DefendingArmy>();
+            var clear = new List<WorthIt.DefendingArmy>();
+            for (int i = 0; i < armyCount; i++)
+            {
+                storm.Add(new WorthIt.DefendingArmy(body, default, 4f, i, 2f,
+                    environment: BattleEnvironment.Sandstorm));
+                clear.Add(new WorthIt.DefendingArmy(body, default, 4f, i, 2f));
+            }
+            var expected = WorthIt.EstimateHexControl(attackers, default, clear, 4f,
+                environment: BattleEnvironment.Sandstorm);
+            var inferred = WorthIt.EstimateHexControl(attackers, default, storm, 4f);
+            Assert.That(inferred.WinChance, Is.EqualTo(expected.WinChance));
+            Assert.That(inferred.ExpectedSurvivingHpRatioOnWin,
+                Is.EqualTo(expected.ExpectedSurvivingHpRatioOnWin));
+            Assert.That(WorthIt.EstimateSequential(attackers, default, storm, 4f).WinChance,
+                Is.EqualTo(expected.WinChance), "capture-free fights share the same weather boundary");
+        }
+
+        [Test]
         public void ABackRowHeroIsNotADecoyForTheEnemyAttacks()
         {
             var enemy = new List<WorthIt.DefenderProfile> { Body(3, 2, 4), Body(3, 1, 4) };

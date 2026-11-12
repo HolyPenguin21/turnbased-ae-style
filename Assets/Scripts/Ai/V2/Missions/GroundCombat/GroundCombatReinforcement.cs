@@ -55,9 +55,9 @@ namespace Game.Ai.V2
             var afterRoster = FinalRoster(primary, plan);
             var after = afterRoster.Where(AiArmyRoles.IsGroundBattleBody)
                 .Select(WorthIt.FromLiveUnit).ToList();
-            bool improves = WorthIt.EstimateSequential(after, WorthIt.SideCommander.Of(afterRoster),
+            bool improves = WorthIt.EstimateHexControl(after, WorthIt.SideCommander.Of(afterRoster),
                     opposition, defenderHexDefenseBonus).WinChance
-                > WorthIt.EstimateSequential(before, WorthIt.SideCommander.Of(primary.Members),
+                > WorthIt.EstimateHexControl(before, WorthIt.SideCommander.Of(primary.Members),
                     opposition, defenderHexDefenseBonus).WinChance + 0.001f;
             if (!improves) why = "projected legal handoff does not improve win chance";
             return improves;

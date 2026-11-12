@@ -91,7 +91,8 @@ namespace Game.Ai.V2
             float minimumArmyPower = 0f, bool allowSameHexAssembly = true,
             bool? requireCoverage = null, bool preserveDepartureRoster = false,
             bool allowDecisivePinnedDefender = false,
-            Func<GroundCombatAssemblyPlan, bool> acceptPlan = null) =>
+            Func<GroundCombatAssemblyPlan, bool> acceptPlan = null,
+            bool allowHeroDisplacement = false) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
                 Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
@@ -106,6 +107,7 @@ namespace Game.Ai.V2
                 RequireCoverage = requireCoverage,
                 AllowDecisivePinnedDefender = allowDecisivePinnedDefender,
                 AcceptPlan = acceptPlan,
+                AllowHeroDisplacement = allowHeroDisplacement,
             });
 
         // A started Hard operation is not a fresh admission decision. Its PreferredMover already
@@ -212,6 +214,7 @@ namespace Game.Ai.V2
                     : GroundCombatAdmissionPolicy.PinnedOrFreshGate(proposal.FromDurableIntent),
                 0f,
                 proposal.FromDurableIntent ? proposal.PreferredMoverArmyId : null,
+                allowHeroDisplacement: target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity,
                 allowSameHexAssembly: GroundCombatAdmissionPolicy.AllowsSameHexAssembly(proposal),
                 preserveDepartureRoster: GroundCombatAdmissionPolicy.PreservesDepartureRoster(proposal),
                 acceptPlan: target.InterceptPurpose == ActiveDefenceInterceptPurpose.StrategicDefence

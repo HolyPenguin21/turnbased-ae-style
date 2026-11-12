@@ -45,7 +45,8 @@ namespace Game.Ai.V2
                 && defence?.PrimaryArmyId == a.ArmyId
                 && (defence.Phase == ActiveDefencePhase.Return
                     ? MissionActorPolicy.GroundContainerStillValid(a.ArmyId, snap)
-                    : a.IsStructuralRaidActor));
+                    : a.IsStructuralRaidActor
+                        || MissionActorPolicy.ActiveDefenceActorStillValid(a.ArmyId, snap, defence)));
             if (defence == null || actor == null || ShouldReap(intent, snap?.TurnNumber ?? 0))
             {
                 AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END {intent.IntentKey} "
@@ -193,7 +194,8 @@ namespace Game.Ai.V2
                     out _) ? "immediate_unreachable"
                 : !GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
                     KnownOpposition.OfEnemyArmy(snap, defence.EnemyArmyId),
-                    actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor).Feasible
+                    actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor,
+                    allowHeroDisplacement: true).Feasible
                     ? "actor_no_longer_capable"
                 : null;
             if (end != null)

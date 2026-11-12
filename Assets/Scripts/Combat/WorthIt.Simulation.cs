@@ -319,10 +319,20 @@ namespace Game.Combat
             return order;
         }
 
-        private static BattleEstimate EstimateSequentialFights(IReadOnlyCollection<DefenderProfile> attackerUnits,
+        // Territorial outcome of the sequential fights. An escaping non-fighting hero yields
+        // the hex just as a captured one does. Capture/kill odds belong to EstimateSequential
+        // and EstimateCaptureKill; summons remain real defenders through WithBattleSummons.
+        public static BattleEstimate EstimateHexControl(IReadOnlyCollection<DefenderProfile> attackerUnits,
             SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
-            float hexDefenseBonus, AbilityMagnitudes? magnitudes, BattleEnvironment environment)
+            float hexDefenseBonus, AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
+            // Every caller, including territorial AI admission, reads the battle hex's weather.
+            // Normalise it here before ordering, seeds and cache keys; capture has no weather rule.
+            environment = BattleWeather(environment, defendingArmies);
+            hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
+            if (defendingArmies?.Any(a => a.Units?.Count > 0) == true
+                && !FieldsGroundCombatant(attackerUnits))
+                return new BattleEstimate(0f, 0f, 0f);
             var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
                 .Select(a => a.With(WithBattleSummons(a.Units), a.Commander,
                     a.DefenseBonusOverride, a.BuildingDefenseBonus))

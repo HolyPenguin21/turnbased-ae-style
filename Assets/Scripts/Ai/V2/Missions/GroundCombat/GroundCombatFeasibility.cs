@@ -19,7 +19,7 @@ namespace Game.Ai.V2
         // THE ground-combat feasibility check: does this attacker (roster + its commander) cover
         // every known defending body and clear `minWinChance` against the opposition — every
         // defending army its own battle, strongest first, with its own commander
-        // (WorthIt.EstimateSequential). A single-army opposition is one ordinary battle.
+        // (WorthIt.EstimateHexControl). Escaping heroes still yield the hex.
         internal static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             WorthIt.SideCommander attackerCommander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             float minWinChance, float defenderHexDefenseBonus, out float win, out bool cover,
@@ -62,7 +62,7 @@ namespace Game.Ai.V2
                 attackerCommander: attackerCommander);
             win = defenders.Count == 0
                 ? 1f
-                : WorthIt.EstimateSequential(attackers, attackerCommander, opposition,
+                : WorthIt.EstimateHexControl(attackers, attackerCommander, opposition,
                     defenderHexDefenseBonus).WinChance;
             // `cover` stays the honest fact for logs and CoversAllDefenders; whether it gates this
             // fight is the admission policy's answer.

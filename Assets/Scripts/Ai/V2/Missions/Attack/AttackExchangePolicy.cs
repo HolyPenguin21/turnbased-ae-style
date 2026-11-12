@@ -74,7 +74,7 @@ namespace Game.Ai.V2
             foreach (WorthIt.DefendingArmy army in order)
             {
                 prefix.Add(army);
-                through = WorthIt.EstimateSequential(attackers, commander, prefix, hexBonus);
+                through = WorthIt.EstimateHexControl(attackers, commander, prefix, hexBonus);
                 if (prefix.Count == 1)
                     firstWin = through.WinChance;
                 killed += through.WinChance * AiPower.EffectiveArmyPowerFromProfiles(army.Units.ToList());

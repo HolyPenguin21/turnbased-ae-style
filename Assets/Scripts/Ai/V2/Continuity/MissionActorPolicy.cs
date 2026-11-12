@@ -156,7 +156,7 @@ namespace Game.Ai.V2
                     int actorId = i.PreferredMoverArmyId.Value;
                     bool valid = i.ActiveDefence?.Phase == ActiveDefencePhase.Return
                         ? GroundContainerStillValid(actorId, snap)
-                        : GroundCombatActorStillValid(actorId, snap, out _);
+                        : ActiveDefenceActorStillValid(actorId, snap, i.ActiveDefence);
                     if (valid)
                         c.Claim(i.IntentKey, actorId, i.ActiveDefence?.Sortie != null
                             ? ArmyMutationContract.FullyProtected
@@ -186,6 +186,20 @@ namespace Game.Ai.V2
                     c.Claim(i.IntentKey, i.PreferredMoverArmyId.Value);
             }
             return c;
+        }
+
+        internal static bool ActiveDefenceActorStillValid(int armyId, WorldSnapshot snap,
+            ActiveDefenceIntent defence)
+        {
+            if (GroundCombatActorStillValid(armyId, snap, out _)) return true;
+            if (defence?.InterceptPurpose != ActiveDefenceInterceptPurpose.ImmediateOpportunity)
+                return false;
+            ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == armyId);
+            if (!GroundCombatActorEligibility.CanDisplaceHeroes(actor,
+                    KnownOpposition.OfEnemyArmy(snap, defence.EnemyArmyId))) return false;
+            ArmyData live = OwnWorld.Of(actor.Owner).Army(armyId);
+            return live != null && !live.IsPrison && !live.IsGarrison && !live.IsAirfield
+                && !live.IsAirArmy && live.Members.Any(AiArmyRoles.IsGroundBattleBody);
         }
 
         private static bool GroundCombatActorStillValid(int armyId, WorldSnapshot snap, out string reason)

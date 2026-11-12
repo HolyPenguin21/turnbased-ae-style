@@ -668,7 +668,7 @@ namespace Game.Ai.V2
                 float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, null, a.Target.Hex);
                 IReadOnlyList<WorthIt.DefenderProfile> roster = primary.Members
                     ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                win = opp => WorthIt.EstimateSequential(roster, primary.Commander, opp, hexBonus).WinChance;
+                win = opp => WorthIt.EstimateHexControl(roster, primary.Commander, opp, hexBonus).WinChance;
                 current = win(opposition);
             }
 

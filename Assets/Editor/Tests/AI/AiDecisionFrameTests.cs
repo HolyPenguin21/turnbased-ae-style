@@ -691,7 +691,8 @@ namespace Game.EditorTests
             Assert.That(Calls("AiStrategyV2Pipeline.cs"), Is.EqualTo(new[]
             {
                 "EnumerateObjectives", "ResolveInitialOwnership", "WarmDemands", "RebuildDemandsPaced", // the start
-                "AcceptChangedPhaseA", "RebuildDemandsPaced",                              // the first Phase A changed
+                "AcceptChangedPhaseA", "RebuildDemandsPaced",                              // an opening delivery changed facts
+                "AcceptChangedPhaseA", "RebuildDemandsPaced",                              // the demand-driven Phase A changed
                 "RefreshAfterFormation",                                                   // a wing was formed
                 "StartWithCredit",                                                         // the loop block begins
                 "ObserveSettled",                                                          // air-support recall
@@ -700,7 +701,9 @@ namespace Game.EditorTests
             }));
             Assert.That(Calls("StrategicReadmissionRunner.cs"), Is.EqualTo(new[]
             {
-                "RefreshOperationalDecision", "GenerateDemandsPaced", "ReplaceDemandFamilies", // a re-admission
+                "RefreshOperationalDecision", "RebuildDemandsPaced",                     // current needs before a deferred opening
+                "AcceptChangedReentry",                                                    //   ... its delivery changed facts
+                "GenerateDemandsPaced", "ReplaceDemandFamilies",                         // demand-driven re-admission
                 "AcceptChangedReentry",                                                    //   ... that changed the world
             }));
             Assert.That(Calls("AdmissionIteration.cs"), Is.EqualTo(new[]

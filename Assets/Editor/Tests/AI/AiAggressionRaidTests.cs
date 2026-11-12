@@ -152,7 +152,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void CombatOpportunityAnalyzer_LoneHeroTarget_IsNotAFreeWinForTheReadyArmy()
+        public void CombatOpportunityAnalyzer_LoneHeroTarget_YieldsItsHexEvenWhenItEscapes()
         {
             var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
                 isGroundCombatant: false, isHero: true, fateMax: 10);
@@ -161,7 +161,8 @@ namespace Game.EditorTests
 
             CombatOpportunity opp = CombatOpportunityAnalyzer.Analyze(snap).NeutralOpportunities.Single();
 
-            Assert.That(opp.ReadyWinChance, Is.LessThan(1f), "an empty tactical battle is not a Capture/Kill");        }
+            Assert.That(opp.ReadyWinChance, Is.EqualTo(1f), "a failed capture still forces the hero off the hex");
+        }
 
         // Playtest 2026-10-19: a weak army sharing its hex with a strong one is no free fight — the
         // battle opens against the strongest body on the hex.

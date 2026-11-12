@@ -342,11 +342,7 @@ namespace Game.Combat
             SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
             float hexDefenseBonus, AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
-            // Weather is applied once inside the fights, right after the summons join each side
-            // and before fight order, seeds and cache keys. Capture/Kill has no range or defence.
-            environment = BattleWeather(environment, defendingArmies);
-            hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
-            BattleEstimate fights = EstimateSequentialFights(attackerUnits, attackerCommander,
+            BattleEstimate fights = EstimateHexControl(attackerUnits, attackerCommander,
                 defendingArmies, hexDefenseBonus, magnitudes, environment);
             // Hero-only armies are no battle, they are Capture/Kill challenges taken after the fights.
             // The opposition-based AI estimate only: the flat Estimate overloads stay as they are, since

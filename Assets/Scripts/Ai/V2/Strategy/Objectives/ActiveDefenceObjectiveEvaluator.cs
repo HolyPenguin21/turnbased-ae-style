@@ -237,7 +237,7 @@ namespace Game.Ai.V2
                     || c.Army.Members.Count == 0 || !known.Contains(id) || !seen.Add(id))
                     continue;
                 HexCoord position = c.Position.Value;
-                if (OnKnownForeignStructure(snap, position))
+                if (BlocksImmediateIntercept(snap, position))
                     continue;
                 StrategicAssetSnapshot asset = NearestOwnBaseAsset(snap, position);
                 if (asset == null)
@@ -250,6 +250,7 @@ namespace Game.Ai.V2
                 float enemyPower = Mathf.Max(0f, c.Army.EffectiveArmyPower);
                 float strikeScale = Mathf.Max(1f, Mathf.Max(snap.Self.AttackPeak, enemyPower));
                 TaskScore score = new TaskScore(
+                    economicHexBenefit: ExtractorDenial(snap, position),
                     ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(
                         TaskScoreEvaluator.NearestOwnedHomeDistance(snap, position)),
                     preventedDamage: TaskScoreEvaluator.PreventedDamage(enemyPower / strikeScale));
@@ -393,7 +394,7 @@ namespace Game.Ai.V2
                 return null;
             int enemyId = objective.Target.EnemyArmyId;
             IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.OfEnemyArmy(snap, enemyId);
-            if (opposition == null || OnKnownForeignStructure(snap, objective.Target.LastKnownHex))
+            if (opposition == null || BlocksImmediateIntercept(snap, objective.Target.LastKnownHex))
                 return null;
             var response = new ActiveDefenceResponse { Opposition = opposition };
             EnemyContactSnapshot contact = snap.Threat?.Contacts?.FirstOrDefault(c => c?.Army != null
@@ -422,6 +423,7 @@ namespace Game.Ai.V2
                     new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
+                        AllowHeroDisplacement = true,
                         WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
@@ -512,7 +514,7 @@ namespace Game.Ai.V2
                     continue;
                 if (!WorthIt.CanDamageAll(c.Army.Members, defending, 0f, attackerCommander: c.Army.Commander))
                     continue;
-                float win = WorthIt.EstimateSequential(c.Army.Members, c.Army.Commander, defending, 0f).WinChance;
+                float win = WorthIt.EstimateHexControl(c.Army.Members, c.Army.Commander, defending, 0f).WinChance;
                 if (win <= 1f - AiConfigV2.activeDefenceHoldWinChance || win <= exposerWin)
                     continue;
                 exposerId = c.Army.ArmyId;
@@ -547,6 +549,23 @@ namespace Game.Ai.V2
         // Bases/Citadels (AttackObjectiveEvaluator.IsHostileStrategicStructure). The ground-move gate also
         // refuses a foreign takeover by an Intercept. Deciding it here, at admission, keeps
         // the planner, Demand and Continuity on one answer: no objective, no pursuit.
+        internal static bool BlocksImmediateIntercept(WorldSnapshot snap, HexCoord hex) =>
+            snap?.Known?.Buildings?.Any(b => b.Hex.Equals(hex) && b.Owner != null
+                && b.Owner != snap.Observer
+                && (b.Owner.IsNeutral || b.Owner.IsEliminated || b.IsBase || b.IsStartingCitadel)) == true;
+
+        private static float ExtractorDenial(WorldSnapshot snap, HexCoord hex)
+        {
+            var structure = snap.Known.Buildings?.FirstOrDefault(b => b.Hex.Equals(hex)
+                && b.Owner != null && b.Owner != snap.Observer && !b.Owner.IsNeutral
+                && !b.IsBase && !b.IsStartingCitadel);
+            if (!structure.HasValue || structure.Value.Owner == null) return 0f;
+            float income = 0f;
+            foreach (int amount in structure.Value.CollectedAmounts ?? Array.Empty<int>())
+                income += Math.Max(0, amount);
+            return TaskScoreEvaluator.EconomicHexBenefit(income, 0f);
+        }
+
         internal static bool OnKnownForeignStructure(WorldSnapshot snap, HexCoord hex)
         {
             IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap?.Known?.Buildings;
@@ -894,7 +913,7 @@ namespace Game.Ai.V2
             if (defenders.Count == 0)
                 return 0f;
             var fist = opposition[0];
-            float attackerWins = WorthIt.EstimateSequential(fist.Units, fist.Commander,
+            float attackerWins = WorthIt.EstimateHexControl(fist.Units, fist.Commander,
                 defenders, bonus).WinChance;
             return Mathf.Clamp01(1f - attackerWins);
         }

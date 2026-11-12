@@ -13,6 +13,20 @@ namespace Game.Ai.V2
         internal static bool IsStructuralActor(ArmySnapshot actor) =>
             actor != null && actor.IsStructuralRaidActor;
 
+        // A non-fighting hero must retreat even after a failed capture roll. A free scout
+        // with a real ground body can claim that hex; escorts and summoners keep normal rules.
+        internal static bool IsHeroOnlyOpposition(IReadOnlyList<Game.Combat.WorthIt.DefendingArmy> opposition) =>
+            opposition != null && opposition.Count > 0
+            && opposition.Any(a => a.Units?.Any(p => p.IsHero) == true)
+            && opposition.All(a => !Game.Combat.WorthIt.FieldsGroundCombatant(a.Units));
+
+        internal static bool CanDisplaceHeroes(ArmySnapshot actor,
+            IReadOnlyList<Game.Combat.WorthIt.DefendingArmy> opposition) =>
+            actor != null && actor.IsSoloRecce && !actor.IsGarrison && !actor.IsPrison
+            && !actor.IsAir && !actor.IsAirfield
+            && actor.Members?.Any(AiArmyRoles.IsGroundBattleBody) == true
+            && IsHeroOnlyOpposition(opposition);
+
         // Free, structurally-eligible ground combat armies for this cycle, mobility-first:
         // already-activated / cheaper activation first, then the least powerful sufficient host
         // (avoids feeding an already-winning raid into an ever larger, ever more expensive stack).

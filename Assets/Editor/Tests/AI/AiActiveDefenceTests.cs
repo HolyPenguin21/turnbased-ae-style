@@ -2116,6 +2116,66 @@ namespace Game.EditorTests
         private static ActiveDefenceObjective ImmediateObjective(WorldSnapshot snap) =>
             ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap).Single();
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Immediate_HeroOnExtractorCanBeDisplaced_StrongholdStaysWithAttack(bool stronghold)
+        {
+            var owner = new PlayerSetupData();
+            var actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            var hex = new HexCoord(-2, 0);
+            var snap = ImmediateWorld(owner, hex, true, true, actor);
+            var contact = snap.Threat.Contacts[0];
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(hex, contact.Army.Owner,
+                false, null, collectedAmounts: new[] { 0, 0, 2, 0 }, isBase: stronghold) };
+            if (stronghold)
+                Assert.That(ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap), Is.Empty);
+            else
+            {
+                var objective = ImmediateObjective(snap);
+                Assert.That(objective.TaskScore.EconomicHexBenefit, Is.GreaterThan(0));
+                Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective,
+                    null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+            }
+        }
+
+        [Test]
+        public void Immediate_ScoutDisplacingHero_KeepsItsActorClaimBetweenSteps()
+        {
+            var owner = new PlayerSetupData();
+            var live = new Game.Map.ArmyData { Owner = owner, Hex = new HexCoord(0, 0) };
+            var scout = new Game.Units.UnitData { Owner = owner, MoveMax = 3, MoveCurrent = 3 };
+            scout.Abilities.Add(Game.Cards.UnitAbilities.R1S0);
+            live.Members.Add(scout);
+            Game.Map.ArmyRegistry.Register(live);
+            try
+            {
+                var actor = DefenceActor(owner, live.Id, live.Hex);
+                actor.IsSoloRecce = true; actor.IsStructuralRaidActor = false;
+                actor.Members = new[] { WorthIt.FromLiveUnit(scout) };
+                var hex = new HexCoord(-2, 0);
+                var snap = ImmediateWorld(owner, hex, true, true, actor);
+                var contact = snap.Threat.Contacts[0];
+                var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                    isGroundCombatant: false, isHero: true, fateMax: 12);
+                contact.Army.Members = new[] { hero };
+                snap.Known.EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(hex,
+                    contact.Army.Owner, "hero", 1, 0, 0, new[] { hero }, seenTurn: 8, armyId: 77) };
+                var key = MissionIntentKey.ForActiveDefence(77);
+                var intent = new MissionIntent { IntentKey = key, Kind = MissionKind.ActiveDefence,
+                    Status = IntentStatus.Active, PreferredMoverArmyId = live.Id,
+                    Objective = new ActiveDefenceIntent { Phase = ActiveDefencePhase.Intercept,
+                        InterceptPurpose = ActiveDefenceInterceptPurpose.ImmediateOpportunity,
+                        ImmediateTurn = 8, EnemyArmyId = 77, PrimaryArmyId = live.Id,
+                        LastKnownHex = hex, ProtectedAssetHex = Home, ProtectedAssetKind = AssetKind.Citadel } };
+                var claims = ActorCommitments.FromIntents(new[] { intent }, snap, null);
+                Assert.That(claims.IsArmyClaimed(live.Id), Is.True);
+                contact.Army.Members = new[] { hero, new WorthIt.DefenderProfile(1, false, attack: 2, hitPoints: 3) };
+                Assert.That(ActorCommitments.FromIntents(new[] { intent }, snap, null)
+                    .IsArmyClaimed(live.Id), Is.False, "an escort cancels the scout exception");
+            }
+            finally { Game.Map.ArmyRegistry.Unregister(live); }
+        }
+
         [Test]
         public void Immediate_WeakVisibleScoutOutsideThreatList_InterceptsNow()
         {
