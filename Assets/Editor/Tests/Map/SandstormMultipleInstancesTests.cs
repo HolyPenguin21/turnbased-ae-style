@@ -7,8 +7,9 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Profiles with 0/1/2 storms (spec 3.5): independent slots, atomic union snapshot, overlap
-    // allowed, penalties never stacked, one storm leaving never clears hexes another still covers.
+    // Profiles with 0/1/2 storms (spec 3.5): independent slots and random streams, atomic union
+    // snapshot, two storms never share a hex (so the map never draws two storm sprites on one
+    // hex), a storm leaving clears only the hexes nobody else covers.
     public sealed class SandstormMultipleInstancesTests
     {
         [SetUp] public void SetUp() => SandstormState.ResetForMatch();
@@ -22,12 +23,48 @@ namespace Game.EditorTests
         }
 
         private static HexCoord[] Spot(int q, int r) =>
-            SandstormRules.SpotCells(new HexCoord(q, r), 0, grown: true).ToArray();
+            SandstormRules.BodyOf(new HexCoord(q, r), new[] { 0, 1, 3, 5 }).ToArray();
+
+        private static void AssertApart(IReadOnlyList<SandstormInstanceView> views, string at)
+        {
+            var seen = new HashSet<HexCoord>();
+            foreach (var view in views)
+                foreach (var hex in view.Body)
+                    Assert.That(seen.Add(hex), Is.True, $"{at}: {hex} covered by two storms");
+        }
+
+        [TestCase(5)] [TestCase(7)]
+        public void TwoSandstorms_FollowTheSchedule_AndNeverShareAHex(int radius)
+        {
+            var field = SandstormLifecycleTests.Field(radius);
+            var topology = new SandstormRules.Topology(field);
+            for (int seed = 0; seed < 60; seed++)
+            {
+                SandstormState.ResetForMatch();
+                SandstormState.Initialize(new MatchWeatherConditions(MatchWeatherProfile.TwoSandstorms, seed), null);
+                for (int round = 1; round <= 17; round++)
+                {
+                    SandstormState.AdvanceRound(field, round);
+                    string at = $"r{radius} seed {seed} round {round}";
+                    var views = SandstormState.Snapshot.Instances;
+                    Assert.That(views.Select(v => v.SlotId), Is.EqualTo(new[] { 0, 1 }), at);
+                    AssertApart(views, at);
+                    foreach (var view in views.Where(v => v.Phase == SandstormPhase.Active))
+                    {
+                        Assert.That(SandstormRules.IsValidBody(topology, view.Body, view.Age), Is.True, at);
+                        // Next to the other storm a shape may come out smaller, never larger.
+                        Assert.That(view.Body.Count, Is.InRange(1, SandstormRules.SizeAt(view.Age)), at);
+                    }
+                    Assert.DoesNotThrow(() => SandstormState.Validate(SandstormState.CaptureState(), field), at);
+                }
+            }
+        }
 
         [Test]
-        public void TwoSandstorms_BornOnDifferentHexes_EachFollowsTheSchedule()
+        public void TwoSandstorms_SizesFollowTheAgeWhenApart()
         {
             var field = SandstormLifecycleTests.Field(7);
+            int checkedRounds = 0;
             for (int seed = 0; seed < 30; seed++)
             {
                 SandstormState.ResetForMatch();
@@ -36,39 +73,52 @@ namespace Game.EditorTests
                 {
                     SandstormState.AdvanceRound(field, round);
                     var views = SandstormState.Snapshot.Instances;
-                    Assert.That(views.Select(v => v.SlotId), Is.EqualTo(new[] { 0, 1 }));
-                    int expected = new[] { 1, 5, 5, 5, 5, 5, 0, 0, 1 }[round - 1];
-                    Assert.That(views.Select(v => v.Body.Count), Is.EqualTo(new[] { expected, expected }));
-                    Assert.That(SandstormState.Snapshot.Cells.Count, Is.LessThanOrEqualTo(2 * expected));
-                    if (round == 1 || round == 9)
-                        Assert.That(views[0].Body.Intersect(views[1].Body), Is.Empty, "seed " + seed);
+                    int expected = new[] { 1, 3, 5, 6, 5, 3, 0, 0, 1 }[round - 1];
+                    if (views.Any(v => v.Phase != SandstormPhase.Active)
+                        || HexGridMath.Distance(SandstormRules.CentreOf(views[0].Body), SandstormRules.CentreOf(views[1].Body)) < 3)
+                        continue;
+                    Assert.That(views.Select(v => v.Body.Count), Is.EqualTo(new[] { expected, expected }), $"seed {seed} round {round}");
+                    checkedRounds++;
                 }
             }
+            Assert.That(checkedRounds, Is.GreaterThan(30));
         }
 
         [Test]
-        public void FirstSlot_IsTheSameStormWithOrWithoutASecondSlot()
+        public void FirstSlot_IsTheSameStormWithOrWithoutASecondSlot_UntilTheyMeet()
         {
+            // The second slot's random stream never feeds the first; only its presence (a centre
+            // the first may not enter, hexes the first's shape may not take) can, and only once
+            // the centres (both drifting one hex) can end up within two hexes of each other.
             var field = SandstormLifecycleTests.Field(7);
-            List<string> Trace(MatchWeatherProfile profile)
+            List<(string Body, int Gap)> Trace(MatchWeatherProfile profile)
             {
                 SandstormState.ResetForMatch();
                 SandstormState.Initialize(new MatchWeatherConditions(profile, 1234), null);
-                var trace = new List<string>();
+                var trace = new List<(string, int)>();
                 for (int round = 1; round <= 17; round++)
                 {
+                    var before = SandstormState.Snapshot.Instances;
+                    int gap = before.Count == 2 && before.All(v => v.Body.Count > 0)
+                        ? HexGridMath.Distance(SandstormRules.CentreOf(before[0].Body), SandstormRules.CentreOf(before[1].Body))
+                        : int.MaxValue;
                     SandstormState.AdvanceRound(field, round);
-                    trace.Add(string.Join(",", SandstormState.Snapshot.Instances[0].Body));
+                    trace.Add((string.Join(",", SandstormState.Snapshot.Instances[0].Body), gap));
                 }
                 return trace;
             }
-            Assert.That(Trace(MatchWeatherProfile.TwoSandstorms), Is.EqualTo(Trace(MatchWeatherProfile.OneSandstorm)),
-                "the second slot's random stream never feeds the first");
+            var two = Trace(MatchWeatherProfile.TwoSandstorms);
+            var one = Trace(MatchWeatherProfile.OneSandstorm);
+            int compared = 0;
+            for (int i = 0; i < two.Count && two[i].Gap > 4; i++, compared++)
+                Assert.That(two[i].Body, Is.EqualTo(one[i].Body), "round " + (i + 1));
+            Assert.That(compared, Is.GreaterThan(0));
         }
 
         [Test]
-        public void OverlappingStorms_UnionCountsEachHexOnce()
+        public void OverlappingViews_UnionCountsEachHexOnce()
         {
+            // The snapshot itself stays a plain union (rules never produce an overlap).
             var a = new SandstormInstanceView(0, SandstormPhase.Active, 2, 0, Spot(0, 0));
             var b = new SandstormInstanceView(1, SandstormPhase.Active, 3, 0, Spot(1, 0));
             var snapshot = new SandstormSnapshot(MatchWeatherProfile.TwoSandstorms, 1, new[] { b, a });
@@ -79,29 +129,22 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void OneStormLeaving_KeepsHexesTheOtherStillCovers()
+        public void OneStormLeaving_ClearsOnlyTheHexesNobodyElseCovers()
         {
-            // Slot 0 ends this round and sits exactly where slot 1 (age 2 -> 3, its own random
-            // stream) drifts to: after the tick slot 0 is gone, yet every one of its hexes is
-            // still stormy because slot 1 now covers it. Slot 1's old hexes it left are cleared.
             var field = SandstormLifecycleTests.Field(7);
-            var topology = new SandstormRules.Topology(field);
-            var start = SandstormRules.SpotCells(new HexCoord(0, 0), 1, grown: true).ToArray();
-            SandstormSlotData mover = Active(1, 2, 1, start);
-            var random = new SandstormRandom(unchecked((ulong)mover.random));
-            Assume.That(SandstormRules.TryPlanAdvance(topology, start, 1, SandstormRules.LastActiveAge - 3, ref random,
-                new SandstormRules.ContinuationMemo(), out List<HexCoord> arrival, out int arrivalCourse, out _), Is.True);
+            // Age 5: at most three hexes.
+            var leaving = SandstormRules.BodyOf(new HexCoord(-2, 0), new[] { 0, 1 }).ToArray();
+            var staying = Spot(1, 0);
             var data = new SandstormStateData { profile = (int)MatchWeatherProfile.TwoSandstorms, seed = 8, lastRound = 6 };
-            data.slots.Add(Active(0, 5, arrivalCourse, arrival.ToArray()));
-            data.slots.Add(mover);
+            data.slots.Add(Active(0, 5, 0, leaving));
+            data.slots.Add(Active(1, 2, 3, staying));
             SandstormState.RestoreState(field, data);
             SandstormState.AdvanceRound(field, 7);
             Assert.That(SandstormState.Snapshot.Instances[0].Phase, Is.EqualTo(SandstormPhase.Cooldown));
-            Assert.That(SandstormState.Snapshot.Instances[1].Body, Is.EqualTo(arrival));
-            foreach (var hex in arrival)
-                Assert.That(SandstormState.Snapshot.Contains(hex), Is.True, hex.ToString());
-            foreach (var hex in start.Where(h => !arrival.Contains(h)))
-                Assert.That(SandstormState.Snapshot.Contains(hex), Is.False, hex.ToString());
+            var remaining = SandstormState.Snapshot.Instances[1].Body;
+            foreach (var hex in leaving)
+                Assert.That(SandstormState.Snapshot.Contains(hex), Is.EqualTo(remaining.Contains(hex)), hex.ToString());
+            Assert.That(SandstormState.Snapshot.Cells, Is.EquivalentTo(remaining));
         }
 
         [Test]

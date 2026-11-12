@@ -52,7 +52,7 @@ namespace Game.EditorTests
                 SandstormState.Snapshot.Instances[0].Body.Count));
             for (int i = 0; i < 9; i++) NewRound();
             Assert.That(seen.ConvertAll(s => s.WeatherRound), Is.EqualTo(seen.ConvertAll(s => s.Round)));
-            Assert.That(seen.ConvertAll(s => s.Size), Is.EqualTo(new[] { 1, 5, 5, 5, 5, 5, 0, 0, 1 }));
+            Assert.That(seen.ConvertAll(s => s.Size), Is.EqualTo(new[] { 1, 3, 5, 6, 5, 3, 0, 0, 1 }));
             Assert.That(_map.Weather, Is.SameAs(SandstormState.Snapshot), "the map publishes the same snapshot");
         }
 

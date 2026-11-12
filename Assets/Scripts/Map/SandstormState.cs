@@ -20,7 +20,7 @@ namespace Game.Map
         public SandstormPhase Phase { get; }
         public int Age { get; }
         public int Course { get; }
-        // SandstormRules.SpotCells order (ring, then the centre last); empty outside the Active phase.
+        // SandstormRules.BodyOf order (neighbours, then the centre last); empty outside the Active phase.
         public IReadOnlyList<HexCoord> Body { get; }
 
         internal SandstormInstanceView(int slotId, SandstormPhase phase, int age, int course, IEnumerable<HexCoord> body)
@@ -177,7 +177,7 @@ namespace Game.Map
             var work = _slots.Select(s => s.Copy()).ToList();
             var notes = new List<string>();
 
-            // Phase 1: existing storms disappear, expand and advance; pauses run out.
+            // Phase 1: existing storms disappear or age; pauses run out.
             foreach (Slot slot in work)
             {
                 switch (slot.Phase)
@@ -192,25 +192,6 @@ namespace Game.Map
                             break;
                         }
                         slot.Age++;
-                        if (slot.Age == 1)
-                        {
-                            HexCoord centre = SandstormRules.CentreOf(slot.Body);
-                            if (SandstormRules.TryExpand(topology, centre, slot.Course, out List<HexCoord> expanded))
-                                slot.Body = expanded;
-                            else
-                                notes.Add($"storm {slot.Id}: no room to grow its spot around {centre}");
-                        }
-                        if (SandstormRules.TryPlanAdvance(topology, slot.Body, slot.Course,
-                                SandstormRules.LastActiveAge - slot.Age, ref slot.Random, memo,
-                                out List<HexCoord> moved, out int course, out _))
-                        {
-                            slot.Body = moved;
-                            slot.Course = course;
-                        }
-                        else
-                        {
-                            notes.Add($"storm {slot.Id}: no legal one-hex advance from {slot.Body[slot.Body.Count - 1]} (course {slot.Course}); stays this round");
-                        }
                         break;
                     case SandstormPhase.Cooldown:
                         if (round >= slot.NextSpawnRound) slot.Phase = SandstormPhase.WaitingForSpawn;
@@ -218,7 +199,36 @@ namespace Game.Map
                 }
             }
 
-            // Phase 2: births in slot order, never on a hex another storm now covers.
+            // Phase 2: every storm centre drifts or lulls, in slot order. A centre never enters
+            // another storm's centre (already moved: its new one; not yet: its current one), so
+            // centres stay distinct whatever each storm does.
+            var active = work.Where(s => s.Phase == SandstormPhase.Active).ToList();
+            var centres = active.ToDictionary(s => s.Id, s => SandstormRules.CentreOf(s.Body));
+            foreach (Slot slot in active)
+            {
+                var others = centres.Where(c => c.Key != slot.Id).Select(c => c.Value).ToList();
+                var drift = SandstormRules.ChooseDrift(topology, centres[slot.Id], slot.Course,
+                    SandstormRules.LastActiveAge - slot.Age, others, ref slot.Random, memo,
+                    out HexCoord centre, out int course);
+                if (drift == SandstormRules.DriftKind.Stuck)
+                    notes.Add($"storm {slot.Id}: no legal one-hex drift from {centres[slot.Id]} (course {slot.Course}); stays this round");
+                centres[slot.Id] = centre;
+                slot.Course = course;
+            }
+
+            // Phase 3: shapes in slot order. Two storms never share a hex: every centre is
+            // reserved, and each shape skips the hexes earlier storms have just taken.
+            var taken = new HashSet<HexCoord>(centres.Values);
+            foreach (Slot slot in active)
+            {
+                HexCoord centre = centres[slot.Id];
+                taken.Remove(centre);
+                slot.Body = SandstormRules.ChooseShape(centre, slot.Course, SandstormRules.SizeAt(slot.Age),
+                    slot.Body, taken, ref slot.Random);
+                taken.UnionWith(slot.Body);
+            }
+
+            // Phase 4: births in slot order, never on a hex another storm now covers.
             var occupied = new HashSet<HexCoord>(work.Where(s => s.Phase == SandstormPhase.Active).SelectMany(s => s.Body));
             foreach (Slot slot in work)
             {
@@ -228,7 +238,6 @@ namespace Game.Map
                 {
                     if (occupied.Contains(hex)) continue;
                     List<int> courses = SandstormRules.BirthCourses(topology, hex, memo);
-                    courses.RemoveAll(c => SandstormRules.SpotCells(hex, c, grown: false).Any(occupied.Contains));
                     if (courses.Count > 0) candidates.Add((hex, courses));
                 }
                 if (candidates.Count == 0)
@@ -241,7 +250,7 @@ namespace Game.Map
                 slot.Phase = SandstormPhase.Active;
                 slot.Age = 0;
                 slot.Course = pick.Courses[slot.Random.Next(pick.Courses.Count)];
-                slot.Body = SandstormRules.SpotCells(pick.Hex, slot.Course, grown: false);
+                slot.Body = new List<HexCoord> { pick.Hex };
                 slot.NextSpawnRound = 0;
                 occupied.UnionWith(slot.Body);
             }
@@ -300,6 +309,7 @@ namespace Game.Map
             int count = SandstormRules.ConfiguredCount(profile);
             if (data.slots.Count != count) throw new ArgumentException("Weather slot count does not match its profile.");
             var topology = new SandstormRules.Topology(mapCoords);
+            var covered = new HashSet<HexCoord>();
             for (int i = 0; i < data.slots.Count; i++)
             {
                 SandstormSlotData slot = data.slots[i];
@@ -311,8 +321,11 @@ namespace Game.Map
                     case SandstormPhase.Active:
                         if (slot.age < 0 || slot.age > SandstormRules.LastActiveAge || slot.course < 0 || slot.course > 5
                             || data.lastRound - slot.age < 1 || slot.nextSpawnRound != 0
-                            || !SandstormRules.IsValidBody(topology, body, slot.course, grown: slot.age > 0))
+                            || !SandstormRules.IsValidBody(topology, body, slot.age))
                             throw new ArgumentException("Invalid active storm.");
+                        // Two storms never share a hex.
+                        foreach (HexCoord hex in body)
+                            if (!covered.Add(hex)) throw new ArgumentException("Storms overlap.");
                         break;
                     case SandstormPhase.Cooldown:
                         if (body.Count != 0 || slot.age != 0 || slot.nextSpawnRound <= data.lastRound
