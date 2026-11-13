@@ -283,23 +283,24 @@ namespace Game.Ai.V2
                 return 0f;
             var pus = new List<PowerUnit>(profiles.Count);
             foreach (WorthIt.DefenderProfile p in profiles)
-            {
-                // A defending hero never acts in the battle either: no combat power.
-                if (p.IsHero)
-                {
-                    pus.Add(new PowerUnit(0f, p.TypeTags, 1, true));
-                    continue;
-                }
-                float line = ExplosionAttack.AttackPower(p.Attack, p.Abilities) * AiConfigV2.powerAttackWeight
-                           + (p.Defense + extraDefense) * AiConfigV2.powerDefenseWeight
-                           + p.HitPoints * AiConfigV2.powerHitPointsWeight
-                           + p.Initiative * AiConfigV2.powerInitiativeWeight;
-                // Same ability bump as our own units (ToPowerUnit), so an enemy's Splash/Shock/
-                // RaiseTheRots/... count on the scale our power is compared against.
-                line *= ProfileAbilityMultiplier(p);
-                pus.Add(new PowerUnit(Mathf.Max(0f, line), p.TypeTags, 1, false));
-            }
+                pus.Add(ToPowerUnit(p, extraDefense));
             return EffectiveArmyPower(pus);
+        }
+
+        // One profile on the PowerUnit scale (EffectiveArmyPowerFromProfiles' per-unit term).
+        public static PowerUnit ToPowerUnit(WorthIt.DefenderProfile p, float extraDefense = 0f)
+        {
+            // A defending hero never acts in the battle either: no combat power.
+            if (p.IsHero)
+                return new PowerUnit(0f, p.TypeTags, 1, true);
+            float line = ExplosionAttack.AttackPower(p.Attack, p.Abilities) * AiConfigV2.powerAttackWeight
+                       + (p.Defense + extraDefense) * AiConfigV2.powerDefenseWeight
+                       + p.HitPoints * AiConfigV2.powerHitPointsWeight
+                       + p.Initiative * AiConfigV2.powerInitiativeWeight;
+            // Same ability bump as our own units (ToPowerUnit), so an enemy's Splash/Shock/
+            // RaiseTheRots/... count on the scale our power is compared against.
+            line *= ProfileAbilityMultiplier(p);
+            return new PowerUnit(Mathf.Max(0f, line), p.TypeTags, 1, false);
         }
 
         // A remembered enemy stack on the same scale as our own EffectiveArmyPower (stats, HP,

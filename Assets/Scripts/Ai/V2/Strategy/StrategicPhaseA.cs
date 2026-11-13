@@ -112,6 +112,8 @@ namespace Game.Ai.V2
             // The live Attack's strike need, read once before the card rounds (PhaseAOperationSupport).
             pass.StrikeSupport = result.StrikeSupport = PhaseAOperationSupport.Assess(pass);
             PhaseAOperationSupport.PublishForecast(pass, pass.StrikeSupport);
+            pass.RosterFunding = result.RosterFunding = PhaseAOperationSupport.AssessRosterFunding(pass);
+            PhaseAOperationSupport.PublishRosterForecast(pass, pass.RosterFunding);
             if (pass.NothingToAdmit)
             {
                 PhaseAEconomyHolds.ClearPreIntentHoldIfResolved(pass);
@@ -134,6 +136,8 @@ namespace Game.Ai.V2
             // from Phase B's leftovers (PhaseAOperationSupport).
             if (PhaseAOperationSupport.TryProduceStrikeSupport(pass) || pass.StrikeSupport != null)
                 pass.StrikeSupport = result.StrikeSupport = PhaseAOperationSupport.Assess(pass);
+            // Phase B reads the roster need as the card rounds left it (a delivered card ends it).
+            pass.RosterFunding = result.RosterFunding = PhaseAOperationSupport.AssessRosterFunding(pass);
             PhaseAInfrastructureLane.FulfillResidual(pass);
             pass.PublishResiduals();
 
@@ -307,7 +311,10 @@ namespace Game.Ai.V2
             MaterializationPlan plan = selected.Plan;
             // An upgrade outside the live Attack's fist leaves that operation's strike its
             // resources (PhaseAOperationSupport.LeavesStrikeSupport); the demand is done this pass.
-            if (!PhaseAOperationSupport.LeavesStrikeSupport(pass, plan, out string strikeWhy))
+            if (!PhaseAOperationSupport.LeavesStrikeSupport(pass, plan, out string strikeWhy)
+                || !PhaseAOperationSupport.LeavesRosterFunding(pass.Player, pass.Root, pass.Ctx, pass.Hand,
+                    pass.RosterFunding, plan.FundingCost, null, plan.DevelopmentUpgrade?.RecipientArmyId,
+                    "upgrade", out strikeWhy))
             {
                 selected.State.Blocked = true;
                 AiDebugLog.Write($"[AI][V2][Dev] SKIP - {plan.DevelopmentUpgrade?.Mode} "
@@ -360,6 +367,15 @@ namespace Game.Ai.V2
             StrategicPhaseResult result = pass.Result;
             AxisDemand chosenDemand = selected.State.Demand;
             MaterializationPlan plan = selected.Plan;
+            // P7 (2026-11-13) — a cheaper demand leaves the live preparation's roster card the
+            // resource it lacks (PhaseAOperationSupport.LeavesRosterFunding).
+            if (!PhaseAOperationSupport.LeavesRosterFunding(pass, chosenDemand, plan, out string rosterWhy))
+            {
+                selected.State.Blocked = true;
+                AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
+                    + $"held :: {rosterWhy}");
+                return;
+            }
             WorldSnapshot snapBeforeDelivery = pass.Snap;
             MaterializationResult play;
             using (new Game.Core.ProfileScope("AI/PhaseA.Execute"))

@@ -168,9 +168,14 @@ namespace Game.Ai.V2
                 || snap?.MapKnowledge?.IsBlockedForScout(target, stealthCapable: true) == true) return false;
             if (mover.Hex.Equals(target)) return true;
             HexPath path = AiV2Util.TravelRoute(snap, mover, target, arrivesHidden: true);
-            return path != null && path.TotalCost <= mover.CurrentMovement
-                && path.Hexes.Skip(1).All(h => snap?.MapKnowledge?.IsBlockedForScout(h, stealthCapable: true) != true
-                    && ScoutRiskModel.DetectorRisk(snap, h) < 1f);
+            // 2026-11-13 (owner) — the whole route is this turn's last leg: a fist that enters this
+            // turn behind it makes detectors irrelevant (AttackSupportProjection.DetectorIgnoredForDelivery).
+            if (path == null || path.TotalCost > mover.CurrentMovement
+                || path.Hexes.Skip(1).Any(h => snap?.MapKnowledge?.IsBlockedForScout(h, stealthCapable: true) == true))
+                return false;
+            // The fist's route search runs only when a detector actually stands in the way.
+            return path.Hexes.Skip(1).All(h => ScoutRiskModel.DetectorRisk(snap, h) < 1f)
+                || AttackSupportProjection.DetectorIgnoredForDelivery(snap, target);
         }
 
         // Thin bool convenience over EvaluateCandidate — kept because most callers only need the

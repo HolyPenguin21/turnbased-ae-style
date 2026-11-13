@@ -220,7 +220,7 @@ namespace Game.Ai.V2
                         || DisruptionRules.HasCarrier(carrier.Members)))
                     continue;
                 if (carrier.Hex.Equals(targetHex)
-                    || (CarrierCanEnter(snap, targetHex) && ArmyEta(snap, carrier, targetHex) <= armyEta))
+                    || (CarrierCanEnter(snap, targetHex, armyEta) && ArmyEta(snap, carrier, targetHex) <= armyEta))
                     return carrier.ArmyId;
             }
             return null;
@@ -231,9 +231,32 @@ namespace Game.Ai.V2
         // same honest rule the delivery itself and its terminal wait apply
         // (ReconAssignmentPlanner.CanDeliverDisruptionThisTurn). A carrier already standing there
         // counts as it stands.
-        private static bool CarrierCanEnter(WorldSnapshot snap, HexCoord targetHex) =>
+        // 2026-11-13 (owner, game rule) — a detector does not stop the delivery a fist able to
+        // enter this very turn backs (DetectorIgnoredForDelivery). IsBlockedForScout(stealthCapable)
+        // stays: it is only the hard blocks (neutral on the hex, impassable, off the map).
+        private static bool CarrierCanEnter(WorldSnapshot snap, HexCoord targetHex, int armyEta) =>
             snap?.MapKnowledge?.IsBlockedForScout(targetHex, stealthCapable: true) != true
-            && ScoutRiskModel.DetectorRisk(snap, targetHex) < 1f;
+            && (ScoutRiskModel.DetectorRisk(snap, targetHex) < 1f
+                || (armyEta == 0 && DetectorIgnoredForDelivery(snap, targetHex)));
+
+        // THE detector exception (owner, 2026-11-13): a hidden Disruption carrier may enter an
+        // enemy Base hex a detector covers — a fully hidden army starts no contact and holds nobody
+        // even when detected (BattleInitiator.CanInitiateContact / IsHeldByContact) — and the fist
+        // enters after it in the same turn, under Disruption. So for a DisruptStructure delivery to
+        // a LIVE Attack's target whose fist reaches that target this turn, detector risk on the
+        // target and on the delivery's own last leg is not counted. Explore/Refresh/Hunt lanes and
+        // a delivery without a ready fist keep the detector rules.
+        internal static bool DetectorIgnoredForDelivery(WorldSnapshot snap, HexCoord targetHex)
+        {
+            MissionIntent assault = ReconObjectiveEvaluator.LiveAssaultAt(snap, targetHex);
+            // A Gather is still assembling: its fist does not enter this turn.
+            if (assault?.Attack == null || assault.Attack.Phase == AttackMissionPhase.Gather)
+                return false;
+            int? fistId = assault.Attack.PrimaryArmyId ?? assault.PreferredMoverArmyId;
+            ArmySnapshot fist = fistId.HasValue
+                ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == fistId.Value) : null;
+            return fist != null && ArmyEta(snap, fist, targetHex) == 0;
+        }
 
         // 2026-11-07 (owner, playtest Ysolde T26) — the free carrier, counted the way CountedAir
         // counts a free wing: only for a march of at least a turn, and only an own hidden (or
@@ -243,14 +266,14 @@ namespace Game.Ai.V2
         // whose fist has no carrier makes the DisruptStructure objective
         // (ReconObjectiveEvaluator.AssaultNeedsDisruption) with Attack's priority, and the leg it
         // opens is what CountedCarrier counts from then on; the terminal step waits for it
-        // (AttackMarchPolicy.WaitForDisruption). Without it the planner saw the structure bonus
+        // (AttackObjectiveEvaluator.HasAssaultDisruption). Without it the planner saw the structure bonus
         // and swapped a combat body out of the 8-slot fist for a weak in-fist carrier (Crawler ->
         // Scout) while two free stealth Scouts stood by.
         internal static int? FreeCarrier(WorldSnapshot snap, HexCoord targetHex, int armyEta)
         {
             if (armyEta == int.MaxValue || armyEta < 1 || snap?.Self?.Armies == null)
                 return null;
-            bool canEnter = CarrierCanEnter(snap, targetHex);
+            bool canEnter = CarrierCanEnter(snap, targetHex, armyEta);
             List<MissionIntent> intents = (snap.AllIntents ?? System.Array.Empty<MissionIntent>())
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             foreach (ArmySnapshot a in ScoutMoverSelector.StructuralCandidates(snap, DisruptionTarget(targetHex))

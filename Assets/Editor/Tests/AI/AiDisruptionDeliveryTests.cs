@@ -112,40 +112,19 @@ namespace Game.EditorTests
             Assert.That(MissionActorPolicy.HasCapableActor(intent, snap, StealthRequirement.Required), Is.False);
         }
 
-        [TestCase("owned_paid", true)]
-        [TestCase("free_activation", true)]
-        [TestCase("no_role", false)]
-        [TestCase("missing_source", false)]
-        [TestCase("spent_source", false)]
-        [TestCase("unpaid_source", false)]
-        [TestCase("visible_source", false)]
-        [TestCase("arrived_source", false)]
-        [TestCase("embedded_source", false)]
-        [TestCase("hardblocked_target", false)]
-        [TestCase("hardblocked_leg", false)]
-        [TestCase("suspended_role", false)]
-        public void TerminalAssaultWaitsOnlyForOwnedHiddenSourceThatCanFinishForFree(string scenario, bool expected)
+        // 2026-11-13 (owner, P1) — WaitForDisruption (wait only for a source that finishes this
+        // turn for free) was superseded by the entry gate AttackObjectiveEvaluator.HasAssaultDisruption:
+        // a structure-defended site is entered only with a carrier on the hex or in the fist —
+        // including a carrier among the commander's support heroes, the case the old rule read.
+        [Test]
+        public void EntryGate_CountsACarrierAmongTheCommandersSupportHeroes()
         {
-            ArmySnapshot carrier = Scout(2, true); carrier.HasActivatedThisTurn = true;
-            WorldSnapshot snap = Snapshot(carrier);
-            AiMapMemory.RememberBuildingForTest(_player, snap.Known.Buildings[0]);
+            WorldSnapshot snap = Snapshot(Scout(2, true));
             ArmySnapshot fist = snap.Self.Armies.First(a => a.ArmyId == 10);
-            var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
-                Objective = new ScoutIntent { Kind = ScoutTargetKind.DisruptStructure, FocusHex = Site,
-                    RequiresStealth = true }, PreferredMoverArmyId = 2,
-                IntentKey = MissionIntentKey.ForScout(ScoutTargetKind.DisruptStructure, Site) };
-            if (scenario != "no_role") MissionIntentRegistry.GetOrCreate(_player).Put(intent);
-            if (scenario == "missing_source") snap.Self.Armies = new[] { fist };
-            if (scenario == "spent_source") carrier.CurrentMovement = 0;
-            if (scenario == "unpaid_source") carrier.HasActivatedThisTurn = false;
-            if (scenario == "free_activation") { carrier.HasActivatedThisTurn = false; carrier.ActivationApCost = 0; }
-            if (scenario == "visible_source") carrier.IsHidden = false;
-            if (scenario == "arrived_source") carrier.Hex = Site;
-            if (scenario == "embedded_source") fist.MembersWithHeroes = new[] { Profile(true) };
-            if (scenario == "hardblocked_target") snap.MapKnowledge.ScoutHardBlockedHexes.Add(Site);
-            if (scenario == "hardblocked_leg") snap.MapKnowledge.ScoutHardBlockedHexes.Add(new HexCoord(2, 0));
-            if (scenario == "suspended_role") intent.Status = IntentStatus.Suspended;
-            Assert.That(AttackMarchPolicy.WaitForDisruption(snap, fist, Site, out _), Is.EqualTo(expected));
+            var target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base);
+            Assert.That(AttackObjectiveEvaluator.HasAssaultDisruption(snap, target, fist, out _), Is.False);
+            fist.Commander = new WorthIt.SideCommander(2, 0, new[] { Profile(true) });
+            Assert.That(AttackObjectiveEvaluator.HasAssaultDisruption(snap, target, fist, out _), Is.True);
         }
 
         [Test]

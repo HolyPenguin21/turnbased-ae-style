@@ -45,6 +45,37 @@ namespace Game.Ai.V2
                 : floor - garrison.EffectiveArmyPower;
         }
 
+        // 2026-11-13 (user decision, F1) — the hand is asked only for what the garrison's slots can
+        // really hold: the strongest roster its body slots can reach from its own bodies plus the
+        // hand/deck unit cards (SelfSnapshot.StrikePool, sources Hand/Deck), minus what it holds
+        // now. A full garrison is left only the swap of a weak body for a stronger card
+        // (AttackBaseRefitPolicy, RefitWindow.GarrisonFloor). Match 2026-11-13: Korrin's 4-slot
+        // Base (-1,-3) asked 94.9 — unreachable — and the demand never ended.
+        // Free slots are the one relief rule (GarrisonReliefObjectiveEvaluator.RecipientFreeSlots:
+        // relief bodies already walking there take theirs first). MaxValue when the garrison's
+        // capacity is unknown (hand-built snapshots).
+        internal static float GarrisonHandGainCap(WorldSnapshot snap, ArmySnapshot garrison)
+        {
+            int free = GarrisonReliefObjectiveEvaluator.RecipientFreeSlots(snap, garrison);
+            if (garrison == null || free == int.MaxValue)
+                return float.MaxValue;
+            List<AiPower.PowerUnit> held = (garrison.Members ?? System.Array.Empty<WorthIt.DefenderProfile>())
+                .Where(AiArmyRoles.IsGroundBattleBody).Select(p => AiPower.ToPowerUnit(p)).ToList();
+            int bodySlots = held.Count + free;
+            if (bodySlots <= 0)
+                return 0f;
+            float now = AiPower.EffectiveArmyPower(held);
+            IReadOnlyList<StrikeRosterCandidate> pool = snap?.Self?.StrikePool;
+            if (pool == null || pool.Count == 0)
+                return Mathf.Max(0, free) * AiConfigV2.combatPowerPerBodyEstimate;
+            List<AiPower.PowerUnit> reach = held
+                .Concat(pool.Where(c => c.Slot.Source != ForceSource.Map && !c.Slot.IsHero).Select(c => c.Unit))
+                .OrderByDescending(u => u.BasePower)
+                .Take(bodySlots)
+                .ToList();
+            return Mathf.Max(0f, AiPower.EffectiveArmyPower(reach) - now);
+        }
+
         // Every own base, including a newly founded or vacated one, whose
         // garrison is below its non-hero floor is garrisoned from hand first. If the hand cannot
         // deliver, Housekeeping fills the floor at turn end from the holding army's most wounded,
@@ -61,10 +92,17 @@ namespace Game.Ai.V2
                     && a.Hex.Equals(baseHex));
                 if (garrison == null)
                     continue;
-                float desired = HeldBaseGarrisonShortfall(snap, garrison, out float floor)
+                float shortfall = HeldBaseGarrisonShortfall(snap, garrison, out float floor)
                     - GarrisonReliefObjectiveEvaluator.InFlightReliefPower(snap, baseHex);
+                float fits = GarrisonHandGainCap(snap, garrison);
+                float desired = Mathf.Min(shortfall, fits);
                 if (desired <= AiConfigV2.allocatorSliceEpsilon)
+                {
+                    if (shortfall > AiConfigV2.allocatorSliceEpsilon)
+                        diag.Add($"[AI][V2][Demand][Aggression] decision=NONE base=({baseHex.Q},{baseHex.R}) "
+                            + $"shape=Garrison shortfall={shortfall:0.#} fits=0 reason=garrison_slots_cannot_hold_more");
                     continue;
+                }
                 string missing = $"{desired:0.#}";
                 TaskScore score = BuildHeldBaseGarrisonScore(snap, baseHex);
                 diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE base=({baseHex.Q},{baseHex.R}) "

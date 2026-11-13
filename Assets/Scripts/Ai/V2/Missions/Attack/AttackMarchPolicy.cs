@@ -62,7 +62,7 @@ namespace Game.Ai.V2
                     terrainOnly: true) == int.MaxValue)
             { reason = "main_unreachable_terrain"; return false; }
             if (HexGridMath.Distance(actor.Hex, target.Hex) <= 1
-                && !AttackObjectiveEvaluator.HasAssaultObservation(snap, target, out reason))
+                && !AttackObjectiveEvaluator.AssaultEntryReady(snap, target, actor, out reason))
                 return false;
             AttackMarchAssessment home = Assess(snap, target, actor, projected);
             if (home.Verdict == AttackMarchVerdict.DefendHome)
@@ -95,38 +95,25 @@ namespace Game.Ai.V2
             return home.Verdict == AttackMarchVerdict.DefendHome ? "home_needs_the_army:" + home.Reason : null;
         }
 
-        // Only an already-owned, hidden, activation-paid carrier that can finish for zero AP may delay the
-        // terminal step. No speculative wait for production or for a distant scout.
-        internal static bool WaitForDisruption(WorldSnapshot snap, ArmySnapshot actor, HexCoord target,
-            out string reason, GroundCombatAssemblyPlan plan = null)
+        // 2026-11-13 (owner, P1) — a structure-defended target is approached to distance 1 only
+        // when the step onto it can follow: the entry gate already holds (observation aside —
+        // approach_only on stale data stays legal), or the counted carrier on its DisruptStructure
+        // leg arrives no later than this fist (AttackSupportProjection.CountedCarrier). Otherwise
+        // the fist waits out of the target's reach instead of beside it (Korrin T29-T31: Cinderfall
+        // stood on (0,-5) three turns, 5 AP spent on the march).
+        internal static bool MayApproachAssault(WorldSnapshot snap, ArmySnapshot fist, AttackTargetRef target,
+            out string reason)
         {
             reason = null;
-            if (snap?.Observer == null || actor == null
-                || AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, snap.Map, target,
-                    (snap.Known?.Buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
-                        .Where(b => b.Hex.Equals(target)).Select(b => b.Owner).FirstOrDefault()) <= 0f)
-                return false;
-            ArmySnapshot departing = actor;
-            if (plan != null)
+            if (AttackObjectiveEvaluator.HasAssaultDisruption(snap, target, fist, out reason))
+                return true;
+            int eta = AttackSupportProjection.ArmyEta(snap, fist, target.Hex);
+            if (eta != int.MaxValue && AttackSupportProjection.CountedCarrier(snap, target.Hex, eta).HasValue)
             {
-                var projected = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan);
-                if (projected.TryGetValue(actor.ArmyId, out ArmySnapshot assembled)) departing = assembled;
-            }
-            if (DisruptionRules.HasCarrier(departing.MembersWithHeroes)
-                || DisruptionRules.HasCarrier(departing.Members)
-                || DisruptionRules.HasCarrier(departing.Commander.SupportHeroes)) return false;
-            foreach (MissionIntent intent in snap.AllIntents)
-            {
-                if (intent?.Status != IntentStatus.Active || intent.Scout?.Kind != ScoutTargetKind.DisruptStructure
-                    || !intent.Scout.FocusHex.Equals(target) || !intent.PreferredMoverArmyId.HasValue) continue;
-                ArmySnapshot carrier = snap.Self?.Armies?.FirstOrDefault(a => a != null
-                    && a.ArmyId == intent.PreferredMoverArmyId.Value);
-                if (carrier == null || carrier.Hex.Equals(target) || !carrier.IsHidden
-                    || (!carrier.HasActivatedThisTurn && carrier.ActivationApCost > 0)
-                    || !ReconAssignmentPlanner.CanDeliverDisruptionThisTurn(snap, carrier, target)) continue;
-                reason = $"awaiting_disruption_delivery:#{carrier.ArmyId}";
+                reason = null;
                 return true;
             }
+            reason = "awaiting_disruption_carrier_before_approach";
             return false;
         }
 

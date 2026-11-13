@@ -390,11 +390,30 @@ namespace Game.Ai.V2
             // 2026-11-09 (match P1) — a lane looking at a live Attack's observation need is never
             // surplus: Brynn's scout two hexes from the enemy citadel was shed as the stalest lane.
             var observationNeeds = new HashSet<HexCoord>(AttackObjectiveEvaluator.ObservationNeeds(snap));
+            // 2026-11-13 (P1, owner) — the guard above protects a lane by its FocusHex; the scout
+            // ABLE to serve a still-unserved need is protected too. Korrin T30: #21 one step from
+            // Base (1,-6) watched (2,-4), its lane was trimmed, MarkReconActorTrimmed closed it for
+            // the turn and the need went to far #24 -> NoSafeStep. For each need no lane looks at,
+            // the best-ETA actor (ScoutCostModel, the planner's own pricing) keeps its lane.
+            var neededActors = new HashSet<int>();
+            foreach (HexCoord need in observationNeeds)
+            {
+                if (scoutLanes.Any(i => i.Scout.FocusHex.Equals(need)))
+                    continue;
+                ReconObjective objective = reconObjectives?.FirstOrDefault(o => o != null
+                    && o.FocusHex.Equals(need) && !o.IsLocalStrike && !o.IsDisruption);
+                ScoutMissionTarget target = objective != null ? objective.ToTarget()
+                    : new ScoutMissionTarget { Kind = ScoutTargetKind.Refresh, FocusHex = need };
+                ScoutCostEstimate best = ScoutCostModel.Estimate(snap, target);
+                if (best.MoverKnown && best.PreferredMoverArmyId.HasValue)
+                    neededActors.Add(best.PreferredMoverArmyId.Value);
+            }
 
             var shedable = scoutLanes
                 .Where(i => i.Funding < CommitmentTier.Hard
                     && !IsProductiveReconLaneThisTurn(i, snap.TurnNumber)
-                    && !observationNeeds.Contains(i.Scout.FocusHex))
+                    && !observationNeeds.Contains(i.Scout.FocusHex)
+                    && !(i.PreferredMoverArmyId.HasValue && neededActors.Contains(i.PreferredMoverArmyId.Value)))
                 // A lane without a bound actor occupies no physical scout, so it is shed first;
                 // then the lane that has gone longest without progress (audit F4). Only after
                 // that the original Funding / newest-first order.

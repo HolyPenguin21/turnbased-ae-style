@@ -366,10 +366,70 @@ namespace Game.Ai
 
         // Same floor from an already measured ground force (SelfSnapshot.AvailablePower): the
         // share floor, raised to the known threat against this garrison (GarrisonThreatFloor).
+        // 2026-11-13 (user decision, F1 variant A) — the floor is the HEX's need; the garrison's
+        // own bodies answer only what the own ground armies standing on that hex do not
+        // (ResidentFieldPower). Every reader goes through here: the spare rule
+        // (CanSpareGarrisonMembers -> NonHeroSpareable, builder escort, SpareGarrisonPower),
+        // FieldStrikePotential, AttackForcePool, Housekeeping's GarrisonPowerFloor, the hand
+        // demand and GarrisonRelief (AggressionDemandEvaluator.HeldBaseGarrisonShortfall).
+        // Match 2026-11-13: Brynn's Base (1,-6) asked 87.7 from hand with Fester 52.4 on the hex.
         public static float GarrisonDefenceFloor(PlayerSetupData player, float groundAvailablePower,
             HexCoord garrisonHex, bool isCitadel) =>
-            Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel),
-                GarrisonThreatFloor(player, garrisonHex, isCitadel));
+            Math.Max(0f, Math.Max(GarrisonDefenceFloor(groundAvailablePower, isCitadel),
+                    GarrisonThreatFloor(player, garrisonHex, isCitadel))
+                - ResidentFieldPower(player, garrisonHex));
+
+        // The ground power of the player's own field armies standing on `hex` that hold it: not
+        // air, prison or airfield containers, and not the mover of an Active operation that takes
+        // it away (CountsAsHexResident — the same resident rule
+        // ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset reads with its committed set). A
+        // lifecycle leg (a return home) is not a departure, unless it heads to another hex (a
+        // GarrisonRelief detachment walking away from its donor).
+        public static float ResidentFieldPower(PlayerSetupData player, HexCoord hex)
+        {
+            if (player == null)
+                return 0f;
+            IReadOnlyCollection<MissionIntent> intents = MissionIntentRegistry.Peek(player)?.All;
+            float power = 0f;
+            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+            {
+                if (a == null || a.IsGarrison || a.IsAirfield || !a.Hex.Equals(hex))
+                    continue;
+                List<UnitData> bodies = a.Members.Where(u => u != null && !u.IsPrisoner && !u.IsSummoned
+                    && IsGroundBattleBody(u)).ToList();
+                if (!CountsAsHexResident(a.IsGarrison, AviationRules.IsAirArmy(a), a.IsPrison,
+                        bodies.Count > 0, LeavesOnOperation(intents, a.Id, hex)))
+                    continue;
+                power += AiPower.EffectiveArmyPower(bodies);
+            }
+            return power;
+        }
+
+        // THE "who holds this hex" rule (HoldChanceAtAsset, ResidentFieldPower): a non-air,
+        // non-prison army with members; a field army only while no departing operation owns it.
+        public static bool CountsAsHexResident(bool isGarrison, bool isAir, bool isPrison,
+            bool hasMembers, bool committedElsewhere) =>
+            !isAir && !isPrison && hasMembers && (isGarrison || !committedElsewhere);
+
+        private static bool LeavesOnOperation(IEnumerable<MissionIntent> intents, int armyId, HexCoord hex)
+        {
+            foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
+            {
+                if (i == null || i.Status != IntentStatus.Active || i.PreferredMoverArmyId != armyId)
+                    continue;
+                if (!i.IsLifecycleLeg)
+                    return true;
+                // A return leg heading to ANOTHER hex only passes through; a relief detachment
+                // always walks away from its donor.
+                ActiveDefenceIntent ad = i.ActiveDefence;
+                HexCoord? destination = ad?.ReturnHex ?? i.Raid?.ReturnHex;
+                if ((destination.HasValue && !destination.Value.Equals(hex))
+                    || (ad != null && ad.ReturnPurpose == ActiveDefenceReturnPurpose.GarrisonRelief
+                        && !destination.HasValue))
+                    return true;
+            }
+            return false;
+        }
 
         // The peacetime share of the ground force alone.
         public static float GarrisonDefenceFloor(float groundAvailablePower, bool isCitadel) =>

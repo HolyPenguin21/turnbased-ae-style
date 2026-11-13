@@ -159,6 +159,18 @@ namespace Game.Ai.V2
                     $"{lane} {key} assigned actor #{actorId} / eligible donors unavailable: {plan.Reason}");
                 return null;
             }
+            // 2026-11-13 (owner, P1) — the entry gate's Disruption half, on the roster that departs.
+            if (assigned != null && proposal.Target is AttackMissionTarget entry
+                && HexGridMath.Distance(assigned.Hex, entry.AssaultTarget.Hex) <= 1 && !entry.Local.IsLocalFight
+                && !AttackObjectiveEvaluator.HasAssaultDisruption(session.Snapshot, entry.AssaultTarget,
+                    GroundCombatAssemblyPlanner.ProjectedDepartureArmies(session.Snapshot, plan)
+                        .TryGetValue(actorId, out ArmySnapshot departing) ? departing : assigned,
+                    out string disruptionWhy))
+            {
+                failure = ProvisionFailure.MoverContended(
+                    $"attack #{actorId} awaits Disruption before entry: {disruptionWhy}");
+                return null;
+            }
             return plan;
         }
 

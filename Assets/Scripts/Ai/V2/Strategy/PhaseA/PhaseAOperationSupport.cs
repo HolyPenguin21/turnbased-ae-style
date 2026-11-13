@@ -55,6 +55,10 @@ namespace Game.Ai.V2
         // the card it mints) — what the operation needs left after the card rounds.
         internal ResourceCost Cost;
         internal string Source;
+        // Roster need only (AssessRosterFunding): the card's key and how many copies of each
+        // missing roster key the host still waits for.
+        internal string RosterKey;
+        internal IReadOnlyDictionary<string, int> MissingRosterKeys;
         // The strike requests on the operation's site (NonCombatCardPlayer.KnownStrikeTargets).
         internal IReadOnlyList<CombatAirSupportRequest> Requests = System.Array.Empty<CombatAirSupportRequest>();
     }
@@ -62,6 +66,160 @@ namespace Game.Ai.V2
     internal static class PhaseAOperationSupport
     {
         internal const string ForecastProducer = "attack-strike";
+        internal const string RosterForecastProducer = "attack-roster";
+
+        // ===================================================================================
+        //  2026-11-13 (owner, P7, match Korrin vs Brynn) — THE ROSTER CARD A LIVE PREPARATION
+        //  WAITS FOR. Brynn held Slag Lobber (E2 M2 T2) and Iron Maw (E3 M2 T2) from turn 1 with
+        //  Materials income 2; the Materials and Tech went to whatever could be paid at once —
+        //  garrison plays, eight Research/Production upgrades T24-T31 (scouts included), equipment
+        //  — and the Slag Lobbers that were played went into other armies, never into the host.
+        //  The cheapest missing position of the live preparation's frozen roster that the income
+        //  pays within the deck horizon is read once per pass, and every spender respects it:
+        //    · RESERVE, NOT A BLOCK: a spend is refused only when it would leave less of a resource
+        //      than that ONE card costs. Everything above the reserve is free, so Research,
+        //      Production, equipment and repairs go on with the surplus; a type the card does not
+        //      cost is never touched; a type without income never gets a reserve (the card is then
+        //      unfundable and is no need at all);
+        //    · the roster card itself is not played into another army while the host still waits
+        //      for that copy;
+        //    · a spend INTO the host (a card, an upgrade, equipment) is always allowed, and the
+        //      need is re-read live, so it ends the moment the host has the card or the preparation
+        //      ends;
+        //    · in Phase A a demand worth at least the host's own demand keeps its priority;
+        //    · Economy sees the card as an operational forecast (producer "attack-roster").
+        // ===================================================================================
+        internal static StrikeSupportNeed AssessRosterFunding(PhaseAPass pass)
+        {
+            if (pass?.Snap?.Self == null || pass.Player == null || !pass.AdmittedAxes.Contains(DesireAxis.Aggression))
+                return null;
+            MissionIntent operation = AggressionMissionLayer.LiveAttackOperation(pass.ActiveIntents);
+            AttackIntent a = operation?.Attack;
+            if (a == null || !a.Preparation || a.Phase != AttackMissionPhase.Gather || !a.PrimaryArmyId.HasValue
+                || a.TargetRoster == null || a.TargetRoster.Count == 0)
+                return null;
+            ArmyData host = OwnWorld.Of(pass.Player).Army(a.PrimaryArmyId.Value);
+            if (host == null)
+                return null;
+            Dictionary<string, int> missing = MissingHandOrDeckKeys(a, host);
+            if (missing.Count == 0)
+                return null;
+            var cards = (pass.Snap.Self.PoolCards
+                    ?? System.Array.Empty<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)>())
+                .Where(p => p.Card != null && p.Card.resourceCost != null
+                    && missing.ContainsKey(StrikeRoster.CardKey(p.Card))
+                    && AggressionDemandEvaluator.FundableWithinDeckHorizon(pass.Snap, p.Card.resourceCost))
+                .OrderBy(p => Total(p.Card.resourceCost))
+                .ThenBy(p => p.InHand ? 0 : 1)
+                .ThenBy(p => p.Card.displayName, System.StringComparer.Ordinal)
+                .ToList();
+            if (cards.Count == 0)
+                return null;
+            var cheapest = cards[0];
+            return new StrikeSupportNeed
+            {
+                Operation = operation, Attack = a,
+                Primary = pass.Snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == host.Id),
+                Cost = cheapest.Card.resourceCost,
+                Source = (cheapest.InHand ? "hand:" : "deck:") + cheapest.Card.displayName,
+                RosterKey = StrikeRoster.CardKey(cheapest.Card),
+                MissingRosterKeys = missing,
+            };
+        }
+
+        private static Dictionary<string, int> MissingHandOrDeckKeys(AttackIntent a, ArmyData host) =>
+            StrikeRoster.Missing(a.TargetRoster, host.Members)
+                .Where(m => !m.IsHero && m.Source != ForceSource.Map)
+                .GroupBy(m => m.Key).ToDictionary(g => g.Key, g => g.Count());
+
+        internal static void PublishRosterForecast(PhaseAPass pass, StrikeSupportNeed need)
+        {
+            if (pass?.Player == null || !pass.AdmittedAxes.Contains(DesireAxis.Aggression))
+                return;
+            Dictionary<string, ResourceBundle> needs = null;
+            if (need?.Cost != null)
+            {
+                var bundle = new ResourceBundle();
+                foreach (ResourceType t in ResourceBundle.All)
+                    bundle.Add(t, need.Cost.Get(t));
+                needs = new Dictionary<string, ResourceBundle> { [need.Operation.IntentKey.ToString()] = bundle };
+            }
+            ResourceStarvationRegistry.ReplaceOperationalForecast(pass.Player, pass.Turn, RosterForecastProducer, needs);
+        }
+
+        // Phase A materialization: a demand worth at least the host's own demand keeps its priority.
+        internal static bool LeavesRosterFunding(PhaseAPass pass, AxisDemand demand, MaterializationPlan plan,
+            out string why)
+        {
+            why = null;
+            StrikeSupportNeed need = pass?.RosterFunding;
+            if (need == null || demand == null || plan == null)
+                return true;
+            int host = need.Attack.PrimaryArmyId ?? -1;
+            if (demand.AttackFistArmyId == host)
+                return true;
+            float hostValue = (pass.Demands ?? System.Array.Empty<AxisDemand>())
+                .Where(d => d != null && d.AttackFistArmyId == host && d.AttackFistIsPreparationHost)
+                .Select(d => d.Value).DefaultIfEmpty(float.NegativeInfinity).Max();
+            if (demand.Value >= hostValue)
+                return true;
+            return LeavesRosterFunding(pass.Player, pass.Root, pass.Ctx, pass.Hand, need, plan.FundingCost,
+                plan.BaseCardInHand, plan.Deploy.Army?.Id ?? plan.DevelopmentUpgrade?.RecipientArmyId,
+                $"demand {demand.Value.ToString("0.##", CultureInfo.InvariantCulture)} < host "
+                + hostValue.ToString("0.##", CultureInfo.InvariantCulture), out why);
+        }
+
+        // THE roster reserve rule for every spender (Phase A upgrades, Phase B cards, equipment,
+        // facilities, repairs). `card` — the card the spend plays, if any; `recipientArmyId` — the
+        // army it goes into, if known (the host itself is always allowed).
+        internal static bool LeavesRosterFunding(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            AiHandData hand, StrikeSupportNeed need, ResourceCost cost, CardData card, int? recipientArmyId,
+            string spender, out string why)
+        {
+            why = null;
+            if (need?.Cost == null || player == null || !need.Attack.PrimaryArmyId.HasValue)
+                return true;
+            int host = need.Attack.PrimaryArmyId.Value;
+            if (recipientArmyId == host)
+                return true;
+            // Re-read live: the need ends as soon as the host holds the card or the wait is over.
+            ArmyData live = OwnWorld.Of(player)?.Army(host);
+            if (live == null || !need.Attack.Preparation || need.Attack.Phase != AttackMissionPhase.Gather
+                || need.Attack.TargetRoster == null)
+                return true;
+            Dictionary<string, int> missing = MissingHandOrDeckKeys(need.Attack, live);
+            if (!missing.ContainsKey(need.RosterKey ?? ""))
+                return true;
+            string key = StrikeRoster.CardKey(card?.Definition);
+            if (key != null && missing.TryGetValue(key, out int waited))
+            {
+                int held = hand?.Hand?.Count(c => StrikeRoster.CardKey(c?.Definition) == key) ?? 0;
+                if (held <= waited)
+                {
+                    why = $"roster_card_reserved:{need.Operation.IntentKey} {card.Definition.displayName} "
+                        + $"is for host #{host} ({spender})";
+                    return false;
+                }
+            }
+            if (cost == null)
+                return true;
+            foreach (ResourceType t in ResourceBundle.All)
+            {
+                int spends = cost.Get(t);
+                int reserve = need.Cost.Get(t);
+                if (spends <= 0 || reserve <= 0)
+                    continue;
+                float spendable = StrategicSpendability.SpendableAmount(player, root, ctx, t);
+                if (spendable - spends + AiConfigV2.allocatorSliceEpsilon < reserve)
+                {
+                    why = $"leaves_roster_funding:{need.Operation.IntentKey} {t} "
+                        + $"{spendable.ToString("0.##", CultureInfo.InvariantCulture)} - {spends} < reserve {reserve} "
+                        + $"for {need.Source} ({spender})";
+                    return false;
+                }
+            }
+            return true;
+        }
 
         // The live operation's need for a strike, or null: Aggression admitted, a live Gather /
         // Assault with a primary, a strike source (hand card, or a free hand slot + generation left +

@@ -49,12 +49,13 @@ namespace Game.Ai.V2
             {
                 // Same price table as the Phase B conversion it unlocks; one global effect cap.
                 float apEquivalents = TradeFunding.AccessValueApEquivalents(ctx.Snap,
-                    AiConfigV2.effectRecurringHorizonTurns);
+                    AiConfigV2.effectRecurringHorizonTurns, out float unlockedAp);
                 float tradePersistence = Mathf.Lerp(AiConfigV2.effectRecurringRealisationFloor, 1f,
                     Mathf.Clamp01(CarrierDurabilityOf(ctx)));
                 float accessValue = Mathf.Min(AiConfigV2.effectGlobalRecurringValueCap,
                     ActionPrice.ToCardScore(apEquivalents) * tradePersistence);
-                string tradeLine = $"effect=Trade scope=PlayerGlobal conversionAp={apEquivalents:0.##} "
+                string tradeLine = $"effect=Trade scope=PlayerGlobal conversionAp={apEquivalents - unlockedAp:0.##} "
+                    + $"unlockedAp={unlockedAp:0.##} "
                     + $"horizon={AiConfigV2.effectRecurringHorizonTurns} persistence={tradePersistence:0.00} "
                     + $"effectValue={accessValue:0.00}";
                 detail = string.IsNullOrEmpty(detail) ? tradeLine : detail + " ; " + tradeLine;

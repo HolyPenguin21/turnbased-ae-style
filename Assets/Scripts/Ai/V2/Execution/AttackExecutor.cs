@@ -419,9 +419,13 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // A stale/unknown final site never authorizes combat, capture or its activation cost.
+            // A stale/unknown final site never authorizes combat, capture or its activation cost;
+            // (2026-11-13, owner) nor does a structure-defended one without Disruption — the one
+            // entry gate (AttackObjectiveEvaluator.AssaultEntryReady).
+            ArmySnapshot fistNow = HexGridMath.Distance(next.Value, targetHex) <= 1
+                ? WorldAnalysis.ToArmySnapshot(army, player, true, 0, snapshot?.Intents, ctx) : null;
             if (next.Value.Equals(targetHex)
-                && !AttackObjectiveEvaluator.HasAssaultObservation(snapshot, target.AssaultTarget,
+                && !AttackObjectiveEvaluator.AssaultEntryReady(snapshot, target.AssaultTarget, fistNow,
                     out string intelWhy))
             {
                 result.StopForReplan(ExecutionStopReason.NoSafeStep);
@@ -430,14 +434,17 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (next.Value.Equals(targetHex) && !fightsContact
-                && AttackMarchPolicy.WaitForDisruption(snapshot,
-                    WorldAnalysis.ToArmySnapshot(army, player, true, 0, snapshot?.Intents, ctx),
-                    targetHex, out string disruptionWhy))
+            // 2026-11-13 (owner, P1) — the step to distance 1 of a structure-defended target waits
+            // until the carrier can arrive no later than the fist (AttackMarchPolicy.MayApproachAssault).
+            if (fistNow != null && !intercept && !next.Value.Equals(targetHex)
+                && HexGridMath.Distance(army.Hex, targetHex) > 1
+                && !AttackMarchPolicy.MayApproachAssault(snapshot, fistNow, target.AssaultTarget,
+                    out string approachWhy))
             {
                 result.StopForReplan(ExecutionStopReason.NoSafeStep);
-                result.TacticalBlockReason = disruptionWhy;
-                AiDebugLog.Write($"[AI][V2][Attack][Disruption] #{army.Id} HOLD {disruptionWhy}; no payment or movement");
+                result.TacticalBlockReason = approachWhy;
+                AiDebugLog.Write($"[AI][V2][Attack][Disruption] #{army.Id} HOLD {approachWhy}; "
+                    + "waits out of the target's reach, no payment or movement");
                 yield break;
             }
             HexCoord before = army.Hex;

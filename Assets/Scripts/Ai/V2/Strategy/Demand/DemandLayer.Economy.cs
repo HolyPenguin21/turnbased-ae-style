@@ -221,9 +221,13 @@ namespace Game.Ai.V2
                     && site.MinimumNewBuilderDeliveryTurns.Value > AiConfigV2.economyExtractionMaxDeliveryTurns)
                 {
                     rejectedDeliveryValue++;
+                    // D0 (match 2026-11-13): int.MaxValue is "no hero card to deliver at all",
+                    // not a long delivery — name it so a log reader does not chase the horizon.
+                    string horizonReason = site.MinimumNewBuilderDeliveryTurns.Value == int.MaxValue
+                        ? "no_ready_builder_and_no_hero_card" : "extraction_delivery_horizon";
                     AiDebugLog.WriteDeduped($"new-builder-horizon|{site.Hex}|{site.ResourceType}",
                         $"[AI][V2][Economy][Demand] target=({site.Hex.Q},{site.Hex.R}) "
-                        + $"resource={site.ResourceType} decision=REJECT reason=extraction_delivery_horizon "
+                        + $"resource={site.ResourceType} decision=REJECT reason={horizonReason} "
                         + $"minimumNewBuilderTurns={site.MinimumNewBuilderDeliveryTurns.Value}");
                     continue;
                 }

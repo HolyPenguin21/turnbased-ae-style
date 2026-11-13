@@ -227,8 +227,10 @@ namespace Game.Ai.V2
                 return false;
             if (AttackObjectiveEvaluator.EvaluateTarget(snap, leg.Target)
                     != AttackObjectiveEvaluator.AttackTargetStatus.Continue
-                || !AttackObjectiveEvaluator.HasAssaultObservation(snap, leg.Target, out _))
-            { why = "attack sortie target taken, gone or no longer observed"; return false; }
+                || !AttackObjectiveEvaluator.AssaultEntryReady(snap, leg.Target,
+                    new ArmySnapshot { MembersWithHeroes = units.Select(WorthIt.FromLiveUnit).ToList() },
+                    out string entryWhy))
+            { why = "attack sortie target taken, gone, not observed or without Disruption"; return false; }
             Dictionary<string, int> spare = SurplusByKey(snap.Self);
             foreach (IGrouping<string, UnitData> g in units.GroupBy(StrikeRoster.UnitKey))
                 if (g.Key != null && spare.TryGetValue(g.Key, out int free) && g.Count() > free)

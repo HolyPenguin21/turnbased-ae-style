@@ -62,6 +62,20 @@ namespace Game.Ai.V2
 
             foreach (var r in recipients)
             {
+                // 2026-11-13 (user decision, P2) - slots and time. Korrin T26 pulled 4 bodies out
+                // of (0,-1) for a Base that was 4/4 by arrival (delivered 0/2, walked back); Brynn
+                // T23 sent a relief with eta 2 to a Base the enemy reached in 1 (it fell, and the
+                // weakened donor recalled Fester from a counter-attack).
+                int freeSlots = RecipientFreeSlots(snap, r.Garrison);
+                if (freeSlots <= 0)
+                {
+                    AiDebugLog.WriteDeduped($"garrison-relief:{snap.Observer.Nickname}:{r.Garrison.Hex}",
+                        $"[AI][V2][GarrisonRelief] decision=NONE recipient=({r.Garrison.Hex.Q},{r.Garrison.Hex.R}) "
+                        + $"shortfall={r.Shortfall:0.#} reason=recipient_garrison_full");
+                    continue;
+                }
+                int? enemyEta = RecipientEnemyEta(snap, r.Garrison.Hex);
+                bool late = false;
                 GarrisonReliefObjective best = null;
                 foreach (ArmySnapshot donor in garrisons)
                 {
@@ -72,7 +86,14 @@ namespace Game.Ai.V2
                             && !usedShells.Contains(a.ArmyId))
                         .OrderBy(a => a.ArmyId).FirstOrDefault();
                     GarrisonReliefObjective candidate = shell == null ? null
-                        : Detachment(snap, r.Garrison.Hex, r.Shortfall, r.Score, donor, shell);
+                        : Detachment(snap, r.Garrison.Hex, r.Shortfall, r.Score, donor, shell, freeSlots);
+                    // Arriving no earlier than the enemy can strike only strips the donor
+                    // (the ActiveDefence rule CanArriveBeforeThreat: ETA 0 = this own turn).
+                    if (candidate != null && enemyEta.HasValue && candidate.EtaTurns >= enemyEta.Value)
+                    {
+                        late = true;
+                        candidate = null;
+                    }
                     if (candidate != null && (best == null
                             || candidate.EtaTurns < best.EtaTurns
                             || (candidate.EtaTurns == best.EtaTurns
@@ -83,7 +104,8 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.WriteDeduped($"garrison-relief:{snap.Observer.Nickname}:{r.Garrison.Hex}",
                         $"[AI][V2][GarrisonRelief] decision=NONE recipient=({r.Garrison.Hex.Q},{r.Garrison.Hex.R}) "
-                        + $"shortfall={r.Shortfall:0.#} reason=no_safe_donor_with_spare_bodies_and_free_shell");
+                        + $"shortfall={r.Shortfall:0.#} freeSlots={freeSlots} enemyEta={(enemyEta.HasValue ? enemyEta.Value.ToString() : "-")} "
+                        + $"reason={(late ? "relief_arrives_after_threat" : "no_safe_donor_with_spare_bodies_and_free_shell")}");
                     continue;
                 }
                 best.RecipientKind = r.Garrison.Hex.Equals(snap.Self.Citadel) ? AssetKind.Citadel : AssetKind.Base;
@@ -101,9 +123,20 @@ namespace Game.Ai.V2
 
         // Power of the relief detachments already walking to `baseHex` (active GarrisonRelief legs):
         // they cover that share of its shortfall, for the hand demand and for a new relief alike.
-        internal static float InFlightReliefPower(WorldSnapshot snap, HexCoord baseHex)
+        internal static float InFlightReliefPower(WorldSnapshot snap, HexCoord baseHex) =>
+            InFlightRelief(snap, baseHex, out _);
+
+        // The same detachments' bodies: each takes a slot of the recipient garrison on arrival.
+        internal static int InFlightReliefBodies(WorldSnapshot snap, HexCoord baseHex)
+        {
+            InFlightRelief(snap, baseHex, out int bodies);
+            return bodies;
+        }
+
+        private static float InFlightRelief(WorldSnapshot snap, HexCoord baseHex, out int bodies)
         {
             float power = 0f;
+            bodies = 0;
             foreach (MissionIntent i in WorldSnapshot.IntentsOf(snap))
             {
                 ActiveDefenceIntent d = i?.ActiveDefence;
@@ -112,14 +145,37 @@ namespace Game.Ai.V2
                     || !d.ReturnHex.HasValue || !d.ReturnHex.Value.Equals(baseHex) || !d.PrimaryArmyId.HasValue)
                     continue;
                 ArmySnapshot mover = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == d.PrimaryArmyId.Value);
-                if (mover != null)
-                    power += Mathf.Max(0f, mover.EffectiveArmyPower);
+                if (mover == null)
+                    continue;
+                power += Mathf.Max(0f, mover.EffectiveArmyPower);
+                bodies += Mathf.Max(mover.MemberCount, mover.Members?.Count ?? 0);
             }
             return power;
         }
 
+        // Slots of the recipient garrison still free once the reliefs already walking there
+        // arrive. MaxValue when its capacity is unknown (hand-built snapshots).
+        internal static int RecipientFreeSlots(WorldSnapshot snap, ArmySnapshot recipient)
+        {
+            if (recipient == null || recipient.Capacity <= 0)
+                return int.MaxValue;
+            int occupied = Mathf.Max(recipient.OccupiedBattleSlots, recipient.MemberCount);
+            return recipient.Capacity - occupied - InFlightReliefBodies(snap, recipient.Hex);
+        }
+
+        // The soonest a hostile able to damage the recipient reaches it (Threat model; the same
+        // threats IsPinnedStrongholdDefender reads). Null: no positioned threat with an ETA.
+        private static int? RecipientEnemyEta(WorldSnapshot snap, HexCoord recipient)
+        {
+            List<AssetThreatSnapshot> threats = (snap?.Threat?.Threats ?? Enumerable.Empty<AssetThreatSnapshot>())
+                .Where(t => t?.Asset != null && t.Asset.Hex.Equals(recipient) && t.CanDamage && t.EnemyEta.HasValue
+                    && ActiveDefenceObjectiveEvaluator.IsHonestPositionedHostile(t))
+                .ToList();
+            return threats.Count == 0 ? null : AiV2Util.AtEarliestKnownThreatDeadline(threats).First().EnemyEta;
+        }
+
         private static GarrisonReliefObjective Detachment(WorldSnapshot snap, HexCoord recipient,
-            float shortfall, TaskScore intrinsic, ArmySnapshot donor, ArmySnapshot shell)
+            float shortfall, TaskScore intrinsic, ArmySnapshot donor, ArmySnapshot shell, int freeSlots)
         {
             IReadOnlyList<WorthIt.DefenderProfile> bodies = donor.Members;
             if (bodies == null || donor.NonHeroSpareable == null)
@@ -128,7 +184,7 @@ namespace Game.Ai.V2
             float power = 0f;
             foreach (int i in GarrisonDetachment.SpareBodyIndices(donor))
             {
-                if (chosen.Count >= shell.Capacity || power >= shortfall)
+                if (chosen.Count >= shell.Capacity || chosen.Count >= freeSlots || power >= shortfall)
                     break;
                 chosen.Add(i);
                 power = AiPower.EffectiveArmyPowerFromProfiles(chosen.Select(c => bodies[c]).ToList());
@@ -136,8 +192,13 @@ namespace Game.Ai.V2
             if (chosen.Count == 0)
                 return null;
             ArmySnapshot detachment = GarrisonDetachment.Project(donor, chosen, shell.ArmyId, shell.Capacity);
-            int eta = AiV2Util.CeilDiv(HexGridMath.Distance(donor.Hex, recipient),
-                Mathf.Max(1, detachment.MaxMovement));
+            // A projected container walks between own bases (MaterializationDeliveryPolicy's
+            // projection does the same); with a map the real Combat route decides below.
+            detachment.ReachableOwnBaseHexes = snap.Self.BaseHexes;
+            // Turns on the Combat route, 0 = arrives this own turn (the ActiveDefence measure).
+            int eta = ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, detachment, recipient);
+            if (eta == int.MaxValue)
+                return null;
             return new GarrisonReliefObjective
             {
                 RecipientHex = recipient, Shortfall = shortfall,

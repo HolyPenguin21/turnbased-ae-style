@@ -411,6 +411,75 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // 2026-11-13 (owner decision, match Korrin vs Brynn P1) — THE entry gate of the final
+        // step onto an Attack target: a current observation (HasAssaultObservation) AND, on an
+        // enemy Base/Citadel whose structure defence a carrier removes, Disruption
+        // (HasAssaultDisruption). Read by AttackMarchPolicy.CanStart, the mission planner's
+        // assembly HOLD, the assault provisioning gate and AttackExecutor's terminal step.
+        internal static bool AssaultEntryReady(WorldSnapshot snap, AttackTargetRef target,
+            ArmySnapshot fist, out string reason) =>
+            HasAssaultObservation(snap, target, out reason)
+            && HasAssaultDisruption(snap, target, fist, out reason);
+
+        // A structure-defended enemy Base/Citadel is assaulted with Disruption: a carrier stands
+        // on the target hex (it also gives the observation: armyVisionRadius 0) or rides in the
+        // fist. The game rule the delivery relies on (owner, 2026-11-13): a fully hidden army
+        // starts no contact on arrival and holds nobody even when detected
+        // (BattleInitiator.CanInitiateContact / IsHeldByContact), so the carrier walks in first
+        // and the fist follows in the same turn. The one exception: no carrier exists anywhere
+        // (map, hand, deck) — then the observation rule alone decides, and Recon's demand for a
+        // stealth Disruption scout keeps being published (DemandLayer.DisruptionCarrierDemand).
+        internal static bool HasAssaultDisruption(WorldSnapshot snap, AttackTargetRef target,
+            ArmySnapshot fist, out string reason)
+        {
+            reason = null;
+            if (snap?.Self == null || !target.HasValue
+                || ReconObjectiveEvaluator.HostileStructureDefense(snap, target.Hex) <= 0f)
+                return true;
+            if (fist != null && (DisruptionRules.HasCarrier(fist.MembersWithHeroes)
+                    || DisruptionRules.HasCarrier(fist.Members)
+                    || DisruptionRules.HasCarrier(fist.Commander.SupportHeroes)))
+                return true;
+            if ((snap.Self.Armies ?? (IReadOnlyList<ArmySnapshot>)Array.Empty<ArmySnapshot>()).Any(a => a != null
+                    && !a.IsAir && !a.IsPrison && a.Hex.Equals(target.Hex)
+                    && DisruptionRules.HasCarrier(a.MembersWithHeroes)))
+                return true;
+            if (!DisruptionCarrierInPool(snap))
+            {
+                AiDebugLog.WriteDeduped($"assault-disruption|{snap.Observer?.ColorIndex}|{target.Hex}",
+                    $"[AI][V2][Attack][Disruption] target=({target.Hex.Q},{target.Hex.R}) "
+                    + "disruption=unavailable(no_carrier_in_pool); observation rule alone");
+                return true;
+            }
+            reason = "awaiting_disruption_carrier";
+            return false;
+        }
+
+        // Any Disruption carrier the player owns: a ground body on the map, or a unit/hero card in
+        // hand or deck that carries it itself or through its attached equipment.
+        internal static bool DisruptionCarrierInPool(WorldSnapshot snap)
+        {
+            if (snap?.Self == null)
+                return false;
+            if ((snap.Self.Armies ?? (IReadOnlyList<ArmySnapshot>)Array.Empty<ArmySnapshot>()).Any(a => a != null
+                    && !a.IsAir && !a.IsPrison && DisruptionRules.HasCarrier(a.MembersWithHeroes)))
+                return true;
+            bool Grants(Game.Cards.CardDefinition d) => d?.grantedAbilities != null
+                && d.grantedAbilities.Contains(Game.Cards.UnitAbilities.Disruption);
+            var pool = snap.Self.PoolCards
+                ?? (snap.Self.Hand ?? (IReadOnlyList<Game.Cards.CardData>)Array.Empty<Game.Cards.CardData>())
+                    .Where(c => c?.Definition != null)
+                    .Select(c => (Card: c.Definition, Equipment: c.Equipment, Mutator: c.Mutator, InHand: true))
+                    .Concat((snap.Self.Deck ?? (IReadOnlyList<Game.Cards.CardDefinition>)Array.Empty<Game.Cards.CardDefinition>())
+                        .Where(d => d != null)
+                        .Select(d => (Card: d, Equipment: (Game.Cards.CardDefinition)null,
+                            Mutator: (Game.Cards.CardDefinition)null, InHand: false)))
+                    .ToList();
+            return pool.Any(c => c.Card != null
+                && (c.Card.cardType == Game.Cards.CardType.Unit || c.Card.cardType == Game.Cards.CardType.Hero)
+                && (Grants(c.Card) || Grants(c.Equipment) || Grants(c.Mutator)));
+        }
+
         private static bool EverObserved(WorldSnapshot snap, HexCoord hex) =>
             snap?.MapKnowledge?.EverSeenHexSet?.Contains(hex) == true;
 
