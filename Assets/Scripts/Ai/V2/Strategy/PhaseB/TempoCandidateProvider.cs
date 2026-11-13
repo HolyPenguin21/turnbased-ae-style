@@ -102,6 +102,15 @@ namespace Game.Ai.V2
                 if (result.Reservation.ClaimsEconomyBuildCard(mat.Plan?.BaseCardInHand)
                     || result.Reservation.ClaimsEconomyBuildCard(mat.Plan?.EquipmentInHand))
                     continue;
+                // P7 (2026-11-13) — the live preparation's roster reserve (PhaseAOperationSupport).
+                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, result.RosterFunding,
+                        mat.Plan?.FundingCost, mat.Plan?.BaseCardInHand, mat.Plan?.Deploy.Army?.Id,
+                        "phaseB card", out string matRosterWhy))
+                {
+                    if (verbose)
+                        AiDebugLog.Write($"[AI][V2]     cand PlayMat BLOCKED: {matRosterWhy}");
+                    continue;
+                }
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayMat, Mat = mat, Utility = mat.Utility,
@@ -127,6 +136,14 @@ namespace Game.Ai.V2
                         nc, out string strikeWhy))
                 {
                     nonCombatBlocked.Add($"{nc.Card?.Definition?.displayName}:{strikeWhy}");
+                    continue;
+                }
+                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, result.RosterFunding,
+                        nc.FundingCost, nc.Card,
+                        nc.EquipHost != null ? OwnWorld.Of(player)?.ArmyContaining(nc.EquipHost)?.Id : null,
+                        "phaseB " + nc.Kind, out string ncRosterWhy))
+                {
+                    nonCombatBlocked.Add($"{nc.Card?.Definition?.displayName}:{ncRosterWhy}");
                     continue;
                 }
                 list.Add(new TempoCandidate
@@ -203,12 +220,22 @@ namespace Game.Ai.V2
             // is its own candidate — no hidden category priority chain (spec §3).
             foreach (StrategicSpendCandidate sp in StrategicMaintenancePolicy.EnumerateCandidates(
                 player, root, hand, ctx, snap, phaseBWitnessedApDemand))
+            {
+                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, result.RosterFunding,
+                        TradeFunding.PricedCost(player, root, ctx, sp.ResCost), null, null,
+                        "maintenance", out string spRosterWhy))
+                {
+                    if (verbose)
+                        AiDebugLog.Write($"[AI][V2]     cand MaintenanceSpend BLOCKED: {spRosterWhy}; {sp.Label}");
+                    continue;
+                }
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.MaintenanceSpend, Utility = sp.Utility, ApCost = sp.ApCost,
                     ResCost = TradeFunding.PricedCost(player, root, ctx, sp.ResCost), Spend = sp,
                     ActionKey = "maint:" + sp.StableKey, Label = sp.Label,
                 });
+            }
 
             // ATK stage 5 — the PressureSpend candidate is gone. StrategicPressureAdvance was a
             // fallback for exactly one dead zone: the enemy's field contacts had all vanished, its

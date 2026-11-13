@@ -34,6 +34,9 @@ namespace Game.Ai.V2
         // (PhaseAOperationSupport.Assess): Phase B's equipment plays outside the fist leave its
         // resources (PhaseAOperationSupport.LeavesStrikeSupport). Null when none.
         internal StrikeSupportNeed StrikeSupport;
+        // The live preparation's roster reserve (PhaseAOperationSupport.AssessRosterFunding):
+        // every Phase B spender outside the host leaves it (LeavesRosterFunding). Null when none.
+        internal StrikeSupportNeed RosterFunding;
 
         // One executed materialization chain, Phase A or Phase B alike: the per-stage
         // attempt/success telemetry, the generation attempt charged to the reservation and to the

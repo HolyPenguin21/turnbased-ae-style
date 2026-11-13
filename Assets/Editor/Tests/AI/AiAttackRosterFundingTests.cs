@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Map;
@@ -48,6 +49,69 @@ namespace Game.EditorTests
                 new ResourceCost(materials: (int)(2f * horizon))), Is.True);
             Assert.That(AggressionDemandEvaluator.FundableWithinDeckHorizon(snap,
                 new ResourceCost(materials: (int)(2f * horizon) + 1)), Is.False);
+        }
+
+        // The owner's condition (2026-11-13): the reserve must never stop Research/Production
+        // altogether. Only ONE card's cost is held, only on the types it costs; spends above it,
+        // spends of other types and spends into the host itself go on.
+        [Test]
+        public void RosterReserve_HoldsOneCardCost_AndLeavesTheSurplusToEverySpender()
+        {
+            var player = new PlayerSetupData();
+            PlayerRoot root = PlayerRoot.Create(player, "roster reserve test");
+            PlayerRootRegistry.Register(player, root);
+            ArmyRegistry.Clear();
+            AiHandRegistry.Clear();
+            try
+            {
+                foreach (Game.Economy.ResourceType t in new[] { Game.Economy.ResourceType.Energy,
+                             Game.Economy.ResourceType.Materials, Game.Economy.ResourceType.Tech })
+                    root.AddResource(t, 5);
+                var host = new ArmyData { Owner = player };
+                ArmyRegistry.Register(host);
+                var other = new ArmyData { Owner = player };
+                ArmyRegistry.Register(other);
+                CardDefinition slag = Card("slag-lobber", 2);
+                slag.resourceCost = new ResourceCost(energy: 2, materials: 2, tech: 2);
+                var attack = new AttackIntent { Preparation = true, Phase = AttackMissionPhase.Gather,
+                    PrimaryArmyId = host.Id,
+                    TargetRoster = new List<StrikeRosterSlot> { new StrikeRosterSlot("slag-lobber", false, 12f, ForceSource.Hand) } };
+                var need = new StrikeSupportNeed
+                {
+                    Operation = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active, Objective = attack },
+                    Attack = attack, Cost = slag.resourceCost, Source = "hand:slag-lobber", RosterKey = "slag-lobber",
+                };
+                var ctx = new AiTurnContext { TurnNumber = 22 };
+                bool Allowed(ResourceCost cost, int? recipient, CardData card = null) =>
+                    PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, need, cost, card, recipient, "test", out _);
+
+                Assert.That(Allowed(new ResourceCost(tech: 3), other.Id), Is.True,
+                    "Research for 3 Tech of 5 leaves the 2 Tech the card needs: allowed");
+                Assert.That(Allowed(new ResourceCost(tech: 4), other.Id), Is.False,
+                    "4 of 5 would dip into the card's 2 Tech");
+                Assert.That(Allowed(new ResourceCost(human: 4), other.Id), Is.True, "Human is not reserved");
+                Assert.That(Allowed(new ResourceCost(tech: 5), host.Id), Is.True, "a spend into the host is never held");
+
+                AiHandData hand = AiHandRegistry.GetOrCreate(player, null, 0);
+                var card = new CardData(slag);
+                hand.AddCard(card);
+                Assert.That(Allowed(new ResourceCost(), other.Id, card), Is.False,
+                    "the only Slag Lobber in hand is the host's");
+                hand.AddCard(new CardData(slag));
+                Assert.That(Allowed(new ResourceCost(), other.Id, card), Is.True, "a second copy is free");
+
+                host.Members.Add(new Game.Units.UnitData { Owner = player, OriginatingCard = slag });
+                Assert.That(Allowed(new ResourceCost(tech: 5), other.Id), Is.True,
+                    "the host holds its card: the reserve is gone");
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                AiHandRegistry.Clear();
+                PlayerRootRegistry.Clear();
+                StrategicResourceReservationLedger.ClearAll();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
         }
 
         [Test]
