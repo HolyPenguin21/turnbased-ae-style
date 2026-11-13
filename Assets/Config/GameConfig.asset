@@ -37,6 +37,7 @@ MonoBehaviour:
     categoryCooldown: 25
     recentPhraseHistorySize: 16
   screenWearTexture: {fileID: 2800000, guid: e6efe6fe254c0334f90a94273179b0a5, type: 3}
+  loadingScreenImage: {fileID: 0}
   collectionDeckCatalog: {fileID: 11400000, guid: 6ae207ae03ca453cae0b8ec5f668372d, type: 2}
   collectionResearchCatalog: {fileID: 11400000, guid: d4e5f60718192a3b4c5d6e7f80911223, type: 2}
   eventMarkerPrefab: {fileID: 1514539978742884714, guid: 55c207a3e28f969499cd6921199964be, type: 3}
@@ -987,3 +988,21 @@ MonoBehaviour:
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
     coordLabelOffset: {x: 0, y: -0.65}
     coordLabelSortingOrder: 6
+  sandstormVisualStyle:
+    frames:
+    - {fileID: 21300000, guid: 58204116c7474d64e82856af6b221135, type: 3}
+    - {fileID: 21300000, guid: 467ac99904deaa947928dc8d81216502, type: 3}
+    - {fileID: 21300000, guid: eaf048282886ab34994e7d199b11a264, type: 3}
+    - {fileID: 21300000, guid: 64706185df8f92c47a00a9a0b73b4f0c, type: 3}
+    - {fileID: 21300000, guid: a9f612bcde8ca204a844e664fa4c92d7, type: 3}
+    - {fileID: 21300000, guid: 41ffbd20789634d47a54f0af246f3964, type: 3}
+    - {fileID: 21300000, guid: 87837b84624766e4cbe51526fcade56f, type: 3}
+    - {fileID: 21300000, guid: aedc857159f5da642b3199a08db4827f, type: 3}
+    - {fileID: 21300000, guid: 1b1ec0769294ee94db671069106a0aec, type: 3}
+    - {fileID: 21300000, guid: b668b4ab63e9fb449a420c5afdf587c3, type: 3}
+    framesPerSecond: 10
+    sizeInHexes: 1
+    tint: {r: 1, g: 1, b: 1, a: 0.8235294}
+    startFrameStep: 2
+    moveSeconds: 5
+    spriteMoveShare: 0.5
