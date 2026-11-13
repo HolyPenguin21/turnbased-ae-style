@@ -73,7 +73,7 @@ namespace Game.Ai.V2
                 + $"staging=({citadel.Q},{citadel.R})";
 
             // 1) an existing free field army hosts the fist wherever it stands.
-            ArmySnapshot fieldHost = PreparationFieldHost(snap, excluded, citadel);
+            ArmySnapshot fieldHost = PreparationFieldHost(snap, excluded, citadel, objective.Hex);
             PlayerSetupData player = snap.Observer;
             HexCoord? hostStaging = fieldHost == null ? (HexCoord?)null
                 : AttackPreparationPolicy.PreparationStagingBase(snap, objective.Hex, fieldHost);
@@ -215,13 +215,22 @@ namespace Game.Ai.V2
         // The free field army a preparation hosts its fist in: the strongest, the one already on
         // the staging Base first among equals. Also read by ActiveDefence, which pays the
         // preparation's value to take this army before the preparation claims it.
+        // 2026-11-13 (P3, match Korrin vs Brynn) — the capability view (requireMovementNow: false)
+        // does not drop pinned stronghold defenders, and a pinned host only HOLDs (it may not walk
+        // to the staging Base): Korrin T25-T31 held on #30 pinned at (0,-1) while Cinderfall #37
+        // already stood on the staging Base (-1,-3). A host is an army already on its staging
+        // Base (the preparation's own, or the one PreparationStagingBase picks for it) or one
+        // IsPinnedStrongholdDefender lets leave. A host without movement this turn stays eligible.
         internal static ArmySnapshot PreparationFieldHost(WorldSnapshot snap, ISet<int> excluded,
-            HexCoord? staging) =>
+            HexCoord? staging, HexCoord? objectiveHex = null) =>
             GroundCombatActorEligibility.EligibleArmies(snap, excluded, requireMovementNow: false)
                 .OrderByDescending(a => a.EffectiveArmyPower)
                 .ThenByDescending(a => staging.HasValue && a.Hex.Equals(staging.Value))
                 .ThenBy(a => a.ArmyId)
-                .FirstOrDefault();
+                .FirstOrDefault(a => (staging.HasValue && a.Hex.Equals(staging.Value))
+                    || (objectiveHex.HasValue && AttackPreparationPolicy.PreparationStagingBase(
+                        snap, objectiveHex.Value, a) is HexCoord own && own.Equals(a.Hex))
+                    || !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a));
 
         // 2026-09-30 (user decision) — the army a preparation about to open would host in, and
         // what taking it elsewhere costs (the best Attack objective's TaskScore): the mobilization
@@ -250,7 +259,7 @@ namespace Game.Ai.V2
             if (!staging.HasValue)
                 return (-1, 0f);
             var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
-            ArmySnapshot host = PreparationFieldHost(snap, excluded, staging);
+            ArmySnapshot host = PreparationFieldHost(snap, excluded, staging, objective.Hex);
             return host == null ? (-1, 0f) : (host.ArmyId, Mathf.Max(0f, objective.TaskScore.Value));
         }
 
