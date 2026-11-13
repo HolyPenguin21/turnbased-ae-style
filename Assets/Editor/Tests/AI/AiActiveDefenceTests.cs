@@ -504,6 +504,38 @@ namespace Game.EditorTests
                 "a threat that is not imminent (ActiveDefence's own horizon) does not call it back");
         }
 
+        // 2026-11-13 (owner, match Sable vs Korrin) — trading an own Base for the enemy's Citadel
+        // is an option: a decisive Citadel blow that lands AFTER the enemy reaches the threatened
+        // Base still marches; the race stays required when the threatened stronghold is our Citadel.
+        [Test]
+        public void AttackMarch_DecisiveCitadelBlow_MayTradeABase_ButNeverOurCitadel()
+        {
+            var owner = new PlayerSetupData();
+            var marcher = DefenceActor(owner, 26, new HexCoord(1, 0), 20f, 10f, 30f);
+            WorldSnapshot snap = AssetWorld(marcher);
+            PlayerSetupData enemy = snap.Threat.Threats[0].Contact.Army.Owner;
+            var farSite = new HexCoord(9, -1);
+            AttackTargetRef citadel = AttackTargetRef.For(farSite, enemy, AttackTargetKind.Citadel);
+            var weak = new WorthIt.DefenderProfile(0f, false, null, 1f, 2f, 0);
+            snap.Known.EnemySightings = snap.Known.EnemySightings.Concat(new[] {
+                new AiMapMemory.KnownEnemySighting(farSite, enemy, "garrison", 1, 1f, 1f, new[] { weak },
+                    false, 0, 0, 8, 98) }).ToArray();
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(farSite, enemy, true, null, null, 0,
+                true, 0f, 8) };
+            Assert.That(ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, marcher.Hex, farSite,
+                marcher.CurrentMovement, marcher.MaxMovement, fastestByTurns: true),
+                Is.GreaterThanOrEqualTo(snap.Threat.Threats[0].EnemyEta.Value), "the blow lands after the enemy");
+
+            AttackMarchAssessment trade = AttackMarchPolicy.Assess(snap, citadel, marcher);
+            Assert.That(trade.Decisive, Is.True);
+            Assert.That(trade.Verdict, Is.EqualTo(AttackMarchVerdict.Continue),
+                "losing a Base for the enemy's Citadel is the AI's option");
+
+            snap.Threat.Threats[0].Asset.Kind = AssetKind.Citadel;
+            Assert.That(AttackMarchPolicy.Assess(snap, citadel, marcher).Verdict,
+                Is.EqualTo(AttackMarchVerdict.DefendHome), "our own Citadel still needs the race");
+        }
+
         // 2026-10-18 (log: Brynn #21 held 90 turns next to Thane's Base (-3,1) because Thane's #22
         // on that Base threatened Brynn's (0,-1); ActiveDefence leaves an enemy on its own structure
         // to Attack) — a decisive blow at the threat's own hex that lands this turn removes the

@@ -509,7 +509,8 @@ namespace Game.Ai.V2
                     || !c.Position.HasValue || c.Army.Owner == null || c.Army.Owner.IsNeutral
                     || c.Army.Owner == snap.Observer || c.Army.Members == null || c.Army.Members.Count == 0)
                     continue;
-                int? approach = WorldAnalysis.ContactApproachCost(snap.Map, c, at, snap.TurnNumber);
+                int? approach = WorldAnalysis.ContactApproachCost(snap.Map, c, at, snap.TurnNumber,
+                    observer: snap.Observer);
                 if (!approach.HasValue || AiV2Util.CeilDiv(approach.Value, Math.Max(1, c.Army.MaxMovement))
                         > maxEnemyEta)
                     continue;

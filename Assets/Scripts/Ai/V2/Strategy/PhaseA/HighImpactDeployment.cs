@@ -149,7 +149,7 @@ namespace Game.Ai.V2
             // Renew the same construction holds Phase A uses before any early spending. A
             // pending strike stays senior too; ordinary demand-driven deployment remains available.
             PrepareConstructionClaims(pass);
-            if (PhaseAOperationSupport.Assess(pass) != null) return pass.Result.StateChanged;
+            if (PhaseAOperationSupport.Assess(pass, includePending: false) != null) return pass.Result.StateChanged;
             // Unresolved operational claims must constrain the surplus placement as they do later
             // in the turn. Do not deploy a card into a reserve that its real consumer cannot use.
             // The claims are this ranking's input only: the carried reservation is the turn's

@@ -105,7 +105,9 @@ namespace Game.Ai.V2
                 // P7 (2026-11-13) — the live preparation's roster reserve (PhaseAOperationSupport).
                 if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, hand, result.RosterFunding,
                         mat.Plan?.FundingCost, mat.Plan?.BaseCardInHand, mat.Plan?.Deploy.Army?.Id,
-                        "phaseB card", out string matRosterWhy))
+                        "phaseB card", out string matRosterWhy)
+                    || !PhaseAOperationSupport.LeavesStrikeGeneration(player, root, ctx, result.StrikeSupport,
+                        mat.Plan?.Generation != null, budget.GenerationAttemptsUsed, out matRosterWhy))
                 {
                     if (verbose)
                         AiDebugLog.Write($"[AI][V2]     cand PlayMat BLOCKED: {matRosterWhy}");
@@ -136,6 +138,15 @@ namespace Game.Ai.V2
                         nc, out string strikeWhy))
                 {
                     nonCombatBlocked.Add($"{nc.Card?.Definition?.displayName}:{strikeWhy}");
+                    continue;
+                }
+                bool isTheStrike = result.StrikeSupport != null && nc.StrikeTarget.HasValue
+                    && nc.StrikeTarget.Value.Equals(result.StrikeSupport.Site);
+                if (!isTheStrike && !PhaseAOperationSupport.LeavesStrikeGeneration(player, root, ctx,
+                        result.StrikeSupport, nc.Generation != null, budget.GenerationAttemptsUsed,
+                        out string ncGenerationWhy))
+                {
+                    nonCombatBlocked.Add($"{nc.Card?.Definition?.displayName}:{ncGenerationWhy}");
                     continue;
                 }
                 if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, hand, result.RosterFunding,

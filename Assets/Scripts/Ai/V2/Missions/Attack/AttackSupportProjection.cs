@@ -2,8 +2,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Aviation;
+using Game.Cards;
 using Game.Combat;
+using Game.Economy;
 using Game.HexGrid;
+using Game.Map;
+using Game.Players;
 
 namespace Game.Ai.V2
 {
@@ -294,5 +298,86 @@ namespace Game.Ai.V2
         };
 
         internal static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+
+        // ---- Strike sources for a site (2026-11-13, match Sable vs Korrin) ----
+        // THE set of strike sources that can serve `targetHex` now: a strike aircraft in hand, a
+        // Research/Production source minting one (a free hand slot and generation left), an Air
+        // Bomb in hand or minted whose own carrier then serves the site. Each counts only when
+        // the deployment's own placement and service projection prove a legal strike
+        // (NonCombatCardPlayer.CanStructurallyStrike, GroundCombatAirSupport.BombedService) on a
+        // still uncovered request of the site (KnownStrikeTargets: the live operation's request
+        // and the missile-stock request of an enemy army standing there). Read by Phase A's strike
+        // need (PhaseAOperationSupport.Assess) and by the preparation's WAIT witness
+        // (AttackContinuity) - one answer to "can a strike still be produced for this site".
+        // A source counts only while stock plus devChainFundingHorizonTurns of income pays it (the
+        // timing rule of a minted roster card): a strike the income never reaches holds nothing.
+        internal readonly struct StrikeSource
+        {
+            internal readonly ResourceCost Cost;
+            internal readonly string Label;
+            internal StrikeSource(ResourceCost cost, string label) { Cost = cost; Label = label; }
+        }
+
+        internal static List<StrikeSource> StrikeSources(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, IReadOnlyList<CardData> hand, bool handHasFreeSlot,
+            bool canGenerate, HexCoord targetHex, out List<CombatAirSupportRequest> requests)
+        {
+            requests = new List<CombatAirSupportRequest>();
+            var result = new List<StrikeSource>();
+            if (snap == null || player == null || root == null || ctx?.Map == null)
+                return result;
+            hand = hand ?? System.Array.Empty<CardData>();
+            IReadOnlyList<GenerationStep> forecast = canGenerate
+                ? snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>()
+                : System.Array.Empty<GenerationStep>();
+            List<CardData> handStrikes = hand.Where(c => IsStrikeCard(c?.Definition)).ToList();
+            List<GenerationStep> mintedStrikes = handHasFreeSlot
+                ? forecast.Where(g => IsStrikeCard(g?.CardDef)).ToList() : new List<GenerationStep>();
+            List<CardData> handBombs = hand.Where(c => GroundCombatAirSupport.IsAircraftBomb(c?.Definition)).ToList();
+            // A bomb needs no hand slot until it is made (2026-11-09, owner, match P6a).
+            List<GenerationStep> mintedBombs = forecast
+                .Where(g => GroundCombatAirSupport.IsAircraftBomb(g?.CardDef)).ToList();
+            if (handStrikes.Count == 0 && mintedStrikes.Count == 0 && handBombs.Count == 0 && mintedBombs.Count == 0)
+                return result;
+            requests = NonCombatCardPlayer.KnownStrikeTargets(snap, player, root, ctx,
+                    ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList())
+                .Where(r => r.Target.Equals(targetHex)).ToList();
+            if (requests.Count == 0)
+                return result;
+            foreach (CardData c in handStrikes)
+                if (NonCombatCardPlayer.CanStructurallyStrike(snap, player, root, ctx, c, requests))
+                    result.Add(new StrikeSource(c.EffectivePlayResourceCost, "hand:" + c.Definition.displayName));
+            foreach (GenerationStep g in mintedStrikes)
+            {
+                var minted = new CardData(g.CardDef) { ResearchProductionCreated = true };
+                if (NonCombatCardPlayer.CanStructurallyStrike(snap, player, root, ctx, minted, requests))
+                    result.Add(new StrikeSource(StrategicCardEvaluator.AddResourceCosts(
+                        minted.EffectivePlayResourceCost, g.ChallengeCard?.resourceCost),
+                        "generate:" + g.CardDef.displayName));
+            }
+            foreach (CardData c in handBombs)
+                if (BombCarrierStrikes(snap, player, ctx, c.Definition, requests))
+                    result.Add(new StrikeSource(c.EffectivePlayResourceCost, "hand-bomb:" + c.Definition.displayName));
+            foreach (GenerationStep g in mintedBombs)
+                if (BombCarrierStrikes(snap, player, ctx, g.CardDef, requests))
+                    result.Add(new StrikeSource(StrategicCardEvaluator.AddResourceCosts(g.CardDef.resourceCost,
+                        g.ChallengeCard?.resourceCost), "generate-bomb:" + g.CardDef.displayName));
+            result.RemoveAll(x => !AggressionDemandEvaluator.FundableWithinHorizon(snap, x.Cost,
+                AiConfigV2.devChainFundingHorizonTurns));
+            return result;
+        }
+
+        // An aircraft that strikes ground (a missile or a bomber), never a recon-only frame.
+        internal static bool IsStrikeCard(CardDefinition def) =>
+            def?.isAviation == true
+            && ExplosionAttack.AttackPower(def.attack, def.grantedAbilities) > 0;
+
+        // Some own aircraft, carrying `bomb`, serves a strike on the site from where it stands.
+        private static bool BombCarrierStrikes(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, CardDefinition bomb, IReadOnlyList<CombatAirSupportRequest> requests) =>
+            OwnWorld.Of(player).Armies.Where(a => a != null)
+                .SelectMany(a => a.Members)
+                .Any(u => u != null && u.IsAviation
+                    && GroundCombatAirSupport.BombedService(snap, player, ctx, u, bomb, requests).HasValue);
     }
 }

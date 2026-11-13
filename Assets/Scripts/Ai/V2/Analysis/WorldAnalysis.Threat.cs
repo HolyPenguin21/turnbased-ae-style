@@ -124,7 +124,8 @@ namespace Game.Ai.V2
                     : new Dictionary<HexCoord, int>();
                 foreach (StrategicAssetSnapshot asset in assets)
                 {
-                    int? approachCost = ContactApproachCost(ctx.Map, c, asset.Hex, snap.TurnNumber, approachCosts);
+                    int? approachCost = ContactApproachCost(ctx.Map, c, asset.Hex, snap.TurnNumber, approachCosts,
+                        player);
                     // A current observation with no terrain route is not an arriving threat.
                     // Historical contacts remain conservative because they may have moved.
                     if (c.Knowledge == ContactKnowledge.Exact && !approachCost.HasValue) continue;
@@ -209,8 +210,12 @@ namespace Game.Ai.V2
         // since that observation. A current contact uses the real terrain route; a historical
         // contact whose old origin is now blocked/unreachable falls back to geometric proximity.
         // This models uncertainty, never the enemy's actual hidden position or planned route.
+        // `observer` (2026-11-13): the hexes it sees now bound how near an unseen contact can be
+        // (AiReconMemory.PossibleDistance, the one unobserved-army model); null keeps the bare
+        // advance bound.
         internal static int? ContactApproachCost(HexMap map, EnemyContactSnapshot contact,
-            HexCoord destination, int turn, Dictionary<HexCoord, int> costs = null)
+            HexCoord destination, int turn, Dictionary<HexCoord, int> costs = null,
+            PlayerSetupData observer = null)
         {
             if (map == null || contact?.Army == null || !contact.Position.HasValue) return null;
             int movement = Mathf.Max(1, contact.Army.MaxMovement);
@@ -218,8 +223,16 @@ namespace Game.Ai.V2
             bool reachable = costs.TryGetValue(destination, out int cost);
             if (contact.Knowledge == ContactKnowledge.Exact) return reachable ? cost : (int?)null;
             if (!reachable) cost = HexGridMath.Distance(contact.Position.Value, destination);
-            long possibleAdvance = (long)contact.AgeTurns(turn) * movement;
-            return (int)System.Math.Max(0L, cost - possibleAdvance);
+            int age = contact.AgeTurns(turn);
+            long possibleAdvance = (long)age * movement;
+            int remaining = (int)System.Math.Max(0L, cost - possibleAdvance);
+            if (observer == null || age <= 0)
+                return remaining;
+            IReadOnlyList<WorthIt.DefenderProfile> members = contact.Army.MembersWithHeroes?.Count > 0
+                ? contact.Army.MembersWithHeroes : contact.Army.Members;
+            return System.Math.Max(remaining, AiReconMemory.PossibleDistance(observer,
+                contact.Position.Value, movement, age, contact.Army.IsAir, destination,
+                (hex, isAir) => map.CanEnter(hex, isAir), AiReconMemory.HidesInSight(members)));
         }
 
         // The strategic worth of one own field army as an asset (its power and carried cargo,

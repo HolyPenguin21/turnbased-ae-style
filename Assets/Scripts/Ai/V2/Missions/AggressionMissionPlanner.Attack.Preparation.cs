@@ -249,18 +249,27 @@ namespace Game.Ai.V2
         internal static (int armyId, float value) PendingPreparationHost(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed)
         {
+            (AttackObjective objective, ArmySnapshot host) = PendingPreparation(snap, activeIntents, committed);
+            return host == null ? (-1, 0f) : (host.ArmyId, Mathf.Max(0f, objective.TaskScore.Value));
+        }
+
+        // The preparation that would open now: its objective and field host, or (null, null).
+        // Read by PendingPreparationHost and by Phase A's strike need (PhaseAOperationSupport.Assess).
+        internal static (AttackObjective Objective, ArmySnapshot Host) PendingPreparation(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed)
+        {
             if (snap?.Self == null || !AttackForceReadiness.MobilizationOpen(snap.Self)
                 || LiveAttackOperation(activeIntents) != null)
-                return (-1, 0f);
+                return (null, null);
             AttackObjective objective = PreparationObjectives(AttackObjectiveEvaluator.Enumerate(snap),
                 activeIntents).FirstOrDefault();
             HexCoord? staging = objective == null ? (HexCoord?)null
                 : AttackPreparationPolicy.PreparationStagingBase(snap, objective.Hex);
             if (!staging.HasValue)
-                return (-1, 0f);
+                return (null, null);
             var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             ArmySnapshot host = PreparationFieldHost(snap, excluded, staging, objective.Hex);
-            return host == null ? (-1, 0f) : (host.ArmyId, Mathf.Max(0f, objective.TaskScore.Value));
+            return host == null ? (null, null) : (objective, host);
         }
 
         // 2026-09-30 — a free field army holding one hero and nothing else on the staging Base:
