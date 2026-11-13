@@ -222,8 +222,20 @@ namespace Game.Ai.V2
         // (TryPlanConversion each turn while a unit's priced gain is positive) realises over
         // `horizonTurns` of projected income, with ProtectedStock's donors and the horizon
         // shortfall as targets. Zero when access already exists.
-        internal static float AccessValueApEquivalents(WorldSnapshot snap, int horizonTurns)
+        internal static float AccessValueApEquivalents(WorldSnapshot snap, int horizonTurns) =>
+            AccessValueApEquivalents(snap, horizonTurns, out _);
+
+        // 2026-11-13 (owner, P5, match Korrin vs Brynn) — plus the AP the trade unblocks: Brynn
+        // held the Trading Post T1-T29 with Energy 8-13, Materials 0 and 3-9 AP idle every turn
+        // (net -0.87..-0.02); the conversion price alone never saw the stranded AP or the blocked
+        // hand. Per horizon turn: the smaller of the AP left idle on average (this turn's AP minus
+        // the witnessed mean AP demand, ApTurnPressure) and the AP of the cheapest held card the
+        // stock cannot pay now that a conversion from the donors above ProtectedStock can.
+        // AP-equivalents like the conversion gain; the caller's effectGlobalRecurringValueCap
+        // bounds the sum. Zero without idle AP or without such a card.
+        internal static float AccessValueApEquivalents(WorldSnapshot snap, int horizonTurns, out float unlockedAp)
         {
+            unlockedAp = 0f;
             if (snap?.Self == null || snap.Self.HasTrade || snap.Economy == null) return 0f;
             var stock = new float[4]; var operational = new float[4]; var income = new float[4];
             foreach (ResourceType t in ResourceBundle.All)
@@ -233,8 +245,51 @@ namespace Game.Ai.V2
                 operational[i] = snap.Economy.ForecastOperationalNeed.Get(t);
                 income[i] = Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t));
             }
-            return SimulateConversionGain(ActionPrice.CardCosts(snap).ToList(), stock, operational, income,
+            List<ResourceCost> cards = ActionPrice.CardCosts(snap).ToList();
+            float conversion = SimulateConversionGain(cards, stock, operational, income,
                 ActionPrice.ScarcityProfile(snap), snap.Self.TradeRate, horizonTurns);
+            ApActionEconomySnapshot ap = snap.Self.ApEconomy;
+            float idleAp = ap?.WitnessedApDemand.HasValue == true
+                ? Mathf.Max(0f, ap.BaseActionPoints - ap.WitnessedApDemand.Value) : 0f;
+            if (idleAp > 0f)
+            {
+                float[] protect = ProtectedStock(cards, stock, operational, income, horizonTurns);
+                float cardAp = UnlockedCardAp((snap.Self.Hand ?? (IReadOnlyList<CardData>)Array.Empty<CardData>())
+                        .Where(c => c != null).Select(c => (CardCostRules.PlayResources(c), c.EffectivePlayApCost)),
+                    stock, protect, Math.Max(TradeActions.MinimumRate, snap.Self.TradeRate));
+                unlockedAp = Mathf.Min(idleAp, cardAp) * Mathf.Max(0, horizonTurns);
+            }
+            return conversion + unlockedAp;
+        }
+
+        // Pure: the AP of the cheapest held card (AP cost > 0) the stock cannot pay now while a
+        // progressive conversion at `rate` from the donors above `protect` (and above the card's
+        // own need of that type) can; 0 when there is none.
+        internal static float UnlockedCardAp(IEnumerable<(ResourceCost Cost, int Ap)> hand, float[] stock,
+            float[] protect, int rate)
+        {
+            if (hand == null || stock == null || protect == null || stock.Length != 4 || protect.Length != 4)
+                return 0f;
+            float best = float.MaxValue;
+            foreach ((ResourceCost cost, int ap) in hand)
+            {
+                if (cost == null || ap <= 0 || ap >= best) continue;
+                int units = 0;
+                float surplus = 0f;
+                for (int i = 0; i < 4; i++)
+                {
+                    int need = cost.Get((ResourceType)i);
+                    int shortBy = Mathf.Max(0, Mathf.CeilToInt(need - stock[i]));
+                    units += shortBy;
+                    if (shortBy == 0)
+                        surplus += Mathf.Max(0f, Mathf.Floor(stock[i] - Mathf.Max(protect[i], need)));
+                }
+                if (units == 0 || units > AiConfigV2.tradeMaxPreviewUnits) continue;
+                long price = (long)units * rate + (long)units * (units - 1) / 2;
+                if (surplus + AiConfigV2.allocatorSliceEpsilon >= price)
+                    best = ap;
+            }
+            return best == float.MaxValue ? 0f : best;
         }
 
         // Pure: greedy per-turn conversions (best-priced missing unit from the cheapest donor

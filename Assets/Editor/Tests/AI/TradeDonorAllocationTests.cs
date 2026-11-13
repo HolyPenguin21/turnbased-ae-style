@@ -174,6 +174,24 @@ namespace Game.EditorTests
                 "a Materials unit also unlocks the idle Energy/Tech of a stalled card");
         }
 
+        // 2026-11-13 (owner, P5) — Brynn T20-T26: Energy 8-13, Materials 0, a Materials card held
+        // and 3-9 AP idle. The trade unblocks that card's AP; a payable hand or no donor adds nothing.
+        [Test] public void UnlockedCardAp_IsTheCheapestBlockedCardADonorCanPay()
+        {
+            var stock = new float[] { 0f, 10f, 0f, 0f };     // Human, Energy, Materials, Tech
+            var protect = new float[4];
+            var slag = (new ResourceCost(materials: 1), 7);
+            var maw = (new ResourceCost(materials: 3), 9);
+            Assert.That(TradeFunding.UnlockedCardAp(new[] { maw, slag }, stock, protect, 2), Is.EqualTo(7f),
+                "1 Materials for 2 Energy plays the 7-AP Slag Lobber");
+            Assert.That(TradeFunding.UnlockedCardAp(new[] { (new ResourceCost(energy: 2), 7) }, stock, protect, 2),
+                Is.Zero, "a card the stock already pays is not blocked");
+            Assert.That(TradeFunding.UnlockedCardAp(new[] { slag }, stock, new float[] { 0f, 9f, 0f, 0f }, 2),
+                Is.Zero, "no donor above its protected stock");
+            Assert.That(TradeFunding.UnlockedCardAp(new[] { maw }, new float[] { 0f, 8f, 0f, 0f }, protect, 2),
+                Is.Zero, "3 units cost 2+3+4 = 9 Energy: 8 is not enough");
+        }
+
         [Test] public void CoveredEconomyPricesExactlyAsBefore()
         {
             var snap = DeckSnapshot(Cards(1, Bill(2, 2, 2, 2)),
