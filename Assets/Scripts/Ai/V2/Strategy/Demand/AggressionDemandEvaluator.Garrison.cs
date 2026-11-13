@@ -93,7 +93,9 @@ namespace Game.Ai.V2
                     continue;
                 float shortfall = HeldBaseGarrisonShortfall(snap, garrison, out float floor)
                     - GarrisonReliefObjectiveEvaluator.InFlightReliefPower(snap, baseHex);
-                float fits = GarrisonHandGainCap(snap, garrison, 0);
+                // P2 (2026-11-13): relief bodies already walking there take their slots first.
+                float fits = GarrisonHandGainCap(snap, garrison,
+                    GarrisonReliefObjectiveEvaluator.InFlightReliefBodies(snap, baseHex));
                 float desired = Mathf.Min(shortfall, fits);
                 if (desired <= AiConfigV2.allocatorSliceEpsilon)
                 {

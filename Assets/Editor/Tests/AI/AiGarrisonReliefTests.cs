@@ -87,7 +87,54 @@ namespace Game.EditorTests
             Assert.That(relief.UnitRuntimeIds, Is.EquivalentTo(new[] { 11, 12 }),
                 "the spare bodies, strongest first, up to the shell's capacity; the kept body stays");
             Assert.That(relief.Detachment.ActivationApCost, Is.EqualTo(2));
-            Assert.That(relief.EtaTurns, Is.EqualTo(2));
+            // ActiveDefence's arrival measure (0 = this own turn): 4 hexes at 2 MP arrive next turn.
+            Assert.That(relief.EtaTurns, Is.EqualTo(1));
+        }
+
+        // 2026-11-13 (user decision, P2) — Korrin T26: 4 bodies pulled out of (0,-1) for a Base
+        // that was 4/4 by arrival. The detachment fits the recipient's free slots, and a full
+        // recipient gets none.
+        [Test]
+        public void ReliefFitsTheRecipientsFreeSlots_AndAFullGarrisonGetsNone()
+        {
+            var owner = new PlayerSetupData { Nickname = "Us" };
+            WorldSnapshot snap = World(owner);
+            ArmySnapshot recipient = snap.Self.Armies.Single(a => a.ArmyId == RecipientId);
+            recipient.Capacity = 2;
+            recipient.OccupiedBattleSlots = 1;
+            List<GarrisonReliefObjective> reliefs = GarrisonReliefObjectiveEvaluator.Enumerate(snap, new HashSet<int>());
+            Assert.That(reliefs, Has.Count.EqualTo(1));
+            Assert.That(reliefs[0].UnitRuntimeIds, Is.EquivalentTo(new[] { 11 }), "one free slot, one body");
+
+            recipient.Capacity = 1;
+            Assert.That(GarrisonReliefObjectiveEvaluator.Enumerate(snap, new HashSet<int>()), Is.Empty,
+                "recipient_garrison_full");
+        }
+
+        // Brynn T23: relief eta 2 to a Base the enemy reached in 1 — it fell and the donor was
+        // weakened for nothing. A relief that arrives no earlier than the enemy is not sent.
+        [Test]
+        public void ReliefThatArrivesAfterTheThreat_IsNotSent()
+        {
+            var owner = new PlayerSetupData { Nickname = "Us" };
+            WorldSnapshot snap = World(owner);
+            var enemy = new PlayerSetupData { Nickname = "Them" };
+            var raider = new ArmySnapshot { ArmyId = 77, Owner = enemy, Hex = new HexCoord(5, 0), MaxMovement = 2 };
+            AssetThreatSnapshot threat = new AssetThreatSnapshot
+            {
+                Asset = new StrategicAssetSnapshot { Hex = Front, Kind = AssetKind.Base },
+                Contact = new EnemyContactSnapshot { Army = raider, Position = raider.Hex, Confidence = 1f,
+                    LastObservedTurn = 9 },
+                CanDamage = true, EnemyEta = 1, Confidence = 1f,
+            };
+            snap.Threat = new ThreatModel { Contacts = new List<EnemyContactSnapshot> { threat.Contact },
+                Threats = new List<AssetThreatSnapshot> { threat } };
+            Assert.That(GarrisonReliefObjectiveEvaluator.Enumerate(snap, new HashSet<int>()), Is.Empty,
+                "relief eta 1 is not before enemy eta 1");
+
+            threat.EnemyEta = 2;
+            Assert.That(GarrisonReliefObjectiveEvaluator.Enumerate(snap, new HashSet<int>()), Has.Count.EqualTo(1),
+                "arriving next turn beats an enemy two turns away");
         }
 
         [Test]
