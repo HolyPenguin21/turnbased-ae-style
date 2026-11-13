@@ -243,6 +243,156 @@ namespace Game.EditorTests
             }
         }
 
+        // 2026-11-13 (match Sable vs Korrin, T50) — three Development upgrades took the turn's
+        // generation budget (gen 3/3) before the Tactical Missile could be minted. The last
+        // attempt of the turn stays the strike's while the stock pays the strike now; a strike
+        // the stock cannot pay yet leaves the slot free (the resource rule keeps its funding).
+        [Test]
+        public void UpgradeOutsideTheFist_LeavesTheLastGenerationAttemptToAPayableStrike()
+        {
+            PlayerRoot root = PlayerRoot.Create(_player, "strike generation test");
+            PlayerRootRegistry.Register(_player, root);
+            try
+            {
+                root.AddResource(Game.Economy.ResourceType.Human, 4);
+                root.AddResource(Game.Economy.ResourceType.Energy, 5);
+                root.AddResource(Game.Economy.ResourceType.Materials, 6);
+                root.AddResource(Game.Economy.ResourceType.Tech, 5);
+                var attack = new AttackIntent { PrimaryArmyId = 9, Phase = AttackMissionPhase.Gather,
+                    Target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base) };
+                var operation = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                    PreferredMoverArmyId = 9, Objective = attack,
+                    IntentKey = MissionIntentKey.ForAttack(attack.Target) };
+                var reservation = new MaterializationReservation();
+                var pass = new PhaseAPass(Snapshot(), _player, root, null, new AiTurnContext { TurnNumber = 10 },
+                    null, null, null, null, null, null, null, null, false,
+                    new StrategicPhaseResult { Reservation = reservation })
+                {
+                    StrikeSupport = new StrikeSupportNeed { Operation = operation, Attack = attack,
+                        Site = Site, Key = "test-operation",
+                        Cost = new ResourceCost(energy: 5, materials: 6, tech: 5), Source = "generate:Tactical Missile" },
+                };
+                // A Human-only upgrade touches nothing the strike needs.
+                var upgrade = new MaterializationPlan { ResCost = new ResourceCost(human: 1),
+                    DevelopmentUpgrade = new DevelopmentOpportunity { RecipientArmyId = 4 } };
+
+                reservation.GenerationAttemptsUsed = AiConfigV2.maxGenerationActionsPerTurn - 2;
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass, upgrade, out _), Is.True,
+                    "another attempt stays for the strike after this one");
+                reservation.GenerationAttemptsUsed = AiConfigV2.maxGenerationActionsPerTurn - 1;
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass, upgrade, out string why), Is.False);
+                Assert.That(why, Does.Contain("leaves_strike_generation"));
+
+                pass.StrikeSupport.Source = "hand:Tactical Missile";
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass, upgrade, out _), Is.True,
+                    "a strike card already in hand needs no generation");
+                pass.StrikeSupport.Source = "generate:Tactical Missile";
+                pass.StrikeSupport.Cost = new ResourceCost(energy: 5, materials: 6, tech: 9);
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass, upgrade, out _), Is.True,
+                    "a strike the stock cannot pay this turn does not hold the slot");
+
+                // Phase B reads the same rule for its generation candidates.
+                pass.StrikeSupport.Cost = new ResourceCost(energy: 5, materials: 6, tech: 5);
+                Assert.That(PhaseAOperationSupport.LeavesStrikeGeneration(_player, root, pass.Ctx,
+                    pass.StrikeSupport, consumesGeneration: false, AiConfigV2.maxGenerationActionsPerTurn - 1,
+                    out _), Is.True, "a play that mints nothing takes no attempt");
+                Assert.That(PhaseAOperationSupport.LeavesStrikeGeneration(_player, root, pass.Ctx,
+                    pass.StrikeSupport, consumesGeneration: true, AiConfigV2.maxGenerationActionsPerTurn - 1,
+                    out _), Is.False);
+            }
+            finally
+            {
+                PlayerRootRegistry.Clear();
+                StrategicResourceReservationLedger.ClearAll();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
+        }
+
+        // 2026-11-13 — when the strike's cheapest source is a minted Air Bomb, the Production
+        // upgrade that mints that bomb for an aircraft IS the strike: neither the resource nor
+        // the generation rule holds it back (the Phase B rule for a hand bomb).
+        [Test]
+        public void BombProductionUpgrade_IsTheStrikeItself()
+        {
+            PlayerRoot root = PlayerRoot.Create(_player, "strike bomb production test");
+            PlayerRootRegistry.Register(_player, root);
+            try
+            {
+                root.AddResource(Game.Economy.ResourceType.Tech, 5);
+                var attack = new AttackIntent { PrimaryArmyId = 9, Phase = AttackMissionPhase.Gather,
+                    Target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base) };
+                var reservation = new MaterializationReservation
+                    { GenerationAttemptsUsed = AiConfigV2.maxGenerationActionsPerTurn - 1 };
+                var pass = new PhaseAPass(Snapshot(), _player, root, null, new AiTurnContext { TurnNumber = 10 },
+                    null, null, null, null, null, null, null, null, false,
+                    new StrategicPhaseResult { Reservation = reservation })
+                {
+                    StrikeSupport = new StrikeSupportNeed { Attack = attack, Site = Site, Key = "test",
+                        Cost = new ResourceCost(tech: 5), Source = "generate-bomb:Air Bomb 3" },
+                };
+                var bomb = new CardDefinition { cardType = CardType.Equipment, attachmentSlot = AttachmentSlot.Equipment,
+                    grantedAbilities = new System.Collections.Generic.List<string> { UnitAbilities.SingleUse },
+                    equipment = new EquipmentGrant {
+                        hostTypeTags = new System.Collections.Generic.List<UnitTypeTag> { UnitTypeTag.Aircraft },
+                        addAbilities = new System.Collections.Generic.List<string> { UnitAbilities.Explosion3 } } };
+                var mintBomb = new MaterializationPlan { ResCost = new ResourceCost(tech: 5),
+                    DevelopmentUpgrade = new DevelopmentOpportunity { RecipientArmyId = 4, Card = bomb } };
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass, mintBomb, out _), Is.True);
+                var other = new MaterializationPlan { ResCost = new ResourceCost(tech: 1),
+                    DevelopmentUpgrade = new DevelopmentOpportunity { RecipientArmyId = 4 } };
+                Assert.That(PhaseAOperationSupport.LeavesStrikeSupport(pass, other, out _), Is.False);
+            }
+            finally
+            {
+                PlayerRootRegistry.Clear();
+                StrategicResourceReservationLedger.ClearAll();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
+        }
+
+        // 2026-11-13 — a Development preparation step (facility, capacity level, minted operator)
+        // is the same sink as an upgrade: it leaves the strike its resources and its last attempt.
+        [Test]
+        public void DevelopmentPreparation_LeavesTheStrikeItsReserves()
+        {
+            PlayerRoot root = PlayerRoot.Create(_player, "strike preparation test");
+            PlayerRootRegistry.Register(_player, root);
+            try
+            {
+                root.AddResource(Game.Economy.ResourceType.Human, 3);
+                root.AddResource(Game.Economy.ResourceType.Tech, 5);
+                var attack = new AttackIntent { PrimaryArmyId = 9, Phase = AttackMissionPhase.Gather,
+                    Target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base) };
+                var reservation = new MaterializationReservation();
+                var pass = new PhaseAPass(Snapshot(), _player, root, null, new AiTurnContext { TurnNumber = 10 },
+                    null, null, null, null, null, null, null, null, false,
+                    new StrategicPhaseResult { Reservation = reservation })
+                {
+                    StrikeSupport = new StrikeSupportNeed { Attack = attack, Site = Site, Key = "test",
+                        Cost = new ResourceCost(tech: 5), Source = "generate:Tactical Missile" },
+                };
+                var facility = new DevelopmentOpportunity { StageResourceCost = new ResourceCost(tech: 2) };
+                Assert.That(PhaseAOperationSupport.LeavesOperationReserves(pass, facility, out string why), Is.False);
+                Assert.That(why, Does.Contain("development preparation"));
+                facility.StageResourceCost = new ResourceCost(human: 2);
+                Assert.That(PhaseAOperationSupport.LeavesOperationReserves(pass, facility, out _), Is.True);
+
+                var minting = new DevelopmentOpportunity { StageResourceCost = new ResourceCost(human: 1),
+                    PreparationOperatorGeneration = new GenerationStep() };
+                reservation.GenerationAttemptsUsed = AiConfigV2.maxGenerationActionsPerTurn - 1;
+                Assert.That(PhaseAOperationSupport.LeavesOperationReserves(pass, minting, out why), Is.False);
+                Assert.That(why, Does.Contain("leaves_strike_generation"));
+                pass.StrikeSupport = null;
+                Assert.That(PhaseAOperationSupport.LeavesOperationReserves(pass, minting, out _), Is.True);
+            }
+            finally
+            {
+                PlayerRootRegistry.Clear();
+                StrategicResourceReservationLedger.ClearAll();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
+        }
+
         // 2026-11-09 (Q4) — Phase A attaches a hand Air Bomb to an aircraft whose service on the
         // site is read WITH the bomb. The projection is a detached copy through the game's own
         // installation: a frame without a gun gains the explosion strike, the live unit does not.

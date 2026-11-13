@@ -360,13 +360,37 @@ namespace Game.Ai.V2
             return null;
         }
 
+        // 2026-11-13 (match Sable vs Korrin) — the preparation's fourth WAIT witness: a strike that
+        // can still be produced for the site (AttackSupportProjection.StrikeSources, the source
+        // set of Phase A's strike need) lowers the opposition the host must clear, as a card
+        // raises the host. Sable T47-T50: the fist (81.8, roster full) stayed below the gate on
+        // (2,2), only a Tactical Missile could change that, and the stall clock reaped the
+        // preparation after two turns - and with it the strike need that kept Development off
+        // the missile's resources. The source set itself ends the wait:
+        // a stocked missile covers its enemy's request (one per army), a counted wing the rest.
+        internal static string PreparationStrikeSource(WorldSnapshot snap, HexCoord targetHex)
+        {
+            PlayerSetupData player = snap?.Observer;
+            PlayerRoot root = OwnWorld.Of(player).Root;
+            if (player == null || root == null || snap.Map == null)
+                return null;
+            AiHandData hand = AiHandRegistry.Peek(player);
+            var ctx = new AiTurnContext { Map = snap.Map, TurnNumber = snap.TurnNumber };
+            AttackSupportProjection.StrikeSource? best = AttackSupportProjection.StrikeSources(snap, player,
+                    root, ctx, snap.Self?.Hand, hand?.HasFreeSlot ?? false,
+                    !StrategicTempoBudget.For(player, snap.TurnNumber).GenerationCapHit, targetHex, out _)
+                .OrderBy(s => s.Label, System.StringComparer.Ordinal)
+                .Select(s => (AttackSupportProjection.StrikeSource?)s).FirstOrDefault();
+            return best.HasValue ? "strike:" + best.Value.Label : null;
+        }
+
         // P7 (2026-11-13) — a roster card is an expected position only while today's spendable
         // stock plus income over economyDeckNeedHorizonTurns (the deck-need horizon ActionPrice
         // and DeckPlayability read) pays it, resource by resource.
         internal static bool FundableWithinDeckHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost) =>
             FundableWithinHorizon(snap, cost, AiConfigV2.economyDeckNeedHorizonTurns);
 
-        private static bool FundableWithinHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost, float horizonTurns)
+        internal static bool FundableWithinHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost, float horizonTurns)
         {
             if (cost == null)
                 return true;

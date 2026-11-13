@@ -157,8 +157,9 @@ namespace Game.Ai.V2
 
             // 2026-10-16 (user decision) — king safety first: an own stronghold that falls without
             // this army calls it home (AttackMarchPolicy), unless a decisive blow at the enemy's
-            // Citadel lands first. An operation that never started simply ends (the army is free
-            // for the defence); a started one walks home through the existing RecoveryReturn leg.
+            // Citadel (when our own Citadel is what falls: one that lands first). An operation
+            // that never started simply ends (the army is free for the defence); a started one
+            // walks home through the existing RecoveryReturn leg.
             if ((a.Phase == AttackMissionPhase.Assault || a.Phase == AttackMissionPhase.Reinforcement)
                 && a.PrimaryArmyId.HasValue)
             {
@@ -987,7 +988,8 @@ namespace Game.Ai.V2
             // into this exact (possibly full) host.
             string cardSource = sameHexStep ? null
                 : AggressionDemandEvaluator.PreparationHostCardSource(snap, liveHost, a.TargetRoster,
-                    a.Target.Hex);
+                    a.Target.Hex)
+                    ?? AggressionDemandEvaluator.PreparationStrikeSource(snap, a.Target.Hex);
             // A support another operation holds is not a WAIT witness: it is bought only by the
             // priced RecruitDonors proposal, whose execution resets the stall (AdvanceIntent).
             if (sameHexStep || cardSource != null)
@@ -1015,7 +1017,7 @@ namespace Game.Ai.V2
                 }
                 AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                     $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
-                    + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
+                    + $"next={(sameHexStep ? "same_hex_assembly" : cardSource.StartsWith("strike:", System.StringComparison.Ordinal) ? "strike_production" : "pinned_card_delivery")} "
                     + $"witness={cardSource ?? "same_hex_body"} "
                     + $"clearance={DescribeClearance(snap, a)} "
                     + $"missing=[{MissingLabel(a.TargetRoster, liveHost)}] gather={plan.Reason}");

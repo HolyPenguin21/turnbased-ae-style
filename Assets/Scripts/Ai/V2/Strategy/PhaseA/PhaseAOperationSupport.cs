@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -47,9 +48,13 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal sealed class StrikeSupportNeed
     {
+        // The live operation; null for the strike of a preparation about to open (Assess).
         internal MissionIntent Operation;
         internal AttackIntent Attack;
         internal ArmySnapshot Primary;
+        // The site the strike serves and the need's identity in logs and the Economy forecast.
+        internal HexCoord Site;
+        internal string Key;
         internal AttackSupportForecast Forecast;
         // The persistent resources of the cheapest strike source (a hand card, or a Challenge plus
         // the card it mints) — what the operation needs left after the card rounds.
@@ -91,7 +96,9 @@ namespace Game.Ai.V2
         // ===================================================================================
         internal static StrikeSupportNeed AssessRosterFunding(PhaseAPass pass)
         {
-            if (pass?.Snap?.Self == null || pass.Player == null || !pass.AdmittedAxes.Contains(DesireAxis.Aggression))
+            // 2026-11-13 — the reserve holds in every pass of the turn: a Development-only pass
+            // spent what an Aggression pass had protected. Only the forecast needs the axis.
+            if (pass?.Snap?.Self == null || pass.Player == null)
                 return null;
             MissionIntent operation = AggressionMissionLayer.LiveAttackOperation(pass.ActiveIntents);
             AttackIntent a = operation?.Attack;
@@ -221,75 +228,69 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // The live operation's need for a strike, or null: Aggression admitted, a live Gather /
-        // Assault with a primary, a strike source (hand card, or a free hand slot + generation left +
-        // a forecast generator minting one), no counted air support and a fist not ready without it.
-        internal static StrikeSupportNeed Assess(PhaseAPass pass)
+        // The live operation's need for a strike, or null: a live Gather /
+        // Assault with a primary, a fist not ready even with the support the forecast already
+        // counts (its opposition is the package after that support), and a strike source for the
+        // site (AttackSupportProjection.StrikeSources). 2026-11-13 (match Sable vs Korrin): a
+        // counted wing alone no longer cancels the need - a free Rusty Vulture counted for (2,2)
+        // while the fist stayed below the gate, and Development spent what the strike needed.
+        // The preparation about to open counts as well (`includePending`): mobilization open, no
+        // live Attack, a field host on the best objective's staging Base
+        // (AggressionMissionLayer.PendingPreparation). A preparation opens only on an action
+        // (move, assemble, create), so a full host with nothing to swap never opened one and the
+        // strike that alone could change the odds never got its need (match Sable vs Korrin).
+        // The need holds in every pass of the turn (a Development-only pass must not spend what
+        // the strike waits for); producing the strike and the Economy forecast stay with the
+        // passes that admitted Aggression.
+        internal static StrikeSupportNeed Assess(PhaseAPass pass, bool includePending = true)
         {
-            if (pass?.Snap?.Self == null || !pass.AdmittedAxes.Contains(DesireAxis.Aggression))
+            if (pass?.Snap?.Self == null)
                 return null;
             MissionIntent operation = AggressionMissionLayer.LiveAttackOperation(pass.ActiveIntents);
             AttackIntent a = operation?.Attack;
-            if (a == null || !a.PrimaryArmyId.HasValue
-                || (a.Phase != AttackMissionPhase.Gather && a.Phase != AttackMissionPhase.Assault))
-                return null;
-            // Structural sources: a strike card in hand, or a Challenge that mints one, that can
-            // actually reach this target from a legal airfield (the deployment play's own rule).
-            // A source the delivery would refuse must not hold resources for a strike
-            // (2026-11-08: an out-of-range Moth Bomber froze Materials and blocked two upgrades).
-            List<CardData> handSources = pass.Hand.Hand.Where(c => IsStrikeCard(c?.Definition)).ToList();
-            List<GenerationStep> generatedSources = pass.Hand.HasFreeSlot && pass.Reservation.CanGenerateMore
-                ? (pass.Snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
-                    .Where(g => IsStrikeCard(g?.CardDef)).ToList()
-                : new List<GenerationStep>();
-            // 2026-11-09 (owner, match P6a) — a single-use bomb for an own aircraft is a strike
-            // source too: in hand, or a Production source (it needs no hand slot until made).
-            List<CardData> handBombs = pass.Hand.Hand.Where(c => GroundCombatAirSupport.IsAircraftBomb(c?.Definition)).ToList();
-            List<GenerationStep> generatedBombs = pass.Reservation.CanGenerateMore
-                ? (pass.Snap.Development?.ForecastSources ?? System.Array.Empty<GenerationStep>())
-                    .Where(g => GroundCombatAirSupport.IsAircraftBomb(g?.CardDef)).ToList()
-                : new List<GenerationStep>();
-            if (handSources.Count == 0 && generatedSources.Count == 0
-                && handBombs.Count == 0 && generatedBombs.Count == 0)
-                return null;
-            ArmySnapshot primary = pass.Snap.Self.Armies?.FirstOrDefault(x => x != null
-                && x.ArmyId == a.PrimaryArmyId.Value);
+            ArmySnapshot primary;
+            HexCoord site;
+            string key;
+            if (operation != null)
+            {
+                if (a == null || !a.PrimaryArmyId.HasValue
+                    || (a.Phase != AttackMissionPhase.Gather && a.Phase != AttackMissionPhase.Assault))
+                    return null;
+                primary = pass.Snap.Self.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == a.PrimaryArmyId.Value);
+                site = a.Target.Hex;
+                key = operation.IntentKey.ToString();
+            }
+            else
+            {
+                if (!includePending)
+                    return null;
+                (AttackObjective objective, ArmySnapshot host) = AggressionMissionLayer.PendingPreparation(
+                    pass.Snap, pass.ActiveIntents, pass.Commitments?.ClaimedArmyIdSet);
+                if (objective == null)
+                    return null;
+                primary = host;
+                site = objective.Hex;
+                key = "pending-preparation:" + objective.Target.DiagnosticLabel;
+            }
             if (primary == null)
                 return null;
-            AttackSupportForecast forecast = AttackSupportProjection.For(pass.Snap, a.Target.Hex, primary);
-            if (forecast.AirSourceArmyId.HasValue
-                || AttackPreparationPolicy.AssessReadiness(primary, pass.Snap.Self.AttackPeak,
+            AttackSupportForecast forecast = AttackSupportProjection.For(pass.Snap, site, primary);
+            if (AttackPreparationPolicy.AssessReadiness(primary, pass.Snap.Self.AttackPeak,
                     forecast.Opposition, forecast.HexBonus).Ready)
                 return null;
-            List<CombatAirSupportRequest> requests = NonCombatCardPlayer.KnownStrikeTargets(pass.Snap,
-                    pass.Player, pass.Root, pass.Ctx,
-                    ReconObjectiveEvaluator.Enumerate(pass.Snap).Where(o => o != null).ToList())
-                .Where(r => r.Target.Equals(a.Target.Hex)).ToList();
-            var costs = new List<(ResourceCost Cost, string Source)>();
-            foreach (CardData c in handSources)
-                if (NonCombatCardPlayer.CanStructurallyStrike(pass.Snap, pass.Player, pass.Root, pass.Ctx, c, requests))
-                    costs.Add((c.EffectivePlayResourceCost, "hand:" + c.Definition.displayName));
-            foreach (GenerationStep g in generatedSources)
-            {
-                var minted = new CardData(g.CardDef) { ResearchProductionCreated = true };
-                if (NonCombatCardPlayer.CanStructurallyStrike(pass.Snap, pass.Player, pass.Root, pass.Ctx, minted, requests))
-                    costs.Add((StrategicCardEvaluator.AddResourceCosts(minted.EffectivePlayResourceCost,
-                        g.ChallengeCard?.resourceCost), "generate:" + g.CardDef.displayName));
-            }
-            foreach (CardData c in handBombs)
-                if (BombCarrierStrikes(pass, c.Definition, requests))
-                    costs.Add((c.EffectivePlayResourceCost, "hand-bomb:" + c.Definition.displayName));
-            foreach (GenerationStep g in generatedBombs)
-                if (BombCarrierStrikes(pass, g.CardDef, requests))
-                    costs.Add((StrategicCardEvaluator.AddResourceCosts(g.CardDef.resourceCost,
-                        g.ChallengeCard?.resourceCost), "generate-bomb:" + g.CardDef.displayName));
-            if (costs.Count == 0)
+            List<AttackSupportProjection.StrikeSource> sources = AttackSupportProjection.StrikeSources(
+                pass.Snap, pass.Player, pass.Root, pass.Ctx, pass.Hand.Hand, pass.Hand.HasFreeSlot,
+                pass.Reservation.CanGenerateMore, site, out List<CombatAirSupportRequest> requests);
+            if (sources.Count == 0)
                 return null;
-            var cheapest = costs.OrderBy(x => Total(x.Cost)).ThenBy(x => x.Source, System.StringComparer.Ordinal).First();
+            AttackSupportProjection.StrikeSource cheapest = sources.OrderBy(x => Total(x.Cost))
+                .ThenBy(x => x.Label, System.StringComparer.Ordinal).First();
             return new StrikeSupportNeed
             {
                 Operation = operation, Attack = a, Primary = primary, Forecast = forecast,
-                Cost = cheapest.Cost, Source = cheapest.Source, Requests = requests,
+                Site = site, Key = key,
+                Cost = cheapest.Cost, Source = cheapest.Label, Requests = requests,
             };
         }
 
@@ -306,17 +307,70 @@ namespace Game.Ai.V2
                 var bundle = new ResourceBundle();
                 foreach (ResourceType t in ResourceBundle.All)
                     bundle.Add(t, need.Cost.Get(t));
-                needs = new Dictionary<string, ResourceBundle> { [need.Operation.IntentKey.ToString()] = bundle };
+                needs = new Dictionary<string, ResourceBundle> { [need.Key] = bundle };
             }
             ResourceStarvationRegistry.ReplaceOperationalForecast(pass.Player, pass.Turn, ForecastProducer, needs);
+        }
+
+        // 2026-11-13 (match Sable vs Korrin, T50: three Development upgrades took gen 3/3 before
+        // the strike could be minted) — the generation budget is a resource of the strike too.
+        // False when a surplus spender's Research/Production attempt (`consumesGeneration`) would
+        // take the last attempt of the turn while the strike's cheapest source is a minted one
+        // the stock can pay now; while it cannot be paid yet the resource rule
+        // (LeavesStrikeSupport) keeps the funding and the slot is free for others.
+        internal static bool LeavesStrikeGeneration(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, StrikeSupportNeed need, bool consumesGeneration, int generationUsed,
+            out string why)
+        {
+            why = null;
+            if (!consumesGeneration || need?.Cost == null || need.Source == null
+                || !need.Source.StartsWith("generate", System.StringComparison.Ordinal)
+                || generationUsed + 1 < AiConfigV2.maxGenerationActionsPerTurn
+                || !StrategicSpendability.FitsSpendableResources(player, root, ctx, need.Cost))
+                return true;
+            why = $"leaves_strike_generation:{need.Key} attempt "
+                + $"{generationUsed + 1}/{AiConfigV2.maxGenerationActionsPerTurn} is the strike's ({need.Source})";
+            return false;
         }
 
         // False when this Development upgrade would leave less of a resource it spends than the
         // pass's strike need: only resources the upgrade itself consumes are compared, and an
         // upgrade of the operation's own fist (primary or a held support) is never held back.
-        internal static bool LeavesStrikeSupport(PhaseAPass pass, MaterializationPlan plan, out string why) =>
-            LeavesStrikeSupport(pass?.Player, pass?.Root, pass?.Ctx, pass?.StrikeSupport, plan?.FundingCost,
-                plan?.DevelopmentUpgrade?.RecipientArmyId, "upgrade", out why);
+        // A Production upgrade that mints an Air Bomb for an aircraft while the strike's cheapest
+        // source is a minted bomb IS that strike's production (the Phase B rule for a hand bomb).
+        internal static bool LeavesStrikeSupport(PhaseAPass pass, MaterializationPlan plan, out string why)
+        {
+            why = null;
+            if (GroundCombatAirSupport.IsAircraftBomb(plan?.DevelopmentUpgrade?.Card)
+                && pass?.StrikeSupport?.Source?.Contains("bomb:") == true)
+                return true;
+            return LeavesStrikeSupport(pass?.Player, pass?.Root, pass?.Ctx, pass?.StrikeSupport, plan?.FundingCost,
+                    plan?.DevelopmentUpgrade?.RecipientArmyId, "upgrade", out why)
+                && LeavesStrikeGeneration(pass?.Player, pass?.Root, pass?.Ctx, pass?.StrikeSupport,
+                    consumesGeneration: true, pass?.Reservation?.GenerationAttemptsUsed ?? 0, out why);
+        }
+
+        // 2026-11-13 — a Development preparation step (a facility placed, a Base capacity level, an
+        // operator minted by a Challenge) is the same late resource sink as an upgrade: it leaves
+        // the live operation's strike (resources and the turn's last generation attempt) and the
+        // preparation's roster card what they wait for. It was the one Development spender that
+        // read neither reserve. Economy builds and other infrastructure keep their own priority.
+        internal static bool LeavesOperationReserves(PhaseAPass pass, DevelopmentOpportunity preparation,
+            out string why)
+        {
+            why = null;
+            if (pass == null || preparation == null)
+                return true;
+            ResourceCost cost = preparation.StageResourceCost;
+            CardData card = preparation.PreparationFacilityCard ?? preparation.PreparationOperatorCard;
+            return LeavesStrikeSupport(pass.Player, pass.Root, pass.Ctx, pass.StrikeSupport, cost, null,
+                    "development preparation", out why)
+                && LeavesStrikeGeneration(pass.Player, pass.Root, pass.Ctx, pass.StrikeSupport,
+                    preparation.PreparationOperatorGeneration != null,
+                    pass.Reservation?.GenerationAttemptsUsed ?? 0, out why)
+                && LeavesRosterFunding(pass.Player, pass.Root, pass.Ctx, pass.Hand, pass.RosterFunding,
+                    cost, card, null, "development preparation", out why);
+        }
 
         // The same rule for an Equipment card played from hand in Phase B (the need Phase A left
         // in StrategicPhaseResult.StrikeSupport): equipment for a unit outside the fist must not
@@ -338,7 +392,7 @@ namespace Game.Ai.V2
             why = null;
             if (need?.Cost == null || cost == null || player == null)
                 return true;
-            if (recipient.HasValue && (recipient.Value == need.Attack.PrimaryArmyId
+            if (recipient.HasValue && (recipient.Value == (need.Primary?.ArmyId ?? need.Attack?.PrimaryArmyId)
                     || GroundCombatLegs.HeldGroundSupportArmyIds(need.Operation).Contains(recipient.Value)))
                 return true;
             foreach (ResourceType t in ResourceBundle.All)
@@ -349,7 +403,7 @@ namespace Game.Ai.V2
                 float spendable = StrategicSpendability.SpendableAmount(player, root, ctx, t);
                 if (spendable + AiConfigV2.allocatorSliceEpsilon < spends + need.Cost.Get(t))
                 {
-                    why = $"leaves_strike_support:{need.Operation.IntentKey} {t} "
+                    why = $"leaves_strike_support:{need.Key} {t} "
                         + $"{spendable.ToString("0.##", CultureInfo.InvariantCulture)} < {spender} {spends} "
                         + $"+ strike {need.Cost.Get(t)} ({need.Source})";
                     return false;
@@ -360,12 +414,13 @@ namespace Game.Ai.V2
 
         internal static bool TryProduceStrikeSupport(PhaseAPass pass)
         {
+            if (pass?.AdmittedAxes == null || !pass.AdmittedAxes.Contains(DesireAxis.Aggression))
+                return false;
             StrikeSupportNeed need = Assess(pass);
             if (need == null)
                 return false;
-            MissionIntent operation = need.Operation;
-            AttackIntent a = need.Attack;
             AttackSupportForecast forecast = need.Forecast;
+            string site = $"({need.Site.Q},{need.Site.R})";
 
             float spendableAp = StrategicSpendability.SpendableAp(pass.Player, pass.Root, pass.Ctx)
                 - pass.ApBudget.ReservedFollowup();
@@ -373,7 +428,7 @@ namespace Game.Ai.V2
                     pass.Player, pass.Root, pass.Hand, pass.Ctx, new List<string>(), pass.Reservation,
                     aviationOnly: true)
                 .Where(p => p.Kind == NonCombatCardPlayer.PlayKind.Aviation
-                    && p.StrikeTarget.HasValue && p.StrikeTarget.Value.Equals(a.Target.Hex))
+                    && p.StrikeTarget.HasValue && p.StrikeTarget.Value.Equals(need.Site))
                 .ToList();
             onSite.AddRange(BombPlaysOnSite(pass, need));
             NonCombatCardPlayer.NonCombatPlay best = onSite
@@ -384,9 +439,9 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (best == null)
             {
-                AiDebugLog.WriteDeduped($"{operation.IntentKey}#strike-refused",
-                    $"[AI][V2][Attack][Support] {operation.IntentKey} strike support for "
-                    + $"{a.Target.DiagnosticLabel} ({forecast.Describe()}) not produced: "
+                AiDebugLog.WriteDeduped($"{need.Key}#strike-refused",
+                    $"[AI][V2][Attack][Support] {need.Key} strike support for "
+                    + $"{site} ({forecast.Describe()}) not produced: "
                     + RefusalReason(pass, onSite, spendableAp) + $" (cheapest source {need.Source})");
                 return false;
             }
@@ -415,8 +470,8 @@ namespace Game.Ai.V2
                 pass.Result.MaterializationsSucceeded++;
                 pass.Result.CardsPlayed++;
             }
-            AiDebugLog.Write($"[AI][V2][Attack][Support] {operation.IntentKey} strike support for "
-                + $"{a.Target.DiagnosticLabel} ({forecast.Describe()}): {best.Explain} score "
+            AiDebugLog.Write($"[AI][V2][Attack][Support] {need.Key} strike support for "
+                + $"{site} ({forecast.Describe()}): {best.Explain} score "
                 + best.Score.ToString("0.00", CultureInfo.InvariantCulture)
                 + (res.Played ? $" - played (ap {res.ApSpent.ToString("0.##", CultureInfo.InvariantCulture)})"
                     : $" - not played ({res.FailReason}{(res.Generated ? "; generated card kept in hand" : "")})"));
@@ -449,14 +504,6 @@ namespace Game.Ai.V2
         private static int Total(ResourceCost c) =>
             c == null ? 0 : c.human + c.energy + c.materials + c.tech;
 
-        // Some own aircraft, carrying `bomb`, serves a strike on the site from where it stands.
-        private static bool BombCarrierStrikes(PhaseAPass pass, Game.Cards.CardDefinition bomb,
-            IReadOnlyList<CombatAirSupportRequest> requests) =>
-            OwnWorld.Of(pass.Player).Armies.Where(a => a != null)
-                .SelectMany(a => a.Members)
-                .Any(u => u != null && u.IsAviation
-                    && GroundCombatAirSupport.BombedService(pass.Snap, pass.Player, pass.Ctx, u, bomb, requests).HasValue);
-
         // The hand bombs' attachment plays whose recipient then serves the operation's site.
         private static IEnumerable<NonCombatCardPlayer.NonCombatPlay> BombPlaysOnSite(PhaseAPass pass,
             StrikeSupportNeed need)
@@ -468,10 +515,5 @@ namespace Game.Ai.V2
                             play.EquipHost, card.Definition, need.Requests).HasValue)
                         yield return play;
         }
-
-        // An aircraft that strikes ground (a missile or a bomber), never a recon-only frame.
-        private static bool IsStrikeCard(Game.Cards.CardDefinition def) =>
-            def?.isAviation == true
-            && Game.Combat.ExplosionAttack.AttackPower(def.attack, def.grantedAbilities) > 0;
     }
 }

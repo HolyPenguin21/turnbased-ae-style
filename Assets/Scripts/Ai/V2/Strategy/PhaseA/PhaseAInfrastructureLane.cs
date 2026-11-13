@@ -120,6 +120,13 @@ namespace Game.Ai.V2
         {
             StrategicPhaseResult result = pass.Result;
             AxisDemand demand = istate.Demand;
+            if (demand.RequestingAxis == DesireAxis.Development
+                && !PhaseAOperationSupport.LeavesOperationReserves(pass, demand.DevOpportunity, out string reserveWhy))
+            {
+                AiDebugLog.WriteDedupedWithId(demand.TraceId,
+                    $"[AI][V2]   strat.A infra - {demand}: held :: {reserveWhy}");
+                return;
+            }
             // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
             // checks the shared AP pool and live affordability, and
             // only then runs the authoritative build. A shortfall => nothing spent, not built.

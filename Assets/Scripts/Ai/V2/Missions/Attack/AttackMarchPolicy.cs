@@ -33,9 +33,11 @@ namespace Game.Ai.V2
     //    1. Own stronghold in danger: an honest hostile army threatens an own Citadel / Base that
     //       cannot hold without this army, this army arrives before the enemy's action and its
     //       return makes it hold -> DefendHome. The one exception: a decisive blow at the enemy's
-    //       Citadel that lands before the enemy reaches ours (taking the Citadel ends that
-    //       player) -> Continue. A threat whose army stands on the target and is struck decisively
-    //       this turn is removed by the march itself, so it calls nobody home (2026-10-18).
+    //       Citadel (taking the Citadel ends that player) -> Continue; when the stronghold that
+    //       falls is our own Citadel the blow must also land before the enemy reaches it
+    //       (2026-11-13: a Base may be traded for the enemy Citadel). A threat whose army stands
+    //       on the target and is struck decisively this turn is removed by the march itself,
+    //       so it calls nobody home (2026-10-18).
     //    2. Unknown defenders (location only) give no estimate -> Continue.
     //    3. Win chance at or above the abort floor (attackLocalMinWinChance) -> Continue: air
     //       support, reinforcement on the route and equipment keep improving the fight meanwhile.
@@ -138,13 +140,18 @@ namespace Game.Ai.V2
                 && ActiveDefenceObjectiveEvaluator.CanReachNow(snap, primary, target.Hex, out _)
                 ? target.Hex : (HexCoord?)null;
 
-            HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta, struckNow, projectedArmies);
+            HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta, out bool homeIsCitadel,
+                struckNow, projectedArmies);
             if (home.HasValue)
             {
+                // 2026-11-13 (owner, match Sable vs Korrin) — trading an own Base for the enemy's
+                // Citadel is the AI's option, not a forbidden move: taking the Citadel ends that
+                // player, losing a Base does not. The race (the blow lands before the enemy acts)
+                // is required only when the stronghold that falls is our own Citadel.
                 int strikeEta = ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, primary.Hex,
                     target.Hex, primary.CurrentMovement, primary.MaxMovement, fastestByTurns: true);
                 bool mateFirst = decisive && target.Kind == AttackTargetKind.Citadel
-                    && (strikeEta == 0 || strikeEta < enemyEta);
+                    && (!homeIsCitadel || strikeEta == 0 || strikeEta < enemyEta);
                 if (!mateFirst)
                     return new AttackMarchAssessment(AttackMarchVerdict.DefendHome, win, decisive, home,
                         $"own stronghold ({home.Value.Q},{home.Value.R}) falls without this army (enemy eta {enemyEta})");
@@ -209,9 +216,16 @@ namespace Game.Ai.V2
         // enemy_on_known_foreign_structure).
         internal static HexCoord? StrongholdNeedingArmy(WorldSnapshot snap, ArmySnapshot army,
             out int enemyEta, HexCoord? struckNow = null,
+            IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null) =>
+            StrongholdNeedingArmy(snap, army, out enemyEta, out _, struckNow, projectedArmies);
+
+        // `isCitadel` — the returned stronghold is an own Citadel (the Citadel is preferred).
+        internal static HexCoord? StrongholdNeedingArmy(WorldSnapshot snap, ArmySnapshot army,
+            out int enemyEta, out bool isCitadel, HexCoord? struckNow = null,
             IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
         {
             enemyEta = int.MaxValue;
+            isCitadel = false;
             if (snap?.Self?.BaseHexes == null || army == null)
                 return null;
             HexCoord? best = null;
@@ -263,6 +277,7 @@ namespace Game.Ai.V2
                     enemyEta = eta;
                 }
             }
+            isCitadel = bestCitadel;
             return best;
         }
     }

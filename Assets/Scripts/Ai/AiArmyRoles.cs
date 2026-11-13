@@ -474,7 +474,7 @@ namespace Game.Ai
             return GarrisonThreatFloor(live.Select(s => (s,
                     turn == int.MinValue || VisionSystem.IsVisible(player, s.Hex)
                         ? 0 : Math.Max(0, turn - s.SeenTurn))).Concat(historical), garrisons,
-                garrisonHex, isCitadel);
+                garrisonHex, isCitadel, player);
         }
 
         // Same rule on explicit facts: the known enemy sightings and the own garrison hexes.
@@ -484,9 +484,13 @@ namespace Game.Ai
                 .Select(s => (s, 0)), garrisonHexes, garrisonHex, isCitadel);
 
         // `enemies` — each contact with the turns it has gone unobserved (0 = a live sighting).
+        // `observer` (2026-11-13): an unseen contact stands only where that player does not see
+        // now (AiReconMemory.PossibleDistance, the one unobserved-army model); null keeps the bare
+        // MaxMovement-per-unseen-turn advance.
         public static float GarrisonThreatFloor(
             IEnumerable<(AiMapMemory.KnownEnemySighting Sighting, int UnseenTurns)> enemies,
-            IEnumerable<HexCoord> garrisonHexes, HexCoord garrisonHex, bool isCitadel)
+            IEnumerable<HexCoord> garrisonHexes, HexCoord garrisonHex, bool isCitadel,
+            PlayerSetupData observer = null)
         {
             List<HexCoord> garrisons = (garrisonHexes ?? Enumerable.Empty<HexCoord>()).Distinct().ToList();
             if (!garrisons.Contains(garrisonHex))
@@ -500,13 +504,17 @@ namespace Game.Ai
                 float confidence = unseen <= 0 ? 1f : AiReconMemory.ConfidenceDecay(unseen);
                 if (confidence <= 0f)
                     continue;
-                int reach = enemy.MaxMovement * (AiConfigV2.activeDefenceWithdrawMaxEnemyEta + Math.Max(0, unseen));
-                if (HexGridMath.Distance(garrisonHex, enemy.Hex) > reach)
+                int reach = enemy.MaxMovement * AiConfigV2.activeDefenceWithdrawMaxEnemyEta;
+                bool hides = observer != null && AiReconMemory.HidesInSight(enemy.Defenders);
+                int Near(HexCoord h) => AiReconMemory.PossibleDistance(observer, enemy.Hex,
+                    enemy.MaxMovement, Math.Max(0, unseen), enemy.IsAir, h, hidesInSight: hides, limit: reach);
+                if (Near(garrisonHex) > reach)
                     continue;
                 HexCoord nearest = garrisons
-                    .Where(h => HexGridMath.Distance(h, enemy.Hex) <= reach)
-                    .OrderBy(h => HexGridMath.Distance(h, enemy.Hex)).ThenBy(h => h.Q).ThenBy(h => h.R)
-                    .First();
+                    .Select(h => (Hex: h, Near: Near(h)))
+                    .Where(x => x.Near <= reach)
+                    .OrderBy(x => x.Near).ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
+                    .First().Hex;
                 if (isCitadel || nearest.Equals(garrisonHex))
                     floor += AiPower.SightingPower(enemy) * AiConfigV2.aggDefenceConfidenceMargin * confidence;
             }
