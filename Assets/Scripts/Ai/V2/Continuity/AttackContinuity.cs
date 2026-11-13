@@ -612,12 +612,16 @@ namespace Game.Ai.V2
         }
 
         // Strike force — the fist's air support, the one GroundCombatAirSupport (as Raid's and
-        // ActiveDefence's). A free formed wing is bound while the operation is in Assault — however
+        // ActiveDefence's). Free wings are bound while the operation is in Assault — however
         // far or close the primary is (ETA is a cost, not a launch window), whether or not the
         // site's defenders are known or fresh, with no minimum win gain: the basis is the existing
         // Attack task, a recoverable route and the launch fitting the free bank (provisioning).
-        // The wing may arrive before the fist; the assault never waits for the series. It stays
-        // bound while its strike series flies (never orphaned mid-air) and is released once the
+        // 2026-11-13 (owner) — up to AiConfigV2.attackAirSupportMaxWings wings, best damage first,
+        // each priced on what the wings before it leave (GroundCombatAirSupport.Series): a
+        // produced missile or a bomb carrier takes a slot beside a light frame instead of being
+        // shut out by it, and a wing with nothing left to hurt is not bound.
+        // A wing may arrive before the fist; the assault never waits for the series. Each stays
+        // bound while its strike series flies (never orphaned mid-air) and is released once its
         // series is over (sortie turned home), when it never took off by a later turn, or when it
         // stops being a valid wing.
         private static void ResolveAttackAirSupport(WorldSnapshot snap, PlayerSetupData player,
@@ -626,36 +630,36 @@ namespace Game.Ai.V2
             int turn = snap?.TurnNumber ?? 0;
             if (GroundCombatAirSupport.TargetKnownEmpty(snap, a.Target.Hex, Game.Aviation.AirStrikePolicy.Standard))
             {
-                if (a.AirSupportArmyId.HasValue)
+                foreach (AttackAirWing bound in a.AirSupportWings.ToList())
                 {
-                    var wing = AiV2Util.ResolveArmy(player, a.AirSupportArmyId.Value);
+                    var wing = AiV2Util.ResolveArmy(player, bound.ArmyId);
                     var sortie = AirSortieRegistry.ForArmy(player, wing);
                     if (sortie != null && sortie.Kind == AirSortieKind.Strike)
                         GroundCombatAirSupport.SendHome(player, sortie, "nothing left to strike");
-                    ReleaseAttackAirSupport(a, turn);
+                    ReleaseAttackAirWing(a, bound, turn);
                 }
                 return;
             }
-            if (a.AirSupportArmyId.HasValue)
+            foreach (AttackAirWing bound in a.AirSupportWings.ToList())
             {
-                bool flying = GroundCombatAirSupport.SortieLive(player, a.AirSupportArmyId,
+                bool flying = GroundCombatAirSupport.SortieLive(player, bound.ArmyId,
                     out bool wingValid);
                 if (flying)
                 {
-                    a.AirSupportSortieSeen = true;
-                    return;
+                    bound.SortieSeen = true;
+                    continue;
                 }
-                if (wingValid && !a.AirSupportSortieSeen && a.AirSupportBoundTurn >= turn)
-                    return;
+                if (wingValid && !bound.SortieSeen && bound.BoundTurn >= turn)
+                    continue;
                 AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} wing "
-                    + $"#{a.AirSupportArmyId} released ("
-                    + (!wingValid ? "no longer a valid wing" : a.AirSupportSortieSeen ? "series over" : "never took off")
+                    + $"#{bound.ArmyId} released ("
+                    + (!wingValid ? "no longer a valid wing" : bound.SortieSeen ? "series over" : "never took off")
                     + ")");
-                ReleaseAttackAirSupport(a, turn);
-                return;
+                ReleaseAttackAirWing(a, bound, turn);
             }
 
             if (a.Phase != AttackMissionPhase.Assault || a.AirSupportAttemptedTurn == turn
+                || a.AirSupportWings.Count >= AiConfigV2.attackAirSupportMaxWings
                 || snap?.Self?.Armies == null)
                 return;
             ArmySnapshot primary = a.PrimaryArmyId.HasValue
@@ -684,27 +688,35 @@ namespace Game.Ai.V2
                         AiV2Util.ResolveArmy(player, w.ArmyId)) != null)
                     unavailable.Add(w.ArmyId);
 
-            List<AirSupportOption> options = GroundCombatAirSupport.Ranked(GroundCombatAirSupport.Options(
-                snap, opposition, a.Target.Hex, AirStrikePolicy.Standard, win, current, unavailable));
-            if (options.Count == 0)
-                return;
-            AirSupportOption best = options[0];
-            a.AirSupportArmyId = best.WingArmyId;
-            a.AirSupportLandingHex = best.LandingHex;
-            a.AirSupportBoundTurn = turn;
-            a.AirSupportSortieSeen = false;
-            AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} bound wing "
-                + $"#{best.WingArmyId} for {a.Target.DiagnosticLabel}: "
-                + (best.RosterKnown ? $"expected damage {best.ExpectedDamage:0.0} over {best.StrikeTurns} strike turn(s), win {current:0.00} -> {best.WinAfter:0.00}"
-                    : $"defenders unknown, {best.StrikeTurns} strike turn(s)")
-                + $", eta {best.EtaTurns}, landing ({best.LandingHex.Q},{best.LandingHex.R})");
+            List<int> held = a.AirSupportWings.Select(w => w.ArmyId).ToList();
+            List<AirSupportOption> series = GroundCombatAirSupport.Series(snap, opposition, a.Target.Hex,
+                AirStrikePolicy.Standard, win, current, held, unavailable, AiConfigV2.attackAirSupportMaxWings);
+            float before = current;
+            foreach (AirSupportOption o in series)
+            {
+                if (held.Contains(o.WingArmyId))
+                {
+                    before = o.WinAfter;
+                    continue;
+                }
+                a.AirSupportWings.Add(new AttackAirWing
+                {
+                    ArmyId = o.WingArmyId, LandingHex = o.LandingHex, BoundTurn = turn, SortieSeen = false,
+                });
+                AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} bound wing "
+                    + $"#{o.WingArmyId} ({a.AirSupportWings.Count}/{AiConfigV2.attackAirSupportMaxWings}) "
+                    + $"for {a.Target.DiagnosticLabel}: "
+                    + (o.RosterKnown ? $"expected damage {o.ExpectedDamage:0.0} over {o.StrikeTurns} strike turn(s), win {before:0.00} -> {o.WinAfter:0.00}"
+                        : $"defenders unknown, {o.StrikeTurns} strike turn(s)")
+                    + $", eta {o.EtaTurns}, landing ({o.LandingHex.Q},{o.LandingHex.R})");
+                before = o.WinAfter;
+            }
         }
 
-        private static void ReleaseAttackAirSupport(AttackIntent a, int turn)
+        // One wing leaves the operation's air support; no new binding the turn a binding ended.
+        private static void ReleaseAttackAirWing(AttackIntent a, AttackAirWing wing, int turn)
         {
-            a.AirSupportArmyId = null;
-            a.AirSupportLandingHex = null;
-            a.AirSupportSortieSeen = false;
+            a.AirSupportWings.Remove(wing);
             a.AirSupportAttemptedTurn = turn;
         }
 
@@ -1292,22 +1304,21 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity - [{aid}] {o.IntentKey} donor "
                         + $"#{leg.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
                 }
-                if (failed && intent?.Attack != null
-                    && leg.Phase == AttackMissionPhase.AirSupport
-                    && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId)
+                AttackAirWing legWing = leg.Phase == AttackMissionPhase.AirSupport
+                    ? intent?.Attack?.AirSupportWings.FirstOrDefault(w => w.ArmyId == leg.AirSupportArmyId)
+                    : null;
+                if (failed && legWing != null)
                 {
-                    ReleaseAttackAirSupport(intent.Attack, turn);
+                    ReleaseAttackAirWing(intent.Attack, legWing, turn);
                     AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity - [{aid}] {o.IntentKey} wing "
                         + $"#{leg.AirSupportArmyId} sortie failed ({Describe(o)}); released");
                 }
                 // A stored launch formed its wing during the leg (ActualActorArmyId): the operation
                 // binds the real wing, so its strike series is followed, not released as lost.
-                else if (!failed && intent?.Attack != null
-                    && leg.Phase == AttackMissionPhase.AirSupport
-                    && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId
+                else if (!failed && legWing != null
                     && o.MoverArmyId.HasValue && o.MoverArmyId != leg.AirSupportArmyId)
                 {
-                    intent.Attack.AirSupportArmyId = o.MoverArmyId;
+                    legWing.ArmyId = o.MoverArmyId.Value;
                     AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity - [{aid}] {o.IntentKey} "
                         + $"stored launch from #{leg.AirSupportArmyId} formed wing #{o.MoverArmyId}");
                 }

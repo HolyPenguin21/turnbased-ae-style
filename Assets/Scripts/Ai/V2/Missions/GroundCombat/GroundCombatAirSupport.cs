@@ -40,13 +40,19 @@ namespace Game.Ai.V2
         // 2026-11-02 — the ground package after the expected series (the input WinAfter reads);
         // null when the roster is unknown. AttackSupportProjection prices a march against it.
         internal readonly IReadOnlyList<WorthIt.DefendingArmy> OppositionAfter;
+        // 2026-11-13 — the observed air-target rosters after the expected series (survivors with
+        // their wounds and Fate): what the next wing of a series strikes (Series). Null when the
+        // roster is unknown or the snapshot carries no air sightings.
+        internal readonly IReadOnlyList<AiMapMemory.KnownAirSighting> TargetsAfter;
 
         internal AirSupportOption(int wingArmyId, HexCoord landingHex, int etaTurns,
             int firstStrikeEta, int strikeTurns, float expectedDamage, bool rosterKnown,
             float winAfter, float ap, ResourceVector resources, bool fromStorage = false, TaskScore? serviceScore = null,
-            IReadOnlyList<WorthIt.DefendingArmy> oppositionAfter = null)
+            IReadOnlyList<WorthIt.DefendingArmy> oppositionAfter = null,
+            IReadOnlyList<AiMapMemory.KnownAirSighting> targetsAfter = null)
         {
             OppositionAfter = oppositionAfter;
+            TargetsAfter = targetsAfter;
             ServiceScore = serviceScore;
             FromStorage = fromStorage;
             WingArmyId = wingArmyId;
@@ -222,7 +228,8 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, HexCoord targetHex,
             AirStrikePolicy policy, Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst,
             float currentWin, ISet<int> unavailableArmyIds, int? fixedWingArmyId = null,
-            CombatAirSupportRequest? supportRequest = null)
+            CombatAirSupportRequest? supportRequest = null,
+            IReadOnlyList<AiMapMemory.KnownAirSighting> struckTargets = null)
         {
             var result = new List<AirSupportOption>();
             if (snap?.Self?.Armies == null || TargetKnownEmpty(snap, targetHex, policy)
@@ -235,7 +242,9 @@ namespace Game.Ai.V2
             // BuildKnown always supplies this collection. Null retains the legacy contract for
             // synthetic/older snapshots; production must never build air targets from ground guards.
             bool observedAir = snap?.Known?.AirSightings != null;
-            var airTargets = KnownAirTargets(snap, targetHex, policy);
+            // `struckTargets` — the rosters an earlier wing of the same series leaves (Series).
+            IReadOnlyList<AiMapMemory.KnownAirSighting> airTargets = struckTargets
+                ?? KnownAirTargets(snap, targetHex, policy);
             List<WorthIt.DefenderProfile> defenders = observedAir
                 ? airTargets.SelectMany(s => s.Roster.Units).ToList() : WorthIt.UnitsOf(opposition);
             bool rosterKnown = defenders.Count > 0;
@@ -262,7 +271,7 @@ namespace Game.Ai.V2
                         continue;
                     var projection = ProjectService(snap, snap.Observer, snap.Map, live.Members,
                         live.Hex, supportRequest ?? new CombatAirSupportRequest(default, targetHex, policy, default), live,
-                        firstStrikeThisTurnOnly: reconHandoff);
+                        firstStrikeThisTurnOnly: reconHandoff, struckTargets: struckTargets);
                     if (!projection.HasValue) continue;
                     CombatAirService service = projection.Value;
                     IReadOnlyList<WorthIt.DefendingArmy> serviceAfter = service.RosterKnown
@@ -273,7 +282,8 @@ namespace Game.Ai.V2
                         service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
                         service.RosterKnown, projectedWin, service.Ap,
                         new ResourceVector(0f, 0f, service.Energy, 0f, 0f), serviceScore: service.Score,
-                        oppositionAfter: serviceAfter));
+                        oppositionAfter: serviceAfter,
+                        targetsAfter: service.RosterKnown ? AfterStrikeTargets(airTargets, service.Estimate) : null));
                     continue;
                 }
                 List<WorthIt.DefenderProfile> attackers = (wing.RecoveryMembers
@@ -298,6 +308,7 @@ namespace Game.Ai.V2
                 float damage = 0f;
                 float winAfter = currentWin;
                 IReadOnlyList<WorthIt.DefendingArmy> after = null;
+                IReadOnlyList<AiMapMemory.KnownAirSighting> targetsAfter = null;
                 if (rosterKnown)
                 {
                     AviationCombatEstimator.AirStrikeEstimate estimate =
@@ -316,6 +327,8 @@ namespace Game.Ai.V2
                     after = observedAir ? AfterAirStrike(opposition, airTargets, estimate)
                         : AfterStrike(opposition, estimate.ExpectedDefendersAfter,
                             SourceIndices(estimate, defenders.Count));
+                    if (observedAir)
+                        targetsAfter = AfterStrikeTargets(airTargets, estimate);
                     if (winAgainst != null)
                         winAfter = winAgainst(after);
                 }
@@ -323,7 +336,7 @@ namespace Game.Ai.V2
                 result.Add(new AirSupportOption(wing.ArmyId, landing.Value, eta, eta, strikeTurns,
                     damage, rosterKnown, winAfter, wing.PendingActivationApCost,
                     new ResourceVector(0f, 0f, wing.PendingActivationEnergyCost, 0f, 0f),
-                    oppositionAfter: after));
+                    oppositionAfter: after, targetsAfter: targetsAfter));
             }
 
             // Stored aircraft are the same support (playtest 2026-10-22, Kryll T17-T21: Rusty
@@ -339,7 +352,8 @@ namespace Game.Ai.V2
                 .OrderBy(x => x.ArmyId))
             {
                 ArmyData live = OwnWorld.Of(snap.Observer).Army(field.ArmyId);
-                if (StoredSupportGroup(snap, live, targetHex, policy, out CombatAirService service, supportRequest).Count == 0)
+                if (StoredSupportGroup(snap, live, targetHex, policy, out CombatAirService service, supportRequest,
+                        struckTargets).Count == 0)
                     continue;
                 IReadOnlyList<WorthIt.DefendingArmy> storedAfter = service.RosterKnown
                     ? AfterAirStrike(opposition, airTargets, service.Estimate) : null;
@@ -349,7 +363,8 @@ namespace Game.Ai.V2
                     service.RosterKnown ? service.Estimate.NetExpectedDamage : 0f,
                     service.RosterKnown, projectedWin, service.Ap,
                     new ResourceVector(0f, 0f, service.Energy, 0f, 0f), fromStorage: true, serviceScore: service.Score,
-                    oppositionAfter: storedAfter));
+                    oppositionAfter: storedAfter,
+                    targetsAfter: service.RosterKnown ? AfterStrikeTargets(airTargets, service.Estimate) : null));
             }
             return result;
         }
@@ -360,7 +375,8 @@ namespace Game.Ai.V2
         // so they always name the same aircraft. Empty when no stored aircraft can serve.
         internal static List<UnitData> StoredSupportGroup(WorldSnapshot snap, ArmyData airfield,
             HexCoord targetHex, AirStrikePolicy policy, out CombatAirService service,
-            CombatAirSupportRequest? supportRequest = null)
+            CombatAirSupportRequest? supportRequest = null,
+            IReadOnlyList<AiMapMemory.KnownAirSighting> struckTargets = null)
         {
             service = default;
             var best = new List<UnitData>();
@@ -373,7 +389,7 @@ namespace Game.Ai.V2
                 .OrderBy(u => u.RuntimeId))
             {
                 CombatAirService? s = ProjectService(snap, snap.Observer, snap.Map, new[] { aircraft },
-                    airfield.Hex, request);
+                    airfield.Hex, request, struckTargets: struckTargets);
                 if (!s.HasValue)
                     continue;
                 float damage = s.Value.RosterKnown ? s.Value.Estimate.NetExpectedDamage : 0f;
@@ -448,6 +464,103 @@ namespace Game.Ai.V2
                 .ThenBy(o => o.Resources.Energy)
                 .ThenBy(o => o.WingArmyId)
                 .ToList();
+
+        // 2026-11-13 (owner, match Sable vs Korrin) — THE strike series of several wings on one
+        // site. The wings already `bound` come first, in their order; then free options, best
+        // first (Ranked: more expected damage — a missile or a bomb carrier before a light frame),
+        // until `maxWings`. Each wing is priced on what the wings before it leave (its estimate
+        // runs on their survivors: TargetsAfter, or the ground package where the snapshot has no
+        // air sightings), so a later wing adds only its own damage and one with nothing left to
+        // hurt is not flown. `counts(option, bound)` — the reader's own timing rule; a wing it
+        // skips leaves the package unchanged. Only the first wing may serve an unknown roster.
+        internal static List<AirSupportOption> Series(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, HexCoord targetHex, AirStrikePolicy policy,
+            Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst, float currentWin,
+            IReadOnlyList<int> bound, ISet<int> unavailableArmyIds, int maxWings,
+            Func<AirSupportOption, bool, bool> counts = null)
+        {
+            var series = new List<AirSupportOption>();
+            var taken = new HashSet<int>(unavailableArmyIds ?? (IEnumerable<int>)Array.Empty<int>());
+            foreach (int id in bound ?? Array.Empty<int>())
+                taken.Add(id);
+            IReadOnlyList<WorthIt.DefendingArmy> package = opposition;
+            IReadOnlyList<AiMapMemory.KnownAirSighting> struck = null;
+            float win = currentWin;
+            // A blind sortie only as the operation's first wing: none bound, none in the series.
+            bool first = (bound?.Count ?? 0) == 0;
+            bool Admits(AirSupportOption o, bool isBound) =>
+                (first && series.Count == 0 || o.RosterKnown && o.ExpectedDamage > AiConfigV2.allocatorSliceEpsilon)
+                && (counts == null || counts(o, isBound));
+            void Add(AirSupportOption o)
+            {
+                series.Add(o);
+                if (o.OppositionAfter != null) package = o.OppositionAfter;
+                if (o.TargetsAfter != null) struck = o.TargetsAfter;
+                win = o.WinAfter;
+            }
+            foreach (int id in bound ?? Array.Empty<int>())
+            {
+                if (series.Count >= maxWings)
+                    break;
+                List<AirSupportOption> own = Options(snap, package, targetHex, policy, winAgainst, win,
+                    null, fixedWingArmyId: id, struckTargets: struck);
+                if (own.Count > 0 && Admits(own[0], true))
+                    Add(own[0]);
+            }
+            int left = int.MaxValue;
+            while (series.Count < maxWings && left > 0)
+            {
+                List<AirSupportOption> free = Ranked(Options(snap, package, targetHex, policy, winAgainst,
+                    win, taken, struckTargets: struck));
+                int pick = free.FindIndex(o => Admits(o, false));
+                if (pick < 0)
+                    break;
+                Add(free[pick]);
+                taken.Add(free[pick].WingArmyId);
+                // Every option is a distinct source: with none beside this one, no further call.
+                left = free.Count - 1;
+            }
+            return series;
+        }
+
+        // The air-target rosters after a strike: each sighting keeps its identity and its
+        // survivors (wounds carried) with their current Fate, in roster order; a wiped army stays
+        // with no units, so AfterAirStrike drops it from the ground package. The commander keeps
+        // its seat while it survives, else the first surviving hero leads (as in AfterAirStrike).
+        internal static List<AiMapMemory.KnownAirSighting> AfterStrikeTargets(
+            IReadOnlyList<AiMapMemory.KnownAirSighting> targets,
+            AviationCombatEstimator.AirStrikeEstimate estimate)
+        {
+            var survivors = new Dictionary<int, (WorthIt.DefenderProfile Unit, int Fate)>();
+            IReadOnlyList<WorthIt.DefenderProfile> after = estimate.ExpectedDefendersAfter
+                ?? Array.Empty<WorthIt.DefenderProfile>();
+            for (int i = 0; i < after.Count; i++)
+            {
+                int source = estimate.SurvivorSourceIndices != null ? estimate.SurvivorSourceIndices[i] : i;
+                int fate = estimate.ExpectedCurrentFatesAfter != null && i < estimate.ExpectedCurrentFatesAfter.Count
+                    ? estimate.ExpectedCurrentFatesAfter[i] : 0;
+                survivors[source] = (after[i], fate);
+            }
+            var result = new List<AiMapMemory.KnownAirSighting>();
+            int offset = 0;
+            foreach (AiMapMemory.KnownAirSighting t in targets ?? Array.Empty<AiMapMemory.KnownAirSighting>())
+            {
+                var units = new List<WorthIt.DefenderProfile>();
+                var fates = new List<int>();
+                int? commander = t.Roster.CommanderIndex < 0 ? -1 : (int?)null;
+                for (int i = 0; i < t.Roster.Units.Count; i++)
+                    if (survivors.TryGetValue(offset + i, out var s))
+                    {
+                        if (i == t.Roster.CommanderIndex) commander = units.Count;
+                        units.Add(s.Unit);
+                        fates.Add(s.Fate);
+                    }
+                result.Add(new AiMapMemory.KnownAirSighting(t.Hex, t.Owner, t.SeenTurn, t.IsGroundArmy,
+                    new AviationCombatEstimator.DefendingAirArmy(t.ArmyId, units, fates, commander)));
+                offset += t.Roster.Units.Count;
+            }
+            return result;
+        }
 
         // Strike turns this wing can deliver at `target` and still land at `landing`, over the
         // real air routes' transitions (the shared calendar). Provisioning and execution still
@@ -569,7 +682,7 @@ namespace Game.Ai.V2
         }
 
         // An airborne strike sortie is a physical landing obligation. When no task holds its wing
-        // any more (GroundCombatLegs.HeldAirSupportArmyId — the task retired, released the wing,
+        // any more (GroundCombatLegs.HeldAirSupportArmyIds — the task retired, released the wing,
         // or its target ended), the same sortie is turned homebound to its landing base and
         // continued by AviationRebasePlanner.FindMandatoryContinuations (settled before card play).
         internal static void ReleaseOrphanStrikes(PlayerSetupData player, IEnumerable<MissionIntent> intents)
@@ -578,8 +691,7 @@ namespace Game.Ai.V2
                 return;
             PurgeLanded(player);
             var held = new HashSet<int>((intents ?? Enumerable.Empty<MissionIntent>())
-                .Select(GroundCombatLegs.HeldAirSupportArmyId)
-                .Where(id => id.HasValue).Select(id => id.Value));
+                .SelectMany(GroundCombatLegs.HeldAirSupportArmyIds));
             foreach (AirSortie sortie in AirSortieRegistry.For(player).ToList())
             {
                 if (sortie == null || sortie.Kind != AirSortieKind.Strike || sortie.Army == null

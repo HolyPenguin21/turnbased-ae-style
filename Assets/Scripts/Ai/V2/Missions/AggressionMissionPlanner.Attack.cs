@@ -621,16 +621,24 @@ namespace Game.Ai.V2
         // The first executed step creates the durable Gather intent (§70); funding stays the one
         // allocator's decision — nothing is spent or claimed here.
 
-        // The support wing's sortie leg (AttackMissionPhase.AirSupport): the wing Continuity bound
-        // flies to the site, strikes, and lands. Lifecycle work of a Hard operation, so its
-        // intrinsic score stays neutral; requirements are the one air-support leg shape.
+        // The support wings' sortie legs (AttackMissionPhase.AirSupport): each wing Continuity bound
+        // flies to the site, strikes, and lands — one leg per wing (StableMissionKey.ForAttack keys
+        // it by the wing). Lifecycle work of a Hard operation, so its intrinsic score stays
+        // neutral; requirements are the one air-support leg shape.
         private static void AppendAttackAirSupport(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, List<MissionProposal> proposals)
         {
-            if (!a.AirSupportArmyId.HasValue || !a.AirSupportLandingHex.HasValue)
+            foreach (AttackAirWing bound in a.AirSupportWings)
+                AppendAttackAirSupport(snap, intent, a, bound, proposals);
+        }
+
+        private static void AppendAttackAirSupport(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, AttackAirWing bound, List<MissionProposal> proposals)
+        {
+            if (bound == null || !bound.LandingHex.HasValue)
                 return;
             // A formed wing or a stored launch from an own airfield (GroundCombatAirSupport).
-            ArmySnapshot wing = GroundCombatAirSupport.SupportSource(snap, a.AirSupportArmyId.Value);
+            ArmySnapshot wing = GroundCombatAirSupport.SupportSource(snap, bound.ArmyId);
             if (wing == null
                 || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, wing.ArmyId, snap.TurnNumber)
                 || !GroundCombatAirSupport.SourceLeg(snap, wing, a.Target.Hex, AirStrikePolicy.Standard,
@@ -641,7 +649,7 @@ namespace Game.Ai.V2
                 Phase = AttackMissionPhase.AirSupport,
                 Target = a.Target,
                 AirSupportArmyId = wing.ArmyId,
-                AirSupportLandingHex = a.AirSupportLandingHex,
+                AirSupportLandingHex = bound.LandingHex,
                 DestinationHex = a.Target.Hex,
                 DefenderCount = KnownOpposition.DefendersOnHex(snap, a.Target.Hex).Count,
                 EstimatedEta = eta,
@@ -659,7 +667,7 @@ namespace Game.Ai.V2
                 DurableFundingTier = intent.Funding,
                 Requirements = requirements,
                 Explain = $"Attack {a.Target.DiagnosticLabel} AirSupport wing #{wing.ArmyId} "
-                    + $"-> strike, land ({a.AirSupportLandingHex.Value.Q},{a.AirSupportLandingHex.Value.R})",
+                    + $"-> strike, land ({bound.LandingHex.Value.Q},{bound.LandingHex.Value.R})",
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1f;
             proposals.Add(proposal);

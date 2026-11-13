@@ -148,18 +148,28 @@ namespace Game.Ai.V2
         internal static bool IsAttackSideLeg(AttackMissionPhase phase) =>
             phase == AttackMissionPhase.GatherReturn || phase == AttackMissionPhase.AirSupport;
 
-        // The support wing a durable operation holds (Raid in its AirSupport phase, Attack while a
-        // wing is bound). ActorCommitments claims it; an airborne strike sortie no operation holds
-        // is sent home by GroundCombatAirSupport.ReleaseOrphanStrikes.
-        internal static int? HeldAirSupportArmyId(MissionIntent intent)
+        // The support wings a durable operation holds (Raid in its AirSupport phase, an
+        // ActiveDefence AirSupport intent, every wing bound to an Attack). ActorCommitments claims
+        // them; an airborne strike sortie no operation holds is sent home by
+        // GroundCombatAirSupport.ReleaseOrphanStrikes.
+        internal static IEnumerable<int> HeldAirSupportArmyIds(MissionIntent intent)
         {
             RaidIntent raid = intent?.Raid;
             if (raid != null && raid.Phase == RaidMissionPhase.AirSupport && raid.AirSupportArmyId.HasValue)
-                return raid.AirSupportArmyId;
+            {
+                yield return raid.AirSupportArmyId.Value;
+                yield break;
+            }
             ActiveDefenceIntent defence = intent?.ActiveDefence;
             if (defence != null)
-                return defence.Phase == ActiveDefencePhase.AirSupport ? defence.AirSupportArmyId : null;
-            return intent?.Attack?.AirSupportArmyId;
+            {
+                if (defence.Phase == ActiveDefencePhase.AirSupport && defence.AirSupportArmyId.HasValue)
+                    yield return defence.AirSupportArmyId.Value;
+                yield break;
+            }
+            foreach (AttackAirWing wing in intent?.Attack?.AirSupportWings ?? Enumerable.Empty<AttackAirWing>())
+                if (wing != null)
+                    yield return wing.ArmyId;
         }
 
         // The requirements of a lifecycle leg whose mover Continuity already pinned (a walk home,

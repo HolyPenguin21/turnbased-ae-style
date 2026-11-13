@@ -650,9 +650,11 @@ namespace Game.Ai.V2
             List<MissionIntent> intents = WorldSnapshot.IntentsOf(snap)
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
+            // An Attack's free wing slots are matched as separate copies; a consumer asks only
+            // which requests are still open, so each open request is listed once.
             return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,
                 AviationRebasePlanner.CombatSupportTargets(snap, intents, includeGather: true), commitments)
-                .ToList();
+                .GroupBy(r => r.Identity).Select(g => g.First()).ToList();
         }
 
         // The not-yet-deployed aircraft as the sortie planners see it. It carries the card's

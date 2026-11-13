@@ -176,21 +176,25 @@ namespace Game.Ai.V2
                 $"win {win:0.00} < abort floor {AbortFloor:0.00}; {exchange.Describe()} ({forecast.Describe()})");
         }
 
-        // 2026-11-02 — the terminal step waits for the bound wing whose strike the march was
+        // 2026-11-02 — the terminal step waits for the bound wings whose strikes the march was
         // priced on (AttackSupportProjection counts a first strike up to one turn after arrival),
-        // while that strike is still to come and the fist does not clear the fight without it.
-        // The wait ends when the wing strikes or Continuity releases it (never took off / series
-        // over), so it is never a timer.
+        // while one of those strikes is still to come and the fist does not clear the fight
+        // without them. The wait ends when the wings strike or Continuity releases them (never
+        // took off / series over), so it is never a timer.
         internal static bool WaitForAirStrike(WorldSnapshot snap, AttackSupportForecast forecast,
             ArmySnapshot actor, out string reason, GroundCombatAssemblyPlan plan = null)
         {
             reason = null;
-            if (snap?.Observer == null || actor == null || !forecast.AirBound
-                || !forecast.AirSourceArmyId.HasValue || forecast.AirFirstStrikeEta > 1)
+            if (snap?.Observer == null || actor == null || forecast.Air == null)
                 return false;
-            ArmyData wing = OwnWorld.Of(snap.Observer).Army(forecast.AirSourceArmyId.Value);
-            if (wing != null && !Game.Aviation.AviationRules.IsAirfield(wing)
-                && wing.Members.Any(u => u != null && u.HasAirAttackedThisTurn))
+            List<CountedAirStrike> pending = forecast.Air.Where(s => s.Bound && s.FirstStrikeEta <= 1)
+                .Where(s =>
+                {
+                    ArmyData wing = OwnWorld.Of(snap.Observer).Army(s.ArmyId);
+                    return wing == null || Game.Aviation.AviationRules.IsAirfield(wing)
+                        || !wing.Members.Any(u => u != null && u.HasAirAttackedThisTurn);
+                }).ToList();
+            if (pending.Count == 0)
                 return false;
             ArmySnapshot departing = actor;
             if (plan != null)
@@ -202,7 +206,7 @@ namespace Game.Ai.V2
                     departing.Commander, forecast.BaseOpposition, GroundCombatAdmissionPolicy.AttackLocalWinChanceGate,
                     forecast.BaseHexBonus, out _, out _))
                 return false;
-            reason = $"awaiting_air_strike:#{forecast.AirSourceArmyId}@eta{forecast.AirFirstStrikeEta}";
+            reason = "awaiting_air_strike:" + string.Join(",", pending.Select(s => $"#{s.ArmyId}@eta{s.FirstStrikeEta}"));
             return true;
         }
 

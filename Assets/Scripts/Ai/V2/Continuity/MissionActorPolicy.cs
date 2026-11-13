@@ -34,12 +34,11 @@ namespace Game.Ai.V2
                 // (SupportReturn): Housekeeping (and every other mission lane) must never see the
                 // convoy as a free army during either leg. Losing it releases just this claim.
                 RaidIntent raid = i?.Raid;
-                int? airWing = GroundCombatLegs.HeldAirSupportArmyId(i);
-                if (airWing.HasValue
-                    && snap.Self.Armies.Any(a => a != null
-                        && a.ArmyId == airWing.Value && a.IsAir
+                foreach (int airWing in GroundCombatLegs.HeldAirSupportArmyIds(i))
+                    if (snap.Self.Armies.Any(a => a != null
+                        && a.ArmyId == airWing && a.IsAir
                         && !a.IsAirfield && a.MemberCount > 0))
-                    c.Claim(i.IntentKey, airWing.Value);
+                        c.Claim(i.IntentKey, airWing);
                 // Raid/Attack convoys and every support an Attack Gather still expects — the one
                 // list GroundCombatLegs owns. A support that stopped being a live ground container
                 // releases just its own claim.
