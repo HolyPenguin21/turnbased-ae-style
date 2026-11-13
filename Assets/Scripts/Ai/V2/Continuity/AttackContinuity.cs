@@ -200,10 +200,13 @@ namespace Game.Ai.V2
             }
 
             // Safe approach is legal without defenders; the final hostile entry is not.
+            // 2026-11-13 (owner, P1) — the one entry gate (observation + Disruption on a structure-
+            // defended site, AttackObjectiveEvaluator.AssaultEntryReady): a carrier that never
+            // comes ends in the same observation_wait_expired withdrawal, not an endless HOLD.
             ArmySnapshot perimeter = a.Phase == AttackMissionPhase.Assault && a.PrimaryArmyId.HasValue
                 ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value) : null;
             if (perimeter != null && HexGridMath.Distance(perimeter.Hex, a.Target.Hex) <= 1
-                && !AttackObjectiveEvaluator.HasAssaultObservation(snap, a.Target, out string intelWhy))
+                && !AttackObjectiveEvaluator.AssaultEntryReady(snap, a.Target, perimeter, out string intelWhy))
             {
                 if (a.AssaultObservationWaitSinceTurn < 0)
                     a.AssaultObservationWaitSinceTurn = snap.TurnNumber;
@@ -219,7 +222,7 @@ namespace Game.Ai.V2
                     intent.LastProtectedTurn = snap.TurnNumber;
                     AiDebugLog.WriteDeduped(intent.IntentKey + "#observation",
                         $"[AI][V2][Attack] {intent.IntentKey} HOLD {intelWhy}; "
-                        + "awaiting Recon observation before the terminal assault");
+                        + "awaiting Recon observation / Disruption before the terminal assault");
                     return true;
                 }
             }
