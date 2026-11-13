@@ -137,6 +137,20 @@ namespace Game.Ai.V2
             if (snap?.Self == null || snap.TrueWorld == null)
                 return false;
             HexCoord home = snap.Self.Citadel;
+            // Match 2026-11-13 (owner decision, variant B): no AirSweep toward a sector ground
+            // Recon already works (ReconDirectionModel.IsSectorStaffedByGroundRecon — the air step
+            // scorer's own sector count and threshold). Every AirSweep reader goes through this
+            // anchor: the objective, the live-intent check, card deployment and rebase valuation.
+            bool Staffed(HexCoord h)
+            {
+                if (snap.Observer == null
+                    || !ReconDirectionModel.IsSectorStaffedByGroundRecon(snap.Observer, home, h))
+                    return false;
+                AiDebugLog.WriteDeduped($"airsweep-staffed-{snap.Observer.ColorIndex}-{snap.TurnNumber}-{h}",
+                    $"[AI][V2][Recon][AirSweep] {snap.Observer.Nickname} T{snap.TurnNumber} anchor=({h.Q},{h.R}) "
+                    + $"sector={ReconDirectionModel.Sector(home, h)} decision=SKIP reason=sector_staffed_by_ground_recon");
+                return true;
+            }
 
             // Playtest 2026-10-22 — a structure lost since the enemy's last turn: its saboteur still
             // stands revealed on the ruin (destroying ends its movement; it cannot re-enter stealth
@@ -144,7 +158,8 @@ namespace Game.Ai.V2
             // the sweep looks there first, so a Hunt (ReconHuntOpportunities) can answer it.
             if (snap.Observer != null
                 && AiMapMemory.TryRecentStructureLoss(snap.Observer, snap.TurnNumber - 1, home, out HexCoord ruin)
-                && !OwnWorld.Of(snap.Observer).IsVisible(ruin))
+                && !OwnWorld.Of(snap.Observer).IsVisible(ruin)
+                && !Staffed(ruin))
             {
                 anchor = ruin;
                 // Someone stood there to raze it: priced as an enemy presence, not a citadel guess.
@@ -158,7 +173,7 @@ namespace Game.Ai.V2
                 float bestPower = float.NegativeInfinity;
                 foreach (ArmySnapshot center in enemies)
                 {
-                    if (center == null)
+                    if (center == null || Staffed(center.Hex))
                         continue;
                     float power = 0f;
                     foreach (ArmySnapshot e in enemies)
@@ -182,7 +197,11 @@ namespace Game.Ai.V2
                 }
             }
 
-            return TryEnemyCitadelAnchor(snap, out anchor);
+            // The citadel fallback also serves when every concentration sits in a staffed sector.
+            if (TryEnemyCitadelAnchor(snap, out anchor) && !Staffed(anchor))
+                return true;
+            anchor = default;
+            return false;
         }
 
         // The nearest opponent citadel to our own, read from TrueWorld — the owner-approved cheat

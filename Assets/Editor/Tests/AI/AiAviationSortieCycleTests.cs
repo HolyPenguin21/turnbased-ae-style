@@ -1635,6 +1635,7 @@ namespace Game.EditorTests
             AviationObligationStallRegistry.Clear();
             ReconPatrolStateRegistry.ClearAll();
             ReconAirSortieRegistry.ClearAll();
+            AirSortieRegistry.Clear();
             try
             {
                 Airfield(new HexCoord(0, 0), capacity: 4);
@@ -1654,11 +1655,21 @@ namespace Game.EditorTests
                 }
                 ArmyData stranded = Recon(new HexCoord(2, 0), endurance: 0);
                 ArmyData safeHold = Recon(new HexCoord(3, 0), endurance: 2);
+                // Match 2026-11-13: a live outbound step leaves the executor's own Recon record on
+                // the wing; it must not hide the wing from the recall. A Strike record belongs to
+                // RecallUnsafeStrikes and stays out of this recall.
+                AirSortieRegistry.Add(_owner, new AirSortie { Kind = AirSortieKind.Recon, Army = stranded,
+                    LandingHex = new HexCoord(0, 0), TargetHex = new HexCoord(3, 0) });
+                ArmyData strikeOwned = Recon(new HexCoord(4, 0), endurance: 0);
+                AirSortieRegistry.Add(_owner, new AirSortie { Kind = AirSortieKind.Strike, Army = strikeOwned,
+                    LandingHex = new HexCoord(0, 0), TargetHex = new HexCoord(5, 0) });
                 Assert.That(ReconAirExecutor.FindMandatoryRecoveryActors(_owner, ctx), Is.Empty,
                     "baseline: an Outbound wing is no recovery");
 
                 List<ArmyData> owed = ReconAirExecutor.RecallUnsafeReconWings(_owner, ctx);
                 Assert.That(owed, Is.EqualTo(new[] { stranded }));
+                Assert.That(ReconAirSortieRegistry.TryGet(_owner, strikeOwned.Id, out ReconAirSortieState k)
+                    && k.Phase == ReconAirPhase.Outbound, Is.True, "a Strike-owned wing is left to its own recall");
                 Assert.That(ReconAirSortieRegistry.TryGet(_owner, stranded.Id, out ReconAirSortieState s)
                     && s.Phase == ReconAirPhase.Return, Is.True);
                 Assert.That(ReconAirSortieRegistry.TryGet(_owner, safeHold.Id, out ReconAirSortieState h)
@@ -1673,6 +1684,7 @@ namespace Game.EditorTests
                 AviationObligationStallRegistry.Clear();
                 ReconPatrolStateRegistry.ClearAll();
                 ReconAirSortieRegistry.ClearAll();
+                AirSortieRegistry.Clear();
                 foreach (var actor in actors) Object.DestroyImmediate(actor);
                 Object.DestroyImmediate(mapObject);
             }

@@ -527,6 +527,67 @@ namespace Game.EditorTests
             }
         }
 
+        // Match 2026-11-13 (owner decision, variant B): an AirSweep is not sent where ground Recon
+        // already works. Two ground scouts with a live patrol in the enemy concentration's sector
+        // move the anchor to an unstaffed concentration; with none left there is no sweep. One
+        // scout is not "staffed" (the scorer's airReconSectorAdequateCoverage), and an air wing
+        // never staffs a sector for its own sweep. Registers live armies (VisionSystem): Unity only.
+        [TestCase(0, false, "east")]
+        [TestCase(1, false, "east")]
+        [TestCase(1, true, "east")]
+        [TestCase(2, false, "west")]
+        public void AirSweepAnchor_SkipsASectorGroundReconAlreadyWorks(int groundScouts,
+            bool airWingThere, string expected)
+        {
+            var player = new PlayerSetupData();
+            var east = new HexCoord(5, 0);
+            var west = new HexCoord(-5, 0);
+            Game.Map.ArmyRegistry.Clear();
+            ReconPatrolStateRegistry.ClearAll();
+            try
+            {
+                WorldSnapshot snap = Snapshot(player, 12, new HexCoord(4, 3));
+                snap.Observer = player;
+                snap.TrueWorld = new TrueWorldSnapshot
+                {
+                    EnemyArmies = new[]
+                    {
+                        new ArmySnapshot { ArmyId = 900, Hex = east, EffectiveArmyPower = 30f },
+                        new ArmySnapshot { ArmyId = 901, Hex = west, EffectiveArmyPower = 5f },
+                    },
+                };
+                void Actor(HexCoord hex, bool aviation)
+                {
+                    var army = new Game.Map.ArmyData { Owner = player, Hex = hex };
+                    army.Members.Add(new Game.Units.UnitData { Name = "recon", Owner = player,
+                        IsAviation = aviation, HitPointsCurrent = 1, HitPointsMax = 1, MoveMax = 3, MoveCurrent = 3 });
+                    Game.Map.ArmyRegistry.Register(army);
+                    ReconPatrolStateRegistry.GetOrCreate(player, army.Id, hex, east, ReconMode.Refresh, 12);
+                }
+                for (int i = 0; i < groundScouts; i++)
+                    Actor(new HexCoord(2 + i, 0), aviation: false);
+                if (airWingThere)
+                    Actor(new HexCoord(4, 0), aviation: true);
+
+                bool found = WorldAnalysis.TryAirSweepAnchor(snap, out HexCoord anchor, out bool enemyThere);
+
+                Assert.That(found, Is.True);
+                Assert.That(anchor, Is.EqualTo(expected == "east" ? east : west));
+                Assert.That(enemyThere, Is.True);
+
+                // Both concentrations staffed and no sanctioned citadel: no sweep at all.
+                for (int i = 0; i < 2; i++)
+                    Actor(new HexCoord(-2 - i, 0), aviation: false);
+                if (groundScouts >= 2)
+                    Assert.That(WorldAnalysis.TryAirSweepAnchor(snap, out _, out _), Is.False);
+            }
+            finally
+            {
+                ReconPatrolStateRegistry.ClearAll();
+                Game.Map.ArmyRegistry.Clear();
+            }
+        }
+
         internal static MissionProposal Scout(ScoutTargetKind kind, HexCoord focus) =>
             new MissionProposal
             {
