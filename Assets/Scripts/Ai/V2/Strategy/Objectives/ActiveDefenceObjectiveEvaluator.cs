@@ -916,8 +916,11 @@ namespace Game.Ai.V2
                 ArmySnapshot resident = original;
                 if (resident != null && projectedArmies != null
                     && projectedArmies.TryGetValue(resident.ArmyId, out ArmySnapshot projected)) resident = projected;
+                // The one resident rule, shared with the garrison floor (AiArmyRoles.ResidentFieldPower).
                 if (resident != null && resident.Hex.Equals(hex)
-                    && (resident.IsGarrison || committed == null || !committed.Contains(resident.ArmyId)))
+                    && AiArmyRoles.CountsAsHexResident(resident.IsGarrison, resident.IsAir, resident.IsPrison,
+                        resident.Members != null && resident.Members.Count > 0,
+                        committed != null && committed.Contains(resident.ArmyId)))
                     Add(resident);
             }
             if (regroupHex.HasValue && regroupHex.Value.Equals(hex) && gatherable != null)
