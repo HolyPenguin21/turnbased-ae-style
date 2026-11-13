@@ -63,6 +63,8 @@ namespace Game.Ai.V2
         // The live Attack's strike need read at OpenPass (PhaseAOperationSupport.Assess): what
         // Development upgrades outside the fist must leave for ClosePass. Null when none.
         public StrikeSupportNeed StrikeSupport;
+        // The live preparation's cheapest missing roster card (PhaseAOperationSupport.AssessRosterFunding).
+        public StrikeSupportNeed RosterFunding;
 
         public PhaseAPass(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, PhaseAApBudget apBudget, IReadOnlyList<AxisDemand> demands,

@@ -62,6 +62,111 @@ namespace Game.Ai.V2
     internal static class PhaseAOperationSupport
     {
         internal const string ForecastProducer = "attack-strike";
+        internal const string RosterForecastProducer = "attack-roster";
+
+        // ===================================================================================
+        //  2026-11-13 (owner, P7, match Korrin vs Brynn) — THE ROSTER CARD A LIVE PREPARATION
+        //  WAITS FOR. Brynn B22: the fist's demand (11.3) could not pay Slag Lobber (Materials
+        //  0/1) and the same Materials went to the garrison demand (5.8, a Rust Tank); nothing
+        //  accumulated for ten turns. The cheapest missing position of the live preparation's
+        //  frozen roster that the income can pay within the deck horizon, and that the stock
+        //  cannot pay now, is read once per pass (the strike need's shape: Cost + Source):
+        //    · a cheaper demand's chain does not spend a resource that card still lacks
+        //      (LeavesRosterFunding, the LeavesStrikeSupport rule);
+        //    · Economy sees it as an operational forecast (producer "attack-roster").
+        // ===================================================================================
+        internal static StrikeSupportNeed AssessRosterFunding(PhaseAPass pass)
+        {
+            if (pass?.Snap?.Self == null || pass.Player == null || !pass.AdmittedAxes.Contains(DesireAxis.Aggression))
+                return null;
+            MissionIntent operation = AggressionMissionLayer.LiveAttackOperation(pass.ActiveIntents);
+            AttackIntent a = operation?.Attack;
+            if (a == null || !a.Preparation || a.Phase != AttackMissionPhase.Gather || !a.PrimaryArmyId.HasValue
+                || a.TargetRoster == null || a.TargetRoster.Count == 0)
+                return null;
+            ArmyData host = OwnWorld.Of(pass.Player).Army(a.PrimaryArmyId.Value);
+            if (host == null)
+                return null;
+            var missing = new HashSet<string>(StrikeRoster.Missing(a.TargetRoster, host.Members)
+                .Where(m => !m.IsHero && m.Source != ForceSource.Map).Select(m => m.Key));
+            if (missing.Count == 0)
+                return null;
+            var cards = (pass.Snap.Self.PoolCards
+                    ?? System.Array.Empty<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)>())
+                .Where(p => p.Card != null && p.Card.resourceCost != null
+                    && missing.Contains(StrikeRoster.CardKey(p.Card))
+                    && AggressionDemandEvaluator.FundableWithinDeckHorizon(pass.Snap, p.Card.resourceCost))
+                .OrderBy(p => Total(p.Card.resourceCost))
+                .ThenBy(p => p.InHand ? 0 : 1)
+                .ThenBy(p => p.Card.displayName, System.StringComparer.Ordinal)
+                .ToList();
+            if (cards.Count == 0)
+                return null;
+            var cheapest = cards[0];
+            bool payableNow = ResourceBundle.All.All(t => cheapest.Card.resourceCost.Get(t)
+                <= StrategicSpendability.SpendableAmount(pass.Player, pass.Root, pass.Ctx, t) + AiConfigV2.allocatorSliceEpsilon);
+            if (payableNow)
+                return null;
+            return new StrikeSupportNeed
+            {
+                Operation = operation, Attack = a,
+                Primary = pass.Snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == host.Id),
+                Cost = cheapest.Card.resourceCost,
+                Source = (cheapest.InHand ? "hand:" : "deck:") + cheapest.Card.displayName,
+            };
+        }
+
+        internal static void PublishRosterForecast(PhaseAPass pass, StrikeSupportNeed need)
+        {
+            if (pass?.Player == null || !pass.AdmittedAxes.Contains(DesireAxis.Aggression))
+                return;
+            Dictionary<string, ResourceBundle> needs = null;
+            if (need?.Cost != null)
+            {
+                var bundle = new ResourceBundle();
+                foreach (ResourceType t in ResourceBundle.All)
+                    bundle.Add(t, need.Cost.Get(t));
+                needs = new Dictionary<string, ResourceBundle> { [need.Operation.IntentKey.ToString()] = bundle };
+            }
+            ResourceStarvationRegistry.ReplaceOperationalForecast(pass.Player, pass.Turn, RosterForecastProducer, needs);
+        }
+
+        // False when a chain of a demand worth less than the preparation's own host demand would
+        // spend a resource the roster card still lacks. The host's own deliveries, and a demand
+        // worth at least as much, keep their priority.
+        internal static bool LeavesRosterFunding(PhaseAPass pass, AxisDemand demand, MaterializationPlan plan,
+            out string why)
+        {
+            why = null;
+            StrikeSupportNeed need = pass?.RosterFunding;
+            ResourceCost cost = plan?.FundingCost;
+            if (need?.Cost == null || cost == null || demand == null)
+                return true;
+            int host = need.Attack.PrimaryArmyId ?? -1;
+            if (demand.AttackFistArmyId == host)
+                return true;
+            float hostValue = (pass.Demands ?? System.Array.Empty<AxisDemand>())
+                .Where(d => d != null && d.AttackFistArmyId == host && d.AttackFistIsPreparationHost)
+                .Select(d => d.Value).DefaultIfEmpty(float.NegativeInfinity).Max();
+            if (demand.Value >= hostValue)
+                return true;
+            foreach (ResourceType t in ResourceBundle.All)
+            {
+                int spends = cost.Get(t);
+                if (spends <= 0 || need.Cost.Get(t) <= 0)
+                    continue;
+                float spendable = StrategicSpendability.SpendableAmount(pass.Player, pass.Root, pass.Ctx, t);
+                if (spendable + AiConfigV2.allocatorSliceEpsilon < need.Cost.Get(t))
+                {
+                    why = $"leaves_roster_funding:{need.Operation.IntentKey} {t} "
+                        + $"{spendable.ToString("0.##", CultureInfo.InvariantCulture)} < {need.Cost.Get(t)} "
+                        + $"for {need.Source} (demand {demand.Value.ToString("0.##", CultureInfo.InvariantCulture)} "
+                        + $"< host {hostValue.ToString("0.##", CultureInfo.InvariantCulture)})";
+                    return false;
+                }
+            }
+            return true;
+        }
 
         // The live operation's need for a strike, or null: Aggression admitted, a live Gather /
         // Assault with a primary, a strike source (hand card, or a free hand slot + generation left +

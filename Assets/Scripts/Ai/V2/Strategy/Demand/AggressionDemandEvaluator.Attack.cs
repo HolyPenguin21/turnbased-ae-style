@@ -328,8 +328,12 @@ namespace Game.Ai.V2
 
             // A held card Phase A already failed to chain into this exact host (its pinned demand,
             // this turn or the last) is no witness: the two stages answer with one truth.
+            // 2026-11-13 (owner, P7) — a card the income cannot pay within the deck horizon is no
+            // source to wait for: Brynn B21-B31 waited on a roster of 3x Iron Maw with Materials
+            // income 2 ("short stock is timing" held only for what stock + income x N covers).
             foreach (Game.Cards.CardData c in GroundCombatDemandPolicy.HandFieldCards(snap))
                 if (Strengthens(c.Definition, c.Equipment, c.Mutator)
+                    && FundableWithinDeckHorizon(snap, c.Definition.resourceCost)
                     && !PreparationDeliveryMemory.NoChainRecently(snap.Observer, host.Id,
                         snap.TurnNumber, StrikeRoster.CardKey(c.Definition)))
                     return $"hand_card:{c.Definition.displayName}";
@@ -345,17 +349,24 @@ namespace Game.Ai.V2
                 // devChainFundingHorizonTurns of income (the Development PREPARE rule); a resource
                 // the player does not earn keeps it out of reach, so it is no WAIT witness.
                 foreach (Game.Cards.CardDefinition d in dev.StaffedOutputs)
-                    if (Strengthens(d) && FundableWithinHorizon(snap, d.resourceCost))
+                    if (Strengthens(d) && FundableWithinHorizon(snap, d.resourceCost,
+                            AiConfigV2.devChainFundingHorizonTurns))
                         return $"generation:{d.displayName}(stock_short)";
             }
             foreach (Game.Cards.CardDefinition d in snap.Self.Deck
                 ?? (IReadOnlyList<Game.Cards.CardDefinition>)System.Array.Empty<Game.Cards.CardDefinition>())
-                if (Strengthens(d))
+                if (Strengthens(d) && FundableWithinDeckHorizon(snap, d.resourceCost))
                     return $"undrawn_card:{d.displayName}";
             return null;
         }
 
-        private static bool FundableWithinHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost)
+        // P7 (2026-11-13) — a roster card is an expected position only while today's spendable
+        // stock plus income over economyDeckNeedHorizonTurns (the deck-need horizon ActionPrice
+        // and DeckPlayability read) pays it, resource by resource.
+        internal static bool FundableWithinDeckHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost) =>
+            FundableWithinHorizon(snap, cost, AiConfigV2.economyDeckNeedHorizonTurns);
+
+        private static bool FundableWithinHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost, float horizonTurns)
         {
             if (cost == null)
                 return true;
@@ -363,7 +374,7 @@ namespace Game.Ai.V2
             // no Economy snapshot counts as nothing spendable.
             ResourceBundle spendable = snap.Economy?.SpendableStockpile ?? default;
             foreach (Game.Economy.ResourceType t in ResourceBundle.All)
-                if (cost.Get(t) > spendable.Get(t) + AiConfigV2.devChainFundingHorizonTurns
+                if (cost.Get(t) > spendable.Get(t) + horizonTurns
                         * Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t)) + AiConfigV2.allocatorSliceEpsilon)
                     return false;
             return true;

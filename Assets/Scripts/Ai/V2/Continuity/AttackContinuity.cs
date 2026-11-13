@@ -1067,9 +1067,25 @@ namespace Game.Ai.V2
                     pool[slot.Key] = n - 1;
                 }
             }
-            if (why == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
+            // 2026-11-13 (owner, P7) — a hand/deck position the income cannot pay within the deck
+            // horizon is not an expected position: the roster is re-composed from what can come.
+            List<StrikeRosterCandidate> fundable = (snap.Self.StrikePool
+                ?? (IReadOnlyList<StrikeRosterCandidate>)System.Array.Empty<StrikeRosterCandidate>())
+                .Where(c => RosterCandidateFundable(snap, c)).ToList();
+            if (why == null && a.TargetRoster != null)
+            {
+                var reachable = fundable.GroupBy(c => c.Slot.Key).ToDictionary(g => g.Key, g => g.Count());
+                foreach (StrikeRosterSlot slot in a.TargetRoster)
+                {
+                    if (slot.IsHero) continue;
+                    reachable.TryGetValue(slot.Key, out int n);
+                    if (n <= 0) { why = $"position {slot.Key} unfundable within the deck horizon"; break; }
+                    reachable[slot.Key] = n - 1;
+                }
+            }
+            if (why == null || fundable.Count == 0)
                 return;
-            List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(snap.Self.StrikePool,
+            List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(fundable,
                 commander == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(commander),
                 capacity, out float power);
             a.TargetRoster = roster;
@@ -1080,6 +1096,20 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} target roster {why}: "
                 + $"[{string.Join(",", a.TargetRoster.Select(x => x.IsHero ? x.Key + "*" : x.Key))}] "
                 + $"power={power:0.#} capacity={capacity} peak={a.TargetRosterPeak:0.#}");
+        }
+
+        // A map body is always reachable; a hand or deck card only when one copy of its key is
+        // fundable within the deck horizon (AggressionDemandEvaluator.FundableWithinDeckHorizon).
+        internal static bool RosterCandidateFundable(WorldSnapshot snap, StrikeRosterCandidate c)
+        {
+            if (c.Slot.Source == ForceSource.Map || c.Slot.IsHero)
+                return true;
+            var pool = snap?.Self?.PoolCards;
+            if (pool == null)
+                return true;
+            bool inHand = c.Slot.Source == ForceSource.Hand;
+            return pool.Any(p => p.Card != null && p.InHand == inHand && StrikeRoster.CardKey(p.Card) == c.Slot.Key
+                && AggressionDemandEvaluator.FundableWithinDeckHorizon(snap, p.Card.resourceCost));
         }
 
         private static string MissingLabel(IReadOnlyList<StrikeRosterSlot> target, ArmyData host) =>

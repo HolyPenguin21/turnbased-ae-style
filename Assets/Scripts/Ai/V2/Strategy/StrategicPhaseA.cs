@@ -112,6 +112,8 @@ namespace Game.Ai.V2
             // The live Attack's strike need, read once before the card rounds (PhaseAOperationSupport).
             pass.StrikeSupport = result.StrikeSupport = PhaseAOperationSupport.Assess(pass);
             PhaseAOperationSupport.PublishForecast(pass, pass.StrikeSupport);
+            pass.RosterFunding = PhaseAOperationSupport.AssessRosterFunding(pass);
+            PhaseAOperationSupport.PublishRosterForecast(pass, pass.RosterFunding);
             if (pass.NothingToAdmit)
             {
                 PhaseAEconomyHolds.ClearPreIntentHoldIfResolved(pass);
@@ -360,6 +362,15 @@ namespace Game.Ai.V2
             StrategicPhaseResult result = pass.Result;
             AxisDemand chosenDemand = selected.State.Demand;
             MaterializationPlan plan = selected.Plan;
+            // P7 (2026-11-13) — a cheaper demand leaves the live preparation's roster card the
+            // resource it lacks (PhaseAOperationSupport.LeavesRosterFunding).
+            if (!PhaseAOperationSupport.LeavesRosterFunding(pass, chosenDemand, plan, out string rosterWhy))
+            {
+                selected.State.Blocked = true;
+                AiDebugLog.Write($"[AI][V2]   strat.A - {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
+                    + $"held :: {rosterWhy}");
+                return;
+            }
             WorldSnapshot snapBeforeDelivery = pass.Snap;
             MaterializationResult play;
             using (new Game.Core.ProfileScope("AI/PhaseA.Execute"))
