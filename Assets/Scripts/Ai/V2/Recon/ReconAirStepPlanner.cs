@@ -238,7 +238,7 @@ namespace Game.Ai.V2
             // the live scan) so a second reserved sortie is not scored as if the first didn't exist.
             HexCoord citadel = snapshot?.Self != null ? snapshot.Self.Citadel : from;
             ReconSector stepSector = ReconDirectionModel.Sector(citadel, h);
-            int sectorClaims = CountAssignedReconActorsInWedge(player, citadel, stepSector, moverArmyId)
+            int sectorClaims = ReconDirectionModel.AssignedReconActorsInSector(player, citadel, stepSector, moverArmyId)
                 + (scoringCtx?.ProvisionalClaimsIn(stepSector) ?? 0);
             // R3 review fix — identity exclusion is EXPLICIT. A caller that passes a scoring
             // context (the reservation prepass) has ALREADY resolved which sortie's own footprint
@@ -303,27 +303,6 @@ namespace Game.Ai.V2
 
             if (observed > 0)
                 staleInformation /= observed;
-        }
-
-        // spec §5 "already adequately covered by another assigned Recon actor" — count every
-        // OTHER army that holds a live ReconPatrolState (air sortie or ground scout; idle Recce has
-        // none) and whose LIVE position falls in `wedge` measured from `citadel`. One registry
-        // (ReconPatrolStateRegistry, shared by ReconAirExecutor + ReconGroundExecutor), one origin,
-        // live ArmyRegistry positions — no snapshot staleness, no mixed reference frames.
-        private static int CountAssignedReconActorsInWedge(PlayerSetupData player, HexCoord citadel,
-            ReconSector wedge, int excludeArmyId)
-        {
-            int n = 0;
-            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
-            {
-                if (a == null || a.Id == excludeArmyId)
-                    continue;
-                if (!ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
-                    continue;
-                if (ReconDirectionModel.Sector(citadel, a.Hex) == wedge)
-                    n++;
-            }
-            return n;
         }
     }
 }

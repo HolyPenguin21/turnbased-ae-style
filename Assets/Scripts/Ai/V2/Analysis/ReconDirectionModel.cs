@@ -114,6 +114,39 @@ namespace Game.Ai.V2
             return ReconSector.SE;
         }
 
+        // THE count of own Recon actors already working a sector: every army holding a live
+        // ReconPatrolState (air sortie or ground scout; idle Recce has none) whose LIVE position
+        // falls in `sector` measured from `citadel`. One registry, one origin. Read by the air
+        // step scorer (ReconAirStepPlanner, spec §5 sector coverage) and by the AirSweep anchor
+        // (WorldAnalysis.TryAirSweepAnchor, groundOnly: the sweep's own wing never counts).
+        internal static int AssignedReconActorsInSector(PlayerSetupData player, HexCoord citadel,
+            ReconSector sector, int excludeArmyId = -1, bool groundOnly = false)
+        {
+            if (player == null)
+                return 0;
+            int n = 0;
+            foreach (Game.Map.ArmyData a in OwnWorld.Of(player).Armies)
+            {
+                if (a == null || a.Id == excludeArmyId)
+                    continue;
+                if (groundOnly && Game.Aviation.AviationRules.IsAirArmy(a))
+                    continue;
+                if (!ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
+                    continue;
+                if (Sector(citadel, a.Hex) == sector)
+                    n++;
+            }
+            return n;
+        }
+
+        // Match 2026-11-13 (owner decision, variant B): a sector already staffed by this many
+        // ground Recon actors gets no AirSweep — aviation is not sent where recon already is.
+        // The same threshold the air step scorer hard-rejects a low-novelty step with.
+        internal static bool IsSectorStaffedByGroundRecon(PlayerSetupData player, HexCoord citadel,
+            HexCoord hex) =>
+            AssignedReconActorsInSector(player, citadel, Sector(citadel, hex), groundOnly: true)
+                >= AiConfigV2.airReconSectorAdequateCoverage;
+
         private static PlayerSetupData ResolveSelf(WorldSnapshot snapshot)
         {
             ArmySnapshot own = snapshot.Self?.Armies?.FirstOrDefault(a => a?.Owner != null);
