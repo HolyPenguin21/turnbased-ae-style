@@ -3909,11 +3909,11 @@ MonoBehaviour:
         amount: 0
         isOverride: 1
   - id: 68
-    authoredKey: neutral.equipment.vehicle.dozer-blade
+    authoredKey: neutral.equipment.vehicle.assault-cannon-kit
     deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Dozer Blade
+    displayName: Assault Cannon Kit
     art: {fileID: 21300000, guid: f0b238d3abebd2347a557d6412eecbdc, type: 3}
     detailArt: {fileID: 21300000, guid: 130990f87dd193e4094dc5dbf8e615cc, type: 3}
     faction: 2

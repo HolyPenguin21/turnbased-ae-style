@@ -449,7 +449,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -645,7 +645,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -845,7 +845,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -1049,7 +1049,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -1251,7 +1251,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -1447,7 +1447,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -1645,7 +1645,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -1845,7 +1845,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -2041,7 +2041,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -2239,7 +2239,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -2439,7 +2439,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -2633,7 +2633,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -2831,7 +2831,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -3029,7 +3029,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -3229,7 +3229,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -3433,7 +3433,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -3629,7 +3629,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -3827,7 +3827,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -4027,7 +4027,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -4223,7 +4223,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -4421,7 +4421,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -4617,7 +4617,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -4815,7 +4815,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
@@ -5009,7 +5009,7 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.vehicle.dozer-blade
+    - cardKey: neutral.equipment.vehicle.assault-cannon-kit
       count: 1
     - cardKey: neutral.equipment.vehicle.siege-ram
       count: 1
