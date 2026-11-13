@@ -33,7 +33,10 @@ namespace Game.EditorTests
                     new StrikeRosterSlot("authored-card", false, 19.5f, ForceSource.Map) },
                 GatherReturns = new System.Collections.Generic.List<AttackGatherReturn> {
                     new AttackGatherReturn { ArmyId = 17, BaseHex = new HexCoord(-1, 2) } },
-                PreparationCardWaitSinceTurn = 6, TargetRosterPeak = 22, TargetRosterCapacity = 4
+                PreparationCardWaitSinceTurn = 6, TargetRosterPeak = 22, TargetRosterCapacity = 4,
+                AirSupportWings = new System.Collections.Generic.List<AttackAirWing> {
+                    new AttackAirWing { ArmyId = 23, LandingHex = new HexCoord(0, 1), BoundTurn = 5, SortieSeen = true },
+                    new AttackAirWing { ArmyId = 24, BoundTurn = 6 } }
             };
             var raid = new RaidIntent { Target = RaidTargetRef.ForNeutralArmy(0), SupportArmyId = 7,
                 Phase = RaidMissionPhase.Reinforcement, ReinforcementRequestedTurn = 11,
@@ -75,6 +78,12 @@ namespace Game.EditorTests
                     Assert.AreNotSame(attack.TargetRoster, a.TargetRoster);
                     Assert.AreEqual(17, a.GatherReturns[0].ArmyId);
                     Assert.AreEqual(new HexCoord(-1, 2), a.GatherReturns[0].BaseHex);
+                    Assert.AreEqual(2, a.AirSupportWings.Count);
+                    Assert.AreEqual(23, a.AirSupportWings[0].ArmyId);
+                    Assert.AreEqual(new HexCoord(0, 1), a.AirSupportWings[0].LandingHex);
+                    Assert.AreEqual(5, a.AirSupportWings[0].BoundTurn);
+                    Assert.IsTrue(a.AirSupportWings[0].SortieSeen);
+                    Assert.IsNull(a.AirSupportWings[1].LandingHex);
                 }
             }
         }

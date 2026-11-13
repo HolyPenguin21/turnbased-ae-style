@@ -1543,11 +1543,11 @@ namespace Game.EditorTests
 
             var intent = new MissionIntent { Objective = new ActiveDefenceIntent
                 { Phase = ActiveDefencePhase.AirSupport, EnemyArmyId = 41, AirSupportArmyId = 9 } };
-            Assert.That(GroundCombatLegs.HeldAirSupportArmyId(intent), Is.EqualTo(9));
+            Assert.That(GroundCombatLegs.HeldAirSupportArmyIds(intent), Is.EqualTo(new[] { 9 }));
             Assert.That(intent.PreferredMoverArmyId, Is.Null, "the wing is never the ground actor");
             var ground = new MissionIntent { Objective = new ActiveDefenceIntent
                 { Phase = ActiveDefencePhase.Intercept, EnemyArmyId = 41, PrimaryArmyId = 3 } };
-            Assert.That(GroundCombatLegs.HeldAirSupportArmyId(ground), Is.Null);
+            Assert.That(GroundCombatLegs.HeldAirSupportArmyIds(ground), Is.Empty);
             Assert.That(GroundCombatLegs.JoinsAssignmentSolve(airProposal), Is.False,
                 "the wing never enters the ground assault solve");
         }

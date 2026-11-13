@@ -1385,10 +1385,7 @@ namespace Game.Saves
         public MatchAiOptional52 CommanderArmyId;
         public MatchAiList192 GatherSupportArmyIds;
         public MatchAiList193 GatherReturns;
-        public MatchAiOptional52 AirSupportArmyId;
-        public MatchAiOptional117 AirSupportLandingHex;
-        public int AirSupportBoundTurn;
-        public bool AirSupportSortieSeen;
+        public MatchAiList196 AirSupportWings;
         public int AirSupportAttemptedTurn;
         public MatchAiOptional117 RecoveryBaseHex;
         public MatchAiOptional117 SupportReturnHex;
@@ -1434,5 +1431,20 @@ namespace Game.Saves
         public bool HasData;
         public int ArmyId;
         public MatchAiOptional117 BaseHex;
+    }
+    // global::System.Collections.Generic.List<global::Game.Ai.V2.AttackAirWing>
+    [Serializable] internal sealed class MatchAiList196
+    {
+        public bool HasData;
+        public List<MatchAiAttackAirWing197> Values = new List<MatchAiAttackAirWing197>();
+    }
+    // global::Game.Ai.V2.AttackAirWing
+    [Serializable] internal sealed class MatchAiAttackAirWing197
+    {
+        public bool HasData;
+        public int ArmyId;
+        public MatchAiOptional117 LandingHex;
+        public int BoundTurn;
+        public bool SortieSeen;
     }
 }

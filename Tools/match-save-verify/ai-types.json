@@ -5699,23 +5699,8 @@
         "readOnly": false
       },
       {
-        "name": "AirSupportArmyId",
-        "type": "int?",
-        "readOnly": false
-      },
-      {
-        "name": "AirSupportLandingHex",
-        "type": "global::Game.HexGrid.HexCoord?",
-        "readOnly": false
-      },
-      {
-        "name": "AirSupportBoundTurn",
-        "type": "int",
-        "readOnly": false
-      },
-      {
-        "name": "AirSupportSortieSeen",
-        "type": "bool",
+        "name": "AirSupportWings",
+        "type": "global::System.Collections.Generic.List<global::Game.Ai.V2.AttackAirWing>",
         "readOnly": false
       },
       {
@@ -5863,20 +5848,8 @@
         "type": "global::System.Collections.Generic.List<global::Game.Ai.V2.AttackGatherReturn>"
       },
       {
-        "name": "AirSupportArmyId",
-        "type": "int?"
-      },
-      {
-        "name": "AirSupportLandingHex",
-        "type": "global::Game.HexGrid.HexCoord?"
-      },
-      {
-        "name": "AirSupportBoundTurn",
-        "type": "int"
-      },
-      {
-        "name": "AirSupportSortieSeen",
-        "type": "bool"
+        "name": "AirSupportWings",
+        "type": "global::System.Collections.Generic.List<global::Game.Ai.V2.AttackAirWing>"
       },
       {
         "name": "AirSupportAttemptedTurn",
@@ -5998,5 +5971,58 @@
   },
   "objective": {
     "kind": "objective"
+  },
+  "global::System.Collections.Generic.List<global::Game.Ai.V2.AttackAirWing>": {
+    "kind": "list",
+    "args": [
+      "global::Game.Ai.V2.AttackAirWing"
+    ]
+  },
+  "global::Game.Ai.V2.AttackAirWing": {
+    "kind": "object",
+    "isValue": false,
+    "fields": [
+      {
+        "name": "ArmyId",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "LandingHex",
+        "type": "global::Game.HexGrid.HexCoord?",
+        "readOnly": false
+      },
+      {
+        "name": "BoundTurn",
+        "type": "int",
+        "readOnly": false
+      },
+      {
+        "name": "SortieSeen",
+        "type": "bool",
+        "readOnly": false
+      }
+    ],
+    "file": "Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs",
+    "insert": 19097,
+    "name": "AttackAirWing",
+    "originalFields": [
+      {
+        "name": "ArmyId",
+        "type": "int"
+      },
+      {
+        "name": "LandingHex",
+        "type": "global::Game.HexGrid.HexCoord?"
+      },
+      {
+        "name": "BoundTurn",
+        "type": "int"
+      },
+      {
+        "name": "SortieSeen",
+        "type": "bool"
+      }
+    ]
   }
 }

@@ -247,6 +247,7 @@ namespace Game.Saves
                         if (attack.TargetRoster != null) foreach (var slot in attack.TargetRoster) CardKey(slot.Key, config, true);
                         CardKey(attack.TargetRosterCommanderKey, config, false);
                         Unique(attack.GatherSupportArmyIds); Unique(attack.GatherReturns.Select(x => x.ArmyId));
+                        Unique(attack.AirSupportWings.Select(x => x.ArmyId));
                     }
                     if (obj is DevelopmentIntent development) CardKey(development.HeroKey, config, false);
                 }

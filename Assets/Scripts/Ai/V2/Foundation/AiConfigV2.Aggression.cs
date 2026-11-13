@@ -125,6 +125,13 @@ namespace Game.Ai.V2
         // target (it never backtracks); the primary may hold at the meeting hex for at most this
         // many turns waiting for the support. A support that needs longer does not stop the march.
         public const int attackReinforcementMaxWaitTurns = 1;
+        // 2026-11-13 (owner, match Sable vs Korrin) — the wings one Attack operation flies at its
+        // site together (AttackIntent.AirSupportWings). One wing used to fill the only slot: a free
+        // Rusty Vulture "covered" the strike request, so no missile or bomb was ever produced for
+        // it. The slots are filled best damage first (GroundCombatAirSupport.Series), each wing
+        // priced on what the wings before it leave; a slot no free wing fills is a strike request
+        // Production may answer.
+        public const int attackAirSupportMaxWings = 3;
         // Perf pre-filter:
         // GroundCombatAssemblyPlanner.Plan()/EligibleActorIds() would otherwise
         // run the 25-trial Monte-Carlo WinChance once per ready army per Raid target, per

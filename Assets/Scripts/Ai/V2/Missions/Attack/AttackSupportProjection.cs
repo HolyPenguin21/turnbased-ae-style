@@ -11,6 +11,24 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
+    // One counted wing of an Attack's air support: the bound wing / free wing / airfield launch,
+    // the turns to its first strike (0 = this turn) and whether the operation already holds it.
+    internal readonly struct CountedAirStrike
+    {
+        internal readonly int ArmyId;
+        internal readonly int FirstStrikeEta;
+        internal readonly bool Bound;
+
+        internal CountedAirStrike(int armyId, int firstStrikeEta, bool bound)
+        {
+            ArmyId = armyId;
+            FirstStrikeEta = firstStrikeEta;
+            Bound = bound;
+        }
+
+        internal string Describe() => $"air#{ArmyId}{(Bound ? "(bound)" : "")}@eta{FirstStrikeEta}";
+    }
+
     // What an Attack march will meet at its target, as the decisions about that march read it.
     internal readonly struct AttackSupportForecast
     {
@@ -20,38 +38,32 @@ namespace Game.Ai.V2
         // The same after the committed support has acted (== Base* when none is counted).
         internal readonly IReadOnlyList<WorthIt.DefendingArmy> Opposition;
         internal readonly float HexBonus;
-        // The counted air support: the bound wing / free wing / airfield launch, and the turns to
-        // its first strike (0 = this turn). Null when no air support is counted.
-        internal readonly int? AirSourceArmyId;
-        internal readonly int AirFirstStrikeEta;
-        internal readonly bool AirBound;
+        // The counted air support, in strike-series order (GroundCombatAirSupport.Series); empty
+        // when no air support is counted.
+        internal readonly IReadOnlyList<CountedAirStrike> Air;
         // The counted Disruption carrier (an own army on an active DisruptStructure leg).
         internal readonly int? DisruptCarrierArmyId;
 
         internal AttackSupportForecast(IReadOnlyList<WorthIt.DefendingArmy> baseOpposition, float baseHexBonus,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, int? airSourceArmyId,
-            int airFirstStrikeEta, bool airBound, int? disruptCarrierArmyId)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus,
+            IReadOnlyList<CountedAirStrike> air, int? disruptCarrierArmyId)
         {
             BaseOpposition = baseOpposition;
             BaseHexBonus = baseHexBonus;
             Opposition = opposition;
             HexBonus = hexBonus;
-            AirSourceArmyId = airSourceArmyId;
-            AirFirstStrikeEta = airFirstStrikeEta;
-            AirBound = airBound;
+            Air = air ?? System.Array.Empty<CountedAirStrike>();
             DisruptCarrierArmyId = disruptCarrierArmyId;
         }
 
-        internal bool CountsSupport => AirSourceArmyId.HasValue || DisruptCarrierArmyId.HasValue;
+        internal bool CountsSupport => (Air?.Count ?? 0) > 0 || DisruptCarrierArmyId.HasValue;
 
         internal string Describe() =>
             !CountsSupport ? "support=none"
-                : "support=" + string.Join("+", new[]
-                {
-                    AirSourceArmyId.HasValue
-                        ? $"air#{AirSourceArmyId}{(AirBound ? "(bound)" : "")}@eta{AirFirstStrikeEta}" : null,
-                    DisruptCarrierArmyId.HasValue ? $"disruption#{DisruptCarrierArmyId}" : null,
-                }.Where(x => x != null));
+                : "support=" + string.Join("+", (Air ?? System.Array.Empty<CountedAirStrike>())
+                    .Select(s => s.Describe())
+                    .Concat(DisruptCarrierArmyId.HasValue
+                        ? new[] { $"disruption#{DisruptCarrierArmyId}" } : System.Array.Empty<string>()));
     }
 
     // ===========================================================================================
@@ -65,12 +77,13 @@ namespace Game.Ai.V2
     //
     //  Only support that physically exists and acts before the fist arrives counts — never a
     //  missile not yet produced or a carrier not yet fielded:
-    //    · air: the operation's bound wing whose first strike lands no later than one turn after
+    //    · air: the operation's bound wings whose first strike lands no later than one turn after
     //      the fist could arrive (the terminal step waits that one turn:
-    //      AttackMarchPolicy.WaitForAirStrike); else the best free formed wing / airfield launch
-    //      that strikes no later than a fist still at least a turn away (it is bound only once
-    //      the operation starts). GroundCombatAirSupport.Options — its estimate and post-strike
-    //      package, not a second model;
+    //      AttackMarchPolicy.WaitForAirStrike), then the best free formed wings / airfield
+    //      launches that strike no later than a fist still at least a turn away (they are bound
+    //      only once the operation starts), up to AiConfigV2.attackAirSupportMaxWings in all —
+    //      GroundCombatAirSupport.Series, each wing priced on what the wings before it leave; its
+    //      estimate and post-strike package, not a second model;
     //    · Disruption: an own carrier on an active DisruptStructure leg at the target that stands
     //      there or arrives no later than the fist, else (2026-11-07) a free fielded carrier that
     //      does so for a march of at least a turn (FreeCarrier, the free-wing rule) — the
@@ -91,12 +104,9 @@ namespace Game.Ai.V2
             List<WorthIt.DefendingArmy> known = KnownOpposition.OnHex(snap, targetHex);
             float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap?.Observer, snap?.Map, targetHex);
             if (snap?.Self?.Armies == null || known.Count == 0)
-                return new AttackSupportForecast(known, hexBonus, known, hexBonus, null, 0, false, null);
+                return new AttackSupportForecast(known, hexBonus, known, hexBonus, null, null);
 
             IReadOnlyList<WorthIt.DefendingArmy> opposition = known;
-            int? airSource = null;
-            int airEta = 0;
-            bool airBound = false;
             bool hasAircraft = snap.Self.Armies.Any(a => a != null && (a.IsAir || a.IsAirfield) && a.MemberCount > 0);
             bool carrierLeg = (snap.AllIntents ?? System.Array.Empty<MissionIntent>()).Any(i =>
                 i?.Status == IntentStatus.Active && i.Scout?.Kind == ScoutTargetKind.DisruptStructure
@@ -105,15 +115,15 @@ namespace Game.Ai.V2
             bool freeCarrier = known.Any(a => a.BuildingDefenseBonus > 0f)
                 && ScoutMoverSelector.HasStructuralCandidate(snap, DisruptionTarget(targetHex));
             if (!hasAircraft && !carrierLeg && !freeCarrier)
-                return new AttackSupportForecast(known, hexBonus, known, hexBonus, null, 0, false, null);
+                return new AttackSupportForecast(known, hexBonus, known, hexBonus, null, null);
             int eta = armyEta?.Invoke() ?? int.MaxValue;
-            AirSupportOption? air = hasAircraft ? CountedAir(snap, targetHex, known, eta, out airBound) : null;
-            if (air.HasValue)
-            {
-                opposition = air.Value.OppositionAfter;
-                airSource = air.Value.WingArmyId;
-                airEta = air.Value.FirstStrikeEta;
-            }
+            List<CountedAirStrike> air = new List<CountedAirStrike>();
+            if (hasAircraft)
+                foreach ((AirSupportOption o, bool bound) in CountedAir(snap, targetHex, known, eta))
+                {
+                    opposition = o.OppositionAfter;
+                    air.Add(new CountedAirStrike(o.WingArmyId, o.FirstStrikeEta, bound));
+                }
 
             float projectedBonus = hexBonus;
             int? carrier = carrierLeg ? CountedCarrier(snap, targetHex, eta) : null;
@@ -121,8 +131,7 @@ namespace Game.Ai.V2
                 carrier = FreeCarrier(snap, targetHex, eta);
             if (carrier.HasValue)
                 opposition = WithoutStructure(opposition, hexBonus, out projectedBonus);
-            return new AttackSupportForecast(known, hexBonus, opposition, projectedBonus,
-                airSource, airEta, airBound, carrier);
+            return new AttackSupportForecast(known, hexBonus, opposition, projectedBonus, air, carrier);
         }
 
         // The forecast for an army: its own turns to the target.
@@ -147,34 +156,31 @@ namespace Game.Ai.V2
                 : ActiveDefenceObjectiveEvaluator.GroundArrivalEta(snap, army.Hex, targetHex,
                     army.CurrentMovement, army.MaxMovement, fastestByTurns: true);
 
-        private static AirSupportOption? CountedAir(WorldSnapshot snap, HexCoord targetHex,
-            IReadOnlyList<WorthIt.DefendingArmy> known, int armyEta, out bool bound)
+        // The counted wings in strike-series order, each with whether the operation holds it.
+        private static List<(AirSupportOption Option, bool Bound)> CountedAir(WorldSnapshot snap,
+            HexCoord targetHex, IReadOnlyList<WorthIt.DefendingArmy> known, int armyEta)
         {
-            bound = false;
+            var counted = new List<(AirSupportOption, bool)>();
             if (armyEta == int.MaxValue)
-                return null;
+                return counted;
             MissionIntent operation = (snap.AllIntents ?? System.Array.Empty<MissionIntent>())
                 .FirstOrDefault(i => i?.Status == IntentStatus.Active && i.Attack != null
                     && i.Attack.Target.Hex.Equals(targetHex));
-            int? boundWing = operation?.Attack?.AirSupportArmyId;
-            List<AirSupportOption> options = GroundCombatAirSupport.Ranked(GroundCombatAirSupport.Options(
-                snap, known, targetHex, AirStrikePolicy.Standard, null, 0f,
-                boundWing.HasValue ? null : WingsHeldElsewhere(snap, operation), fixedWingArmyId: boundWing));
+            List<int> bound = operation?.Attack?.AirSupportWings.Select(w => w.ArmyId).ToList()
+                ?? new List<int>();
             // A bound wing may strike up to one turn after the fist could arrive: the terminal step
             // waits for it (AttackMarchPolicy.WaitForAirStrike). A free wing is bound only once the
             // operation has started (AttackContinuity.ResolveAttackAirSupport, after the first
             // step), so it counts only for a march of at least a turn that it reaches no later.
-            bool operationWing = boundWing.HasValue;
-            foreach (AirSupportOption o in options)
-                if (o.RosterKnown && o.OppositionAfter != null
-                    && o.ExpectedDamage > AiConfigV2.allocatorSliceEpsilon
-                    && (operationWing ? o.FirstStrikeEta <= armyEta + 1
-                        : armyEta >= 1 && o.FirstStrikeEta <= armyEta))
-                {
-                    bound = boundWing.HasValue;
-                    return o;
-                }
-            return null;
+            foreach (AirSupportOption o in GroundCombatAirSupport.Series(snap, known, targetHex,
+                AirStrikePolicy.Standard, null, 0f, bound, WingsHeldElsewhere(snap, operation),
+                AiConfigV2.attackAirSupportMaxWings,
+                (c, isBound) => c.RosterKnown && c.OppositionAfter != null
+                    && c.ExpectedDamage > AiConfigV2.allocatorSliceEpsilon
+                    && (isBound ? c.FirstStrikeEta <= armyEta + 1
+                        : armyEta >= 1 && c.FirstStrikeEta <= armyEta)))
+                counted.Add((o, bound.Contains(o.WingArmyId)));
+            return counted;
         }
 
         // Wings another operation already bound: not this march's support.
@@ -185,7 +191,8 @@ namespace Game.Ai.V2
             {
                 if (i == null || i.Status != IntentStatus.Active || ReferenceEquals(i, self))
                     continue;
-                if (i.Attack?.AirSupportArmyId != null) held.Add(i.Attack.AirSupportArmyId.Value);
+                foreach (AttackAirWing w in i.Attack?.AirSupportWings ?? Enumerable.Empty<AttackAirWing>())
+                    held.Add(w.ArmyId);
                 if (i.Raid?.AirSupportArmyId != null) held.Add(i.Raid.AirSupportArmyId.Value);
                 if (i.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport && i.PreferredMoverArmyId.HasValue)
                     held.Add(i.PreferredMoverArmyId.Value);

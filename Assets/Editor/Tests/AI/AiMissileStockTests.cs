@@ -130,7 +130,8 @@ namespace Game.EditorTests
         {
             var snap = Snapshot(Sighting(Infantry(10)));
             var held = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
-                Objective = new AttackIntent { Target = AttackTargetRef.For(target, enemy, AttackTargetKind.Base), AirSupportArmyId = 9 } };
+                Objective = new AttackIntent { Target = AttackTargetRef.For(target, enemy, AttackTargetKind.Base),
+                    AirSupportWings = { new AttackAirWing { ArmyId = 9 } } } };
             Assert.That(GroundCombatAirSupport.AirSupportObjectives(snap, new[] { held }), Is.Empty);
             Assert.That(AviationRebasePlanner.CombatSupportTargets(snap, new[] { held }), Is.Empty);
         }

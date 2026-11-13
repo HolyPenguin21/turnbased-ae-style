@@ -54,7 +54,8 @@ namespace Game.Ai.V2
             foreach (MissionIntent intent in intents ?? WorldSnapshot.IntentsOf(snap).ToList())
                 if (intent?.Status == IntentStatus.Active)
                 {
-                    if (intent.Attack?.AirSupportArmyId.HasValue == true) covered.Add(intent.Attack.Target.Hex);
+                    // An Attack holding a wing asks its own free slots (CombatSupportTargets).
+                    if (intent.Attack?.AirSupportWings.Count > 0) covered.Add(intent.Attack.Target.Hex);
                     if (intent.Raid?.AirSupportArmyId.HasValue == true) covered.Add(intent.Raid.LastKnownHex);
                 }
             foreach (CombatAirSupportRequest request in MissileStockTargets(snap))

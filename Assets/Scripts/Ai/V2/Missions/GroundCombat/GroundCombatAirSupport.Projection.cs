@@ -103,7 +103,8 @@ namespace Game.Ai.V2
         internal static CombatAirService? ProjectService(WorldSnapshot snap, PlayerSetupData player,
             HexMap map, IReadOnlyList<UnitData> aircraft, HexCoord start,
             CombatAirSupportRequest request, ArmyData wing = null,
-            Func<HexCoord, int> additionalClaims = null, bool firstStrikeThisTurnOnly = false)
+            Func<HexCoord, int> additionalClaims = null, bool firstStrikeThisTurnOnly = false,
+            IReadOnlyList<AiMapMemory.KnownAirSighting> struckTargets = null)
         {
             if (snap == null || map == null || player == null || aircraft == null || aircraft.Count == 0
                 || aircraft.Any(u => !AviationRules.IsAviation(u))) return null;
@@ -139,7 +140,9 @@ namespace Game.Ai.V2
             if (firstStrikeThisTurnOnly) strikes = 1;
             bool[] spent = aircraft.Select(u => eta == 1 && u.HasAirAttackedThisTurn).ToArray();
             if (strikes == 1 && spent.All(s => s)) return null;
-            var targets = KnownAirTargets(snap, request.Target, request.Policy);
+            // `struckTargets` — what an earlier wing of the same series leaves (Series).
+            IReadOnlyList<AiMapMemory.KnownAirSighting> targets = struckTargets
+                ?? KnownAirTargets(snap, request.Target, request.Policy);
             bool explosion = aircraft.Any(u => ExplosionAttack.TargetLimit(u.Abilities) > 0);
             var collateral = explosion ? ExplosionCollateral(snap, request.Target, wing?.Id, request.Policy) : null;
             bool known = targets.Sum(t => t.Roster.Units.Count) > 0
@@ -280,7 +283,18 @@ namespace Game.Ai.V2
                 .OrderBy(w => w.Ap + w.Energy * AiConfigV2.actionPriceResourceAp)
                 .ThenBy(w => w.Live?.Id ?? int.MaxValue).ThenBy(w => w.Members[0].RuntimeId).ToList();
             var admissible = new bool[requests.Count, wings.Count];
+            // An Attack asks one copy per free wing slot (AviationRebasePlanner.CombatSupportTargets):
+            // a copy is admissible exactly where its first occurrence is, so it is projected once.
+            var firstCopy = new Dictionary<string, int>();
             for (int r = 0; r < requests.Count; r++)
+            {
+                if (firstCopy.TryGetValue(requests[r].Identity, out int original))
+                {
+                    for (int w = 0; w < wings.Count; w++)
+                        admissible[r, w] = admissible[original, w];
+                    continue;
+                }
+                firstCopy[requests[r].Identity] = r;
                 for (int w = 0; w < wings.Count; w++)
                 {
                     int PotentialDepartures(HexCoord hex) => -wings.Where(other => other.Live != null
@@ -291,6 +305,7 @@ namespace Game.Ai.V2
                         wings[w].Hex, requests[r], wings[w].Live,
                         wings[w].Live != null ? PotentialDepartures : (Func<HexCoord, int>)null).HasValue;
                 }
+            }
             var order = Enumerable.Range(0, requests.Count)
                 .OrderBy(r => Enumerable.Range(0, wings.Count).Count(w => admissible[r, w]))
                 .ThenByDescending(r => requests[r].Score.Value).ThenBy(r => r).ToList();

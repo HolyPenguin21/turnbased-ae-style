@@ -360,6 +360,17 @@ namespace Game.Ai.V2
         public HexCoord? BaseHex;
     }
 
+    // One wing bound to an Attack's air support: the formed wing (or the own airfield whose stored
+    // aircraft launch for it), where it lands, the turn it was bound and whether its sortie has
+    // been seen flying.
+    public sealed class AttackAirWing
+    {
+        public int ArmyId;
+        public HexCoord? LandingHex;
+        public int BoundTurn = -1;
+        public bool SortieSeen;
+    }
+
     public sealed class AttackIntent : IGroundCombatOperation, IMissionObjective
     {
         MissionKind IMissionObjective.Kind => MissionKind.Attack;
@@ -429,13 +440,10 @@ namespace Game.Ai.V2
         // AttackMissionPhase.GatherReturn legs). Continuity picks each one's base and drops it on
         // arrival or loss; the operation's own Phase never becomes GatherReturn.
         public List<AttackGatherReturn> GatherReturns = new List<AttackGatherReturn>();
-        // Air support of the fist (AttackMissionPhase.AirSupport legs): the bound wing, where it
-        // lands, the turn it was bound, whether its sortie has been seen flying, and the turn a
-        // binding last ended (no second binding that turn). Continuity owns all five.
-        public int? AirSupportArmyId;
-        public HexCoord? AirSupportLandingHex;
-        public int AirSupportBoundTurn = -1;
-        public bool AirSupportSortieSeen;
+        // Air support of the fist (AttackMissionPhase.AirSupport legs): the bound wings (at most
+        // AiConfigV2.attackAirSupportMaxWings, one AirSupport leg each) and the turn a binding
+        // last ended (no new binding that turn). Continuity owns both.
+        public List<AttackAirWing> AirSupportWings = new List<AttackAirWing>();
         public int AirSupportAttemptedTurn = -1;
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;

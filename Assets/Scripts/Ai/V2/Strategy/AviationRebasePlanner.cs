@@ -100,6 +100,11 @@ namespace Game.Ai.V2
         // Targets of existing ground-combat tasks that want air support and have no wing yet.
         // `includeGather` — production's question (NonCombatCardPlayer.KnownStrikeTargets): a live
         // Gather may have its strike PRODUCED and stored; only an Assault forms and flies a wing.
+        // 2026-11-13 (owner) — an Attack asks one request per free wing slot
+        // (AiConfigV2.attackAirSupportMaxWings less the wings it holds): coverage
+        // (GroundCombatAirSupport.UncoveredRequests) gives each copy its own wing, so one light
+        // frame no longer covers the whole operation and the slot it leaves is a strike a missile
+        // or a bomb can be produced, deployed or rebased for.
         internal static List<CombatAirSupportRequest> CombatSupportTargets(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, bool includeGather = false)
         {
@@ -115,11 +120,14 @@ namespace Game.Ai.V2
                 // the fist departs. It is never flown before the Assault (no premature strike).
                 if (a != null && (a.Phase == AttackMissionPhase.Assault
                         || includeGather && a.Phase == AttackMissionPhase.Gather)
-                    && !a.AirSupportArmyId.HasValue && a.AirSupportAttemptedTurn != turn)
+                    && a.AirSupportWings.Count < AiConfigV2.attackAirSupportMaxWings
+                    && a.AirSupportAttemptedTurn != turn)
                 {
                     var objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target);
-                    if (objective != null) targets.Add(new CombatAirSupportRequest(i.IntentKey,
-                        a.Target.Hex, AirStrikePolicy.Standard, objective.TaskScore));
+                    if (objective != null)
+                        for (int slot = a.AirSupportWings.Count; slot < AiConfigV2.attackAirSupportMaxWings; slot++)
+                            targets.Add(new CombatAirSupportRequest(i.IntentKey,
+                                a.Target.Hex, AirStrikePolicy.Standard, objective.TaskScore));
                 }
                 RaidIntent r = i.Raid;
                 if (r != null && r.Target.Kind == RaidTargetKind.NeutralArmy
@@ -136,6 +144,7 @@ namespace Game.Ai.V2
                 .Where(i => i?.Status == IntentStatus.Active
                     && i.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport)
                 .Select(i => i.ActiveDefence.EnemyArmyId));
+            var defenceKeys = new HashSet<MissionIntentKey>();
             foreach (ActiveDefenceObjective o in GroundCombatAirSupport.AirSupportObjectives(snap, activeIntents))
                 if (!supported.Contains(o.Target.EnemyArmyId)
                     && (o.Target.InterceptPurpose != ActiveDefenceInterceptPurpose.PreparationStrike
@@ -144,10 +153,12 @@ namespace Game.Ai.V2
                 {
                     ActiveDefenceMissionTarget target = o.Target;
                     target.Phase = ActiveDefencePhase.AirSupport;
-                    targets.Add(GroundCombatAirSupport.AirSupportRequest(target, o.TaskScore));
+                    CombatAirSupportRequest request = GroundCombatAirSupport.AirSupportRequest(target, o.TaskScore);
+                    // One request per defence key; an Attack keeps one per free wing slot.
+                    if (defenceKeys.Add(request.Key))
+                        targets.Add(request);
                 }
-            return targets.GroupBy(t => t.Key).Select(g => g.First())
-                .OrderByDescending(t => t.Score.Value).ThenBy(t => t.Key.ToString()).ToList();
+            return targets.OrderByDescending(t => t.Score.Value).ThenBy(t => t.Key.ToString()).ToList();
         }
 
         private static AviationRebasePlan BuildCombatFormation(WorldSnapshot snap, PlayerSetupData player,
@@ -156,8 +167,10 @@ namespace Game.Ai.V2
         {
             if (snap == null || activeIntents == null)
                 return null;
+            // One open request per Attack is enough to pick the best stored group for it.
             List<CombatAirSupportRequest> targets = GroundCombatAirSupport.UncoveredRequests(
-                snap, player, root, ctx, CombatSupportTargets(snap, activeIntents), commitments);
+                snap, player, root, ctx, CombatSupportTargets(snap, activeIntents), commitments)
+                .GroupBy(r => r.Identity).Select(g => g.First()).ToList();
             AviationRebasePlan best = null;
             int bestEta = int.MaxValue, bestRoute = int.MaxValue;
             foreach ((ArmyData source, IReadOnlyList<UnitData> group) in AffordableStoredGroups(player, root, ctx))
