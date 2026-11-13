@@ -437,7 +437,8 @@ namespace Game.Ai.V2
                 || ReconObjectiveEvaluator.HostileStructureDefense(snap, target.Hex) <= 0f)
                 return true;
             if (fist != null && (DisruptionRules.HasCarrier(fist.MembersWithHeroes)
-                    || DisruptionRules.HasCarrier(fist.Members)))
+                    || DisruptionRules.HasCarrier(fist.Members)
+                    || DisruptionRules.HasCarrier(fist.Commander.SupportHeroes)))
                 return true;
             if ((snap.Self.Armies ?? (IReadOnlyList<ArmySnapshot>)Array.Empty<ArmySnapshot>()).Any(a => a != null
                     && !a.IsAir && !a.IsPrison && a.Hex.Equals(target.Hex)

@@ -270,8 +270,10 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                ArmySnapshot entering = GroundCombatAssemblyPlanner.ProjectedDepartureArmies(snap, plan)
+                    .TryGetValue(actor.ArmyId, out ArmySnapshot projectedFist) ? projectedFist : actor;
                 bool observedDefence = AttackObjectiveEvaluator.AssaultEntryReady(snap,
-                    assaultObjective.Target, actor, out string intelWhy);
+                    assaultObjective.Target, entering, out string intelWhy);
                 if (!observedDefence && HexGridMath.Distance(actor.Hex, assaultObjective.Hex) <= 1
                     && !local.IsLocalFight)
                 {
@@ -312,13 +314,18 @@ namespace Game.Ai.V2
                 if (intermediate == null && !local.IsLocalFight
                     && distance <= (GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, plan)
                         ?? actor.CurrentMovement)
-                    && AttackMarchPolicy.WaitForDisruption(snap, actor, assaultObjective.Hex,
-                        out string disruptionWhy, plan))
+                    && !AttackObjectiveEvaluator.HasAssaultDisruption(snap, assaultObjective.Target, entering,
+                        out string disruptionWhy))
                 {
+                    // 2026-11-13 (owner, P1) — the fist that would enter this turn waits for the
+                    // carrier. Only a carrier delivering this very turn keeps the operation protected
+                    // (the old WaitForDisruption bound); otherwise the ordinary stall lifecycle runs,
+                    // so a carrier that never comes cannot hold the operation forever.
                     if (incumbent != null)
                     {
                         assaultWhy[incumbent.IntentKey] = disruptionWhy;
-                        incumbent.LastProtectedTurn = snap.TurnNumber;
+                        if (AttackSupportProjection.CountedCarrier(snap, assaultObjective.Hex, 0).HasValue)
+                            incumbent.LastProtectedTurn = snap.TurnNumber;
                     }
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#disruption-wait",
                         $"[AI][V2][Attack][Disruption] HOLD {disruptionWhy} target={objective.Target.DiagnosticLabel}");

@@ -82,8 +82,9 @@ namespace Game.EditorTests
                     Attack = attack, Cost = slag.resourceCost, Source = "hand:slag-lobber", RosterKey = "slag-lobber",
                 };
                 var ctx = new AiTurnContext { TurnNumber = 22 };
+                AiHandData hand = AiHandRegistry.GetOrCreate(player, null, 0);
                 bool Allowed(ResourceCost cost, int? recipient, CardData card = null) =>
-                    PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, need, cost, card, recipient, "test", out _);
+                    PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, hand, need, cost, card, recipient, "test", out _);
 
                 Assert.That(Allowed(new ResourceCost(tech: 3), other.Id), Is.True,
                     "Research for 3 Tech of 5 leaves the 2 Tech the card needs: allowed");
@@ -92,7 +93,6 @@ namespace Game.EditorTests
                 Assert.That(Allowed(new ResourceCost(human: 4), other.Id), Is.True, "Human is not reserved");
                 Assert.That(Allowed(new ResourceCost(tech: 5), host.Id), Is.True, "a spend into the host is never held");
 
-                AiHandData hand = AiHandRegistry.GetOrCreate(player, null, 0);
                 var card = new CardData(slag);
                 hand.AddCard(card);
                 Assert.That(Allowed(new ResourceCost(), other.Id, card), Is.False,

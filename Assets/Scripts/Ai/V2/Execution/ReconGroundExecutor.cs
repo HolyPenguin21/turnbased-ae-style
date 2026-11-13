@@ -387,11 +387,11 @@ namespace Game.Ai.V2
             next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, next.Value);
             // 2026-11-13 (owner) — the delivery a fist entering this turn backs ignores detectors
             // (AttackSupportProjection.DetectorIgnoredForDelivery); every other delivery keeps them.
-            bool deliveryIgnoresDetectors = ReconScoutKinds.IsDisruption(pm.ScoutKind) && snapshot != null
-                && AttackSupportProjection.DetectorIgnoredForDelivery(snapshot, pm.FocusHex);
             if (!next.HasValue || (ReconScoutKinds.IsDisruption(pm.ScoutKind)
                 && (ScoutRiskModel.StepBlocked(player, army, next.Value)
-                    || (!deliveryIgnoresDetectors && ScoutRiskModel.DetectorRiskLive(player, next.Value) >= 1f)))
+                    || (ScoutRiskModel.DetectorRiskLive(player, next.Value) >= 1f
+                        && !(snapshot != null
+                            && AttackSupportProjection.DetectorIgnoredForDelivery(snapshot, pm.FocusHex)))))
                 || (reaction.Action == ReconReactionAction.Flee
                 && ScoutRiskModel.StepBlocked(player, army, next.Value)))
             {

@@ -51,22 +51,23 @@ namespace Game.Ai.V2
         // now. A full garrison is left only the swap of a weak body for a stronger card
         // (AttackBaseRefitPolicy, RefitWindow.GarrisonFloor). Match 2026-11-13: Korrin's 4-slot
         // Base (-1,-3) asked 94.9 — unreachable — and the demand never ended.
-        // `bodiesInFlight` — relief bodies already walking there take their slots first.
-        // MaxValue when the garrison's capacity is unknown (hand-built snapshots).
-        internal static float GarrisonHandGainCap(WorldSnapshot snap, ArmySnapshot garrison, int bodiesInFlight)
+        // Free slots are the one relief rule (GarrisonReliefObjectiveEvaluator.RecipientFreeSlots:
+        // relief bodies already walking there take theirs first). MaxValue when the garrison's
+        // capacity is unknown (hand-built snapshots).
+        internal static float GarrisonHandGainCap(WorldSnapshot snap, ArmySnapshot garrison)
         {
-            if (garrison == null || garrison.Capacity <= 0)
+            int free = GarrisonReliefObjectiveEvaluator.RecipientFreeSlots(snap, garrison);
+            if (garrison == null || free == int.MaxValue)
                 return float.MaxValue;
             List<AiPower.PowerUnit> held = (garrison.Members ?? System.Array.Empty<WorthIt.DefenderProfile>())
                 .Where(AiArmyRoles.IsGroundBattleBody).Select(p => AiPower.ToPowerUnit(p)).ToList();
-            int occupied = Mathf.Max(garrison.OccupiedBattleSlots, garrison.MemberCount);
-            int bodySlots = garrison.Capacity - Mathf.Max(0, occupied - held.Count) - Mathf.Max(0, bodiesInFlight);
+            int bodySlots = held.Count + free;
             if (bodySlots <= 0)
                 return 0f;
             float now = AiPower.EffectiveArmyPower(held);
             IReadOnlyList<StrikeRosterCandidate> pool = snap?.Self?.StrikePool;
             if (pool == null || pool.Count == 0)
-                return Mathf.Max(0, bodySlots - held.Count) * AiConfigV2.combatPowerPerBodyEstimate;
+                return Mathf.Max(0, free) * AiConfigV2.combatPowerPerBodyEstimate;
             List<AiPower.PowerUnit> reach = held
                 .Concat(pool.Where(c => c.Slot.Source != ForceSource.Map && !c.Slot.IsHero).Select(c => c.Unit))
                 .OrderByDescending(u => u.BasePower)
@@ -93,9 +94,7 @@ namespace Game.Ai.V2
                     continue;
                 float shortfall = HeldBaseGarrisonShortfall(snap, garrison, out float floor)
                     - GarrisonReliefObjectiveEvaluator.InFlightReliefPower(snap, baseHex);
-                // P2 (2026-11-13): relief bodies already walking there take their slots first.
-                float fits = GarrisonHandGainCap(snap, garrison,
-                    GarrisonReliefObjectiveEvaluator.InFlightReliefBodies(snap, baseHex));
+                float fits = GarrisonHandGainCap(snap, garrison);
                 float desired = Mathf.Min(shortfall, fits);
                 if (desired <= AiConfigV2.allocatorSliceEpsilon)
                 {

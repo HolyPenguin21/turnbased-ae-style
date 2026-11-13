@@ -163,7 +163,7 @@ namespace Game.Ai.V2
                 .Select(d => d.Value).DefaultIfEmpty(float.NegativeInfinity).Max();
             if (demand.Value >= hostValue)
                 return true;
-            return LeavesRosterFunding(pass.Player, pass.Root, pass.Ctx, need, plan.FundingCost,
+            return LeavesRosterFunding(pass.Player, pass.Root, pass.Ctx, pass.Hand, need, plan.FundingCost,
                 plan.BaseCardInHand, plan.Deploy.Army?.Id ?? plan.DevelopmentUpgrade?.RecipientArmyId,
                 $"demand {demand.Value.ToString("0.##", CultureInfo.InvariantCulture)} < host "
                 + hostValue.ToString("0.##", CultureInfo.InvariantCulture), out why);
@@ -173,8 +173,8 @@ namespace Game.Ai.V2
         // facilities, repairs). `card` — the card the spend plays, if any; `recipientArmyId` — the
         // army it goes into, if known (the host itself is always allowed).
         internal static bool LeavesRosterFunding(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            StrikeSupportNeed need, ResourceCost cost, CardData card, int? recipientArmyId, string spender,
-            out string why)
+            AiHandData hand, StrikeSupportNeed need, ResourceCost cost, CardData card, int? recipientArmyId,
+            string spender, out string why)
         {
             why = null;
             if (need?.Cost == null || player == null || !need.Attack.PrimaryArmyId.HasValue)
@@ -193,7 +193,7 @@ namespace Game.Ai.V2
             string key = StrikeRoster.CardKey(card?.Definition);
             if (key != null && missing.TryGetValue(key, out int waited))
             {
-                int held = AiHandRegistry.Peek(player)?.Hand?.Count(c => StrikeRoster.CardKey(c?.Definition) == key) ?? 0;
+                int held = hand?.Hand?.Count(c => StrikeRoster.CardKey(c?.Definition) == key) ?? 0;
                 if (held <= waited)
                 {
                     why = $"roster_card_reserved:{need.Operation.IntentKey} {card.Definition.displayName} "

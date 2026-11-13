@@ -312,7 +312,7 @@ namespace Game.Ai.V2
             // An upgrade outside the live Attack's fist leaves that operation's strike its
             // resources (PhaseAOperationSupport.LeavesStrikeSupport); the demand is done this pass.
             if (!PhaseAOperationSupport.LeavesStrikeSupport(pass, plan, out string strikeWhy)
-                || !PhaseAOperationSupport.LeavesRosterFunding(pass.Player, pass.Root, pass.Ctx,
+                || !PhaseAOperationSupport.LeavesRosterFunding(pass.Player, pass.Root, pass.Ctx, pass.Hand,
                     pass.RosterFunding, plan.FundingCost, null, plan.DevelopmentUpgrade?.RecipientArmyId,
                     "upgrade", out strikeWhy))
             {

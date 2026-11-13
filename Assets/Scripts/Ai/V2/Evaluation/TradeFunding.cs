@@ -285,7 +285,7 @@ namespace Game.Ai.V2
                         surplus += Mathf.Max(0f, Mathf.Floor(stock[i] - Mathf.Max(protect[i], need)));
                 }
                 if (units == 0 || units > AiConfigV2.tradeMaxPreviewUnits) continue;
-                long price = (long)units * rate + (long)units * (units - 1) / 2;
+                long price = TradeActions.Price(rate, units);
                 if (surplus + AiConfigV2.allocatorSliceEpsilon >= price)
                     best = ap;
             }

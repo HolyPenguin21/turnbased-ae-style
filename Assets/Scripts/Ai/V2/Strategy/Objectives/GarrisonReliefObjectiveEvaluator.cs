@@ -167,13 +167,11 @@ namespace Game.Ai.V2
         // threats IsPinnedStrongholdDefender reads). Null: no positioned threat with an ETA.
         private static int? RecipientEnemyEta(WorldSnapshot snap, HexCoord recipient)
         {
-            int? eta = null;
-            foreach (AssetThreatSnapshot t in snap?.Threat?.Threats ?? Enumerable.Empty<AssetThreatSnapshot>())
-                if (t?.Asset != null && t.Asset.Hex.Equals(recipient) && t.CanDamage && t.EnemyEta.HasValue
-                    && ActiveDefenceObjectiveEvaluator.IsHonestPositionedHostile(t)
-                    && (!eta.HasValue || t.EnemyEta.Value < eta.Value))
-                    eta = t.EnemyEta.Value;
-            return eta;
+            List<AssetThreatSnapshot> threats = (snap?.Threat?.Threats ?? Enumerable.Empty<AssetThreatSnapshot>())
+                .Where(t => t?.Asset != null && t.Asset.Hex.Equals(recipient) && t.CanDamage && t.EnemyEta.HasValue
+                    && ActiveDefenceObjectiveEvaluator.IsHonestPositionedHostile(t))
+                .ToList();
+            return threats.Count == 0 ? null : AiV2Util.AtEarliestKnownThreatDeadline(threats).First().EnemyEta;
         }
 
         private static GarrisonReliefObjective Detachment(WorldSnapshot snap, HexCoord recipient,

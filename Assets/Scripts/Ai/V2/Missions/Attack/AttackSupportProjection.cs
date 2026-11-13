@@ -249,7 +249,10 @@ namespace Game.Ai.V2
         internal static bool DetectorIgnoredForDelivery(WorldSnapshot snap, HexCoord targetHex)
         {
             MissionIntent assault = ReconObjectiveEvaluator.LiveAssaultAt(snap, targetHex);
-            int? fistId = assault?.Attack?.PrimaryArmyId ?? assault?.PreferredMoverArmyId;
+            // A Gather is still assembling: its fist does not enter this turn.
+            if (assault?.Attack == null || assault.Attack.Phase == AttackMissionPhase.Gather)
+                return false;
+            int? fistId = assault.Attack.PrimaryArmyId ?? assault.PreferredMoverArmyId;
             ArmySnapshot fist = fistId.HasValue
                 ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == fistId.Value) : null;
             return fist != null && ArmyEta(snap, fist, targetHex) == 0;
@@ -263,7 +266,7 @@ namespace Game.Ai.V2
         // whose fist has no carrier makes the DisruptStructure objective
         // (ReconObjectiveEvaluator.AssaultNeedsDisruption) with Attack's priority, and the leg it
         // opens is what CountedCarrier counts from then on; the terminal step waits for it
-        // (AttackMarchPolicy.WaitForDisruption). Without it the planner saw the structure bonus
+        // (AttackObjectiveEvaluator.HasAssaultDisruption). Without it the planner saw the structure bonus
         // and swapped a combat body out of the 8-slot fist for a weak in-fist carrier (Crawler ->
         // Scout) while two free stealth Scouts stood by.
         internal static int? FreeCarrier(WorldSnapshot snap, HexCoord targetHex, int armyEta)

@@ -434,16 +434,6 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (next.Value.Equals(targetHex) && !fightsContact
-                && AttackMarchPolicy.WaitForDisruption(snapshot,
-                    WorldAnalysis.ToArmySnapshot(army, player, true, 0, snapshot?.Intents, ctx),
-                    targetHex, out string disruptionWhy))
-            {
-                result.StopForReplan(ExecutionStopReason.NoSafeStep);
-                result.TacticalBlockReason = disruptionWhy;
-                AiDebugLog.Write($"[AI][V2][Attack][Disruption] #{army.Id} HOLD {disruptionWhy}; no payment or movement");
-                yield break;
-            }
             // 2026-11-13 (owner, P1) — the step to distance 1 of a structure-defended target waits
             // until the carrier can arrive no later than the fist (AttackMarchPolicy.MayApproachAssault).
             if (fistNow != null && !intercept && !next.Value.Equals(targetHex)

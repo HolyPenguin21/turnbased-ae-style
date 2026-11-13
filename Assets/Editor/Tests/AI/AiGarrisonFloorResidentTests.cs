@@ -110,18 +110,34 @@ namespace Game.EditorTests
             float weakest = AiPower.ToPowerUnit(garrison.Members[0]).BasePower;
             var snap = new WorldSnapshot { Observer = Us, Self = new SelfSnapshot
                 { StrikePool = new List<StrikeRosterCandidate> { Card("weak", weakest * 0.5f) } } };
-            Assert.That(AggressionDemandEvaluator.GarrisonHandGainCap(snap, garrison, 0), Is.Zero,
+            Assert.That(AggressionDemandEvaluator.GarrisonHandGainCap(snap, garrison), Is.Zero,
                 "full garrison, no stronger card: the hand cannot add anything");
 
             snap.Self.StrikePool = new List<StrikeRosterCandidate> { Card("tank", weakest * 3f) };
-            float swap = AggressionDemandEvaluator.GarrisonHandGainCap(snap, garrison, 0);
+            float swap = AggressionDemandEvaluator.GarrisonHandGainCap(snap, garrison);
             Assert.That(swap, Is.GreaterThan(0f), "a stronger card may still replace the weakest body");
             Assert.That(swap, Is.LessThan(weakest * 3f));
 
             snap.Self.StrikePool = new List<StrikeRosterCandidate> { Card("weak", weakest * 0.5f) };
             garrison.MemberCount = 2; garrison.OccupiedBattleSlots = 2;
             garrison.Members = garrison.Members.Take(2).ToList();
-            Assert.That(AggressionDemandEvaluator.GarrisonHandGainCap(snap, garrison, 2), Is.Zero,
+            // Two relief bodies already walking there take the two free slots (RecipientFreeSlots).
+            var walking = new ArmySnapshot { ArmyId = 31, Owner = Us, Hex = new HexCoord(2, -6), MemberCount = 2,
+                Members = new List<WorthIt.DefenderProfile> { Profile(3), Profile(3) } };
+            snap.Self.Armies = new List<ArmySnapshot> { garrison, walking };
+            var state = new MissionIntentState();
+            var relief = new MissionIntent
+            {
+                Kind = MissionKind.ActiveDefence, Status = IntentStatus.Active,
+                Objective = new ActiveDefenceIntent { Phase = ActiveDefencePhase.Return,
+                    ReturnPurpose = ActiveDefenceReturnPurpose.GarrisonRelief, EnemyArmyId = -1,
+                    PrimaryArmyId = 31, ReturnHex = BaseHex, ProtectedAssetHex = BaseHex,
+                    ProtectedAssetKind = AssetKind.Base },
+            };
+            relief.IntentKey = MissionIntentKey.For(relief);
+            state.Put(relief);
+            snap.Intents = state;
+            Assert.That(AggressionDemandEvaluator.GarrisonHandGainCap(snap, garrison), Is.Zero,
                 "two relief bodies already walking there take the two free slots");
         }
     }

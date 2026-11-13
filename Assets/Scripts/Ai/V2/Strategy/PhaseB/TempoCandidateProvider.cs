@@ -103,7 +103,7 @@ namespace Game.Ai.V2
                     || result.Reservation.ClaimsEconomyBuildCard(mat.Plan?.EquipmentInHand))
                     continue;
                 // P7 (2026-11-13) — the live preparation's roster reserve (PhaseAOperationSupport).
-                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, result.RosterFunding,
+                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, hand, result.RosterFunding,
                         mat.Plan?.FundingCost, mat.Plan?.BaseCardInHand, mat.Plan?.Deploy.Army?.Id,
                         "phaseB card", out string matRosterWhy))
                 {
@@ -138,7 +138,7 @@ namespace Game.Ai.V2
                     nonCombatBlocked.Add($"{nc.Card?.Definition?.displayName}:{strikeWhy}");
                     continue;
                 }
-                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, result.RosterFunding,
+                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, hand, result.RosterFunding,
                         nc.FundingCost, nc.Card,
                         nc.EquipHost != null ? OwnWorld.Of(player)?.ArmyContaining(nc.EquipHost)?.Id : null,
                         "phaseB " + nc.Kind, out string ncRosterWhy))
@@ -221,7 +221,7 @@ namespace Game.Ai.V2
             foreach (StrategicSpendCandidate sp in StrategicMaintenancePolicy.EnumerateCandidates(
                 player, root, hand, ctx, snap, phaseBWitnessedApDemand))
             {
-                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, result.RosterFunding,
+                if (!PhaseAOperationSupport.LeavesRosterFunding(player, root, ctx, hand, result.RosterFunding,
                         TradeFunding.PricedCost(player, root, ctx, sp.ResCost), null, null,
                         "maintenance", out string spRosterWhy))
                 {

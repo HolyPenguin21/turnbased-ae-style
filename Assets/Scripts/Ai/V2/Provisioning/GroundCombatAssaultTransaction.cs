@@ -99,8 +99,8 @@ namespace Game.Ai.V2
             if (assigned != null && proposal.Target is AttackMissionTarget assault
                 && HexGridMath.Distance(assigned.Hex, assault.AssaultTarget.Hex) <= 1
                 && !assault.Local.IsLocalFight
-                && !AttackObjectiveEvaluator.AssaultEntryReady(session.Snapshot,
-                    assault.AssaultTarget, assigned, out string intelWhy))
+                && !AttackObjectiveEvaluator.HasAssaultObservation(session.Snapshot,
+                    assault.AssaultTarget, out string intelWhy))
             {
                 failure = ProvisionFailure.MoverContended(
                     $"attack #{actorId} awaits observation before entry: {intelWhy}");
@@ -157,6 +157,18 @@ namespace Game.Ai.V2
                 // is transient (e.g. a donor became unavailable), not target infeasibility.
                 failure = ProvisionFailure.MoverContended(
                     $"{lane} {key} assigned actor #{actorId} / eligible donors unavailable: {plan.Reason}");
+                return null;
+            }
+            // 2026-11-13 (owner, P1) — the entry gate's Disruption half, on the roster that departs.
+            if (assigned != null && proposal.Target is AttackMissionTarget entry
+                && HexGridMath.Distance(assigned.Hex, entry.AssaultTarget.Hex) <= 1 && !entry.Local.IsLocalFight
+                && !AttackObjectiveEvaluator.HasAssaultDisruption(session.Snapshot, entry.AssaultTarget,
+                    GroundCombatAssemblyPlanner.ProjectedDepartureArmies(session.Snapshot, plan)
+                        .TryGetValue(actorId, out ArmySnapshot departing) ? departing : assigned,
+                    out string disruptionWhy))
+            {
+                failure = ProvisionFailure.MoverContended(
+                    $"attack #{actorId} awaits Disruption before entry: {disruptionWhy}");
                 return null;
             }
             return plan;
