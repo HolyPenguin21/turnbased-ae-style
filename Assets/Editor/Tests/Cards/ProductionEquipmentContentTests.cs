@@ -172,7 +172,7 @@ namespace Game.EditorTests
         [TestCase("Reinforced Chassis", 5, 3, 12, 6, 2)]
         [TestCase("Reactive Armor", 5, 5, 10, 6, 2)]
         [TestCase("Turbocharger", 5, 3, 10, 7, 2)]
-        [TestCase("Dozer Blade", 6, 4, 10, 6, 2)]
+        [TestCase("Assault Cannon Kit", 6, 4, 10, 6, 2)]
         [TestCase("Siege Ram", 7, 3, 10, 6, 1)]
         [TestCase("Mortar Rack", 5, 3, 10, 5, 3)]
         [TestCase("Flame Projector", 6, 3, 10, 6, 1)]
@@ -231,7 +231,7 @@ namespace Game.EditorTests
                 .Concat(name == "Rail Rifle" ? new[] { UnitAbilities.Hyperkinetic } : Array.Empty<string>())));
         }
 
-        [TestCase("Dozer Blade")]
+        [TestCase("Assault Cannon Kit")]
         [TestCase("Siege Ram")]
         [TestCase("Mortar Rack")]
         [TestCase("Flame Projector")]
@@ -362,7 +362,7 @@ namespace Game.EditorTests
 
         [TestCase("Optical Scope")]
         [TestCase("Mobility Harness")]
-        [TestCase("Dozer Blade")]
+        [TestCase("Assault Cannon Kit")]
         [TestCase("Assault Conversion Kit")]
         public void InfantryAddonsPreserveExistingWeaponAndUtilityAbilities(string name)
         {
@@ -440,7 +440,7 @@ namespace Game.EditorTests
         }
         private static readonly string[] PartNames = { "Ballistic Shield", "Assault Rifle Kit", "Optical Scope",
             "Armor Plate", "Reinforced Chassis", "Reactive Armor", "Ceramic Vest", "Ceramic Plating",
-            "Mobility Harness", "Servo Actuators", "Turbocharger", "Nuclear Engine", "Dozer Blade", "Assault Conversion Kit" };
+            "Mobility Harness", "Servo Actuators", "Turbocharger", "Nuclear Engine", "Assault Cannon Kit", "Assault Conversion Kit" };
 
         [Test]
         public void EveryWeaponHasOwnAttackAndRangeOnEveryCompatibleHostAndMutator()

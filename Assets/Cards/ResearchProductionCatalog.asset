@@ -130,7 +130,7 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.vehicle.aa-mount
     factionRestriction: 2
-  - cardKey: neutral.equipment.vehicle.dozer-blade
+  - cardKey: neutral.equipment.vehicle.assault-cannon-kit
     factionRestriction: 2
   - cardKey: neutral.equipment.vehicle.siege-ram
     factionRestriction: 2
