@@ -2484,6 +2484,57 @@ MonoBehaviour:
         amount: 2
         isOverride: 1
   - id: 46
+    authoredKey: neutral.equipment.vehicle.assault-cannon-kit
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Assault Cannon Kit
+    art: {fileID: 21300000, guid: f0b238d3abebd2347a557d6412eecbdc, type: 3}
+    detailArt: {fileID: 21300000, guid: 130990f87dd193e4094dc5dbf8e615cc, type: 3}
+    faction: 2
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 0400000005000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 1
+        isOverride: 0
+  - id: 47
     authoredKey: neutral.equipment.infantry.ceramic-vest
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2532,7 +2583,7 @@ MonoBehaviour:
       addAbilities:
       - CeramicArmor
       statChanges: []
-  - id: 47
+  - id: 48
     authoredKey: neutral.equipment.mechanical.ceramic-plating
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2581,7 +2632,7 @@ MonoBehaviour:
       addAbilities:
       - CeramicArmor
       statChanges: []
-  - id: 48
+  - id: 49
     authoredKey: neutral.equipment.infantry.grenade-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2647,7 +2698,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 49
+  - id: 50
     authoredKey: neutral.equipment.infantry.incendiary-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2713,7 +2764,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 50
+  - id: 51
     authoredKey: neutral.equipment.bio.flamer
     deckPointCost: 2
     deckCopyLimit: 1
@@ -2780,7 +2831,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 51
+  - id: 52
     authoredKey: neutral.equipment.infantry.shock-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2846,7 +2897,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 52
+  - id: 53
     authoredKey: neutral.equipment.infantry.twin-smg
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2912,7 +2963,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 53
+  - id: 54
     authoredKey: neutral.equipment.infantry.portable-mortar
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2981,7 +3032,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 54
+  - id: 55
     authoredKey: neutral.equipment.infantry.recoil-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3049,7 +3100,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 55
+  - id: 56
     authoredKey: neutral.equipment.armored.artillery-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3114,7 +3165,7 @@ MonoBehaviour:
       - stat: 3
         amount: 3
         isOverride: 1
-  - id: 56
+  - id: 57
     authoredKey: neutral.equipment.infantry.aa-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3180,7 +3231,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 57
+  - id: 58
     authoredKey: neutral.equipment.vehicle.autocannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3245,7 +3296,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 58
+  - id: 59
     authoredKey: neutral.equipment.vehicle.he-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3311,7 +3362,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 59
+  - id: 60
     authoredKey: neutral.equipment.bio.at-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3377,7 +3428,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 60
+  - id: 61
     authoredKey: neutral.equipment.vehicle.flame-projector
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3444,7 +3495,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 61
+  - id: 62
     authoredKey: neutral.equipment.vehicle.shock-projector
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3510,7 +3561,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 62
+  - id: 63
     authoredKey: neutral.equipment.vehicle.aa-mount
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3576,7 +3627,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 63
+  - id: 64
     authoredKey: neutral.equipment.infantry-missile
     deckPointCost: 2
     deckCopyLimit: 1
@@ -3642,7 +3693,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 64
+  - id: 65
     authoredKey: neutral.equipment.vehicle-missile
     deckPointCost: 2
     deckCopyLimit: 1
@@ -3708,7 +3759,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 65
+  - id: 66
     authoredKey: neutral.equipment.air-missile
     deckPointCost: 2
     deckCopyLimit: 1
@@ -3774,7 +3825,7 @@ MonoBehaviour:
       - stat: 3
         amount: 0
         isOverride: 1
-  - id: 66
+  - id: 67
     authoredKey: neutral.equipment.air-bomb-3
     deckPointCost: 2
     deckCopyLimit: 1
@@ -3841,7 +3892,7 @@ MonoBehaviour:
       - stat: 3
         amount: 0
         isOverride: 1
-  - id: 67
+  - id: 68
     authoredKey: neutral.equipment.air-bomb-5
     deckPointCost: 3
     deckCopyLimit: 1
@@ -3908,60 +3959,6 @@ MonoBehaviour:
       - stat: 3
         amount: 0
         isOverride: 1
-  - id: 68
-    authoredKey: neutral.equipment.vehicle.assault-cannon-kit
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Assault Cannon Kit
-    art: {fileID: 21300000, guid: f0b238d3abebd2347a557d6412eecbdc, type: 3}
-    detailArt: {fileID: 21300000, guid: 130990f87dd193e4094dc5dbf8e615cc, type: 3}
-    faction: 2
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 0400000005000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 1
-        isOverride: 0
-      - stat: 1
-        amount: 1
-        isOverride: 0
   - id: 69
     authoredKey: neutral.equipment.vehicle.siege-ram
     deckPointCost: 1
