@@ -1695,6 +1695,57 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 32
+    authoredKey: neutral.equipment.mechanical.armor-plate
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Armor Plate
+    art: {fileID: 21300000, guid: 256d9285399b10f40b2d7111eeb46e30, type: 3}
+    detailArt: {fileID: 21300000, guid: 8c4a1ef0f3a71d443831e2dd4280a659, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 01000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 1
+        amount: 1
+        isOverride: 0
+  - id: 33
     authoredKey: neutral.equipment.infantry.ballistic-shield
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1745,7 +1796,7 @@ MonoBehaviour:
       - stat: 1
         amount: 1
         isOverride: 0
-  - id: 33
+  - id: 34
     authoredKey: neutral.equipment.infantry.assault-rifle-kit
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1761,8 +1812,8 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 1
-      materials: 1
-      tech: 0
+      materials: 0
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
@@ -1796,7 +1847,189 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
-  - id: 34
+  - id: 35
+    authoredKey: neutral.equipment.bio.claws
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Claws
+    art: {fileID: 21300000, guid: f200a00df07ad50489e13d79b95241d4, type: 3}
+    detailArt: {fileID: 21300000, guid: 8191c7bdc214335499b0c93efa323474, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
+      addAbilities:
+      - Hyperkinetic
+      statChanges:
+      - stat: 0
+        amount: 5
+        isOverride: 1
+      - stat: 3
+        amount: 1
+        isOverride: 1
+  - id: 36
+    authoredKey: neutral.equipment.infantry.marksman-rifle
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Marksman Rifle
+    art: {fileID: 21300000, guid: 61081d1b99b911d48952963fae9264c5, type: 3}
+    detailArt: {fileID: 21300000, guid: ef240b547a38ad841847e27f26ca4c45, type: 3}
+    faction: 2
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 4
+        isOverride: 1
+      - stat: 3
+        amount: 3
+        isOverride: 1
+  - id: 37
+    authoredKey: neutral.equipment.infantry.mobility-harness
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Mobility Harness
+    art: {fileID: 21300000, guid: 0321765228ae4c95ab5f761bac9262e6, type: 3}
+    detailArt: {fileID: 21300000, guid: f62d90db95f6483d9d1d812e8ab0c49c, type: 3}
+    faction: 2
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 0300000008000000
+      hostKinds: 0000000001000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 5
+        amount: 1
+        isOverride: 0
+  - id: 38
     authoredKey: neutral.equipment.infantry.optical-scope
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1811,8 +2044,8 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 0
-      materials: 1
+      energy: 1
+      materials: 0
       tech: 1
     requiredBuildingAbility: 
     moveMax: 0
@@ -1847,58 +2080,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 0
-  - id: 35
-    authoredKey: neutral.equipment.mechanical.reactive-armor
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Reactive Armor
-    art: {fileID: 21300000, guid: 8335c56dd784e504c8815731ab581383, type: 3}
-    detailArt: {fileID: 21300000, guid: 56d7550ef8e75544bbedff2675ffe4e3, type: 3}
-    faction: 2
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 01000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 1
-        amount: 2
-        isOverride: 0
-  - id: 36
+  - id: 39
     authoredKey: neutral.equipment.mechanical.reinforced-chassis
     deckPointCost: 1
     deckCopyLimit: 1
@@ -1949,14 +2131,14 @@ MonoBehaviour:
       - stat: 4
         amount: 2
         isOverride: 0
-  - id: 37
-    authoredKey: neutral.equipment.vehicle.turbocharger
+  - id: 40
+    authoredKey: neutral.equipment.mechanical.reactive-armor
     deckPointCost: 1
     deckCopyLimit: 1
     deckBuilderExcluded: 0
-    displayName: Turbocharger
-    art: {fileID: 21300000, guid: 899e046c9716ba245bcae3c6570be16c, type: 3}
-    detailArt: {fileID: 21300000, guid: 64990fc62c54fbe449217cde810b4754, type: 3}
+    displayName: Reactive Armor
+    art: {fileID: 21300000, guid: 8335c56dd784e504c8815731ab581383, type: 3}
+    detailArt: {fileID: 21300000, guid: 56d7550ef8e75544bbedff2675ffe4e3, type: 3}
     faction: 2
     cardType: 5
     tacticEffect: 0
@@ -1964,14 +2146,14 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 1
-      materials: 1
-      tech: 0
+      energy: 0
+      materials: 2
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 3
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -1991,67 +2173,16 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 04000000
+      hostTypeTags: 01000000
       hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
-      - stat: 5
-        amount: 1
+      - stat: 1
+        amount: 2
         isOverride: 0
-  - id: 38
-    authoredKey: neutral.equipment.infantry.mobility-harness
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Mobility Harness
-    art: {fileID: 21300000, guid: 0321765228ae4c95ab5f761bac9262e6, type: 3}
-    detailArt: {fileID: 21300000, guid: f62d90db95f6483d9d1d812e8ab0c49c, type: 3}
-    faction: 2
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 3
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 0300000008000000
-      hostKinds: 0000000001000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 5
-        amount: 1
-        isOverride: 0
-  - id: 39
+  - id: 41
     authoredKey: neutral.equipment.mechanical.servo-actuators
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2105,7 +2236,7 @@ MonoBehaviour:
       - stat: 5
         amount: 1
         isOverride: 0
-  - id: 40
+  - id: 42
     authoredKey: neutral.equipment.armored.at-vh-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2170,120 +2301,6 @@ MonoBehaviour:
         isOverride: 1
       - stat: 3
         amount: 2
-        isOverride: 1
-  - id: 41
-    authoredKey: neutral.equipment.infantry.ceramic-vest
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Ceramic Vest
-    art: {fileID: 21300000, guid: 1babbe881c34f324889cb1c9343510f6, type: 3}
-    detailArt: {fileID: 21300000, guid: eeeeea33ca1373247967c9896d7e9f60, type: 3}
-    faction: 2
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 03000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities:
-      - CeramicArmor
-      statChanges: []
-  - id: 42
-    authoredKey: neutral.equipment.infantry.marksman-rifle
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Marksman Rifle
-    art: {fileID: 21300000, guid: 61081d1b99b911d48952963fae9264c5, type: 3}
-    detailArt: {fileID: 21300000, guid: ef240b547a38ad841847e27f26ca4c45, type: 3}
-    faction: 2
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 03000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - Ionic
-      - Scorcher
-      - Splash
-      - CriticalDamage
-      - AA
-      - Explosion3
-      - Explosion5
-      - Explosion10
-      addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 4
-        isOverride: 1
-      - stat: 3
-        amount: 3
         isOverride: 1
   - id: 43
     authoredKey: neutral.equipment.infantry.shotgun
@@ -2351,6 +2368,220 @@ MonoBehaviour:
         amount: 1
         isOverride: 1
   - id: 44
+    authoredKey: neutral.equipment.vehicle.turbocharger
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Turbocharger
+    art: {fileID: 21300000, guid: 899e046c9716ba245bcae3c6570be16c, type: 3}
+    detailArt: {fileID: 21300000, guid: 64990fc62c54fbe449217cde810b4754, type: 3}
+    faction: 2
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 04000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 5
+        amount: 1
+        isOverride: 0
+  - id: 45
+    authoredKey: neutral.equipment.bio.heavy-mg
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Heavy MG
+    art: {fileID: 21300000, guid: 241d483b351130549a4cf5634570cc5e, type: 3}
+    detailArt: {fileID: 21300000, guid: 0c4b31a34f354a049a1ae91aaa511362, type: 3}
+    faction: 3
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Ionic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
+      - Explosion3
+      - Explosion5
+      - Explosion10
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 5
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
+  - id: 46
+    authoredKey: neutral.equipment.infantry.ceramic-vest
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Ceramic Vest
+    art: {fileID: 21300000, guid: 1babbe881c34f324889cb1c9343510f6, type: 3}
+    detailArt: {fileID: 21300000, guid: eeeeea33ca1373247967c9896d7e9f60, type: 3}
+    faction: 2
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - CeramicArmor
+      statChanges: []
+  - id: 47
+    authoredKey: neutral.equipment.mechanical.ceramic-plating
+    deckPointCost: 1
+    deckCopyLimit: 1
+    deckBuilderExcluded: 0
+    displayName: Ceramic Plating
+    art: {fileID: 21300000, guid: effc2e1b6ea4e454ab30bf45213c8d04, type: 3}
+    detailArt: {fileID: 21300000, guid: 65f426db3eb3f3f41b5a0eaca4c49024, type: 3}
+    faction: 2
+    cardType: 5
+    tacticEffect: 0
+    tacticAmount: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 01000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities:
+      - CeramicArmor
+      statChanges: []
+  - id: 48
     authoredKey: neutral.equipment.infantry.grenade-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2416,7 +2647,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 45
+  - id: 49
     authoredKey: neutral.equipment.infantry.incendiary-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2438,7 +2669,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 4
+    fate: 5
     attack: 0
     defenseRating: 0
     range: 0
@@ -2482,7 +2713,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 46
+  - id: 50
     authoredKey: neutral.equipment.bio.flamer
     deckPointCost: 2
     deckCopyLimit: 1
@@ -2549,7 +2780,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 47
+  - id: 51
     authoredKey: neutral.equipment.infantry.shock-rifle
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2615,7 +2846,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 48
+  - id: 52
     authoredKey: neutral.equipment.infantry.twin-smg
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2681,7 +2912,7 @@ MonoBehaviour:
       - stat: 3
         amount: 1
         isOverride: 1
-  - id: 49
+  - id: 53
     authoredKey: neutral.equipment.infantry.portable-mortar
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2750,7 +2981,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 50
+  - id: 54
     authoredKey: neutral.equipment.infantry.recoil-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2818,58 +3049,7 @@ MonoBehaviour:
       - stat: 5
         amount: -1
         isOverride: 0
-  - id: 51
-    authoredKey: neutral.equipment.mechanical.armor-plate
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Armor Plate
-    art: {fileID: 21300000, guid: 256d9285399b10f40b2d7111eeb46e30, type: 3}
-    detailArt: {fileID: 21300000, guid: 8c4a1ef0f3a71d443831e2dd4280a659, type: 3}
-    faction: 3
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 3
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 01000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges:
-      - stat: 1
-        amount: 1
-        isOverride: 0
-  - id: 52
+  - id: 55
     authoredKey: neutral.equipment.armored.artillery-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -2934,72 +3114,7 @@ MonoBehaviour:
       - stat: 3
         amount: 3
         isOverride: 1
-  - id: 53
-    authoredKey: neutral.equipment.bio.heavy-mg
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Heavy MG
-    art: {fileID: 21300000, guid: 241d483b351130549a4cf5634570cc5e, type: 3}
-    detailArt: {fileID: 21300000, guid: 0c4b31a34f354a049a1ae91aaa511362, type: 3}
-    faction: 3
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 3
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 03000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - Ionic
-      - Scorcher
-      - Splash
-      - CriticalDamage
-      - AA
-      - Explosion3
-      - Explosion5
-      - Explosion10
-      addAbilities: []
-      statChanges:
-      - stat: 0
-        amount: 5
-        isOverride: 1
-      - stat: 3
-        amount: 2
-        isOverride: 1
-  - id: 54
+  - id: 56
     authoredKey: neutral.equipment.infantry.aa-launcher
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3065,56 +3180,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 55
-    authoredKey: neutral.equipment.mechanical.ceramic-plating
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Ceramic Plating
-    art: {fileID: 21300000, guid: effc2e1b6ea4e454ab30bf45213c8d04, type: 3}
-    detailArt: {fileID: 21300000, guid: 65f426db3eb3f3f41b5a0eaca4c49024, type: 3}
-    faction: 2
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 2
-      tech: 1
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 4
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 1
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 01000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities:
-      - CeramicArmor
-      statChanges: []
-  - id: 56
+  - id: 57
     authoredKey: neutral.equipment.vehicle.autocannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3179,7 +3245,7 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
-  - id: 57
+  - id: 58
     authoredKey: neutral.equipment.vehicle.he-cannon
     deckPointCost: 1
     deckCopyLimit: 1
@@ -3244,72 +3310,6 @@ MonoBehaviour:
         isOverride: 1
       - stat: 3
         amount: 2
-        isOverride: 1
-  - id: 58
-    authoredKey: neutral.equipment.bio.claws
-    deckPointCost: 1
-    deckCopyLimit: 1
-    deckBuilderExcluded: 0
-    displayName: Claws
-    art: {fileID: 21300000, guid: f200a00df07ad50489e13d79b95241d4, type: 3}
-    detailArt: {fileID: 21300000, guid: 8191c7bdc214335499b0c93efa323474, type: 3}
-    faction: 3
-    cardType: 5
-    tacticEffect: 0
-    tacticAmount: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 0
-    activationApCost: 1
-    commandRating: 0
-    fate: 3
-    attack: 0
-    defenseRating: 0
-    range: 0
-    hitPoints: 0
-    initiative: 0
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 03000000
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities:
-      - ShockAttack
-      - Hyperkinetic
-      - Pyrokinetic
-      - Ionic
-      - Scorcher
-      - Splash
-      - CriticalDamage
-      - AA
-      - Explosion3
-      - Explosion5
-      - Explosion10
-      addAbilities:
-      - Hyperkinetic
-      statChanges:
-      - stat: 0
-        amount: 5
-        isOverride: 1
-      - stat: 3
-        amount: 1
         isOverride: 1
   - id: 59
     authoredKey: neutral.equipment.bio.at-launcher
@@ -4553,7 +4553,7 @@ MonoBehaviour:
     moveMax: 0
     activationApCost: 1
     commandRating: 0
-    fate: 5
+    fate: 6
     attack: 0
     defenseRating: 0
     range: 0
