@@ -213,7 +213,7 @@ namespace Game.Ai.V2
         }
 
         // The live Attack operation (Gather, Assault or Reinforcement) whose target is `hex`.
-        private static MissionIntent LiveAssaultAt(WorldSnapshot snap, HexCoord hex) =>
+        internal static MissionIntent LiveAssaultAt(WorldSnapshot snap, HexCoord hex) =>
             (snap?.AllIntents ?? System.Array.Empty<MissionIntent>()).FirstOrDefault(i =>
                 i?.Status == IntentStatus.Active && i.Attack != null
                 && i.Attack.Target.Hex.Equals(hex)
@@ -535,11 +535,12 @@ namespace Game.Ai.V2
         // as in peace (playtest 2026-10-15: a far ruins Explore outscored the Refresh toward Sentinels).
         private static TaskScore BuildRefreshScore(float stalenessRaw, float strategicRelevanceRaw,
             float threatDirectionRaw, int homeDistance, ScoutCostEstimate cost,
-            float detectionRiskRaw, float homeThreat)
+            float detectionRiskRaw, float homeThreat, float attackReadinessRaw = 0f)
         {
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
             return new TaskScore(
+                attackReadiness: attackReadinessRaw > 0f ? TaskScoreEvaluator.AttackReadiness(attackReadinessRaw) : 0f,
                 staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw)
@@ -654,9 +655,14 @@ namespace Game.Ai.V2
             StealthRequirement req = exposed ? StealthRequirement.Required : StealthRequirement.None;
             ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Refresh, req, riskRaw,
                 preferredMoverArmyId);
+            // 2026-11-13 (P1, owner) — the observation a LIVE Attack waits for is a step of that
+            // operation: it keeps Attack's priority (AttackReadiness full), the DisruptAt
+            // precedent, so it can take a scout off a routine lane. Korrin T29: Refresh(1,-6)
+            // scored 7.1 against the routine Refresh(2,-4) at 12.3 and lost the scout one hex away.
+            bool liveAttackNeed = attackNeed && LiveAssaultAt(snap, hex) != null;
             TaskScore score = BuildRefreshScore(staleRaw, strategicRaw, directionalRaw,
                 homeDist, cost, riskRaw, Mathf.Max(snap.Threat?.CitadelThreatSeverity ?? 0f,
-                    snap.Threat?.BaseThreatSeverity ?? 0f));
+                    snap.Threat?.BaseThreatSeverity ?? 0f), liveAttackNeed ? 1f : 0f);
 
             var objective = new ReconObjective
             {

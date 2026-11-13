@@ -62,7 +62,7 @@ namespace Game.Ai.V2
                     terrainOnly: true) == int.MaxValue)
             { reason = "main_unreachable_terrain"; return false; }
             if (HexGridMath.Distance(actor.Hex, target.Hex) <= 1
-                && !AttackObjectiveEvaluator.HasAssaultObservation(snap, target, out reason))
+                && !AttackObjectiveEvaluator.AssaultEntryReady(snap, target, actor, out reason))
                 return false;
             AttackMarchAssessment home = Assess(snap, target, actor, projected);
             if (home.Verdict == AttackMarchVerdict.DefendHome)
@@ -127,6 +127,28 @@ namespace Game.Ai.V2
                 reason = $"awaiting_disruption_delivery:#{carrier.ArmyId}";
                 return true;
             }
+            return false;
+        }
+
+        // 2026-11-13 (owner, P1) — a structure-defended target is approached to distance 1 only
+        // when the step onto it can follow: the entry gate already holds (observation aside —
+        // approach_only on stale data stays legal), or the counted carrier on its DisruptStructure
+        // leg arrives no later than this fist (AttackSupportProjection.CountedCarrier). Otherwise
+        // the fist waits out of the target's reach instead of beside it (Korrin T29-T31: Cinderfall
+        // stood on (0,-5) three turns, 5 AP spent on the march).
+        internal static bool MayApproachAssault(WorldSnapshot snap, ArmySnapshot fist, AttackTargetRef target,
+            out string reason)
+        {
+            reason = null;
+            if (AttackObjectiveEvaluator.HasAssaultDisruption(snap, target, fist, out reason))
+                return true;
+            int eta = AttackSupportProjection.ArmyEta(snap, fist, target.Hex);
+            if (eta != int.MaxValue && AttackSupportProjection.CountedCarrier(snap, target.Hex, eta).HasValue)
+            {
+                reason = null;
+                return true;
+            }
+            reason = "awaiting_disruption_carrier_before_approach";
             return false;
         }
 

@@ -270,8 +270,8 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                bool observedDefence = AttackObjectiveEvaluator.HasAssaultObservation(snap,
-                    assaultObjective.Target, out string intelWhy);
+                bool observedDefence = AttackObjectiveEvaluator.AssaultEntryReady(snap,
+                    assaultObjective.Target, actor, out string intelWhy);
                 if (!observedDefence && HexGridMath.Distance(actor.Hex, assaultObjective.Hex) <= 1
                     && !local.IsLocalFight)
                 {

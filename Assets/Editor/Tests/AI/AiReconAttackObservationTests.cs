@@ -181,6 +181,67 @@ namespace Game.EditorTests
                 "desired 1: the home Refresh is shed, the citadel lane keeps its scout");
         }
 
+        // Match 2026-11-13 P1 (Korrin T29) — the observation of a LIVE Attack's target keeps
+        // Attack's priority (the DisruptAt precedent): Refresh(1,-6) scored 7.1 and lost scout #21
+        // one hex away to its routine Refresh lane at 12.3.
+        [Test]
+        public void LiveAttackObservationNeed_CarriesAttackReadiness()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            ReconObjective need = ReconObjectiveEvaluator.RefreshAt(snap, Site);
+            Assert.That(need, Is.Not.Null);
+            Assert.That(need.TaskScore[TaskSlot.AttackReadiness], Is.GreaterThan(0f));
+
+            MissionIntentRegistry.Clear();
+            snap.Intents = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            ReconObjective plain = ReconObjectiveEvaluator.RefreshAt(snap, Site);
+            Assert.That(plain == null || plain.TaskScore[TaskSlot.AttackReadiness] == 0f, Is.True,
+                "without a live Attack the same Refresh carries no Attack priority");
+        }
+
+        // Match 2026-11-13 P1 (Korrin T30) — #21 one step from the need watched another hex; the
+        // 2026-11-09 guard compared lane FocusHex only, so its lane was trimmed and the need went to
+        // far #24. The scout best placed for a need no lane looks at keeps its lane.
+        [Test]
+        public void SurplusTrim_KeepsTheLaneOfTheScoutBestPlacedForAnUnservedNeed()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            snap.Self.Armies = new List<ArmySnapshot>
+            {
+                new ArmySnapshot { ArmyId = 21, Owner = snap.Observer, Hex = new HexCoord(5, 0),
+                    IsSoloRecce = true, MemberCount = 1, MaxMovement = 2, CurrentMovement = 2,
+                    EffectiveVisionRadius = 1 },
+                new ArmySnapshot { ArmyId = 24, Owner = snap.Observer, Hex = new HexCoord(0, 1),
+                    IsSoloRecce = true, MemberCount = 1, MaxMovement = 2, CurrentMovement = 2,
+                    EffectiveVisionRadius = 1 },
+            };
+            MissionIntent Lane(HexCoord focus, int mover, int lastProgress)
+            {
+                var lane = new MissionIntent
+                {
+                    Kind = MissionKind.Scout, Status = IntentStatus.Active, Funding = CommitmentTier.None,
+                    Objective = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = focus },
+                    PreferredMoverArmyId = mover, LastProgressTurn = lastProgress, CreatedTurn = 1,
+                };
+                lane.IntentKey = MissionIntentKey.For(lane);
+                return lane;
+            }
+            MissionIntent near = Lane(new HexCoord(4, 2), 21, lastProgress: 5);
+            MissionIntent far = Lane(new HexCoord(0, 2), 24, lastProgress: 9);
+            var state = new MissionIntentState();
+            state.Put(near); state.Put(far);
+            var active = new List<MissionIntent> { near, far };
+            var objectives = new List<ReconObjective>
+            {
+                new ReconObjective { Kind = ReconObjectiveKind.Refresh, FocusHex = new HexCoord(0, 2), BaseValue = 12f },
+            };
+
+            ReconContinuity.TrimSurplusReconLanes(snap.Observer, active, state, snap, objectives);
+
+            Assert.That(active, Is.EqualTo(new[] { near }),
+                "#21 is the best ETA for the unserved need: its (older) lane stays, the far one goes");
+        }
+
         [Test]
         public void StaleTargetCanRequestObservationBeforeAnAttackIntentExists()
         {

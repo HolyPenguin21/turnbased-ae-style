@@ -346,14 +346,22 @@ namespace Game.Ai.V2
                     excludeArmyIds: excluded);
                 MissionIntent role = DisplaceableReconRole(activeIntents, heldId);
                 float lost = TaskScoreEvaluator.MoverOpportunityCost(role?.DisplacementValue ?? 0f);
+                // 2026-11-13 (P1, owner) — the observation of a LIVE Attack's target: the lost
+                // routine lane still gates the take (worth more than it), but is not charged a
+                // second time — that lane stays its competitor in the allocator anyway. Korrin
+                // T29 paid 9.2 for scout #21 one hex from the need and lost to its own lane.
+                bool liveAttackObservation = ReconObjectiveEvaluator.LiveAssaultAt(snap, c.Target.FocusHex) != null
+                    && AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(c.Target.FocusHex);
                 if (role != null && c.Score.Value - lost > 0f
                     && (!free.MoverKnown || free.EtaTurns > est.EtaTurns))
                 {
                     TaskScore baseScore = c.Score;
+                    float charged = liveAttackObservation ? 0f : lost;
                     TaskScore priced = TaskScore.FromSlots(slot => slot == TaskSlot.MoverOpportunityCost
-                        ? baseScore[slot] + lost : baseScore[slot]);
+                        ? baseScore[slot] + charged : baseScore[slot]);
                     c = new ScoutCandidate(c.Target, priced, ComputeLocalAdmissionScore(priced.Value),
-                        c.Explain + $" [takes #{heldId} from {role.IntentKey}, loses {F(lost)}]",
+                        c.Explain + $" [takes #{heldId} from {role.IntentKey}, loses {F(lost)}"
+                            + (liveAttackObservation ? ", not charged: live attack observation]" : "]"),
                         c.IsIncumbent, c.Tier, c.PreferredMover, c.FreshNeighbors);
                     displaces = heldId;
                 }

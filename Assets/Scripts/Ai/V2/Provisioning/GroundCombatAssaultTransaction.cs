@@ -99,8 +99,8 @@ namespace Game.Ai.V2
             if (assigned != null && proposal.Target is AttackMissionTarget assault
                 && HexGridMath.Distance(assigned.Hex, assault.AssaultTarget.Hex) <= 1
                 && !assault.Local.IsLocalFight
-                && !AttackObjectiveEvaluator.HasAssaultObservation(session.Snapshot,
-                    assault.AssaultTarget, out string intelWhy))
+                && !AttackObjectiveEvaluator.AssaultEntryReady(session.Snapshot,
+                    assault.AssaultTarget, assigned, out string intelWhy))
             {
                 failure = ProvisionFailure.MoverContended(
                     $"attack #{actorId} awaits observation before entry: {intelWhy}");
