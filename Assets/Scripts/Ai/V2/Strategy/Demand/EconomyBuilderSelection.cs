@@ -86,7 +86,7 @@ namespace Game.Ai.V2
                     projectedArmy, projectedFieldStrikePotential)
                 .Select(x => AssessEconomyArmy(snap, target, x.route, x.army,
                     buildApCost, includeReturn, requiresFoundingGarrison))
-                .Where(x => x.Suitability != EconomyArmySuitability.Ineligible)
+                .Where(x => LogIfIneligible(snap, target, x))
                 .Where(x => EconomyExtractionDeliveryAllowed(x)
                     || activeIntents?.Any(i => EconomyContinuity.HoldsEconomyBuildSite(i, target)
                         && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
@@ -556,10 +556,29 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot army = projectedArmy?.ArmyId == route.ArmyId ? projectedArmy
                     : snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == route.ArmyId);
-                if (CandidateRejection(snap, target, route, army, activeIntents, commitments,
-                        projectedFieldStrikePotential) == null)
+                string rejection = CandidateRejection(snap, target, route, army, activeIntents, commitments,
+                    projectedFieldStrikePotential);
+                if (rejection == null)
                     yield return (route, !route.IsOnTarget ? army.EconomyDeparture ?? army : army);
+                else if (rejection != "garrison_without_extraction_route"
+                         && rejection != "not_mobile_economy_builder")
+                    // Shape non-candidates stay silent (every garrison / field army per site).
+                    AiDebugLog.WriteDeduped($"builder-candidate|{target.Q},{target.R}|{route.ArmyId}",
+                        $"[ECO][Builder] T{snap?.TurnNumber} site=({target.Q},{target.R}) actor=#{route.ArmyId} "
+                        + $"decision=REJECT reason={rejection}");
             }
+        }
+
+        // D0 (match 2026-11-13) — an Ineligible builder used to vanish silently (P4: no line for
+        // the site at all). Printed once per turn per site and actor; never changes the filter.
+        private static bool LogIfIneligible(WorldSnapshot snap, HexCoord target, EconomyBuilderChoice choice)
+        {
+            if (choice.Suitability != EconomyArmySuitability.Ineligible)
+                return true;
+            AiDebugLog.WriteDeduped($"builder-ineligible|{target.Q},{target.R}|{choice.Route.ArmyId}",
+                $"[ECO][Builder] T{snap?.TurnNumber} site=({target.Q},{target.R}) actor=#{choice.Route.ArmyId} "
+                + $"decision=INELIGIBLE reason={choice.IneligibleReason ?? "unspecified"}");
+            return false;
         }
 
         // Why a witnessed route's army is not a structural builder candidate for `target`, or

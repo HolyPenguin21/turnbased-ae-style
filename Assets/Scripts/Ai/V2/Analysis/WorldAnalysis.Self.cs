@@ -171,10 +171,13 @@ namespace Game.Ai.V2
         // mandatory defence. Heroes
         // bring only their slots (their power is 0); a facility operator commands nothing.
         // `intents` - the player's durable intents (its live scouts stay out of the measure).
+        // `logComposition` — D0 (match 2026-11-13, P8): the scan's own pass prints which garrison
+        // gave how many bodies over which floor; projections (Materialization) stay silent.
         internal static float FieldStrikePotential(PlayerSetupData player, IEnumerable<ArmyData> ownArmies,
-            float groundAvailablePower, IEnumerable<MissionIntent> intents)
+            float groundAvailablePower, IEnumerable<MissionIntent> intents, bool logComposition = false)
         {
             var pool = new List<AiPower.PowerUnit>();
+            List<string> garrisonTrace = logComposition ? new List<string>() : null;
             HexCoord citadel = AiTurnController.GarrisonHexFor(player);
             HashSet<int> scouts = AttackForcePool.ScoutMissionArmyIds(player, intents);
             foreach (ArmyData a in ownArmies ?? Enumerable.Empty<ArmyData>())
@@ -187,9 +190,13 @@ namespace Game.Ai.V2
                         && AiArmyRoles.IsGroundBattleBody(u)).ToList();
                 if (a.IsGarrison)
                 {
+                    float floor = AiArmyRoles.GarrisonDefenceFloor(player, groundAvailablePower, a.Hex,
+                        a.Hex.Equals(citadel));
                     HashSet<int> spare = AiArmyRoles.SpareableBodies(bodies,
-                        set => AiPower.EffectiveArmyPower(set.ToList()),
-                        AiArmyRoles.GarrisonDefenceFloor(player, groundAvailablePower, a.Hex, a.Hex.Equals(citadel)));
+                        set => AiPower.EffectiveArmyPower(set.ToList()), floor);
+                    garrisonTrace?.Add($"({a.Hex.Q},{a.Hex.R}) floor={floor:0.#} "
+                        + $"held={AiPower.EffectiveArmyPower(bodies):0.#} spare={spare.Count}/{bodies.Count} "
+                        + $"sparePower={AiPower.EffectiveArmyPower(bodies.Where((u, i) => spare.Contains(i)).ToList()):0.#}");
                     bodies = bodies.Where((u, i) => spare.Contains(i)).ToList();
                 }
                 pool.AddRange(bodies.Select(AiPower.ToPowerUnit));
@@ -198,7 +205,13 @@ namespace Game.Ai.V2
                         && !AiArmyRoles.IsFacilityOperator(player, a.Hex, u))
                     .Select(AiPower.ToPowerUnit));
             }
-            return AiPower.TotalMilitaryPotential(pool);
+            float potential = AiPower.TotalMilitaryPotential(pool);
+            if (garrisonTrace != null)
+                AiDebugLog.WriteDeduped($"field-strike-pool|{player?.Nickname}",
+                    $"[AI][V2][FieldStrike] player={player?.Nickname} potential={potential:0.##} "
+                    + $"poolBodies={pool.Count} available={groundAvailablePower:0.#} "
+                    + $"garrisons=[{string.Join("; ", garrisonTrace)}]");
+            return potential;
         }
 
         private static bool IsMilitaryCard(CardDefinition d) =>
@@ -267,7 +280,7 @@ namespace Game.Ai.V2
                     out self.DeployedPower, out self.AvailablePower);
             using (new ProfileScope("AI/Self.FieldStrikePotential"))
                 self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower,
-                    intents?.All);
+                    intents?.All, logComposition: true);
             // The force an Attack can actually assemble (busy armies, scouts, garrison defence,
             // garrison heroes and operators out): its peak, roster and pool.
             AttackForcePool attackPool;
