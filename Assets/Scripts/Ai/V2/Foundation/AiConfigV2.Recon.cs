@@ -73,6 +73,13 @@
         // NOT a gameplay invariant. Must remain >= maxConcurrentReconExecutions (a wider beam only
         // gives Assignment / re-pack more backups to fall through to).
         public const int scoutCandidateBeamWidth = 6;
+        // Generic Refresh pool (ReconObjectiveEvaluator.BuildRefreshObjectives) keeps the top
+        // `cap` stale hexes. Late game nearly every observed hex is stale, and pricing each with
+        // the exact ground planner was most of Recon's turn time. 2026-11-14 (owner: approximate)
+        // — when the pool exceeds cap x this factor, every hex is first ranked with the cheap
+        // optimistic price (ScoutCostModel.OptimisticGroundEstimate) and only that many are
+        // priced exactly. A smaller pool is priced exactly, as before.
+        public const int reconRefreshPricedPoolFactor = 3;
         // Two Scout focus hexes must be at least this far apart to be two missions worth funding
         // separately — adjacent hexes are the same frontier. Enforced for ground-bound pairs by
         // ReconAssignmentPlanner once executor kind is known, NOT in the beam.

@@ -73,15 +73,91 @@ namespace Game.Ai.V2
 
     public static class ReconObjectiveEvaluator
     {
+        // The decision frame's ONE Recon enumeration of a snapshot (DecisionFrame.Recon), kept
+        // beside that snapshot instance. Every refresh builds a new snapshot, so a later snapshot
+        // never sees an older frame's list. A read-only consumer inside the frame's decision
+        // (the operator aviation forecast priced in Development verdicts) reuses it instead of
+        // re-enumerating: late game one Enumerate is ~200 ms (2026-11-14 profile).
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
+            List<ReconObjective>> s_frameRecon =
+                new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot, List<ReconObjective>>();
+
+        internal static List<ReconObjective> EnumerateForFrame(WorldSnapshot snap)
+        {
+            List<ReconObjective> list = Enumerate(snap);
+            if (snap != null)
+            {
+                s_frameRecon.Remove(snap);
+                s_frameRecon.Add(snap, list);
+            }
+            return list;
+        }
+
+        // The frame's list for this snapshot (read-only), else a fresh enumeration.
+        internal static IReadOnlyList<ReconObjective> FrameOrEnumerate(WorldSnapshot snap) =>
+            snap != null && s_frameRecon.TryGetValue(snap, out List<ReconObjective> list)
+                ? list : Enumerate(snap);
+
+        // Snapshot-wide facts of ONE synchronous Enumerate, computed once instead of once per
+        // candidate hex (2026-11-14 late-game timing: ObservationNeeds re-ran Attack's objective
+        // enumeration and an ActorCommitments build for every Explore focus - 1511 builds, 4.3 s
+        // in one turn; LocalExplorationGap scanned the whole map per focus). Nothing changes the
+        // snapshot or the intents inside one Enumerate, so each fact equals the per-hex read.
+        // Outside an Enumerate (ExploreAt / RefreshAt / BuildExploreScore called directly) the
+        // facts are read live, as before.
+        private sealed class EnumerationFacts
+        {
+            internal WorldSnapshot Snap;
+            internal HashSet<HexCoord> ObservationNeeds;
+            internal float? LocalExplorationGap;
+        }
+
+        [System.ThreadStatic] private static EnumerationFacts s_enumeration;
+
+        private static EnumerationFacts FactsFor(WorldSnapshot snap)
+        {
+            EnumerationFacts facts = s_enumeration;
+            return facts != null && ReferenceEquals(facts.Snap, snap) ? facts : null;
+        }
+
+        private static bool IsObservationNeed(WorldSnapshot snap, HexCoord hex) =>
+            FactsFor(snap)?.ObservationNeeds.Contains(hex)
+                ?? AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex);
+
+        private static float LocalExplorationGap(WorldSnapshot snap)
+        {
+            EnumerationFacts facts = FactsFor(snap);
+            if (facts == null)
+                return ScoutObjectiveEvaluator.LocalExplorationGap(snap);
+            return facts.LocalExplorationGap ??= ScoutObjectiveEvaluator.LocalExplorationGap(snap);
+        }
+
         public static List<ReconObjective> Enumerate(WorldSnapshot snap)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Objectives.Recon");
-            var list = new List<ReconObjective>();
             if (snap?.Self == null || snap.MapKnowledge == null)
-                return list;
+                return new List<ReconObjective>();
+            List<HexCoord> observationNeeds;
+            using (new Game.Core.ProfileScope("AI/Objectives.Recon.AttackNeeds"))
+                observationNeeds = AttackObjectiveEvaluator.ObservationNeeds(snap).Distinct().ToList();
+            EnumerationFacts outer = s_enumeration;
+            s_enumeration = new EnumerationFacts
+            {
+                Snap = snap,
+                ObservationNeeds = new HashSet<HexCoord>(observationNeeds),
+            };
+            try { return EnumerateWithFacts(snap, observationNeeds); }
+            finally { s_enumeration = outer; }
+        }
+
+        private static List<ReconObjective> EnumerateWithFacts(WorldSnapshot snap,
+            IReadOnlyList<HexCoord> observationNeeds)
+        {
+            var list = new List<ReconObjective>();
 
             IReadOnlyList<FrontierHexSnapshot> frontier = snap.MapKnowledge.Frontier;
             if (frontier != null)
+                using (new Game.Core.ProfileScope("AI/Objectives.Recon.Explore"))
                 foreach (FrontierHexSnapshot f in frontier)
                 {
                     if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
@@ -125,12 +201,14 @@ namespace Game.Ai.V2
             // player genuinely observed in an earlier turn. The frozen sidecar excludes never-seen
             // hexes by construction and current-visible hexes naturally have age 0.
             ReconDirectionSnapshot direction = null;
-            List<ReconObjective> refresh = BuildRefreshObjectives(snap, ref direction);
+            List<ReconObjective> refresh;
+            using (new Game.Core.ProfileScope("AI/Objectives.Recon.Refresh"))
+                refresh = BuildRefreshObjectives(snap, ref direction);
             // Strike force step 6 — Attack's observation needs join as Refresh objectives of the
             // same identity, replacing a generic Refresh of the same hex.
             // A need never observed at all (the enemy citadel's cheat anchor, step 7) is an
             // ordinary Explore focus instead.
-            foreach (HexCoord need in AttackObjectiveEvaluator.ObservationNeeds(snap).Distinct())
+            foreach (HexCoord need in observationNeeds)
             {
                 ReconObjective o = AttackNeedRefresh(snap, need, null, ref direction);
                 if (o != null)
@@ -332,7 +410,7 @@ namespace Game.Ai.V2
         public static ReconObjective RefreshAt(WorldSnapshot snap, HexCoord hex,
             int? preferredMoverArmyId = null)
         {
-            if (AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex))
+            if (IsObservationNeed(snap, hex))
             {
                 ReconDirectionSnapshot direction = null;
                 return AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction);
@@ -449,7 +527,7 @@ namespace Game.Ai.V2
         private static List<ReconObjective> BuildRefreshObjectives(WorldSnapshot snap,
             ref ReconDirectionSnapshot direction)
         {
-            var candidates = new List<ReconObjective>();
+            var stale = new List<(HexCoord Hex, int Age)>();
             foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
             {
                 int age = Mathf.Max(0, snap.TurnNumber - kv.Value);
@@ -459,15 +537,46 @@ namespace Game.Ai.V2
                 // actual-map gate as durable Refresh validity, before pricing or beam selection.
                 if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
                     continue;
-                if (direction == null)
-                    direction = ReconDirectionModel.Build(snap);
-                ReconObjective o = BuildRefresh(snap, kv.Key, age, direction: direction);
+                stale.Add((kv.Key, age));
+            }
+            if (stale.Count > 0 && direction == null)
+                direction = ReconDirectionModel.Build(snap);
+
+            int cap = Mathf.Max(AiConfigV2.scoutCandidateBeamWidth * 3,
+                ReconConcurrencyPolicy.HardCap * 3);
+            int pricedPool = cap * Mathf.Max(1, AiConfigV2.reconRefreshPricedPoolFactor);
+            IEnumerable<(HexCoord Hex, int Age)> priced = stale;
+            if (stale.Count > pricedPool)
+            {
+                // Approximate pre-selection (AiConfigV2.reconRefreshPricedPoolFactor): the same
+                // score with the optimistic ground price, movers taken once per stealth need.
+                // An incumbent Refresh left outside is re-materialised by RefreshAt, as for a hex
+                // past the cap.
+                var refreshTarget = new ScoutMissionTarget { Kind = ScoutTargetKind.Refresh };
+                List<ArmySnapshot> open = ScoutMoverSelector.Eligible(snap, refreshTarget, null);
+                refreshTarget.Stealth = StealthRequirement.Required;
+                List<ArmySnapshot> hidden = ScoutMoverSelector.Eligible(snap, refreshTarget, null);
+                ReconDirectionSnapshot dir = direction;
+                priced = stale
+                    .Select(s => (Stale: s, Rough: BuildRefresh(snap, s.Hex, s.Age, direction: dir,
+                        optimisticMovers: (open, hidden))))
+                    .OrderByDescending(x => x.Rough.BaseValue)
+                    .ThenByDescending(x => x.Stale.Age)
+                    .ThenBy(x => x.Stale.Hex.Q)
+                    .ThenBy(x => x.Stale.Hex.R)
+                    .Take(pricedPool)
+                    .Select(x => x.Stale)
+                    .ToList();
+            }
+
+            var candidates = new List<ReconObjective>();
+            foreach ((HexCoord hex, int age) in priced)
+            {
+                ReconObjective o = BuildRefresh(snap, hex, age, direction: direction);
                 if (o != null)
                     candidates.Add(o);
             }
 
-            int cap = Mathf.Max(AiConfigV2.scoutCandidateBeamWidth * 3,
-                ReconConcurrencyPolicy.HardCap * 3);
             return candidates
                 .OrderByDescending(o => o.BaseValue)
                 .ThenByDescending(o => o.AgeTurns)
@@ -514,8 +623,8 @@ namespace Game.Ai.V2
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
             float homeWeight = Mathf.Lerp(1f, AiConfigV2.scoutExploreHomeProximityWeight,
-                ScoutObjectiveEvaluator.LocalExplorationGap(snap));
-            float relevance = (observationNeed ?? AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex))
+                LocalExplorationGap(snap));
+            float relevance = (observationNeed ?? IsObservationNeed(snap, hex))
                 ? 1f : RuinsRelevance(snap, hex);
             bool eventVisit = ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, hex);
             return new TaskScore(
@@ -562,7 +671,7 @@ namespace Game.Ai.V2
             // 2026-11-09 (match P1) — a live Attack's observation need that was never seen is
             // maximally unknown: full InfoGain, the same rule as staleRaw = 1 for a need seen
             // long ago (AttackNeedRefresh). Without it the enemy citadel scored below home Refreshes.
-            bool observationNeed = AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex);
+            bool observationNeed = IsObservationNeed(snap, hex);
             if (observationNeed)
                 infoGainRaw = 1f;
 
@@ -633,7 +742,8 @@ namespace Game.Ai.V2
         // for its purpose regardless of the generic staleness ramp.
         private static ReconObjective BuildRefresh(WorldSnapshot snap, HexCoord hex, int age,
             int? preferredMoverArmyId = null, ReconDirectionSnapshot direction = null,
-            bool attackNeed = false)
+            bool attackNeed = false,
+            (IReadOnlyList<ArmySnapshot> Open, IReadOnlyList<ArmySnapshot> Hidden)? optimisticMovers = null)
         {
             IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
             int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
@@ -653,8 +763,15 @@ namespace Game.Ai.V2
             bool exposed = EnemyExposedAt(snap, hex);
             float riskRaw = exposed ? ScoutRiskModel.DetectorRisk(snap, hex) : 0f;
             StealthRequirement req = exposed ? StealthRequirement.Required : StealthRequirement.None;
-            ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Refresh, req, riskRaw,
-                preferredMoverArmyId);
+            // `optimisticMovers` — the pool's approximate pre-selection only (BuildRefreshObjectives):
+            // the cheap optimistic price against movers taken once; the kept hexes are re-priced exactly.
+            ScoutCostEstimate cost = optimisticMovers.HasValue
+                ? ScoutCostModel.OptimisticGroundEstimate(snap, new ScoutMissionTarget
+                    {
+                        Kind = ScoutTargetKind.Refresh, FocusHex = hex, Stealth = req, DetectionRisk = riskRaw,
+                    },
+                    req == StealthRequirement.Required ? optimisticMovers.Value.Hidden : optimisticMovers.Value.Open)
+                : MissionCost(snap, hex, ScoutTargetKind.Refresh, req, riskRaw, preferredMoverArmyId);
             // 2026-11-13 (P1, owner) — the observation a LIVE Attack waits for is a step of that
             // operation: it keeps Attack's priority (AttackReadiness full), the DisruptAt
             // precedent, so it can take a scout off a routine lane. Korrin T29: Refresh(1,-6)
@@ -678,7 +795,7 @@ namespace Game.Ai.V2
                 DirectionPressure = directionalRaw,
             };
 
-            if (strategicRaw > 0f)
+            if (strategicRaw > 0f && !optimisticMovers.HasValue)
             {
                 var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
                 if (auditPlayer != null)

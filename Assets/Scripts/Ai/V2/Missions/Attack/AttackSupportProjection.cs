@@ -347,7 +347,7 @@ namespace Game.Ai.V2
             if (handStrikes.Count == 0 && mintedStrikes.Count == 0 && handBombs.Count == 0 && mintedBombs.Count == 0)
                 return result;
             requests = NonCombatCardPlayer.KnownStrikeTargets(snap, player, root, ctx,
-                    ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList())
+                    ReconObjectiveEvaluator.FrameOrEnumerate(snap).Where(o => o != null).ToList())
                 .Where(r => r.Target.Equals(targetHex)).ToList();
             if (requests.Count == 0)
                 return result;

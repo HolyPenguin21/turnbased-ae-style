@@ -40,7 +40,7 @@ namespace Game.Ai.V2
             // The same hand DemandLayer.Development reads.
             WarmDevelopment = (snap, intents, pacer) => DevelopmentOpportunityEvaluator.WarmVerdicts(
                 snap, player, root, AiHandRegistry.Peek(player), ctx, intents, pacer),
-            EnumerateRecon = snap => ReconObjectiveEvaluator.Enumerate(snap),
+            EnumerateRecon = snap => ReconObjectiveEvaluator.EnumerateForFrame(snap),
             RefreshAggressionFacts = snap => StrategyLayer.RefreshAggressionOperationalFacts(snap, breakdown),
             EnumerateAggression = snap => RaidObjectiveEvaluator.Enumerate(snap, breakdown.OpportunityReport),
             // Route discovery keeps its first-resolution contract. Live structural validation

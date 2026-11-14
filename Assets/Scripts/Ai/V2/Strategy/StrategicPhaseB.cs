@@ -129,7 +129,9 @@ namespace Game.Ai.V2
                 // when the player-scoped fog-memory revision is unchanged, so keying this derived
                 // projection only to KnowledgeVersion could serve stale objectives after a same-
                 // turn ownership or infrastructure change.
-                reconObjectives = ReconObjectiveEvaluator.Enumerate(snap);
+                // The iteration's frame list: its candidate builders (aviation plays, equipment
+                // forecasts) read it back for this snapshot instead of re-enumerating.
+                reconObjectives = ReconObjectiveEvaluator.EnumerateForFrame(snap);
                 float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
 
                 yield return pacer.Checkpoint();

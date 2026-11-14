@@ -147,7 +147,9 @@ namespace Game.Ai.V2
             var root = OwnWorld.Of(player).Root;
             if (card?.isAviation != true || snap?.Map == null || root == null) return 0f;
             var ctx = new AiTurnContext { Map = snap.Map, TurnNumber = snap.TurnNumber };
-            var objectives = ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList();
+            // The frame's own enumeration of this snapshot when there is one (Development's
+            // verdicts price this forecast once per Fate-bearing recipient).
+            var objectives = ReconObjectiveEvaluator.FrameOrEnumerate(snap).Where(o => o != null).ToList();
             var targets = KnownStrikeTargets(snap, player, root, ctx, objectives);
             var projected = ProjectedAircraft(card, player);
             targets = GroundCombatAirSupport.UncoveredMissileStock(snap, projected, targets,
@@ -463,7 +465,9 @@ namespace Game.Ai.V2
             string sourceKey = generation != null
                 ? "gen:" + generation.CardKey
                 : $"hand:{handOrdinal}:{def.authoredKey ?? "?"}";
-            List<ReconObjective> objectives = ReconObjectiveEvaluator.Enumerate(snap)
+            // Once per aviation card (hand, generated, investment preview, missile manufacture):
+            // the frame's own enumeration of this snapshot when there is one.
+            List<ReconObjective> objectives = ReconObjectiveEvaluator.FrameOrEnumerate(snap)
                 .Where(o => o != null).ToList();
 
             // An aircraft is played only for a real use: a Recon target it adds service to (below)
@@ -926,7 +930,7 @@ namespace Game.Ai.V2
                 if (bomb && op.RecipientUnit != null && op.RecipientUnit.IsAviation)
                 {
                     strikes ??= KnownStrikeTargets(snap, player, root, ctx,
-                        ReconObjectiveEvaluator.Enumerate(snap).Where(o => o != null).ToList());
+                        ReconObjectiveEvaluator.FrameOrEnumerate(snap).Where(o => o != null).ToList());
                     strike = GroundCombatAirSupport.BombedService(snap, player, ctx, op.RecipientUnit,
                         card.Definition, strikes)?.Score;
                 }
