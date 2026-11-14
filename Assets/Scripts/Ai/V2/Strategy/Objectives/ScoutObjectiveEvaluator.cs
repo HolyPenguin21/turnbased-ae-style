@@ -140,12 +140,16 @@ namespace Game.Ai.V2
             if (mk?.AllHexes == null || snap.Self == null) return 0f;
             var homes = (snap.Self.BaseHexes ?? new List<HexCoord>())
                 .Concat(new[] { snap.Self.Citadel }).Distinct().ToList();
+            int radius = AiConfigV2.scoutStepHomeLocalRingRadius;
             int local = 0, open = 0;
             foreach (HexCoord h in mk.AllHexes)
             {
-                if (mk.IsBlockedForScout(h, stealthCapable: false)
-                    || homes.Min(b => HexGridMath.Distance(b, h))
-                        > AiConfigV2.scoutStepHomeLocalRingRadius) continue;
+                if (mk.IsBlockedForScout(h, stealthCapable: false)) continue;
+                // "Nearest home within the ring" without a per-hex closure (whole-map scan).
+                bool near = false;
+                for (int i = 0; i < homes.Count && !near; i++)
+                    near = HexGridMath.Distance(homes[i], h) <= radius;
+                if (!near) continue;
                 local++;
                 if (mk.VisitedHexSet?.Contains(h) != true) open++;
             }

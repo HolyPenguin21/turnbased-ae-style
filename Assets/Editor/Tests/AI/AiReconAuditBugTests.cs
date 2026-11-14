@@ -49,6 +49,21 @@ namespace Game.EditorTests
             Assert.That(AiReconMemory.Historical(player, new HashSet<int> { 17 }), Is.Empty);
         }
 
+        // Perf 2026-11-14 — the operator aviation forecast (Development verdicts) re-enumerated
+        // Recon per Fate-bearing recipient (~200 ms each, late game). It reads the frame's own list
+        // of the same snapshot; a different snapshot never sees it.
+        [Test]
+        public void FrameReconList_IsReusedForItsSnapshotOnly()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon" };
+            WorldSnapshot snap = Snapshot(player, 10, new HexCoord(4, 3));
+            List<ReconObjective> frame = ReconObjectiveEvaluator.EnumerateForFrame(snap);
+
+            Assert.That(ReconObjectiveEvaluator.FrameOrEnumerate(snap), Is.SameAs(frame));
+            WorldSnapshot next = Snapshot(player, 10, new HexCoord(4, 3));
+            Assert.That(ReconObjectiveEvaluator.FrameOrEnumerate(next), Is.Not.SameAs(frame));
+        }
+
         [Test]
         public void StaleEnemyContact_RemainsThreatData_WithoutCreatingAReconJob()
         {

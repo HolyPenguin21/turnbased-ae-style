@@ -264,6 +264,36 @@ namespace Game.EditorTests
                 "excluded fresh observations must not dilute real stale information");
         }
 
+        // Perf 2026-11-14 (owner: approximate) — a stale pool larger than cap x
+        // reconRefreshPricedPoolFactor is pre-ranked with the optimistic price and only the short
+        // list is priced exactly. Without terrain the optimistic price equals the exact one, so the
+        // kept Refresh set must equal exact pricing of every stale hex.
+        [Test]
+        public void LargeRefreshPool_PreselectionKeepsTheExactTopSet()
+        {
+            var home = new HexCoord(0, 0);
+            var guard = new HexCoord(6, 0);
+            List<HexCoord> hexes = HexGridMath.HexesInRange(home, 6).ToList();
+            WorldSnapshot snap = RefreshSnapshot(hexes, hexes.ToDictionary(h => h, h => 0));
+            snap.Known.EventGuardHexes = new List<HexCoord> { guard };
+            snap.Self.Armies = new List<ArmySnapshot> { new ArmySnapshot { ArmyId = 5, Owner = snap.Observer,
+                Hex = new HexCoord(5, 0), IsSoloRecce = true, MemberCount = 1, CurrentMovement = 2,
+                MaxMovement = 2, ActivationApCost = 1 } };
+            int cap = Math.Max(AiConfigV2.scoutCandidateBeamWidth * 3, ReconConcurrencyPolicy.HardCap * 3);
+            Assume.That(hexes.Count, Is.GreaterThan(cap * AiConfigV2.reconRefreshPricedPoolFactor));
+
+            List<HexCoord> kept = ReconObjectiveEvaluator.Enumerate(snap)
+                .Where(o => o.Kind == ReconObjectiveKind.Refresh).Select(o => o.FocusHex).ToList();
+            List<HexCoord> exact = hexes.Select(h => ReconObjectiveEvaluator.RefreshAt(snap, h))
+                .Where(o => o != null)
+                .OrderByDescending(o => o.BaseValue).ThenByDescending(o => o.AgeTurns)
+                .ThenBy(o => o.FocusHex.Q).ThenBy(o => o.FocusHex.R)
+                .Take(cap).Select(o => o.FocusHex).ToList();
+
+            Assert.That(kept, Is.EquivalentTo(exact));
+            Assert.That(kept, Does.Contain(guard));
+        }
+
         [Test]
         public void DangerousRealHexStillContributesIntelPressure()
         {

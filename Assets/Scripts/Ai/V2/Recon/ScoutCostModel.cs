@@ -82,14 +82,17 @@ namespace Game.Ai.V2
             ReconScoutKinds.IsCapture(target.Kind) ? CapturePairCost(snap, mover, target.FocusHex)
                 : PairCost(snap, mover, target.FocusHex, false);
 
-        public static ScoutPairCost PairCost(WorldSnapshot snap, ArmySnapshot mover, HexCoord executionHex, bool stealthRequired)
+        // `travelDistance` — a caller-supplied distance in place of the route search (the optimistic
+        // pre-selection's hex-distance bound); null = the real route cost.
+        public static ScoutPairCost PairCost(WorldSnapshot snap, ArmySnapshot mover, HexCoord executionHex,
+            bool stealthRequired, int? travelDistance = null)
         {
             int fleetBudget = snap?.Self?.Armies != null
                 ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;
             if (fleetBudget <= 0) fleetBudget = 1;
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : fleetBudget;
 
-            int dist = AiV2Util.TravelCost(snap, mover, executionHex,
+            int dist = travelDistance ?? AiV2Util.TravelCost(snap, mover, executionHex,
                 mover.IsHidden || (stealthRequired && ScoutMoverSelector.StealthReadyThisTurn(mover)));
             int eta = dist == int.MaxValue ? int.MaxValue : TravelTurns(mover.CurrentMovement, dist, budget);
             int effAp = mover.HasActivatedThisTurn ? 0 : mover.ActivationApCost;
@@ -206,32 +209,63 @@ namespace Game.Ai.V2
 
             PlannedGroundCost? planned = PlanGroundCost(snap, target, preferredMoverArmyId, requirePreferredMover,
                 excludeArmyIds);
-            if (planned.HasValue)
-            {
-                PlannedGroundCost p = planned.Value;
-                return new ScoutCostEstimate
-                {
-                    MoverKnown = true,
-                    MoverAlreadyHidden = p.Cost.AlreadyHidden,
-                    PreferredMoverArmyId = p.Mover.ArmyId,
-                    ApMinimum = p.Cost.RequiredAp,
-                    ApDesired = p.Cost.RequiredAp,
-                    ApMaximum = p.Cost.RequiredAp,
-                    ActivationApNow = p.Cost.EffActivationAp,
-                    EnergyMinimum = 0f,
-                    EnergyDesired = 0f,
-                    EnergyMaximum = 0f,
-                    EtaTurns = p.Cost.EtaTurns,
-                    EstimatedDistance = p.Cost.Distance,
-                    ExecutionHex = p.ExecutionHex,
-                    // Even when already activated THIS turn, later turns reactivate at the actor's
-                    // real activation AP. This is comparison-only future cost, never a reservation.
-                    RecurringActivationAp = Mathf.Max(0, p.Mover.ActivationApCost),
-                };
-            }
-
-            return NotionalFallback(snap, target);
+            return planned.HasValue ? FromPlanned(planned.Value) : NotionalFallback(snap, target);
         }
+
+        // 2026-11-14 (owner: approximate pre-selection) — a cheap OPTIMISTIC ground estimate for
+        // ranking many candidates before the exact Estimate prices a short list: the same
+        // eligible movers (`eligible`, taken once by the caller for the target's stealth
+        // requirement), pair arithmetic and choice order, but the hex distance to the focus in
+        // place of the route and no vantage search. Hex distance never exceeds the route, so the
+        // ETA (and the Delivery price) is not worse than the exact one - except for a focus
+        // observed from a vantage (arrival-blocked hex), where the stand-off point may be up to
+        // the vision radius nearer. No mover = the same notional fallback as Estimate.
+        internal static ScoutCostEstimate OptimisticGroundEstimate(WorldSnapshot snap,
+            ScoutMissionTarget target, IReadOnlyList<ArmySnapshot> eligible)
+        {
+            bool stealthRequired = target.Stealth == StealthRequirement.Required;
+            PlannedGroundCost? best = null;
+            foreach (ArmySnapshot mover in eligible ?? System.Array.Empty<ArmySnapshot>())
+            {
+                ScoutPairCost pair = PairCost(snap, mover, target.FocusHex, stealthRequired,
+                    travelDistance: HexGridMath.Distance(mover.Hex, target.FocusHex));
+                WaiveStationaryActivation(snap, target, mover, ref pair);
+                var c = new PlannedGroundCost(mover, pair, target.FocusHex);
+                if (!best.HasValue || IsCheaper(c, best.Value))
+                    best = c;
+            }
+            return best.HasValue ? FromPlanned(best.Value) : NotionalFallback(snap, target);
+        }
+
+        // PlanGroundCost's order: full-operation AP, ETA, distance, army id.
+        private static bool IsCheaper(PlannedGroundCost a, PlannedGroundCost b)
+        {
+            if (a.FullOperationAp != b.FullOperationAp) return a.FullOperationAp < b.FullOperationAp;
+            if (a.Cost.EtaTurns != b.Cost.EtaTurns) return a.Cost.EtaTurns < b.Cost.EtaTurns;
+            if (a.Cost.Distance != b.Cost.Distance) return a.Cost.Distance < b.Cost.Distance;
+            return a.Mover.ArmyId < b.Mover.ArmyId;
+        }
+
+        private static ScoutCostEstimate FromPlanned(PlannedGroundCost p) =>
+            new ScoutCostEstimate
+            {
+                MoverKnown = true,
+                MoverAlreadyHidden = p.Cost.AlreadyHidden,
+                PreferredMoverArmyId = p.Mover.ArmyId,
+                ApMinimum = p.Cost.RequiredAp,
+                ApDesired = p.Cost.RequiredAp,
+                ApMaximum = p.Cost.RequiredAp,
+                ActivationApNow = p.Cost.EffActivationAp,
+                EnergyMinimum = 0f,
+                EnergyDesired = 0f,
+                EnergyMaximum = 0f,
+                EtaTurns = p.Cost.EtaTurns,
+                EstimatedDistance = p.Cost.Distance,
+                ExecutionHex = p.ExecutionHex,
+                // Even when already activated THIS turn, later turns reactivate at the actor's
+                // real activation AP. This is comparison-only future cost, never a reservation.
+                RecurringActivationAp = Mathf.Max(0, p.Mover.ActivationApCost),
+            };
 
         private static PlannedGroundCost? PlanGroundCost(WorldSnapshot snap, ScoutMissionTarget target,
             int? preferredMoverArmyId, bool requirePreferredMover = false, ISet<int> excludeArmyIds = null)
