@@ -115,17 +115,31 @@ namespace Game.Ai.V2
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
                 return default;
-            var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
-            var before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
-            return PrioritizeRecipient(WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, current.Abilities,
-                host.cardType == CardType.Hero, snap, inv,
-                EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait,
-                host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment,
-                beforeConsumption: EquipmentSystem.Consumption(host, hostCard?.Equipment, hostCard?.Mutator),
-                afterConsumption: EquipmentSystem.Consumption(host,
-                    equipDef.attachmentSlot == AttachmentSlot.Equipment ? equipDef : hostCard?.Equipment,
-                    equipDef.attachmentSlot == AttachmentSlot.Mutator ? equipDef : hostCard?.Mutator),
-                singleUseHost: ExplosionAttack.IsSingleUseUnit(host))), snap, hostCard, null, deployment, requiredRecipient);
+            MissionIntent purpose = EquipmentPurpose(snap, hostCard, null);
+            EquipmentDelta Core()
+            {
+                var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
+                var before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+                return ScoreEquipmentDelta(grant, before, current.Abilities,
+                    host.cardType == CardType.Hero, snap, inv,
+                    EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait,
+                    host.unitTypeTags, purpose, deployment?.Deploy.Army, deployment,
+                    beforeConsumption: EquipmentSystem.Consumption(host, hostCard?.Equipment, hostCard?.Mutator),
+                    afterConsumption: EquipmentSystem.Consumption(host,
+                        equipDef.attachmentSlot == AttachmentSlot.Equipment ? equipDef : hostCard?.Equipment,
+                        equipDef.attachmentSlot == AttachmentSlot.Mutator ? equipDef : hostCard?.Mutator),
+                    singleUseHost: ExplosionAttack.IsSingleUseUnit(host));
+            }
+            // A hand card's core is reused across verdict stores (EquipmentDeltaCache); a
+            // deployment chain's projection is priced fresh.
+            EquipmentDelta core = hostCard != null && deployment == null && includeStealthTrait
+                && ReferenceEquals(hostCard.Definition, host)
+                ? EquipmentDeltaCache.GetOrCompute(DevelopmentOpportunityEvaluator.CurrentDeltaScope, snap, inv,
+                    equipDef, hostCard, false,
+                    () => DevelopmentAdmission.RecipientDeltaStamp(snap, hostCard, purpose), Core,
+                    () => "hand:" + host.authoredKey)
+                : Core();
+            return PrioritizeRecipient(WithSlotWeight(equipDef, core), snap, hostCard, null, deployment, requiredRecipient);
         }
 
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, UnitData host,
@@ -134,6 +148,21 @@ namespace Game.Ai.V2
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
                 return default;
+            MissionIntent purpose = EquipmentPurpose(snap, null, host);
+            // The core is reused across verdict stores while what it read is unchanged
+            // (EquipmentDeltaCache); priority and slot weight read volatile state and stay live.
+            // A nested operator look-ahead prices a hero without its own forecast: kept apart.
+            EquipmentDelta core = EquipmentDeltaCache.GetOrCompute(DevelopmentOpportunityEvaluator.CurrentDeltaScope,
+                snap, inv, equipDef, host, IsOperatorForecast && host.IsHero,
+                () => DevelopmentAdmission.RecipientDeltaStamp(snap, host, purpose),
+                () => UnitCore(grant, equipDef, host, snap, inv, purpose),
+                () => $"{host.Name}#{host.RuntimeId}");
+            return PrioritizeRecipient(WithSlotWeight(equipDef, core), snap, null, host);
+        }
+
+        private static EquipmentDelta UnitCore(EquipmentGrant grant, CardDefinition equipDef, UnitData host,
+            WorldSnapshot snap, CapabilityInventory inv, MissionIntent purpose)
+        {
             var before = new Dictionary<EquipmentStat, int>
             {
                 [EquipmentStat.Attack] = host.Attack,
@@ -156,12 +185,12 @@ namespace Game.Ai.V2
                 stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host,
                     EquipmentStat.Fate, projectedFate);
             var projected = new PredictedEquipmentState(stats, next.Abilities);
-            return PrioritizeRecipient(WithSlotWeight(equipDef, ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv,
-                projected, true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
+            return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv,
+                projected, true, host.TypeTags?.ToList(), purpose,
                 OwnWorld.Of(snap?.Observer).ArmyContaining(host), null,
                 Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host,
                 EquipmentSystem.Consumption(host), EquipmentSystem.Consumption(host, equipDef),
-                projectedFateMax: next.Stats[EquipmentStat.Fate])), snap, null, host);
+                projectedFateMax: next.Stats[EquipmentStat.Fate]);
         }
 
         // The one slot weight (AiConfigV2.equipMutatorValueMult): only a positive gain of a
@@ -331,8 +360,13 @@ namespace Game.Ai.V2
                         AbilityParams.GetBestRecceRadius(predicted.Abilities)));
             if (isHero && snap?.Development != null
                 && (a.Fate != b.Fate || projectedFateMax.HasValue && projectedFateMax != hostUnit?.FateMax))
+            {
+                // The forecast reads prices, AP, intents and the inventory: only the complete
+                // verdict key and the same inventory keep it (EquipmentDeltaCache FULL entry).
+                EquipmentDeltaCache.MarkFull(inventory: true);
                 using (new Game.Core.ProfileScope("AI/Equip.Eff.OperatorForecast"))
                     ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate, projectedFateMax);
+            }
 
             // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
             // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
@@ -372,6 +406,8 @@ namespace Game.Ai.V2
             List<string> unpricedAfter = predicted.Abilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             if (snap != null && (unpricedBefore.Count > 0 || unpricedAfter.Count > 0))
             {
+                // Registry effects read prices, other armies (repair service) and more: FULL entry.
+                EquipmentDeltaCache.MarkFull();
                 var attachmentTargets = EquipmentTargetMemo.AttachmentTargets(snap, purpose, opposition, targets);
                 // The "before" side reads the deployed host alone (its stats, abilities, army,
                 // purpose and the snapshot), never the equipment: priced once per recipient.
@@ -691,6 +727,13 @@ namespace Game.Ai.V2
         internal static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
             UnitData hostUnit, HexCoord? targetHex, MissionIntent purpose = null)
         {
+            // A Scout route estimate reads every mover and AP state, not only the recipient's own
+            // army: FULL entry (EquipmentDeltaCache). Marked on memo hits too.
+            if (snap != null && army?.Members != null && hostUnit != null
+                && purpose?.Kind == MissionKind.Scout && purpose.Scout != null
+                && !ReconScoutKinds.IsAirSweep(purpose.Scout.Kind)
+                && !ReconScoutKinds.IsLocalStrike(purpose.Scout.Kind))
+                EquipmentDeltaCache.MarkFull();
             // The facts depend on the recipient and its purpose only (a route search, a scout
             // cost estimate): one Enumerate computes them once per recipient, not per equipment.
             if (!EquipmentTargetMemo.TryGetRoute(snap, army, hostUnit, targetHex, purpose, out RouteFacts facts))

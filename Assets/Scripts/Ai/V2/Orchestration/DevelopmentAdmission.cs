@@ -109,6 +109,107 @@ namespace Game.Ai.V2
                 + $"|{Facts(snapshot, activeIntents)}";
         }
 
+        // 2026-11-15 (late-game perf, owner option A) — the part of an equipment delta's inputs
+        // that is the same for every recipient (EquipmentDeltaCache CORE entries): the honest
+        // opposition and its weather, the reference targets (deck, hand, own rosters without
+        // positions), map and route knowledge, own vision of known air armies, facility AA.
+        // Positions, rosters-as-recipients and purposes are in each recipient's stamp; prices,
+        // AP and intents are not read by a CORE computation (a read marks the entry FULL).
+        internal static string RecipientDeltaCoreKey(WorldSnapshot snapshot, PlayerSetupData player,
+            AiHandData hand)
+        {
+            var hands = new List<string>();
+            foreach (CardData c in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+                if (c?.Definition != null) hands.Add(HandRow(c));
+            hands.Sort(System.StringComparer.Ordinal);
+            var rosters = new List<string>();
+            foreach (ArmySnapshot a in snapshot?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                if (a != null) rosters.Add(DefenderFingerprint(a.Members) + "/" + DefenderFingerprint(a.MembersWithHeroes)
+                    + "/ground=" + (a.Members?.Count(p => p.IsGroundCombatant) ?? 0));
+            rosters.Sort(System.StringComparer.Ordinal);
+            var air = new List<string>();
+            var weather = new List<string>();
+            foreach (AiMapMemory.KnownEnemySighting s in (snapshot?.Known?.EnemySightings
+                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                     .Concat(snapshot?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>()))
+            {
+                if (s.IsAir)
+                    air.Add($"{s.ArmyId}:{s.Hex}:{(snapshot.Own != null && snapshot.Own.IsVisible(s.Hex) ? 1 : 0)}");
+                weather.Add($"{s.Hex}:{Game.Combat.BattleEnvironment.At(s.Hex, snapshot.Map)}");
+            }
+            foreach (KnownEventGuardSnapshot g in snapshot?.Known?.EventGuards
+                         ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                weather.Add($"{g.Hex}:{Game.Combat.BattleEnvironment.At(g.Hex, snapshot.Map)}");
+            air.Sort(System.StringComparer.Ordinal);
+            weather.Sort(System.StringComparer.Ordinal);
+            return $"turn={snapshot?.TurnNumber}"
+                + $"|known={KnownTargetsFacts(snapshot)}"
+                + $"|threats={ThreatFacts(snapshot)}"
+                + $"|bench={Benchmarks(snapshot?.Self?.Deck)}"
+                + $"|hand={string.Join(";", hands)}"
+                + $"|rosters={string.Join(";", rosters)}"
+                + $"|route={RouteMapFacts(snapshot)}"
+                + $"|memory={AiMapMemory.RouteMemoryVersionFor(player)}"
+                + $"|air={string.Join(";", air)}"
+                + $"|weather={string.Join(";", weather)}"
+                + $"|facAA={(snapshot?.Self?.HasFacilityAntiAir == true ? 1 : 0)}";
+        }
+
+        // A deployed recipient's own inputs (EquipmentDeltaCache CORE entries): its army in
+        // member order (AA firing order, allies, commander, activation AP), each member's row
+        // and AA reaction state against every known air army, the army's route/movement state.
+        // null = not an own army member: never reused.
+        internal static string RecipientDeltaStamp(WorldSnapshot snapshot, Game.Units.UnitData unit,
+            MissionIntent purpose)
+        {
+            ArmyData a = unit == null ? null : OwnWorld.Of(snapshot?.Observer).ArmyContaining(unit);
+            if (a == null) return null;
+            var airIds = new List<int>();
+            foreach (AiMapMemory.KnownEnemySighting s in snapshot?.Known?.EnemySightings
+                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                if (s.IsAir) airIds.Add(s.ArmyId);
+            var sb = new System.Text.StringBuilder();
+            sb.Append("host=").Append(unit.RuntimeId);
+            ArmySnapshot actor = null;
+            foreach (ArmySnapshot s in snapshot?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                if (s != null && s.ArmyId == a.Id) { actor = s; break; }
+            sb.Append("|army=").Append(actor != null ? ArmyRow(actor) : "-");
+            sb.Append($"|data={a.Hex}:{a.IsGarrison}:{a.IsPrison}:{a.IsAirfield}:{a.IsAirArmy}:{a.MaxMovement}");
+            foreach (Game.Units.UnitData m in a.Members)
+            {
+                if (m == null) { sb.Append("|m=-"); continue; }
+                sb.Append("|m=").Append(UnitRow(a, m))
+                    .Append($":{(m.IsHidden ? 1 : 0)}:{m.AntiAirRadius}:{m.PermanentMoveMax}:");
+                foreach (int id in airIds)
+                    sb.Append(Game.Aviation.AntiAirState.CanReact(m, id) ? '1' : '0');
+            }
+            sb.Append("|purpose=").Append(PurposeFacts(snapshot, purpose));
+            return sb.ToString();
+        }
+
+        // A hand-card recipient: its own row and purpose (no army, no route).
+        internal static string RecipientDeltaStamp(WorldSnapshot snapshot, CardData card, MissionIntent purpose) =>
+            card?.Definition == null ? null : HandRow(card) + "|purpose=" + PurposeFacts(snapshot, purpose);
+
+        // Everything the efficiency core reads from a recipient's purpose: its kind, the honest
+        // target (Attack/Raid site, Raid/ActiveDefence army, Scout focus) and the known defence
+        // bonus of the target hex.
+        private static string PurposeFacts(WorldSnapshot snapshot, MissionIntent i)
+        {
+            if (i == null) return "none";
+            Game.HexGrid.HexCoord? hex = i.Attack?.Target.HasValue == true ? i.Attack.Target.Hex
+                : i.Raid?.Target.HasValue == true ? i.Raid.TargetHex : (Game.HexGrid.HexCoord?)null;
+            float bonus = hex.HasValue && snapshot?.Observer != null
+                ? AiMapMemory.KnownHexDefenseBonusFor(snapshot.Observer, hex.Value,
+                    i.Attack?.Target.HasValue == true ? i.Attack.Target.ExpectedOwner : null)
+                : 0f;
+            return $"{i.IntentKey}:{i.Kind}:{i.Status}:attack={i.Attack?.Target}:{i.Attack?.Phase}"
+                + $":raid={i.Raid?.Target}:{i.Raid?.TargetHex}:{i.Raid?.TargetArmyId}"
+                + $":def={i.ActiveDefence?.EnemyArmyId}"
+                + $":scout={i.Scout?.Kind}:{i.Scout?.FocusHex}:{i.Scout?.RequiresStealth}"
+                + $":hex={hex}:{bonus.ToString("R", CultureInfo.InvariantCulture)}";
+        }
+
         internal static string OperatorForecastFacts(WorldSnapshot snap, PlayerSetupData player)
         {
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
@@ -194,13 +295,7 @@ namespace Game.Ai.V2
             foreach (CardData c in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
             {
                 if (c?.Definition == null) continue;
-                PredictedEquipmentState p = EquipmentSystem.Project(c);
-                rows.Add($"h:{GenerationSource.StableCardKey(c)}:{c.Definition.authoredKey}:"
-                    + $"{c.EffectivePlayApCost}:{c.Equipment?.authoredKey}:{c.Mutator?.authoredKey}:"
-                    + $"{(c.Equipment != null ? 1 : 0)}:{(c.Mutator != null ? 1 : 0)}:"
-                    + string.Join(",", p.Stats.OrderBy(x => (int)x.Key).Select(x => $"{(int)x.Key}={x.Value}"))
-                    + ":" + string.Join(",", p.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))
-                    + ":consume=" + EquipmentSystem.Consumption(c.Definition, c.Equipment, c.Mutator)?.Key);
+                rows.Add(HandRow(c));
             }
             if (player != null)
                 foreach (var a in ArmyRegistry.AllForOwner(player))
@@ -209,20 +304,36 @@ namespace Game.Ai.V2
                     foreach (var u in a.Members)
                     {
                         if (u == null) continue;
-                        rows.Add($"u:{u.RuntimeId}:{a.Id}:{a.IsPrison}:{u.IsPrisoner}:{u.IsHero}:"
-                            + $"{a.Hex}:{a.IsGarrison}:{a.IsAirfield}:{a.IsAirArmy}:{u.IsAviation}:{u.IsSummoned}:{StrikeRoster.UnitKey(u)}:"
-                            + $"{u.Equipment != null}:{u.Mutator != null}:"
-                            + $"{u.Equipment?.authoredKey}:{u.Mutator?.authoredKey}:{u.Attack}:{u.Defense}:"
-                            + $"{u.Range}:{u.HitPointsMax}:{u.HitPointsCurrent}:"
-                            + $"{u.MoveMax}:{u.Initiative}:{u.ActivationApCost}:"
-                            + $"{u.CommandRating}:{u.Fate}:{u.FateMax}:"
-                            + string.Join(",", u.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))
-                            + ":" + string.Join(",", u.TypeTags.OrderBy(x => (int)x))
-                            + ":consume=" + EquipmentSystem.Consumption(u)?.Key);
+                        rows.Add(UnitRow(a, u));
                     }
                 }
             return string.Join(";", rows.OrderBy(x => x, System.StringComparer.Ordinal));
         }
+
+        // One own hand card as a recipient (its projected stats, abilities, attachments, price).
+        private static string HandRow(CardData c)
+        {
+            PredictedEquipmentState p = EquipmentSystem.Project(c);
+            return $"h:{GenerationSource.StableCardKey(c)}:{c.Definition.authoredKey}:"
+                + $"{c.EffectivePlayApCost}:{c.Equipment?.authoredKey}:{c.Mutator?.authoredKey}:"
+                + $"{(c.Equipment != null ? 1 : 0)}:{(c.Mutator != null ? 1 : 0)}:"
+                + string.Join(",", p.Stats.OrderBy(x => (int)x.Key).Select(x => $"{(int)x.Key}={x.Value}"))
+                + ":" + string.Join(",", p.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))
+                + ":consume=" + EquipmentSystem.Consumption(c.Definition, c.Equipment, c.Mutator)?.Key;
+        }
+
+        // One live own unit as a recipient, with the army facts its legality reads.
+        private static string UnitRow(ArmyData a, Game.Units.UnitData u) =>
+            $"u:{u.RuntimeId}:{a.Id}:{a.IsPrison}:{u.IsPrisoner}:{u.IsHero}:"
+            + $"{a.Hex}:{a.IsGarrison}:{a.IsAirfield}:{a.IsAirArmy}:{u.IsAviation}:{u.IsSummoned}:{StrikeRoster.UnitKey(u)}:"
+            + $"{u.Equipment != null}:{u.Mutator != null}:"
+            + $"{u.Equipment?.authoredKey}:{u.Mutator?.authoredKey}:{u.Attack}:{u.Defense}:"
+            + $"{u.Range}:{u.HitPointsMax}:{u.HitPointsCurrent}:"
+            + $"{u.MoveMax}:{u.Initiative}:{u.ActivationApCost}:"
+            + $"{u.CommandRating}:{u.Fate}:{u.FateMax}:"
+            + string.Join(",", u.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))
+            + ":" + string.Join(",", u.TypeTags.OrderBy(x => (int)x))
+            + ":consume=" + EquipmentSystem.Consumption(u)?.Key;
 
         internal static string Facts(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents)
@@ -250,22 +361,7 @@ namespace Game.Ai.V2
             string armies = string.Join(";", (snapshot?.Self?.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a != null).OrderBy(a => a.ArmyId)
-                .Select(a =>
-                {
-                    bool developmentOperator = a.HasResearchOperator || a.HasProductionOperator;
-                    string operatorState = developmentOperator
-                        ? $":operator={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:"
-                          + $"{(a.HasActivatedThisTurn ? 1 : 0)}:{(a.IsGarrison ? 1 : 0)}"
-                        : string.Empty;
-                    return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
-                        + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}:"
-                        + $"roster={DefenderFingerprint(a.MembersWithHeroes)}"
-                        + $":commander={CommanderFingerprint(a.Commander)}"
-                        + $":mutators={string.Join(",", (a.NonHeroMutatorOccupied ?? System.Array.Empty<bool>()).Select(x => x ? "1" : "0"))}"
-                        + $":route={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.MaxMovement}:{a.ActivationApCost}:"
-                        + $"{a.HasActivatedThisTurn}:{a.IsSoloRecce}:{a.IsPrison}:{a.IsAir}:{a.IsHidden}:{a.CanEnterStealth}:{a.EffectiveVisionRadius}"
-                        + operatorState;
-                }));
+                .Select(ArmyRow));
             string bases = string.Join(";", (snapshot?.Self?.BaseHexes
                     ?? System.Array.Empty<Game.HexGrid.HexCoord>())
                 .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h =>
@@ -307,19 +403,7 @@ namespace Game.Ai.V2
             // EquipmentOpposition's composition fallback: enemy army compositions (composition only crosses
             // the TrueWorld boundary), remembered neutral defenders and known event guards.
             // Hidden positions stay excluded; honest target positions are in knownTargets below.
-            IEnumerable<string> threatRows = (snapshot?.TrueWorld?.EnemyArmies
-                    ?? System.Array.Empty<ArmySnapshot>())
-                .Where(a => a?.Members != null && a.Members.Count > 0)
-                .Select(a => "e" + DefenderFingerprint(a.Members) + CommanderFingerprint(a.Commander))
-                .Concat((snapshot?.Known?.NeutralSightings
-                        ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                    .Where(x => x.Defenders != null && x.Defenders.Count > 0)
-                    .Select(x => "n" + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander)))
-                .Concat((snapshot?.Known?.EventGuards
-                        ?? System.Array.Empty<KnownEventGuardSnapshot>())
-                    .Where(g => g.Defenders != null && g.Defenders.Count > 0)
-                    .Select(g => "g" + DefenderFingerprint(g.Defenders) + CommanderFingerprint(g.Commander)));
-            string threats = string.Join(";", threatRows.OrderBy(x => x, System.StringComparer.Ordinal));
+            string threats = ThreatFacts(snapshot);
             string purposes = string.Join(";", (snapshot?.AllIntents
                     ?? System.Array.Empty<MissionIntent>()).Where(i => i != null)
                 .OrderBy(i => i.IntentKey).Select(i =>
@@ -330,26 +414,11 @@ namespace Game.Ai.V2
                     + ":gather=" + string.Join(",", (i.Attack?.GatherSupportArmyIds ?? new List<int>()).OrderBy(x => x))
                     + $":devHero={i.Development?.Hero?.RuntimeId}:scout={i.Scout?.Kind}:{i.Scout?.RequiresStealth}:{i.Scout?.FocusHex}:raid={i.Raid?.Target}:def={i.ActiveDefence?.EnemyArmyId}"));
             string benchmarks = Benchmarks(snapshot?.Self?.Deck);
-            string knownTargets = string.Join(";", (snapshot?.Known?.EnemySightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snapshot?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Select(x => $"{x.ArmyId}:{x.Hex}:recce={x.RecceRadius},{x.RecceSpotStrength}:"
-                    + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander))
-                .Concat((snapshot?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
-                    .Select(g => $"guard:{g.Hex}:" + DefenderFingerprint(g.Defenders)))
-                .OrderBy(x => x, System.StringComparer.Ordinal));
+            string knownTargets = KnownTargetsFacts(snapshot);
             // Raw inputs of the shared Scout route/vantage owner; no route or combat calculation
             // in the cache key. Terrain changes use the snapshot's pathing version. Set order is
             // irrelevant, while coverage and either kind of arrival block can change utility.
-            MapKnowledgeSnapshot map = snapshot?.MapKnowledge;
-            string routeMap = $"{snapshot?.Map != null}:{snapshot?.MapPathingVersion}:"
-                + (map?.ExplorableUnknownFrac.ToString("R", CultureInfo.InvariantCulture) ?? "-")
-                + ":hexes=" + string.Join(";", (map?.AllHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
-                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
-                + ":hard=" + string.Join(";", (map?.ScoutHardBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
-                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
-                + ":visible=" + string.Join(";", (map?.VisibleArrivalBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
-                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal));
+            string routeMap = RouteMapFacts(snapshot);
             string trimmedScouts = snapshot?.Observer == null ? "-" : string.Join(",",
                 ReconTurnStateStore.For(snapshot.Observer, snapshot.TurnNumber)
                     .ReconActorsTrimmedThisTurn(snapshot.TurnNumber).OrderBy(x => x));
@@ -365,6 +434,68 @@ namespace Game.Ai.V2
                 + $"{(rd?.AssemblerCardInHand == true ? 1 : 0)}:"
                 + $"{(rd?.DevPathViable == true ? 1 : 0)}:prep={(rd?.HasPreparationStep == true ? 1 : 0)}:{rd?.PreparationHeadroom ?? 0f}:modes={rd?.ResearchPreparationViable}:{rd?.ProductionPreparationViable}:targets={rd?.UpgradeTargetCount ?? 0}:"
                 + $"{(rd?.BestSuccessChance ?? 0f):0.###}";
+        }
+
+        // One own army snapshot: roster, commander, Mutator slots, route/movement state.
+        private static string ArmyRow(ArmySnapshot a)
+        {
+            bool developmentOperator = a.HasResearchOperator || a.HasProductionOperator;
+            string operatorState = developmentOperator
+                ? $":operator={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:"
+                  + $"{(a.HasActivatedThisTurn ? 1 : 0)}:{(a.IsGarrison ? 1 : 0)}"
+                : string.Empty;
+            return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
+                + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}:"
+                + $"roster={DefenderFingerprint(a.MembersWithHeroes)}"
+                + $":commander={CommanderFingerprint(a.Commander)}"
+                + $":mutators={string.Join(",", (a.NonHeroMutatorOccupied ?? System.Array.Empty<bool>()).Select(x => x ? "1" : "0"))}"
+                + $":route={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.MaxMovement}:{a.ActivationApCost}:"
+                + $"{a.HasActivatedThisTurn}:{a.IsSoloRecce}:{a.IsPrison}:{a.IsAir}:{a.IsHidden}:{a.CanEnterStealth}:{a.EffectiveVisionRadius}"
+                + operatorState;
+        }
+
+        // EquipmentOpposition's composition fallback rows (see Facts).
+        private static string ThreatFacts(WorldSnapshot snapshot)
+        {
+            IEnumerable<string> threatRows = (snapshot?.TrueWorld?.EnemyArmies
+                    ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a?.Members != null && a.Members.Count > 0)
+                .Select(a => "e" + DefenderFingerprint(a.Members) + CommanderFingerprint(a.Commander))
+                .Concat((snapshot?.Known?.NeutralSightings
+                        ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                    .Where(x => x.Defenders != null && x.Defenders.Count > 0)
+                    .Select(x => "n" + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander)))
+                .Concat((snapshot?.Known?.EventGuards
+                        ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                    .Where(g => g.Defenders != null && g.Defenders.Count > 0)
+                    .Select(g => "g" + DefenderFingerprint(g.Defenders) + CommanderFingerprint(g.Commander)));
+            return string.Join(";", threatRows.OrderBy(x => x, System.StringComparer.Ordinal));
+        }
+
+        // Honest positions and profiles of every known enemy/neutral army and event guard.
+        private static string KnownTargetsFacts(WorldSnapshot snapshot) =>
+            string.Join(";", (snapshot?.Known?.EnemySightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snapshot?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Select(x => $"{x.ArmyId}:{x.Hex}:recce={x.RecceRadius},{x.RecceSpotStrength}:"
+                    + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander))
+                .Concat((snapshot?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                    .Select(g => $"guard:{g.Hex}:" + DefenderFingerprint(g.Defenders)))
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+
+        // Raw inputs of the shared Scout route/vantage owner and of route costs (see Facts).
+        private static string RouteMapFacts(WorldSnapshot snapshot)
+        {
+            MapKnowledgeSnapshot map = snapshot?.MapKnowledge;
+            string routeMap = $"{snapshot?.Map != null}:{snapshot?.MapPathingVersion}:"
+                + (map?.ExplorableUnknownFrac.ToString("R", CultureInfo.InvariantCulture) ?? "-")
+                + ":hexes=" + string.Join(";", (map?.AllHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
+                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
+                + ":hard=" + string.Join(";", (map?.ScoutHardBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
+                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
+                + ":visible=" + string.Join(";", (map?.VisibleArrivalBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
+                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal));
+            return routeMap;
         }
 
         // EXACT, order-stable digest of a combat roster. Aggregates (Count plus Attack/Defense/HP/

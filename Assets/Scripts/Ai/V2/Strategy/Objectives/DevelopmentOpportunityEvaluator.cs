@@ -156,7 +156,7 @@ namespace Game.Ai.V2
             using var recipientMemo = new RecipientEvaluationMemo(
                 !preparationOnly && snap.Development.AnyFacilityWithHero
                     ? RecipientEvaluationMemo.StoreFor(player,
-                        DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand))
+                        DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand), snap, hand)
                     : new RecipientEvaluationMemo.VerdictStore());
             using var targetMemo = new EquipmentUpgradeValuation.EquipmentTargetMemo();
             IEnumerable<HexCoord> sites = snap.Self.BaseHexes
@@ -228,7 +228,7 @@ namespace Game.Ai.V2
                 || ctx?.ResearchProductionCatalog == null)
                 yield break;
             RecipientEvaluationMemo.VerdictStore store = RecipientEvaluationMemo.StoreFor(player,
-                DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand));
+                DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand), snap, hand);
             List<GenerationStep> sources = GenerationSource.Enumerate(player, root, ctx,
                 hand, null, null, resourceForecast: true);
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
@@ -273,7 +273,7 @@ namespace Game.Ai.V2
             if (activeIntents != null && snap?.Development?.AnyFacilityWithHero == true)
                 using (new Game.Core.ProfileScope("AI/Dev.VerdictKey"))
                     store = RecipientEvaluationMemo.StoreFor(player,
-                        DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand));
+                        DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand), snap, hand);
             else
                 store = new RecipientEvaluationMemo.VerdictStore();
             using var recipientMemo = new RecipientEvaluationMemo(store);
@@ -1177,7 +1177,15 @@ namespace Game.Ai.V2
             { Legal = legal; Why = why; Gain = gain; Purpose = purpose; NoNeed = noNeed; PendingCovers = pendingCovers; }
         }
 
-        internal static void ClearRecipientEvaluationCache() => RecipientEvaluationMemo.Clear();
+        internal static void ClearRecipientEvaluationCache()
+        {
+            RecipientEvaluationMemo.Clear();
+            EquipmentDeltaCache.Clear();
+        }
+
+        // The keyed verdict store's scope facts for EquipmentDeltaCache, or null.
+        internal static EquipmentDeltaCache.ScopeKeys CurrentDeltaScope =>
+            RecipientEvaluationMemo.CurrentStore?.DeltaScope;
 
         // Operator forecast reuse inside the current verdict store (see VerdictStore.OperatorForecasts).
         internal static bool TryGetOperatorForecast(WorldSnapshot snap, CapabilityInventory inv,
@@ -1237,6 +1245,8 @@ namespace Game.Ai.V2
             internal sealed class VerdictStore
             {
                 internal string Key;
+                // Scope facts of a keyed store for EquipmentDeltaCache (null for a call-local store).
+                internal EquipmentDeltaCache.ScopeKeys DeltaScope;
                 internal readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> Verdicts = new();
                 internal readonly Dictionary<(object, object), bool> Pending = new();
                 internal readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> ForecastVerdicts = new();
@@ -1261,7 +1271,8 @@ namespace Game.Ai.V2
                 s_current = null;
             }
 
-            internal static VerdictStore StoreFor(PlayerSetupData player, string key)
+            internal static VerdictStore StoreFor(PlayerSetupData player, string key,
+                WorldSnapshot snap = null, AiHandData hand = null)
             {
                 if (player == null)
                     return new VerdictStore { Key = key };
@@ -1270,7 +1281,19 @@ namespace Game.Ai.V2
                     if (store != null && Game.Core.ScopeTiming.Collecting)
                         CountReset(store, key);
                     s_stores[player] = store = new VerdictStore { Key = key };
+                    // The core key reads a subset of what the verdict key reads (plus weather,
+                    // fixed within a turn), so it is computed once per store.
+                    if (snap != null)
+                        using (new Game.Core.ProfileScope("AI/Dev.DeltaCoreKey"))
+                            store.DeltaScope = new EquipmentDeltaCache.ScopeKeys
+                            {
+                                Player = player, FullKey = store.Key,
+                                CoreKey = EquipmentDeltaCache.InternCore(player, snap.TurnNumber,
+                                    DevelopmentAdmission.RecipientDeltaCoreKey(snap, player, hand)),
+                            };
                 }
+                // The scope prices against the snapshot it was opened for.
+                if (store.DeltaScope != null) store.DeltaScope.Snap = snap;
                 return store;
             }
 
