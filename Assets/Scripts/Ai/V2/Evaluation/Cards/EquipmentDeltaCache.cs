@@ -66,7 +66,13 @@ namespace Game.Ai.V2
         [System.ThreadStatic] private static List<Frame> s_frames;
         [System.ThreadStatic] private static int s_hits;
 
-        internal static void Clear() => s_players.Clear();
+        // A new match (MatchStateInventory, via ClearRecipientEvaluationCache) or a test.
+        internal static void Clear()
+        {
+            s_players.Clear();
+            s_frames?.Clear();
+            s_hits = 0;
+        }
 
         // The computation read something outside the core key and the recipient stamp.
         // `inventory`: it also read the CapabilityInventory instance (operator forecast).
