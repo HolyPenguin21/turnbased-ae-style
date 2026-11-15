@@ -13,21 +13,13 @@ namespace Game.EditorTests
     // reused while what its own computation read is unchanged, and recomputed otherwise.
     public sealed class AiEquipmentDeltaCacheTests
     {
-        private int _auditEvery;
-
         [SetUp]
-        public void SetUp()
-        {
-            EquipmentDeltaCache.Clear();
-            _auditEvery = EquipmentDeltaCache.AuditEvery;
-            EquipmentDeltaCache.AuditEvery = 0;
-        }
+        public void SetUp() => EquipmentDeltaCache.Clear();
 
         [TearDown]
         public void TearDown()
         {
             EquipmentDeltaCache.Clear();
-            EquipmentDeltaCache.AuditEvery = _auditEvery;
             Game.Map.ArmyRegistry.Clear();
         }
 
@@ -42,7 +34,7 @@ namespace Game.EditorTests
             WorldSnapshot snap, CardDefinition equipment, object recipient, string stamp,
             System.Func<EquipmentUpgradeValuation.EquipmentDelta> compute, object inventory = null) =>
             EquipmentDeltaCache.GetOrCompute(scope, snap, inventory, equipment, recipient, false,
-                () => stamp, compute, () => "test");
+                () => stamp, compute);
 
         [Test]
         public void CoreEntryIsReusedAcrossStoresUntilItsCoreOrRecipientStampChanges()
@@ -133,25 +125,6 @@ namespace Game.EditorTests
             Assert.That(computed, Is.EqualTo(6));
         }
 
-        [Test]
-        public void AuditRecomputesAValidHitAndReplacesADifferentValue()
-        {
-            var player = new PlayerSetupData();
-            var snap = new WorldSnapshot { Observer = player, TurnNumber = 2 };
-            var equipment = new CardDefinition();
-            var recipient = new object();
-            float value = 1f;
-            EquipmentUpgradeValuation.EquipmentDelta Compute() =>
-                new EquipmentUpgradeValuation.EquipmentDelta(value, 0f);
-            EquipmentDeltaCache.AuditEvery = 1;
-            var scope = Scope(player, snap, "f", "c");
-            Get(scope, snap, equipment, recipient, "s", Compute);
-            value = 5f; // an input the keys failed to capture
-            Assert.That(Get(scope, snap, equipment, recipient, "s", Compute).Combat, Is.EqualTo(5f));
-            EquipmentDeltaCache.AuditEvery = 0;
-            Assert.That(Get(scope, snap, equipment, recipient, "s", Compute).Combat, Is.EqualTo(5f),
-                "the audited value replaced the entry");
-        }
 
         [Test]
         public void RecipientStampReadsItsOwnArmyAndPurposeButNotAnotherArmy()

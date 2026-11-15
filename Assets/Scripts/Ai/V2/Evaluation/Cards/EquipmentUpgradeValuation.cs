@@ -136,8 +136,7 @@ namespace Game.Ai.V2
                 && ReferenceEquals(hostCard.Definition, host)
                 ? EquipmentDeltaCache.GetOrCompute(DevelopmentOpportunityEvaluator.CurrentDeltaScope, snap, inv,
                     equipDef, hostCard, false,
-                    () => DevelopmentAdmission.RecipientDeltaStamp(snap, hostCard, purpose), Core,
-                    () => "hand:" + host.authoredKey)
+                    () => DevelopmentAdmission.RecipientDeltaStamp(snap, hostCard, purpose), Core)
                 : Core();
             return PrioritizeRecipient(WithSlotWeight(equipDef, core), snap, hostCard, null, deployment, requiredRecipient);
         }
@@ -155,8 +154,7 @@ namespace Game.Ai.V2
             EquipmentDelta core = EquipmentDeltaCache.GetOrCompute(DevelopmentOpportunityEvaluator.CurrentDeltaScope,
                 snap, inv, equipDef, host, IsOperatorForecast && host.IsHero,
                 () => DevelopmentAdmission.RecipientDeltaStamp(snap, host, purpose),
-                () => UnitCore(grant, equipDef, host, snap, inv, purpose),
-                () => $"{host.Name}#{host.RuntimeId}");
+                () => UnitCore(grant, equipDef, host, snap, inv, purpose));
             return PrioritizeRecipient(WithSlotWeight(equipDef, core), snap, null, host);
         }
 
@@ -275,7 +273,6 @@ namespace Game.Ai.V2
             }
 
             bool aviation = hostTags != null && hostTags.Contains(UnitTypeTag.Aircraft);
-            var __ctxScope = new Game.Core.ProfileScope("AI/Equip.Eff.Context");
             var ctx = new EfficiencyContext
             {
                 IsHero = isHero,
@@ -351,21 +348,17 @@ namespace Game.Ai.V2
                     purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.ExpectedOwner : null)
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
-            __ctxScope.Dispose();
-            using (new Game.Core.ProfileScope("AI/Equip.Eff.Route"))
-                ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
-            using (new Game.Core.ProfileScope("AI/Equip.Eff.Detection"))
-                ApplyKnownDetection(ctx, snap, targetHex ?? army?.Hex ?? deployment?.Deploy.Hex,
-                    Mathf.Max(AbilityParams.GetBestRecceRadius(hostAbilities),
-                        AbilityParams.GetBestRecceRadius(predicted.Abilities)));
+            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
+            ApplyKnownDetection(ctx, snap, targetHex ?? army?.Hex ?? deployment?.Deploy.Hex,
+                Mathf.Max(AbilityParams.GetBestRecceRadius(hostAbilities),
+                    AbilityParams.GetBestRecceRadius(predicted.Abilities)));
             if (isHero && snap?.Development != null
                 && (a.Fate != b.Fate || projectedFateMax.HasValue && projectedFateMax != hostUnit?.FateMax))
             {
                 // The forecast reads prices, AP, intents and the inventory: only the complete
                 // verdict key and the same inventory keep it (EquipmentDeltaCache FULL entry).
                 EquipmentDeltaCache.MarkFull(inventory: true);
-                using (new Game.Core.ProfileScope("AI/Equip.Eff.OperatorForecast"))
-                    ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate, projectedFateMax);
+                ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate, projectedFateMax);
             }
 
             // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
@@ -401,7 +394,6 @@ namespace Game.Ai.V2
 
             // Abilities the table does not price (global income, auras, summons, ...) keep their
             // contextual registry value, exactly as before.
-            using var __registry = new Game.Core.ProfileScope("AI/Equip.Eff.Registry");
             List<string> unpricedBefore = hostAbilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             List<string> unpricedAfter = predicted.Abilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             if (snap != null && (unpricedBefore.Count > 0 || unpricedAfter.Count > 0))

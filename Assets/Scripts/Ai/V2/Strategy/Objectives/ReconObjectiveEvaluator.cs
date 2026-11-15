@@ -170,9 +170,7 @@ namespace Game.Ai.V2
             using var __profile = new Game.Core.ProfileScope("AI/Objectives.Recon");
             if (snap?.Self == null || snap.MapKnowledge == null)
                 return new List<ReconObjective>();
-            List<HexCoord> observationNeeds;
-            using (new Game.Core.ProfileScope("AI/Objectives.Recon.AttackNeeds"))
-                observationNeeds = AttackObjectiveEvaluator.ObservationNeeds(snap).Distinct().ToList();
+            List<HexCoord> observationNeeds = AttackObjectiveEvaluator.ObservationNeeds(snap).Distinct().ToList();
             EnumerationFacts outer = s_enumeration;
             s_enumeration = new EnumerationFacts
             {
@@ -190,7 +188,6 @@ namespace Game.Ai.V2
 
             IReadOnlyList<FrontierHexSnapshot> frontier = snap.MapKnowledge.Frontier;
             if (frontier != null)
-                using (new Game.Core.ProfileScope("AI/Objectives.Recon.Explore"))
                 foreach (FrontierHexSnapshot f in frontier)
                 {
                     if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
@@ -244,9 +241,7 @@ namespace Game.Ai.V2
             // player genuinely observed in an earlier turn. The frozen sidecar excludes never-seen
             // hexes by construction and current-visible hexes naturally have age 0.
             ReconDirectionSnapshot direction = null;
-            List<ReconObjective> refresh;
-            using (new Game.Core.ProfileScope("AI/Objectives.Recon.Refresh"))
-                refresh = BuildRefreshObjectives(snap, ref direction);
+            List<ReconObjective> refresh = BuildRefreshObjectives(snap, ref direction);
             // Strike force step 6 — Attack's observation needs join as Refresh objectives of the
             // same identity, replacing a generic Refresh of the same hex.
             // A need never observed at all (the enemy citadel's cheat anchor, step 7) is an

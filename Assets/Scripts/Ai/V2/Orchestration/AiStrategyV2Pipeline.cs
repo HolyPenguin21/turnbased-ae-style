@@ -434,7 +434,6 @@ namespace Game.Ai.V2
 
             // Measure against the final live world while owner reservations still exist.
             // Analysis and Materialization retain ownership of facts and candidate valuation.
-            var __apMeasure = new Game.Core.ProfileScope("AI/TurnEnd.ApMeasure");
             WorldSnapshot apSnapshot = WorldAnalysis.RefreshStrategicKnowledge(frame.Snapshot,
                 player, root, hand, ctx);
             ActorCommitments apCommitments = ActorCommitments.FromIntents(
@@ -445,7 +444,6 @@ namespace Game.Ai.V2
                 phaseB.Reservation, out int usefulHandCards, turnEndMeasurement: true) ?? 0f;
             ApTurnMeasure apMeasure = ApTurnPressure.Measure(player, root, hand, ctx,
                 initiativeStartAp, telemetry.Allocation.Deferred, usefulHandAp, usefulHandCards);
-            __apMeasure.Dispose();
 
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.

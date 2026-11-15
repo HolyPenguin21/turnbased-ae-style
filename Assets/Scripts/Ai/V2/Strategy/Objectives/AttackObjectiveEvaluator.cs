@@ -201,7 +201,6 @@ namespace Game.Ai.V2
 
         public static List<AttackObjective> Enumerate(WorldSnapshot snap)
         {
-            using var __profile = new Game.Core.ProfileScope("AI/Objectives.Attack");
             var result = new List<AttackObjective>();
             PlayerSetupData player = snap?.Observer;
             if (snap?.Self == null || player == null)

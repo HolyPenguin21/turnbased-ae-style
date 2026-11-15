@@ -148,8 +148,8 @@ namespace Game.Setup
             // the active scope plus the per-player verdict store, replaced whenever its input key differs
             new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Cache,
                 DevelopmentOpportunityEvaluator.ClearRecipientEvaluationCache),
-            // per-player, per-turn equipment deltas reused across verdict stores (+ audit toggle,
-            // thread-static read frames); cleared with the verdict stores
+            // per-player, per-turn equipment deltas reused across verdict stores (+ thread-static
+            // read frames); cleared with the verdict stores
             new MatchStateEntry("Game.Ai.V2.EquipmentDeltaCache", MatchStateKind.Cache,
                 resetBy: "Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo"),
             // the frame's Recon list weakly keyed by its snapshot + the facts of one running Enumerate

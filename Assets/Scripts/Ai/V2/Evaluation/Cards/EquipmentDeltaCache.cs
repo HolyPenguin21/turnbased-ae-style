@@ -24,11 +24,6 @@ namespace Game.Ai.V2
     // call computes fresh, as before.
     internal static class EquipmentDeltaCache
     {
-        // Validation (temporary, perf series): every Nth valid hit is recomputed and compared;
-        // a difference is logged as [AI][Perf][DeltaCache] MISMATCH and replaces the entry.
-        // 0 disables the audit.
-        internal static int AuditEvery = 8;
-
         // The scope facts a keyed verdict store carries (set by RecipientEvaluationMemo.StoreFor).
         internal sealed class ScopeKeys
         {
@@ -64,14 +59,12 @@ namespace Game.Ai.V2
         // enclosing frame: an outer delta that priced an inner one read what the inner read.
         private struct Frame { internal bool Full; internal bool Inventory; }
         [System.ThreadStatic] private static List<Frame> s_frames;
-        [System.ThreadStatic] private static int s_hits;
 
         // A new match (MatchStateInventory, via ClearRecipientEvaluationCache) or a test.
         internal static void Clear()
         {
             s_players.Clear();
             s_frames?.Clear();
-            s_hits = 0;
         }
 
         // The computation read something outside the core key and the recipient stamp.
@@ -105,8 +98,7 @@ namespace Game.Ai.V2
 
         internal static EquipmentUpgradeValuation.EquipmentDelta GetOrCompute(ScopeKeys scope,
             WorldSnapshot snap, object inventory, CardDefinition equipment, object recipient, bool forecastHero,
-            System.Func<string> stamp, System.Func<EquipmentUpgradeValuation.EquipmentDelta> compute,
-            System.Func<string> label)
+            System.Func<string> stamp, System.Func<EquipmentUpgradeValuation.EquipmentDelta> compute)
         {
             if (scope == null || scope.Player == null || scope.CoreKey == null || snap == null
                 || !ReferenceEquals(scope.Snap, snap) || equipment == null || recipient == null)
@@ -128,36 +120,16 @@ namespace Game.Ai.V2
                 if (valid)
                 {
                     if (entry.FullRef != null) MarkFull(entry.Inventory != null);
-                    Game.Core.ScopeTiming.Count(entry.FullRef != null ? "DeltaCache.hitFull" : "DeltaCache.hit");
-                    if (AuditEvery <= 0 || ++s_hits % AuditEvery != 0)
-                        return entry.Delta;
-                    Game.Core.ScopeTiming.Count("DeltaCache.audit");
-                    EquipmentUpgradeValuation.EquipmentDelta fresh = Compute(compute, out _, out _);
-                    if (System.Math.Abs(fresh.Combat - entry.Delta.Combat) <= Tolerance(fresh.Combat)
-                        && System.Math.Abs(fresh.Tactical - entry.Delta.Tactical) <= Tolerance(fresh.Tactical))
-                        return entry.Delta;
-                    Game.Core.ScopeTiming.Count("DeltaCache.mismatch");
-                    AiDebugLog.Write($"[AI][Perf][DeltaCache] MISMATCH equip={equipment.authoredKey} "
-                        + $"recipient={label()} kind={(entry.FullRef != null ? "full" : "core")} "
-                        + $"cached={entry.Delta.Combat:R}/{entry.Delta.Tactical:R} "
-                        + $"fresh={fresh.Combat:R}/{fresh.Tactical:R}");
-                    entry.Delta = fresh;
-                    return fresh;
+                    return entry.Delta;
                 }
-                Game.Core.ScopeTiming.Count("DeltaCache.stale");
             }
-            else
-                Game.Core.ScopeTiming.Count("DeltaCache.miss");
 
             EquipmentUpgradeValuation.EquipmentDelta delta = Compute(compute, out bool full, out bool inv);
             cache.Entries[key] = full
                 ? new Entry { FullRef = scope.FullKey, Inventory = inv ? inventory : null, Delta = delta }
                 : new Entry { CoreRef = scope.CoreKey, Stamp = currentStamp, Delta = delta };
-            if (full) Game.Core.ScopeTiming.Count("DeltaCache.storedFull");
             return delta;
         }
-
-        private static float Tolerance(float value) => 1e-4f + 1e-4f * System.Math.Abs(value);
 
         private static EquipmentUpgradeValuation.EquipmentDelta Compute(
             System.Func<EquipmentUpgradeValuation.EquipmentDelta> compute, out bool full, out bool inventory)

@@ -185,8 +185,6 @@ namespace Game.Ai
             AiDebugLog.Write(frames.Summary());
             if (!string.IsNullOrEmpty(frames.Scopes))
                 AiDebugLog.Write($"[AI][Timing] {player.Nickname}: scopes {frames.Scopes}");
-            if (!string.IsNullOrEmpty(frames.Counts))
-                AiDebugLog.Write($"[AI][Timing] {player.Nickname}: counts {frames.Counts}");
             // Final safety boundary: the turn-scoped simulation cache is already closed, all
             // pipeline cleanup is complete, and only the handoff callback remains.
             yield return ctx.WaitAtObserverActionBoundary();
@@ -235,8 +233,7 @@ namespace Game.Ai
                         }
                     }
                     frames?.Record(sliceStart, pending);
-                    if (frames != null) frames.Counts = Game.Core.ScopeTiming.TakeCounts(30);
-                    if (frames != null) frames.Scopes = Game.Core.ScopeTiming.Take(24);
+                    if (frames != null) frames.Scopes = Game.Core.ScopeTiming.Take(12);
                     completed?.Invoke(Game.Combat.WorthIt.CurrentEstimateCacheStats);
                 }
                 finally
@@ -801,8 +798,6 @@ namespace Game.Ai
 
         // Top ProfileScope totals of the turn (ScopeTiming), set when the run completes.
         internal string Scopes { get; set; }
-        // Diagnostic event counters of the turn (ScopeTiming.Count), set with Scopes.
-        internal string Counts { get; set; }
 
         internal string Summary() =>
             $"[AI][Timing] {_player}: frames={Frames} workMs={TotalMs:0} longestMs={LongestMs:0} "

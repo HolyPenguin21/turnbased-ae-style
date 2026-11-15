@@ -1276,11 +1276,7 @@ namespace Game.Ai.V2
                 if (player == null)
                     return new VerdictStore { Key = key };
                 if (!s_stores.TryGetValue(player, out VerdictStore store) || !string.Equals(store.Key, key, System.StringComparison.Ordinal))
-                {
-                    if (store != null && Game.Core.ScopeTiming.Collecting)
-                        CountReset(store, key);
                     s_stores[player] = store = new VerdictStore { Key = key };
-                }
                 return store;
             }
 
@@ -1294,48 +1290,16 @@ namespace Game.Ai.V2
                 if (player == null || snap == null)
                     return store;
                 if (store.DeltaScope == null)
-                    using (new Game.Core.ProfileScope("AI/Dev.DeltaCoreKey"))
-                        store.DeltaScope = new EquipmentDeltaCache.ScopeKeys
-                        {
-                            Player = player, FullKey = store.Key,
-                            CoreKey = EquipmentDeltaCache.InternCore(player, snap.TurnNumber,
-                                DevelopmentAdmission.RecipientDeltaCoreKey(snap, player, hand)),
-                        };
+                    store.DeltaScope = new EquipmentDeltaCache.ScopeKeys
+                    {
+                        Player = player, FullKey = store.Key,
+                        CoreKey = EquipmentDeltaCache.InternCore(player, snap.TurnNumber,
+                            DevelopmentAdmission.RecipientDeltaCoreKey(snap, player, hand)),
+                    };
                 store.DeltaScope.Snap = snap;
                 return store;
             }
 
-            // Diagnostic (late-game perf series): which key segments replaced a store and how
-            // many priced verdicts it discarded. Collected only during a timed AI turn.
-            private static void CountReset(VerdictStore store, string key)
-            {
-                Game.Core.ScopeTiming.Count("VerdictStore.reset");
-                Game.Core.ScopeTiming.Count("VerdictStore.dropped",
-                    store.Verdicts.Count + store.ForecastVerdicts.Count);
-                Dictionary<string, string> before = KeySegments(store.Key), after = KeySegments(key);
-                foreach (var kv in after)
-                    if (!before.TryGetValue(kv.Key, out string old)
-                        || !string.Equals(old, kv.Value, System.StringComparison.Ordinal))
-                        Game.Core.ScopeTiming.Count("VerdictStore.diff:" + kv.Key);
-                foreach (string name in before.Keys)
-                    if (!after.ContainsKey(name))
-                        Game.Core.ScopeTiming.Count("VerdictStore.diff:" + name);
-            }
-
-            private static Dictionary<string, string> KeySegments(string key)
-            {
-                var result = new Dictionary<string, string>(System.StringComparer.Ordinal);
-                string[] parts = (key ?? string.Empty).Split('|');
-                for (int i = 0; i < parts.Length; i++)
-                {
-                    int eq = parts[i].IndexOf('=');
-                    string name = eq > 0 && parts[i].IndexOf(':', 0, eq) < 0 ? parts[i].Substring(0, eq) : "#" + i;
-                    string unique = name;
-                    for (int n = 2; result.ContainsKey(unique); n++) unique = name + "#" + n;
-                    result[unique] = eq > 0 ? parts[i].Substring(eq + 1) : parts[i];
-                }
-                return result;
-            }
 
             public RecipientEvaluationMemo(VerdictStore store)
             {
