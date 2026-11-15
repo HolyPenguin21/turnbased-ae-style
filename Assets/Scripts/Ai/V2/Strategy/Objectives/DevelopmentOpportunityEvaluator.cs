@@ -155,7 +155,7 @@ namespace Game.Ai.V2
             // look-ahead) the verdicts are memoised for this call alone, as before.
             using var recipientMemo = new RecipientEvaluationMemo(
                 !preparationOnly && snap.Development.AnyFacilityWithHero
-                    ? RecipientEvaluationMemo.StoreFor(player,
+                    ? RecipientEvaluationMemo.StoreWithDeltaScope(player,
                         DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand), snap, hand)
                     : new RecipientEvaluationMemo.VerdictStore());
             using var targetMemo = new EquipmentUpgradeValuation.EquipmentTargetMemo();
@@ -227,7 +227,7 @@ namespace Game.Ai.V2
                 || player == null || root == null || hand?.Hand == null
                 || ctx?.ResearchProductionCatalog == null)
                 yield break;
-            RecipientEvaluationMemo.VerdictStore store = RecipientEvaluationMemo.StoreFor(player,
+            RecipientEvaluationMemo.VerdictStore store = RecipientEvaluationMemo.StoreWithDeltaScope(player,
                 DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand), snap, hand);
             List<GenerationStep> sources = GenerationSource.Enumerate(player, root, ctx,
                 hand, null, null, resourceForecast: true);
@@ -272,7 +272,7 @@ namespace Game.Ai.V2
             RecipientEvaluationMemo.VerdictStore store;
             if (activeIntents != null && snap?.Development?.AnyFacilityWithHero == true)
                 using (new Game.Core.ProfileScope("AI/Dev.VerdictKey"))
-                    store = RecipientEvaluationMemo.StoreFor(player,
+                    store = RecipientEvaluationMemo.StoreWithDeltaScope(player,
                         DevelopmentAdmission.RecipientVerdictKey(snap, activeIntents, player, hand), snap, hand);
             else
                 store = new RecipientEvaluationMemo.VerdictStore();
@@ -1271,8 +1271,7 @@ namespace Game.Ai.V2
                 s_current = null;
             }
 
-            internal static VerdictStore StoreFor(PlayerSetupData player, string key,
-                WorldSnapshot snap = null, AiHandData hand = null)
+            internal static VerdictStore StoreFor(PlayerSetupData player, string key)
             {
                 if (player == null)
                     return new VerdictStore { Key = key };
@@ -1281,19 +1280,28 @@ namespace Game.Ai.V2
                     if (store != null && Game.Core.ScopeTiming.Collecting)
                         CountReset(store, key);
                     s_stores[player] = store = new VerdictStore { Key = key };
-                    // The core key reads a subset of what the verdict key reads (plus weather,
-                    // fixed within a turn), so it is computed once per store.
-                    if (snap != null)
-                        using (new Game.Core.ProfileScope("AI/Dev.DeltaCoreKey"))
-                            store.DeltaScope = new EquipmentDeltaCache.ScopeKeys
-                            {
-                                Player = player, FullKey = store.Key,
-                                CoreKey = EquipmentDeltaCache.InternCore(player, snap.TurnNumber,
-                                    DevelopmentAdmission.RecipientDeltaCoreKey(snap, player, hand)),
-                            };
                 }
-                // The scope prices against the snapshot it was opened for.
-                if (store.DeltaScope != null) store.DeltaScope.Snap = snap;
+                return store;
+            }
+
+            // The keyed store of `key` with its EquipmentDeltaCache scope facts, priced against
+            // `snap`. The core key reads a subset of what the verdict key reads (plus weather,
+            // fixed within a turn), so it is computed once per store.
+            internal static VerdictStore StoreWithDeltaScope(PlayerSetupData player, string key,
+                WorldSnapshot snap, AiHandData hand)
+            {
+                VerdictStore store = StoreFor(player, key);
+                if (player == null || snap == null)
+                    return store;
+                if (store.DeltaScope == null)
+                    using (new Game.Core.ProfileScope("AI/Dev.DeltaCoreKey"))
+                        store.DeltaScope = new EquipmentDeltaCache.ScopeKeys
+                        {
+                            Player = player, FullKey = store.Key,
+                            CoreKey = EquipmentDeltaCache.InternCore(player, snap.TurnNumber,
+                                DevelopmentAdmission.RecipientDeltaCoreKey(snap, player, hand)),
+                        };
+                store.DeltaScope.Snap = snap;
                 return store;
             }
 
