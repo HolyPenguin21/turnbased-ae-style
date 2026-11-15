@@ -11,8 +11,8 @@ namespace Game.UI
         BattleStarted, BattleWon, Retreat, HeavyLosses, EnemyBaseDiscovered,
         BaseCaptured, HeroCaptured, EventDiscovered, TerritoryExplored,
         ReinforcementsArrived, BaseFounded, AviationSortie, AviationReturned,
-        RepairsCompleted, EquipmentReceived,
-        Contact, Waiting, Moving, Garrison, Airborne, Stealth, Damaged, Ready, Atmosphere
+        RepairsCompleted, EquipmentReceived, GroundSandstorm, AirSandstorm,
+        Contact, Waiting, Moving, Garrison, Airborne, Stealth, Damaged, Ready, WeakEnemy, StrongEnemy, Atmosphere
     }
 
     // A small presentation buffer, not a gameplay event bus. Live facts stay in their owners.
@@ -50,7 +50,7 @@ namespace Game.UI
         public int PendingCount => _pending.Count;
         public int DecisionCount => _decided.Count;
         public int PhraseHistoryCount => _phrases.Count;
-        public static bool Operational(ArmyRadioCategory category) => category <= ArmyRadioCategory.EquipmentReceived;
+        public static bool Operational(ArmyRadioCategory category) => category <= ArmyRadioCategory.AirSandstorm;
         public static int Priority(ArmyRadioCategory category)
         {
             switch (category)

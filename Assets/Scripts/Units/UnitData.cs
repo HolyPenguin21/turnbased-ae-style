@@ -181,6 +181,11 @@ namespace Game.Units
         public int AirfieldCapacity;
         internal Game.Map.ArmyData CarrierAirfield;
         internal Game.Map.ArmyData CarrierFlightDeck;
+        internal void RefreshCarrierContainerNames()
+        {
+            if (CarrierAirfield != null) CarrierAirfield.Name = "Carrier - Airfield";
+            if (CarrierFlightDeck != null) CarrierFlightDeck.Name = "Carrier - Wing";
+        }
         public int ConsecutiveUnlandedEnds;
         public bool HasEmergencyFlightPenalty;
         public bool HasAirAttackedThisTurn;

@@ -97,12 +97,29 @@ Defaults (unscaled seconds):
 | `jokeIdleSeconds` / `jokeChance` | 60 / 0.30 | Long-idle threshold and chance on an eligible ambient transmission |
 | `dialogueChance` / `replyDelay` | 0.25 / 2 | Chance of a nearby exchange and delay before its reply |
 
-English only: 100 distinct situational lines (14 contact, 14 waiting, 12 each for movement,
-garrison, air, stealth, damage and readiness), plus 25 wasteland jokes and 12 question/answer
+English only: 110 distinct situational lines (14 contact, 14 waiting, 12 each for movement,
+garrison, air, stealth, damage and readiness, plus five each for weak and strong enemy formations), plus 25 wasteland jokes and 12 question/answer
 pairs. Russian tables and the language selector were removed. Jokes/dialogues require no
 visible enemy and exclude damaged, concealed and airborne armies. Actual movement/relocation
 resets stationary time; an army that moved earlier can eventually become idle again.
 Ordinary waiting classification retains activation/turn-movement guards.
+
+Enemy strength reports compare the strongest directly observed formation with the speaker
+using the existing `AiPower.EffectiveArmyPower` ranking. Only living, non-prisoner members
+targetable by that observer contribute to enemy strength; fog memory and debug reveal do not.
+A 1.5× advantage selects weak/strong lines; comparable forces retain ordinary contact lines.
+The report is revalidated before and during display and is not a battle-win prediction.
+
+Sandstorm encounters add five operational lines each for ground armies and airborne wings.
+Actual hex entry and the presentation-gated observation sample detect exposure; round weather
+changes invalidate observations. A new report's TTL starts only after movement and blocking
+initiative, confirmation or combat popups end. A separate presentation identity for each
+continuous exposure prevents old queued reports from reviving after a quick exit/re-entry.
+Continuous exposure gets one attempt through the existing bounded dispatch, cooldowns and
+probability rules; leaving and re-entering starts a new encounter. Reports become invalid on
+exit or when an aircraft lands. Stored aircraft and carrier flight decks do not report being
+airborne in a storm; newly formed wings must first pay for a real sortie action. Opening/loading
+a match primes current exposure without replaying events.
 
 Ambient speakers rotate through eligible armies. Fresh contact has scheduling priority; ongoing visible contact also selects contact lines. It is
 revalidated against the speaker's own vision radius, explicit visibility and existing

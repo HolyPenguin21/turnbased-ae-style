@@ -25,6 +25,8 @@ namespace Game.UI
         // Presentation identities for observed flights; never a second fuel/endurance state.
         private readonly Dictionary<ArmyData, object> _sorties = new Dictionary<ArmyData, object>();
         private readonly Dictionary<ArmyData, ArmyRadioCandidate> _onAir = new Dictionary<ArmyData, ArmyRadioCandidate>();
+        // One presentation identity per continuous exposure; an old queued entry cannot revive on re-entry.
+        private readonly Dictionary<ArmyData, object> _stormContacts = new Dictionary<ArmyData, object>();
         private Func<ArmyRadioCandidate, bool> _validCandidate, _readyCandidate;
         private Action<BuildingData> _observeBase;
         private ArmyData _samplingArmy;
@@ -45,6 +47,7 @@ namespace Game.UI
             EquipmentSystem.LiveAttachmentReceived += OnEquipmentReceived;
             AviationActions.AircraftLanded += OnAircraftLanded;
             AviationCombatPresenter.OperationCompleted += OnFlightOperation;
+            SandstormState.Changed += OnSandstormChanged;
         }
         private void UnsubscribeOperations()
         {
@@ -61,10 +64,11 @@ namespace Game.UI
             EquipmentSystem.LiveAttachmentReceived -= OnEquipmentReceived;
             AviationActions.AircraftLanded -= OnAircraftLanded;
             AviationCombatPresenter.OperationCompleted -= OnFlightOperation;
+            SandstormState.Changed -= OnSandstormChanged;
         }
         private void ClearOperations()
         {
-            _dispatch.Clear(); _battles.Clear(); _seenBases.Clear(); _sorties.Clear(); _onAir.Clear(); _exploredOnMove.Clear();
+            _dispatch.Clear(); _battles.Clear(); _seenBases.Clear(); _sorties.Clear(); _onAir.Clear(); _exploredOnMove.Clear(); _stormContacts.Clear();
             _primeObservation = true;
             _validCandidate ??= IsCurrent; _readyCandidate ??= IsReady; _observeBase ??= ObserveBase;
         }
@@ -193,6 +197,28 @@ namespace Game.UI
             if (!HasSpeakerVisual(_samplingArmy) || !_seenBases.Add(building)) return;
             Enqueue(ArmyRadioCategory.EnemyBaseDiscovered, _samplingArmy, building, building.Hex);
         }
+        private void OnSandstormChanged(SandstormSnapshot snapshot)
+        {
+            // Round weather changes precede initiative/turn confirmation. Sample the current
+            // exposure once the map can present radio, so its TTL does not expire behind a popup.
+            Invalidate();
+        }
+        private void ObserveSandstorm(ArmyData army)
+        {
+            if (!ArmyRadioChatter.CanSpeak(army, _viewer)) { _stormContacts.Remove(army); return; }
+            var category = ArmyRadioChatter.SandstormCategory(army);
+            if (!category.HasValue) { _stormContacts.Remove(army); return; }
+            if (_primeObservation)
+            { if (!_stormContacts.ContainsKey(army)) _stormContacts.Add(army, new object()); return; }
+            // Entry reactions can suspend movement behind combat/AA popups. Start freshness only
+            // after the army is stationary and the map is available for its first radio attempt.
+            if (_turns == null || !_turns.CanPresentArmyRadio || (army.Controller != null && army.Controller.IsMoving)
+                || _stormContacts.ContainsKey(army)) return;
+            var identity = new object();
+            _stormContacts.Add(army, identity);
+            _dispatch.Prune(Time.unscaledTime, _validCandidate);
+            Enqueue(category.Value, army, identity, army.Hex);
+        }
         private static bool HasSpeakerVisual(ArmyData army) => army != null && army.Controller != null
             && army.Controller.isActiveAndEnabled && army.Controller.Visual != null && army.Controller.Visual.IsVisible
             && ArmyRadioChatter.DetailArt(ArmyRadioChatter.FirstUnit(army)) != null;
@@ -203,6 +229,8 @@ namespace Game.UI
         private bool IsCurrent(ArmyRadioCandidate item) => ArmyRadioContext.IsCurrent(item, _viewer,
             item.Subject is BattleState state && _battles.ContainsKey(state), _contacts.Contains(item.Speaker))
             && (item.Category != ArmyRadioCategory.AviationSortie
-                || (_sorties.TryGetValue(item.Speaker, out var identity) && ReferenceEquals(item.Subject, identity)));
+                || (_sorties.TryGetValue(item.Speaker, out var identity) && ReferenceEquals(item.Subject, identity)))
+            && (item.Category != ArmyRadioCategory.GroundSandstorm && item.Category != ArmyRadioCategory.AirSandstorm
+                || (_stormContacts.TryGetValue(item.Speaker, out var stormIdentity) && ReferenceEquals(item.Subject, stormIdentity)));
     }
 }

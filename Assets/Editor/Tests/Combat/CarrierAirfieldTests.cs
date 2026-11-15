@@ -62,11 +62,27 @@ namespace Game.EditorTests
             UnitData c = Carrier();
             AviationActions.EnsureCarrierContainers(ArmyRegistry.FindArmyContaining(c));
             Assert.That(ArmyRegistry.AllForOwner(_owner).Count(), Is.EqualTo(3));
-            Assert.That(c.CarrierAirfield.Name, Does.Contain("Ark Carrier").And.Contain("Airfield"));
-            Assert.That(c.CarrierFlightDeck.Name, Does.Contain("Air Wing"));
+            Assert.That(c.CarrierAirfield.Name, Is.EqualTo("Carrier - Airfield"));
+            Assert.That(c.CarrierFlightDeck.Name, Is.EqualTo("Carrier - Wing"));
             Assert.That(AviationRules.IsOwnedAirfieldAt(Home, _owner), Is.True);
             Assert.That(AviationRules.AirfieldCapacityAt(Home, _owner), Is.EqualTo(2));
             Assert.That(AviationRules.CanContain(c.CarrierFlightDeck, new UnitData()), Is.False);
+        }
+
+        [Test]
+        public void ExistingAndRestoredCarrierContainersUseShortNamesWithoutReplacingArmies()
+        {
+            UnitData carrier = Carrier();
+            ArmyData hangar = carrier.CarrierAirfield, deck = carrier.CarrierFlightDeck;
+            hangar.Name = "Ark Carrier - Airfield"; deck.Name = "Ark Carrier - Air Wing";
+            var state = carrier.CaptureCarrierLinksState();
+            carrier.RestoreCarrierLinksState(state, id => id == hangar.Id ? hangar : deck);
+            Assert.That(hangar.Name, Is.EqualTo("Carrier - Airfield"));
+            Assert.That(deck.Name, Is.EqualTo("Carrier - Wing"));
+            AviationActions.RefreshCarrierContainers(ArmyRegistry.FindArmyContaining(carrier));
+            Assert.That(carrier.CarrierAirfield, Is.SameAs(hangar));
+            Assert.That(carrier.CarrierFlightDeck, Is.SameAs(deck));
+            Assert.That(carrier.Name, Is.EqualTo("Ark Carrier"));
         }
 
         [Test]
