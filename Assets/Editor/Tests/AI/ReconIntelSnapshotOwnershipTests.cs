@@ -222,6 +222,18 @@ namespace Game.EditorTests
                     if (cheap == StealthRequirement.Required) required++;
                 }
             Assert.That(required, Is.GreaterThan(0), "the fixture must exercise an exposed objective");
+
+            // Commitment builders may pass null instead of a fresh Enumerate: every enumerated
+            // objective carries the same requirement StealthForIntent reads for its key.
+            List<ReconObjective> enumerated = ReconObjectiveEvaluator.Enumerate(snap);
+            Assert.That(enumerated.Count, Is.GreaterThan(0));
+            foreach (ReconObjective o in enumerated)
+            {
+                ScoutMissionTarget t = o.ToTarget();
+                Assert.That(ReconObjectiveEvaluator.StealthForIntent(snap,
+                        new ScoutIntent { Kind = t.Kind, FocusHex = t.FocusHex }),
+                    Is.EqualTo(o.Stealth), $"enumerated {o.Kind} at {o.FocusHex}");
+            }
         }
 
         private static IEnumerable<MapSize> GeneratedMapSizes =>

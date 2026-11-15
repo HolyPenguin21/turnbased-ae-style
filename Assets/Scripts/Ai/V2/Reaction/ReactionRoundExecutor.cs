@@ -287,7 +287,7 @@ namespace Game.Ai.V2
 
             snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
-                snapshot.AllIntents, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
+                snapshot.AllIntents, snapshot, null);
             var phaseB = new StrategicPhaseResult();
             yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                 postCommitments, phaseA.Reservation, phaseB);

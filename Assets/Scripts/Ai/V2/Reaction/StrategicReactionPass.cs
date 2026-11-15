@@ -172,7 +172,7 @@ namespace Game.Ai.V2
             // The canonical normalized commitment source, not a hand-rolled PreferredMoverArmyId
             // scrape.
             ActorCommitments commitments = ActorCommitments.FromIntents(
-                snap.AllIntents, snap, ReconObjectiveEvaluator.Enumerate(snap));
+                snap.AllIntents, snap, null);
 
             // P0.1 — StrategicInterruptRegistry stores reasons as FLAGS, so a Discovery and a
             // HandOpportunity can both be pending at once. Probe every ENABLED source and let the

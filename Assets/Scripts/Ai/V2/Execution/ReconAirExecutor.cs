@@ -205,7 +205,7 @@ namespace Game.Ai.V2
                     && ap <= StrategicSpendability.SpendableAp(player, root, ctx)
                     && TradeFunding.CanFund(player, root, ctx, new ResourceCost(energy: (int)energy));
                 ActorCommitments commitments = ActorCommitments.FromIntents(
-                    WorldSnapshot.IntentsOf(snapshot), snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
+                    WorldSnapshot.IntentsOf(snapshot), snapshot, null);
                 foreach (int actor in plan.ReservedActorIds)
                     commitments.Claim(actor);
                 if (!valid || !affordable || !pick.HasValue

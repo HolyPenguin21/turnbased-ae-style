@@ -65,7 +65,7 @@ namespace Game.Ai.V2
                 commitments = ActorCommitments.FromIntents(
                     snapshot.AllIntents,
                     snapshot,
-                    ReconObjectiveEvaluator.Enumerate(snapshot));
+                    null);
             }
 
             // If the reaction held back AP and that reservation is now gone (the pass ran and
@@ -83,7 +83,7 @@ namespace Game.Ai.V2
                     ActorCommitments tempoCommitments = ActorCommitments.FromIntents(
                         snapshot.AllIntents,
                         snapshot,
-                        ReconObjectiveEvaluator.Enumerate(snapshot));
+                        null);
                     var tempo = new StrategicPhaseResult();
                     yield return StrategicManager.UseSurplus(
                         snapshot, player, root, hand, ctx, tempoCommitments, carriedReservation, tempo);
@@ -96,7 +96,7 @@ namespace Game.Ai.V2
                         commitments = ActorCommitments.FromIntents(
                             snapshot.AllIntents,
                             snapshot,
-                            ReconObjectiveEvaluator.Enumerate(snapshot));
+                            null);
                     }
                     AiDebugLog.Write($"[AI][V2] tempo - end-of-turn tempo re-run after reaction reservation "
                         + $"released (reaction ran={(reaction.Ran ? 1 : 0)}); cardsPlayed {tempo.CardsPlayed}, "
