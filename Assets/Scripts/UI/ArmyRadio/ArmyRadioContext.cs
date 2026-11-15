@@ -59,6 +59,12 @@ namespace Game.UI
                         && AviationRules.IsOwnedAirfieldAt(item.Hex, viewer)
                         && (receiver.IsAirfield || AviationRules.IsAirArmy(receiver));
                 case ArmyRadioCategory.Contact: return contact;
+                case ArmyRadioCategory.WeakEnemy:
+                    return contact && ArmyRadioChatter.Situation(army, true, false, 0f) == ArmyRadioSituation.WeakEnemy;
+                case ArmyRadioCategory.StrongEnemy:
+                    return contact && ArmyRadioChatter.Situation(army, true, false, 0f) == ArmyRadioSituation.StrongEnemy;
+                case ArmyRadioCategory.GroundSandstorm: case ArmyRadioCategory.AirSandstorm:
+                    return ArmyRadioChatter.SandstormCategory(army) == item.Category;
                 case ArmyRadioCategory.Stealth: return StealthSystem.IsArmyFullyHidden(army);
                 case ArmyRadioCategory.Garrison: return army.IsGarrison || army.IsAirfield;
                 case ArmyRadioCategory.Airborne: return army.IsAirArmy;

@@ -59,6 +59,7 @@ namespace Game.Units
             var airfield = state.AirfieldArmyId.HasValue ? StateReference.Army(state.AirfieldArmyId.Value, resolveArmy) : null;
             var deck = state.FlightDeckArmyId.HasValue ? StateReference.Army(state.FlightDeckArmyId.Value, resolveArmy) : null;
             CarrierAirfield = airfield; CarrierFlightDeck = deck;
+            RefreshCarrierContainerNames();
         }
         public UnitMovementState CaptureMovementState() => new UnitMovementState
         {

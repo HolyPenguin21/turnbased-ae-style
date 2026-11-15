@@ -214,6 +214,24 @@ namespace Game.UI
                 "The new gear is on. Now we get to carry it.",
                 "Equipment attachment confirmed. One more thing to maintain.",
             },
+            // GroundSandstorm
+            new[]
+            {
+                "Sandstorm on our position. Hard to see beyond the next dune.",
+                "The storm has reached us. Sand in every seam.",
+                "We're in the sandstorm, command. The horizon is gone.",
+                "Dust wall all around us. Keeping the formation together.",
+                "Caught in the sandstorm. Even the radio sounds gritty.",
+            },
+            // AirSandstorm
+            new[]
+            {
+                "Flying through a sandstorm. Visibility from the cockpit is poor.",
+                "Air wing in the dust wall. The ground has disappeared.",
+                "Sandstorm around the aircraft. Watching the instruments closely.",
+                "Flight reporting heavy dust. No clear horizon out here.",
+                "We're inside the storm, command. Sand is no friend of engines.",
+            },
         };
         private static readonly string[] AmbientEnglish =
         {

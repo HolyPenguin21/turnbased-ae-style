@@ -131,6 +131,7 @@ namespace Game.UI
                 { state.Hex = to; state.StationarySince = Time.unscaledTime; }
                 CancelExchangeFor(army);
                 OnFlightOperation(army);
+                ObserveSandstorm(army);
                 if (_exploredOnMove.TryGetValue(army, out var visited))
                 {
                     if (visited.Equals(to)) Enqueue(ArmyRadioCategory.TerritoryExplored, army, null, to);
@@ -369,6 +370,7 @@ namespace Game.UI
                 if (army.Controller != null && army.Controller.IsMoving)
                 { _moved.Add(army); state.StationarySince = now; CancelExchangeFor(army); }
                 if (!state.Hex.Equals(army.Hex)) { state.Hex = army.Hex; state.StationarySince = now; }
+                ObserveSandstorm(army);
                 _samplingArmy = army;
                 bool contact = _dirty || _primeObservation ? ArmyRadioChatter.Observe(army, _observeBase) : _contacts.Contains(army);
                 if (contact) { if (_contacts.Add(army)) { _newContacts.Add(army); state.ContactAt = now; } }
@@ -377,9 +379,12 @@ namespace Game.UI
             _retired.Clear();
             foreach (var pair in _observations)
                 if (!ArmyRegistry.IsRegistered(pair.Key) || !ArmyRadioChatter.CanSpeak(pair.Key, _viewer)) _retired.Add(pair.Key);
+            foreach (var pair in _stormContacts)
+                if (!_observations.ContainsKey(pair.Key)
+                    && (!ArmyRegistry.IsRegistered(pair.Key) || !ArmyRadioChatter.CanSpeak(pair.Key, _viewer))) _retired.Add(pair.Key);
             foreach (var army in _retired)
             {
-                _observations.Remove(army); _cadence.Forget(army.Id); _moved.Remove(army); _sorties.Remove(army); _onAir.Remove(army); _exploredOnMove.Remove(army);
+                _observations.Remove(army); _cadence.Forget(army.Id); _moved.Remove(army); _sorties.Remove(army); _onAir.Remove(army); _exploredOnMove.Remove(army); _stormContacts.Remove(army);
                 _contacts.Remove(army); _newContacts.Remove(army); CancelExchangeFor(army);
             }
             _samplingArmy = null; _primeObservation = false;
