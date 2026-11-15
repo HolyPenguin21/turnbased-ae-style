@@ -24,5 +24,13 @@ namespace Game.Styles
         // leave one after another without waiting for each other.
         [Min(0f)] public float moveSeconds = 5f;
         [Range(0.05f, 1f)] public float spriteMoveShare = 0.5f;
+        // Each sprite's alpha breathes smoothly (sine) between these two values, in 0-255 units,
+        // one full wave per alphaWaveSeconds, each sprite at its own random point of the wave.
+        // The result is multiplied by tint.a and by the sprite's fade-in/fade-out.
+        [Range(0, 255)] public int alphaMin = 100;
+        [Range(0, 255)] public int alphaMax = 175;
+        [Min(0.01f)] public float alphaWaveSeconds = 3f;
+        // Share of sprites drawn mirrored on X (chosen per sprite when it appears).
+        [Range(0f, 1f)] public float flipXShare = 0.5f;
     }
 }

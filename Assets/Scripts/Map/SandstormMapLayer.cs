@@ -34,6 +34,7 @@ namespace Game.Map
             public int Slot;
             public HexCoord Hex;
             public int Phase;
+            public float WavePhase;
             public Vector3 From, To, Current;
             public float FromAlpha, ToAlpha, CurrentAlpha;
             public float Start, Duration;
@@ -58,6 +59,10 @@ namespace Game.Map
         private int _startFrameStep = 2;
         private float _moveSeconds = 5f;
         private float _spriteMoveShare = 0.5f;
+        private float _alphaMin = 100f / 255f;
+        private float _alphaMax = 175f / 255f;
+        private float _alphaWaveSeconds = 3f;
+        private float _flipXShare = 0.5f;
 
         private SandstormSnapshot _shown;
         private Transform _root;
@@ -77,6 +82,12 @@ namespace Game.Map
             _startFrameStep = style != null ? Mathf.Max(1, style.startFrameStep) : 2;
             _moveSeconds = style != null ? Mathf.Max(0f, style.moveSeconds) : 5f;
             _spriteMoveShare = style != null ? Mathf.Clamp(style.spriteMoveShare, 0.05f, 1f) : 0.5f;
+            int alphaMin = style != null ? Mathf.Clamp(style.alphaMin, 0, 255) : 100;
+            int alphaMax = style != null ? Mathf.Clamp(style.alphaMax, 0, 255) : 175;
+            _alphaMin = Mathf.Min(alphaMin, alphaMax) / 255f;
+            _alphaMax = Mathf.Max(alphaMin, alphaMax) / 255f;
+            _alphaWaveSeconds = style != null ? Mathf.Max(0.01f, style.alphaWaveSeconds) : 3f;
+            _flipXShare = style != null ? Mathf.Clamp01(style.flipXShare) : 0.5f;
             // A new map (or a loaded match) shows its weather at once, without a glide.
             for (int i = _puffs.Count - 1; i >= 0; i--) Release(i);
             _shown = null;
@@ -95,6 +106,7 @@ namespace Game.Map
                 _lastFrame = -1;
             }
             Move();
+            Pulse();
             Animate();
         }
 
@@ -268,9 +280,11 @@ namespace Game.Map
             {
                 Renderer = renderer, Slot = slot, Hex = hex,
                 Phase = _frames.Length > 0 ? _random.Next(phaseSlots) * _startFrameStep % _frames.Length : 0,
+                WavePhase = (float)_random.NextDouble(),
                 Current = position, To = position, CurrentAlpha = 0f,
             };
             renderer.sprite = null;
+            renderer.flipX = _random.NextDouble() < _flipXShare;
             renderer.transform.position = position;
             renderer.color = WithAlpha(0f);
             renderer.enabled = true;
@@ -300,10 +314,22 @@ namespace Game.Map
                     puff.Current = t >= 1f ? puff.To : Vector3.Lerp(puff.From, puff.To, eased);
                     puff.CurrentAlpha = t >= 1f ? puff.ToAlpha : Mathf.Lerp(puff.FromAlpha, puff.ToAlpha, eased);
                     puff.Renderer.transform.position = puff.Current;
-                    puff.Renderer.color = WithAlpha(puff.CurrentAlpha);
                     settled = t >= 1f;
                 }
                 if (settled && puff.Retiring) Release(i);
+            }
+        }
+
+        // Smooth alpha wave between alphaMin and alphaMax, times the fade of each sprite.
+        private void Pulse()
+        {
+            if (_puffs.Count == 0) return;
+            float cycle = Time.time / _alphaWaveSeconds;
+            foreach (Puff puff in _puffs)
+            {
+                float wave = 0.5f + 0.5f * Mathf.Sin(2f * Mathf.PI * (cycle + puff.WavePhase));
+                float alpha = Mathf.Lerp(_alphaMin, _alphaMax, wave);
+                puff.Renderer.color = WithAlpha(alpha * puff.CurrentAlpha);
             }
         }
 
