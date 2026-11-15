@@ -564,13 +564,17 @@ namespace Game.Ai.V2
         // win chance the shared estimator gave it, the activation AP it spends now (CardPrice), the
         // recurring AP of every further turn on the way (Delivery) and the cost of taking this
         // army off what it does now. Lanes never fold these slots a second, private way.
+        // `deliveryHorizonTurns` — 0: every turn after the first is Delivery (Raid, ActiveDefence,
+        // gather legs). An Attack passes AiConfigV2.attackDeliveryHorizonTurns: only the turns
+        // beyond the horizon are priced.
         internal static TaskScore WithResponse(TaskScore intrinsic, float winChance,
             float activationApNow, float recurringActivationAp, float etaTurns,
-            float moverOpportunityCost = 0f) =>
+            float moverOpportunityCost = 0f, int deliveryHorizonTurns = 0) =>
             WithExecution(intrinsic, new TaskScore(
                 winChance: WinChance(winChance),
                 cardPrice: Price(activationApNow),
-                delivery: Price(ActionPrice.RecurringAp(recurringActivationAp, etaTurns)),
+                delivery: Price(ActionPrice.RecurringAp(recurringActivationAp,
+                    deliveryHorizonTurns > 1 ? etaTurns - (deliveryHorizonTurns - 1) : etaTurns)),
                 moverOpportunityCost: MoverOpportunityCost(moverOpportunityCost)));
 
         // The same fold priced off one actor: its activation is spent now only if it has not
@@ -579,11 +583,12 @@ namespace Game.Ai.V2
         // the actor's own snapshot figure.
         internal static TaskScore WithActorResponse(TaskScore intrinsic, ArmySnapshot actor,
             float winChance, int eta, float moverOpportunityCost = 0f,
-            int? projectedActivationAp = null)
+            int? projectedActivationAp = null, int deliveryHorizonTurns = 0)
         {
             int recurring = projectedActivationAp ?? actor?.ActivationApCost ?? 0;
             float now = actor != null && !actor.HasActivatedThisTurn ? Mathf.Max(0, recurring) : 0f;
-            return WithResponse(intrinsic, winChance, now, recurring, eta, moverOpportunityCost);
+            return WithResponse(intrinsic, winChance, now, recurring, eta, moverOpportunityCost,
+                deliveryHorizonTurns);
         }
     }
 

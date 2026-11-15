@@ -504,6 +504,76 @@ namespace Game.EditorTests
                 "a threat that is not imminent (ActiveDefence's own horizon) does not call it back");
         }
 
+        // 2026-11-15 (match Brynn vs Grimm, P2) — a fist kept home by a REMEMBERED army waits for
+        // knowledge: its last known hex is Attack's observation need; an observed pin is not.
+        // The march reason names the contact.
+        [Test]
+        public void AttackMarch_PinByARememberedArmy_IsAnObservationNeedOnItsLastKnownHex()
+        {
+            var owner = new PlayerSetupData();
+            var marcher = DefenceActor(owner, 26, new HexCoord(1, 0), 20f, 10f, 30f);
+            WorldSnapshot snap = AssetWorld(marcher);
+            EnemyContactSnapshot contact = snap.Threat.Threats[0].Contact;
+            AttackTargetRef target = AttackTargetRef.For(new HexCoord(3, -1),
+                contact.Army.Owner, AttackTargetKind.Base);
+
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.EqualTo(Secondary));
+            Assert.That(AttackMarchPolicy.PinObservationHex(snap, marcher), Is.Null,
+                "an observed contact's ETA is real: nothing to look at");
+            Assert.That(AttackMarchPolicy.Assess(snap, target, marcher).Reason, Does.Contain("#99 observed"));
+
+            contact.Knowledge = ContactKnowledge.LastKnown;
+            contact.LastObservedTurn = 5;
+            Assert.That(AttackMarchPolicy.PinObservationHex(snap, marcher), Is.EqualTo(new HexCoord(-4, 0)));
+            Assert.That(AttackMarchPolicy.Assess(snap, target, marcher).Reason,
+                Does.Contain("#99 last_known age 3 at (-4,0)"));
+        }
+
+        // 2026-11-15 (owner) — a stronghold keeps a marching army home only for a force that
+        // (1) is there with the memory's confidence (ConfidenceDecay, the garrison floor's rule),
+        // (2) can take a structure at all (aircraft cannot) and (3) no other free army of ours
+        // destroys before it arrives.
+        [Test]
+        public void AttackMarch_HomePin_ReadsConfidence_RealHarm_AndOurOwnAnswer()
+        {
+            Assert.That(ActiveDefenceObjectiveEvaluator.FallsWithout(0.69f, 1f), Is.True);
+            Assert.That(ActiveDefenceObjectiveEvaluator.FallsWithout(0.71f, 1f), Is.False,
+                "at full confidence the rule is exactly hold < activeDefenceHoldWinChance");
+            Assert.That(ActiveDefenceObjectiveEvaluator.FallsWithout(0f, 0.25f), Is.False);
+
+            var owner = new PlayerSetupData();
+            var marcher = DefenceActor(owner, 26, new HexCoord(1, 0), 20f, 10f, 30f);
+            WorldSnapshot snap = AssetWorld(marcher);
+            EnemyContactSnapshot contact = snap.Threat.Threats[0].Contact;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.EqualTo(Secondary),
+                "control: an observed force that takes the undefended Base pins the army");
+
+            contact.Knowledge = ContactKnowledge.LastKnown;
+            contact.LastObservedTurn = snap.TurnNumber - 1;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.EqualTo(Secondary),
+                "seen last turn: still almost certainly there");
+            contact.LastObservedTurn = snap.TurnNumber - 11;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.Null,
+                "not seen for 11 of 12 memory turns: no longer holds the fist like yesterday");
+
+            contact.Knowledge = ContactKnowledge.Exact;
+            contact.LastObservedTurn = snap.TurnNumber;
+            IReadOnlyList<WorthIt.DefenderProfile> ground = contact.Army.Members;
+            contact.Army.Members = new[] { new WorthIt.DefenderProfile(8f, false,
+                new[] { Game.Cards.UnitTypeTag.Aircraft }, 8f, 18f, 3) };
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.Null,
+                "aircraft take no structure: an air-only force pins nobody");
+            contact.Army.Members = ground;
+
+            var interceptor = DefenceActor(owner, 27, new HexCoord(-3, 0), 40f, 40f, 80f);
+            WorldSnapshot answered = AssetWorld(marcher, interceptor);
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanDefeatBeforeThreat(answered,
+                answered.Threat.Threats[0], new HashSet<int> { marcher.ArmyId }, out int defeater), Is.True);
+            Assert.That(defeater, Is.EqualTo(27));
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(answered, marcher, out _), Is.Null,
+                "another free army destroys the force before it arrives: ActiveDefence answers it");
+        }
+
         // 2026-11-13 (owner, match Sable vs Korrin) — trading an own Base for the enemy's Citadel
         // is an option: a decisive Citadel blow that lands AFTER the enemy reaches the threatened
         // Base still marches; the race stays required when the threatened stronghold is our Citadel.
@@ -1447,6 +1517,36 @@ namespace Game.EditorTests
             Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer));
             Assert.That(response.Reason, Is.EqualTo("enemy_eta_unknown"));
             Assert.That(response.Movers, Is.Empty);
+        }
+
+        // 2026-11-15 (owner, match Brynn vs Grimm T32-T35) — the Base holds only because the Attack
+        // fist sits on it; the observed force that keeps the fist home is intercepted (the fist
+        // beats it before it arrives) instead of "asset_holds". Without an Attack fist (gate
+        // closed) the ordinary deferral stays.
+        [Test]
+        public void AssetHolds_ButTheForceKeepsOurAttackFistHome_IsIntercepted()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot fist = DefenceActor(owner, 26, Secondary, 40f, 40f, 80f);
+            WorldSnapshot snap = AssetWorld(fist);
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap), null, null, null)
+                .Reason, Is.EqualTo("asset_holds"), "control: no Attack fist while the gate is closed");
+
+            snap = AssetWorld(fist);
+            snap.Self.DeployedPower = 75f;
+            snap.Self.AvailablePower = 100f;
+            Assert.That(AttackObjectiveEvaluator.AttackFistIds(snap), Does.Contain(26));
+            Assert.That(AttackMarchPolicy.IsBlockedBy(snap, fist, 99), Is.True);
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                AssetObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+            Assert.That(response.Reason, Does.StartWith("intercept_attack_blocker:fist #26"));
+            Assert.That(response.Plan.BaseArmyId, Is.EqualTo(26));
+
+            snap.Threat.Threats[0].Contact.Knowledge = ContactKnowledge.LastKnown;
+            snap.Threat.Threats[0].Contact.LastObservedTurn = snap.TurnNumber - 1;
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap), null, null, null)
+                .Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer), "an unseen force has no position to intercept");
         }
 
         [Test]

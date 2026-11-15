@@ -241,10 +241,7 @@ namespace Game.Ai.V2
                     if (incumbent == null && !secondary && AttackForceReadiness.MobilizationOpen(snap.Self)
                         && TryAppendFreshAttackGather(snap, objective, opposition,
                             hexBonus, excluded, freshCandidates, intentState))
-                    {
-                        attackProposed = true;
-                        continue;
-                    }
+                        continue; // covers the objective only as the fundable bestFresh below
                     // 2026-10-21 — no field host can take it: a garrison on an own Base may still,
                     // as the second operation (AttackSecondaryPolicy.PlanGarrisonSortie).
                     if (incumbent == null && liveSecondary == null
@@ -426,9 +423,12 @@ namespace Game.Ai.V2
                         + "reason=current_host_clears_observed_base_on_route");
                 if (incumbent == null && secondary)
                     secondaryCandidates.Add(proposal);
+                else if (incumbent == null)
+                    // Covers the objective only once chosen as the fundable bestFresh below.
+                    freshCandidates.Add(proposal);
                 else
                 {
-                    (incumbent == null ? freshCandidates : proposals).Add(proposal);
+                    proposals.Add(proposal);
                     attackProposed = true;
                 }
                 // The army serves an ActiveDefence objective itself: AD proposes no competing
@@ -451,10 +451,24 @@ namespace Game.Ai.V2
 
             // freshCandidates were appended in objective order — the internal selection priority
             // (AttackObjectiveEvaluator.CompareSelection: nearer, then less defended), not score.
-            MissionProposal bestFresh = freshCandidates.FirstOrDefault();
+            // 2026-11-15 (match Brynn vs Grimm) — only a proposal the allocator can fund covers the
+            // objective. A fresh one with a negative intrinsic value is deferred unfunded there
+            // (AllocationSession.IsNegativeFresh); taking it as "attack proposed" suppressed the
+            // preparation (direct_assault_or_gather_proposed), so Grimm neither marched nor
+            // prepared for 29 turns (T18-T46). Such a target is reached through the preparation.
+            MissionProposal bestFresh = freshCandidates.FirstOrDefault(p => !AllocationSession.IsNegativeFresh(p));
             if (bestFresh != null)
+            {
                 proposals.Add(bestFresh);
-            MissionProposal bestSecondary = secondaryCandidates.FirstOrDefault();
+                attackProposed = true;
+            }
+            else if (freshCandidates.Count > 0)
+                AiDebugLog.WriteDeduped("fresh-negative#" + snap.Observer?.ColorIndex,
+                    $"[AI][V2][Attack][Admission] decision=PREPARE_INSTEAD fresh=[{string.Join(",", freshCandidates.Select(p => $"{(p.Target is AttackMissionTarget t ? t.Target.DiagnosticLabel : "?")}:{F(p.BaseValue)}"))}] "
+                    + "reason=every_fresh_assault_negative_value; preparation is not suppressed");
+            // The same fundability rule for the surplus-only second operation: a dead first
+            // candidate must not shadow a fundable one behind it.
+            MissionProposal bestSecondary = secondaryCandidates.FirstOrDefault(p => !AllocationSession.IsNegativeFresh(p));
             if (bestSecondary != null)
             {
                 proposals.Add(bestSecondary);

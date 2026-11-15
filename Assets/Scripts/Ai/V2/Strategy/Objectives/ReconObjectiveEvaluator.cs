@@ -110,6 +110,7 @@ namespace Game.Ai.V2
             internal WorldSnapshot Snap;
             internal HashSet<HexCoord> ObservationNeeds;
             internal float? LocalExplorationGap;
+            internal ReconDirectionSnapshot Direction;
         }
 
         [System.ThreadStatic] private static EnumerationFacts s_enumeration;
@@ -131,6 +132,38 @@ namespace Game.Ai.V2
                 return ScoutObjectiveEvaluator.LocalExplorationGap(snap);
             return facts.LocalExplorationGap ??= ScoutObjectiveEvaluator.LocalExplorationGap(snap);
         }
+
+        // The coarse enemy-direction buckets (ReconDirectionModel), once per Enumerate.
+        private static ReconDirectionSnapshot DirectionFor(WorldSnapshot snap)
+        {
+            EnumerationFacts facts = FactsFor(snap);
+            if (facts == null)
+                return ReconDirectionModel.Build(snap);
+            return facts.Direction ??= ReconDirectionModel.Build(snap);
+        }
+
+        // THE "toward the enemy" fact of a Recon focus [0..1], for Refresh and Explore alike: the
+        // sanitized enemy-presence pressure of the hex's sector seen from our Citadel, at least
+        // 0.75 toward the known enemy Citadel. 2026-11-15 (match Brynn vs Grimm, P3, owner option
+        // a) — Explore had no such term while Refresh did, so the unvisited ground beside the enemy
+        // (Concord Base, never found in 46 turns) paid detection risk and earned nothing for it.
+        internal static float DirectionalPressure(WorldSnapshot snap, HexCoord hex,
+            ReconDirectionSnapshot direction)
+        {
+            if (snap?.Self == null || direction == null)
+                return 0f;
+            ReconSector sector = ReconDirectionModel.Sector(snap.Self.Citadel, hex);
+            float raw = direction.EnemyDirectionSectors != null
+                && direction.EnemyDirectionSectors.TryGetValue(sector, out float pressure)
+                    ? Mathf.Clamp01(pressure) : 0f;
+            if (direction.KnownEnemyCitadelDirection == sector)
+                raw = Mathf.Max(raw, 0.75f);
+            return raw;
+        }
+
+        // While a known enemy threatens home, the direction it comes from weighs up to twice.
+        private static float HomeThreat(WorldSnapshot snap) =>
+            Mathf.Max(snap?.Threat?.CitadelThreatSeverity ?? 0f, snap?.Threat?.BaseThreatSeverity ?? 0f);
 
         public static List<ReconObjective> Enumerate(WorldSnapshot snap)
         {
@@ -165,6 +198,16 @@ namespace Game.Ai.V2
                     list.Add(BuildExplore(snap, f.Hex, f.FreshNeighbors, f.DistanceFromNearestBase,
                         f.EnemyExposure, f.StealthDetectionRisk));
                 }
+
+            // 2026-11-15 (match Brynn vs Grimm, P3) — Explore vanished from the portfolio at T19 with
+            // 39% of the map dark; the frontier's own prices were never logged. One line per turn.
+            if (list.Count > 0)
+                AiDebugLog.WriteDeduped($"recon-explore-frontier#{snap.Observer?.ColorIndex}#{snap.TurnNumber}",
+                    $"[AI][V2][Recon][Explore] {snap.Observer?.Nickname} T{snap.TurnNumber} frontier={list.Count} "
+                    + $"positive={list.Count(o => o.BaseValue > 0f)} best: "
+                    + string.Join(" || ", list.OrderByDescending(o => o.BaseValue).Take(3)
+                        .Select(o => $"({o.FocusHex.Q},{o.FocusHex.R}) fresh {o.FreshNeighbors} d{o.DistanceFromBase} "
+                            + $"stealth={o.Stealth} {TaskScoreEvaluator.Describe(o.TaskScore)}")));
 
             // An unvisited City-ruins hex is a known event-reward site, so it is an Explore focus
             // worth walking to even before it becomes part of the frontier wave band. Same
@@ -240,7 +283,7 @@ namespace Game.Ai.V2
             if (auditPlayer != null)
             {
                 if (direction == null)
-                    direction = ReconDirectionModel.Build(snap);
+                    direction = DirectionFor(snap);
                 ReconAcceptanceAudit.RecordDirectionBoundary(auditPlayer, snap.TurnNumber,
                     direction);
 
@@ -570,7 +613,7 @@ namespace Game.Ai.V2
             if (!ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex))
                 return null;
             if (direction == null)
-                direction = ReconDirectionModel.Build(snap);
+                direction = DirectionFor(snap);
             return BuildRefresh(snap, hex, age, preferredMoverArmyId, direction, attackNeed: true);
         }
 
@@ -590,7 +633,7 @@ namespace Game.Ai.V2
                 stale.Add((kv.Key, age));
             }
             if (stale.Count > 0 && direction == null)
-                direction = ReconDirectionModel.Build(snap);
+                direction = DirectionFor(snap);
 
             int cap = Mathf.Max(AiConfigV2.scoutCandidateBeamWidth * 3,
                 ReconConcurrencyPolicy.HardCap * 3);
@@ -627,13 +670,22 @@ namespace Game.Ai.V2
                     candidates.Add(o);
             }
 
-            return candidates
+            List<ReconObjective> kept = candidates
                 .OrderByDescending(o => o.BaseValue)
                 .ThenByDescending(o => o.AgeTurns)
                 .ThenBy(o => o.FocusHex.Q)
                 .ThenBy(o => o.FocusHex.R)
                 .Take(cap)
                 .ToList();
+            // 2026-11-15 (P3) — which stale map the cap keeps: east of Brynn's map (Concord Base)
+            // left the Refresh list at T20 and never returned. One line per turn.
+            if (stale.Count > 0)
+                AiDebugLog.WriteDeduped($"recon-refresh-pool#{snap.Observer?.ColorIndex}#{snap.TurnNumber}",
+                    $"[AI][V2][Recon][Refresh] {snap.Observer?.Nickname} T{snap.TurnNumber} stale={stale.Count} "
+                    + $"priced={candidates.Count} kept={kept.Count}/{cap} "
+                    + $"cut={(kept.Count > 0 ? kept[kept.Count - 1].BaseValue.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) : "-")} "
+                    + $"kept=[{string.Join(" ", kept.Select(o => $"({o.FocusHex.Q},{o.FocusHex.R})"))}]");
+            return kept;
         }
 
         private static ScoutCostEstimate MissionCost(WorldSnapshot snap, HexCoord hex,
@@ -679,6 +731,8 @@ namespace Game.Ai.V2
             bool eventVisit = ScoutObjectiveEvaluator.IsKnownUnguardedEvent(snap, hex);
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
+                threatDirection: TaskScoreEvaluator.ThreatDirection(
+                    DirectionalPressure(snap, hex, DirectionFor(snap))) * (1f + Mathf.Clamp01(HomeThreat(snap))),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 eventReward: eventVisit ? TaskScoreEvaluator.EventReward(-1) : 0f,
                 citadelThreatRisk: eventVisit ? TaskScoreEvaluator.CitadelThreatRisk(snap) : 0f,
@@ -801,14 +855,8 @@ namespace Game.Ai.V2
             float staleRaw = attackNeed ? 1f : ReconIntelSnapshotRegistry.Staleness(age);
 
             float strategicRaw = attackNeed ? 1f : ReconIntelSnapshotRegistry.RefreshRelevance(snap, hex);
-            direction = direction ?? ReconDirectionModel.Build(snap);
-            ReconSector sector = ReconDirectionModel.Sector(snap.Self.Citadel, hex);
-            float directionalRaw = direction?.EnemyDirectionSectors != null
-                && direction.EnemyDirectionSectors.TryGetValue(sector, out float pressure)
-                    ? Mathf.Clamp01(pressure)
-                    : 0f;
-            if (direction?.KnownEnemyCitadelDirection == sector)
-                directionalRaw = Mathf.Max(directionalRaw, 0.75f);
+            direction = direction ?? DirectionFor(snap);
+            float directionalRaw = DirectionalPressure(snap, hex, direction);
 
             bool exposed = EnemyExposedAt(snap, hex);
             float riskRaw = exposed ? ScoutRiskModel.DetectorRisk(snap, hex) : 0f;
@@ -828,8 +876,7 @@ namespace Game.Ai.V2
             // scored 7.1 against the routine Refresh(2,-4) at 12.3 and lost the scout one hex away.
             bool liveAttackNeed = attackNeed && LiveAssaultAt(snap, hex) != null;
             TaskScore score = BuildRefreshScore(staleRaw, strategicRaw, directionalRaw,
-                homeDist, cost, riskRaw, Mathf.Max(snap.Threat?.CitadelThreatSeverity ?? 0f,
-                    snap.Threat?.BaseThreatSeverity ?? 0f), liveAttackNeed ? 1f : 0f);
+                homeDist, cost, riskRaw, HomeThreat(snap), liveAttackNeed ? 1f : 0f);
 
             var objective = new ReconObjective
             {

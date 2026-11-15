@@ -94,6 +94,29 @@ namespace Game.EditorTests
                 new[] { Enemy(new Game.HexGrid.HexCoord(1, 0), 3, garrison: true),
                     Enemy(new Game.HexGrid.HexCoord(1, 0), 3, air: true) }, new[] { baseHex }, baseHex), Is.Zero);
         }
+        // 2026-11-15 (match Brynn vs Grimm, P2) — an airfield container is remembered as a non-air
+        // army moving at aircraft speed; aircraft never take a structure, so it raises no garrison
+        // floor and builds no structure threat (WorldAnalysis.TakesStructures, the same rule).
+        [Test]
+        public void ThreatFloor_AndStructureThreat_IgnoreAnAircraftOnlyContact()
+        {
+            var baseHex = new Game.HexGrid.HexCoord(-1, 3);
+            var aircraft = new Game.Combat.WorthIt.DefenderProfile(3f, false,
+                new[] { Game.Cards.UnitTypeTag.Aircraft }, attack: 5f, hitPoints: 5f);
+            var airfield = new AiMapMemory.KnownEnemySighting(new Game.HexGrid.HexCoord(1, 0),
+                new Game.Players.PlayerSetupData(), "airfield", 1, 3f, 5f, new[] { aircraft },
+                armyId: 12, isGarrison: false, isAir: false, maxMovement: 6);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { airfield }, new[] { baseHex }, baseHex), Is.Zero);
+            Assert.That(AiArmyRoles.GarrisonThreatFloor(new[] { Enemy(new Game.HexGrid.HexCoord(1, 0), 3) },
+                new[] { baseHex }, baseHex), Is.GreaterThan(0f), "control: a ground force raises it");
+
+            Assert.That(Game.Ai.V2.WorldAnalysis.TakesStructures(new Game.Ai.V2.ArmySnapshot {
+                Members = new[] { aircraft } }), Is.False);
+            Assert.That(Game.Ai.V2.WorldAnalysis.TakesStructures(new Game.Ai.V2.ArmySnapshot {
+                Members = new[] { new Game.Combat.WorthIt.DefenderProfile(3f, false, attack: 5f, hitPoints: 5f) } }),
+                Is.True);
+        }
+
         [Test]
         public void LastKnownContactHasTheSameAgeBeforeAndAfterCanonicalMemoryExpires()
         {

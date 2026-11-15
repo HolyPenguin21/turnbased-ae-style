@@ -250,8 +250,9 @@ namespace Game.Ai.V2
             int eta = AiV2Util.CeilDiv(distance,
                 UnityEngine.Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
             // An incumbent keeps its actor; a fresh intercept that takes the pending preparation's
-            // host (or one of its bodies' donors) pays that preparation's value.
-            float moverCost = incumbent == null && pendingPreparationHost.armyId >= 0
+            // host (or one of its bodies' donors) pays that preparation's value - unless it destroys
+            // the force keeping that Attack home (response.UnblocksAttack): then it serves it.
+            float moverCost = incumbent == null && !response.UnblocksAttack && pendingPreparationHost.armyId >= 0
                 && (plan.BaseArmyId == pendingPreparationHost.armyId
                     || plan.MergeArmyIds.Contains(pendingPreparationHost.armyId))
                 ? pendingPreparationHost.value : 0f;

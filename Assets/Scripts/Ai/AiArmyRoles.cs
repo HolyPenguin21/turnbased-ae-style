@@ -499,7 +499,11 @@ namespace Game.Ai
             foreach ((AiMapMemory.KnownEnemySighting enemy, int unseen) in enemies
                 ?? Enumerable.Empty<(AiMapMemory.KnownEnemySighting, int)>())
             {
-                if (enemy.Owner?.IsEliminated == true || enemy.IsGarrison || enemy.IsAir || enemy.MaxMovement <= 0)
+                // 2026-11-15 — only a ground battle body takes the garrison's structure: an airfield
+                // container (recorded IsAir=false at aircraft speed) is no garrison threat either
+                // (same rule as WorldAnalysis.BuildThreat).
+                if (enemy.Owner?.IsEliminated == true || enemy.IsGarrison || enemy.IsAir || enemy.MaxMovement <= 0
+                    || (enemy.Defenders?.Count > 0 && !enemy.Defenders.Any(IsGroundBattleBody)))
                     continue;
                 float confidence = unseen <= 0 ? 1f : AiReconMemory.ConfidenceDecay(unseen);
                 if (confidence <= 0f)

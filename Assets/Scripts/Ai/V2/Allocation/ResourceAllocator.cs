@@ -953,7 +953,9 @@ namespace Game.Ai.V2
 
         // Intrinsic value, never the radar-scaled EffectiveValue (a cold axis legitimately ranks 0).
         // Durable legs (lifecycle returns, continuing operations) carry their commitment instead.
-        private static bool IsNegativeFresh(MissionProposal m) =>
+        // Also read by planners that must not treat such a proposal as covering their objective
+        // (AggressionMissionLayer.AppendAttack: a dead fresh assault must not suppress preparation).
+        internal static bool IsNegativeFresh(MissionProposal m) =>
             m != null && !m.FromDurableIntent && m.BaseValue < 0f;
 
         private float ApDesired(MissionProposal m) =>

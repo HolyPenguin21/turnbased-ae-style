@@ -88,6 +88,9 @@ namespace Game.Ai.V2
         // Intercept only: the plan and the exclusion set it was solved under (the same set the
         // proposal's admission fingerprint must use).
         public GroundCombatAssemblyPlan Plan;
+        // 2026-11-15 — this Intercept destroys the force that keeps an Attack fist home: it serves
+        // that Attack, so taking the preparation's host costs the preparation nothing.
+        public bool UnblocksAttack;
         public GarrisonSortiePlan Sortie;
         public ISet<int> ExcludedArmyIds;
         public float RequiredPower;
@@ -408,8 +411,9 @@ namespace Game.Ai.V2
             var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             if (withdrawing != null) planExcluded.UnionWith(withdrawing);
             if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
+            // 2026-11-15 — a defender held home only by this enemy may strike it now.
             foreach (ArmySnapshot a in snap.Self.Armies.Where(GroundCombatActorEligibility.IsStructuralActor))
-                if (IsPinnedStrongholdDefender(snap, a, committed)
+                if (IsPinnedStrongholdDefender(snap, a, committed, ignoreEnemyArmyId: enemyId)
                     || !CanReachNow(snap, a, targetHex, out _))
                     planExcluded.Add(a.ArmyId);
 
@@ -656,8 +660,29 @@ namespace Game.Ai.V2
             response.HoldWinChance = HoldChanceAtAsset(snap, objective, null, null, opposition, unavailable);
             if (response.HoldWinChance >= AiConfigV2.activeDefenceHoldWinChance)
             {
+                // 2026-11-15 (owner, match Brynn vs Grimm T32-T35) — the stronghold holds only
+                // because an Attack fist sits on it: a force that keeps that fist home is destroyed
+                // when a direct intercept beats it before it arrives (Grim March vs Cinderfall,
+                // win 1.00, was deferred "asset_holds"; three turns later Cinderfall recalled the
+                // assault). Same plan, gate and timing as any direct response.
+                string blocked = BlockedAttackFist(snap, objective, pinnedActor);
+                if (blocked != null)
+                {
+                    float held = response.HoldWinChance;
+                    if (TryDirectResponse(snap, objective, opposition, committed, withdrawing, pinnedActor, response)
+                        && response.Kind == ActiveDefenceResponseKind.Intercept)
+                    {
+                        response.Reason = "intercept_attack_blocker:" + blocked;
+                        response.UnblocksAttack = true;
+                        return TraceResponse(snap, objective, response, committed);
+                    }
+                    response.Plan = null;
+                    response.ExcludedArmyIds = null;
+                    response.HoldWinChance = held;
+                }
                 response.Kind = ActiveDefenceResponseKind.Defer;
-                response.Reason = "asset_holds";
+                response.Reason = blocked != null ? "asset_holds; attack_blocker_not_interceptable:" + blocked
+                    : "asset_holds";
                 return TraceResponse(snap, objective, response, committed);
             }
             if (TryDirectResponse(snap, objective, opposition, committed, withdrawing, pinnedActor, response))
@@ -953,8 +978,12 @@ namespace Game.Ai.V2
         // of the operation it would leave for can outweigh (Ysolde T9, 2026-09-28: the Citadel's
         // only defender left to intercept another enemy and the Citadel fell unopposed). Staying
         // still fights the arriving enemy, on the hex with its defence bonus.
+        // `ignoreEnemyArmyId` — the enemy this army is asked to intercept (TryDirectResponse): a
+        // defender held only by that enemy may go and destroy it before it arrives (the plan's
+        // own gate + CanInterceptPlanBeforeThreat), 2026-11-15.
         internal static bool IsPinnedStrongholdDefender(WorldSnapshot snap, ArmySnapshot army,
-            ISet<int> unavailable = null, IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
+            ISet<int> unavailable = null, IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null,
+            int? ignoreEnemyArmyId = null)
         {
             if (army == null || army.IsAir || army.IsAirfield || army.IsPrison
                 || army.EffectiveArmyPower <= AiConfigV2.allocatorSliceEpsilon
@@ -967,20 +996,119 @@ namespace Game.Ai.V2
             without.Add(army.ArmyId);
             foreach (AssetThreatSnapshot threat in snap.Threat?.Threats ?? Enumerable.Empty<AssetThreatSnapshot>())
             {
-                if (!IsHonestPositionedHostile(threat) || !threat.CanDamage
+                if (!IsPinCandidate(threat)
                     || !threat.Asset.Hex.Equals(army.Hex)
                     || !IsDefendableAsset(snap, threat.Asset.Kind, threat.Asset.Hex)
                     || !threat.EnemyEta.HasValue
-                    || threat.EnemyEta.Value > AiConfigV2.strongholdDefenderPinEnemyEta)
+                    || threat.EnemyEta.Value > AiConfigV2.strongholdDefenderPinEnemyEta
+                    || (ignoreEnemyArmyId.HasValue && threat.Contact.Army.ArmyId == ignoreEnemyArmyId.Value))
                     continue;
                 var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
                     { ProtectedAssetHex = army.Hex, ProtectedAssetKind = threat.Asset.Kind } };
                 var opposition = KnownOpposition.OfEnemyArmy(snap, threat.Contact.Army.ArmyId);
-                if (opposition == null || HoldChanceAtAsset(snap, objective, null, null,
-                        opposition, without, projectedArmies) < AiConfigV2.activeDefenceHoldWinChance)
+                if (opposition == null || FallsWithout(HoldChanceAtAsset(snap, objective, null, null,
+                        opposition, without, projectedArmies), PinConfidence(snap, threat.Contact)))
                     return true;
             }
             return false;
+        }
+
+        // The Attack fist this objective's enemy keeps home ("fist #24"), or null. Only an observed
+        // force within the withdraw horizon can be the pin (StrongholdNeedingArmy) and only an
+        // observed one has a position to intercept. `interceptActor` — the army a live intercept of
+        // this enemy already uses: the fist that went to remove its blocker is claimed by that
+        // intercept now, yet it is still the army the force keeps from the Attack (a two-turn
+        // intercept must not be dropped on its second turn).
+        private static string BlockedAttackFist(WorldSnapshot snap, ActiveDefenceObjective objective,
+            int? interceptActor = null)
+        {
+            ActiveDefenceMissionTarget t = objective.Target;
+            if (!t.EnemyEta.HasValue || t.EnemyEta.Value > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                return null;
+            EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c => c?.Army != null
+                && c.Army.ArmyId == t.EnemyArmyId);
+            if (contact == null || contact.Knowledge != ContactKnowledge.Exact)
+                return null;
+            List<int> fists = AttackObjectiveEvaluator.AttackFistIds(snap);
+            if (interceptActor.HasValue && !fists.Contains(interceptActor.Value))
+                fists.Add(interceptActor.Value);
+            foreach (int id in fists)
+            {
+                ArmySnapshot fist = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == id);
+                if (fist != null && AttackMarchPolicy.IsBlockedBy(snap, fist, t.EnemyArmyId))
+                    return "fist #" + id;
+            }
+            return null;
+        }
+
+        // ---- 2026-11-15 (owner, match Brynn vs Grimm) — THE pin facts, shared by
+        // IsPinnedStrongholdDefender and AttackMarchPolicy.StrongholdNeedingArmy ------------------
+
+        // A threat that can pin an army home: an honest positioned hostile that can damage the
+        // asset AND can take a structure at all (a ground battle body; aircraft cannot).
+        internal static bool IsPinCandidate(AssetThreatSnapshot t) =>
+            IsHonestPositionedHostile(t) && t.CanDamage && WorldAnalysis.TakesStructures(t.Contact.Army);
+
+        // How sure we are the remembered force is there to strike: 1 when observed now, else the
+        // memory decay (AiReconMemory.ConfidenceDecay) - the rule the garrison floor reads.
+        internal static float PinConfidence(WorldSnapshot snap, EnemyContactSnapshot c) =>
+            c == null ? 0f : c.Knowledge == ContactKnowledge.Exact ? 1f
+                : AiReconMemory.ConfidenceDecay(c.AgeTurns(snap?.TurnNumber ?? 0));
+
+        // The stronghold falls without the army when the chance it is lost - the force is there
+        // (confidence) and wins (1 - hold) - exceeds what activeDefenceHoldWinChance accepts.
+        // At confidence 1 this is exactly hold < activeDefenceHoldWinChance.
+        internal static bool FallsWithout(float holdWinChance, float confidence) =>
+            (1f - Mathf.Clamp01(holdWinChance)) * Mathf.Clamp01(confidence)
+                > 1f - AiConfigV2.activeDefenceHoldWinChance;
+
+        // Can an own free field army destroy this threat force before it reaches the asset?
+        // Only an observed force has a position to intercept; not one standing on its own
+        // structure (that is the Attack lane). The same plan + timing seam the direct response
+        // uses (PlanForArmyAtThreshold at the fresh-start gate, CanInterceptPlanBeforeThreat).
+        // `excluded` - armies that are not free for it (other operations, the asking army).
+        // Per snapshot: the march verdict asks it for every candidate of every planner pass; the
+        // threats and armies are frozen with the snapshot (key: enemy, eta, excluded set).
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
+            Dictionary<string, int>> s_defeatMemo = new();
+
+        internal static bool CanDefeatBeforeThreat(WorldSnapshot snap, AssetThreatSnapshot t,
+            ISet<int> excluded, out int defeaterArmyId)
+        {
+            defeaterArmyId = -1;
+            EnemyContactSnapshot c = t?.Contact;
+            if (c?.Army == null || c.Knowledge != ContactKnowledge.Exact || !c.Position.HasValue
+                || !t.EnemyEta.HasValue || snap?.Self?.Armies == null
+                || OnKnownForeignStructure(snap, c.Position.Value))
+                return false;
+            Dictionary<string, int> memo = s_defeatMemo.GetOrCreateValue(snap);
+            string key = $"{c.Army.ArmyId}|{t.EnemyEta.Value}|{c.Position.Value.Q},{c.Position.Value.R}|"
+                + string.Join(",", (excluded ?? (IEnumerable<int>)Array.Empty<int>()).OrderBy(id => id));
+            if (!memo.TryGetValue(key, out defeaterArmyId))
+                memo[key] = defeaterArmyId = FindDefeater(snap, t, c, excluded);
+            return defeaterArmyId >= 0;
+        }
+
+        private static int FindDefeater(WorldSnapshot snap, AssetThreatSnapshot t, EnemyContactSnapshot c,
+            ISet<int> excluded)
+        {
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = KnownOpposition.OfEnemyArmy(snap, c.Army.ArmyId);
+            if (opposition == null)
+                return -1;
+            var target = new ActiveDefenceMissionTarget { LastKnownHex = c.Position.Value,
+                EnemyEta = t.EnemyEta, EnemyArmyId = c.Army.ArmyId };
+            foreach (ArmySnapshot a in GroundCombatActorEligibility.EligibleArmies(snap, excluded,
+                    requireMovementNow: false))
+            {
+                // The last defender of another threatened stronghold cannot leave for it.
+                if (IsPinnedStrongholdDefender(snap, a, excluded, ignoreEnemyArmyId: c.Army.ArmyId))
+                    continue;
+                if (!CanInterceptPlanBeforeThreat(snap, target, GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
+                        snap, opposition, a.ArmyId, GroundCombatAdmissionPolicy.FreshStartWinChanceGate)))
+                    continue;
+                return a.ArmyId;
+            }
+            return -1;
         }
 
         // 2026-10-16 (user decision) — the last defender of a threatened stronghold may leave for a
@@ -1094,8 +1222,11 @@ namespace Game.Ai.V2
             var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             if (withdrawing != null) planExcluded.UnionWith(withdrawing);
             if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
+            // 2026-11-15 - a defender held home only by THIS enemy may go and destroy it first
+            // (the intercept-before-threat timing below still applies).
             foreach (ArmySnapshot a in snap.Self.Armies.Where(GroundCombatActorEligibility.IsStructuralActor))
-                if (IsPinnedStrongholdDefender(snap, a, committed)) planExcluded.Add(a.ArmyId);
+                if (IsPinnedStrongholdDefender(snap, a, committed, ignoreEnemyArmyId: objective.Target.EnemyArmyId))
+                    planExcluded.Add(a.ArmyId);
             // Timing is a complete-plan constraint. Filtering the original host here misses slow
             // recruits and can also discard a host whose legal departure roster becomes faster.
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
@@ -1106,6 +1237,7 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = pinnedActor,
                     PinToPreferred = pinnedActor.HasValue,
                     ExcludedArmyIds = planExcluded,
+                    PinIgnoredEnemyArmyId = objective.Target.EnemyArmyId,
                     AcceptPlan = candidate => CanInterceptPlanBeforeThreat(snap, objective.Target, candidate),
                 });
             if (plan.Feasible)
@@ -1134,7 +1266,7 @@ namespace Game.Ai.V2
             float freshGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
             ArmySnapshot capable = snap.Self.Armies.FirstOrDefault(a => GroundCombatActorEligibility.IsStructuralActor(a)
                 && (committed == null || !committed.Contains(a.ArmyId))
-                && !IsPinnedStrongholdDefender(snap, a, committed)
+                && !IsPinnedStrongholdDefender(snap, a, committed, ignoreEnemyArmyId: objective.Target.EnemyArmyId)
                 && (withdrawing == null || !withdrawing.Contains(a.ArmyId))
                 && CanInterceptPlanBeforeThreat(snap, objective.Target,
                     GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,

@@ -92,9 +92,10 @@ namespace Game.Ai.V2
             bool? requireCoverage = null, bool preserveDepartureRoster = false,
             bool allowDecisivePinnedDefender = false,
             Func<GroundCombatAssemblyPlan, bool> acceptPlan = null,
-            bool allowHeroDisplacement = false) =>
+            bool allowHeroDisplacement = false, int? pinIgnoredEnemyArmyId = null) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
+                PinIgnoredEnemyArmyId = pinIgnoredEnemyArmyId,
                 Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
                 WinChanceGate = winChanceGate,
                 ExcludedArmyIds = unavailableArmyIds,
@@ -219,7 +220,8 @@ namespace Game.Ai.V2
                 preserveDepartureRoster: GroundCombatAdmissionPolicy.PreservesDepartureRoster(proposal),
                 acceptPlan: target.InterceptPurpose == ActiveDefenceInterceptPurpose.StrategicDefence
                     ? candidate => ActiveDefenceObjectiveEvaluator.CanInterceptPlanBeforeThreat(snap, target, candidate)
-                    : (Func<GroundCombatAssemblyPlan, bool>)null);
+                    : (Func<GroundCombatAssemblyPlan, bool>)null,
+                pinIgnoredEnemyArmyId: target.EnemyArmyId);
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
         }

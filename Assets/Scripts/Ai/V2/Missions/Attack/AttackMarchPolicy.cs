@@ -141,7 +141,7 @@ namespace Game.Ai.V2
                 ? target.Hex : (HexCoord?)null;
 
             HexCoord? home = StrongholdNeedingArmy(snap, primary, out int enemyEta, out bool homeIsCitadel,
-                struckNow, projectedArmies);
+                out AssetThreatSnapshot pinning, struckNow, projectedArmies);
             if (home.HasValue)
             {
                 // 2026-11-13 (owner, match Sable vs Korrin) — trading an own Base for the enemy's
@@ -154,7 +154,7 @@ namespace Game.Ai.V2
                     && (!homeIsCitadel || strikeEta == 0 || strikeEta < enemyEta);
                 if (!mateFirst)
                     return new AttackMarchAssessment(AttackMarchVerdict.DefendHome, win, decisive, home,
-                        $"own stronghold ({home.Value.Q},{home.Value.R}) falls without this army (enemy eta {enemyEta})");
+                        $"own stronghold ({home.Value.Q},{home.Value.R}) falls without this army (enemy eta {enemyEta}; {DescribePin(snap, pinning)})");
             }
             if (!observed)
                 return new AttackMarchAssessment(AttackMarchVerdict.Continue, 0f, false, null,
@@ -226,18 +226,30 @@ namespace Game.Ai.V2
         // `isCitadel` — the returned stronghold is an own Citadel (the Citadel is preferred).
         internal static HexCoord? StrongholdNeedingArmy(WorldSnapshot snap, ArmySnapshot army,
             out int enemyEta, out bool isCitadel, HexCoord? struckNow = null,
-            IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
+            IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null) =>
+            StrongholdNeedingArmy(snap, army, out enemyEta, out isCitadel, out _, struckNow, projectedArmies);
+
+        // `pinning` — the threat that keeps the army home (its contact: id, knowledge, last
+        // position). Read by the march reason and by Attack's observation need for that contact
+        // (AttackObjectiveEvaluator.ObservationNeeds: a pin by a remembered, unobserved army is
+        // a Recon job, 2026-11-15).
+        internal static HexCoord? StrongholdNeedingArmy(WorldSnapshot snap, ArmySnapshot army,
+            out int enemyEta, out bool isCitadel, out AssetThreatSnapshot pinning,
+            HexCoord? struckNow = null, IReadOnlyDictionary<int, ArmySnapshot> projectedArmies = null)
         {
             enemyEta = int.MaxValue;
             isCitadel = false;
+            pinning = null;
             if (snap?.Self?.BaseHexes == null || army == null)
                 return null;
             HexCoord? best = null;
             bool bestCitadel = false;
             var without = new HashSet<int> { army.ArmyId };
+            HashSet<int> notFree = null; // armies that cannot answer the threat instead (lazy)
             foreach (AssetThreatSnapshot t in snap.Threat?.Threats ?? Enumerable.Empty<AssetThreatSnapshot>())
             {
-                if (!ActiveDefenceObjectiveEvaluator.IsHonestPositionedHostile(t) || !t.CanDamage
+                // 2026-11-15 (owner) — only a force that can take the stronghold pins (IsPinCandidate).
+                if (!ActiveDefenceObjectiveEvaluator.IsPinCandidate(t)
                     || !t.EnemyEta.HasValue || !snap.Self.BaseHexes.Contains(t.Asset.Hex)
                     || (t.Asset.Kind != AssetKind.Citadel && t.Asset.Kind != AssetKind.Base))
                     continue;
@@ -255,15 +267,34 @@ namespace Game.Ai.V2
                     continue;
                 var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
                     { ProtectedAssetHex = t.Asset.Hex, ProtectedAssetKind = t.Asset.Kind } };
-                if (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, null, null, enemy,
-                        without, projectedArmies) >= AiConfigV2.activeDefenceHoldWinChance)
+                // 2026-11-15 (owner) — a remembered force pins only as strongly as the memory is
+                // sure it is there (ActiveDefenceObjectiveEvaluator.FallsWithout / PinConfidence,
+                // the garrison floor's decay): one not seen for 11 turns no longer holds the fist
+                // like one seen yesterday.
+                float confidence = ActiveDefenceObjectiveEvaluator.PinConfidence(snap, t.Contact);
+                if (!ActiveDefenceObjectiveEvaluator.FallsWithout(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(
+                        snap, objective, null, null, enemy, without, projectedArmies), confidence))
+                    continue;
+                // 2026-11-15 (owner) — a force another free army of ours destroys before it reaches
+                // the stronghold is ActiveDefence's intercept, not a reason to keep this army home.
+                if (notFree == null)
+                {
+                    notFree = new HashSet<int>(ActorCommitments.FromIntents((snap.AllIntents
+                            ?? Enumerable.Empty<MissionIntent>()).Where(i => i != null
+                            && i.Status == IntentStatus.Active && i.Kind != MissionKind.Scout), snap, null)
+                        .ClaimedArmyIds);
+                    notFree.Add(army.ArmyId);
+                    if (projectedArmies != null)
+                        notFree.UnionWith(projectedArmies.Keys);
+                }
+                if (ActiveDefenceObjectiveEvaluator.CanDefeatBeforeThreat(snap, t, notFree, out _))
                     continue;
                 // Several individually spareable donors can together remove a base's defence.
                 // A projected departure that breaks an existing hold is forbidden even when the
                 // assembled host is too far away to return and repair its own proposed damage.
                 bool departureBreaksHold = projectedArmies?.Count > 0
-                    && ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, null, null,
-                        enemy) >= AiConfigV2.activeDefenceHoldWinChance;
+                    && !ActiveDefenceObjectiveEvaluator.FallsWithout(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(
+                        snap, objective, null, null, enemy), confidence);
                 if (!departureBreaksHold)
                 {
                     if (!army.Hex.Equals(t.Asset.Hex)
@@ -279,10 +310,64 @@ namespace Game.Ai.V2
                     best = t.Asset.Hex;
                     bestCitadel = citadel;
                     enemyEta = eta;
+                    pinning = t;
                 }
             }
             isCitadel = bestCitadel;
             return best;
+        }
+
+        // 2026-11-15 (owner) — does enemy `enemyArmyId` keep this Attack fist home? Either the march
+        // verdict's pin (StrongholdNeedingArmy) names it, or the fist is the last defender held
+        // ONLY by it (IsPinnedStrongholdDefender without that enemy releases it). Read by
+        // ActiveDefence: such a force is intercepted even while the stronghold holds with the fist.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
+            Dictionary<(int, int), bool>> s_blockedBy = new();
+
+        internal static bool IsBlockedBy(WorldSnapshot snap, ArmySnapshot fist, int enemyArmyId)
+        {
+            if (snap == null || fist == null)
+                return false;
+            Dictionary<(int, int), bool> memo = s_blockedBy.GetOrCreateValue(snap);
+            if (memo.TryGetValue((fist.ArmyId, enemyArmyId), out bool known))
+                return known;
+            bool blocked = (StrongholdNeedingArmy(snap, fist, out _, out _, out AssetThreatSnapshot pin) != null
+                    && pin?.Contact?.Army?.ArmyId == enemyArmyId)
+                || (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, fist)
+                    && !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, fist,
+                        ignoreEnemyArmyId: enemyArmyId));
+            memo[(fist.ArmyId, enemyArmyId)] = blocked;
+            return blocked;
+        }
+
+        // The pin's contact for logs: "#40 last_known age 2 at (1,0)".
+        internal static string DescribePin(WorldSnapshot snap, AssetThreatSnapshot pinning)
+        {
+            EnemyContactSnapshot c = pinning?.Contact;
+            if (c?.Army == null)
+                return "contact unknown";
+            string at = c.Position.HasValue ? $" at ({c.Position.Value.Q},{c.Position.Value.R})" : "";
+            return c.Knowledge == ContactKnowledge.Exact
+                ? $"#{c.Army.ArmyId} observed{at}"
+                : $"#{c.Army.ArmyId} last_known age {c.AgeTurns(snap?.TurnNumber ?? 0)}{at}";
+        }
+
+        // 2026-11-15 (match Brynn vs Grimm) — the hex Recon must look at so a remembered army
+        // stops pinning `army` on its worst-case position: the contact's last known hex, while it
+        // has not been looked at since that sighting (seen empty afterwards, revisiting the same
+        // hex adds nothing; the unobserved-army model then rules). Null when no pin, the pin is
+        // an observed contact, or the hex is already fresher than the sighting.
+        internal static HexCoord? PinObservationHex(WorldSnapshot snap, ArmySnapshot army)
+        {
+            if (StrongholdNeedingArmy(snap, army, out _, out _, out AssetThreatSnapshot pin) == null)
+                return null;
+            EnemyContactSnapshot c = pin?.Contact;
+            if (c == null || c.Knowledge == ContactKnowledge.Exact || !c.Position.HasValue)
+                return null;
+            if (ReconIntelSnapshotRegistry.TryGetIntelAge(snap, c.Position.Value, out int hexAge)
+                && hexAge < c.AgeTurns(snap.TurnNumber))
+                return null;
+            return c.Position.Value;
         }
     }
 }
