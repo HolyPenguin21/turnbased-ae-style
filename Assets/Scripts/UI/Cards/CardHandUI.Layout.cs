@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Game.UI
@@ -14,6 +15,13 @@ namespace Game.UI
         private Vector2[] scrollButtonDesignSize;
         private RectTransform separatorLayer;
         private float[] separatorDesignY;
+        private CanvasGroup[] separatorGroups;
+        private CanvasGroup leftEdgeSeparatorGroup;
+        private CanvasGroup rightEdgeSeparatorGroup;
+        // Alpha of the two pins framing the hovered/dragged card, and how long a full
+        // opaque<->transparent fade takes — see TickSeparatorFade.
+        [SerializeField, Range(0f, 1f)] private float separatorFocusAlpha = 0f;
+        [SerializeField, Min(0f)] private float separatorFadeDuration = 0.12f;
         private float PreferredSlotStep => cardSize.x * (1f - overlapFraction) + cardSpacing;
         private CardRowGeometry HandGeometry
         {
@@ -30,7 +38,70 @@ namespace Game.UI
 
         private Vector2 HandSlotPosition(int index) => new Vector2(SlotX(index), HandGeometry.CenterOffsetY);
 
-        private void LateUpdate() => RefreshHandLayout();
+        private void LateUpdate()
+        {
+            RefreshHandLayout();
+            TickSeparatorFade();
+        }
+
+        // Pins are numbered by the slot boundary they stand on: boundary b is the left edge of
+        // visible slot b. Inner separator i (between slots i and i+1) is boundary i+1; the
+        // scroll buttons' edge pins are boundaries 0 and MaxVisible. The card in slot k is
+        // framed by boundaries k and k+1 — those ease to separatorFocusAlpha while it's hovered
+        // or dragged (the dragged card's slot follows the live reorder), everything else eases
+        // back to opaque, so moving to another card hands the fade over smoothly.
+        private void TickSeparatorFade()
+        {
+            int slot = FocusedCardSlot();
+            float step = separatorFadeDuration > 0f ? Time.unscaledDeltaTime / separatorFadeDuration : 1f;
+            if (separatorGroups != null)
+                for (int i = 0; i < separatorGroups.Length; i++)
+                    FadeSeparator(separatorGroups[i], i + 1, slot, step);
+            FadeSeparator(leftEdgeSeparatorGroup, 0, slot, step);
+            FadeSeparator(rightEdgeSeparatorGroup, MaxVisible, slot, step);
+        }
+
+        private void FadeSeparator(CanvasGroup group, int boundary, int focusedSlot, float step)
+        {
+            if (group == null) return;
+            bool framing = focusedSlot >= 0 && (boundary == focusedSlot || boundary == focusedSlot + 1);
+            float target = framing ? separatorFocusAlpha : 1f;
+            if (group.alpha != target)
+                group.alpha = Mathf.MoveTowards(group.alpha, target, step);
+        }
+
+        // Alpha only, through a CanvasGroup on the pin itself; raycast behaviour is untouched
+        // (the edge pins live under their scroll buttons).
+        private static CanvasGroup FadeGroupFor(RectTransform separator)
+        {
+            if (separator == null) return null;
+            if (!separator.TryGetComponent(out CanvasGroup group))
+                group = separator.gameObject.AddComponent<CanvasGroup>();
+            return group;
+        }
+
+        // Visible slot of the card currently dragged (preferred) or hovered in the shown row;
+        // -1 when none or while the tactic flip owns the row.
+        private int FocusedCardSlot()
+        {
+            if (_tacticFlipping) return -1;
+            List<CardUI> cards;
+            int offset;
+            if (_showingTactics) { cards = _tacticCards; offset = _tacticScrollOffset; }
+            else if (ShowingDebugHand) { cards = _debugCards; offset = 0; }
+            else { cards = _cards; offset = _scrollOffset; }
+            int hovered = -1;
+            for (int i = 0; i < cards.Count; i++)
+            {
+                var card = cards[i];
+                if (card == null || !card.gameObject.activeSelf) continue;
+                int slot = i - offset;
+                if (slot < 0 || slot >= MaxVisible) continue;
+                if (card.IsDragging) return slot;
+                if (hovered < 0 && card.IsHovered) hovered = slot;
+            }
+            return hovered;
+        }
 
         private void SyncSeparatorLayer()
         {

@@ -33978,6 +33978,8 @@ MonoBehaviour:
   - {fileID: 234279241}
   - {fileID: 1354456005}
   - {fileID: 1696497841}
+  leftEdgeSeparator: {fileID: 113451527}
+  rightEdgeSeparator: {fileID: 1532020748}
   resourceBar: {fileID: 6660000000000010005}
   turnController: {fileID: 26816773}
   drawApCost: 2

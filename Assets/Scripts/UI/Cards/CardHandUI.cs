@@ -44,6 +44,11 @@ namespace Game.UI
         [SerializeField] private Button scrollRightButton;
         // The pins between neighbouring hand slots, left to right — see CreateSeparatorLayer.
         [SerializeField] private RectTransform[] cardSeparators;
+        // The outer pins on the scroll buttons (shown only when the hand overflows MaxVisible):
+        // left of slot 0 and right of the last slot — faded with the inner ones, see
+        // TickSeparatorFade. Left in place under their buttons.
+        [SerializeField] private RectTransform leftEdgeSeparator;
+        [SerializeField] private RectTransform rightEdgeSeparator;
         // Its own top-of-screen panel (not under CardHandPanel), shown/hidden together with the
         // hand — see Show/Hide.
         [SerializeField] private ResourceBarUI resourceBar;
@@ -190,6 +195,8 @@ namespace Game.UI
 
             CreateSlotBackgrounds();
             CreateSeparatorLayer();
+            leftEdgeSeparatorGroup = FadeGroupFor(leftEdgeSeparator);
+            rightEdgeSeparatorGroup = FadeGroupFor(rightEdgeSeparator);
 
             // Reverse link so ArmyUnitCardUI's own click can route into equipment attach mode
             // (see BeginAttachMode) without every card prefab needing its own hand reference.
@@ -271,6 +278,7 @@ namespace Game.UI
             layer.SetSiblingIndex(handContainer.GetSiblingIndex() + 1);
             SyncSeparatorLayer();
             separatorDesignY = new float[cardSeparators.Length];
+            separatorGroups = new CanvasGroup[cardSeparators.Length];
 
             for (int i = 0; i < cardSeparators.Length; i++)
             {
@@ -284,6 +292,7 @@ namespace Game.UI
                 separator.anchoredPosition = new Vector2(HandGeometry.SlotX(i + .5f), HandGeometry.DecorationOffsetY(separatorDesignY[i]));
                 if (separator.TryGetComponent(out Graphic graphic))
                     graphic.raycastTarget = false;
+                separatorGroups[i] = FadeGroupFor(separator);
             }
         }
 

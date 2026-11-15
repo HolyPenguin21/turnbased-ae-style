@@ -76,6 +76,8 @@ namespace Game.UI
 
         public CardData Data { get; private set; }
         public bool IsDragging { get; private set; }
+        // Pointer is over the card and it's raised to hover size (see Retarget).
+        public bool IsHovered => _isHovered;
 
         private CardHandUI _hand;
         private Vector2 _homePosition;
