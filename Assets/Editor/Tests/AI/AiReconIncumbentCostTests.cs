@@ -46,6 +46,38 @@ namespace Game.EditorTests
             Assert.That(afterCoverage.Value, Is.GreaterThan(ruins.Value));
         }
 
+        // 2026-11-15 (match Brynn vs Grimm, P3, owner option a) — Explore reads the same "toward
+        // the enemy" fact as Refresh (ReconObjectiveEvaluator.DirectionalPressure): unvisited
+        // ground in the known enemy Citadel's sector earns ThreatDirection, the opposite side none.
+        [Test]
+        public void Explore_TowardTheKnownEnemyEarnsTheSameDirectionAsRefresh()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            HexCoord east = new HexCoord(3, 0);
+            HexCoord west = new HexCoord(-3, 0);
+            var enemy = new PlayerSetupData { Nickname = "red" };
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Citadel = home, BaseHexes = new[] { home },
+                    Armies = new ArmySnapshot[0] },
+                Known = new KnownSnapshot { Buildings = new[] {
+                    new Game.Ai.AiMapMemory.KnownBuilding(new HexCoord(6, 0), enemy, true, null) } },
+                MapKnowledge = new MapKnowledgeSnapshot { AllHexes = HexGridMath.HexesInRange(home, 6).ToList(),
+                    VisitedHexSet = new HashSet<HexCoord> { home },
+                    ScoutHardBlockedHexes = new HashSet<HexCoord>() },
+            };
+            var cost = new ScoutCostEstimate { ActivationApNow = 0f, RecurringActivationAp = 0f, EtaTurns = 2 };
+            ReconDirectionSnapshot direction = ReconDirectionModel.Build(snap);
+            Assert.That(ReconObjectiveEvaluator.DirectionalPressure(snap, east, direction), Is.EqualTo(0.75f));
+            Assert.That(ReconObjectiveEvaluator.DirectionalPressure(snap, west, direction), Is.Zero);
+
+            TaskScore toward = ReconObjectiveEvaluator.BuildExploreScore(snap, east, 0.5f, 3, cost, 0f);
+            TaskScore away = ReconObjectiveEvaluator.BuildExploreScore(snap, west, 0.5f, 3, cost, 0f);
+            Assert.That(toward.ThreatDirection, Is.EqualTo(TaskScoreEvaluator.ThreatDirection(0.75f)).Within(0.001f));
+            Assert.That(away.ThreatDirection, Is.Zero);
+            Assert.That(toward.Value, Is.GreaterThan(away.Value));
+        }
+
         [Test]
         public void CompleteStepForecast_AppliesHomePressureToLookaheadAsWellAsImmediateValue()
         {

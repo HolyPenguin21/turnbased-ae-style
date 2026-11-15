@@ -30,6 +30,13 @@ namespace Game.Ai.V2
         // A fist that comes for a Base / Citadel is answered by standing on it when the defence
         // estimate (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset) reaches this chance.
         public const float activeDefenceHoldWinChance = 0.70f;
+        // 2026-11-15 (owner, match Brynn vs Grimm) — an Attack on any structure (Base or Citadel)
+        // stays a live option up to this many army turns to the target: the march turns inside
+        // the horizon are the operation's own budget (the mobilization gate already committed the
+        // force), only the turns beyond it are priced as Delivery. Before, every turn after the
+        // first was priced (activation AP x (eta-1)): a 7-AP fist 9 turns away paid 63 against
+        // a benefit of ~20, so no fresh assault beyond ~2 turns was ever funded.
+        public const int attackDeliveryHorizonTurns = 5;
         // 2026-10-01 (user decision) — a preparation's frozen target roster is re-frozen when the
         // peak (TotalMilitaryPotential) grew by more than this share since it was frozen.
         public const float attackTargetRosterRefreezeGrowth = 0.10f;

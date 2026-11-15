@@ -515,12 +515,14 @@ namespace Game.Ai.V2
         // the way ActiveDefenceObjectiveEvaluator.WithResponse already does for its own lane: the
         // win chance the shared estimator produced for this concrete force against this concrete
         // site (hex defence included), the AP/ETA price of delivering it, and the cost of taking
-        // this particular army off whatever it is doing now. No Attack-specific slot.
+        // this particular army off whatever it is doing now. No Attack-specific slot; the march
+        // is priced only past the Attack horizon (AiConfigV2.attackDeliveryHorizonTurns), for a
+        // Base as for a Citadel.
         public static TaskScore WithResponse(AttackObjective objective, ArmySnapshot actor,
             float winChance, int eta, float moverOpportunityCost = 0f,
             int? projectedActivationAp = null) =>
             TaskScoreEvaluator.WithActorResponse(objective.TaskScore, actor, winChance, eta,
-                moverOpportunityCost, projectedActivationAp);
+                moverOpportunityCost, projectedActivationAp, AiConfigV2.attackDeliveryHorizonTurns);
 
         // ---- internals -------------------------------------------------------------------------
 
@@ -633,6 +635,16 @@ namespace Game.Ai.V2
             // Do not rebuild Scout claims here: their validity asks Recon -> ObservationNeeds.
             var commitments = ActorCommitments.FromIntents(
                 active.Where(i => i.Kind != MissionKind.Scout), snap, null);
+
+            // 2026-11-15 (match Brynn vs Grimm) — an Attack fist kept home by a REMEMBERED army
+            // (AttackMarchPolicy.StrongholdNeedingArmy on the unobserved-army model's worst case)
+            // is waiting for knowledge: the contact's last known hex is this operation's look.
+            // Grimm T46: Sandreavers held at (1,4) by Dust Dogs seen 5 turns ago at (-2,1) (real
+            // ETA 6, worst case 2); nobody looked at (-2,1). The live operation's fist, else the
+            // fist a preparation would take while the mobilization gate is open.
+            foreach (HexCoord pinHex in PinObservationNeeds(snap, active, commitments))
+                if (emitted.Add(pinHex))
+                    yield return pinHex;
             // Reuse Attack's existing target order, not the mission planner (Recon is itself
             // building its objectives here). One concrete pre-operation need beyond live needs.
             List<AttackObjective> targets = Enumerate(snap);
@@ -653,6 +665,67 @@ namespace Game.Ai.V2
             // including when an intermediate hostile Base is already known. No defenders inferred.
             AttackObjective unseen = targets.FirstOrDefault(t => t.LocationOnly && !emitted.Contains(t.Hex));
             if (unseen != null) yield return unseen.Hex;
+        }
+
+        // Per snapshot and army: the threats are frozen with the snapshot, so the pin read is too
+        // (ObservationNeeds runs for every Refresh validity check).
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
+            Dictionary<int, HexCoord?>> s_pinHexes = new();
+
+        // THE armies our Attack lives on (2026-11-15): the primary of every live Gather / Assault
+        // operation, else - while the mobilization gate is open - the strongest free structural
+        // army a preparation would host in. Read by Recon (the pin observation need) and by
+        // ActiveDefence (a force keeping one of them home is intercepted, not deferred).
+        internal static List<int> AttackFistIds(WorldSnapshot snap, IEnumerable<MissionIntent> active,
+            ActorCommitments commitments)
+        {
+            var fists = new List<int>();
+            if (snap?.Self == null)
+                return fists;
+            foreach (MissionIntent i in active ?? Enumerable.Empty<MissionIntent>())
+                if (i != null && i.Kind == MissionKind.Attack && i.Attack != null && i.Attack.PrimaryArmyId.HasValue
+                    && (i.Attack.Phase == AttackMissionPhase.Gather || i.Attack.Phase == AttackMissionPhase.Assault))
+                    fists.Add(i.Attack.PrimaryArmyId.Value);
+            if (fists.Count == 0 && AttackForceReadiness.MobilizationOpen(snap.Self))
+            {
+                ArmySnapshot host = GroundCombatActorEligibility.EligibleArmies(snap, null,
+                        requireMovementNow: false)
+                    .Where(a => commitments == null || !commitments.IsArmyClaimed(a.ArmyId))
+                    .OrderByDescending(a => a.EffectiveArmyPower)
+                    .ThenBy(a => a.ArmyId)
+                    .FirstOrDefault();
+                if (host != null)
+                    fists.Add(host.ArmyId);
+            }
+            return fists;
+        }
+
+        // The same set read off the snapshot's own intents (Active, non-Scout claims).
+        internal static List<int> AttackFistIds(WorldSnapshot snap)
+        {
+            List<MissionIntent> active = (snap?.AllIntents ?? Enumerable.Empty<MissionIntent>())
+                .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            return AttackFistIds(snap, active,
+                ActorCommitments.FromIntents(active.Where(i => i.Kind != MissionKind.Scout), snap, null));
+        }
+
+        private static IEnumerable<HexCoord> PinObservationNeeds(WorldSnapshot snap,
+            List<MissionIntent> active, ActorCommitments commitments)
+        {
+            List<int> fists = AttackFistIds(snap, active, commitments);
+            if (fists.Count == 0)
+                yield break;
+            Dictionary<int, HexCoord?> memo = s_pinHexes.GetOrCreateValue(snap);
+            foreach (int id in fists)
+            {
+                if (!memo.TryGetValue(id, out HexCoord? hex))
+                {
+                    ArmySnapshot army = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == id);
+                    memo[id] = hex = army == null ? null : AttackMarchPolicy.PinObservationHex(snap, army);
+                }
+                if (hex.HasValue)
+                    yield return hex.Value;
+            }
         }
 
         // The one readiness read of an Attack fist (AttackPreparationPolicy) against the one

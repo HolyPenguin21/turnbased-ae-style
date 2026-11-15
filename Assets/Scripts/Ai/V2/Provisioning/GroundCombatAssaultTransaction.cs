@@ -109,7 +109,12 @@ namespace Game.Ai.V2
             // 2026-10-16 — an Attack may take it for a decisive fight while the stronghold stays
             // covered (Plan below re-checks the fight: GroundCombatAssemblyPlanner.DecisiveIfPinned).
             bool attackLane = proposal.Kind == MissionKind.Attack;
-            if (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(session.Snapshot, assigned)
+            // 2026-11-15 — an intercept of the very enemy that pins this defender is its defence
+            // (the same exception the proposal-side registry and planner applied).
+            int? pinIgnored = proposal.Target is ActiveDefenceMissionTarget interceptOf
+                ? interceptOf.EnemyArmyId : (int?)null;
+            if (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(session.Snapshot, assigned,
+                    ignoreEnemyArmyId: pinIgnored)
                 && !(attackLane && ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered(
                     session.Snapshot, assigned, excluded)))
             {
@@ -140,6 +145,7 @@ namespace Game.Ai.V2
                         ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                     AllowDecisivePinnedDefender = attackLane,
+                    PinIgnoredEnemyArmyId = pinIgnored,
                     AcceptPlan = proposal.Target is AttackMissionTarget fresh && !fresh.ForceCommitted
                         ? candidate => AttackSecondaryPolicy.CanStart(session.Snapshot, fresh,
                             candidate, session.Snapshot.Intents, opposition, out _)

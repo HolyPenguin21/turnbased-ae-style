@@ -117,6 +117,14 @@ namespace Game.Ai.V2
 
             foreach (EnemyContactSnapshot c in contacts)
             {
+                // 2026-11-15 (match Brynn vs Grimm, P2) — only a ground battle body takes a
+                // structure: aircraft never start a ground battle nor take a building over
+                // (BattleInitiator / ArmyMovementOperation skip air armies and airfields). A contact
+                // without one (an air wing; an airfield container, which memory records as a
+                // non-air army moving at aircraft speed) threatens own armies by air strike only,
+                // never a Citadel / Base / Facility / site — so it pins no defender and calls no
+                // march home. THE rule is AiArmyRoles.IsGroundBattleBody.
+                bool takesStructures = TakesStructures(c.Army);
                 // Public terrain only; no live enemy registry or hidden occupancy blockers.
                 Dictionary<HexCoord, int> approachCosts = c.Position.HasValue
                     ? TerrainCostField(ctx.Map, c.Position.Value,
@@ -124,6 +132,8 @@ namespace Game.Ai.V2
                     : new Dictionary<HexCoord, int>();
                 foreach (StrategicAssetSnapshot asset in assets)
                 {
+                    if (!takesStructures && asset.Kind != AssetKind.Army)
+                        continue;
                     int? approachCost = ContactApproachCost(ctx.Map, c, asset.Hex, snap.TurnNumber, approachCosts,
                         player);
                     // A current observation with no terrain route is not an arriving threat.
@@ -175,6 +185,13 @@ namespace Game.Ai.V2
 
             return model;
         }
+
+        // Whether a known enemy force can take a structure. Only a roster KNOWN to hold no ground
+        // battle body (AiArmyRoles.IsGroundBattleBody: aircraft-only, hero-only) cannot; an
+        // unknown roster (nothing seen) stays a possible capturer, as before.
+        internal static bool TakesStructures(ArmySnapshot enemy) =>
+            enemy?.Members == null || enemy.Members.Count == 0
+            || enemy.Members.Any(AiArmyRoles.IsGroundBattleBody);
 
         // FindCosts floods the whole public map (maxMovement only rejects single steps), so one
         // field costs a full Dijkstra. It reads terrain only, hence is identical for the same

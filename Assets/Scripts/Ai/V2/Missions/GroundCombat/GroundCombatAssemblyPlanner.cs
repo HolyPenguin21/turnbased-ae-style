@@ -237,6 +237,10 @@ namespace Game.Ai.V2
         // when the fight is decisive and the stronghold stays covered
         // (ActiveDefenceObjectiveEvaluator.StrongholdStaysCovered).
         public bool AllowDecisivePinnedDefender;
+        // ActiveDefence intercept only (2026-11-15): the enemy this request fights. A stronghold
+        // defender held home only by THAT enemy may be the actor - destroying it before it arrives
+        // (the intercept timing in AcceptPlan) is the defence. Null: every pin applies.
+        public int? PinIgnoredEnemyArmyId;
         // Test lane-specific departure constraints on each complete candidate, before selection.
         public System.Func<GroundCombatAssemblyPlan, bool> AcceptPlan;
         // Overrides GroundCombatAdmissionPolicy.RequiresCoverage(WinChanceGate) for a request whose
@@ -385,13 +389,15 @@ namespace Game.Ai.V2
                 ? Enumerable.Empty<ArmySnapshot>()
                 : GroundCombatActorEligibility.EligibleArmies(snap, request.ExcludedArmyIds,
                     request.RequireReadyThisTurn,
-                    allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f);
+                    allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f,
+                    pinIgnoredEnemyArmyId: request.PinIgnoredEnemyArmyId);
             if (request.AllowHeroDisplacement)
                 ready = ready.Concat(snap.Self.Armies.Where(a =>
                     GroundCombatActorEligibility.CanDisplaceHeroes(a, request.Opposition)
                     && (!request.RequireReadyThisTurn || a.CurrentMovement > 0)
                     && (request.ExcludedArmyIds == null || !request.ExcludedArmyIds.Contains(a.ArmyId))
-                    && !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)));
+                    && !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a,
+                        ignoreEnemyArmyId: request.PinIgnoredEnemyArmyId)));
             // A pinned stronghold defender joins the candidates only for a request that allows a
             // decisive departure and only while its stronghold stays covered; Plan then accepts it
             // only for a decisive fight (DecisiveIfPinned).

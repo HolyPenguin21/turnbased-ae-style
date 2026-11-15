@@ -817,6 +817,55 @@ namespace Game.EditorTests
                 && t.Phase == AttackMissionPhase.Assault), Is.EqualTo(expected));
         }
 
+        // 2026-11-15 (match Brynn vs Grimm, P1) — a fresh assault the allocator will never fund
+        // (negative value: a heavy fist far past the Attack horizon) does not count as "attack
+        // proposed": the preparation opens instead of nothing for 29 turns. Control: a cheap fist
+        // on the same route is a positive direct assault and no preparation is opened.
+        [TestCase(20, false)]
+        [TestCase(1, true)]
+        public void FreshAssault_NegativeValueDoesNotSuppressThePreparation(int activationAp, bool directAssault)
+        {
+            ArmySnapshot slow = Army(7, OurBase, Strong());
+            slow.MaxMovement = 1;
+            slow.CurrentMovement = 1;
+            slow.ActivationApCost = activationAp;
+            WorldSnapshot snap = DefendedSite(new[] { slow }, new[] { OurBase, AltBase },
+                alsoOwnBuilding: true);
+            var proposals = new List<MissionProposal>();
+            AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
+                new HashSet<int>(), proposals, null,
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
+
+            bool assault = proposals.Any(p => p.Target is AttackMissionTarget t
+                && t.Phase == AttackMissionPhase.Assault);
+            bool preparation = proposals.Any(p => p.Target is AttackMissionTarget t && t.Preparation);
+            Assert.That(assault, Is.EqualTo(directAssault));
+            Assert.That(preparation, Is.EqualTo(!directAssault));
+            Assert.That(proposals.Where(p => p.Target is AttackMissionTarget t && t.Phase == AttackMissionPhase.Assault)
+                .All(p => !AllocationSession.IsNegativeFresh(p)), Is.True, "no dead fresh assault reaches the allocator");
+        }
+
+        // 2026-11-15 (owner, P4) — an Attack prices the march only past its horizon (5 army turns),
+        // for a Base as for a Citadel; Raid / ActiveDefence keep pricing every turn after the first.
+        [TestCase(1, 0f)]
+        [TestCase(5, 0f)]
+        [TestCase(6, 8f)]
+        [TestCase(9, 32f)]
+        public void AttackDelivery_IsPricedOnlyPastTheHorizon(int eta, float expectedDelivery)
+        {
+            ArmySnapshot fist = Army(7, OurBase, Strong());
+            fist.ActivationApCost = 8;
+            var objective = new AttackObjective { TaskScore = new TaskScore(strategicRelevance: 3.6f) };
+            TaskScore attack = AttackObjectiveEvaluator.WithResponse(objective, fist, 0.9f, eta);
+            Assert.That(AiConfigV2.attackDeliveryHorizonTurns, Is.EqualTo(5));
+            Assert.That(attack.Delivery, Is.EqualTo(expectedDelivery).Within(0.001f));
+            Assert.That(attack.CardPrice, Is.EqualTo(8f).Within(0.001f));
+
+            TaskScore other = TaskScoreEvaluator.WithActorResponse(objective.TaskScore, fist, 0.9f, eta);
+            Assert.That(other.Delivery, Is.EqualTo(8f * Math.Max(0, eta - 1)).Within(0.001f),
+                "the shared fold without a horizon is unchanged");
+        }
+
         // 2026-10-18 (log: Thane #22 held its Base next to Brynn's 71.6 army and the mobilization
         // proposed MoveHost to another staging Base 107 turns in a row) — a pinned stronghold
         // defender is not walked off the stronghold to host a preparation.
@@ -850,6 +899,39 @@ namespace Game.EditorTests
             Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, snap.Self.Armies[0]),
                 Is.True);
             Assert.That(MoveHosts(snap), Is.Empty, "the pinned defender stays on its stronghold");
+        }
+
+        // 2026-11-15 (owner) — the last defender held home by an enemy may go and destroy THAT
+        // enemy (an ActiveDefence intercept of it ignores its own pin), and a remembered enemy
+        // pins it only with the memory's confidence.
+        [Test]
+        public void PinnedDefender_MayInterceptItsOwnPinner_AndAnOldMemoryPinsNoLonger()
+        {
+            WorldSnapshot snap = DefendedSite(new[] { Army(7, OurBase, Weak()) }, new[] { OurBase, AltBase },
+                alsoOwnBuilding: true);
+            var enemy = new ArmySnapshot { ArmyId = 60, Owner = Red, Hex = new HexCoord(-1, 0),
+                MemberCount = 2, MaxMovement = 2, CurrentMovement = 2, Members = Strong() };
+            var contact = new EnemyContactSnapshot { Army = enemy, Position = enemy.Hex,
+                Knowledge = ContactKnowledge.Exact, Confidence = 1f, LastObservedTurn = snap.TurnNumber };
+            snap.Threat.Contacts = new List<EnemyContactSnapshot> { contact };
+            snap.Threat.Threats = new List<AssetThreatSnapshot> { new AssetThreatSnapshot {
+                Contact = contact, CanDamage = true, EnemyEta = AiConfigV2.strongholdDefenderPinEnemyEta,
+                AttackWinChance = 1f, PotentialDamage = 1f, Severity = 1f, Confidence = 1f,
+                Asset = new StrategicAssetSnapshot { Kind = AssetKind.Citadel, Hex = OurBase, Value = 10f } } };
+            ArmySnapshot defender = snap.Self.Armies[0];
+
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, defender), Is.True);
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, defender,
+                ignoreEnemyArmyId: 60), Is.False, "intercepting its own pinner is its defence");
+            Assert.That(GroundCombatActorEligibility.EligibleArmies(snap, null, requireMovementNow: true,
+                pinIgnoredEnemyArmyId: 60).Any(a => a.ArmyId == 7), Is.True);
+            Assert.That(GroundCombatActorEligibility.EligibleArmies(snap, null, requireMovementNow: true)
+                .Any(a => a.ArmyId == 7), Is.False, "every other job still sees the pin");
+
+            contact.Knowledge = ContactKnowledge.LastKnown;
+            contact.LastObservedTurn = snap.TurnNumber - 11;
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, defender), Is.False,
+                "a force not seen for 11 turns no longer pins the last defender");
         }
 
         [Test]

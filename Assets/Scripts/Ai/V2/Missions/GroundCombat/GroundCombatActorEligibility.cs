@@ -58,14 +58,17 @@ namespace Game.Ai.V2
         // A nomination (`requireMovementNow: true`) never takes the last defender off a
         // threatened own stronghold (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender);
         // the capability view still counts that power — it is real, it holds the stronghold.
+        // `pinIgnoredEnemyArmyId` — an ActiveDefence intercept of that enemy: a defender pinned
+        // only by it may take the job (GroundCombatAssemblyRequest.PinIgnoredEnemyArmyId).
         internal static List<ArmySnapshot> EligibleArmies(WorldSnapshot snap, ISet<int> excludeArmyIds,
-            bool requireMovementNow, bool allowHeroAssemblyHost = false) =>
+            bool requireMovementNow, bool allowHeroAssemblyHost = false, int? pinIgnoredEnemyArmyId = null) =>
             snap.Self.Armies
                 .Where(a => (IsStructuralActor(a) || allowHeroAssemblyHost && IsHeroAssemblyHost(a))
                             && (!requireMovementNow || a.CurrentMovement > 0)
                             && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId))
                             && (!requireMovementNow
-                                || !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)))
+                                || !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a,
+                                    ignoreEnemyArmyId: pinIgnoredEnemyArmyId)))
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
                 .ThenBy(a => a.EffectiveArmyPower)
                 .ThenBy(a => a.ArmyId)
