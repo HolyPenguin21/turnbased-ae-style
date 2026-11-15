@@ -147,6 +147,9 @@ namespace Game.Ai.V2
                 + $"|threats={ThreatFacts(snapshot)}"
                 + $"|bench={Benchmarks(snapshot?.Self?.Deck)}"
                 + $"|hand={string.Join(";", hands)}"
+                // EquipmentTargets' reference profiles read the SNAPSHOT's hand definitions, which
+                // can lag the live hand above (independent review 2026-11-15).
+                + $"|snapHand={Benchmarks((snapshot?.Self?.Hand ?? System.Array.Empty<CardData>()).Where(c => c?.Definition != null).Select(c => c.Definition).ToList())}"
                 + $"|rosters={string.Join(";", rosters)}"
                 + $"|route={RouteMapFacts(snapshot)}"
                 + $"|memory={AiMapMemory.RouteMemoryVersionFor(player)}"
