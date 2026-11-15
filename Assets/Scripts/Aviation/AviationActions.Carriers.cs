@@ -27,12 +27,11 @@ namespace Game.Aviation
                 || host.Owner == null || !ArmyRegistry.IsRegistered(host)) return;
             foreach (UnitData unit in host.Members.Where(IsCarrier).ToList())
             {
-                string name = unit.Name;
                 if (unit.CarrierAirfield == null || !ArmyRegistry.IsRegistered(unit.CarrierAirfield))
                 {
                     unit.CarrierAirfield = new ArmyData
                     {
-                        Name = name + " - Airfield", Owner = host.Owner, Hex = host.Hex,
+                        Name = "Carrier - Airfield", Owner = host.Owner, Hex = host.Hex,
                         CarrierUnit = unit, IsAirfield = true,
                     };
                     ArmyRegistry.Register(unit.CarrierAirfield);
@@ -41,11 +40,12 @@ namespace Game.Aviation
                 {
                     unit.CarrierFlightDeck = new ArmyData
                     {
-                        Name = name + " - Air Wing", Owner = host.Owner, Hex = host.Hex,
+                        Name = "Carrier - Wing", Owner = host.Owner, Hex = host.Hex,
                         CarrierUnit = unit, IsAirArmy = true, LaunchCarrier = unit,
                     };
                     ArmyRegistry.Register(unit.CarrierFlightDeck);
                 }
+                unit.RefreshCarrierContainerNames();
             }
         }
 

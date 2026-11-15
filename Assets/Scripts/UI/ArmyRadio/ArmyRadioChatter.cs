@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using Game.Ai.V2;
+using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
@@ -8,7 +12,7 @@ using UnityEngine;
 
 namespace Game.UI
 {
-    public enum ArmyRadioSituation { Contact, Waiting, Moving, Garrison, Airborne, Stealth, Damaged, Ready }
+    public enum ArmyRadioSituation { Contact, Waiting, Moving, Garrison, Airborne, Stealth, Damaged, Ready, WeakEnemy, StrongEnemy }
 
     [Serializable]
     public sealed class ArmyRadioChatterSettings
@@ -39,7 +43,7 @@ namespace Game.UI
         [Range(1, 64)] public int recentPhraseHistorySize = 16;
     }
 
-    // Cosmetic read-only policy. No tactical evaluation, purchases, or random game rolls.
+    // Cosmetic read-only policy. Reuses the strength ranking, never simulates a battle or draws gameplay RNG.
     public static partial class ArmyRadioChatter
     {
         public static UnitData FirstUnit(ArmyData army)
@@ -64,8 +68,18 @@ namespace Game.UI
         // Contact and base discovery share one observer-authorized range scan.
         public static bool Observe(ArmyData army, Action<BuildingData> visibleBase)
         {
-            if (army == null || army.Owner == null) return false;
             bool contact = false;
+            foreach (var enemy in VisibleEnemies(army, visibleBase))
+            { if (visibleBase == null) return true; contact = true; }
+            return contact;
+        }
+
+        private static IEnumerable<UnitData> LivingMembers(IEnumerable<UnitData> members) =>
+            members.Where(unit => unit != null && !unit.IsPrisoner && unit.HitPointsCurrent > 0);
+
+        private static IEnumerable<ArmyData> VisibleEnemies(ArmyData army, Action<BuildingData> visibleBase = null)
+        {
+            if (army == null || army.Owner == null) yield break;
             HexCoord origin = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
             foreach (HexCoord hex in HexGridMath.HexesInRange(origin, VisionSystem.ArmyVisionRadius(army)))
             {
@@ -73,11 +87,38 @@ namespace Game.UI
                 if (visibleBase != null) visibleBase(BuildingRegistry.FindAt(hex));
                 foreach (ArmyData other in ArmyRegistry.AllAt(hex))
                     if (other != army && other.Owner != army.Owner && !other.IsPrison
-                        && FirstUnit(other) != null && (other.Controller == null || !other.Controller.IsMoving)
-                        && StealthSystem.HasAnyTargetableMember(other, army.Owner))
-                    { if (visibleBase == null) return true; contact = true; }
+                        && (other.Controller == null || !other.Controller.IsMoving)
+                        && LivingMembers(StealthSystem.TargetableMembersFor(other, army.Owner)).Any())
+                        yield return other;
             }
-            return contact;
+        }
+
+        private static ArmyRadioSituation ContactSituation(ArmyData army)
+        {
+            // A rough report about the strongest observed formation, not a promise of victory.
+            float ownPower = AiPower.EffectiveArmyPower(LivingMembers(army.Members));
+            float enemyPower = 0f;
+            bool found = false;
+            foreach (var enemy in VisibleEnemies(army))
+            {
+                found = true;
+                enemyPower = Mathf.Max(enemyPower, AiPower.EffectiveArmyPower(
+                    LivingMembers(StealthSystem.TargetableMembersFor(enemy, army.Owner))));
+            }
+            if (!found || (ownPower <= 0f && enemyPower <= 0f)) return ArmyRadioSituation.Contact;
+            if (enemyPower >= ownPower * 1.5f) return ArmyRadioSituation.StrongEnemy;
+            if (ownPower >= enemyPower * 1.5f) return ArmyRadioSituation.WeakEnemy;
+            return ArmyRadioSituation.Contact;
+        }
+
+        public static ArmyRadioCategory? SandstormCategory(ArmyData army)
+        {
+            if (army == null || army.IsPrison || army.IsAirfield || army.IsCarrierFlightDeck || FirstUnit(army) == null
+                || !SandstormState.Snapshot.Contains(army.Controller != null ? army.Controller.CurrentHex : army.Hex)) return null;
+            if (AviationRules.IsAirArmy(army))
+                return !army.AirWingLanded && LivingMembers(army.Members).Any(unit => unit.IsAviation && unit.SortieLaunchPaid)
+                    ? ArmyRadioCategory.AirSandstorm : null;
+            return ArmyRadioCategory.GroundSandstorm;
         }
 
         public static bool CanIdleFlavor(ArmyData army)
@@ -89,7 +130,7 @@ namespace Game.UI
         }
         public static ArmyRadioSituation Situation(ArmyData army, bool contact, bool moved, float quietSeconds)
         {
-            if (contact) return ArmyRadioSituation.Contact;
+            if (contact) return ContactSituation(army);
             foreach (UnitData unit in army.Members)
                 if (unit != null && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax)
                     return ArmyRadioSituation.Damaged;
@@ -110,6 +151,22 @@ namespace Game.UI
             new[] { "Keeping a low profile.", "Quiet on the radio. Quiet on the ground.", "Staying out of sight.", "Low voices. Eyes open.", "We're just another patch of dust.", "Short transmission. Still concealed.", "Keeping our heads down.", "Whispering into the radio. Standing by.", "No sudden moves. Staying quiet.", "Shadows make good neighbors.", "Under cover. Awaiting your signal.", "Brief check-in. Back to silence." },
             new[] { "Took some damage. Still here.", "Could use repairs. Standing by.", "A little battered. Radio still works.", "Damage report sent. Awaiting orders.", "Dents are temporary. Probably.", "We've looked better. Keeping watch.", "Repair tape is doing its best.", "Some wear and tear. Orders, command?", "Damage noted. Nobody likes the dents.", "Still on frequency. A bit worse for wear.", "Could use a quiet minute and a toolkit.", "Battered, but listening." },
             new[] { "Radio check. Loud and clear.", "Standing by for orders.", "All eyes open. Reporting in.", "Another day in the dust.", "On frequency. Try not to lose us.", "Command, we hear you.", "Crew checking in. What's next?", "Radio works. Boots fit. Awaiting orders.", "Watching the horizon. Channel open.", "Here and listening.", "Checking equipment. Waiting for your call.", "Another shift in the wasteland." },
+            new[]
+            {
+                "Enemy formation looks lighter than ours. Your call, command.",
+                "Visible hostiles appear outmatched. Still keeping watch.",
+                "Their formation looks weak beside ours. Awaiting orders.",
+                "We seem to have the stronger force here. No reason to get careless.",
+                "What we can see of that army looks manageable. Command, over.",
+            },
+            new[]
+            {
+                "That enemy formation looks stronger than ours. Advise caution.",
+                "Heavy hostile force in sight. We look outmatched here.",
+                "Visible enemy strength exceeds ours. Requesting instructions.",
+                "That formation is no easy target. Command should know.",
+                "They appear to have the upper hand in strength. Staying alert.",
+            },
         };
 
         private static readonly string[] Jokes =
