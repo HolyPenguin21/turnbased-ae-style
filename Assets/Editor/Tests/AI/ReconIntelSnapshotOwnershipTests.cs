@@ -192,6 +192,38 @@ namespace Game.EditorTests
             Assert.That(Read(old).Count, Is.Zero, "a new turn drops the previous turn's revisions");
         }
 
+        // 2026-11-15 perf: ActorCommitments reads only the requirement of an incumbent Scout
+        // objective. The cheap read must equal the full re-materialisation for every kind and hex.
+        [Test]
+        public void StealthForIntentEqualsTheRematerialisedObjectiveRequirement()
+        {
+            var hexes = HexGridMath.HexesInRange(new HexCoord(0, 0), 5).ToList();
+            var observed = new Dictionary<HexCoord, int>();
+            foreach (HexCoord h in hexes)
+                observed[h] = (h.Q + h.R) % 2 == 0 ? 0 : 19;
+            WorldSnapshot snap = RefreshSnapshot(hexes, observed);
+            snap.MapKnowledge.VisitedHexSet = new HashSet<HexCoord>(hexes.Where(h => h.Q <= 0));
+            var enemy = new PlayerSetupData { Nickname = "hostile" };
+            snap.Known = new KnownSnapshot { EnemySightings = new[] {
+                new AiMapMemory.KnownEnemySighting(new HexCoord(4, -1), enemy, "hostile", 1, 2f, 2f,
+                    new List<Game.Combat.WorthIt.DefenderProfile>(), false, 0, 0, 20, 77) } };
+
+            var kinds = new[] { ScoutTargetKind.Explore, ScoutTargetKind.Refresh, ScoutTargetKind.Hunt,
+                ScoutTargetKind.CaptureStructure, ScoutTargetKind.AirSweep, ScoutTargetKind.DisruptStructure };
+            int required = 0;
+            foreach (ScoutTargetKind kind in kinds)
+                foreach (HexCoord h in hexes)
+                {
+                    var intent = new ScoutIntent { Kind = kind, FocusHex = h };
+                    StealthRequirement full = ReconObjectiveEvaluator.ForIntent(snap, intent)?.Stealth
+                        ?? StealthRequirement.None;
+                    StealthRequirement cheap = ReconObjectiveEvaluator.StealthForIntent(snap, intent);
+                    Assert.That(cheap, Is.EqualTo(full), $"{kind} at {h}");
+                    if (cheap == StealthRequirement.Required) required++;
+                }
+            Assert.That(required, Is.GreaterThan(0), "the fixture must exercise an exposed objective");
+        }
+
         private static IEnumerable<MapSize> GeneratedMapSizes =>
             Enum.GetValues(typeof(MapSize)).Cast<MapSize>();
 

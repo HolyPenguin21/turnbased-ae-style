@@ -43,10 +43,36 @@ namespace Game.Core
         private static readonly System.Collections.Generic.Dictionary<string, (long Ticks, int Calls)> Totals =
             new System.Collections.Generic.Dictionary<string, (long, int)>(System.StringComparer.Ordinal);
 
+        // Diagnostic per-name event counts of the same turn (e.g. why a cache was dropped).
+        private static readonly System.Collections.Generic.Dictionary<string, long> Counts =
+            new System.Collections.Generic.Dictionary<string, long>(System.StringComparer.Ordinal);
+
         public static void Begin()
         {
             Totals.Clear();
+            Counts.Clear();
             Collecting = true;
+        }
+
+        // Adds `n` to the named counter while collecting; no-op otherwise.
+        public static void Count(string name, long n = 1)
+        {
+            if (!Collecting || name == null) return;
+            Counts.TryGetValue(name, out long c);
+            Counts[name] = c + n;
+        }
+
+        // The `top` counters, largest first, as "name=n"; clears them. Call before Take.
+        public static string TakeCounts(int top)
+        {
+            var rows = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, long>>(Counts);
+            rows.Sort((a, b) => b.Value != a.Value ? b.Value.CompareTo(a.Value)
+                : string.CompareOrdinal(a.Key, b.Key));
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < rows.Count && i < top; i++)
+                sb.Append(i == 0 ? "" : " ").Append(rows[i].Key).Append('=').Append(rows[i].Value);
+            Counts.Clear();
+            return sb.ToString();
         }
 
         internal static void Add(string name, long ticks)

@@ -505,6 +505,56 @@ namespace Game.Ai.V2
             }
         }
 
+        // Exactly `ForIntent(snap, si)?.Stealth ?? StealthRequirement.None` without pricing the
+        // objective (ActorCommitments reads only the requirement; 2026-11-15 late game: one
+        // commitments build re-priced every incumbent Scout objective, ~5 ms x 1880 per turn).
+        // Each branch repeats ForIntent's existence gates of its kind and the requirement its
+        // builder assigns; BuildExplore/BuildRefresh never return null once their gates pass.
+        // Explore and Refresh require stealth exactly when the focus is exposed, so exposure is
+        // read first: an unexposed focus skips the gates (Refresh's observation-need gate runs
+        // Attack's target enumeration). Keep in step with ExploreAt / RefreshAt /
+        // AttackNeedRefresh / DisruptAt.
+        internal static StealthRequirement StealthForIntent(WorldSnapshot snap, ScoutIntent si)
+        {
+            if (si == null)
+                return StealthRequirement.None;
+            HexCoord hex = si.FocusHex;
+            switch (si.Kind)
+            {
+                // Capture, Hunt and AirSweep objectives never carry a stealth requirement.
+                case ScoutTargetKind.CaptureStructure:
+                case ScoutTargetKind.Hunt:
+                case ScoutTargetKind.AirSweep:
+                    return StealthRequirement.None;
+                // Existence reads the mover estimate (requireMover); few Disruption intents exist.
+                case ScoutTargetKind.DisruptStructure:
+                    return DisruptAt(snap, hex)?.Stealth ?? StealthRequirement.None;
+                case ScoutTargetKind.Explore:
+                    return EnemyExposedAt(snap, hex) && ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, hex)
+                        ? StealthRequirement.Required : StealthRequirement.None;
+                case ScoutTargetKind.Refresh:
+                {
+                    if (!EnemyExposedAt(snap, hex))
+                        return StealthRequirement.None;
+                    int age;
+                    if (IsObservationNeed(snap, hex))
+                    {
+                        if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out age)
+                            || age <= AiConfigV2.attackIntelMaxAgeTurns
+                            || !ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex))
+                            return StealthRequirement.None;
+                    }
+                    else if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out age)
+                        || !ReconIntelSnapshotRegistry.IsStaleAge(age)
+                        || !ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, hex))
+                        return StealthRequirement.None;
+                    return StealthRequirement.Required;
+                }
+                default:
+                    return StealthRequirement.None;
+            }
+        }
+
         // Strike force step 6 — the one rule for an Attack observation need: a site last seen more
         // than attackIntelMaxAgeTurns ago is refreshed as fully stale and maximally relevant.
         private static ReconObjective AttackNeedRefresh(WorldSnapshot snap, HexCoord hex,

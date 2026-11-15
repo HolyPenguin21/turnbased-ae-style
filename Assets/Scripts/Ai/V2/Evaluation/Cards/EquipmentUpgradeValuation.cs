@@ -246,6 +246,7 @@ namespace Game.Ai.V2
             }
 
             bool aviation = hostTags != null && hostTags.Contains(UnitTypeTag.Aircraft);
+            var __ctxScope = new Game.Core.ProfileScope("AI/Equip.Eff.Context");
             var ctx = new EfficiencyContext
             {
                 IsHero = isHero,
@@ -321,13 +322,17 @@ namespace Game.Ai.V2
                     purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.ExpectedOwner : null)
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
-            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
-            ApplyKnownDetection(ctx, snap, targetHex ?? army?.Hex ?? deployment?.Deploy.Hex,
-                Mathf.Max(AbilityParams.GetBestRecceRadius(hostAbilities),
-                    AbilityParams.GetBestRecceRadius(predicted.Abilities)));
+            __ctxScope.Dispose();
+            using (new Game.Core.ProfileScope("AI/Equip.Eff.Route"))
+                ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
+            using (new Game.Core.ProfileScope("AI/Equip.Eff.Detection"))
+                ApplyKnownDetection(ctx, snap, targetHex ?? army?.Hex ?? deployment?.Deploy.Hex,
+                    Mathf.Max(AbilityParams.GetBestRecceRadius(hostAbilities),
+                        AbilityParams.GetBestRecceRadius(predicted.Abilities)));
             if (isHero && snap?.Development != null
                 && (a.Fate != b.Fate || projectedFateMax.HasValue && projectedFateMax != hostUnit?.FateMax))
-                ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate, projectedFateMax);
+                using (new Game.Core.ProfileScope("AI/Equip.Eff.OperatorForecast"))
+                    ctx.OperatorOutputs = OperatorOutputForecast(snap, inv, hostUnit, b.Fate, a.Fate, projectedFateMax);
 
             // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
             // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
@@ -362,6 +367,7 @@ namespace Game.Ai.V2
 
             // Abilities the table does not price (global income, auras, summons, ...) keep their
             // contextual registry value, exactly as before.
+            using var __registry = new Game.Core.ProfileScope("AI/Equip.Eff.Registry");
             List<string> unpricedBefore = hostAbilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             List<string> unpricedAfter = predicted.Abilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             if (snap != null && (unpricedBefore.Count > 0 || unpricedAfter.Count > 0))
@@ -420,6 +426,9 @@ namespace Game.Ai.V2
                 || fateBefore == fateAfter && (!projectedFateMax.HasValue || projectedFateMax == hero.FateMax)
                 || snap.Development == null || s_operatorForecast)
                 return result;
+            if (DevelopmentOpportunityEvaluator.TryGetOperatorForecast(snap, inv, hero, fateBefore, fateAfter,
+                    projectedFateMax, out var reused))
+                return reused;
             s_operatorForecast = true;
             try
             {
@@ -447,8 +456,11 @@ namespace Game.Ai.V2
                 var viaAssembler = ResearcherAssemblerForecast(snap, inv, hero, fateBefore, fateAfter,
                     projectedFateMax, budget, ap);
                 // An empty alternative must not erase a signed loss when Fate decreases.
-                return viaAssembler.Count > 0 && OperatorForecastGain(viaAssembler) > OperatorForecastGain(direct)
+                var chosen = viaAssembler.Count > 0 && OperatorForecastGain(viaAssembler) > OperatorForecastGain(direct)
                     ? viaAssembler : direct;
+                DevelopmentOpportunityEvaluator.StoreOperatorForecast(snap, inv, hero, fateBefore, fateAfter,
+                    projectedFateMax, chosen);
+                return chosen;
             }
             finally { s_operatorForecast = false; }
         }
@@ -490,7 +502,11 @@ namespace Game.Ai.V2
                 if (Mathf.Approximately(beforeChance, afterChance)) continue;
                 if (card.isAviation)
                 {
-                    float utility = NonCombatCardPlayer.OperatorAviationOutputValue(snap, source);
+                    if (!DevelopmentOpportunityEvaluator.TryGetAviationOutput(snap, source, out float utility))
+                    {
+                        utility = NonCombatCardPlayer.OperatorAviationOutputValue(snap, source);
+                        DevelopmentOpportunityEvaluator.StoreAviationOutput(snap, source, utility);
+                    }
                     if (utility > 0f) options.Add((new DevelopmentOpportunity {
                         Card = card, RecipientLabel = "aviation:" + card.authoredKey
                     }, source.ChallengeCard, utility, beforeChance, afterChance));

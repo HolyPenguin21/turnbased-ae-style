@@ -177,8 +177,7 @@ namespace Game.Ai.V2
                     // ReconObjectiveEvaluator.{ExploreAt,RefreshAt}, each of which recomputes
                     // exposure and can return Stealth.Required. Mirror that per-kind (a re-focused
                     // path returns null and silently drops a real stealth requirement).
-                    ReconObjective o = ReconObjectiveEvaluator.ForIntent(snap, i.Scout);
-                    req = o?.Stealth ?? StealthRequirement.None;
+                    req = ReconObjectiveEvaluator.StealthForIntent(snap, i.Scout);
                 }
 
                 if (HasCapableActor(i, snap, req))

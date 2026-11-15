@@ -1179,6 +1179,40 @@ namespace Game.Ai.V2
 
         internal static void ClearRecipientEvaluationCache() => RecipientEvaluationMemo.Clear();
 
+        // Operator forecast reuse inside the current verdict store (see VerdictStore.OperatorForecasts).
+        internal static bool TryGetOperatorForecast(WorldSnapshot snap, CapabilityInventory inv,
+            UnitData hero, int fateBefore, int fateAfter, int? projectedFateMax,
+            out IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)> outputs)
+        {
+            outputs = null;
+            var store = RecipientEvaluationMemo.CurrentStore;
+            return store != null && hero != null
+                && store.OperatorForecasts.TryGetValue((snap, inv, hero, fateBefore, fateAfter, projectedFateMax),
+                    out outputs);
+        }
+
+        internal static void StoreOperatorForecast(WorldSnapshot snap, CapabilityInventory inv,
+            UnitData hero, int fateBefore, int fateAfter, int? projectedFateMax,
+            IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)> outputs)
+        {
+            var store = RecipientEvaluationMemo.CurrentStore;
+            if (store != null && hero != null)
+                store.OperatorForecasts[(snap, inv, hero, fateBefore, fateAfter, projectedFateMax)] = outputs;
+        }
+
+        internal static bool TryGetAviationOutput(WorldSnapshot snap, GenerationStep source, out float value)
+        {
+            value = 0f;
+            var store = RecipientEvaluationMemo.CurrentStore;
+            return store != null && source != null && store.AviationOutputs.TryGetValue((snap, source), out value);
+        }
+
+        internal static void StoreAviationOutput(WorldSnapshot snap, GenerationStep source, float value)
+        {
+            var store = RecipientEvaluationMemo.CurrentStore;
+            if (store != null && source != null) store.AviationOutputs[(snap, source)] = value;
+        }
+
         private sealed class RecipientEvaluationMemo : System.IDisposable
         {
             [System.ThreadStatic] private static RecipientEvaluationMemo s_current;
@@ -1194,6 +1228,7 @@ namespace Game.Ai.V2
             // The store key carries every forecast input (OperatorForecastFacts).
             private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _forecastVerdicts;
             private readonly Dictionary<(object, object), bool> _forecastPending;
+            private readonly VerdictStore _store;
 
             // The verdicts outlive one Enumerate: one store per player, kept while the key of
             // everything a verdict reads (DevelopmentAdmission.RecipientVerdictKey) is unchanged
@@ -1206,6 +1241,16 @@ namespace Game.Ai.V2
                 internal readonly Dictionary<(object, object), bool> Pending = new();
                 internal readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> ForecastVerdicts = new();
                 internal readonly Dictionary<(object, object), bool> ForecastPending = new();
+                // A hero's operator output forecast (EquipmentUpgradeValuation.OperatorOutputForecast)
+                // for one Fate change, and an aviation output's value per generation source: both
+                // read only what the key pins (OperatorForecastFacts, recipients, live, Facts), and
+                // many equipment verdicts of one store ask the same ones (2026-11-15 late game:
+                // 704 forecasts of ~10 ms in one turn). The snapshot and inventory instances are
+                // part of the forecast key, so a call made with other inputs inside this memo
+                // scope never reads another call's result.
+                internal readonly Dictionary<(WorldSnapshot, CapabilityInventory, UnitData, int, int, int?),
+                    IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)>> OperatorForecasts = new();
+                internal readonly Dictionary<(WorldSnapshot, GenerationStep), float> AviationOutputs = new();
             }
 
             private static readonly Dictionary<PlayerSetupData, VerdictStore> s_stores = new();
@@ -1221,8 +1266,44 @@ namespace Game.Ai.V2
                 if (player == null)
                     return new VerdictStore { Key = key };
                 if (!s_stores.TryGetValue(player, out VerdictStore store) || !string.Equals(store.Key, key, System.StringComparison.Ordinal))
+                {
+                    if (store != null && Game.Core.ScopeTiming.Collecting)
+                        CountReset(store, key);
                     s_stores[player] = store = new VerdictStore { Key = key };
+                }
                 return store;
+            }
+
+            // Diagnostic (late-game perf series): which key segments replaced a store and how
+            // many priced verdicts it discarded. Collected only during a timed AI turn.
+            private static void CountReset(VerdictStore store, string key)
+            {
+                Game.Core.ScopeTiming.Count("VerdictStore.reset");
+                Game.Core.ScopeTiming.Count("VerdictStore.dropped",
+                    store.Verdicts.Count + store.ForecastVerdicts.Count);
+                Dictionary<string, string> before = KeySegments(store.Key), after = KeySegments(key);
+                foreach (var kv in after)
+                    if (!before.TryGetValue(kv.Key, out string old)
+                        || !string.Equals(old, kv.Value, System.StringComparison.Ordinal))
+                        Game.Core.ScopeTiming.Count("VerdictStore.diff:" + kv.Key);
+                foreach (string name in before.Keys)
+                    if (!after.ContainsKey(name))
+                        Game.Core.ScopeTiming.Count("VerdictStore.diff:" + name);
+            }
+
+            private static Dictionary<string, string> KeySegments(string key)
+            {
+                var result = new Dictionary<string, string>(System.StringComparer.Ordinal);
+                string[] parts = (key ?? string.Empty).Split('|');
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    int eq = parts[i].IndexOf('=');
+                    string name = eq > 0 && parts[i].IndexOf(':', 0, eq) < 0 ? parts[i].Substring(0, eq) : "#" + i;
+                    string unique = name;
+                    for (int n = 2; result.ContainsKey(unique); n++) unique = name + "#" + n;
+                    result[unique] = eq > 0 ? parts[i].Substring(eq + 1) : parts[i];
+                }
+                return result;
             }
 
             public RecipientEvaluationMemo(VerdictStore store)
@@ -1231,6 +1312,7 @@ namespace Game.Ai.V2
                 _pending = store.Pending;
                 _forecastVerdicts = store.ForecastVerdicts;
                 _forecastPending = store.ForecastPending;
+                _store = store;
                 _outer = s_current;
                 s_current = this;
             }
@@ -1267,6 +1349,9 @@ namespace Game.Ai.V2
             {
                 if (s_current != null) s_current.Pending(recipient)[(recipient, slot)] = covers;
             }
+
+            // The current store, or null outside any memo scope (then nothing is reused).
+            internal static VerdictStore CurrentStore => s_current?._store;
         }
 
         // Keep recipient alternatives until the shared portfolio has checked competing chains.
