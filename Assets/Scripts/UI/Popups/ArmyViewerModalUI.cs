@@ -42,6 +42,8 @@ namespace Game.UI
         [SerializeField] private GridLayoutGroup grid;
         [SerializeField] private Image detailArt;
         [SerializeField] private TMP_Text detailText;
+        // DetailArt > Image_TitleBackground > Text_Title — the shown unit's name (hides with DetailArt).
+        [SerializeField] private TMP_Text detailTitleText;
         [SerializeField] private RenameArmyPopupUI renamePopup;
         [SerializeField] private GameConfig gameConfig;
         // Resolved per-owner via ResolveCatalog (GetCatalog(owner.Faction)) rather than a fixed
@@ -471,6 +473,8 @@ namespace Game.UI
                 detailArt.sprite = unit.DetailArt;
                 detailArt.gameObject.SetActive(true);
             }
+            if (detailTitleText != null)
+                detailTitleText.text = unit.Name;
             if (detailText != null)
             {
                 // Every stat the unit actually has, in one place — Activation cost is
@@ -484,7 +488,7 @@ namespace Game.UI
                 // Range is the one this unit would attack with on this hex (sandstorm -1) — the
                 // battle's final values, same as the battle screen's detail.
                 detailText.text = UnitDetailFormatter.Format(unit, gameConfig, CurrentArmyDefenseBonus,
-                    CurrentArmyAttackRange(unit));
+                    CurrentArmyAttackRange(unit), includeName: detailTitleText == null);
             }
         }
 

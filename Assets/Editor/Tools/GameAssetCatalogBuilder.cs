@@ -16,7 +16,6 @@ public static class GameAssetCatalogBuilder
         ("Assets/Fonts", "Fonts"),
         ("Assets/Materials", "Materials"),
         ("Assets/Shaders", "Shaders"),
-        ("Assets/Prefabs/Rewards", "Prefabs/Rewards"),
         ("Assets/Prefabs/TutorialHints", "UI/TutorialHints"),
         ("Assets/Prefabs/Audio", "Audio"),
         ("Assets/Textures/Campaign", "Campaign"),
@@ -36,6 +35,10 @@ public static class GameAssetCatalogBuilder
     {
         ("Assets/Textures/Game/Effects/Overlay.png", "Effects/Overlay"),
         ("Assets/Shaders/ScreenWear.shader", "Effects/ScreenWear"),
+        // Reward prefabs live with the other UI prefabs; keys keep their old Prefabs/Rewards names.
+        ("Assets/Prefabs/UI/Cards/Card_Reward.prefab", "Prefabs/Rewards/CollectionRewardCard"),
+        ("Assets/Prefabs/UI/Panels/CollectionRewards.prefab", "Prefabs/Rewards/CollectionRewards"),
+        ("Assets/Prefabs/UI/Panels/RewardDialog.prefab", "Prefabs/Rewards/RewardDialog"),
     };
 
     [MenuItem("Tools/Rebuild Game Asset Catalog")]

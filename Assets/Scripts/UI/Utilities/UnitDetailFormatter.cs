@@ -16,18 +16,21 @@ namespace Game.UI
 
         // `attackRange`: the range this unit attacks with in the current context (a battle's
         // weather, BattleGrid.AttackRange); null outside a battle shows the unit's own Range.
-        internal static string Format(UnitData unit, GameConfig gameConfig, int defenseBonus, int? attackRange = null)
+        // `includeName`: false when the window shows the unit's name in its own title field
+        // (army modal's DetailArt title) — the text then starts at the type-tag line.
+        internal static string Format(UnitData unit, GameConfig gameConfig, int defenseBonus, int? attackRange = null,
+            bool includeName = true)
             => unit == null ? string.Empty : Format(unit, defenseBonus,
                 gameConfig != null ? gameConfig.statBonusColor : DefaultBonusColor,
                 gameConfig != null ? gameConfig.statPenaltyColor : DefaultPenaltyColor,
-                gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null, attackRange);
+                gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null, attackRange, includeName);
 
         internal static string Format(UnitData unit, int defenseBonus,
-            Color bonusColor, Color penaltyColor, string abilities, int? attackRange = null)
+            Color bonusColor, Color penaltyColor, string abilities, int? attackRange = null, bool includeName = true)
         {
             if (unit == null) return string.Empty;
 
-            string text = $"{unit.Name}\n";
+            string text = includeName ? $"{unit.Name}\n" : string.Empty;
             if (unit.TypeTags.Count > 0)
                 text += $"{string.Join(", ", unit.TypeTags)}\n";
             return text + FormatBody(unit, defenseBonus, bonusColor, penaltyColor, abilities, attackRange);
@@ -86,19 +89,19 @@ namespace Game.UI
             return text;
         }
 
-        // TMP rich-text suffix for a stat line's parenthesized modifier — e.g. "Defense 9(+3)" for a
-        // hex/building bonus, "Move 3/6(-3)" for an aviation emergency penalty. Only the "(+N)"/"(-N)"
+        // TMP rich-text suffix for a stat line's parenthesized modifier — e.g. "Defense 9 (+3)" for a
+        // hex/building bonus, "Move 3/6 (-3)" for an aviation emergency penalty. Only the "(+N)"/"(-N)"
         // portion gets colored. bonus may be positive or negative; 0 renders nothing.
         private static string WithBonusSuffix(string baseText, int bonus, Color color)
         {
-            return bonus == 0 ? baseText : $"{baseText}<color=#{ColorUtility.ToHtmlStringRGB(color)}>({bonus:+0;-0})</color>";
+            return bonus == 0 ? baseText : $"{baseText} <color=#{ColorUtility.ToHtmlStringRGB(color)}>({bonus:+0;-0})</color>";
         }
 
         // penalty is a positive magnitude (amount lost to an aviation emergency); always renders
         // as "(-N)". 0 (or less) renders nothing, e.g. once the aircraft has landed/refueled.
         private static string WithPenaltySuffix(string baseText, int penalty, Color color)
         {
-            return penalty <= 0 ? baseText : $"{baseText}<color=#{ColorUtility.ToHtmlStringRGB(color)}>(-{penalty})</color>";
+            return penalty <= 0 ? baseText : $"{baseText} <color=#{ColorUtility.ToHtmlStringRGB(color)}>(-{penalty})</color>";
         }
     }
 }

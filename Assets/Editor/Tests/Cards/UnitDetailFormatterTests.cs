@@ -27,6 +27,17 @@ namespace Game.EditorTests
             Assert.That(text.Contains("Fate:"), Is.EqualTo(hero));
             Assert.That(text, Does.Not.Contain("Resistance").And.Not.Contain("Activation"));
         }
+
+        [Test]
+        public void TitleOwnedNameIsOmittedAndModifierIsSpacedFromStat()
+        {
+            var unit = AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: false));
+            unit.Name = "detail-unit";
+            string text = UnitDetailFormatter.Format(unit, 3,
+                default(UnityEngine.Color), default(UnityEngine.Color), null, includeName: false);
+            Assert.That(text, Does.Not.Contain("detail-unit"));
+            Assert.That(text, Does.Match(@"Defense \d+ <color=#[0-9A-F]{6}>\(\+3\)</color>"));
+        }
     }
 }
 #endif

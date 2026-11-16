@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 1004}
   - component: {fileID: 1033}
   m_Layer: 5
-  m_Name: CollectionRewardCard
+  m_Name: Card_Reward
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
