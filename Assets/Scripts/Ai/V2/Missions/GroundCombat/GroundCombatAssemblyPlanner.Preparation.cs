@@ -87,6 +87,23 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 2026-11-16 (owner decision, match Ysolde T29-T33) — a preparation host with a frozen
+            // target roster keeps the slots its pending roster cards need: the same contract
+            // Housekeeping reads (AttackPreparationMutationContract: TargetRosterKeys,
+            // ReservedDeploymentKeys = held cards that deploy here). A body the roster does not name
+            // takes a free slot only while those slots stay free; otherwise Assemble filled them
+            // and Housekeeping's 0.8 release emptied them again, every turn.
+            IReadOnlyList<string> rosterKeys = null, rosterHandKeys = null;
+            if (preparation)
+            {
+                ArmyMutationContract rosterContract = AttackContinuity.AttackPreparationMutationContract(snap.TurnNumber);
+                rosterKeys = rosterContract.TargetRosterKeys(host);
+                if (rosterKeys != null && rosterKeys.Count > 0)
+                    rosterHandKeys = rosterContract.ReservedDeploymentKeys(host);
+                else
+                    rosterKeys = null;
+            }
+
             IEnumerable<ArmySnapshot> donorSnaps = snap.Self.Armies
                 .Where(d => d != null && d.ArmyId != host.Id && d.Owner == owner
                     && d.Hex.Equals(host.Hex) && !d.IsPrison && !d.IsAir && !d.IsSoloRecce
@@ -147,6 +164,13 @@ namespace Game.Ai.V2
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         break;
                     }
+                    if (rosterKeys != null && !FillsRosterPosition(rosterKeys, projectedUnits, pick)
+                        && ArmyData.ComputeRosterCapacity(withPick, host.IsGarrison) - withPick.Count
+                            < PendingRosterCardSlots(rosterKeys, rosterHandKeys, withPick))
+                    {
+                        selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
+                        continue; // its slot waits for a roster card; a roster body may still fit
+                    }
                     bool addsDisruption = CarrierHelps(projectedUnits)
                         && Game.Combat.DisruptionRules.IsCarrier(pick);
                     if (preparation && !addsDisruption && AiPower.EffectiveArmyPower(withPick)
@@ -198,6 +222,48 @@ namespace Game.Ai.V2
             }
 
             return GroundCombatAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");
+        }
+
+        // The roster positions (multiset by key) `members` do not hold yet — heroes count too, as in
+        // ReorgViability.PreparationRosterGap.
+        private static Dictionary<string, int> MissingRosterKeys(IReadOnlyList<string> rosterKeys,
+            IEnumerable<UnitData> members)
+        {
+            var need = new Dictionary<string, int>();
+            foreach (string k in rosterKeys)
+                if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+            foreach (UnitData u in members)
+            {
+                string key = StrikeRoster.UnitKey(u);
+                if (key != null && need.TryGetValue(key, out int n) && n > 0)
+                    need[key] = n - 1;
+            }
+            return need;
+        }
+
+        internal static bool FillsRosterPosition(IReadOnlyList<string> rosterKeys, IEnumerable<UnitData> members,
+            UnitData pick)
+        {
+            string key = StrikeRoster.UnitKey(pick);
+            return key != null && MissingRosterKeys(rosterKeys, members).TryGetValue(key, out int n) && n > 0;
+        }
+
+        // Missing positions a held card that deploys here will fill (the pending sources
+        // Housekeeping keeps slots for).
+        internal static int PendingRosterCardSlots(IReadOnlyList<string> rosterKeys,
+            IReadOnlyList<string> handKeys, IEnumerable<UnitData> members)
+        {
+            if (handKeys == null || handKeys.Count == 0)
+                return 0;
+            Dictionary<string, int> need = MissingRosterKeys(rosterKeys, members);
+            int pending = 0;
+            foreach (string k in handKeys)
+                if (k != null && need.TryGetValue(k, out int n) && n > 0)
+                {
+                    need[k] = n - 1;
+                    pending++;
+                }
+            return pending;
         }
 
         private static GroundCombatAssemblyPlan CompleteAssaultAssembly(WorldSnapshot snap,

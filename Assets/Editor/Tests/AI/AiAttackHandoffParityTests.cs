@@ -342,6 +342,30 @@ namespace Game.EditorTests
             finally { Object.DestroyImmediate(mapObject); }
         }
 
+        // 2026-11-16 (owner decision, match Ysolde T29-T33) — a preparation host keeps the slots its
+        // pending roster cards need: a body the frozen roster does not name may not take one, a roster
+        // body always may (the same need Housekeeping's 0.8 release reads; no ping-pong).
+        [Test]
+        public void PreparationRosterSlots_AreKeptForPendingRosterCards()
+        {
+            var hero = Hero("lead", 6);
+            var juggernaut = Body("jugg", 6, 6);
+            var walker = Body("walker", 4, 4);
+            string Key(UnitData u) => StrikeRoster.UnitKey(u);
+            var roster = new[] { Key(hero), Key(juggernaut), "colossus", "colossus", "scrap-mountain" };
+            var members = new List<UnitData> { hero };
+
+            Assert.That(GroundCombatAssemblyPlanner.FillsRosterPosition(roster, members, juggernaut), Is.True);
+            Assert.That(GroundCombatAssemblyPlanner.FillsRosterPosition(roster, members, walker), Is.False);
+            Assert.That(GroundCombatAssemblyPlanner.PendingRosterCardSlots(roster,
+                new[] { "colossus", "colossus", "scrap-mountain", "other" }, members), Is.EqualTo(3),
+                "three held cards fill three missing positions; a card the roster does not name reserves nothing");
+            Assert.That(GroundCombatAssemblyPlanner.PendingRosterCardSlots(roster,
+                new[] { "colossus", "colossus", "colossus" }, members), Is.EqualTo(2),
+                "a third copy finds no position");
+            Assert.That(GroundCombatAssemblyPlanner.PendingRosterCardSlots(roster, null, members), Is.Zero);
+        }
+
         [Test]
         [Category("UnityEngine")]
         public void PreparationSkipsStrandingHeroAndBodyButKeepsTheFastAlternatives()
