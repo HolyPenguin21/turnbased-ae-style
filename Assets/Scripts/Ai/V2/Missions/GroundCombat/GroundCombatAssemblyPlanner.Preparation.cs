@@ -164,9 +164,13 @@ namespace Game.Ai.V2
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         break;
                     }
+                    // The roster is a plan, never a gate (owner, 2026-11-16): a body that makes the
+                    // host ready to march (AttackForceReadiness — the 80% floor or the opportunity
+                    // win against THIS target) is always taken, whatever card its slot waited for.
                     if (rosterKeys != null && !FillsRosterPosition(rosterKeys, projectedUnits, pick)
                         && ArmyData.ComputeRosterCapacity(withPick, host.IsGarrison) - withPick.Count
-                            < PendingRosterCardSlots(rosterKeys, rosterHandKeys, withPick))
+                            < PendingRosterCardSlots(rosterKeys, rosterHandKeys, withPick)
+                        && !MakesHostReady(snap, withPick, opposition, minWinChance, defenderHexDefenseBonus))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         continue; // its slot waits for a roster card; a roster body may still fit
@@ -222,6 +226,22 @@ namespace Game.Ai.V2
             }
 
             return GroundCombatAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");
+        }
+
+        // Would `roster` march: the Attack readiness rule on the combat gate it is planned against
+        // (AttackForceReadiness.ForceReady with the win chance, as the preparation's own readiness).
+        private static bool MakesHostReady(WorldSnapshot snap, IReadOnlyList<UnitData> roster,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float minWinChance, float hexBonus)
+        {
+            if (snap?.Self == null || opposition == null)
+                return false;
+            List<WorthIt.DefenderProfile> profiles = roster.Where(AiArmyRoles.IsGroundBattleBody)
+                .Select(WorthIt.FromLiveUnit).ToList();
+            if (!GroundCombatFeasibility.Clears(profiles, WorthIt.SideCommander.Of(roster), opposition,
+                    minWinChance, hexBonus, out float win, out _))
+                return false;
+            return AttackForceReadiness.ForceReady(AiPower.EffectiveArmyPower(roster.ToList()),
+                snap.Self.AttackPeak, win, opposition);
         }
 
         // The roster positions (multiset by key) `members` do not hold yet — heroes count too, as in
