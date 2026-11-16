@@ -845,8 +845,7 @@ namespace Game.Ai.V2
                 // it must not turn a single sortie launch into recurring ground activation.
                 cardPrice: sortieNow));
             // The airfield the sortie launches from is part of this task's own exposure.
-            return TaskScore.FromSlots(slot => slot == TaskSlot.HexThreatRisk
-                ? sortie.HexThreatRisk + airfieldThreatRisk : sortie[slot]);
+            return TaskScoreEvaluator.WithAdded(sortie, TaskSlot.HexThreatRisk, airfieldThreatRisk);
         }
 
         // The placement of a just-generated card against the live world (the pre-mint stand-in's

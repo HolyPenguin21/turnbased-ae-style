@@ -186,7 +186,7 @@ namespace Game.Ai.V2
                         MissionRequirements staleCost = staleEstimate.Requirements;
                         // Neutral armies and event guards are stationary Raid objectives.
                         // Losing a fresh opportunity read only removes current visibility; it does
-                        // not move the target and must not remove the fixed intrinsic RaidReward.
+                        // not move the target and must not remove its intrinsic score.
                         // Destruction/capture/invalidation is handled separately by Raid continuity
                         // through the canonical live objective checks.
                         TaskScore staleIntrinsic = RaidObjectiveEvaluator.BuildRaidScore(

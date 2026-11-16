@@ -372,7 +372,6 @@ namespace Game.EditorTests
             snap.Economy = StarvedEconomy();
             TaskScore score = RaidObjectiveEvaluator.BuildRaidScore(snap,
                 RaidTargetRef.ForNeutralArmy(90), new HexCoord(2, 0));
-            Assert.That(score.RaidReward, Is.Zero);
             Assert.That(score.EconomicHexBenefit, Is.Zero);
             Assert.That(score.EconomicExpansionValue, Is.Zero);
             Assert.That(score.EventReward, Is.Zero);

@@ -53,18 +53,19 @@ namespace Game.EditorTests
             {
                 TaskScore only = TaskScore.FromSlots(s => s == slot ? 1f : 0f);
                 Assert.That(only[slot], Is.EqualTo(1f), slot.ToString());
-                Assert.That(only.Value, Is.EqualTo(TaskScoreEvaluator.Sign(slot)), slot.ToString());
+                Assert.That(only.Value, Is.EqualTo(
+                    TaskScoreEvaluator.CategoryOf(slot) == TaskSlotCategory.Benefit ? 1f : -1f), slot.ToString());
             }
         }
 
         [Test]
         public void Describe_PrintsOneLineInTheFourCategories()
         {
-            var raid = new TaskScore(raidReward: 8f, winChance: 9.6f, ownTerritoryProximity: 1.5f,
+            var raid = new TaskScore(eventReward: 8f, winChance: 9.6f, ownTerritoryProximity: 1.5f,
                 cardPrice: 3f, delivery: 3f);
             string line = TaskScoreEvaluator.Describe(raid);
             Assert.That(line, Does.StartWith("value=13.1 | benefit 19.1 ("));
-            Assert.That(line, Does.Contain("RaidReward 8.0"));
+            Assert.That(line, Does.Contain("EventReward 8.0"));
             Assert.That(line, Does.Contain("| cost 6.0 (CardPrice 3.0, Delivery 3.0)"));
             Assert.That(line, Does.Contain("| risk 0.0 | opportunity 0.0"));
             Assert.That(TaskScoreEvaluator.CategoryTotal(raid, TaskSlotCategory.Benefit)
@@ -752,7 +753,7 @@ namespace Game.EditorTests
             var resolvedTarget = (RaidMissionTarget)result.Target;
             var expected = new TaskScore(
                 ownTerritoryProximity: objective.TaskScore.OwnTerritoryProximity,
-                raidReward: objective.TaskScore.RaidReward,
+                eventReward: objective.TaskScore.EventReward,
                 winChance: TaskScoreEvaluator.WinChance(resolvedTarget.ReadyWinChance),
                 cardPrice: TaskScoreEvaluator.Price(pinned.ActivationApCost),
                 delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(pinned.ActivationApCost,
@@ -762,7 +763,8 @@ namespace Game.EditorTests
             // 9 hexes from the only BaseHex: the saturated signed slope plus the Raid leash
             // past raidLeashHexes (2026-10-07).
             Assert.That(objective.TaskScore.OwnTerritoryProximity,
-                Is.EqualTo(TaskScoreEvaluator.RaidProximity(9)).Within(0.0001f));
+                Is.EqualTo(
+                    TaskScoreEvaluator.LeashedProximity(9, AiConfigV2.raidLeashHexes, AiConfigV2.taskScoreRaidLeashPerHex)).Within(0.0001f));
             // No fresh opportunity report: a started stationary neutral/event Raid keeps
             // the exact same intrinsic target value. Fog changes visibility only; it does not
             // move the objective or change its intrinsic value. Actual target destruction/invalidation
@@ -776,11 +778,10 @@ namespace Game.EditorTests
             MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,
                 new[] { intent }, Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer)).Single();
             float expectedFog = objective.TaskScore.OwnTerritoryProximity
-                + objective.TaskScore.RaidReward
                 - TaskScoreEvaluator.Price(pinned.ActivationApCost)
                 - TaskScoreEvaluator.Price(ActionPrice.RecurringAp(pinned.ActivationApCost,
                     fog.Requirements.EtaTurns));
-            Assert.That(objective.TaskScore.RaidReward, Is.Zero,
+            Assert.That(objective.TaskScore.EventReward, Is.Zero,
                 "a plain neutral has no reward of its own (2026-10-07)");
             Assert.That(fog.BaseValue, Is.EqualTo(expectedFog).Within(0.0001f),
                 "fog must preserve the stationary Raid target's intrinsic value");

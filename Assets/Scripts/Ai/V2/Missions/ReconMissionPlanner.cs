@@ -305,11 +305,7 @@ namespace Game.Ai.V2
                 TaskScore priced = TaskScoreEvaluator.WithExecution(c.Score,
                     new TaskScore(cardPrice: TaskScoreEvaluator.Price(cost.RequiredAp)));
                 if (lost > 0f)
-                {
-                    TaskScore withoutLoss = priced;
-                    priced = TaskScore.FromSlots(slot => slot == TaskSlot.MoverOpportunityCost
-                        ? withoutLoss[slot] + lost : withoutLoss[slot]);
-                }
+                    priced = TaskScoreEvaluator.WithAdded(priced, TaskSlot.MoverOpportunityCost, lost);
                 c = new ScoutCandidate(c.Target, priced, priced.Value, c.Explain,
                     c.IsIncumbent, c.Tier, preferred, c.FreshNeighbors);
             }
@@ -355,10 +351,8 @@ namespace Game.Ai.V2
                 if (role != null && c.Score.Value - lost > 0f
                     && (!free.MoverKnown || free.EtaTurns > est.EtaTurns))
                 {
-                    TaskScore baseScore = c.Score;
                     float charged = liveAttackObservation ? 0f : lost;
-                    TaskScore priced = TaskScore.FromSlots(slot => slot == TaskSlot.MoverOpportunityCost
-                        ? baseScore[slot] + charged : baseScore[slot]);
+                    TaskScore priced = TaskScoreEvaluator.WithAdded(c.Score, TaskSlot.MoverOpportunityCost, charged);
                     c = new ScoutCandidate(c.Target, priced, ComputeLocalAdmissionScore(priced.Value),
                         c.Explain + $" [takes #{heldId} from {role.IntentKey}, loses {F(lost)}"
                             + (liveAttackObservation ? ", not charged: live attack observation]" : "]"),

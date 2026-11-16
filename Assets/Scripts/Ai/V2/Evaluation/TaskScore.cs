@@ -7,7 +7,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     /// <summary>
-    /// Every TaskScore slot, in fold order. The slot table (<see cref="TaskScoreEvaluator.Sign"/>,
+    /// Every TaskScore slot, in fold order. The slot table (<see cref="TaskScoreEvaluator.CategoryOf"/>,
     /// <see cref="TaskScoreEvaluator.GroupOf"/>) is the one place that says how a slot folds and
     /// who fills it; Fold, NetChange and every composition iterate it instead of listing fields.
     /// </summary>
@@ -25,7 +25,6 @@ namespace Game.Ai.V2
         CorridorAlignment,
         OwnTerritoryProximity,
         TerrainDefense,
-        RaidReward,
         EventReward,
         AttackReadiness,
         PreventedDamage,
@@ -85,11 +84,9 @@ namespace Game.Ai.V2
         // Base-only slot; never populated by Extraction/Recon/Raid.
         public readonly float EconomicExpansionValue;
         // One military fact per task family — never summed into a shared slot:
-        //   RaidReward      — the fixed expected resource/card reward of completing a Raid;
         //   EventReward     — a Hex Event guard Raid's own event reward, by guard tier;
         //   AttackReadiness — Attack's stronghold readiness (assembly x deployment), Base/Citadel only;
         //   PreventedDamage — the damage an ActiveDefence intercept keeps off the threatened asset.
-        public readonly float RaidReward;
         public readonly float EventReward;
         public readonly float AttackReadiness;
         public readonly float PreventedDamage;
@@ -124,7 +121,6 @@ namespace Game.Ai.V2
             float corridorAlignment = 0f,
             float ownTerritoryProximity = 0f,
             float terrainDefense = 0f,
-            float raidReward = 0f,
             float eventReward = 0f,
             float attackReadiness = 0f,
             float preventedDamage = 0f,
@@ -154,7 +150,6 @@ namespace Game.Ai.V2
             CorridorAlignment = corridorAlignment;
             OwnTerritoryProximity = ownTerritoryProximity;
             TerrainDefense = terrainDefense;
-            RaidReward = raidReward;
             EventReward = eventReward;
             AttackReadiness = attackReadiness;
             PreventedDamage = preventedDamage;
@@ -192,7 +187,6 @@ namespace Game.Ai.V2
                     case TaskSlot.BaseCrowdingCost: return BaseCrowdingCost;
                     case TaskSlot.OwnTerritoryProximity: return OwnTerritoryProximity;
                     case TaskSlot.TerrainDefense: return TerrainDefense;
-                    case TaskSlot.RaidReward: return RaidReward;
                     case TaskSlot.EventReward: return EventReward;
                     case TaskSlot.AttackReadiness: return AttackReadiness;
                     case TaskSlot.PreventedDamage: return PreventedDamage;
@@ -228,7 +222,6 @@ namespace Game.Ai.V2
                 corridorAlignment: value(TaskSlot.CorridorAlignment),
                 ownTerritoryProximity: value(TaskSlot.OwnTerritoryProximity),
                 terrainDefense: value(TaskSlot.TerrainDefense),
-                raidReward: value(TaskSlot.RaidReward),
                 eventReward: value(TaskSlot.EventReward),
                 attackReadiness: value(TaskSlot.AttackReadiness),
                 preventedDamage: value(TaskSlot.PreventedDamage),
@@ -276,11 +269,8 @@ namespace Game.Ai.V2
             }
         }
 
-        // Benefit adds; Cost, Risk and Opportunity are stored non-negative and subtract. A signed
-        // benefit (OwnTerritoryProximity) stays a Benefit.
-        internal static float Sign(TaskSlot slot) =>
-            CategoryOf(slot) == TaskSlotCategory.Benefit ? 1f : -1f;
-
+        // Benefit adds; Cost, Risk and Opportunity are stored non-negative and subtract (Fold).
+        // A signed benefit (OwnTerritoryProximity) stays a Benefit.
         internal static float CategoryTotal(TaskScore score, TaskSlotCategory category)
         {
             float total = 0f;
@@ -291,7 +281,7 @@ namespace Game.Ai.V2
         }
 
         // The one human-readable decomposition every task log uses:
-        //   value=13.1 | benefit 19.1 (RaidReward 8.0, WinChance 9.6, OwnTerritoryProximity 1.5)
+        //   value=13.1 | benefit 19.1 (EventReward 8.0, WinChance 9.6, OwnTerritoryProximity 1.5)
         //   | cost 6.0 (CardPrice 3.0, Delivery 3.0) | risk 0.0 | opportunity 0.0
         internal static string Describe(TaskScore score)
         {
@@ -332,12 +322,15 @@ namespace Game.Ai.V2
         }
 
         // Value = Benefit - Cost - Risk - Opportunity. The slots inside each category are that
-        // category's terms (for Benefit: the task family's own facts); the fold only sees totals.
-        internal static float Fold(TaskScore score) =>
-              CategoryTotal(score, TaskSlotCategory.Benefit)
-            - CategoryTotal(score, TaskSlotCategory.Cost)
-            - CategoryTotal(score, TaskSlotCategory.Risk)
-            - CategoryTotal(score, TaskSlotCategory.Opportunity);
+        // category's terms (for Benefit: the task family's own facts). One pass over the table:
+        // a Benefit slot adds, every other slot subtracts.
+        internal static float Fold(TaskScore score)
+        {
+            float total = 0f;
+            foreach (TaskSlot slot in AllSlots)
+                total += CategoryOf(slot) == TaskSlotCategory.Benefit ? score[slot] : -score[slot];
+            return total;
+        }
 
         // Component-wise change between two canonical world-task projections. Keeping every fact
         // in its original slot matters even when callers only consume Value: diagnostics and
@@ -349,6 +342,11 @@ namespace Game.Ai.V2
             TaskScore.FromSlots(slot => to[slot] - from[slot]
                 + (slot == TaskSlot.CardPrice ? Mathf.Max(0f, additionalCardPrice)
                     : slot == TaskSlot.Delivery ? Mathf.Max(0f, additionalDelivery) : 0f));
+
+        // One slot moved by `delta`, every other slot carried unchanged (a displacement charged
+        // or released after the candidate was priced, an extra risk on one leg).
+        internal static TaskScore WithAdded(TaskScore score, TaskSlot slot, float delta) =>
+            TaskScore.FromSlots(s => s == slot ? score[s] + delta : score[s]);
 
         // The one composition of a target with the actor/chain that serves it: every intrinsic
         // slot of `intrinsic` is carried unchanged, every execution slot comes from `execution`.
@@ -458,26 +456,13 @@ namespace Game.Ai.V2
             return quality * AiConfigV2.taskScoreProximityMax;
         }
 
-        internal static float ExtractionProximity(int nearestHomeDistance) =>
+        // The common signed slope, steepened past `leashHexes` from the nearest own Base/Citadel so a
+        // task far from home loses its desire gradually (no hard gate). Home distance is measured
+        // to the nearest Base, so a new Base moves the leash outward by itself. Extraction
+        // (economyExtractionHomeRadius), ActiveDefence (activeDefenceLeashHexes), Raid (raidLeashHexes).
+        internal static float LeashedProximity(int nearestHomeDistance, int leashHexes, float perHexPenalty) =>
             OwnTerritoryProximity(nearestHomeDistance)
-            - Mathf.Max(0, nearestHomeDistance - AiConfigV2.economyExtractionHomeRadius)
-                * AiConfigV2.economyExtractionDistanceCostPerHex;
-
-        // ActiveDefence's proximity: the common signed slope, steepened past the leash radius so
-        // a pursuit far from home loses its desire gradually (no hard gate).
-        internal static float ActiveDefenceProximity(int nearestHomeDistance) =>
-            OwnTerritoryProximity(nearestHomeDistance)
-            - Mathf.Max(0, nearestHomeDistance - AiConfigV2.activeDefenceLeashHexes)
-                * AiConfigV2.taskScoreActiveDefenceLeashPerHex;
-
-        // Raid's proximity: the common signed slope, steepened past the leash radius so a raid
-        // that walks several turns from the nearest own Base/Citadel loses its desire gradually
-        // (no hard gate). Home distance is measured to the nearest Base, so a new Base moves the
-        // leash outward by itself.
-        internal static float RaidProximity(int nearestHomeDistance) =>
-            OwnTerritoryProximity(nearestHomeDistance)
-            - Mathf.Max(0, nearestHomeDistance - AiConfigV2.raidLeashHexes)
-                * AiConfigV2.taskScoreRaidLeashPerHex;
+            - Mathf.Max(0, nearestHomeDistance - leashHexes) * perHexPenalty;
 
         internal static float HexThreatRisk(float normalizedRisk) =>
             Mathf.Clamp01(normalizedRisk) * AiConfigV2.taskScoreThreatRiskMax;
@@ -521,16 +506,10 @@ namespace Game.Ai.V2
         internal static float Airfield(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreAirfieldMax;
 
-        internal static float GlobalCardEffect(float normalizedValue) =>
-            Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreGlobalCardEffectMax;
-
         // Some card evaluators already author this fact in TaskScore units. Clamp it here rather
         // than letting task owners read the shared score cap directly.
         internal static float GlobalCardEffectScoreUnits(float scoreUnits) =>
             Mathf.Clamp(scoreUnits, 0f, AiConfigV2.taskScoreGlobalCardEffectMax);
-
-        // Fixed per eligible Raid; never derived from defender power (that is WinChance's).
-        internal static float RaidReward() => AiConfigV2.RaidReward;
 
         // Raw fact: the event guard's authored tier (0 light / 1 medium / 2 heavy, -1 unknown).
         internal static float EventReward(int guardTier) =>

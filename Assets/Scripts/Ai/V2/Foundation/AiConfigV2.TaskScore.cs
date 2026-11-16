@@ -36,11 +36,8 @@
         public const float taskScoreStalenessMax = 8f;                    // value of refreshing old intel
 
         // ---- BENEFIT · Military (Raid / Attack / ActiveDefence) ---------------------------------
-        // The expected resource/card reward of completing a Raid. Constant per eligible Raid,
-        // never derived from defender power (that is WinChance's) and never on return legs.
-        public const float RaidReward = 8f;
-        // A Raid on a Hex Event guard also earns the event's own reward, on top of RaidReward
-        // (2026-10-01, user decision). Priced by the guard tier the observer sees (the authored
+        // A Raid on a Hex Event guard earns the event's own reward (2026-10-01, user decision);
+        // a plain neutral Raid is priced only by the reason to clear its hex. Priced by the guard tier the observer sees (the authored
         // light / medium / heavy variant); the hidden payout itself is never read.
         public const float taskScoreEventRewardLight = 4f;
         public const float taskScoreEventRewardMedium = 8f;

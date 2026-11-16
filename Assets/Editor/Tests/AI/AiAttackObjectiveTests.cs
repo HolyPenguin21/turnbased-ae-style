@@ -410,8 +410,8 @@ namespace Game.EditorTests
             Assert.That(citadel.TaskScore.TerrainDefense, Is.EqualTo(0f),
                 "defender-side terrain is not an attacker bonus");
             Assert.That(citadel.TaskScore.AttackReadiness, Is.GreaterThanOrEqualTo(0f));
-            Assert.That(citadel.TaskScore.RaidReward, Is.EqualTo(0f),
-                "Attack never borrows the Raid reward slot");
+            Assert.That(citadel.TaskScore.EventReward, Is.EqualTo(0f),
+                "Attack never borrows the Raid event reward slot");
             Assert.That(citadel.TaskScore.EconomicExpansionValue, Is.EqualTo(0f),
                 "no economic justification is claimed until the Economy model actually proves one");
         }

@@ -32,7 +32,7 @@ namespace Game.EditorTests
             Radar radar = RadarOf((DesireAxis.Aggression, 0.6f),
                 (DesireAxis.Recon, 0.4f));
             var raid = new MissionProposal { Kind = MissionKind.Raid,
-                BaseValue = new TaskScore(raidReward: 3f).Value };
+                BaseValue = new TaskScore(eventReward: 3f).Value };
             var defence = new MissionProposal { Kind = MissionKind.ActiveDefence,
                 BaseValue = new TaskScore(preventedDamage: 9f).Value };
             var attack = new MissionProposal { Kind = MissionKind.Attack,

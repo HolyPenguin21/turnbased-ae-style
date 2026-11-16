@@ -841,13 +841,13 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    // Task merit, the stage's own AP and its resource bill all in TaskScore (the
-                    // resource value is a card number, converted once). The net is read in card
-                    // units (ActionPrice's own conversion) only so peer steps can be ordered.
-                    float taskNet = score.Value - ActionPrice.ToTaskScore(ActionPrice.Ap(stageAp))
-                        - ActionPrice.CardScoreToTaskScore(StrategicCardEvaluator.StrategicResourceCostValue(
-                            TradeFunding.PricedCost(player, root, ctx, cost), snap, spendable, player))
-                        - ActionPrice.CardScoreToTaskScore(prerequisite);
+                    // Only the walk of an existing hero lands here: it plays no card and pays no
+                    // resources, so its whole price is already in `score` (activation, recurring AP,
+                    // displaced task). The site's CapacityUnlock is a separate step with its own
+                    // price, so it is charged to the rank and the admission net only — never to the
+                    // proposal's TaskScore, or the allocator would pay it twice. The net is read in
+                    // card units (ActionPrice's own conversion) only so peer steps can be ordered.
+                    float taskNet = score.Value - ActionPrice.CardScoreToTaskScore(prerequisite);
                     op.PreparationRank = ActionPrice.ToCardScore(ActionPrice.FromTaskScore(taskNet));
                     string walkFacts = hero == null ? string.Empty
                         : $"hero={GenerationSource.StableHeroKey(hero)} from=#{sourceArmy?.Id} route={travel} "

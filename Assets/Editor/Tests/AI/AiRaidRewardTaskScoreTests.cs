@@ -15,8 +15,6 @@ namespace Game.EditorTests
             RaidObjective weak = Evaluate(target, 0.1f);
             RaidObjective strong = Evaluate(target, 1000f);
 
-            Assert.That(weak.TaskScore.RaidReward, Is.Zero);
-            Assert.That(strong.TaskScore.RaidReward, Is.Zero);
             Assert.That(weak.TaskScore.EconomicHexBenefit, Is.Zero);
             Assert.That(weak.BaseValue, Is.EqualTo(weak.TaskScore.OwnTerritoryProximity));
             Assert.That(strong.BaseValue, Is.EqualTo(weak.BaseValue),
@@ -30,7 +28,6 @@ namespace Game.EditorTests
                 RaidTargetRef.ForEventGuard(new HexCoord(3, 0)), 999f);
             RaidObjective neutral = Evaluate(RaidTargetRef.ForNeutralArmy(42), 999f);
 
-            Assert.That(guard.TaskScore.RaidReward, Is.Zero);
             // No remembered guard here: the unknown-tier reward.
             Assert.That(guard.TaskScore.EventReward, Is.EqualTo(AiConfigV2.taskScoreEventRewardUnknownTier));
             Assert.That(guard.BaseValue, Is.EqualTo(AiConfigV2.taskScoreEventRewardUnknownTier
@@ -63,9 +60,9 @@ namespace Game.EditorTests
         public void RaidProximity_PenalizesPastTheLeashAndFollowsTheNearestBase()
         {
             int leash = AiConfigV2.raidLeashHexes;
-            Assert.That(TaskScoreEvaluator.RaidProximity(leash), Is.EqualTo(
+            Assert.That(TaskScoreEvaluator.LeashedProximity(leash, AiConfigV2.raidLeashHexes, AiConfigV2.taskScoreRaidLeashPerHex), Is.EqualTo(
                 TaskScoreEvaluator.OwnTerritoryProximity(leash)).Within(1e-4f));
-            Assert.That(TaskScoreEvaluator.RaidProximity(leash + 2), Is.EqualTo(
+            Assert.That(TaskScoreEvaluator.LeashedProximity(leash + 2, AiConfigV2.raidLeashHexes, AiConfigV2.taskScoreRaidLeashPerHex), Is.EqualTo(
                 TaskScoreEvaluator.OwnTerritoryProximity(leash + 2)
                 - 2 * AiConfigV2.taskScoreRaidLeashPerHex).Within(1e-4f));
 
@@ -76,8 +73,8 @@ namespace Game.EditorTests
             TaskScore far = RaidObjectiveEvaluator.BuildRaidScore(citadelOnly, target, target.Hex);
             TaskScore near = RaidObjectiveEvaluator.BuildRaidScore(withBase, target, target.Hex);
 
-            Assert.That(far.OwnTerritoryProximity, Is.EqualTo(TaskScoreEvaluator.RaidProximity(leash + 2)));
-            Assert.That(near.OwnTerritoryProximity, Is.EqualTo(TaskScoreEvaluator.RaidProximity(2)));
+            Assert.That(far.OwnTerritoryProximity, Is.EqualTo(TaskScoreEvaluator.LeashedProximity(leash + 2, AiConfigV2.raidLeashHexes, AiConfigV2.taskScoreRaidLeashPerHex)));
+            Assert.That(near.OwnTerritoryProximity, Is.EqualTo(TaskScoreEvaluator.LeashedProximity(2, AiConfigV2.raidLeashHexes, AiConfigV2.taskScoreRaidLeashPerHex)));
             Assert.That(near.Value, Is.GreaterThan(far.Value));
         }
 
@@ -88,9 +85,9 @@ namespace Game.EditorTests
             var recon = new TaskScore(infoGain: 10f);
             var lifecycle = default(TaskScore);
 
-            Assert.That(economy.RaidReward, Is.Zero);
-            Assert.That(recon.RaidReward, Is.Zero);
-            Assert.That(lifecycle.RaidReward, Is.Zero);
+            Assert.That(economy.EventReward, Is.Zero);
+            Assert.That(recon.EventReward, Is.Zero);
+            Assert.That(lifecycle.EventReward, Is.Zero);
             Assert.That(economy.Value, Is.EqualTo(12f));
             Assert.That(recon.Value, Is.EqualTo(10f));
             Assert.That(lifecycle.Value, Is.Zero);

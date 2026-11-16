@@ -71,8 +71,8 @@ namespace Game.Ai.V2
         //  ordering stays on BaseValue, AP budget stays on the radar / TurnResourceBook.
         // =======================================================================================
         // A known neutral target becomes a Raid RaidObjective only if its canonical TaskScore
-        // has some real strategic merit. This threshold is on the unified TaskScore scale (where
-        // RaidReward is 8), not the retired Raid-local 12..90 Lerp scale.
+        // has some real strategic merit. This threshold is on the unified TaskScore scale, not the
+        // retired Raid-local 12..90 Lerp scale.
         // Feasibility is still NOT part of this discovery gate: an objective may survive so Demand
         // can ask for the missing combat capability; WorthIt/assembly remain the execution owners.
         public const float raidObjectiveMinBaseValue = 0.25f;

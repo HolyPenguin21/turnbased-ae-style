@@ -254,8 +254,9 @@ namespace Game.Ai.V2
                 float strikeScale = Mathf.Max(1f, Mathf.Max(snap.Self.AttackPeak, enemyPower));
                 TaskScore score = new TaskScore(
                     economicHexBenefit: ExtractorDenial(snap, position),
-                    ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(
-                        TaskScoreEvaluator.NearestOwnedHomeDistance(snap, position)),
+                    ownTerritoryProximity: TaskScoreEvaluator.LeashedProximity(
+                        TaskScoreEvaluator.NearestOwnedHomeDistance(snap, position),
+                        AiConfigV2.activeDefenceLeashHexes, AiConfigV2.taskScoreActiveDefenceLeashPerHex),
                     preventedDamage: TaskScoreEvaluator.PreventedDamage(enemyPower / strikeScale));
                 result.Add(new ActiveDefenceObjective
                 {
@@ -1198,7 +1199,8 @@ namespace Game.Ai.V2
                 preventedDamage: preventedDamage,
                 intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
                     age / (float)Mathf.Max(1, AiConfigV2.reconIntelStaleTurnsHi)),
-                ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(homeDistance));
+                ownTerritoryProximity: TaskScoreEvaluator.LeashedProximity(homeDistance,
+                    AiConfigV2.activeDefenceLeashHexes, AiConfigV2.taskScoreActiveDefenceLeashPerHex));
         }
 
         // What keeping this contact off its asset is worth: the threat's direction and the damage

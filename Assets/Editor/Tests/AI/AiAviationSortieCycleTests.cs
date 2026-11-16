@@ -1462,7 +1462,7 @@ namespace Game.EditorTests
         [Test]
         public void CombatServiceScore_EntersAviationCardOperationalValue()
         {
-            var service = GroundCombatAirSupport.ServiceScore(new TaskScore(raidReward: 10),
+            var service = GroundCombatAirSupport.ServiceScore(new TaskScore(eventReward: 10),
                 0.5f, 1, 1, 2);
             var card = new CardData(new CardDefinition { isAviation = true });
             var candidate = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Aviation,

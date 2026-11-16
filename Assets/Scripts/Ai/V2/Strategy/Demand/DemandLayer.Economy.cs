@@ -22,7 +22,8 @@ namespace Game.Ai.V2
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
                     usefulGain, resourcePriority),
                 payback: TaskScoreEvaluator.Payback(paybackTurns),
-                ownTerritoryProximity: TaskScoreEvaluator.ExtractionProximity(homeDistance),
+                ownTerritoryProximity: TaskScoreEvaluator.LeashedProximity(homeDistance,
+                    AiConfigV2.economyExtractionHomeRadius, AiConfigV2.economyExtractionDistanceCostPerHex),
                 cardPrice: TaskScoreEvaluator.Price(ActionPrice.Ap(cardAp) + resourceApEquivalent),
                 delivery: TaskScoreEvaluator.Price(extraActivationAp),
                 moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(moverOpportunityCost),

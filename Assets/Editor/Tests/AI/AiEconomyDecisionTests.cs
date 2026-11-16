@@ -125,14 +125,17 @@ namespace Game.EditorTests
         public void EconomyFix_ExtractionPricesTerritorialExposure(int distance, int additionalCost)
         {
             Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(distance)
-                - TaskScoreEvaluator.ExtractionProximity(distance), Is.EqualTo(additionalCost).Within(0.0001f));
+                - TaskScoreEvaluator.LeashedProximity(distance, AiConfigV2.economyExtractionHomeRadius,
+                    AiConfigV2.economyExtractionDistanceCostPerHex), Is.EqualTo(additionalCost).Within(0.0001f));
         }
 
         [Test]
         public void EconomyFix_ExtractionDistanceCostKeepsGrowingBeyondOldFloor()
         {
-            Assert.That(TaskScoreEvaluator.ExtractionProximity(12),
-                Is.LessThan(TaskScoreEvaluator.ExtractionProximity(9)));
+            Assert.That(TaskScoreEvaluator.LeashedProximity(12, AiConfigV2.economyExtractionHomeRadius,
+                    AiConfigV2.economyExtractionDistanceCostPerHex),
+                Is.LessThan(TaskScoreEvaluator.LeashedProximity(9, AiConfigV2.economyExtractionHomeRadius,
+                    AiConfigV2.economyExtractionDistanceCostPerHex)));
         }
 
         [Test]
@@ -652,13 +655,22 @@ namespace Game.EditorTests
         [Test]
         public void EconomySiteScore_ThreatCanMakeSaferPeerWin()
         {
-            float safe = DemandLayer.ScoreEconomySite(
-                0.7f, 1f, 0.5f, 0.5f, 2f, 0f, 0.2f, 1f, 1f, 2f);
-            float dangerous = DemandLayer.ScoreEconomySite(
-                0.7f, 1f, 0.5f, 0.5f, 2f, 1f, 0.2f, 1f, 1f, 2f);
+            float safe = EconomySiteScore(threatExposure: 0f);
+            float dangerous = EconomySiteScore(threatExposure: 1f);
 
             Assert.That(safe, Is.GreaterThan(dangerous));
         }
+
+        // Two otherwise identical Extraction sites folded by the one TaskScore owner; only the
+        // hex threat differs.
+        private static float EconomySiteScore(float threatExposure) =>
+            new TaskScore(
+                economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(1f, 0.7f),
+                payback: TaskScoreEvaluator.Payback(2f),
+                cardPrice: TaskScoreEvaluator.Price(1f + 1f * AiConfigV2.actionPriceResourceAp),
+                delivery: TaskScoreEvaluator.Price(2f),
+                moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(0.2f),
+                hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(threatExposure)).Value;
 
         [Test]
         public void EconomyDemand_ProfitableSiteDoesNotRequireRelativeDeficit()

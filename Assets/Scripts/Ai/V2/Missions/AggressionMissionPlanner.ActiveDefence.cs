@@ -464,8 +464,7 @@ namespace Game.Ai.V2
                 float released = UnityEngine.Mathf.Min(charge.Charge, priced[TaskSlot.MoverOpportunityCost]);
                 if (released <= 0f)
                     continue;
-                TaskScore score = TaskScore.FromSlots(slot => slot == TaskSlot.MoverOpportunityCost
-                    ? priced[slot] - released : priced[slot]);
+                TaskScore score = TaskScoreEvaluator.WithAdded(priced, TaskSlot.MoverOpportunityCost, -released);
                 charge.Proposal.Score = score;
                 charge.Proposal.BaseValue = score.Value;
                 charge.Proposal.LocalAdmissionScore = score.Value;
