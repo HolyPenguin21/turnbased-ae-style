@@ -70,11 +70,20 @@ namespace Game.Ai.V2
                     OwnWorld.Of(snap.Observer).Army(primaryId),
                     consumerKind == MissionKind.Attack ? intent.Attack.Target.Hex : intent.Raid.LastKnownHex,
                     consumerKind == MissionKind.Attack ? SafeRouteProfile.Attack : SafeRouteProfile.Combat));
+            // 2026-11-16 — an existing support satisfies the shortage only when the existing
+            // supports together reach the gate (GroundCombatAssemblyPlanner.ExistingSupportsReachGate);
+            // help that cannot get there still leaves the deficit to a new support army.
             if (existing.Count > 0)
             {
-                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
-                    + $"candidates={existing.Count} reason=existing_free_army_available_as_support");
-                return null;
+                if (GroundCombatAssemblyPlanner.ExistingSupportsReachGate(snap, primaryId, existing, opposition,
+                        hexBonus, gate, countExchange: consumerKind == MissionKind.Attack, out float ceilingWin))
+                {
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
+                        + $"candidates={existing.Count} reason=existing_free_army_available_as_support");
+                    return null;
+                }
+                diag.Add($"[AI][V2][Demand][Aggression] decision=CONTINUE {at} candidates={existing.Count} "
+                    + $"ceilingWin={ceilingWin:0.00} reason=existing_supports_cannot_reach_the_gate");
             }
 
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);

@@ -146,31 +146,32 @@ namespace Game.Ai.V2
         // and Dune Wolves expired at Ysolde's T19 while standing on Kryll's Citadel; her assault
         // priced the site at 46 instead of ~100, marched three turns and withdrew at win 0.04.
         // Only a structure-bound staging site: a field position seen once is not kept as occupied.
+        // 2026-11-16 — read from KnownSnapshot.RememberedArmies (the Recon history, set at
+        // BuildKnown), never from the Threat layer: a scan reads site opposition before its Threat
+        // is built and live partial snapshots have none, which silently dropped the residents.
         private static void AddRememberedSiteResidents(WorldSnapshot snap, HexCoord hex,
             int excludeArmyId, List<WorthIt.DefendingArmy> into)
         {
-            IReadOnlyList<EnemyContactSnapshot> contacts = snap?.Threat?.Contacts;
+            IReadOnlyList<ReconObservation> remembered = snap?.Known?.RememberedArmies;
             IReadOnlyList<Game.Ai.AiMapMemory.KnownBuilding> buildings = snap?.Known?.Buildings;
-            if (contacts == null || buildings == null)
+            if (remembered == null || buildings == null)
                 return;
-            foreach (EnemyContactSnapshot c in contacts
-                .Where(c => c?.Army != null && c.Knowledge == ContactKnowledge.LastKnown
-                    && c.Position.HasValue && c.Position.Value.Equals(hex))
-                .OrderBy(c => c.Army.ArmyId))
+            foreach (ReconObservation o in remembered
+                .Where(o => o != null && o.LastObservedHex.Equals(hex))
+                .OrderBy(o => o.ArmyId))
             {
-                ArmySnapshot army = c.Army;
-                if (army.ArmyId == excludeArmyId || army.IsAir || army.Owner == null
-                    || army.Owner == snap.Observer || army.Owner.IsNeutral
-                    || army.Members == null || army.Members.Count == 0
-                    || into.Any(d => d.ArmyId == army.ArmyId)
+                if (o.ArmyId == excludeArmyId || o.IsAir || o.IsGarrison || o.Owner == null
+                    || o.Owner == snap.Observer || o.Owner.IsNeutral
+                    || o.Defenders == null || o.Defenders.Count == 0
+                    || into.Any(d => d.ArmyId == o.ArmyId)
                     // The site was not looked at since the army was seen on it: a later look that
                     // found it absent (the history keeps an army that only LEFT into the fog) wins.
-                    || !buildings.Any(b => b.Hex.Equals(hex) && b.Owner == army.Owner
-                        && (b.IsBase || b.IsStartingCitadel) && b.SeenTurn <= c.LastObservedTurn))
+                    || !buildings.Any(b => b.Hex.Equals(hex) && b.Owner == o.Owner
+                        && (b.IsBase || b.IsStartingCitadel) && b.SeenTurn <= o.LastObservedTurn))
                     continue;
-                into.Add(new WorthIt.DefendingArmy(army.Members, army.Commander,
-                    Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, army.Owner), army.ArmyId,
-                    Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, army.Owner),
+                into.Add(new WorthIt.DefendingArmy(o.Defenders, o.Commander,
+                    Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, o.Owner), o.ArmyId,
+                    Game.Ai.AiMapMemory.KnownBuildingDefenseBonusFor(snap.Observer, hex, o.Owner),
                     environment: WeatherAt(snap, hex)));
             }
         }

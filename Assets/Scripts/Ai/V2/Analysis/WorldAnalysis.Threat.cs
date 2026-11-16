@@ -44,9 +44,9 @@ namespace Game.Ai.V2
                 });
             }
 
-            var liveArmyIds = AiV2Util.KnownArmyIds(snap.Known.EnemySightings);
-            foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds)
-                .Where(o => !o.IsGarrison))
+            // The one Recon-history source (KnownSnapshot.RememberedArmies, read at BuildKnown).
+            foreach (ReconObservation obs in snap.Known.RememberedArmies
+                ?? (IReadOnlyList<ReconObservation>)System.Array.Empty<ReconObservation>())
             {
                 int age = System.Math.Max(0, snap.TurnNumber - obs.LastObservedTurn);
                 contacts.Add(new EnemyContactSnapshot

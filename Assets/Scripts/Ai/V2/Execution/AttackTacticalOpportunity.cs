@@ -174,6 +174,9 @@ namespace Game.Ai.V2
                 if (anyLastKnown)
                     foreach (EnemyContactSnapshot c in lastKnown)
                     {
+                        // A remembered site resident is already in the site's opposition
+                        // (KnownOpposition.OnHex): one army, one defender.
+                        if (opposition.Any(d => d.ArmyId == c.Army.ArmyId)) continue;
                         IReadOnlyList<WorthIt.DefendingArmy> fist = KnownOpposition.OfEnemyArmy(snap, c.Army.ArmyId);
                         if (fist != null && fist.Count > 0) opposition.Add(fist[0]);
                     }

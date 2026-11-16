@@ -1191,11 +1191,24 @@ namespace Game.Ai.V2
                 snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value));
             IReadOnlyList<WorthIt.DefendingArmy> opposition = forecast.Opposition;
             float hexBonus = forecast.HexBonus;
-            return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
+            List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
                 a.PrimaryArmyId.Value, opposition, unavailableArmyIds, hexBonus,
                 allowCommandHandover: true,
                 rosterAdmissible: GroundCombatReinforcement.PreserveTaskRoute(snap.Map,
-                    AiV2Util.ResolveArmy(snap.Observer, a.PrimaryArmyId.Value), a.Target.Hex, SafeRouteProfile.Attack)).Count > 0;
+                    AiV2Util.ResolveArmy(snap.Observer, a.PrimaryArmyId.Value), a.Target.Hex, SafeRouteProfile.Attack));
+            // 2026-11-16 — a prospect, not mere help: the existing supports together must reach
+            // the gate (GroundCombatAssemblyPlanner.ExistingSupportsReachGate).
+            if (candidates.Count == 0)
+                return false;
+            bool reaches = GroundCombatAssemblyPlanner.ExistingSupportsReachGate(snap, a.PrimaryArmyId.Value,
+                candidates, opposition, hexBonus, GroundCombatAdmissionPolicy.AttackWinChanceGate,
+                countExchange: true, out float ceilingWin);
+            if (!reaches)
+                AiDebugLog.WriteDeduped($"attack-prospect|{a.Target.Hex}|{a.PrimaryArmyId}",
+                    $"[AI][V2][Attack][Reinforcement] target={a.Target.DiagnosticLabel} primary=#{a.PrimaryArmyId} "
+                    + $"supports=[{string.Join(",", candidates)}] ceilingWin={ceilingWin:0.00} "
+                    + "decision=NO_PROSPECT reason=existing_supports_cannot_reach_the_gate");
+            return reaches;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken

@@ -886,6 +886,23 @@ namespace Game.Ai.V2
                     + "the request for a new one)");
                 return;
             }
+            // 2026-11-16 — help is bound only while it is a prospect: the existing supports together
+            // must reach the gate on the same site forecast Continuity reads (AttackSupportProjection,
+            // GroundCombatAssemblyPlanner.ExistingSupportsReachGate). Otherwise no support is bound,
+            // the Aggression demand asks for a new army and Continuity withdraws without a prospect.
+            AttackSupportForecast prospectSite = AttackSupportProjection.For(snap, a.Target.Hex, primary);
+            if (!GroundCombatAssemblyPlanner.ExistingSupportsReachGate(snap, a.PrimaryArmyId.Value, candidates,
+                    prospectSite.Opposition, prospectSite.HexBonus, GroundCombatAdmissionPolicy.AttackWinChanceGate,
+                    countExchange: true, out float ceilingWin))
+            {
+                if (deferredThisPass != null)
+                    deferredThisPass[intent.IntentKey] = "attack_reinforcement_cannot_reach_the_gate";
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#prospect",
+                    $"[AI][V2][Attack] decision=HOLD {intent.IntentKey}: primary #{a.PrimaryArmyId} "
+                    + $"supports=[{string.Join(",", candidates)}] ceilingWin={ceilingWin:0.00}; the existing "
+                    + "supports cannot reach the gate together, none is bound");
+                return;
+            }
 
             ArmySnapshot priced = snap.Self.Armies?
                 .Where(x => x != null && candidates.Contains(x.ArmyId))

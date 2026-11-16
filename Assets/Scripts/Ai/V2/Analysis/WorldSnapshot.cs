@@ -720,6 +720,14 @@ namespace Game.Ai.V2
         // fabricated ArmyData. Feeds CombatOpportunityAnalyzer as a second Raid target kind.
         public IReadOnlyList<KnownEventGuardSnapshot> EventGuards;
         public IReadOnlyList<AiMapMemory.KnownResourceHex> ResourceHexes;
+        // 2026-11-16 — the Recon history (AiReconMemory.Historical) of player-owned field armies
+        // that left the live sightings: where each was last observed, with its roster. Read at
+        // BuildKnown, so every snapshot that has Known has it — the full scan before its Threat
+        // layer and the live partial snapshots alike. The one source of the LastKnown Threat
+        // contacts (WorldAnalysis.BuildThreat) and of the remembered site residents
+        // (KnownOpposition). Match 2026-11-16: Rurik priced Cassia's Citadel at 6/28.7 instead of
+        // 15/78 when the residents rule read a Threat layer that was not built yet.
+        public IReadOnlyList<ReconObservation> RememberedArmies = System.Array.Empty<ReconObservation>();
 
         // Remembered enemy strength on the AiPower scale (AiPower.SightingPower), so it compares
         // directly with our own FieldPower / BestStackPotential.

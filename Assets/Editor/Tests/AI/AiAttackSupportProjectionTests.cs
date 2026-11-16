@@ -171,6 +171,60 @@ namespace Game.EditorTests
                 Is.EqualTo(TaskScoreEvaluator.AttackReadiness(1f)).Within(0.0001f));
         }
 
+        // 2026-11-16 (owner decision, match Rurik T20-T26) — an enabler is worth what it unblocks:
+        // while the live Attack's entry waits for this carrier, the operation's own value joins
+        // the readiness term, so the carrier can be taken off a routine Explore lane.
+        [Test]
+        public void DisruptionTheAttackWaitsFor_CarriesTheAttackValue()
+        {
+            var fist = new ArmySnapshot { ArmyId = 9, Owner = _player, Hex = new HexCoord(0, 0),
+                MemberCount = 1, Members = new[] { Body() }, MembersWithHeroes = new[] { Body() },
+                MaxMovement = 2, CurrentMovement = 2 };
+            WorldSnapshot snap = Snapshot(Carrier(2, maxMovement: 3), fist);
+            MissionIntentRegistry.GetOrCreate(_player).Put(new MissionIntent
+            {
+                Kind = MissionKind.Attack, Status = IntentStatus.Active, PreferredMoverArmyId = 9,
+                LastIntrinsicValue = 15f,
+                Objective = new AttackIntent { Target = AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base),
+                    Phase = AttackMissionPhase.Assault, PrimaryArmyId = 9 },
+                IntentKey = MissionIntentKey.ForAttack(AttackTargetRef.For(Site, _enemy, AttackTargetKind.Base)),
+            });
+            ReconObjective o = ReconObjectiveEvaluator.DisruptAt(snap, Site, requireMover: false);
+            Assert.That(o, Is.Not.Null);
+            Assert.That(o.TaskScore[TaskSlot.AttackReadiness],
+                Is.EqualTo(TaskScoreEvaluator.AttackReadiness(1f) + 15f).Within(0.0001f),
+                "the fist carries no Disruption: its entry waits for this carrier");
+        }
+
+        // 2026-11-16 (owner decision, match Cassia T25-T29) — a reinforcement prospect is the
+        // existing supports TOGETHER reaching the gate, not one support raising the odds a little.
+        [Test]
+        public void ReinforcementProspect_RequiresTheSupportsToReachTheGate()
+        {
+            WorthIt.DefenderProfile P(float a, float d, float hp) =>
+                new WorthIt.DefenderProfile(d, false, null, a, hp, 2, null, hp);
+            var defenders = new List<WorthIt.DefendingArmy>
+            {
+                new WorthIt.DefendingArmy(new[] { P(7, 4, 9), P(7, 4, 9), P(7, 4, 9) }, default, 0f, 50),
+            };
+            var primary = new ArmySnapshot { ArmyId = 1, Owner = _player, Hex = new HexCoord(0, 0),
+                Capacity = 6, MemberCount = 1, Members = new[] { P(3, 1, 4) } };
+            var weak = new ArmySnapshot { ArmyId = 2, Owner = _player, Hex = new HexCoord(0, 0),
+                Capacity = 2, MemberCount = 1, Members = new[] { P(3, 1, 4) } };
+            var strong = new ArmySnapshot { ArmyId = 3, Owner = _player, Hex = new HexCoord(0, 0),
+                Capacity = 6, MemberCount = 5,
+                Members = new[] { P(14, 7, 16), P(14, 7, 16), P(14, 7, 16), P(14, 7, 16), P(14, 7, 16) } };
+            WorldSnapshot snap = Snapshot(primary, weak, strong);
+            float gate = GroundCombatAdmissionPolicy.AttackWinChanceGate;
+
+            Assert.That(GroundCombatAssemblyPlanner.ExistingSupportsReachGate(snap, 1, new[] { 2 }, defenders,
+                0f, gate, countExchange: true, out _), Is.False, "help that cannot get there is no prospect");
+            Assert.That(GroundCombatAssemblyPlanner.ExistingSupportsReachGate(snap, 1, new[] { 2, 3 }, defenders,
+                0f, gate, countExchange: true, out _), Is.True, "together they clear the gate");
+            Assert.That(GroundCombatAssemblyPlanner.ExistingSupportsReachGate(snap, 1, new int[0], defenders,
+                0f, gate, countExchange: true, out _), Is.False);
+        }
+
         // 2026-11-07 playtest (Ysolde T26): E6 M9 T5 bought one Tactical Missile, but three upgrades
         // in the card rounds (a Fate genome on a garrison hero among them) spent T to 0 before the
         // strike was asked. An upgrade outside the fist leaves the strike what it needs of the

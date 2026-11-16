@@ -43,6 +43,44 @@ namespace Game.Ai.V2
             return ids;
         }
 
+        // 2026-11-16 (owner decision) — THE reinforcement prospect: could the EXISTING supports
+        // `candidateIds` together bring `primary` to its gate? A ceiling, not a plan: the strongest
+        // bodies of the primary and of every candidate (all may go, as in SupportImprovesPrimary)
+        // fill the largest command the primary could have (its own, or a candidate hero's), and
+        // that roster must clear the win gate — or, with `countExchange` (Attack), be a favorable
+        // trade (AttackExchangePolicy, the readiness rule). A support that only RAISES the odds is
+        // help, not a prospect: match 2026-11-16, Cassia's Attack on Base (1,1) stayed in
+        // Reinforcement T25-T29+ on 1-body swaps (fist 53 -> 56 vs 110) and its hand demand stayed
+        // SATISFIED by "an existing support". Read by AttackContinuity (keep or withdraw) and
+        // GroundCombatDemandPolicy (existing support vs a new one).
+        internal static bool ExistingSupportsReachGate(WorldSnapshot snap, int primaryArmyId,
+            IReadOnlyList<int> candidateIds, IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            float defenderHexDefenseBonus, float gate, bool countExchange, out float ceilingWin)
+        {
+            ceilingWin = 0f;
+            ArmySnapshot primary = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryArmyId);
+            if (primary == null || candidateIds == null || candidateIds.Count == 0)
+                return false;
+            opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
+            List<ArmySnapshot> supports = candidateIds
+                .Select(id => snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == id))
+                .Where(a => a != null).ToList();
+            List<WorthIt.DefenderProfile> own = NonAviationProfiles(primary);
+            int heroSlots = System.Math.Max(0, primary.MemberCount - (primary.Members?.Count ?? 0));
+            int capacity = System.Math.Max(primary.Capacity,
+                supports.Select(s => s.BestHeroCommandRating).DefaultIfEmpty(0).Max());
+            int bodySlots = System.Math.Max(1, capacity - heroSlots);
+            List<WorthIt.DefenderProfile> ceiling = own
+                .Concat(supports.SelectMany(NonAviationProfiles))
+                .OrderByDescending(ProfileCombatValue)
+                .Take(bodySlots)
+                .ToList();
+            bool clears = GroundCombatFeasibility.Clears(ceiling, primary.Commander, opposition, gate,
+                defenderHexDefenseBonus, out ceilingWin, out _);
+            return clears || (countExchange && AttackExchangePolicy.Assess(ceiling, primary.Commander,
+                opposition, defenderHexDefenseBonus).Favorable);
+        }
+
         // Snapshot-level: would handing `candidate`'s sparable bodies to `primary` raise the
         // primary's win chance — or, for a lane that hands command over, would its hero take
         // command of the primary (GroundCombatReinforcement.CommandHandover, the rule the

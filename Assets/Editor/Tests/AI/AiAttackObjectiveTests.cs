@@ -700,22 +700,17 @@ namespace Game.EditorTests
             HexCoord seenAt = onOwnBase ? RedBase : new HexCoord(3, 0);
             WorldSnapshot snap = Snap(new[] { B(RedBase, Red, seenTurn: 5) }, new[] { OurBase },
                 new[] { Sighting(1, RedBase, Red, Body(3, 1, 4, 1)) });
-            snap.Threat.Contacts = new List<EnemyContactSnapshot>
+            // 2026-11-16 — the residents come from the Recon history in Known (set at BuildKnown),
+            // and the Threat layer is not needed: a scan reads the site before Threat exists.
+            snap.Known.RememberedArmies = new List<ReconObservation>
             {
-                new EnemyContactSnapshot
-                {
-                    Army = new ArmySnapshot { ArmyId = 1, Owner = Red,
-                        Members = new[] { Body(3, 1, 4, 1) } },
-                    Knowledge = ContactKnowledge.LastKnown, Position = RedBase, LastObservedTurn = 5,
-                },
-                new EnemyContactSnapshot
-                {
-                    Army = new ArmySnapshot { ArmyId = 17, Owner = Red,
-                        Members = new[] { Body(6, 3, 6, 1), Body(5, 2, 5, 1) } },
-                    Knowledge = ContactKnowledge.LastKnown, Position = seenAt,
+                new ReconObservation { ArmyId = 1, Owner = Red, LastObservedHex = RedBase,
+                    LastObservedTurn = 5, Defenders = new[] { Body(3, 1, 4, 1) } },
+                new ReconObservation { ArmyId = 17, Owner = Red, LastObservedHex = seenAt,
                     LastObservedTurn = seenOnSiteTurn,
-                },
+                    Defenders = new[] { Body(6, 3, 6, 1), Body(5, 2, 5, 1) } },
             };
+            snap.Threat = null;
 
             List<WorthIt.DefendingArmy> site = KnownOpposition.OnHex(snap, RedBase);
 

@@ -52,6 +52,8 @@ namespace Game.Ai.V2
             };
 
             known.EnemyKnownStrength = known.EnemySightings.Sum(AiPower.SightingPower);
+            known.RememberedArmies = AiReconMemory.Historical(player, AiV2Util.KnownArmyIds(known.EnemySightings))
+                .Where(o => !o.IsGarrison).ToList();
 
             int nearest = int.MaxValue;
             float nearBases = 0f;

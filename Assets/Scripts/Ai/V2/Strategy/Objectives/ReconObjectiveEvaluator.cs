@@ -374,9 +374,17 @@ namespace Game.Ai.V2
             // (AttackSupportProjection.FreeCarrier) is a step of that operation: it keeps Attack's
             // priority the way every preparation step does (AttackReadiness full), so it can take a
             // scout off a lower Explore/Refresh lane (DisplaceableReconRole) instead of losing to it.
-            bool servesLiveAttack = LiveAssaultAt(snap, hex) != null;
+            MissionIntent liveAttack = LiveAssaultAt(snap, hex);
+            bool servesLiveAttack = liveAttack != null;
+            // 2026-11-16 (owner decision) — an enabler is worth what it unblocks: when that live
+            // Attack's entry is held for want of this carrier (AttackObjectiveEvaluator.
+            // HasAssaultDisruption fails for its primary), the operation's own value
+            // (MissionIntent.DisplacementValue, what its idle army loses) joins the readiness term.
+            // Match 2026-11-16: Rurik's Attack on (2,-1) held six turns beside the target while
+            // the only carrier kept an Explore worth 17.2 against this task's flat 13.1.
+            float unblocked = UnblockedAttackValue(snap, liveAttack, disruption: true);
             TaskScore score = new TaskScore(
-                attackReadiness: servesLiveAttack ? TaskScoreEvaluator.AttackReadiness(1f) : 0f,
+                attackReadiness: servesLiveAttack ? TaskScoreEvaluator.AttackReadiness(1f) + unblocked : 0f,
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(1f),
                 cardPrice: TaskScoreEvaluator.Price(cost.ActivationApNow),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
@@ -384,6 +392,25 @@ namespace Game.Ai.V2
             return new ReconObjective { Kind = ReconObjectiveKind.DisruptStructure, FocusHex = hex,
                 Stealth = StealthRequirement.Required, TaskScore = score, BaseValue = score.Value,
                 StrategicRelevance = 1f };
+        }
+
+        // 2026-11-16 (owner decision) — the value a Recon step unblocks: the live `attack`'s own
+        // value (MissionIntent.DisplacementValue, what its idle army loses) while the entry rule the
+        // operation itself applies fails for its primary on exactly what this step delivers —
+        // Disruption (HasAssaultDisruption) or a current observation (HasAssaultObservation).
+        // 0 when the operation is not waiting on it. Added to the step's readiness term.
+        private static float UnblockedAttackValue(WorldSnapshot snap, MissionIntent attack, bool disruption)
+        {
+            AttackIntent a = attack?.Attack;
+            if (a == null || !a.PrimaryArmyId.HasValue || snap?.Self?.Armies == null)
+                return 0f;
+            ArmySnapshot fist = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value);
+            if (fist == null)
+                return 0f;
+            bool blocked = disruption
+                ? !AttackObjectiveEvaluator.HasAssaultDisruption(snap, a.Target, fist, out _)
+                : !AttackObjectiveEvaluator.HasAssaultObservation(snap, a.Target, out _);
+            return blocked ? attack.DisplacementValue : 0f;
         }
 
         internal static ReconObjective HuntAt(WorldSnapshot snap, HexCoord hex)
@@ -743,12 +770,14 @@ namespace Game.Ai.V2
         // as in peace (playtest 2026-10-15: a far ruins Explore outscored the Refresh toward Sentinels).
         private static TaskScore BuildRefreshScore(float stalenessRaw, float strategicRelevanceRaw,
             float threatDirectionRaw, int homeDistance, ScoutCostEstimate cost,
-            float detectionRiskRaw, float homeThreat, float attackReadinessRaw = 0f)
+            float detectionRiskRaw, float homeThreat, float attackReadinessRaw = 0f,
+            float unblockedAttackValue = 0f)
         {
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
             return new TaskScore(
-                attackReadiness: attackReadinessRaw > 0f ? TaskScoreEvaluator.AttackReadiness(attackReadinessRaw) : 0f,
+                attackReadiness: attackReadinessRaw > 0f
+                    ? TaskScoreEvaluator.AttackReadiness(attackReadinessRaw) + Mathf.Max(0f, unblockedAttackValue) : 0f,
                 staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw)
@@ -869,9 +898,11 @@ namespace Game.Ai.V2
             // operation: it keeps Attack's priority (AttackReadiness full), the DisruptAt
             // precedent, so it can take a scout off a routine lane. Korrin T29: Refresh(1,-6)
             // scored 7.1 against the routine Refresh(2,-4) at 12.3 and lost the scout one hex away.
-            bool liveAttackNeed = attackNeed && LiveAssaultAt(snap, hex) != null;
+            MissionIntent liveAttack = attackNeed ? LiveAssaultAt(snap, hex) : null;
+            bool liveAttackNeed = liveAttack != null;
             TaskScore score = BuildRefreshScore(staleRaw, strategicRaw, directionalRaw,
-                homeDist, cost, riskRaw, HomeThreat(snap), liveAttackNeed ? 1f : 0f);
+                homeDist, cost, riskRaw, HomeThreat(snap), liveAttackNeed ? 1f : 0f,
+                UnblockedAttackValue(snap, liveAttack, disruption: false));
 
             var objective = new ReconObjective
             {
