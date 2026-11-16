@@ -19,7 +19,6 @@ public static class GameAssetCatalogBuilder
         ("Assets/Prefabs/TutorialHints", "UI/TutorialHints"),
         ("Assets/Prefabs/Audio", "Audio"),
         ("Assets/Textures/Campaign", "Campaign"),
-        ("Assets/Textures/UI/Backgrounds/Campaign", "UI/Backgrounds/Campaign"),
         ("Assets/Textures/UI/Backgrounds/Collection", "UI/Backgrounds/Collection"),
         ("Assets/Textures/UI/Buttons/Collection", "UI/Buttons/Collection"),
         ("Assets/Textures/UI/Controls", "UI/Controls"),

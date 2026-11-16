@@ -16,6 +16,10 @@ MonoBehaviour:
   - key: Audio/GameAudio
     assets:
     - {fileID: 1000, guid: eef655d3d8ab4bc4818015eb76c4f552, type: 3}
+  - key: Campaign/Backgrounds/ConsoleMetal
+    assets:
+    - {fileID: 2800000, guid: b400f34acadc4433957760eaae115eaf, type: 3}
+    - {fileID: 21300000, guid: b400f34acadc4433957760eaae115eaf, type: 3}
   - key: Campaign/Backgrounds/WastelandSurface
     assets:
     - {fileID: 2800000, guid: 311ed474e5b34832943f14173587b735, type: 3}
@@ -122,18 +126,6 @@ MonoBehaviour:
   - key: Shaders/ScreenWear
     assets:
     - {fileID: 4800000, guid: b6f31d54aaf24b45a8f7c43cf25db870, type: 3}
-  - key: UI/Backgrounds/Campaign/ConsoleMetal
-    assets:
-    - {fileID: 2800000, guid: b400f34acadc4433957760eaae115eaf, type: 3}
-    - {fileID: 21300000, guid: b400f34acadc4433957760eaae115eaf, type: 3}
-  - key: UI/Backgrounds/Campaign/ConsoleMetalClean
-    assets:
-    - {fileID: 2800000, guid: 4ede968517a5482babcfdf788edfd6b4, type: 3}
-    - {fileID: 21300000, guid: 4ede968517a5482babcfdf788edfd6b4, type: 3}
-  - key: UI/Backgrounds/Campaign/Parchment
-    assets:
-    - {fileID: 2800000, guid: bdc5e49e3d354be1acf1b66cef61b7cf, type: 3}
-    - {fileID: 21300000, guid: bdc5e49e3d354be1acf1b66cef61b7cf, type: 3}
   - key: UI/Backgrounds/Collection/Metal
     assets:
     - {fileID: 2800000, guid: a97af7f80bdb4726ad2264d83b8df979, type: 3}
