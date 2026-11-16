@@ -9,17 +9,30 @@ arid,desert=config.split('    desertOverride:',1)
 assert 'randomizeRotation: 1' not in arid
 blocks=re.findall(r'      - contentKey: [^\n]+\n        name: (.+?)\n(.*?)(?=      - contentKey: |      mountainsTerrainName:)',desert,re.S)
 centerpieces=[(name,body) for name,body in blocks if 'exclusiveGroup: centerpiece' in body]
-assert len(centerpieces)==6
+assert len(centerpieces)==2
+assert {name for name, _ in centerpieces} == {
+ 'Desert Giant machine wreck directional 000',
+ 'Desert Giant machine wreck directional 060',
+}
+arid_wrecks=re.findall(r'    - contentKey: [^\n]+\n      name: (.+?)\n(.*?)(?=    - contentKey: |    complexCount:)',arid,re.S)
+arid_wrecks=[body for _,body in arid_wrecks if 'terrainName: Giant machine wreck\n' in body]
+assert len(arid_wrecks)==1
+assert 'useInGeneration: 1' in arid_wrecks[0]
+assert 'randomizeRotation: 0' in arid_wrecks[0]
+assert re.findall(r'offset: \{x: (-?\d+), y: (-?\d+)\}',arid_wrecks[0]) == [('0','0'),('1','0')]
 assert "Deep canyon" not in desert
 counts={}
 refs=set()
 for family,entry in manifest['families'].items():
  if family == 'Canyon': continue  # Historical manifest; Desert canyon assets were removed.
+ assert [v['angle_degrees'] for v in entry['variants']] == [0,60]
  label='Desert Giant machine wreck'
  counts[family]=0
  for variant in entry['variants']:
   name=label+f' directional {variant["angle_degrees"]:03d}'
   body=next(body for n,body in centerpieces if n==name)
+  assert 'terrainName: Giant machine wreck\n' in body
+  assert 'useInGeneration: 1' in body, name
   assert 'randomizeRotation: 0' in body
   weight=int(re.search(r'        count: (\d+)',body)[1])
   assert weight==1, name
@@ -45,7 +58,11 @@ for family,entry in manifest['families'].items():
    assert all(f'    wrap{x}: 1' in meta for x in 'UVW')
    assert p['guid'] not in refs
    refs.add(p['guid'])
-assert counts=={'GiantMachineWreck':6}
-assert len(refs)==12
+assert counts=={'GiantMachineWreck':2}
+assert len(refs)==4
+expected_files={p['file'] for v in manifest['families']['GiantMachineWreck']['variants'] for p in v['parts']}
+directional=root/'Assets/Textures/Terrain/Desert/Complexes/Directional'
+assert {p.relative_to(root).as_posix() for p in directional.glob('GiantMachineWreck_*.png')} == expected_files
+assert {p.relative_to(root).as_posix() for p in directional.glob('GiantMachineWreck_*.png.meta')} == {p+'.meta' for p in expected_files}
 assert 'randomizeRotation: 1' not in desert
-print('PASS: 6 connected wreck orientation templates; 12 PNG hashes/GUIDs/settings; Desert canyon absent; UV rotation disabled.')
+print('PASS: Desert wreck directions 000/060; 4 PNG hashes/GUIDs/settings; no extra wreck assets; single fixed Arid wreck; Desert canyon absent; UV rotation disabled.')

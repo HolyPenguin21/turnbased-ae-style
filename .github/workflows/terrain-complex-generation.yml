@@ -9,9 +9,12 @@ on:
       - Assets/Scripts/Map/MapTerrainAnimator.cs
       - Assets/Editor/Tests/Map/TerrainComplexTests.cs
       - Assets/Config/GameConfig.asset
+      - Assets/Resources/MatchSaveAssetManifest.asset
       - Assets/Textures/Terrain/**/Complexes/**
+      - Docs/terrain-complexes/directional-assets/offsets.json
       - Tools/terrain-verify/**
       - Tools/terrain-assets/validate*.py
+      - Tools/terrain-assets/verify_directional_assets.py
       - .github/workflows/terrain-complex-generation.yml
   workflow_dispatch:
 permissions:
@@ -32,5 +35,7 @@ jobs:
         run: dotnet run --project Tools/terrain-verify/TerrainVerify.csproj
       - name: Validate configured templates and referenced assets
         run: python Tools/terrain-assets/validate.py
+      - name: Validate retained wreck directions and imported assets
+        run: python Tools/terrain-assets/verify_directional_assets.py
       - name: Validate closed acid shores and localized animation
         run: python Tools/terrain-assets/validate_lake_shores.py
