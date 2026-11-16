@@ -5,6 +5,9 @@ AcidLake and BoilingMud are single hexes, Wreck has two hexes, and AridSteppe Ca
 Desert has no canyon terrain or complex; its canyon textures, source and dedicated previews
 were removed. Historical audit JSON/reports describe the former assets. Extraction and
 preview skip Canyon for Desert; use `--biome AridSteppe --group Canyon` for the retained canyon.
+Desert wreck keeps only directions 000/060 (four PNGs); AridSteppe keeps its single fixed
+wreck. The other four Desert directions and their PNG/meta/manifest references were removed.
+`verify_directional_assets.py` checks this layout and rejects extra wreck files.
 Each biome template has `Use In Generation`; `Complex Count = 0` still disables all.
 AcidLake uses imported, closed-shore bubble animation at 6.25 FPS. Mud and wreck art is
 provisional pending replacement. `preview.py` reads the actual configured footprint.
