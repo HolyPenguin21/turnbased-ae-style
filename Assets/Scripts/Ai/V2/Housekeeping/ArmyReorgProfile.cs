@@ -324,13 +324,17 @@ namespace Game.Ai.V2
             foreach (string k in host.PreparationTargetKeys)
                 if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
             int nonTarget = 0;
+            var nonTargetBodies = new List<ReorgUnit>();
             foreach (ReorgUnit u in hostUnits.Where(u => u != null && !u.IsHero)
                          .OrderByDescending(u => u.Power).ThenBy(u => u.Key))
             {
                 if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
                     need[u.StrikeKey] = n - 1;
                 else if (!u.IsArmySupportCarrier) // never surplus (StrikeRoster.NonTargetBodies)
+                {
                     nonTarget++;
+                    nonTargetBodies.Add(u);
+                }
             }
             foreach (ReorgUnit u in hostUnits.Where(u => u != null && u.IsHero))
                 if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
@@ -348,9 +352,10 @@ namespace Game.Ai.V2
             {
                 if (o.Key == null || o.Key == host || !o.Key.CanDonate || o.Value == null)
                     continue;
-                // A garrison body is a source only when the garrison may let it go (the one spare
-                // rule, AiArmyRoles.SpareableBodies over its power floor) — otherwise the host
-                // would release a slot for a body that never comes (Halden T21-T23 ping-pong).
+                // A garrison body is a released source only when the garrison may let it go (the
+                // strike view of the one release rule, AiArmyRoles.SpareableBodies over its power
+                // floor) — otherwise the host would release a slot for a body that never comes
+                // (Halden T21-T23 ping-pong).
                 List<ReorgUnit> garrisonBodies = o.Key.IsGarrison
                     ? o.Value.Where(x => x != null && x.IsGroundCombatant).ToList() : null;
                 HashSet<int> spare = garrisonBodies == null ? null
@@ -363,9 +368,44 @@ namespace Game.Ai.V2
             }
             foreach (string k in host.PreparationHandKeys ?? Array.Empty<string>())
                 Take(k);
+            int released = found;
+            // 2026-11-16 (owner decision) — a garrison body the floor keeps is still a source by
+            // EXCHANGE: a non-roster body of the host goes into the garrison in its place, the
+            // garrison keeping min(held, floor) (AiArmyRoles.KeepsFloorAfterExchange). It counts
+            // as pending (the exchange lowers it) but never as a reason to release a host body
+            // into a free container: only the 1-for-1 exchange can bring it.
+            var exchangeable = new List<ReorgUnit>(nonTargetBodies.Where(b => !b.IsCommitted)
+                .OrderBy(b => b.Power).ThenBy(b => b.Key));
+            foreach (KeyValuePair<ReorgContainer, List<ReorgUnit>> o in others
+                         ?? Enumerable.Empty<KeyValuePair<ReorgContainer, List<ReorgUnit>>>())
+            {
+                if (exchangeable.Count == 0)
+                    break;
+                if (o.Key == null || o.Key == host || !o.Key.IsGarrison || !o.Key.CanChangeComposition
+                    || o.Value == null)
+                    continue;
+                List<ReorgUnit> garrisonBodies = o.Value.Where(x => x != null && x.IsGroundCombatant).ToList();
+                HashSet<int> spare = AiArmyRoles.SpareableBodies(garrisonBodies,
+                    set => EffectivePower(set.ToList()), o.Key.GarrisonPowerFloor);
+                foreach (ReorgUnit u in garrisonBodies.OrderByDescending(x => x.Power).ThenBy(x => x.Key))
+                {
+                    if (exchangeable.Count == 0)
+                        break;
+                    int index = garrisonBodies.IndexOf(u);
+                    if (spare.Contains(index) || u.IsAviation || u.IsCommitted || u.StrikeKey == null
+                        || !need.TryGetValue(u.StrikeKey, out int n) || n <= 0)
+                        continue;
+                    ReorgUnit swapIn = exchangeable.FirstOrDefault(b => AiArmyRoles.KeepsFloorAfterExchange(
+                        garrisonBodies, index, b, set => EffectivePower(set.ToList()), o.Key.GarrisonPowerFloor));
+                    if (swapIn == null)
+                        continue;
+                    exchangeable.Remove(swapIn);
+                    Take(u.StrikeKey);
+                }
+            }
             int free = Math.Max(0, Capacity(hostUnits, host.IsGarrison) - hostUnits.Count);
             pending = found;
-            blocked = Math.Min(nonTarget, Math.Max(0, found - free));
+            blocked = Math.Min(nonTarget, Math.Max(0, released - free));
         }
 
         // §7 — the container holds >= 2 heroes, so which of them commands is a real choice.

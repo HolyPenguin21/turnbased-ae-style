@@ -180,7 +180,9 @@ namespace Game.Ai.V2
             var placement = shell == null ? new PlacementOption(primary.Hex, DeploymentKind.NewArmy, null)
                 : new PlacementOption(primary.Hex, DeploymentKind.ReusableShell, shell);
             bool Excluded(CardData card) => excluded?.Contains(card) == true
-                || reservation?.ClaimsDevelopmentOperatorCard(card) == true;
+                || reservation?.ClaimsDevelopmentOperatorCard(card) == true
+                || (refit.Window == RefitWindow.GarrisonFloor
+                    && StrikeRoster.IsReservedRosterCard(player, intents, hand, card));
             void AddCardPlan(CardData card, int index, CardData equipment = null, int equipmentIndex = -1)
             {
                 var def = card.Definition;

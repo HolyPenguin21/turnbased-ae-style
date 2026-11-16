@@ -37,7 +37,12 @@ namespace Game.Ai.V2
         private static bool DefenceDuty(WorldSnapshot snap, ArmyData army, UnitData unit)
         {
             if (army == null || unit == null) return false;
-            if (army.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(army.Owner, army, unit)) return true;
+            // A garrison body joins the strike roster only when the strike view releases it
+            // (AiArmyRoles.IsStrikeSpareBody — the AttackForcePool rule); heroes keep the
+            // garrison's hero release rule.
+            if (army.IsGarrison && (unit.IsHero
+                    ? !AiArmyRoles.CanSpareGarrisonMember(army.Owner, army, unit)
+                    : !AiArmyRoles.IsStrikeSpareBody(army.Owner, army, unit))) return true;
             return UnderNearThreat(snap, army);
         }
 

@@ -19,6 +19,23 @@ namespace Game.Ai.V2
                 .OrderByDescending(i => AiPower.EffectiveArmyPowerFromProfiles(new[] { donor.Members[i] }))
                 .ThenBy(i => donor.NonHeroRuntimeIds[i]);
 
+        // 2026-11-16 — may the bodies `chosen` (indices into donor.Members) leave TOGETHER? Each
+        // NonHeroSpareable flag only says "may leave alone"; the set is judged by the one release
+        // rule (AiArmyRoles.MayReleaseBodies) on the scan's floor (SelfSnapshot.
+        // GarrisonReleaseFloors). Without a floor witness (isolated snapshots) the flags decide.
+        internal static bool MayRelease(WorldSnapshot snap, ArmySnapshot donor, IReadOnlyList<int> chosen)
+        {
+            if (donor?.NonHeroSpareable == null || chosen == null || chosen.Count == 0)
+                return true;
+            if (chosen.Any(i => i < 0 || i >= donor.NonHeroSpareable.Count || !donor.NonHeroSpareable[i]))
+                return false;
+            if (chosen.Count == 1 || snap?.Self?.GarrisonReleaseFloors == null
+                || !snap.Self.GarrisonReleaseFloors.TryGetValue(donor.ArmyId, out float floor))
+                return true;
+            return AiArmyRoles.MayReleaseBodies(donor.Members, chosen.ToList(),
+                set => AiPower.EffectiveArmyPowerFromProfiles(set.ToList()), floor);
+        }
+
         internal static ArmySnapshot Project(ArmySnapshot donor, IReadOnlyList<int> chosen,
             int armyId, int capacity, bool projectTransportMovement = false)
         {

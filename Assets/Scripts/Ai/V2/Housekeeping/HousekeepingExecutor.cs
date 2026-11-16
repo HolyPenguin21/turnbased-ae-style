@@ -203,7 +203,7 @@ namespace Game.Ai.V2
         // pass inboundOnly=false: both sides give, so both must be free.
         private static bool CommonPreflight(PlayerSetupData player, int turn, ArmyData a, ArmyData b,
             ActorCommitments commitments, out string why, bool inboundOnly = true,
-            UnitData released = null)
+            UnitData released = null, bool rosterExchange = false)
         {
             why = null;
             if (a == b) { why = "same container"; return false; }
@@ -227,7 +227,7 @@ namespace Game.Ai.V2
             // it for a missing position's source; ReorgViability.PreparationRosterWaste).
             bool bodyRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
                 && receiver == null && giver.MayReleaseBody(a, released);
-            if (giver != null && !heroRelease && !bodyRelease)
+            if (giver != null && !heroRelease && !bodyRelease && !rosterExchange)
             { why = "source is mission-claimed"; return false; }
             // A facility operator of a protected host may only stay home: the one local-garrison rule.
             if (giver != null && heroRelease && LocalOperatorRelease.IsSoleOperator(player, a.Hex, released)
@@ -307,10 +307,31 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Live twin of the planner's TrySwap rosterExchange: `armyA` is a claimed Attack preparation
+        // host whose contract releases `unitA` (a body its target roster does not contain) and
+        // takes inbound members; `armyB` is the free local garrison giving `unitB`, a body whose
+        // key the roster names.
+        private static bool IsPreparationRosterExchange(PlayerSetupData player, int turn, ArmyData armyA,
+            UnitData unitA, ArmyData armyB, UnitData unitB, ActorCommitments commitments)
+        {
+            if (armyA == null || armyB == null || unitA == null || unitB == null || armyA.IsGarrison
+                || !armyB.IsGarrison || unitA.IsHero || unitB.IsHero)
+                return false;
+            ArmyMutationContract host = ArmyReorgAnalyzer.MutationContractFor(player, turn, armyA, commitments);
+            if (host == null || !host.MayReceive || !host.MayReleaseBody(armyA, unitA)
+                || ArmyReorgAnalyzer.MutationContractFor(player, turn, armyB, commitments) != null)
+                return false;
+            IReadOnlyList<string> target = host.TargetRosterKeys(armyA);
+            string key = StrikeRoster.UnitKey(unitB);
+            return target != null && key != null && target.Contains(key);
+        }
+
         private static bool PreflightSwap(PlayerSetupData player, int turn, ArmyData armyA, UnitData unitA,
             ArmyData armyB, UnitData unitB, ActorCommitments commitments, HashSet<UnitData> movedUnits, out string why)
         {
-            if (!CommonPreflight(player, turn, armyA, armyB, commitments, out why, inboundOnly: false))
+            bool rosterExchange = IsPreparationRosterExchange(player, turn, armyA, unitA, armyB, unitB, commitments);
+            if (!CommonPreflight(player, turn, armyA, armyB, commitments, out why, inboundOnly: false,
+                    released: unitA, rosterExchange: rosterExchange))
                 return false;
             // A garrison may participate on one side when a hero leaves it. The field-side member
             // may be either a body (forming a previously heroless army) OR another hero (returning
@@ -325,8 +346,16 @@ namespace Game.Ai.V2
                 UnitData leaving = garrisonA ? unitA : unitB;   // garrison -> field
                 UnitData entering = garrisonA ? unitB : unitA;  // field  -> garrison
                 if (!leaving.IsHero)
-                { why = "garrison swap must send a hero out"; return false; }
-                if (!AiArmyRoles.CanSpareGarrisonMember(player, garr, leaving, allowCitadelEmergency: false))
+                {
+                    // 2026-11-16 — the one body-for-body garrison exchange: a preparation host's
+                    // non-roster body for a missing roster position (the planner's TrySwap
+                    // rosterExchange), the garrison keeping min(held, floor).
+                    if (!rosterExchange)
+                    { why = "garrison swap must send a hero out"; return false; }
+                    if (!AiArmyRoles.GarrisonExchangeKeepsFloor(player, garr, leaving, entering))
+                    { why = "garrison roster exchange breaks its floor"; return false; }
+                }
+                else if (!AiArmyRoles.CanSpareGarrisonMember(player, garr, leaving, allowCitadelEmergency: false))
                 { why = "garrison hero release breaks security"; return false; }
                 // A hero (no power) leaves and a body enters: the garrison's defence never drops.
             }

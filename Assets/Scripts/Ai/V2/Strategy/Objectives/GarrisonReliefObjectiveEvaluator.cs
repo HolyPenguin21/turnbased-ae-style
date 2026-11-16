@@ -187,6 +187,11 @@ namespace Game.Ai.V2
                 if (chosen.Count >= shell.Capacity || chosen.Count >= freeSlots || power >= shortfall)
                     break;
                 chosen.Add(i);
+                if (!GarrisonDetachment.MayRelease(snap, donor, chosen))
+                {
+                    chosen.RemoveAt(chosen.Count - 1);
+                    continue;
+                }
                 power = AiPower.EffectiveArmyPowerFromProfiles(chosen.Select(c => bodies[c]).ToList());
             }
             if (chosen.Count == 0)

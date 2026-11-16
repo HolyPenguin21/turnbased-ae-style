@@ -269,6 +269,55 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 0.86 (2026-11-16, owner decision) — the armies take their best fighters back after a
+            // defensive fold: an Attack preparation host exchanges a body its target roster does
+            // not contain for a garrison body of a missing position, 1-for-1, the garrison keeping
+            // min(held, floor) (TrySwap rosterExchange, AiArmyRoles.KeepsFloorAfterExchange).
+            // Match 2026-11-16: Rurik's roster wanted Boomstick/Iron Maw/Roadbreaker held by the
+            // Base (1,1) garrison at its floor, so no release could ever bring them.
+            foreach (int hostId in armyIds)
+            {
+                ReorgContainer host = state.Meta[hostId];
+                if (host.PreparationTargetKeys == null || !host.CanReceive)
+                    continue;
+                var need = new Dictionary<string, int>();
+                foreach (string k in host.PreparationTargetKeys)
+                    if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+                var nonRoster = new List<ReorgUnit>();
+                foreach (ReorgUnit u in state.Roster[hostId].Where(u => u != null && !u.IsHero)
+                             .OrderByDescending(u => u.Power).ThenBy(u => u.Key))
+                {
+                    if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                        need[u.StrikeKey] = n - 1;
+                    else if (!u.IsArmySupportCarrier && !u.IsCommitted && !u.IsAviation
+                             && !state.MovedUnitKeys.Contains(u.Key))
+                        nonRoster.Add(u);
+                }
+                foreach (ReorgUnit u in state.Roster[hostId].Where(u => u != null && u.IsHero))
+                    if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                        need[u.StrikeKey] = n - 1;
+                if (nonRoster.Count == 0)
+                    continue;
+                nonRoster.Reverse(); // weakest non-roster body goes first
+                foreach (int gId in armyIds)
+                {
+                    ReorgContainer g = state.Meta[gId];
+                    if (gId == hostId || !g.IsGarrison || !g.CanChangeComposition)
+                        continue;
+                    foreach (ReorgUnit u in state.Roster[gId].Where(x => x != null && !x.IsHero
+                                 && !x.IsAviation && !x.IsCommitted && x.StrikeKey != null
+                                 && !state.MovedUnitKeys.Contains(x.Key)
+                                 && need.TryGetValue(x.StrikeKey, out int n) && n > 0)
+                                 .OrderByDescending(x => x.Power).ThenBy(x => x.Key))
+                        foreach (ReorgUnit body in nonRoster)
+                        {
+                            VState exchanged = TrySwap(state, hostId, body, gId, u, rosterExchange: true);
+                            if (exchanged != null)
+                                yield return exchanged;
+                        }
+                }
+            }
+
             // 1. Whole-fold any occupied mutable field container when the transfer is physically
             // legal. Candidate generation owns legality only; policy belongs to Evaluate(). A
             // healthy viable source is therefore allowed to collapse into a stronger local field

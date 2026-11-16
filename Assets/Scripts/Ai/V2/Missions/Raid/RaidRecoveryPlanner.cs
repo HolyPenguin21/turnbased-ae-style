@@ -393,6 +393,21 @@ namespace Game.Ai.V2
             return best;
         }
 
+        // The bodies already taken from this garrison donor plus `runtimeId`, judged as one set
+        // (GarrisonDetachment.MayRelease, the one release rule).
+        private static bool MayReleaseWith(WorldSnapshot snap, ArmySnapshot garrison,
+            HashSet<int> usedRuntimeIds, int runtimeId)
+        {
+            IReadOnlyList<int> ids = garrison?.NonHeroRuntimeIds;
+            if (ids == null)
+                return true;
+            var chosen = new List<int>();
+            for (int i = 0; i < ids.Count; i++)
+                if (ids[i] == runtimeId || usedRuntimeIds.Contains(ids[i]))
+                    chosen.Add(i);
+            return GarrisonDetachment.MayRelease(snap, garrison, chosen);
+        }
+
         private static List<Candidate> BuildCandidates(WorldSnapshot snap, ArmySnapshot primary,
             HexCoord baseHex, List<SimMember> roster, int initialCombatBodyCount,
             List<(ArmySnapshot Army, RaidRecoveryMemberSnapshot Member)> donors,
@@ -430,6 +445,10 @@ namespace Game.Ai.V2
             foreach ((ArmySnapshot donorArmy, RaidRecoveryMemberSnapshot donor) in donors)
             {
                 if (usedDonors.Contains(donor.RuntimeId)) continue;
+                // 2026-11-16 — CanSpareForRaid says "may leave alone": a garrison donor gives a
+                // further body only while the whole set taken from it may leave together.
+                if (donorArmy.IsGarrison && !MayReleaseWith(snap, donorArmy, usedDonors, donor.RuntimeId))
+                    continue;
                 if (free > 0)
                 {
                     var projected = roster.Select(x => x.Profile).ToList();

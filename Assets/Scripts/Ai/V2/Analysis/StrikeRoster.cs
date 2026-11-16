@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Map;
+using Game.Players;
 using Game.Units;
 
 namespace Game.Ai.V2
@@ -114,6 +115,40 @@ namespace Game.Ai.V2
             for (int i = 0; i < roster.Count; i++)
                 if (!roster[i].IsHero && roster[i].Key == key)
                     return true;
+            return false;
+        }
+
+        // 2026-11-16 (owner decision) — is `card` a held copy a live Attack's frozen target roster
+        // still waits for? A preparation (Gather) or its Reinforcement leg, while its host lives:
+        // the roster positions not yet in the host and not sourced from the map, one copy per
+        // missing position (extra copies stay free). A garrison delivery (held-base demand, the
+        // GarrisonFloor refit) never takes it (MaterializationChainEnumerator, AttackBaseRefitPolicy).
+        // Match 2026-11-16: Cassia's roster wanted Sandnought; on T26 (Reinforcement) the
+        // GarrisonFloor refit put it into Base (2,-1).
+        public static bool IsReservedRosterCard(PlayerSetupData player, IEnumerable<MissionIntent> intents,
+            AiHandData hand, CardData card)
+        {
+            string key = CardKey(card?.Definition);
+            if (key == null || player == null || intents == null)
+                return false;
+            foreach (MissionIntent i in intents)
+            {
+                AttackIntent a = i?.Attack;
+                if (i == null || i.Status != IntentStatus.Active || i.Kind != MissionKind.Attack || a == null
+                    || !a.PrimaryArmyId.HasValue || a.TargetRoster == null || a.TargetRoster.Count == 0
+                    || (a.Phase != AttackMissionPhase.Gather && a.Phase != AttackMissionPhase.Reinforcement))
+                    continue;
+                ArmyData host = OwnWorld.Of(player).Army(a.PrimaryArmyId.Value);
+                if (host == null)
+                    continue;
+                int waited = Missing(a.TargetRoster, host.Members)
+                    .Count(m => !m.IsHero && m.Source != ForceSource.Map && m.Key == key);
+                if (waited <= 0)
+                    continue;
+                int held = hand?.Hand?.Count(c => CardKey(c?.Definition) == key) ?? 0;
+                if (held <= waited)
+                    return true;
+            }
             return false;
         }
 

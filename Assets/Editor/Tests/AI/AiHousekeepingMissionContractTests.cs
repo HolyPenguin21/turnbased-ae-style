@@ -286,6 +286,42 @@ namespace Game.EditorTests
             Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2), Is.False, plan.DebugSummary());
         }
 
+        // 2026-11-16 (owner decision) — the armies take their best fighters back: a garrison body
+        // its floor keeps (no release) comes into a full preparation host by a 1-for-1 exchange
+        // for the host's non-roster body, the garrison keeping min(held, floor).
+        [Test]
+        public void PreparationHost_ExchangesNonRosterBodyForAGarrisonRosterBody()
+        {
+            ReorgUnit tank = Keyed(Body(12f), "tank");
+            ReorgContainer garrison = Garrison(1, tank, Keyed(Body(8f), "inf"));
+            garrison.GarrisonPowerFloor = 9.5f;   // 0.55 x 18: the tank alone may never leave
+            ReorgUnit heavy = Keyed(Body(10f), "heavy");
+            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
+                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), heavy);
+            host.MayReleaseExcessHeroes = true;
+            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
+            ReorganizationPlan plan = Plan(garrison, host);
+            Assert.That(plan.ExpectedMembership[2], Does.Contain(tank.Key), plan.DebugSummary());
+            Assert.That(plan.ExpectedMembership[1], Does.Contain(heavy.Key), plan.DebugSummary());
+        }
+
+        // The exchange that would leave the garrison below min(held, floor) is never taken.
+        [Test]
+        public void PreparationHost_NoExchange_WhenTheGarrisonWouldFallBelowItsFloor()
+        {
+            ReorgUnit tank = Keyed(Body(12f), "tank");
+            ReorgContainer garrison = Garrison(1, tank, Keyed(Body(8f), "inf"));
+            garrison.GarrisonPowerFloor = 9.5f;
+            ReorgUnit light = Keyed(Body(5f), "light");
+            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
+                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), light);
+            host.MayReleaseExcessHeroes = true;
+            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
+            ReorganizationPlan plan = Plan(garrison, host);
+            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2 || t.FromArmyId == 1), Is.False,
+                plan.DebugSummary());
+        }
+
         // With no source of a missing position the non-roster body stays: nothing to wait for.
         [Test]
         public void PreparationHost_KeepsNonRosterBodyWithoutAPendingSource()

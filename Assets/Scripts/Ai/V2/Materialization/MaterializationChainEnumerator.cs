@@ -37,9 +37,12 @@ namespace Game.Ai.V2
             // T01 — a live Attack preparation's claimed empty host is offered only to its own demand.
             int? preparationShell = demand.AttackFistIsPreparationHost ? demand.AttackFistArmyId : null;
             Game.Economy.ResourceType? requiredResourceType = demand.EconomyResourceType;
+            bool garrisonDelivery = demand.DeliveryShape == CapabilityDeliveryShape.Garrison;
             bool Excluded(CardData c) => c != null
                 && ((excludeCards != null && excludeCards.Contains(c))
-                    || (reservation?.ClaimsDevelopmentOperatorCard(c) ?? false));
+                    || (reservation?.ClaimsDevelopmentOperatorCard(c) ?? false)
+                    || (garrisonDelivery && StrikeRoster.IsReservedRosterCard(player,
+                        WorldSnapshot.IntentsOf(snap), hand, c)));
             bool ExcludedGen(GenerationStep g) => g != null && excludeGenKeys != null
                 && !string.IsNullOrEmpty(g.CardKey) && excludeGenKeys.Contains(g.CardKey);
             // A demand pinned to one hand card (AxisDemand.EconomySourceCard) is closed only by

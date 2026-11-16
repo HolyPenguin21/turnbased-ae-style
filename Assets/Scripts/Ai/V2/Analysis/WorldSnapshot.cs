@@ -613,6 +613,11 @@ namespace Game.Ai.V2
         // (AttackForceReadiness.MobilizationOpen); it never admits a march.
         public float DeployedPower;
         public float AvailablePower;
+        // 2026-11-16 — each own garrison's defence floor at scan time (AiArmyRoles.
+        // GarrisonDefenceFloor, the value CanSpareGarrisonMembers reads), by army id. A planner
+        // that takes SEVERAL bodies from ArmySnapshot.NonHeroSpareable (each "may leave alone")
+        // checks its whole set with GarrisonDetachment.MayRelease. Turn-scoped, never saved.
+        public IReadOnlyDictionary<int, float> GarrisonReleaseFloors;
         // Mobilization start (B), one-stack scale: the strongest single army the bodies already
         // on the field could form (WorldAnalysis.FieldStrikePotential).
         public float FieldStrikePotential;

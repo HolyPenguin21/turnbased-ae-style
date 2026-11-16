@@ -278,6 +278,12 @@ namespace Game.Ai.V2
             using (new ProfileScope("AI/Self.AdditivePower"))
                 PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
                     out self.DeployedPower, out self.AvailablePower);
+            // The floor CanSpareGarrisonMembers reads, on the same measured ground force.
+            HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
+            self.GarrisonReleaseFloors = ownArmies.Where(a => a != null && a.IsGarrison)
+                .GroupBy(a => a.Id)
+                .ToDictionary(g => g.Key, g => AiArmyRoles.GarrisonDefenceFloor(player, self.AvailablePower,
+                    g.First().Hex, g.First().Hex.Equals(citadelHex)));
             using (new ProfileScope("AI/Self.FieldStrikePotential"))
                 self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower,
                     intents?.All, logComposition: true);

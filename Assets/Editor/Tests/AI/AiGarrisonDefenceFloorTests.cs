@@ -7,8 +7,10 @@ using NUnit.Framework;
 namespace Game.EditorTests
 {
     // User decision 2026-09-30 — the garrison defence floor is a share of the ground force
-    // (Citadel 10%, Base 5%); one body always stays; among the legal choices the strongest body
-    // goes when the defence shortfall is smaller than the attack power it frees.
+    // (Citadel 10%, Base 5%); one body always stays.
+    // Owner decision 2026-11-16 — the release rule judges the departing SET (the kept bodies hold
+    // the floor); the strike view (SpareableBodies) takes the strongest body first that still
+    // keeps it. The Vex T22 small-shortfall exception is dropped.
     public class AiGarrisonDefenceFloorTests
     {
         // Additive power stands in for AiPower here: the rule only compares set powers.
@@ -22,21 +24,51 @@ namespace Game.EditorTests
             Assert.That(AiArmyRoles.GarrisonDefenceFloor(74f, isCitadel: false), Is.EqualTo(3.7f).Within(1e-4f));
         }
 
-        // Vex T22: floor 7.4, Ash Drifter 6.6 + MT Rust Tank 11. Keeping the tank frees 6.6;
-        // keeping Ash Drifter frees 11 at a 0.8 shortfall — the tank goes.
+        // Vex T22 (exception dropped 2026-11-16): floor 7.4, Ash Drifter 6.6 + MT Rust Tank 11.
+        // The tank leaving would leave 6.6 < 7.4, so the floor keeps it; Ash Drifter may go.
         [Test]
-        public void TankLeaves_WhenTheShortfallIsSmallerThanTheAttackGain()
+        public void HardFloor_TheTankStays_WhenItsDepartureBreaksTheFloor()
         {
-            Assert.That(Spare(7.4f, 6.6f, 11f), Is.EquivalentTo(new[] { 1 }));
+            Assert.That(Spare(7.4f, 6.6f, 11f), Is.EquivalentTo(new[] { 0 }));
         }
 
-        // floor 15, bodies 6.6 / 11 / 4: one may go. Releasing the tank (11, shortfall 4.4) and
-        // releasing Ash Drifter (6.6, no shortfall) both free 6.6 net — the tie keeps the stronger
-        // defence, so Ash Drifter goes and the tank stays.
+        // Match 2026-11-16, Cassia T27, Base (2,-1) (stat-line powers): the old kept-set search
+        // released Mule + RC Vehicle and kept Sandnought. The strongest body that keeps the floor
+        // goes first: Sandnought; after it no other body may leave.
         [Test]
-        public void Tie_KeepsTheStrongerDefender()
+        public void StrongestBodyThatKeepsTheFloor_GoesFirst()
         {
-            Assert.That(Spare(15f, 6.6f, 11f, 4f), Is.EquivalentTo(new[] { 0 }));
+            // MedInf, ATInf, Coil, Mule, MedInf, RC, Sandnought
+            Assert.That(Spare(48.6f, 8.25f, 8.25f, 9.5f, 9.45f, 8.25f, 8.85f, 13.9f),
+                Is.EquivalentTo(new[] { 6 }));
+        }
+
+        [Test]
+        public void ReleaseRule_JudgesTheWholeSet()
+        {
+            float Sum(IEnumerable<float> s) => s.Sum();
+            var bodies = new List<float> { 3f, 6f, 3f, 12f };
+            Assert.That(AiArmyRoles.MayReleaseBodies(bodies, new[] { 3 }, Sum, 4f), Is.True);
+            Assert.That(AiArmyRoles.MayReleaseBodies(bodies, new[] { 3, 1 }, Sum, 4f), Is.True);
+            Assert.That(AiArmyRoles.MayReleaseBodies(bodies, new[] { 3, 1, 0 }, Sum, 4f), Is.False,
+                "each body alone may go, the set may not: only 3 would stay");
+            Assert.That(AiArmyRoles.MayReleaseBodies(bodies, new[] { 0, 1, 2, 3 }, Sum, 0f), Is.False,
+                "one body always stays");
+            Assert.That(AiArmyRoles.MayReleaseBodies(bodies, new int[0], Sum, 100f), Is.True);
+        }
+
+        [Test]
+        public void ExchangeRule_KeepsTheLowerOfHeldAndFloor()
+        {
+            float Sum(IEnumerable<float> s) => s.Sum();
+            var garrison = new List<float> { 8f, 8f, 14f };   // held 30
+            Assert.That(AiArmyRoles.KeepsFloorAfterExchange(garrison, 2, 7f, Sum, 22f), Is.True,
+                "14 out, 7 in: 23 still holds the floor 22");
+            Assert.That(AiArmyRoles.KeepsFloorAfterExchange(garrison, 2, 5f, Sum, 22f), Is.False,
+                "14 out, 5 in: 21 < 22");
+            Assert.That(AiArmyRoles.KeepsFloorAfterExchange(garrison, 0, 8f, Sum, 40f), Is.True,
+                "already below the floor: an exchange may not lower it further, an equal one is fine");
+            Assert.That(AiArmyRoles.KeepsFloorAfterExchange(garrison, 0, 7f, Sum, 40f), Is.False);
         }
 
         [Test]
@@ -55,10 +87,9 @@ namespace Game.EditorTests
         [Test]
         public void HowManyLeave_IsBoundedByTheStrongestRemainder()
         {
-            // floor 10: the strongest single body (12) holds it, so two may go — the two strongest
-            // leave when the weakest remaining body's shortfall (10-3=7) is smaller than the gain.
+            // floor 10: 12 leaves (11 + 3 hold it), 11 may not (3 alone), then 3 may (11 holds it).
             HashSet<int> spare = Spare(10f, 3f, 12f, 11f);
-            Assert.That(spare.Count, Is.EqualTo(2));
+            Assert.That(spare, Is.EquivalentTo(new[] { 1, 0 }));
         }
 
         // 2026-10-15 — playtest: Sentinels two turns from Draven's Base (-1,3) while its garrison

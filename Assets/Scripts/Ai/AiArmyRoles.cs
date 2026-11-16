@@ -300,14 +300,14 @@ namespace Game.Ai
             ArmyData source, bool allowCitadelEmergency = false)
         {
             List<UnitData> bodies = null;
-            HashSet<int> spare = null;
+            float? floor = null;
             return units => CanSpareGarrisonMembers(player, source, units, allowCitadelEmergency,
-                ref bodies, ref spare);
+                ref bodies, ref floor);
         }
 
         private static bool CanSpareGarrisonMembers(PlayerSetupData player, ArmyData source,
             IEnumerable<UnitData> units, bool allowCitadelEmergency,
-            ref List<UnitData> bodies, ref HashSet<int> spare)
+            ref List<UnitData> bodies, ref float? floor)
         {
             if (player == null || source == null || units == null)
                 return false;
@@ -340,18 +340,17 @@ namespace Game.Ai
             if (removedBodies.Count == 0)
                 return true;
             // 2026-09-30 (user decision) — a power floor, not a headcount: the garrison keeps a share
-            // of the player's whole ground force, at least one body, and among the legal choices
-            // the strongest bodies go (SpareableBodies).
-            if (spare == null)
+            // of the player's whole ground force and at least one body.
+            // 2026-11-16 (owner decision) — the rule judges the departing SET (MayReleaseBodies);
+            // which bodies go is the caller's choice.
+            if (!floor.HasValue)
             {
                 bodies = source.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
-                spare = SpareableBodies(bodies,
-                    set => AiPower.EffectiveArmyPower(set.ToList()),
-                    GarrisonDefenceFloor(player, source.Hex, isCitadel));
+                floor = GarrisonDefenceFloor(player, source.Hex, isCitadel);
             }
             List<UnitData> b = bodies;
-            HashSet<int> s = spare;
-            return removedBodies.All(u => s.Contains(b.IndexOf(u)));
+            return MayReleaseBodies(b, removedBodies.Select(u => b.IndexOf(u)).ToList(),
+                set => AiPower.EffectiveArmyPower(set.ToList()), floor.Value);
         }
 
         // The garrison defence floor on the player's live ground force (map + AI hand + remaining
@@ -525,15 +524,31 @@ namespace Game.Ai
             return floor;
         }
 
-        // Which garrison bodies may leave (indices into `bodies`), decided once for the roster:
-        //   * how many — the most that still lets the strongest remaining bodies hold `floor`
-        //     (at least one body always stays);
-        //   * which — the kept set that maximizes (power released to the field) minus (shortfall of
-        //     the kept set below the floor), both on the one AiPower scale. A strong tank leaves and
-        //     a weak body stays even when that leaves the garrison slightly under the floor, when
-        //     that shortfall is smaller than the attack power gained (Vex T22: floor 7.4, keep
-        //     Ash Drifter 6.6 = -0.8, release MT Rust Tank ~11). Ties keep the stronger defender.
-        // Pure; the planner and the executor read the same answer.
+        // 2026-11-16 (owner decision) — THE garrison release rule: may the bodies `released`
+        // (indices into `bodies`) leave TOGETHER? The bodies that stay must hold `floor` and at
+        // least one body always stays. It never picks WHICH bodies go: every caller orders its own
+        // candidates (Attack, Raid and sorties strongest first, an Economy escort cheapest first)
+        // and asks this rule about the set it builds. Replaces the 2026-09-30 kept-set search:
+        // released − shortfall equals held − floor for every set crossing the floor, so its
+        // "keep the stronger defender" tie-break split the surplus over the MOST bodies, i.e. the
+        // weakest (match 2026-11-16, Cassia T27: Mule + RC Vehicle left, Sandnought stayed),
+        // and the Vex T22 small-shortfall exception is dropped with it.
+        public static bool MayReleaseBodies<T>(IReadOnlyList<T> bodies, ICollection<int> released,
+            Func<IEnumerable<T>, float> setPower, float floor)
+        {
+            if (released == null || released.Count == 0)
+                return true;
+            int n = bodies?.Count ?? 0;
+            if (setPower == null || released.Any(i => i < 0 || i >= n))
+                return false;
+            List<int> kept = Enumerable.Range(0, n).Where(i => !released.Contains(i)).ToList();
+            return kept.Count > 0 && setPower(kept.Select(i => bodies[i])) + 0.001f >= floor;
+        }
+
+        // The strike view of MayReleaseBodies (indices into `bodies`): strongest first, a body
+        // joins while the whole set may still leave. The force measures (FieldStrikePotential,
+        // AttackForcePool) and Housekeeping's roster sources read it, so the Attack plans around
+        // the bodies its own strongest-first assembly will actually get. Pure.
         public static HashSet<int> SpareableBodies<T>(IReadOnlyList<T> bodies,
             Func<IEnumerable<T>, float> setPower, float floor)
         {
@@ -541,65 +556,61 @@ namespace Game.Ai
             int n = bodies?.Count ?? 0;
             if (n <= 1 || setPower == null)
                 return spare;
-            List<int> strongestFirst = Enumerable.Range(0, n)
-                .OrderByDescending(i => setPower(new[] { bodies[i] }))
-                .ThenBy(i => i)
-                .ToList();
-            int release = 0;
-            for (int k = n - 1; k >= 1; k--)
-                if (setPower(strongestFirst.Take(n - k).Select(i => bodies[i])) >= floor)
-                {
-                    release = k;
-                    break;
-                }
-            if (release == 0)
-                return spare;
-
-            int keep = n - release;
-            List<int> bestKept = null;
-            float bestValue = float.NegativeInfinity, bestKeptPower = float.NegativeInfinity;
-            IEnumerable<List<int>> keptSets = n <= 10
-                ? Combinations(n, keep)
-                : new[] { strongestFirst.Take(keep).ToList() };
-            foreach (List<int> kept in keptSets)
+            foreach (int i in Enumerable.Range(0, n)
+                         .OrderByDescending(i => setPower(new[] { bodies[i] }))
+                         .ThenBy(i => i))
             {
-                float keptPower = setPower(kept.Select(i => bodies[i]));
-                float released = setPower(Enumerable.Range(0, n).Where(i => !kept.Contains(i))
-                    .Select(i => bodies[i]));
-                float value = released - Math.Max(0f, floor - keptPower);
-                if (value > bestValue + 0.001f
-                    || (Math.Abs(value - bestValue) <= 0.001f && keptPower > bestKeptPower + 0.001f))
-                {
-                    bestKept = kept;
-                    bestValue = value;
-                    bestKeptPower = keptPower;
-                }
+                spare.Add(i);
+                if (!MayReleaseBodies(bodies, spare, setPower, floor))
+                    spare.Remove(i);
             }
-            for (int i = 0; i < n; i++)
-                if (!bestKept.Contains(i))
-                    spare.Add(i);
             return spare;
         }
 
-        private static IEnumerable<List<int>> Combinations(int n, int k)
+        // Live twin of the strike view: is `unit` among the bodies the garrison's strongest-first
+        // release (SpareableBodies on its live floor) would give an Attack? Readers that pick strike
+        // roster members (equipment for the roster) use it, so they agree with AttackForcePool.
+        public static bool IsStrikeSpareBody(PlayerSetupData player, ArmyData garrison, UnitData unit)
         {
-            var current = new List<int>();
-            IEnumerable<List<int>> Walk(int start)
-            {
-                if (current.Count == k)
-                {
-                    yield return new List<int>(current);
-                    yield break;
-                }
-                for (int i = start; i <= n - (k - current.Count); i++)
-                {
-                    current.Add(i);
-                    foreach (List<int> c in Walk(i + 1))
-                        yield return c;
-                    current.RemoveAt(current.Count - 1);
-                }
-            }
-            return Walk(0);
+            if (player == null || garrison == null || unit == null || !garrison.IsGarrison
+                || unit.IsHero || !garrison.Members.Contains(unit))
+                return false;
+            List<UnitData> bodies = garrison.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
+            bool isCitadel = garrison.Hex.Equals(AiTurnController.GarrisonHexFor(player));
+            return SpareableBodies(bodies, set => AiPower.EffectiveArmyPower(set.ToList()),
+                    GarrisonDefenceFloor(player, garrison.Hex, isCitadel))
+                .Contains(bodies.IndexOf(unit));
+        }
+
+        // 2026-11-16 (owner decision) — THE garrison exchange rule: body `leaving` goes out and
+        // `entering` comes in. The garrison may not end below both its floor and what it held
+        // before (the same "only if currently above it" semantics as the release rule). Read by
+        // Housekeeping's planner and executor for a preparation host's roster exchange.
+        public static bool KeepsFloorAfterExchange<T>(IReadOnlyList<T> bodies, int leaving, T entering,
+            Func<IEnumerable<T>, float> setPower, float floor)
+        {
+            int n = bodies?.Count ?? 0;
+            if (setPower == null || leaving < 0 || leaving >= n)
+                return false;
+            float before = setPower(bodies);
+            float after = setPower(bodies.Where((b, i) => i != leaving).Concat(new[] { entering }));
+            return after + 0.001f >= Math.Min(before, floor);
+        }
+
+        // Live twin of KeepsFloorAfterExchange for a garrison ArmyData: `leaving` (its body) goes
+        // out, `entering` (a body of another own army on the hex) comes in.
+        public static bool GarrisonExchangeKeepsFloor(PlayerSetupData player, ArmyData garrison,
+            UnitData leaving, UnitData entering)
+        {
+            if (player == null || garrison == null || !garrison.IsGarrison || leaving == null
+                || entering == null || leaving.IsHero || entering.IsHero
+                || !garrison.Members.Contains(leaving) || IsFacilityOperator(player, garrison.Hex, leaving))
+                return false;
+            List<UnitData> bodies = garrison.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
+            bool isCitadel = garrison.Hex.Equals(AiTurnController.GarrisonHexFor(player));
+            return KeepsFloorAfterExchange(bodies, bodies.IndexOf(leaving), entering,
+                set => AiPower.EffectiveArmyPower(set.ToList()),
+                GarrisonDefenceFloor(player, garrison.Hex, isCitadel));
         }
 
         // The best hero Economy may pull straight out of `garrison` to travel to a resource site,

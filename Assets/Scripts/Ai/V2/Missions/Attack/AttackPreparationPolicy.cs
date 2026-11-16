@@ -119,8 +119,9 @@ namespace Game.Ai.V2
         }
 
         // Power the own garrison on `hex` can give away above its defence floor, from the scan's
-        // frozen facts: its spareable non-hero bodies (ArmySnapshot.NonHeroSpareable), strongest
-        // first, never more than leaves secureBaseMinNonHeroUnits behind.
+        // frozen facts: its non-hero bodies that may leave together (ArmySnapshot.NonHeroSpareable +
+        // GarrisonDetachment.MayRelease), strongest first, never more than leaves
+        // secureBaseMinNonHeroUnits behind.
         internal static float SpareGarrisonPower(WorldSnapshot snap, HexCoord hex)
         {
             ArmySnapshot garrison = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.IsGarrison
@@ -131,13 +132,23 @@ namespace Game.Ai.V2
             int room = bodies.Count - AiConfig.secureBaseMinNonHeroUnits;
             if (room <= 0)
                 return 0f;
-            List<WorthIt.DefenderProfile> spare = bodies
-                .Where((b, i) => garrison.NonHeroSpareable == null
-                    || (i < garrison.NonHeroSpareable.Count && garrison.NonHeroSpareable[i]))
-                .OrderByDescending(b => AiPower.EffectiveArmyPowerFromProfiles(new[] { b }))
-                .Take(room)
-                .ToList();
-            return spare.Count == 0 ? 0f : AiPower.EffectiveArmyPowerFromProfiles(spare);
+            // Strongest first, each body only while the whole set may still leave
+            // (GarrisonDetachment.MayRelease — the one release rule, 2026-11-16).
+            var chosen = new List<int>();
+            foreach (int i in Enumerable.Range(0, bodies.Count)
+                         .Where(i => garrison.NonHeroSpareable == null
+                             || (i < garrison.NonHeroSpareable.Count && garrison.NonHeroSpareable[i]))
+                         .OrderByDescending(i => AiPower.EffectiveArmyPowerFromProfiles(new[] { bodies[i] }))
+                         .ThenBy(i => i))
+            {
+                if (chosen.Count >= room)
+                    break;
+                chosen.Add(i);
+                if (!GarrisonDetachment.MayRelease(snap, garrison, chosen))
+                    chosen.RemoveAt(chosen.Count - 1);
+            }
+            return chosen.Count == 0 ? 0f
+                : AiPower.EffectiveArmyPowerFromProfiles(chosen.Select(i => bodies[i]).ToList());
         }
         internal static (ArmyData garrison, UnitData hero, float power) FindCommanderUpgrade(
             WorldSnapshot snap, ArmySnapshot host, out float currentPower, out int currentCommand, out bool assessable)

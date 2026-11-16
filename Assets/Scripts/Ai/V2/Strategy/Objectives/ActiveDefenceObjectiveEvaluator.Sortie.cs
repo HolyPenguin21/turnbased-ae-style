@@ -85,6 +85,7 @@ namespace Game.Ai.V2
             {
                 if (chosen.Count >= capacity) break;
                 chosen.Add(i);
+                if (!GarrisonDetachment.MayRelease(snap, donor, chosen)) { chosen.RemoveAt(chosen.Count - 1); continue; }
                 ArmySnapshot projected = GarrisonDetachment.Project(donor, chosen, actorId, capacity, true);
                 if (projected.MemberCount == 1 && (projected.Members[0].Abilities?.Any(a =>
                     AbilityParams.TryGetRecce(a, out _, out _)) ?? false)) continue;

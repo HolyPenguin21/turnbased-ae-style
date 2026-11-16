@@ -207,6 +207,9 @@ namespace Game.Ai.V2
                                 && EconomyRosterSafe(new[] { army.Members[i] }, route.ExtractedHeroCommander,
                                     extractionThreats, 1))
                             .OrderBy(i => i < army.NonHeroActivationApCosts.Count ? army.NonHeroActivationApCosts[i] : 0)
+                            // 2026-11-16 — the garrison release rule no longer picks the bodies: the
+                            // escort takes the weakest sufficient one and leaves the strong for the strike.
+                            .ThenBy(i => AiPower.EffectiveArmyPowerFromProfiles(new[] { army.Members[i] }))
                             .ThenBy(i => i).DefaultIfEmpty(-1).First();
                         if (escort < 0)
                         {
@@ -328,6 +331,7 @@ namespace Game.Ai.V2
                     List<int> best = null;
                     int bestAp = int.MaxValue;
                     int bestMove = int.MinValue;
+                    float bestPower = float.MaxValue;
                     foreach (List<int> subset in Combinations(reserveIndices, add))
                     {
                         // No economy escort strips the garrison's protected defence floor — the
@@ -344,12 +348,18 @@ namespace Game.Ai.V2
                         int addedMove = subset.Min(i => i < garrison.NonHeroMoveMax.Count
                             ? garrison.NonHeroMoveMax[i] : garrison.MaxMovement);
                         if (Mathf.Min(route.MaxMovement, addedMove) < route.MaximumStepCost) continue;
+                        float addedPower = AiPower.EffectiveArmyPowerFromProfiles(
+                            subset.Select(i => reserve[i]).ToList());
+                        // 2026-11-16 — among equal AP and speed the weaker escort: the strong
+                        // bodies stay available to the strike (the release rule no longer picks).
                         if (best == null || addedAp < bestAp
-                            || (addedAp == bestAp && addedMove > bestMove))
+                            || (addedAp == bestAp && addedMove > bestMove)
+                            || (addedAp == bestAp && addedMove == bestMove && addedPower < bestPower - 0.001f))
                         {
                             best = subset;
                             bestAp = addedAp;
                             bestMove = addedMove;
+                            bestPower = addedPower;
                         }
                     }
                     if (best != null)

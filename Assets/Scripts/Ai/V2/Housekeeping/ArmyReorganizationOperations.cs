@@ -167,8 +167,12 @@ namespace Game.Ai.V2
             return movedAny && ReorgViability.IsViable(weak) ? c : null;
         }
 
+        // `rosterExchange` (2026-11-16, owner decision) — side A is an Attack preparation host
+        // (its contract names a target roster) giving a body that roster does not contain, side B
+        // the local garrison giving a body of a missing position; the garrison keeps
+        // min(held, floor) below. The only exchange a claimed container takes part in.
         private static VState TrySwap(VState state, int aId, ReorgUnit unitA,
-            int bId, ReorgUnit unitB)
+            int bId, ReorgUnit unitB, bool rosterExchange = false)
         {
             VState c = state.Clone();
             ReorgContainer aMeta = c.Meta[aId];
@@ -179,8 +183,12 @@ namespace Game.Ai.V2
             ReorgUnit ub = b.FirstOrDefault(x => x.Key == unitB.Key);
 
             // T05 — a claimed operation container never gives a member away, so it is never a
-            // side of an exchange (its contract admits inbound only).
-            if (aMeta.Role == ReorgPhysicalRole.ProtectedMissionArmy
+            // side of an exchange (its contract admits inbound only) — except a preparation
+            // host's body-for-body roster exchange with the local garrison (`rosterExchange`).
+            bool hostExchange = rosterExchange && aMeta.PreparationTargetKeys != null
+                && aMeta.CanReceive && bMeta.IsGarrison && bMeta.CanChangeComposition
+                && unitA != null && !unitA.IsHero && unitB != null && !unitB.IsHero;
+            if ((aMeta.Role == ReorgPhysicalRole.ProtectedMissionArmy && !hostExchange)
                 || bMeta.Role == ReorgPhysicalRole.ProtectedMissionArmy)
                 return null;
 
@@ -212,15 +220,16 @@ namespace Game.Ai.V2
 
             // §P1 — a garrison side of the swap must keep its defensive power reserve (same
             // "only if currently above it" semantics as GarrisonMayRelease).
-            if (aMeta.IsGarrison && !GarrisonRosterKeepsFloor(a, afterA, aMeta))
+            if (aMeta.IsGarrison && !GarrisonRosterKeepsFloor(a, ua, ub, aMeta))
                 return null;
-            if (bMeta.IsGarrison && !GarrisonRosterKeepsFloor(b, afterB, bMeta))
+            if (bMeta.IsGarrison && !GarrisonRosterKeepsFloor(b, ub, ua, bMeta))
                 return null;
 
             a.Clear(); a.AddRange(afterA);
             b.Clear(); b.AddRange(afterB);
-            c.Transfers.Add(PlannedTransfer.Swap(ua.Key, aId, ub.Key, bId,
-                "composition swap between viable armies"));
+            c.Transfers.Add(PlannedTransfer.Swap(ua.Key, aId, ub.Key, bId, hostExchange
+                ? "preparation roster exchange with the local garrison"
+                : "composition swap between viable armies"));
             c.MovedUnitKeys.Add(ua.Key);
             c.MovedUnitKeys.Add(ub.Key);
             return c;
@@ -275,21 +284,20 @@ namespace Game.Ai.V2
                 return false;
             if (u.IsHero)
                 return garrison.Count > 1;
-            // The one garrison spare rule (AiArmyRoles.SpareableBodies): a power floor, one body
-            // always stays, the strongest bodies are the ones that may go.
+            // The one garrison release rule (AiArmyRoles.MayReleaseBodies) on the roster as it
+            // stands in this virtual state: a power floor, one body always stays. Earlier moves of
+            // the same plan are already out of `garrison`, so a sequence is judged as a set.
             List<ReorgUnit> bodies = garrison.Where(x => x != null && x.IsGroundCombatant).ToList();
-            return AiArmyRoles.SpareableBodies(bodies,
-                    set => ReorgViability.EffectivePower(set.ToList()), meta.GarrisonPowerFloor)
-                .Contains(bodies.IndexOf(u));
+            int index = bodies.IndexOf(u);
+            return index >= 0 && AiArmyRoles.MayReleaseBodies(bodies, new[] { index },
+                set => ReorgViability.EffectivePower(set.ToList()), meta.GarrisonPowerFloor);
         }
 
         // A swap changes a garrison's roster without emptying it: it may not end below both its
-        // floor and what it held before.
-        private static bool GarrisonRosterKeepsFloor(List<ReorgUnit> before, List<ReorgUnit> after,
-            ReorgContainer meta)
-        {
-            float was = ReorgViability.EffectivePower(before);
-            return ReorgViability.EffectivePower(after) + 0.001f >= System.Math.Min(was, meta.GarrisonPowerFloor);
-        }
+        // floor and what it held before (AiArmyRoles.KeepsFloorAfterExchange, the one rule).
+        private static bool GarrisonRosterKeepsFloor(List<ReorgUnit> before, ReorgUnit leaving,
+            ReorgUnit entering, ReorgContainer meta) =>
+            AiArmyRoles.KeepsFloorAfterExchange(before, before.IndexOf(leaving), entering,
+                set => ReorgViability.EffectivePower(set.ToList()), meta.GarrisonPowerFloor);
     }
 }
