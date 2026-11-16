@@ -322,10 +322,30 @@ namespace Game.Ai.V2
             // A nearby field fist may need the carrier BEFORE its assault clears the defence gate.
             return (snap.Self?.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(a => a != null
                 && !a.IsAir && !a.IsPrison && !a.IsGarrison && !a.IsSoloRecce && a.MemberCount > 1
-                && a.IsStructuralRaidActor && AttackForceReadiness.ForceReady(a.EffectiveArmyPower, snap.Self.AttackPeak)
-                && a.MaxMovement > 0
+                && a.IsStructuralRaidActor && a.MaxMovement > 0
                 && HexGridMath.Distance(a.Hex, hex) <= 2 * a.MaxMovement
-                && !CarriesOwn(a));
+                && !CarriesOwn(a)
+                && FistMayAssault(snap, a, hex));
+        }
+
+        // 2026-11-16 — the fist the Attack lane itself would send: past the 80% floor, or by
+        // opportunity (AttackForceReadiness.ForceReady with the win chance) against the site once a
+        // carrier removes its structure defence (AttackSupportProjection.WithoutStructure). Match
+        // 2026-11-16, Korrin T27-T33: #18 (52.8 < 74.9) was admitted by opportunity (win 0.92) and
+        // held every turn awaiting a carrier, while this rule read the power floor alone and never
+        // asked for one; with no operation started there was no timeout either.
+        private static bool FistMayAssault(WorldSnapshot snap, ArmySnapshot fist, HexCoord hex)
+        {
+            if (AttackForceReadiness.ForceReady(fist.EffectiveArmyPower, snap.Self.AttackPeak))
+                return true;
+            List<Game.Combat.WorthIt.DefendingArmy> known = KnownOpposition.OnHex(snap, hex);
+            float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap.Observer, snap.Map, hex);
+            List<Game.Combat.WorthIt.DefendingArmy> disrupted = AttackSupportProjection.WithoutStructure(known, hexBonus,
+                out float disruptedBonus);
+            GroundCombatFeasibility.Clears(fist.Members ?? (IReadOnlyList<Game.Combat.WorthIt.DefenderProfile>)System.Array.Empty<Game.Combat.WorthIt.DefenderProfile>(),
+                fist.Commander, disrupted, GroundCombatAdmissionPolicy.AttackWinChanceGate, disruptedBonus,
+                out float win, out _);
+            return AttackForceReadiness.ForceReady(fist.EffectiveArmyPower, snap.Self.AttackPeak, win, disrupted);
         }
 
         // The live Attack operation (Gather, Assault or Reinforcement) whose target is `hex`.

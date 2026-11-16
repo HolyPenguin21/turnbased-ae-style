@@ -196,6 +196,30 @@ namespace Game.EditorTests
                 "the fist carries no Disruption: its entry waits for this carrier");
         }
 
+        // 2026-11-16 (match Korrin T27-T33) — the carrier is asked for the fist the Attack lane
+        // itself would send: below the 80% floor, but clearing the disrupted site by opportunity.
+        [Test]
+        public void DisruptionNeed_CountsAFistReadyByOpportunity()
+        {
+            WorthIt.DefenderProfile P(float a, float d, float hp) =>
+                new WorthIt.DefenderProfile(d, false, null, a, hp, 2, null, hp);
+            var fist = new ArmySnapshot { ArmyId = 9, Owner = _player, Hex = new HexCoord(1, 0),
+                MemberCount = 3, Members = new[] { P(8, 4, 9), P(8, 4, 9), P(8, 4, 9) },
+                MembersWithHeroes = new[] { P(8, 4, 9), P(8, 4, 9), P(8, 4, 9) },
+                MaxMovement = 2, CurrentMovement = 2, IsStructuralRaidActor = true };
+            WorldSnapshot snap = Snapshot(fist);
+            snap.Known.EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(Site, _enemy, "guard", 1, 1f, 2f,
+                new[] { P(2, 1, 3) }, seenTurn: 10, armyId: 77, isGarrison: true) };
+            snap.Self.AttackPeak = 1000f;   // far below the 80% floor
+            Assert.That(ReconObjectiveEvaluator.AssaultNeedsDisruption(snap, Site), Is.True,
+                "an opportunity fist two hexes away needs the carrier");
+            snap.Known.EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(Site, _enemy, "wall", 4, 40f, 60f,
+                new[] { P(20, 10, 30), P(20, 10, 30), P(20, 10, 30), P(20, 10, 30) },
+                seenTurn: 10, armyId: 78, isGarrison: true) };
+            Assert.That(ReconObjectiveEvaluator.AssaultNeedsDisruption(snap, Site), Is.False,
+                "a fist that cannot take the site even disrupted asks for nothing");
+        }
+
         // 2026-11-16 (owner decision, match Cassia T25-T29) — a reinforcement prospect is the
         // existing supports TOGETHER reaching the gate, not one support raising the odds a little.
         [Test]
