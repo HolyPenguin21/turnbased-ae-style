@@ -26,7 +26,11 @@ namespace Game.UI
         [SerializeField] private Button exitButton;
         [SerializeField] private TMP_Text exitButtonText;
         private Game.Turns.GameTurnController turnController;
-        private bool MenuAvailable => !UIFocusUtility.HasOverlay && !BattleActive && turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
+        // An AI-only match has no human turn at all (also after its winner is announced): the
+        // spectator may open the menu at any moment, battles included — they run without input.
+        private bool ObserverMatch => turnController != null && turnController.IsAiObserverMatch;
+        private bool HumanTurn => turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
+        private bool MenuAvailable => !UIFocusUtility.HasOverlay && (ObserverMatch || (!BattleActive && HumanTurn));
         private struct GroupState
         {
             public CanvasGroup Group;
@@ -74,8 +78,8 @@ namespace Game.UI
             if (saveButton != null) saveButton.interactable = turnController != null && turnController.CanSaveMatch(out _);
             if (loadButton != null) loadButton.interactable = turnController != null && turnController.SaveConfiguration != null;
             bool ownsSlots = saveSlots != null && saveSlots.IsShowing;
-            bool humanTurn = turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
-            if (IsShowing && (BattleActive || !humanTurn || (!MenuAvailable && !ownsSlots))) ContinueGame();
+            bool closeForTurn = !ObserverMatch && (BattleActive || !HumanTurn);
+            if (IsShowing && (closeForTurn || (!MenuAvailable && !ownsSlots))) ContinueGame();
             if (gearButton != null)
             {
                 gearButton.gameObject.SetActive(!IsShowing);
@@ -88,6 +92,7 @@ namespace Game.UI
             instance = this; // Also supports entering Play Mode without domain/scene reload.
             previousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             IsShowing = true;
+            turnController.SetAiObserverMenuHold(true);
             BlockGameplayCanvases();
             if (gearButton != null) gearButton.gameObject.SetActive(false);
             blockingRoot.SetActive(true);
@@ -131,6 +136,7 @@ namespace Game.UI
             if (!IsShowing) return;
             blockedThroughFrame = Time.frameCount;
             IsShowing = false;
+            if (turnController != null) turnController.SetAiObserverMenuHold(false);
             if (saveSlots != null) saveSlots.Close();
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             if (blockingRoot != null) blockingRoot.SetActive(false);

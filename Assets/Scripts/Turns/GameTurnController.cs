@@ -47,6 +47,10 @@ namespace Game.Turns
         private bool _aiObserverMatch;
         private bool _aiObserverPauseRequested;
         private bool _aiObserverPauseEngaged;
+        // The open game menu holds the spectated AI at its next action boundary, like Pause,
+        // without touching the spectator's own Pause/Play choice.
+        private bool _aiObserverMenuHold;
+        private bool AiObserverHoldRequested => _aiObserverPauseRequested || _aiObserverMenuHold;
         public bool IsAiObserverMatch => _aiObserverMatch;
         public bool IsAiObserverPaused => _aiObserverPauseEngaged;
         public bool IsAiObserverInspectionMode => _aiObserverMatch && _aiObserverPauseEngaged
@@ -569,6 +573,7 @@ namespace Game.Turns
             HumanVisualMemory.ObserverMatch = _aiObserverMatch;
             _aiObserverPauseRequested = false;
             _aiObserverPauseEngaged = false;
+            _aiObserverMenuHold = false;
             ConfigureAiObserverPauseButton();
 
             if (gameMenu != null) gameMenu.gameObject.SetActive(true);
@@ -1144,7 +1149,7 @@ namespace Game.Turns
 
         private IEnumerator PauseAtAiActionBoundary()
         {
-            if (!_aiObserverMatch || !_aiObserverPauseRequested || _gameOver)
+            if (!_aiObserverMatch || !AiObserverHoldRequested || _gameOver)
                 yield break;
 
             _aiObserverPauseEngaged = true;
@@ -1154,7 +1159,7 @@ namespace Game.Turns
             TurnStateChanged?.Invoke();
             RefreshAiObserverPauseButton();
 
-            while (_aiObserverMatch && _aiObserverPauseRequested && !_gameOver)
+            while (_aiObserverMatch && AiObserverHoldRequested && !_gameOver)
                 yield return null;
 
             if (_aiObserverPauseEngaged)
@@ -1163,6 +1168,11 @@ namespace Game.Turns
                 TurnStateChanged?.Invoke();
                 RefreshAiObserverPauseButton();
             }
+        }
+
+        public void SetAiObserverMenuHold(bool held)
+        {
+            _aiObserverMenuHold = held && _aiObserverMatch;
         }
 
         private void RefreshAiObserverPauseButton()
