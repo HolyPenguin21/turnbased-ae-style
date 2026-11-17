@@ -14,7 +14,6 @@ public static class GameAssetCatalogBuilder
     private static readonly (string Folder, string Prefix)[] Sources =
     {
         ("Assets/Fonts", "Fonts"),
-        ("Assets/Materials", "Materials"),
         ("Assets/Shaders", "Shaders"),
         ("Assets/Prefabs/TutorialHints", "UI/TutorialHints"),
         ("Assets/Prefabs/Audio", "Audio"),
@@ -33,6 +32,7 @@ public static class GameAssetCatalogBuilder
     private static readonly (string File, string Key)[] SingleFiles =
     {
         ("Assets/Textures/Game/Effects/Overlay.png", "Effects/Overlay"),
+        ("Assets/Textures/Game/Effects/FogOfWar.mat", "Materials/FogOfWar"),
         ("Assets/Shaders/ScreenWear.shader", "Effects/ScreenWear"),
         // Reward prefabs live with the other UI prefabs; keys keep their old Prefabs/Rewards names.
         ("Assets/Prefabs/UI/Cards/Card_Reward.prefab", "Prefabs/Rewards/CollectionRewardCard"),

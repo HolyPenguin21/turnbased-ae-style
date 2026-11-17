@@ -28,7 +28,7 @@ namespace Game.Map
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private GameTurnController turnController;
 
-        // Assets/Materials/FogOfWar.mat — an authored asset instead of a `new Material(shader)`
+        // Assets/Textures/Game/Effects/FogOfWar.mat — an authored asset instead of a `new Material(shader)`
         // built at runtime. Tint/edge/noise values live ONLY on this asset (its own Inspector),
         // so they can be tuned live in Play Mode with immediate visual feedback (asset edits
         // survive stopping Play Mode, unlike scene/GameObject state) instead of round-tripping
@@ -103,7 +103,7 @@ namespace Game.Map
                 _overlayRenderer.receiveShadows = false;
 
                 if (overlayMaterial == null)
-                    Debug.LogWarning("FogOfWarController: 'Overlay Material' is not assigned (expected Assets/Materials/FogOfWar.mat).");
+                    Debug.LogWarning("FogOfWarController: 'Overlay Material' is not assigned (expected Assets/Textures/Game/Effects/FogOfWar.mat).");
 
                 // The SHARED asset, not a runtime clone — so tweaking it in the Inspector while
                 // in Play Mode affects this renderer immediately, and the tuned values persist

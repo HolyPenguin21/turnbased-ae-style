@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b1a2dfb732cc490d8be10be7bb35ce8a, type: 3}
   m_Name: MatchSaveAssetManifest
   m_EditorClassIdentifier: 
-  ContentFingerprint: f0f9051fcc0840531fd32f2b0885777ed6e41efb902a77663af728d8cf9ca6d5
+  ContentFingerprint: a6d8a9e82959db50f16910aca239e07631785ea2110cba70de2b0de1f13d4b98
   Sprites:
   - Key: 0035d98d54df422a88012e7c18be63ab:21300000
     Asset: {fileID: 21300000, guid: 0035d98d54df422a88012e7c18be63ab, type: 3}
@@ -30,6 +30,8 @@ MonoBehaviour:
     Asset: {fileID: 21300000, guid: 026d627248b59b648a474c5418508e54, type: 3}
   - Key: 0321765228ae4c95ab5f761bac9262e6:21300000
     Asset: {fileID: 21300000, guid: 0321765228ae4c95ab5f761bac9262e6, type: 3}
+  - Key: 033b78eb6b745d146a69a3b37de5f4c2:21300000
+    Asset: {fileID: 21300000, guid: 033b78eb6b745d146a69a3b37de5f4c2, type: 3}
   - Key: 037bf6550de1dc44d8fd94a008722108:21300000
     Asset: {fileID: 21300000, guid: 037bf6550de1dc44d8fd94a008722108, type: 3}
   - Key: 03e7d0b093c05814c9397632b6dee701:21300000
@@ -256,6 +258,8 @@ MonoBehaviour:
     Asset: {fileID: 21300000, guid: 221fd49326e920a42bb4ddf62ed982da, type: 3}
   - Key: 2260eeab45d068f459a245dbf012673e:21300000
     Asset: {fileID: 21300000, guid: 2260eeab45d068f459a245dbf012673e, type: 3}
+  - Key: 22a0adbca4d02204f94e7cc6b9fc891b:21300000
+    Asset: {fileID: 21300000, guid: 22a0adbca4d02204f94e7cc6b9fc891b, type: 3}
   - Key: 22a54de8545decb4cbb360d910117440:21300000
     Asset: {fileID: 21300000, guid: 22a54de8545decb4cbb360d910117440, type: 3}
   - Key: 22d6100b62db0414981cb96572c39622:21300000
@@ -1162,8 +1166,6 @@ MonoBehaviour:
     Asset: {fileID: 21300000, guid: aedc857159f5da642b3199a08db4827f, type: 3}
   - Key: af3b63d367b4b014e842dc60ec699bb3:21300000
     Asset: {fileID: 21300000, guid: af3b63d367b4b014e842dc60ec699bb3, type: 3}
-  - Key: af6989cd955a5e57b1493f151ac6e271:21300000
-    Asset: {fileID: 21300000, guid: af6989cd955a5e57b1493f151ac6e271, type: 3}
   - Key: b0382c377acc7b34ea151831245b6ed7:21300000
     Asset: {fileID: 21300000, guid: b0382c377acc7b34ea151831245b6ed7, type: 3}
   - Key: b0d47349fc247a74bb11deda22c26be1:21300000
@@ -1334,6 +1336,8 @@ MonoBehaviour:
     Asset: {fileID: 21300000, guid: c90615e9534d4d59b243fd16e793bcfc, type: 3}
   - Key: c90ef1d7bc8095444924933ba937132f:21300000
     Asset: {fileID: 21300000, guid: c90ef1d7bc8095444924933ba937132f, type: 3}
+  - Key: c951fef158fb4134893af6644e3f2738:21300000
+    Asset: {fileID: 21300000, guid: c951fef158fb4134893af6644e3f2738, type: 3}
   - Key: c95b7976c71bb2e4aa14d68f3a02ec93:21300000
     Asset: {fileID: 21300000, guid: c95b7976c71bb2e4aa14d68f3a02ec93, type: 3}
   - Key: c971b0de2a0c2ca44af82aecc1069eb0:21300000
