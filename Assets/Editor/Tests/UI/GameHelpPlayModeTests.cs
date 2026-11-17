@@ -125,6 +125,8 @@ namespace Game.EditorTests
             sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 1, 1), Vector2.zero);
             topic.blocks = new[]
             {
+                new HelpArticleBlock { id = "heading", kind = HelpBlockKind.Heading,
+                    text = new HelpText { key = "test.heading", fallback = "Section heading" } },
                 new HelpArticleBlock { id = "intro", text = new HelpText { key = "test.intro", fallback = "Fallback" } },
                 new HelpArticleBlock { id = "figure", kind = HelpBlockKind.Image, image = sprite,
                     text = new HelpText { key = "test.caption", fallback = "Figure caption" } },
@@ -132,6 +134,7 @@ namespace Game.EditorTests
             menu.OpenHelp();
             view.SelectTopic(topic.id);
             view.SetTextResolver(key => key == topic.title.key ? "Translated title"
+                : key == "test.heading" ? "Translated heading"
                 : key == "test.intro" ? string.Join("\n", Enumerable.Repeat("A long translated article paragraph.", 100)) : null);
             yield return null;
             Canvas.ForceUpdateCanvases();
@@ -140,9 +143,12 @@ namespace Game.EditorTests
             var scroll = Get<ScrollRect>(view, "articleScroll");
             Assert.That(scroll.content.rect.height, Is.GreaterThan(scroll.viewport.rect.height));
             var activeBlocks = scroll.content.Cast<Transform>().Where(t => t.gameObject.activeSelf).ToArray();
-            Assert.That(activeBlocks.Length, Is.EqualTo(4)); // Title, paragraph, image, caption.
-            Assert.That(activeBlocks[2].GetComponent<Image>().sprite, Is.SameAs(sprite));
-            Assert.That(activeBlocks[3].GetComponent<TMP_Text>().text, Is.EqualTo("Figure caption"));
+            Assert.That(activeBlocks.Length, Is.EqualTo(5)); // Title, heading, paragraph, image, caption.
+            Assert.That(activeBlocks[1].GetComponent<TMP_Text>().text, Is.EqualTo("Translated heading"));
+            Assert.That(activeBlocks[1].GetComponent<TMP_Text>().fontStyle,
+                Is.EqualTo(Get<TMP_Text>(view, "articleTitle").fontStyle));
+            Assert.That(activeBlocks[3].GetComponent<Image>().sprite, Is.SameAs(sprite));
+            Assert.That(activeBlocks[4].GetComponent<TMP_Text>().text, Is.EqualTo("Figure caption"));
             Assert.That(Mathf.Abs(scroll.content.anchoredPosition.y), Is.LessThan(1f));
         }
     }

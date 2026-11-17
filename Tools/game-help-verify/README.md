@@ -4,15 +4,17 @@ Read-only integration checks (Python 3 + PyYAML):
 
 ```sh
 python3 Tools/game-help-verify/verify.py
+python3 Tools/game-help-verify/export_content.py --check
 node Tools/unity-yaml-verify/verify_full.js Assets/Scenes/Game.unity Assets/Config/GameHelpCatalog.asset
 node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/Game.unity Assets/Config/GameHelpCatalog.asset
 ```
 
 These validate the authored references, separate sibling roots, both masked scroll columns,
 flexible topic rows, templates, stable translation keys, review-document synchronization and
-coverage of every `UnitAbilities.All` tag. They do not compile C# or run Unity layout/input.
+coverage of every `UnitAbilities.All` tag. Content checks also require English instructions in
+every article, unique block identities/translation keys and an exact review export. They do not compile C# or run Unity layout/input.
 
-Engine checks in Unity **6000.5.4f1**:
+Grouped abilities add a Heading block kind rendered with the existing article-title style; no scene layout changes. Engine checks for the help window in Unity **6000.5.4f1**:
 
 ```sh
 Unity -batchmode -projectPath <checkout> -runTests -testPlatform EditMode \
@@ -20,9 +22,9 @@ Unity -batchmode -projectPath <checkout> -runTests -testPlatform EditMode \
   -testResults <results.xml> -logFile <editor.log>
 ```
 
-The two tests enter Play Mode and clones only the authored menu subtree into an isolated
-canvas. It checks blocking/restoration, repeated open/close, external disable, mutual exclusion,
-AI observer hold, translation reflow and ordered text/image/caption rendering. It does not
+The two tests enter Play Mode and clone only the authored menu subtree into an isolated
+canvas. They check blocking/restoration, repeated open/close, external disable, mutual exclusion,
+AI observer hold, translation reflow and ordered heading/text/image/caption rendering. They do not
 start a match or change the authored catalog. Full EditMode tests are still required before merge.
 
 Manual acceptance:
@@ -35,15 +37,22 @@ Manual acceptance:
    the article at the top. Open the normal game menu and check options/save/load still work.
 4. Check wide and narrow landscape resolutions and a long translated title/body. Text must
    wrap and stay inside the masked column, with the close button always outside the scroll area.
-5. Repeat in an AI-only spectator match, while paused and running. Help holds AI at the same
+5. Choose Abilities once. All 46 abilities must be present on one scrollable page with distinct
+   subheadings, effect, instructions and restrictions; there must be no per-ability navigation buttons.
+6. Repeat in an AI-only spectator match, while paused and running. Help holds AI at the same
    action boundary as the existing menu; closing preserves the spectator's previous pause state.
 
-Content review: `Docs/GameHelp_Topics_Validation.md` (131 topics, 11 sections).
-Articles intentionally remain pending until their headings are approved. Add ordered blocks in
-`Assets/Config/GameHelpCatalog.asset`; use `GameHelpPanelUI.SetTextResolver` for future translations.
+Content review: `Docs/GameHelp_English_Content.md` (86 navigation articles, 11 sections,
+440 localized text/heading blocks including all 46 abilities on a single page). Headings: `Docs/GameHelp_Topics_Validation.md`.
+Source audit: `Docs/GameHelp_Content_Sources.md`.
+
+Edit the ordered blocks in `Assets/Config/GameHelpCatalog.asset`, then run
+`python3 Tools/game-help-verify/export_content.py` to refresh the review document.
+Use `GameHelpPanelUI.SetTextResolver` for future translations. Missing translations retain the
+English fallback text. Image blocks can be added later without replacing article identities.
 
 ## Verification in this workspace (2026-11-17)
 
-- The 9 structural checks pass; both Unity YAML validators pass; YAML parsing and diff checks pass.
+- The 11 structural/content checks pass; both Unity YAML validators pass; YAML parsing and diff checks pass.
 - Unity and dotnet/Mono are not installed. C# compilation, the engine fixture, full EditMode suite
   and manual visual/input acceptance were not run.

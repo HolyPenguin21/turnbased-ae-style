@@ -132,18 +132,67 @@ class HelpIntegration(unittest.TestCase):
         self.assertIn(f'тем: {count}.', review)
         self.assertEqual(len(re.findall(r'^\| `[^`]+` \|', review, re.M)), count)
 
+    def test_every_topic_has_english_instructions_and_stable_block_keys(self):
+        all_keys = set()
+        for section in self.catalog['sections']:
+            for topic in section['topics']:
+                blocks = topic.get('blocks') or []
+                self.assertTrue(blocks, topic['id'])
+                block_ids, texts = set(), []
+                for block in blocks:
+                    self.assertTrue(block['id'])
+                    self.assertNotIn(block['id'], block_ids)
+                    block_ids.add(block['id'])
+                    text = block.get('text') or {}
+                    key = text.get('key')
+                    # Grouping preserves existing ability translation keys instead of
+                    # forcing translations to be recreated under the page identity.
+                    if topic['id'] == 'all-abilities' and block['id'].startswith('ability-'):
+                        if block.get('kind') == 2:
+                            expected_key = f"help.topic.{block['id']}.title"
+                        else:
+                            ability, part = block['id'].rsplit('-', 1)
+                            expected_key = f"help.topic.{ability}.block.{part}.text"
+                    else:
+                        expected_key = f"help.topic.{topic['id']}.block.{block['id']}.text"
+                    self.assertEqual(key, expected_key)
+                    self.assertNotIn(key, all_keys)
+                    all_keys.add(key)
+                    value = text.get('fallback') or ''
+                    self.assertTrue(value.strip(), key)
+                    self.assertTrue(value.isascii(), key)
+                    self.assertNotIn(self.catalog['pendingArticle']['fallback'], value, key)
+                    texts.append(value)
+                self.assertGreaterEqual(len(' '.join(texts).split()), 45, topic['id'])
+
+    def test_exported_english_review_matches_authored_content(self):
+        from export_content import OUTPUT, render
+        self.assertEqual(OUTPUT.read_text(), render())
+
     def test_ability_index_covers_the_actual_shared_ability_list(self):
         source = (ROOT / 'Assets/Scripts/Cards/UnitAbilities.cs').read_text()
         constants = dict(re.findall(r'public const string (\w+) = "([^"]+)";', source))
         all_list = re.search(r'public static readonly string\[\] All\s*=\s*\{([\s\S]*?)\};', source)[1]
         tags = [constants[key] for key in re.findall(r'\b\w+\b', all_list)]
-        entries = next(s for s in self.catalog['sections'] if s['id'] == 'abilities')['topics']
-        self.assertCountEqual([f'ability-{tag.lower()}' for tag in tags], [t['id'] for t in entries])
+        section = next(s for s in self.catalog['sections'] if s['id'] == 'abilities')
+        self.assertEqual([t['id'] for t in section['topics']], ['all-abilities'],
+                         'Abilities must open with one navigation button.')
+        all_topics = [t for s in self.catalog['sections'] for t in s['topics']]
+        self.assertFalse(any(t['id'].startswith('ability-') for t in all_topics))
+        blocks = section['topics'][0]['blocks']
+        headings = [b for b in blocks if b.get('kind') == 2]
+        self.assertCountEqual([f'ability-{tag.lower()}' for tag in tags], [b['id'] for b in headings])
+        for heading in headings:
+            start = blocks.index(heading)
+            body = blocks[start + 1:start + 4]
+            self.assertEqual([b['id'] for b in body],
+                             [heading['id'] + '-' + part for part in ['overview', 'instructions', 'rules']])
 
     def test_documented_source_paths_exist(self):
-        review = (ROOT / 'Docs/GameHelp_Topics_Validation.md').read_text()
-        for path in re.findall(r'Assets/[A-Za-z0-9_./-]+', review):
-            self.assertTrue((ROOT / path).exists(), path)
+        for name in ['GameHelp_Topics_Validation.md', 'GameHelp_Content_Sources.md']:
+            review = (ROOT / 'Docs' / name).read_text()
+            for path in re.findall(r'Assets/[A-Za-z0-9_./-]+', review):
+                self.assertTrue((ROOT / path).exists(), path)
 
     def test_new_objects_have_consistent_parent_child_links(self):
         for object_id, (kind, obj) in self.objects.items():
