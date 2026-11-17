@@ -69,6 +69,10 @@ namespace Game.Cameras
         // not player-driven) still works regardless — this gates WASD/edge-scroll/drag AND
         // scroll-wheel zoom, all player-driven input.
         public void SetPanningEnabled(bool enabled) => _panningEnabled = enabled;
+        // Scroll-wheel zoom only (panning stays): set by GameTurnController while the Army or
+        // Base Viewer is open.
+        private bool _zoomBlocked;
+        public void SetZoomBlocked(bool blocked) => _zoomBlocked = blocked;
 
         private bool initialized;
         private void Start() => InitializeForMatch();
@@ -237,7 +241,7 @@ namespace Game.Cameras
             // Gated by _panningEnabled too, same as WASD/edge-scroll/drag above — while the
             // Tactical Battle Module is up (see SetPanningEnabled's own call sites), the
             // strategic map underneath shouldn't zoom out from under it either.
-            if (mouse != null && _panningEnabled)
+            if (mouse != null && _panningEnabled && !_zoomBlocked)
             {
                 float scroll = mouse.scroll.ReadValue().y;
                 if (Mathf.Abs(scroll) > 0.01f)

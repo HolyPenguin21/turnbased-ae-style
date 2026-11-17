@@ -248,6 +248,10 @@ namespace Game.Turns
                 _cardDraggingBlocked = newCardDraggingBlocked;
                 CardDraggingBlockedChanged?.Invoke(_cardDraggingBlocked);
             }
+            // The Army/Base Viewer scroll their own lists with the wheel; the map under them must not zoom.
+            if (cameraController != null)
+                cameraController.SetZoomBlocked((armyViewerModal != null && armyViewerModal.IsShowing)
+                    || (baseViewerModal != null && baseViewerModal.IsShowing));
             RefreshEndTurnInteractable();
             RefreshAiObserverPauseButton();
             if (!combatShowing)
