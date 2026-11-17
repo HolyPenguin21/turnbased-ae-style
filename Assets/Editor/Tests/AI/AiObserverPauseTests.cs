@@ -54,6 +54,7 @@ namespace Game.EditorTests
             Assert.That(held.MoveNext(), Is.True);
             Assert.That(held.MoveNext(), Is.True);
             Assert.That(controller.IsAiObserverPaused, Is.True);
+            Assert.That(controller.IsAiObserverInspectionMode, Is.False);
 
             controller.SetAiObserverMenuHold(false);
             Assert.That(held.MoveNext(), Is.False);

@@ -193,8 +193,15 @@ namespace Game.UI
         }
         private void RestoreGameplayCanvases()
         {
+            // A spectated AI keeps acting until its next action boundary, so a group's owner may
+            // have set it again while the menu was open: only a value still blocked by the menu
+            // gets its snapshot back.
             foreach (var state in groups)
-                if (state.Group != null) { state.Group.interactable = state.Interactable; state.Group.blocksRaycasts = state.BlocksRaycasts; }
+            {
+                if (state.Group == null) continue;
+                if (!state.Group.interactable) state.Group.interactable = state.Interactable;
+                if (!state.Group.blocksRaycasts) state.Group.blocksRaycasts = state.BlocksRaycasts;
+            }
             groups.Clear();
         }
         private void OnDisable()

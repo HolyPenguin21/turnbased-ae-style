@@ -53,8 +53,10 @@ namespace Game.Turns
         private bool AiObserverHoldRequested => _aiObserverPauseRequested || _aiObserverMenuHold;
         public bool IsAiObserverMatch => _aiObserverMatch;
         public bool IsAiObserverPaused => _aiObserverPauseEngaged;
+        // Map inspection belongs to the spectator's own Pause; a hold by the open game menu
+        // alone stops the AI without opening the map for clicks.
         public bool IsAiObserverInspectionMode => _aiObserverMatch && _aiObserverPauseEngaged
-            && !IsCombatPresentationActive;
+            && _aiObserverPauseRequested && !IsCombatPresentationActive;
 
         // Dev-only: follows the acting AI's own fog of war and shows its hand/resources
         // in matches with a human. AI-only matches enable this view automatically.

@@ -171,7 +171,8 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.AiDebugLog", MatchStateKind.Diagnostics),
             new MatchStateEntry("Game.Combat.BattleDebugLog", MatchStateKind.Diagnostics),
             // Per-turn ProfileScope totals: collected and emptied by one AI turn runner.
-            new MatchStateEntry("Game.Core.ScopeTiming", MatchStateKind.Diagnostics),
+            // An exit during a spectated AI turn abandons the runner before it can call Take.
+            new MatchStateEntry("Game.Core.ScopeTiming", MatchStateKind.Diagnostics, () => Game.Core.ScopeTiming.Take(0)),
 
             // --- caches ----------------------------------------------------------------------------
             new MatchStateEntry("Game.Ai.SafeStepPathing", MatchStateKind.Cache),
