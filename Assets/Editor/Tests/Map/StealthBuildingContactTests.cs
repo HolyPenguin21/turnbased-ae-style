@@ -86,6 +86,23 @@ namespace Game.EditorTests
             Assert.That(_unit.MoveCurrent, Is.EqualTo(isBase ? 2 : 0));
         }
 
+        [Test]
+        public void ResidentFacilityDestructionNotifiesAfterMovementEnds()
+        {
+            _unit.MoveMax = 3; _unit.MoveCurrent = 2;
+            int calls = 0; int observedMovement = -1;
+            System.Action<BuildingData> destroyed = building =>
+            {
+                if (building != _building) return;
+                calls++; observedMovement = _unit.MoveCurrent;
+            };
+            BuildingRegistry.BuildingDestroyed += destroyed;
+            try { StealthSystem.ExitStealth(_unit); }
+            finally { BuildingRegistry.BuildingDestroyed -= destroyed; }
+            Assert.That(calls, Is.EqualTo(1)); Assert.That(observedMovement, Is.Zero);
+            Assert.That(BuildingRegistry.FindAt(_hex), Is.Null); Assert.That(_unit.IsHidden, Is.False);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void VisibleGuardPreventsTakeoverOnReveal(bool hero)

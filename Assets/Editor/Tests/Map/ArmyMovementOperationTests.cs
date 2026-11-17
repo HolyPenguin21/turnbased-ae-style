@@ -250,6 +250,64 @@ namespace Game.EditorTests
             }
             finally { UnityEngine.Object.DestroyImmediate(host); }
         }
+        [Test] public void FacilityArrivalNotifiesAfterMovementEnds()
+        {
+            army.MarkActivated();
+            var facility = new BuildingData { Owner = new PlayerSetupData(), Hex = first };
+            BuildingRegistry.Register(first, facility);
+            int calls = 0; int observedMovement = -1; bool busyDuringDestruction = false;
+            Action<BuildingData> destroyed = building =>
+            {
+                if (building != facility) return;
+                calls++; observedMovement = army.CurrentMovement;
+                busyDuringDestruction = ArmyRegistry.HasMovementInProgress;
+            };
+            BuildingRegistry.BuildingDestroyed += destroyed;
+            try
+            {
+                WithMap(map =>
+                {
+                    var move = ArmyMovementOperation.ForOrder(army, map, new[] { origin, first, last }, null, last, null);
+                    Drain(move.Run(null));
+                    Assert.That(move.Result.Kind, Is.EqualTo(ArmyMovementEnd.Interrupted));
+                    Assert.That(move.Result.Hex, Is.EqualTo(first));
+                });
+            }
+            finally { BuildingRegistry.BuildingDestroyed -= destroyed; }
+            Assert.That(calls, Is.EqualTo(1)); Assert.That(observedMovement, Is.Zero);
+            Assert.That(busyDuringDestruction, Is.True); Assert.That(ArmyRegistry.HasMovementInProgress, Is.False);
+            Assert.That(BuildingRegistry.FindAt(first), Is.Null);
+            Assert.That(ArmyRegistry.At(first), Does.Contain(army));
+            Assert.That(ArmyRegistry.At(origin), Does.Not.Contain(army));
+        }
+        [Test] public void RetreatOntoFacilityNotifiesAfterRelocationAndMovementEnd()
+        {
+            var facility = new BuildingData { Owner = new PlayerSetupData(), Hex = first };
+            BuildingRegistry.Register(first, facility);
+            int calls = 0; bool final = false;
+            Action<BuildingData> destroyed = building =>
+            {
+                if (building != facility) return;
+                calls++; final = army.Hex.Equals(first) && army.CurrentMovement == 0
+                    && ArmyRegistry.At(first).Contains(army) && !ArmyRegistry.At(origin).Contains(army)
+                    && BuildingRegistry.FindAt(first) == null;
+            };
+            BuildingRegistry.BuildingDestroyed += destroyed;
+            try
+            {
+                WithMap(map =>
+                {
+                    var plain = new Game.Terrain.TerrainTypeEntry { terrainName = "Plain" };
+                    map.SetData(1, 1, new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
+                        { [origin] = plain, [first] = plain });
+                    var result = Game.Combat.BattleEngine.PerformRetreat(null, army, null, map, null);
+                    Assert.That(result.Relocated, Is.True); Assert.That(result.Destroyed, Is.False);
+                    Assert.That(result.Destination, Is.EqualTo(first));
+                });
+            }
+            finally { BuildingRegistry.BuildingDestroyed -= destroyed; }
+            Assert.That(calls, Is.EqualTo(1)); Assert.That(final, Is.True);
+        }
         [Test] public void ActivatedArmyOrderDoesNotCoverMembersThatJoinedAfterActivation()
         {
             army.MarkActivated();
