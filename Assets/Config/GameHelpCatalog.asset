@@ -1,0 +1,734 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: caba2abada464207babe4a5caf541fb2, type: 3}
+  m_Name: GameHelpCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.GameHelpCatalog
+  windowTitle:
+    key: help.window.title
+    fallback: "HELP"
+  closeLabel:
+    key: help.window.close
+    fallback: "Close"
+  pendingArticle:
+    key: help.article.pending
+    fallback: "This article is being prepared."
+  sections:
+  - id: basics
+    title:
+      key: help.section.basics.title
+      fallback: "Getting started"
+    topics:
+    - id: goal
+      title:
+        key: help.topic.goal.title
+        fallback: "Match objective, victory and defeat"
+      blocks: []
+    - id: controls
+      title:
+        key: help.topic.controls.title
+        fallback: "Map controls and interface"
+      blocks: []
+    - id: factions
+      title:
+        key: help.topic.factions.title
+        fallback: "Factions and citadels"
+      blocks: []
+    - id: setup
+      title:
+        key: help.topic.setup.title
+        fallback: "Starting a match and map conditions"
+      blocks: []
+    - id: rounds
+      title:
+        key: help.topic.rounds.title
+        fallback: "Rounds and player turns"
+      blocks: []
+    - id: initiative
+      title:
+        key: help.topic.initiative.title
+        fallback: "Initiative and turn order"
+      blocks: []
+    - id: initiative-tokens
+      title:
+        key: help.topic.initiative-tokens.title
+        fallback: "Buying and rolling initiative tokens"
+      blocks: []
+    - id: action-points
+      title:
+        key: help.topic.action-points.title
+        fallback: "Action points and action costs"
+      blocks: []
+    - id: turn-start-end
+      title:
+        key: help.topic.turn-start-end.title
+        fallback: "Start and end of a turn"
+      blocks: []
+  - id: cards
+    title:
+      key: help.section.cards.title
+      fallback: "Cards and decks"
+    topics:
+    - id: card-types
+      title:
+        key: help.topic.card-types.title
+        fallback: "Card types and unit tags"
+      blocks: []
+    - id: card-stats
+      title:
+        key: help.topic.card-stats.title
+        fallback: "Card stats and ability icons"
+      blocks: []
+    - id: deck
+      title:
+        key: help.topic.deck.title
+        fallback: "Deck composition and limits"
+      blocks: []
+    - id: hand
+      title:
+        key: help.topic.hand.title
+        fallback: "Hand, drawing and discarding cards"
+      blocks: []
+    - id: play-card
+      title:
+        key: help.topic.play-card.title
+        fallback: "Playing cards and deployment requirements"
+      blocks: []
+    - id: tactics
+      title:
+        key: help.topic.tactics.title
+        fallback: "Tactic cards and challenge modifiers"
+      blocks: []
+    - id: equipment
+      title:
+        key: help.topic.equipment.title
+        fallback: "Equipment and attachment compatibility"
+      blocks: []
+    - id: mutators
+      title:
+        key: help.topic.mutators.title
+        fallback: "Mutators and biological upgrades"
+      blocks: []
+  - id: economy
+    title:
+      key: help.section.economy.title
+      fallback: "Resources and infrastructure"
+    topics:
+    - id: resources
+      title:
+        key: help.topic.resources.title
+        fallback: "Human, Energy, Materials and Tech"
+      blocks: []
+    - id: income
+      title:
+        key: help.topic.income.title
+        fallback: "Income and resource yields"
+      blocks: []
+    - id: trade
+      title:
+        key: help.topic.trade.title
+        fallback: "Trade and the exchange rate"
+      blocks: []
+    - id: bases
+      title:
+        key: help.topic.bases.title
+        fallback: "Founding bases and their radius"
+      blocks: []
+    - id: base-upgrades
+      title:
+        key: help.topic.base-upgrades.title
+        fallback: "Base upgrades and facility slots"
+      blocks: []
+    - id: facilities
+      title:
+        key: help.topic.facilities.title
+        fallback: "Facilities and construction requirements"
+      blocks: []
+    - id: extractors
+      title:
+        key: help.topic.extractors.title
+        fallback: "Extraction sites and their upgrades"
+      blocks: []
+    - id: garrisons
+      title:
+        key: help.topic.garrisons.title
+        fallback: "Garrisons and base defence"
+      blocks: []
+    - id: building-damage
+      title:
+        key: help.topic.building-damage.title
+        fallback: "Building damage, repair and destruction"
+      blocks: []
+    - id: research
+      title:
+        key: help.topic.research.title
+        fallback: "Research and researchers"
+      blocks: []
+    - id: production
+      title:
+        key: help.topic.production.title
+        fallback: "Production and assemblers"
+      blocks: []
+    - id: production-check
+      title:
+        key: help.topic.production-check.title
+        fallback: "Research and production challenges"
+      blocks: []
+  - id: armies
+    title:
+      key: help.section.armies.title
+      fallback: "Armies and movement"
+    topics:
+    - id: army-composition
+      title:
+        key: help.topic.army-composition.title
+        fallback: "Army composition, leader and capacity"
+      blocks: []
+    - id: hero
+      title:
+        key: help.topic.hero.title
+        fallback: "Heroes and armies without a hero"
+      blocks: []
+    - id: army-creation
+      title:
+        key: help.topic.army-creation.title
+        fallback: "Creating and renaming armies"
+      blocks: []
+    - id: army-activation
+      title:
+        key: help.topic.army-activation.title
+        fallback: "Army activation and AP costs"
+      blocks: []
+    - id: movement
+      title:
+        key: help.topic.movement.title
+        fallback: "Movement points and route costs"
+      blocks: []
+    - id: terrain
+      title:
+        key: help.topic.terrain.title
+        fallback: "Terrain, passability and defence"
+      blocks: []
+    - id: transfer
+      title:
+        key: help.topic.transfer.title
+        fallback: "Transferring, exchanging and splitting units"
+      blocks: []
+    - id: transport
+      title:
+        key: help.topic.transport.title
+        fallback: "Infantry transport"
+      blocks: []
+    - id: unit-repair
+      title:
+        key: help.topic.unit-repair.title
+        fallback: "Unit healing, repair and regeneration"
+      blocks: []
+  - id: recon
+    title:
+      key: help.section.recon.title
+      fallback: "Reconnaissance and weather"
+    topics:
+    - id: fog
+      title:
+        key: help.topic.fog.title
+        fallback: "Vision and fog of war"
+      blocks: []
+    - id: memory
+      title:
+        key: help.topic.memory.title
+        fallback: "Last observed enemy positions"
+      blocks: []
+    - id: scouting
+      title:
+        key: help.topic.scouting.title
+        fallback: "Reconnaissance range and detection"
+      blocks: []
+    - id: stealth
+      title:
+        key: help.topic.stealth.title
+        fallback: "Stealth and detection challenges"
+      blocks: []
+    - id: intelligence
+      title:
+        key: help.topic.intelligence.title
+        fallback: "Tactical intelligence"
+      blocks: []
+    - id: sandstorms
+      title:
+        key: help.topic.sandstorms.title
+        fallback: "Sandstorm lifecycle and movement"
+      blocks: []
+    - id: storm-effects
+      title:
+        key: help.topic.storm-effects.title
+        fallback: "Sandstorms: movement, range and defence"
+      blocks: []
+  - id: combat
+    title:
+      key: help.section.combat.title
+      fallback: "Battles and challenges"
+    topics:
+    - id: contact
+      title:
+        key: help.topic.contact.title
+        fallback: "Enemy contact and starting a battle"
+      blocks: []
+    - id: battle-delay
+      title:
+        key: help.topic.battle-delay.title
+        fallback: "Immediate and delayed battles"
+      blocks: []
+    - id: deployment
+      title:
+        key: help.topic.deployment.title
+        fallback: "Battle deployment and formation"
+      blocks: []
+    - id: battle-rounds
+      title:
+        key: help.topic.battle-rounds.title
+        fallback: "Battle rounds, initiative and unit turns"
+      blocks: []
+    - id: battle-movement
+      title:
+        key: help.topic.battle-movement.title
+        fallback: "Battle movement and attack range"
+      blocks: []
+    - id: challenges
+      title:
+        key: help.topic.challenges.title
+        fallback: "Challenge tokens, successes and ties"
+      blocks: []
+    - id: fate
+      title:
+        key: help.topic.fate.title
+        fallback: "Fate points, rerolls and the Fate duel"
+      blocks: []
+    - id: damage
+      title:
+        key: help.topic.damage.title
+        fallback: "Attack, defence, damage and hit points"
+      blocks: []
+    - id: building-defence
+      title:
+        key: help.topic.building-defence.title
+        fallback: "Building defence and Disruption"
+      blocks: []
+    - id: reactions
+      title:
+        key: help.topic.reactions.title
+        fallback: "Bodyguard and counterattacks"
+      blocks: []
+    - id: explosions
+      title:
+        key: help.topic.explosions.title
+        fallback: "Explosions and single-use attacks"
+      blocks: []
+    - id: retreat
+      title:
+        key: help.topic.retreat.title
+        fallback: "Retreat and pursuit"
+      blocks: []
+    - id: capture-kill
+      title:
+        key: help.topic.capture-kill.title
+        fallback: "Capturing or killing a lone hero"
+      blocks: []
+    - id: prisoners
+      title:
+        key: help.topic.prisoners.title
+        fallback: "Prisoners, prison armies and release"
+      blocks: []
+    - id: battle-outcome
+      title:
+        key: help.topic.battle-outcome.title
+        fallback: "Battle outcome and destroyed armies"
+      blocks: []
+  - id: aviation
+    title:
+      key: help.section.aviation.title
+      fallback: "Aviation and air defence"
+    topics:
+    - id: airfields
+      title:
+        key: help.topic.airfields.title
+        fallback: "Airfields and aircraft capacity"
+      blocks: []
+    - id: carrier
+      title:
+        key: help.topic.carrier.title
+        fallback: "Mobile carriers and aircraft transfers"
+      blocks: []
+    - id: air-armies
+      title:
+        key: help.topic.air-armies.title
+        fallback: "Air armies and sorties"
+      blocks: []
+    - id: flight-route
+      title:
+        key: help.topic.flight-route.title
+        fallback: "Flight routes, range and return"
+      blocks: []
+    - id: air-strikes
+      title:
+        key: help.topic.air-strikes.title
+        fallback: "Air strikes and target selection"
+      blocks: []
+    - id: anti-air
+      title:
+        key: help.topic.anti-air.title
+        fallback: "Air defence range and reactions"
+      blocks: []
+    - id: air-recovery
+      title:
+        key: help.topic.air-recovery.title
+        fallback: "Aircraft losses and recovery"
+      blocks: []
+  - id: events
+    title:
+      key: help.section.events.title
+      fallback: "Events and neutral forces"
+    topics:
+    - id: neutral
+      title:
+        key: help.topic.neutral.title
+        fallback: "Neutral armies and their turn"
+      blocks: []
+    - id: event-exploration
+      title:
+        key: help.topic.event-exploration.title
+        fallback: "Exploring event hexes and their guards"
+      blocks: []
+    - id: rewards
+      title:
+        key: help.topic.rewards.title
+        fallback: "Event rewards: resources and cards"
+      blocks: []
+    - id: library
+      title:
+        key: help.topic.library.title
+        fallback: "Library: a card for the collection"
+      blocks: []
+    - id: command-post
+      title:
+        key: help.topic.command-post.title
+        fallback: "Abandoned command post: restoring a base"
+      blocks: []
+  - id: progression
+    title:
+      key: help.section.progression.title
+      fallback: "Campaign and collection"
+    topics:
+    - id: campaign
+      title:
+        key: help.topic.campaign.title
+        fallback: "Campaign map and region ownership"
+      blocks: []
+    - id: region-attack
+      title:
+        key: help.topic.region-attack.title
+        fallback: "Attacking regions and choosing a deck"
+      blocks: []
+    - id: region-conditions
+      title:
+        key: help.topic.region-conditions.title
+        fallback: "Region terrain, resources and weather"
+      blocks: []
+    - id: campaign-result
+      title:
+        key: help.topic.campaign-result.title
+        fallback: "Campaign results and region capture"
+      blocks: []
+    - id: collection
+      title:
+        key: help.topic.collection.title
+        fallback: "Collection and card copies"
+      blocks: []
+    - id: deck-editor
+      title:
+        key: help.topic.deck-editor.title
+        fallback: "Creating and editing decks"
+      blocks: []
+    - id: match-rewards
+      title:
+        key: help.topic.match-rewards.title
+        fallback: "Match rewards and collection progression"
+      blocks: []
+  - id: service
+    title:
+      key: help.section.service.title
+      fallback: "Menus and saving"
+    topics:
+    - id: save-load
+      title:
+        key: help.topic.save-load.title
+        fallback: "Saving, loading and slot management"
+      blocks: []
+    - id: save-limits
+      title:
+        key: help.topic.save-limits.title
+        fallback: "When a match can be saved"
+      blocks: []
+    - id: spectator
+      title:
+        key: help.topic.spectator.title
+        fallback: "AI match spectator: pause and fast resolve"
+      blocks: []
+    - id: settings
+      title:
+        key: help.topic.settings.title
+        fallback: "Sound settings and tutorial hints"
+      blocks: []
+    - id: radio
+      title:
+        key: help.topic.radio.title
+        fallback: "Army radio reports"
+      blocks: []
+    - id: exit
+      title:
+        key: help.topic.exit.title
+        fallback: "Leaving a match and returning to the campaign"
+      blocks: []
+  - id: abilities
+    title:
+      key: help.section.abilities.title
+      fallback: "Ability reference"
+    topics:
+    - id: ability-criticaldamage
+      title:
+        key: help.topic.ability-criticaldamage.title
+        fallback: "Critical Damage"
+      blocks: []
+    - id: ability-ceramicarmor
+      title:
+        key: help.topic.ability-ceramicarmor.title
+        fallback: "Ceramic Armor"
+      blocks: []
+    - id: ability-berserk
+      title:
+        key: help.topic.ability-berserk.title
+        fallback: "Berserk"
+      blocks: []
+    - id: ability-rapidreaction
+      title:
+        key: help.topic.ability-rapidreaction.title
+        fallback: "Rapid Reaction"
+      blocks: []
+    - id: ability-shockattack
+      title:
+        key: help.topic.ability-shockattack.title
+        fallback: "Shock Attack"
+      blocks: []
+    - id: ability-hyperkinetic
+      title:
+        key: help.topic.ability-hyperkinetic.title
+        fallback: "Hyperkinetic"
+      blocks: []
+    - id: ability-pyrokinetic
+      title:
+        key: help.topic.ability-pyrokinetic.title
+        fallback: "Pyrokinetic"
+      blocks: []
+    - id: ability-splash
+      title:
+        key: help.topic.ability-splash.title
+        fallback: "Splash"
+      blocks: []
+    - id: ability-scorcher
+      title:
+        key: help.topic.ability-scorcher.title
+        fallback: "Scorcher"
+      blocks: []
+    - id: ability-raisetherots
+      title:
+        key: help.topic.ability-raisetherots.title
+        fallback: "Raise The Rots"
+      blocks: []
+    - id: ability-heal
+      title:
+        key: help.topic.ability-heal.title
+        fallback: "Heal"
+      blocks: []
+    - id: ability-transport
+      title:
+        key: help.topic.ability-transport.title
+        fallback: "Transport"
+      blocks: []
+    - id: ability-repair
+      title:
+        key: help.topic.ability-repair.title
+        fallback: "Repair"
+      blocks: []
+    - id: ability-disruption
+      title:
+        key: help.topic.ability-disruption.title
+        fallback: "Disruption"
+      blocks: []
+    - id: ability-airfield
+      title:
+        key: help.topic.ability-airfield.title
+        fallback: "Airfield"
+      blocks: []
+    - id: ability-singleuse
+      title:
+        key: help.topic.ability-singleuse.title
+        fallback: "Single Use"
+      blocks: []
+    - id: ability-explosion3
+      title:
+        key: help.topic.ability-explosion3.title
+        fallback: "Explosion 3"
+      blocks: []
+    - id: ability-explosion5
+      title:
+        key: help.topic.ability-explosion5.title
+        fallback: "Explosion 5"
+      blocks: []
+    - id: ability-explosion10
+      title:
+        key: help.topic.ability-explosion10.title
+        fallback: "Explosion 10"
+      blocks: []
+    - id: ability-ionic
+      title:
+        key: help.topic.ability-ionic.title
+        fallback: "Ionic"
+      blocks: []
+    - id: ability-bodyguard
+      title:
+        key: help.topic.ability-bodyguard.title
+        fallback: "Bodyguard"
+      blocks: []
+    - id: ability-counterattack
+      title:
+        key: help.topic.ability-counterattack.title
+        fallback: "Counterattack"
+      blocks: []
+    - id: ability-drill
+      title:
+        key: help.topic.ability-drill.title
+        fallback: "Drill"
+      blocks: []
+    - id: ability-r1s0
+      title:
+        key: help.topic.ability-r1s0.title
+        fallback: "r 1s 0"
+      blocks: []
+    - id: ability-r1s4
+      title:
+        key: help.topic.ability-r1s4.title
+        fallback: "r 1s 4"
+      blocks: []
+    - id: ability-r1s5
+      title:
+        key: help.topic.ability-r1s5.title
+        fallback: "r 1s 5"
+      blocks: []
+    - id: ability-r1s6
+      title:
+        key: help.topic.ability-r1s6.title
+        fallback: "r 1s 6"
+      blocks: []
+    - id: ability-stealth4
+      title:
+        key: help.topic.ability-stealth4.title
+        fallback: "Stealth 4"
+      blocks: []
+    - id: ability-aa
+      title:
+        key: help.topic.ability-aa.title
+        fallback: "AA"
+      blocks: []
+    - id: ability-apbonus
+      title:
+        key: help.topic.ability-apbonus.title
+        fallback: "Ap Bonus"
+      blocks: []
+    - id: ability-trade
+      title:
+        key: help.topic.ability-trade.title
+        fallback: "Trade"
+      blocks: []
+    - id: ability-tacticalintelligence
+      title:
+        key: help.topic.ability-tacticalintelligence.title
+        fallback: "Tactical Intelligence"
+      blocks: []
+    - id: ability-barracks
+      title:
+        key: help.topic.ability-barracks.title
+        fallback: "Barracks"
+      blocks: []
+    - id: ability-research
+      title:
+        key: help.topic.ability-research.title
+        fallback: "Research"
+      blocks: []
+    - id: ability-researcher
+      title:
+        key: help.topic.ability-researcher.title
+        fallback: "Researcher"
+      blocks: []
+    - id: ability-production
+      title:
+        key: help.topic.ability-production.title
+        fallback: "Production"
+      blocks: []
+    - id: ability-assembler
+      title:
+        key: help.topic.ability-assembler.title
+        fallback: "Assembler"
+      blocks: []
+    - id: ability-collecthuman
+      title:
+        key: help.topic.ability-collecthuman.title
+        fallback: "Collect Human"
+      blocks: []
+    - id: ability-collectenergy
+      title:
+        key: help.topic.ability-collectenergy.title
+        fallback: "Collect Energy"
+      blocks: []
+    - id: ability-collectmaterials
+      title:
+        key: help.topic.ability-collectmaterials.title
+        fallback: "Collect Materials"
+      blocks: []
+    - id: ability-collecttech
+      title:
+        key: help.topic.ability-collecttech.title
+        fallback: "Collect Tech"
+      blocks: []
+    - id: ability-regeneration
+      title:
+        key: help.topic.ability-regeneration.title
+        fallback: "Regeneration"
+      blocks: []
+    - id: ability-producehuman
+      title:
+        key: help.topic.ability-producehuman.title
+        fallback: "Produce Human"
+      blocks: []
+    - id: ability-produceenergy
+      title:
+        key: help.topic.ability-produceenergy.title
+        fallback: "Produce Energy"
+      blocks: []
+    - id: ability-producematerials
+      title:
+        key: help.topic.ability-producematerials.title
+        fallback: "Produce Materials"
+      blocks: []
+    - id: ability-producetech
+      title:
+        key: help.topic.ability-producetech.title
+        fallback: "Produce Tech"
+      blocks: []
