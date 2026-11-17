@@ -17,7 +17,7 @@ namespace Game.UI
         }
     }
 
-    public enum HelpBlockKind { Text, Image }
+    public enum HelpBlockKind { Text = 0, Image = 1, Heading = 2 }
 
     [Serializable]
     public sealed class HelpArticleBlock

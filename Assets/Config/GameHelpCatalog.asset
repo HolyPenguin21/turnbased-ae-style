@@ -31,47 +31,209 @@ MonoBehaviour:
       title:
         key: help.topic.goal.title
         fallback: "Match objective, victory and defeat"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.goal.block.overview.text
+          fallback: "Win a match by becoming the last player who has not been eliminated. Your starting citadel is your critical objective; another base built later does not replace it."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.goal.block.instructions.text
+          fallback: "Protect the starting citadel while expanding your economy and attacking enemy positions. If it is captured, recover it before the beginning of your next personal turn. Losing an ordinary army or a later-built base does not by itself eliminate you."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.goal.block.rules.text
+          fallback: "At the beginning of your turn, you are eliminated if your original citadel is still missing or belongs to someone else. Destruction of a starting citadel also triggers defeat. Eliminated players stop taking turns and receiving income. In local multiplayer, the remaining human players can continue after one human is defeated."
+        image: {fileID: 0}
     - id: controls
       title:
         key: help.topic.controls.title
         fallback: "Map controls and interface"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.controls.block.overview.text
+          fallback: "The strategic map is controlled through hex selection, army selection and contextual panels. Card details show the stats, abilities and costs relevant to the selected object."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.controls.block.instructions.text
+          fallback: "Left-click a hex or army to inspect it. Select your mobile army and right-click a destination to issue a move order; inspect the route preview before confirming. Pan with WASD or arrow keys, drag with the middle mouse button, and use the mouse wheel to zoom. Drag cards to a legal hex or an appropriate army/base panel to play them."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.controls.block.rules.text
+          fallback: "Windows that require a decision block the map beneath them. In tactical combat, left-click inspects a card and right-click performs the highlighted action. Use the Help button for these instructions and the gear button for the match menu. Typing in a text field suppresses camera keyboard movement."
+        image: {fileID: 0}
     - id: factions
       title:
         key: help.topic.factions.title
         fallback: "Factions and citadels"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.factions.block.overview.text
+          fallback: "The playable factions are Iron Concord, The Ashen and The Vessels. A faction determines its available cards, starting citadel and deck choices."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.factions.block.instructions.text
+          fallback: "Choose a faction and a compatible saved deck before starting a match or campaign operation. Compare the actual unit and ability entries in Collection rather than assuming that a faction name changes the shared combat rules."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.factions.block.rules.text
+          fallback: "All factions use the same resource, movement, initiative and challenge systems. Their cards provide the differences in stats and abilities. A citadel is also a base, but only the original starting citadel determines whether its owner is eliminated."
+        image: {fileID: 0}
     - id: setup
       title:
         key: help.topic.setup.title
         fallback: "Starting a match and map conditions"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.setup.block.overview.text
+          fallback: "A match starts with participant settings, faction/deck choices and generated map conditions. Campaign operations supply the target region's conditions instead of using an unrelated standalone map."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.setup.block.instructions.text
+          fallback: "Choose the available player controls, factions, decks and map settings. During citadel setup, follow the highlighted selection and confirmation steps. Once the map is ready, confirm your first turn before issuing orders."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.setup.block.rules.text
+          fallback: "Local human and AI control are supported. Local human seats share the screen through turn handoffs; online player turns are not available yet. Terrain, resources and weather can differ between matches, so inspect the map rather than repeating a route from another game."
+        image: {fileID: 0}
     - id: rounds
       title:
         key: help.topic.rounds.title
         fallback: "Rounds and player turns"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.rounds.block.overview.text
+          fallback: "A round is a full cycle of active players, followed by the neutral turn slot. A personal turn is one player's opportunity to act within that cycle."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.rounds.block.instructions.text
+          fallback: "At each new round, income and initiative preparation run before the new player order is used. Confirm your personal turn, spend its resources and AP, then choose End Turn when ready. The order is rolled again for the next round."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.rounds.block.rules.text
+          fallback: "A round number is not a promise that you will act before the same opponent again. A delayed battle is resolved before the next round begins. Weather advances on the round cycle, while unit movement and activation reset at the beginning of their owner's personal turn."
+        image: {fileID: 0}
     - id: initiative
       title:
         key: help.topic.initiative.title
         fallback: "Initiative and turn order"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.initiative.block.overview.text
+          fallback: "Initiative determines the strategic turn order for the new round and the base AP assigned to each active player. It is separate from the Initiative stat used inside tactical battles."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.initiative.block.instructions.text
+          fallback: "Before the round order is resolved, decide whether to buy extra initiative tokens. Players roll their pools and are ordered by successes, highest first. Tied groups roll again until their relative order is settled."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.initiative.block.rules.text
+          fallback: "Each player receives 5 free tokens and may buy up to 5 additional tokens for that round. First place grants 12 base AP, second place 10, and every later place 8. In-play AP abilities and prisoners may add to this allocation. Eliminated players do not occupy a rank."
+        image: {fileID: 0}
     - id: initiative-tokens
       title:
         key: help.topic.initiative-tokens.title
         fallback: "Buying and rolling initiative tokens"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.initiative-tokens.block.overview.text
+          fallback: "Bonus initiative tokens improve your roll for the current round. They are paid for with resources, not AP, and must be bought again in later rounds."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.initiative-tokens.block.instructions.text
+          fallback: "Use the initiative purchase panel to contribute Human, Energy, Materials or Tech. A token can be paid for with a mixture of resource types. Complete its displayed price before moving on to the next token."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.initiative-tokens.block.rules.text
+          fallback: "The five additional tokens cost 1, 2, 4, 8 and 16 resource units respectively, for a cumulative total of 31. The total pool cannot exceed 10 tokens including the 5 free ones. Extra tokens improve your chances; they do not guarantee first place."
+        image: {fileID: 0}
     - id: action-points
       title:
         key: help.topic.action-points.title
         fallback: "Action points and action costs"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.action-points.block.overview.text
+          fallback: "Action points (AP) pay for deployment, army creation and activation, construction, upgrades, repairs, card draws and research/production attempts. Movement points (MP) are a separate per-unit travel budget."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.action-points.block.instructions.text
+          fallback: "Read the displayed AP cost before committing an action. Reserve enough AP to activate an army after deploying or transferring its members. An aircraft sortie may also require Energy, independently of its MP route cost."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.action-points.block.rules.text
+          fallback: "Base AP is replaced by the next round's initiative allocation, so unused AP is not a bank for later rounds. Resources remain a separate stock. A larger army generally costs more AP to activate because member activation costs are added together; Rapid Reaction reduces its carrier's contribution."
+        image: {fileID: 0}
     - id: turn-start-end
       title:
         key: help.topic.turn-start-end.title
         fallback: "Start and end of a turn"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.turn-start-end.block.overview.text
+          fallback: "Your turn opens with movement and activation refreshes and any required notices, reactions or confirmations. The map becomes available after those opening decisions are completed."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.turn-start-end.block.instructions.text
+          fallback: "Confirm the turn notification, inspect threats and income, then deploy, build, trade or move. Before ending the turn, check aircraft landing/fuel, vulnerable buildings, unused AP and pending decisions. Use End Turn only when those choices are settled."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.turn-start-end.block.rules.text
+          fallback: "At turn end, overdue aircraft refuelling can cause damage, Regeneration heals eligible surviving carriers, and a turn without trades can improve your exchange rate. Temporary enemy-position memory can expire. Income is handled at the start of the round, rather than being granted again every time you confirm a turn."
+        image: {fileID: 0}
   - id: cards
     title:
       key: help.section.cards.title
@@ -81,42 +243,186 @@ MonoBehaviour:
       title:
         key: help.topic.card-types.title
         fallback: "Card types and unit tags"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.card-types.block.overview.text
+          fallback: "Cards represent Heroes, Units, Bases, Facilities, Tactics and attachments. Equipment and Mutators use attachment rules, while Tactics belong to a separate match inventory."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.card-types.block.instructions.text
+          fallback: "Inspect a card's type and tags before choosing a target. Unit and Hero cards deploy army members; Base cards establish bases; Facility cards occupy an owned base's slots. Attachments go onto compatible cards or live units instead of directly onto terrain."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.card-types.block.rules.text
+          fallback: "Bio, Mechanical and Armored tags affect matching damage abilities. Infantry, Vehicle, Mecha, Aircraft, Support and Hero tags can restrict attachment compatibility. A card can carry several tags at once. Aircraft also have separate storage, launch and fuel rules."
+        image: {fileID: 0}
     - id: card-stats
       title:
         key: help.topic.card-stats.title
         fallback: "Card stats and ability icons"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.card-stats.block.overview.text
+          fallback: "Attack and Defense determine token pools; Range controls legal targets; Hit Points measure survival; Initiative determines tactical order. Heroes also provide Command and Fate. AP and resource costs describe different payments."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.card-stats.block.instructions.text
+          fallback: "Inspect the enlarged card or detail panel for full ability descriptions and current values. Check the army's commander, movement and capacity before adding another unit. For aircraft, also read launch Energy, airfield capacity and refuelling endurance where shown."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.card-stats.block.rules.text
+          fallback: "Attachments, temporary combat effects, weather and emergency flight can change effective values. A printed base value is not always the final value used for an action. The ability reference explains each tag. A building's displayed Fate is not a separate manual Siege action."
+        image: {fileID: 0}
     - id: deck
       title:
         key: help.topic.deck.title
         fallback: "Deck composition and limits"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.deck.block.overview.text
+          fallback: "A saved deck contains main cards plus Equipment and Mutator blueprints. It is built for one faction and is limited to 100 deck points across its selected cards."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.deck.block.instructions.text
+          fallback: "In Collection, choose a faction and add owned cards with the plus controls. Balance army cards with buildings and the blueprints you want to manufacture. Save the deck and select it when starting a match or campaign operation."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.deck.block.rules.text
+          fallback: "You cannot use more copies than you own or exceed a card's copy limit. Each Hero and each attachment blueprint is limited to one copy per deck. A blueprint unlocks repeat attempts in the match; it is not an unlimited supply of ready-made cards in your starting hand. Main cards form the draw pool."
+        image: {fileID: 0}
     - id: hand
       title:
         key: help.topic.hand.title
-        fallback: "Hand, drawing and discarding cards"
-      blocks: []
+        fallback: "Hand size, drawing and using cards"
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.hand.block.overview.text
+          fallback: "The main hand starts with 7 cards and holds up to 10. It contains the cards you can deploy, build with or attach. Tactics use their own inventory and do not consume this capacity."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.hand.block.instructions.text
+          fallback: "Use Draw during your confirmed turn to take a card from the remaining deck; the current draw cost is 2 AP. If the hand is full, play a legal card or apply an attachment to free a slot. Inspect and scroll the hand to find cards that are outside the visible row."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.hand.block.rules.text
+          fallback: "Drawing requires both a free slot and cards left in the deck. There is no general-purpose discard button in the current hand interface. Research/Production outputs and some event card rewards also need space, so leave room before attempting to receive a new card."
+        image: {fileID: 0}
     - id: play-card
       title:
         key: help.topic.play-card.title
         fallback: "Playing cards and deployment requirements"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.play-card.block.overview.text
+          fallback: "Playing a card validates the target, owner, AP, resources and capacity together. Merely dragging a card over a target does not reserve those costs or guarantee deployment."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.play-card.block.instructions.text
+          fallback: "Drag a ground Unit/Hero to your eligible deployment building, army or garrison. Deploy aircraft to your airfield storage first. Play a Base card on a legal hex occupied by your own hero army; play a Facility into an available slot of your own base. Use the displayed reason if a drop is rejected."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.play-card.block.rules.text
+          fallback: "Ground deployment requires the building ability specified by the card; being near a base is not enough. The final roster must fit its capacity. Successfully produced attachments use their own later play cost and do not charge the already-paid production resource cost a second time."
+        image: {fileID: 0}
     - id: tactics
       title:
         key: help.topic.tactics.title
         fallback: "Tactic cards and challenge modifiers"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.tactics.block.overview.text
+          fallback: "Tactic cards modify challenge successes after the tokens are available. They can add successes, suppress opposing successes, or combine both effects according to the card."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.tactics.block.instructions.text
+          fallback: "During your decision in a supported challenge, select a playable tactic and click the input slot, or drag the card into that slot. Inspect the preview before Accept. You can replace the staged card or return it to the tactic hand before committing; a preview alone does not consume it."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.tactics.block.rules.text
+          fallback: "Each side may commit one tactic in a challenge, and committing consumes it from the separate match inventory. A pure suppression card cannot be used against zero opposing successes. Tactics do not occupy main-hand slots. A staged preview may affect the shown result; Accept is the commitment step, not merely selecting the card."
+        image: {fileID: 0}
     - id: equipment
       title:
         key: help.topic.equipment.title
         fallback: "Equipment and attachment compatibility"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.equipment.block.overview.text
+          fallback: "Equipment is a permanent attachment that modifies a compatible Unit/Hero card or a deployed unit. Compatibility is defined by the attachment's allowed host kinds and tags."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.equipment.block.instructions.text
+          fallback: "Right-click the Equipment card in your hand, then left-click a compatible card in hand or a live unit in your open Army Viewer. Read the displayed cost and resulting stats. Use Escape or another right-click to cancel the pending selection."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.equipment.block.rules.text
+          fallback: "A unit has a separate Equipment slot and Mutator slot. An occupied slot rejects another attachment of that kind; there is no general replacement action. Some Equipment has Single Use and is consumed after an attack. Equipment is a modifier of its host, not another independently moving army member."
+        image: {fileID: 0}
     - id: mutators
       title:
         key: help.topic.mutators.title
         fallback: "Mutators and biological upgrades"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.mutators.block.overview.text
+          fallback: "Mutators are biological attachments and use their own attachment slot. Their production path is Research, while ordinary Equipment is made through Production."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.mutators.block.instructions.text
+          fallback: "Include the desired Mutator blueprint in your saved deck. Bring a Researcher to an owned Research facility, complete its attempt and then attach the resulting card to an eligible host through the same right-click selection flow used by Equipment."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.mutators.block.rules.text
+          fallback: "Host restrictions still apply; a biological description does not make every card compatible. A Mutator slot and Equipment slot are independent, so compatible upgrades of different kinds may coexist. Check the actual card effect for added abilities, stat changes and play costs."
+        image: {fileID: 0}
   - id: economy
     title:
       key: help.section.economy.title
@@ -126,62 +432,278 @@ MonoBehaviour:
       title:
         key: help.topic.resources.title
         fallback: "Human, Energy, Materials and Tech"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.resources.block.overview.text
+          fallback: "Human, Energy, Materials and Tech are four separate resource stocks. Cards and actions can require a specific mixture; a large total stock does not compensate for a missing required type."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.resources.block.instructions.text
+          fallback: "Read the resource bar and each action's cost. Build matching collectors on productive hexes, use in-play production abilities and claim event rewards to increase supply. If you have Trade access, exchange a surplus resource for a type you lack."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.resources.block.rules.text
+          fallback: "Resources are distinct from AP, movement and Fate. Initiative token purchases may mix resource types, but ordinary card costs still require their stated types. Aircraft launch Energy is an additional cost to account for when planning sorties."
+        image: {fileID: 0}
     - id: income
       title:
         key: help.topic.income.title
         fallback: "Income and resource yields"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.income.block.overview.text
+          fallback: "At the new round's income step, collectors harvest the effective yields of their hexes and in-play Produce abilities grant their resource bonuses. Income comes before initiative purchases for that round."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.income.block.instructions.text
+          fallback: "Inspect a visited hex's resource quantities before building. Add or upgrade a matching collector only when it can increase your harvest. Protect collection sites and watch hostile occupation, which can interfere with harvesting."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.income.block.rules.text
+          fallback: "A collector contributes 1 plus its own upgrade level, but total collection is limited by available hex yield and the actual collection rules. Multiple collectors do not create unlimited output from one deposit. Produce abilities grant a separate fixed bonus; cards waiting in hand produce nothing."
+        image: {fileID: 0}
     - id: trade
       title:
         key: help.topic.trade.title
         fallback: "Trade and the exchange rate"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.trade.block.overview.text
+          fallback: "Trade converts one resource type into another during your own confirmed turn. A living in-play carrier of the Trade ability unlocks access; merely owning its card in hand does not."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.trade.block.instructions.text
+          fallback: "Open Trade, choose the resource to give and the resource to receive, then inspect the before/after amounts. Confirm the exchange to pay the current price for 1 unit of the chosen resource. Repeat only if the new rate is acceptable. For example, a 2:1 exchange pays 2 of the given resource for 1 received; the next exchange costs 3:1."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.trade.block.rules.text
+          fallback: "The minimum rate is 2:1. Each completed exchange raises the price by 1. A personal turn with no trades lowers it by 1, down to 2:1. Exchanges cost no AP. The rate belongs to the player; switching between Trade carriers does not reset it."
+        image: {fileID: 0}
     - id: bases
       title:
         key: help.topic.bases.title
-        fallback: "Founding bases and their radius"
-      blocks: []
+        fallback: "Founding bases and expansion"
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.bases.block.overview.text
+          fallback: "A Base is an expansion building that can host Facilities and, when its abilities allow it, a garrison or airfield. Its placement is tied to a hero army on the destination hex."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.bases.block.instructions.text
+          fallback: "Move an army containing your own hero onto a passable hex. Play a Base card there and pay its stated AP/resources. The destination must not contain an incompatible or hostile building or a controlling enemy army. An owned resource site can be absorbed when its existing facilities fit."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.bases.block.rules.text
+          fallback: "Construction is on the hero's hex, not at an arbitrary remote position. The current placement rule does not impose a separate base influence-radius requirement. A later-built Base does not become the original citadel for elimination purposes. Use the Base Viewer to inspect its slots and upgrades."
+        image: {fileID: 0}
     - id: base-upgrades
       title:
         key: help.topic.base-upgrades.title
         fallback: "Base upgrades and facility slots"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.base-upgrades.block.overview.text
+          fallback: "A new Base begins at level 1 with 2 open Facility slots. Each base upgrade opens one more slot, up to 5 slots at level 4."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.base-upgrades.block.instructions.text
+          fallback: "Open your Base Viewer and choose Upgrade when the next tier is affordable. Check the displayed AP and resource price before confirming, then use the newly opened slot for a Facility."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.base-upgrades.block.rules.text
+          fallback: "The three current upgrade tiers cost 2, 4 and 6 AP, together with 1, 2 and 4 of each resource respectively. Base upgrades also update the base's defensive value. A resource site uses a different slot arrangement; upgrading an individual extractor is not the same as upgrading a Base."
+        image: {fileID: 0}
     - id: facilities
       title:
         key: help.topic.facilities.title
         fallback: "Facilities and construction requirements"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.facilities.block.overview.text
+          fallback: "Facilities add capabilities to an owned Base: examples include research, production and resource collection. A Facility occupies one of that Base's currently unlocked slots."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.facilities.block.instructions.text
+          fallback: "Inspect your Base Viewer for an empty, unlocked slot. Play a Facility card onto the base or its slot and pay the card's cost. If every unlocked slot is occupied, upgrade the Base before adding another Facility."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.facilities.block.rules.text
+          fallback: "A Facility card cannot be placed into an ordinary army or on empty terrain through the Base-building flow. Ownership and slot availability are checked at the moment the card is played. A Research or Production facility still needs a matching hero on its hex before it can be used."
+        image: {fileID: 0}
     - id: extractors
       title:
         key: help.topic.extractors.title
         fallback: "Extraction sites and their upgrades"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.extractors.block.overview.text
+          fallback: "Extraction buildings harvest Human, Energy, Materials or Tech from their hex. They are built through the resource actions, rather than drawn as ordinary Facility cards."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.extractors.block.instructions.text
+          fallback: "Move an owned hero army onto a passable resource hex, inspect its yields and choose the matching resource-building action. Pay the displayed AP/resources. Upgrade a placed collector when the extra capacity can harvest more of the existing deposit."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.extractors.block.rules.text
+          fallback: "Only one Facility with the same collection ability may be built on a building through this action. Construction is rejected when it adds no income or no slot is free. A standalone resource site has four available resource slots. Upgrades cannot increase a hex's resource yield; they only improve how much of that yield a collector can harvest."
+        image: {fileID: 0}
     - id: garrisons
       title:
         key: help.topic.garrisons.title
         fallback: "Garrisons and base defence"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.garrisons.block.overview.text
+          fallback: "A garrison is the stationary army associated with an eligible building. It receives deployed ground units and defends the location but cannot be issued an ordinary move order."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.garrisons.block.instructions.text
+          fallback: "Open the garrison to inspect its roster. Keep defenders there, or create a field army and transfer selected members into it when you need a mobile force. Use a hero commander when the final roster requires greater capacity."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.garrisons.block.rules.text
+          fallback: "A hero-less garrison has nominal capacity 4, compared with 2 for a hero-less field army. A commander replaces that nominal limit with its Command rating. Aircraft use airfield storage, not the ground garrison. Garrisons cannot choose the normal retreat command."
+        image: {fileID: 0}
     - id: building-damage
       title:
         key: help.topic.building-damage.title
         fallback: "Building damage, repair and destruction"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.building-damage.block.overview.text
+          fallback: "Ordinary ground conquest is resolved by defeating or driving away the building's defenders. A Base or Citadel is normally captured intact; a standalone hostile resource site is destroyed when taken."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.building-damage.block.instructions.text
+          fallback: "Clear or force away the defending army, then occupy the location with a force that can act. Watch for additional hostile defenders on the hex. Inspect damaged structures in the Base Viewer; its Repair action restores the managed Base's structure points."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.building-damage.block.rules.text
+          fallback: "There is no separate player-operated Siege challenge against a building's displayed Fate. Explosions can damage structures directly, including friendly structures. Hidden-only movers do not automatically seize buildings. Capturing an original citadel gives its owner a recovery window until that owner's next turn begins."
+        image: {fileID: 0}
     - id: research
       title:
         key: help.topic.research.title
         fallback: "Research and researchers"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.research.block.overview.text
+          fallback: "Research makes Mutator attachments from the blueprints available to your selected deck. It requires an owned building with a Research Facility and one of your non-prisoner Researcher heroes on that exact hex."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.research.block.instructions.text
+          fallback: "Bring the Researcher to the facility, open Research, choose an unlocked blueprint and review its difficulty and attempt cost. Leave a free main-hand slot. Start the attempt, use available Fate or a tactic if useful, then accept the result."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.research.block.rules.text
+          fallback: "Choosing Research reveals the participating hidden Researcher; it does not reveal every member of the army. The attempt pays AP/resources even if the roll fails. A successful output enters the match hand. One deck blueprint permits repeated attempts, rather than being consumed after one success."
+        image: {fileID: 0}
     - id: production
       title:
         key: help.topic.production.title
         fallback: "Production and assemblers"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.production.block.overview.text
+          fallback: "Production makes Equipment from available deck blueprints. It requires an owned Production Facility and an Assembler hero belonging to you on the same hex."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.production.block.instructions.text
+          fallback: "Bring the Assembler to the facility, open Production and select an available blueprint. Review attempt AP, resources and required successes, keep a free hand slot, then start and resolve the challenge. Apply the completed attachment separately when ready."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.production.block.rules.text
+          fallback: "Production uses the same success test as Research, but does not reveal a hidden acting hero merely for choosing Production. Starting an attempt spends its AP/resources even if it fails. Its resulting card does not pay the production resource cost again when later played."
+        image: {fileID: 0}
     - id: production-check
       title:
         key: help.topic.production-check.title
         fallback: "Research and production challenges"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.production-check.block.overview.text
+          fallback: "A Research/Production challenge rolls a token pool equal to the acting hero's maximum Fate stat. The blueprint's difficulty is a fixed number of required successes, not an opposing random roll."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.production-check.block.instructions.text
+          fallback: "Roll, compare successes with the displayed requirement, and spend the attempt's available Fate if it can help. One Fate rerolls a miss; if no misses remain but the target is still unmet, it can add another die. A supported tactic may change successes or difficulty. Accept to finish."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.production-check.block.rules.text
+          fallback: "Success requires meeting or exceeding the required total; equality succeeds. Fate spending is local to this attempt and does not drain the live hero's combat Fate. Failed attempts do not refund their starting cost. A free hand slot and an available blueprint are required to start."
+        image: {fileID: 0}
   - id: armies
     title:
       key: help.section.armies.title
@@ -191,47 +713,209 @@ MonoBehaviour:
       title:
         key: help.topic.army-composition.title
         fallback: "Army composition, leader and capacity"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.army-composition.block.overview.text
+          fallback: "A ground army is a roster that moves and fights together. Its first hero is its commander; additional heroes do not add their Command ratings together."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.army-composition.block.instructions.text
+          fallback: "Open the Army Viewer to check members, leader, current/max movement and capacity. Arrange the roster so the intended hero leads, and keep enough room before deploying or transferring more units. A commander's Command value replaces the ordinary capacity limit."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.army-composition.block.rules.text
+          fallback: "A field army without a hero has capacity 2; a garrison without a hero has capacity 4. Heroes count as members too. New additions must fit the resulting roster. A commander also supplies the army's battle Fate and its Initiative bonus. Aircraft cannot share a normal ground roster."
+        image: {fileID: 0}
     - id: hero
       title:
         key: help.topic.hero.title
         fallback: "Heroes and armies without a hero"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.hero.block.overview.text
+          fallback: "Heroes command armies and provide access to construction, Research, Production and other abilities. They are support pieces in ground battles rather than ordinary units in the acting queue."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.hero.block.instructions.text
+          fallback: "Keep a hero with the force that needs its Command, Fate or specialist abilities. Small hero-less forces can still move, scout and fight if they contain combat-capable units. Protect an isolated hero with ordinary troops when possible."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.hero.block.rules.text
+          fallback: "A hero-less field army is limited to 2 members. A lone hero can be forced out through a Capture/Kill encounter even when the attacker cannot guarantee its capture. On a tactical grid, heroes deploy in their side's back row. An air strike can target a hero only when it is its army's sole living member."
+        image: {fileID: 0}
     - id: army-creation
       title:
         key: help.topic.army-creation.title
         fallback: "Creating and renaming armies"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.army-creation.block.overview.text
+          fallback: "Creating a mobile army gives selected units a separate roster and map marker. Naming an army changes its label, not its ownership, capacity or abilities."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.army-creation.block.instructions.text
+          fallback: "Open your garrison and use Create Army, then transfer the desired members into the new force. You can also use supported drag/transfer flows to split a roster. Open a mobile army and choose Rename to edit its name."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.army-creation.block.rules.text
+          fallback: "The current army-creation cost is 2 AP, separate from deployment or activation. A newly created empty roster does not conjure units; populate it before using it. Empty mobile armies are cleaned up. Aircraft formation has its own airfield flow and cannot be mixed with ground units."
+        image: {fileID: 0}
     - id: army-activation
       title:
         key: help.topic.army-activation.title
         fallback: "Army activation and AP costs"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.army-activation.block.overview.text
+          fallback: "The first move order of a personal turn activates an army. Its AP cost is the sum of the activation costs of its members, with relevant abilities applied."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.army-activation.block.instructions.text
+          fallback: "Inspect the army and route preview before moving. Keep enough AP for its first activation as well as MP for travel. For airborne units, also reserve any unpaid launch Energy. Further movement by the same already-covered members uses MP without charging the same army activation again."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.army-activation.block.rules.text
+          fallback: "A fresh unit joining an already-activated army can owe its own activation share immediately. Returning the same covered unit to that army in the same turn does not charge it twice. Activation tracking resets at the owner's next turn. Rapid Reaction contributes 0 AP for its carrier."
+        image: {fileID: 0}
     - id: movement
       title:
         key: help.topic.movement.title
         fallback: "Movement points and route costs"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.movement.block.overview.text
+          fallback: "An army's usable movement is constrained by its slowest effective member. MP pays for route steps, while AP pays for activation. A reachable destination may therefore still be unaffordable in AP."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.movement.block.instructions.text
+          fallback: "Select the army and inspect the route arrow before right-clicking the destination. Compare the full path cost with current movement, and account for enemy contact and events that can stop the journey before its original endpoint."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.movement.block.rules.text
+          fallback: "Ground entry costs use the destination terrain, with a minimum of 1 MP. Aircraft normally pay 1 MP per transition regardless of terrain. Leaving a sandstorm hex adds 1 MP for either profile. Movement refreshes on the owner's turn; an attack can exhaust remaining strategic movement."
+        image: {fileID: 0}
     - id: terrain
       title:
         key: help.topic.terrain.title
         fallback: "Terrain, passability and defence"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.terrain.block.overview.text
+          fallback: "Terrain determines ground passability, movement cost, resource yields and a defending army's terrain protection. Different routes across the same distance can therefore have different costs."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.terrain.block.instructions.text
+          fallback: "Inspect a hex and the route preview before committing a slow army. Use low-cost routes when speed matters and defensible terrain when holding a position. Aircraft use their own movement profile instead of ground entry costs."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.terrain.block.rules.text
+          fallback: "Impassable ground terrain stays impassable during a sandstorm. Terrain defense benefits the defending ground army, not every army sharing the hex. Sandstorms remove terrain and building defense bonuses for the encounter and reduce attack range where applicable. Hidden units may gain concealment from more costly terrain."
+        image: {fileID: 0}
     - id: transfer
       title:
         key: help.topic.transfer.title
         fallback: "Transferring, exchanging and splitting units"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.transfer.block.overview.text
+          fallback: "Transfers move members between your armies on the same hex. The final rosters must remain legal for capacity, commander order and ground/air container type."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.transfer.block.instructions.text
+          fallback: "Use the Army Viewer's army controls and unit-card drag flow to move or exchange selected members. Check which hero will lead each final army. Split units into a newly created field army when the current roster should remain stationary."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.transfer.block.rules.text
+          fallback: "Joining an already-activated destination may charge the incoming unit's activation AP and unpaid aircraft launch costs where relevant. Moving a commander can lower the old roster's capacity, so a transfer may need a different grouping. Stored aircraft, carrier decks and ground garrisons are distinct destinations; they cannot accept every unit type."
+        image: {fileID: 0}
     - id: transport
       title:
         key: help.topic.transport.title
         fallback: "Infantry transport"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.transport.block.overview.text
+          fallback: "Transport helps slower Infantry move with a faster carrier in the same ground army. It changes the eligible passenger's effective movement; it does not create an aircraft or a separate embarkation inventory."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.transport.block.instructions.text
+          fallback: "Place a Transport unit with compatible, slower Infantry and inspect the army's movement after the roster updates. Keep the carrier and its passenger together while travelling. Use enough carriers if several slow infantry members need assistance."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.transport.block.rules.text
+          fallback: "Each carrier supports one eligible non-hero Infantry unit. The carrier must be faster than the passenger. Aircraft, prisoners and summoned units are not passengers. The army is still limited by its slowest effective remaining member, so one transported passenger does not make every slow unit fast."
+        image: {fileID: 0}
     - id: unit-repair
       title:
         key: help.topic.unit-repair.title
         fallback: "Unit healing, repair and regeneration"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.unit-repair.block.overview.text
+          fallback: "Paid repair restores a wounded live unit or hero to maximum HP. It is available at one of your Bases or on a hex served by an eligible friendly ground Repair carrier."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.unit-repair.block.instructions.text
+          fallback: "Open the Army Viewer at a repair location, select a wounded unit and use its repair control. Inspect the price shown for that specific unit. Repair before the next battle or before risking another overdue aircraft refuelling step."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.unit-repair.block.rules.text
+          fallback: "Each paid repair costs 1 AP plus its stored resource cost. That resource price is sampled once from half of the card's original resource units, rounded up, and stays fixed for that instance. Repair is distinct from Heal and Regeneration abilities. Dead units and prisoners cannot be restored with this action."
+        image: {fileID: 0}
   - id: recon
     title:
       key: help.section.recon.title
@@ -241,37 +925,163 @@ MonoBehaviour:
       title:
         key: help.topic.fog.title
         fallback: "Vision and fog of war"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.fog.block.overview.text
+          fallback: "Hex visibility and unit detection are different. A visible hex can still contain an individually hidden unit, while a previously seen hex can remain remembered after live sight is lost."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.fog.block.instructions.text
+          fallback: "Move armies or use reconnaissance abilities to observe new territory. Inspect the map's visible and remembered states before assuming an old marker still represents a live position. Visit a hex with an appropriate ground force to learn the resource quantities shown there."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.fog.block.rules.text
+          fallback: "The current basic army vision radius is 0, and basic building vision radius is 1; reconnaissance can extend army vision. Seeing a hex can reveal resource types without revealing all quantities. Fog does not grant knowledge of later enemy moves, building changes or hidden army composition."
+        image: {fileID: 0}
     - id: memory
       title:
         key: help.topic.memory.title
         fallback: "Last observed enemy positions"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.memory.block.overview.text
+          fallback: "An enemy marker in fog can be a last-observed snapshot rather than a live army. Its position, roster and stats describe what you saw, not what is currently happening out of sight."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.memory.block.instructions.text
+          fallback: "Use remembered positions to plan scouting, then confirm them with fresh vision before committing an attack. Inspect a remembered army as historical information; it is not a target that follows the enemy invisibly."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.memory.block.rules.text
+          fallback: "Moving enemy snapshots expire at the end of the observer's personal turn. A sighting made between turns can therefore remain until that player's next turn ends; one made during their own turn expires at that turn's end. Stationary neutral armies and buildings remain known until a fresh observation corrects them. Completely hidden armies are not remembered as if they had been seen."
+        image: {fileID: 0}
     - id: scouting
       title:
         key: help.topic.scouting.title
         fallback: "Reconnaissance range and detection"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.scouting.block.overview.text
+          fallback: "Reconnaissance tags combine extra hex vision with a spotting pool. The r1sX family adds 1 to army vision; X is the spotting strength used against hidden units."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.scouting.block.instructions.text
+          fallback: "Include a reconnaissance carrier in the army that needs a wider view. Move it near suspected hidden forces and let detection checks resolve when relevant sources or targets enter observation. Compare spotting strength with the enemy's concealment rather than relying on vision radius alone."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.scouting.block.rules.text
+          fallback: "Use the best applicable reconnaissance radius and spotting pool, not the sum of every carrier. r1s0 extends ordinary vision but has no adjacent spotting dice. Ordinary sources can make a minimal check on their own hex; dedicated reconnaissance can check adjacent hexes. Detection needs strictly more successes than concealment."
+        image: {fileID: 0}
     - id: stealth
       title:
         key: help.topic.stealth.title
         fallback: "Stealth and detection challenges"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.stealth.block.overview.text
+          fallback: "Stealth belongs to individual units, not automatically to every member of their army. A hidden unit can occupy a visible hex without being personally detected by every opponent."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.stealth.block.instructions.text
+          fallback: "For an eligible Stealth carrier, use the stealth action and pay 1 AP to enter. Leaving stealth costs 0 AP. Reveal the carrier before taking its offensive actions; visible members of a mixed army can still act under their own rules."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.stealth.block.rules.text
+          fallback: "A unit cannot repeatedly leave and re-enter stealth in the same personal turn. Hide tokens equal its stealth level plus the terrain move-cost bonus. Detection uses the strongest applicable observer pool, and a tie preserves stealth. Detection is personal to the observer and lasts through that observer's next turn; it does not reveal the unit to everyone."
+        image: {fileID: 0}
     - id: intelligence
       title:
         key: help.topic.intelligence.title
         fallback: "Tactical intelligence"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.intelligence.block.overview.text
+          fallback: "Tactical Intelligence unlocks an opponent information panel while you have an in-play carrier. The amount of information depends on the distance of your qualifying ground armies from the enemy's starting citadel."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.intelligence.block.instructions.text
+          fallback: "Open the opponent intelligence view when access is available. Move an active field ground army closer to an enemy citadel to reveal more fields, while still respecting enemy defenses and fog."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.intelligence.block.rules.text
+          fallback: "At distance 3, 2, 1 and 0, the report reveals 4, 8, 12 and 16 fields respectively; distance 4 or more reveals none through proximity. Garrisons, prisons, aircraft and carrier containers are not the qualifying field observers. The revealed selection changes with your personal turn. This report does not replace live vision or stealth detection."
+        image: {fileID: 0}
     - id: sandstorms
       title:
         key: help.topic.sandstorms.title
         fallback: "Sandstorm lifecycle and movement"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.sandstorms.block.overview.text
+          fallback: "Weather conditions allow no storms, up to 1 storm or up to 2 storms. Each storm grows, changes its covered hexes, drifts and fades on the full-round cycle."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.sandstorms.block.instructions.text
+          fallback: "Inspect the current storm footprint when choosing movement and battle positions. Recheck it after a new round begins rather than assuming the previous route is still clear. Campaign region weather is part of the operation's conditions."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.sandstorms.block.rules.text
+          fallback: "A storm lasts 6 active rounds including birth. Its target sizes by age are 1, 3, 5, 6, 5 and 3 hexes. Its centre can drift one hex or lull, with a connected footprint that changes shape. After disappearance, its slot rests for 2 rounds. Storms avoid the outer border and do not overlap each other."
+        image: {fileID: 0}
     - id: storm-effects
       title:
         key: help.topic.storm-effects.title
         fallback: "Sandstorms: movement, range and defence"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.storm-effects.block.overview.text
+          fallback: "A sandstorm changes route costs and battle protection. The costs apply to the actual covered hexes, so two equally long routes can become different in MP."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.storm-effects.block.instructions.text
+          fallback: "Budget an extra 1 MP every time a ground army or aircraft leaves a storm-covered hex. If you fight in a storm, check each unit's effective attack range and avoid relying on a building or terrain defense bonus."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.storm-effects.block.rules.text
+          fallback: "The battle receives no terrain or building defense bonus in a storm. A positive attack range above 1 is reduced by 1; range 1 is not reduced below 1. These are situational effects, not permanent damage to card stats. The encounter keeps the weather snapshot taken when it begins until it ends."
+        image: {fileID: 0}
   - id: combat
     title:
       key: help.section.combat.title
@@ -281,77 +1091,347 @@ MonoBehaviour:
       title:
         key: help.topic.contact.title
         fallback: "Enemy contact and starting a battle"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.contact.block.overview.text
+          fallback: "Enemy contact occurs when opposing forces meet on a hex. The encounter depends on the actual participants: ordinary ground combat, a lone-hero Capture/Kill challenge, or aviation reactions may apply."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.contact.block.instructions.text
+          fallback: "Select an attacking mobile army, preview its route and right-click the enemy location. When a contact choice appears, inspect both forces and the hex bonuses before choosing Fight or an available Delay option."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.contact.block.rules.text
+          fallback: "A force does not need to guarantee killing an isolated hero to gain ground: forcing it to retreat can expose a building. Fully hidden units follow stealth restrictions. Ground attack commitment can consume the army's remaining movement. A map hex may contain several distinct armies, so inspect what remains after a battle."
+        image: {fileID: 0}
     - id: battle-delay
       title:
         key: help.topic.battle-delay.title
         fallback: "Immediate and delayed battles"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.battle-delay.block.overview.text
+          fallback: "An available Delay choice postpones that hex's encounter until the queued battles are resolved before the next round begins. It does not cancel the confrontation or grant a fresh turn first."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.battle-delay.block.instructions.text
+          fallback: "Use Delay only when the remaining turns in the current round can improve your position. Bring eligible reinforcements if possible, then be ready to resolve the encounter before new-round income, initiative and weather progression."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.battle-delay.block.rules.text
+          fallback: "Only one pending battle is stored for a hex. Armies reserved for a pending encounter cannot freely sign up for other battles. Do not assume that leaving the popup has removed the commitment. Saving is unavailable while an encounter remains unsettled."
+        image: {fileID: 0}
     - id: deployment
       title:
         key: help.topic.deployment.title
         fallback: "Battle deployment and formation"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.deployment.block.overview.text
+          fallback: "The tactical battlefield has 5 columns and 5 rows: each side has a back row and front row, separated by a shared neutral row. Arrangement precedes the acting rounds."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.deployment.block.instructions.text
+          fallback: "Drag your unit cards into legal deployment cells or swap their positions during arrangement. Place heroes in any column of your own back row. Put short-range troops where they can reach the enemy and support pieces where their abilities can help."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.deployment.block.rules.text
+          fallback: "Ordinary ground combatants can deploy in either of their side's two rows; a hero cannot deploy in the front row. The neutral row is used by later tactical movement. Formation does not change which army a unit belongs to. Your own army's arrangement can be reused for later battles when its members remain available."
+        image: {fileID: 0}
     - id: battle-rounds
       title:
         key: help.topic.battle-rounds.title
         fallback: "Battle rounds, initiative and unit turns"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.battle-rounds.block.overview.text
+          fallback: "A tactical round gives each eligible ground combatant a turn in descending effective Initiative. A living commander adds its Initiative to its side's ordinary combatants."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.battle-rounds.block.instructions.text
+          fallback: "Review the round-start order, then act with the highlighted unit. Choose a legal move, attack or Pass. Plan for enemy units that will act before your next combatant, and consider Shock Attack or protective positioning."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.battle-rounds.block.rules.text
+          fallback: "Heroes support their side but are not ordinary actors in the ground combat queue. Equal effective Initiative is resolved by a round-specific tie-break. Abilities such as Drill and Bodyguard refresh according to their round rules. Strategic AP is not paid again for every tactical click."
+        image: {fileID: 0}
     - id: battle-movement
       title:
         key: help.topic.battle-movement.title
         fallback: "Battle movement and attack range"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.battle-movement.block.overview.text
+          fallback: "A unit's tactical turn can be used to move one cell orthogonally, attack a legal enemy within range, or pass. A tactical move and an attack are separate alternatives for that acting turn."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.battle-movement.block.instructions.text
+          fallback: "Right-click a highlighted empty adjacent cell to move, or right-click a legal enemy to attack. Left-click a card to inspect it without issuing the action. Use the shared middle row to bring short-range units into contact."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.battle-movement.block.rules.text
+          fallback: "Diagonal movement is not legal, but attack range uses square distance and can include diagonals. A target must be alive and hostile. Sandstorms reduce applicable attack range. The tactical grid is separate from strategic hex MP; spending a turn to move on the grid is not a map travel step."
+        image: {fileID: 0}
     - id: challenges
       title:
         key: help.topic.challenges.title
         fallback: "Challenge tokens, successes and ties"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.challenges.block.overview.text
+          fallback: "Challenges compare token successes. Each token has a 50% chance of success; more tokens improve the distribution of possible results but do not guarantee a hit."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.challenges.block.instructions.text
+          fallback: "Read both pools before rolling, then compare successes and any tactic modifiers. Decide whether to use Fate or a supported tactic before accepting. In ground combat, Attack supplies the attacking pool and Defense plus eligible defender bonuses supplies the defending pool."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.challenges.block.rules.text
+          fallback: "Ground damage begins at max(0, attacking successes minus defending successes), so equality causes no base damage. Other challenge types use different thresholds: Research/Production succeeds on equality, Capture/Kill kills on equality, and stealth detection fails on equality. Read the specific topic before treating all ties the same. For example, 4 attacking successes against 2 defending successes give 2 base damage before abilities."
+        image: {fileID: 0}
     - id: fate
       title:
         key: help.topic.fate.title
         fallback: "Fate points, rerolls and the Fate duel"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.fate.block.overview.text
+          fallback: "The commanding hero supplies the army's combat Fate budget. Fate can reroll a failed token during a challenge; it does not guarantee that the reroll succeeds."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.fate.block.instructions.text
+          fallback: "After the initial roll, use Spend when you want to retry a miss, or accept/pass when the current outcome is acceptable. The defender makes the first Fate decision, and the sides alternate while meaningful decisions remain."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.fate.block.rules.text
+          fallback: "Combat Fate remains spent for the rest of that battle and refills when the encounter ends, not at every tactical round or strategic turn. Each combat spend rerolls one miss rather than adding a guaranteed success. Research/Production uses its own local attempt budget and supports an extra die when its rules allow it."
+        image: {fileID: 0}
     - id: damage
       title:
         key: help.topic.damage.title
         fallback: "Attack, defence, damage and hit points"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.damage.block.overview.text
+          fallback: "Ground combat starts with the difference between attacking and defending successes. Only a positive result enters the normal damage-modifier chain."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.damage.block.instructions.text
+          fallback: "Inspect target tags and defensive abilities before committing a hit. Use an appropriate damage specialist against Bio, Mechanical or Armored targets, and account for Ceramic Armor. Keep enough HP to survive return attacks and collateral effects."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.damage.block.rules.text
+          fallback: "The current modifier order is Critical Damage multiplication, matching Hyperkinetic/Pyrokinetic/Ionic bonuses, then Ceramic Armor reduction. A zero base hit is not turned into damage by those bonuses. Surviving units keep their wounds after battle; ending a fight does not fully heal ordinary HP. For example, 2 base damage becomes 4 with Critical Damage, then 3 against Ceramic Armor when no other modifiers apply."
+        image: {fileID: 0}
     - id: building-defence
       title:
         key: help.topic.building-defence.title
         fallback: "Building defence and Disruption"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.building-defence.block.overview.text
+          fallback: "The defending ground army can receive terrain defense and its own Base's building defense. The attacker does not receive those bonuses just because it stands on the same hex."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.building-defence.block.instructions.text
+          fallback: "Inspect the encounter's defense summary. Bring a living ground Disruption carrier if you want to cancel a hostile Base/Citadel's building contribution. Alternatively, consider whether storm weather already removes that protection."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.building-defence.block.rules.text
+          fallback: "Disruption removes the building part only; ordinary terrain protection remains outside a storm. An eligible carrier already on the hex or arriving with the attacking army can provide the effect without being revealed merely by the rule. A sandstorm removes both parts, and an airborne defender receives neither hex bonus."
+        image: {fileID: 0}
     - id: reactions
       title:
         key: help.topic.reactions.title
         fallback: "Bodyguard and counterattacks"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.reactions.block.overview.text
+          fallback: "Bodyguard can redirect a primary ground hit onto an adjacent allied carrier. Counterattack can answer a close enemy attack after the victim survives. Formation determines whether these abilities are available."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.reactions.block.instructions.text
+          fallback: "Put Bodyguards orthogonally beside units you want to protect. Avoid making a close attack against a dangerous Counterattack unit unless you can survive the response, kill it, or use a damaging Shock Attack to suppress that response."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.reactions.block.rules.text
+          fallback: "A Bodyguard intercepts once per tactical round and heroes cannot guard. Counterattack range includes diagonals within one cell. The intercepted hit uses the guard's own defensive abilities. A counterattack is not itself intercepted or countered, so these reactions do not create an endless chain."
+        image: {fileID: 0}
     - id: explosions
       title:
         key: help.topic.explosions.title
         fallback: "Explosions and single-use attacks"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.explosions.block.overview.text
+          fallback: "Explosion attacks replace a normal single-target attack with separate challenges against a random set of distinct occupants on the target hex. They can hit units and structures, including friendly ones."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.explosions.block.instructions.text
+          fallback: "Inspect the explosion size and the units/buildings sharing the location before launching. Keep valuable friendly armies and your citadel away from the potential target pool. Expect a separate defense/Fate resolution for each selected living target."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.explosions.block.rules.text
+          fallback: "Explosion 3, 5 and 10 select up to that many targets, but each attack uses a 10-token offensive pool. The number in the ability is not its damage or dice count. The launcher is excluded from its own target pool. Single Use attachments or innate disposable units are spent at attack completion under their separate rules."
+        image: {fileID: 0}
     - id: retreat
       title:
         key: help.topic.retreat.title
         fallback: "Retreat and pursuit"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.retreat.block.overview.text
+          fallback: "Retreat gives up the current fight and risks pursuit before survivors relocate. It is a tactical decision, not a free teleport to a safe Base."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.retreat.block.instructions.text
+          fallback: "Choose Retreat when the encounter offers the decision, before the round's acting sequence is underway. Check which enemies will still act against the withdrawing force and whether a nearby destination is actually safe."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.retreat.block.rules.text
+          fallback: "The ordinary retreat command is unavailable to garrisons. Survivors move to an adjacent passable hex, preferring a direction toward the nearest eligible owned Barracks; they do not jump directly to it. If no retreat destination exists the army is lost. The destination can trigger another contact, and abandoning a defended building can let it be captured or destroyed."
+        image: {fileID: 0}
     - id: capture-kill
       title:
         key: help.topic.capture-kill.title
         fallback: "Capturing or killing a lone hero"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.capture-kill.block.overview.text
+          fallback: "A force facing a hero without ordinary combatants can resolve a Capture/Kill challenge. The action can be useful even when it only forces the hero away from a valuable hex."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.capture-kill.block.instructions.text
+          fallback: "Bring combat-capable hunters into contact and inspect the challenge pools. Use Fate and a supported tactic where available, then accept the outcome. If the hero escapes, inspect the cleared position and any building control change."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.capture-kill.block.rules.text
+          fallback: "The hunter pool is 1 plus half the number of non-hero units, rounded down. More hunter successes capture the hero, equal successes kill it, and fewer successes let it escape. A hero's escape does not mean it can continue blocking the same location unchanged; surviving lone heroes may be made to retreat."
+        image: {fileID: 0}
     - id: prisoners
       title:
         key: help.topic.prisoners.title
         fallback: "Prisoners, prison armies and release"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.prisoners.block.overview.text
+          fallback: "Captured heroes are held in the captor's prison army at its original citadel. Prisoners are not ordinary deployable or movable members."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.prisoners.block.instructions.text
+          fallback: "Inspect the citadel's prison to review captured heroes. Protect prisoners as an economic advantage for the captor; they cannot be dragged into field armies, used as commanders or used as active ability sources."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.prisoners.block.rules.text
+          fallback: "Each captive contributes 2 AP to its captor's round allocation. Prison armies are immobile and their contents are read-only. When the captor is eliminated, prisoner release is resolved through the existing ownership/capacity rules. There is no separate general ransom or manual prison-transfer command."
+        image: {fileID: 0}
     - id: battle-outcome
       title:
         key: help.topic.battle-outcome.title
         fallback: "Battle outcome and destroyed armies"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.battle-outcome.block.overview.text
+          fallback: "A battle can end with one surviving side, a retreat, capture/death of isolated heroes, or both sides gone. The final surviving units return to the strategic situation with their actual remaining HP."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.battle-outcome.block.instructions.text
+          fallback: "Acknowledge the result, inspect the hex again and check remaining armies, buildings, event guards and rewards. A victory over one army does not guarantee that every hostile force or event on the hex has been cleared."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.battle-outcome.block.rules.text
+          fallback: "Temporary combat stat changes are reverted and battle Fate refills. Summoned units are removed when their temporary role ends. Undefended Bases can change owner and resource sites can be destroyed. Event rewards require their own event resolution, and a newly exposed guard can begin another encounter."
+        image: {fileID: 0}
   - id: aviation
     title:
       key: help.section.aviation.title
@@ -361,37 +1441,163 @@ MonoBehaviour:
       title:
         key: help.topic.airfields.title
         fallback: "Airfields and aircraft capacity"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.airfields.block.overview.text
+          fallback: "Aircraft deploy into owned airfield storage before becoming a mobile air army. Airfield capacity is a real finite limit, distinct from a ground garrison's Command capacity."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.airfields.block.instructions.text
+          fallback: "Inspect a base or mobile carrier that provides aircraft capacity. Deploy aircraft to its airfield container, select the intended members and form a wing through the supported Army Viewer transfer/formation controls."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.airfields.block.rules.text
+          fallback: "Check both the receiving container and the total storage at the hex. A full airfield can prevent deployment, transfer or landing. Aircraft do not occupy ordinary ground-garrison slots. Stored aircraft and a ready wing are different rosters even when they share the same map location."
+        image: {fileID: 0}
     - id: carrier
       title:
         key: help.topic.carrier.title
         fallback: "Mobile carriers and aircraft transfers"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.carrier.block.overview.text
+          fallback: "A living ground unit with Airfield capacity can act as a mobile aircraft carrier. Its stored aircraft and ready wing are separate aviation containers associated with that carrier."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.carrier.block.instructions.text
+          fallback: "Open the carrier's airfield/wing views, move compatible aircraft between available containers and select the exact group you want to send. Keep enough shared capacity to receive returning aircraft. Move the ground carrier with its army when repositioning the mobile base."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.carrier.block.rules.text
+          fallback: "The carrier's airfield and ready deck share its physical capacity. A formed wing becomes independent when it actually activates for take-off. Ground troops cannot be put into aircraft containers. Losing or moving a carrier can change legal landing opportunities, so plan a fixed-airfield alternative when necessary."
+        image: {fileID: 0}
     - id: air-armies
       title:
         key: help.topic.air-armies.title
         fallback: "Air armies and sorties"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.air-armies.block.overview.text
+          fallback: "A mobile air army contains aircraft only. Forming the wing at an airfield is different from paying for take-off and flying its first route."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.air-armies.block.instructions.text
+          fallback: "Select stored aircraft, form the intended wing and preview its destination. On first actual activation, ensure you can afford the members' AP activation plus any unpaid launch Energy. Keep the wing's slowest aircraft and fuel endurance in mind."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.air-armies.block.rules.text
+          fallback: "Forming the stack alone does not charge another independent launch payment. The common movement activation path pays the outstanding costs. Each aircraft can normally attack only once during its owner's turn. Fuel and landing are tracked for each aircraft, so a mixed-endurance wing must protect its least enduring members."
+        image: {fileID: 0}
     - id: flight-route
       title:
         key: help.topic.flight-route.title
         fallback: "Flight routes, range and return"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.flight-route.block.overview.text
+          fallback: "A safe flight plan includes the outbound path, enemy AA exposure and a legal landing/refuelling opportunity. Map distance alone is not the whole cost."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.flight-route.block.instructions.text
+          fallback: "Preview the full route and keep enough usable MP for the next necessary leg. Aircraft pay 1 MP per normal transition and another 1 MP when leaving a storm hex. Choose a destination with owned landing capacity before fuel endurance runs out."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.flight-route.block.rules.text
+          fallback: "The slowest effective member limits the wing's movement. Terrain that blocks ground troops does not automatically have the same effect on aircraft. Taking off again after a completed landing is a new paid sortie. Landing/refuelling does not automatically restore HP, refill outgoing-turn MP or permit another attack that turn."
+        image: {fileID: 0}
     - id: air-strikes
       title:
         key: help.topic.air-strikes.title
         fallback: "Air strikes and target selection"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.air-strikes.block.overview.text
+          fallback: "An eligible aircraft can strike enemy occupants when its flight reaches the target hex. The normal attack selects a legal enemy unit from the available target pool; it is not a player-selected precision hit on any card."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.air-strikes.block.instructions.text
+          fallback: "Route a ready wing to the desired hostile location after checking fuel, return capacity and AA. Resolve any reaction and attack prompts, then inspect survivors before continuing the route or planning the next turn."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.air-strikes.block.rules.text
+          fallback: "Each aircraft attacks at most once per owner turn. A hero is an ordinary air-strike target only when it is its army's sole living member. Normal air strikes use unit Defense, or a lone hero's Fate stat, without ground hex bonuses. Stationary repeat-strike support exists in the rules, but there is no separate human repeat-strike button in the current interface."
+        image: {fileID: 0}
     - id: anti-air
       title:
         key: help.topic.anti-air.title
         fallback: "Air defence range and reactions"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.anti-air.block.overview.text
+          fallback: "AA units and eligible Facilities can react to hostile airborne armies within their own anti-air radius. Range alone is insufficient: the AA owner must see the target hex and the relevant units must be targetable."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.anti-air.block.instructions.text
+          fallback: "Position AA to cover likely flight routes and maintain vision of those hexes. When your reaction choice appears, choose Attack to fire or Skip to preserve the unit's shot for another wing. Reveal a hidden AA carrier before expecting it to fire."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.anti-air.block.rules.text
+          fallback: "An AA unit can fire once before its owner's next turn refresh. Attack and Skip both suppress another prompt for the same unit/wing pair in that cycle; Skip can still leave a shot for a different wing. Movement of either side and turn-opening checks can create opportunities. Aircraft in storage and carrier containers do not act as ordinary reactive AA units."
+        image: {fileID: 0}
     - id: air-recovery
       title:
         key: help.topic.air-recovery.title
         fallback: "Aircraft losses and recovery"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.air-recovery.block.overview.text
+          fallback: "Aircraft fuel endurance counts owner turn endings without a successful landing/refuel. It is separate from MP and HP. Reaching an owned airfield is useful only if landing capacity is available."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.air-recovery.block.instructions.text
+          fallback: "Bring aircraft to an owned fixed airfield or eligible carrier with free space before their endurance expires. Inspect end-turn reports for aircraft that could not land. Repair wounded survivors through a legal repair source; refuelling alone does not heal them."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.air-recovery.block.rules.text
+          fallback: "Every overdue owner turn ending removes half of maximum HP, rounded up, and activates the emergency flight penalty. Usable movement is then halved, rounded down. Repeated overdue endings can destroy the aircraft. Successful landing clears the fuel/emergency state and ends the paid sortie, but does not refund its launch costs. For example, an aircraft with 5 maximum HP loses 3 HP at each overdue ending, even if its current HP is already low."
+        image: {fileID: 0}
   - id: events
     title:
       key: help.section.events.title
@@ -401,27 +1607,117 @@ MonoBehaviour:
       title:
         key: help.topic.neutral.title
         fallback: "Neutral armies and their turn"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.neutral.block.overview.text
+          fallback: "Neutral forces are separate hostile occupants or event guards, not another playable deck faction. A neutral turn slot follows the active players in the round sequence."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.neutral.block.instructions.text
+          fallback: "Inspect a neutral army before attacking and compare its actual roster with your force. Keep a route back to safety when approaching guarded events. Seeing a neutral marker does not automatically claim its location or reward."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.neutral.block.rules.text
+          fallback: "An event guard can be created when the event is explored; unrelated neutral armies can occupy the same area. The neutral turn slot refreshes neutral-side movement/reaction state. Defeating an unrelated army does not bypass an unresolved event's Explore choice or its own guard."
+        image: {fileID: 0}
     - id: event-exploration
       title:
         key: help.topic.event-exploration.title
         fallback: "Exploring event hexes and their guards"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.event-exploration.block.overview.text
+          fallback: "Events are discovered by an eligible ground army reaching their hex. Choose Explore to resolve the event or Skip to leave it for later."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.event-exploration.block.instructions.text
+          fallback: "Read the event description and guard information before exploring. If it is guarded, defeat its guard; if it is clear, resolve the reward. Return to a previously skipped event with a suitable ground force when you are ready."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.event-exploration.block.rules.text
+          fallback: "Aircraft do not claim ground events merely by flying over them. Choosing Explore reveals every hidden member of the visiting army and exhausts its remaining strategic movement, whether or not a guard is present. Skip preserves stealth. An event is consumed only when its reward is resolved; clearing an unrelated enemy does not automatically beat the event's guard."
+        image: {fileID: 0}
     - id: rewards
       title:
         key: help.topic.rewards.title
         fallback: "Event rewards: resources and cards"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.rewards.block.overview.text
+          fallback: "Events can grant resource bundles, match cards or special rewards. The selected event outcome determines what is available; a map picture alone is not a guarantee of a particular card."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.rewards.block.instructions.text
+          fallback: "Explore the event, defeat any required guard and read the reward report. Keep a free main-hand slot if you expect an ordinary card, and inspect the separate tactic inventory for Tactic rewards."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.rewards.block.rules.text
+          fallback: "Resources go to the recipient player's stock. Ordinary event cards are match rewards and do not automatically become permanent Collection copies. Library events are the explicit exception for permanent card acquisition. Do not assume that a full hand can accept every optional match-card reward."
+        image: {fileID: 0}
     - id: library
       title:
         key: help.topic.library.title
         fallback: "Library: a card for the collection"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.library.block.overview.text
+          fallback: "The Library is a special human-player event that can add a random card permanently to Collection after its guard is resolved."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.library.block.instructions.text
+          fallback: "Reach the Library with an eligible ground army, choose Explore and defeat its guardians. Confirm the reward and inspect Collection for the new copy. Leave room in the main hand if you also want the match-card delivery when available."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.library.block.rules.text
+          fallback: "The permanent Collection grant and a usable match card are distinct parts of the reward. The event draws from its allowed card candidates; it is not limited to a hand-picked card from your current deck. A Library is not claimed by an aircraft flyover. Ordinary resource/card events do not all share this permanent-reward rule."
+        image: {fileID: 0}
     - id: command-post
       title:
         key: help.topic.command-post.title
         fallback: "Abandoned command post: restoring a base"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.command-post.block.overview.text
+          fallback: "An Abandoned Command Post is a guarded event whose special reward restores a level-1 Base for the visiting player on that hex."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.command-post.block.instructions.text
+          fallback: "Explore with a ground army and defeat the event's guard. After the reward is applied, inspect the restored Base, its garrison and available slots before planning new deployments or construction."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.command-post.block.rules.text
+          fallback: "This event reward does not spend a Base card, construction AP or construction resources. It is a newly restored ordinary Base, not a replacement original starting citadel. The event's prerequisites and clear-hex checks still apply; its free reward is not a general free Base-building action elsewhere."
+        image: {fileID: 0}
   - id: progression
     title:
       key: help.section.progression.title
@@ -431,37 +1727,163 @@ MonoBehaviour:
       title:
         key: help.topic.campaign.title
         fallback: "Campaign map and region ownership"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.campaign.block.overview.text
+          fallback: "The campaign map tracks region ownership by faction. Campaign actions and strategic matches are separate layers: a match result is used to update the chosen regional operation."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.campaign.block.instructions.text
+          fallback: "Select regions to inspect their owner, neighboring regions and conditions. On your faction's campaign turn, choose a legal neighboring hostile region from a region you own, or use the available turn action when you do not want to attack."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.campaign.block.rules.text
+          fallback: "A faction with no regions is eliminated from the campaign. The campaign finishes for the human faction when it is eliminated or becomes the only remaining faction. Regional turn order is determined on the campaign round cycle; it is not the initiative order inside an individual match."
+        image: {fileID: 0}
     - id: region-attack
       title:
         key: help.topic.region-attack.title
         fallback: "Attacking regions and choosing a deck"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.region-attack.block.overview.text
+          fallback: "A legal campaign attack starts in an owned region and targets an adjacent region belonging to another active faction. The operation carries its selected deck and conditions into the match."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.region-attack.block.instructions.text
+          fallback: "Select an available attack, inspect its source/target and choose the saved faction deck you want to use. Read the confirmation before launching the offered manual or automatic resolution. Use the deck-selection marker to verify the active choice."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.region-attack.block.rules.text
+          fallback: "You cannot attack a non-neighbor, your own region or a target outside the current campaign action state. Only one operation can be pending at a time. A deck must satisfy its faction, ownership, copy and point rules. Editing a profile deck later does not rewrite the starting loadout of a match already in progress."
+        image: {fileID: 0}
     - id: region-conditions
       title:
         key: help.topic.region-conditions.title
         fallback: "Region terrain, resources and weather"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.region-conditions.block.overview.text
+          fallback: "A region has terrain, resource and weather conditions that shape its operation. Those conditions matter to route planning, economy and battle protection."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.region-conditions.block.instructions.text
+          fallback: "Inspect the target region before launching an attack. Choose a deck that can operate on its terrain and support its economy. In the match, confirm local resource quantities through ground exploration and inspect the actual generated layout."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.region-conditions.block.rules.text
+          fallback: "The operation preserves its chosen region conditions and weather seed; it does not silently substitute a different weather profile when the scene opens. Clear regions have no storms, while storm profiles allow up to one or two. A regional summary is a planning guide, not a view of every hidden army or event."
+        image: {fileID: 0}
     - id: campaign-result
       title:
         key: help.topic.campaign-result.title
         fallback: "Campaign results and region capture"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.campaign-result.block.overview.text
+          fallback: "An attacker victory transfers the target region to the attacking faction. A defender victory or draw leaves its ownership unchanged."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.campaign-result.block.instructions.text
+          fallback: "Finish the operation and acknowledge the campaign result before selecting another action. Check the updated region owner and the battle history. If a result cannot be recorded, resolve the displayed error before dismissing the result flow."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.campaign-result.block.rules.text
+          fallback: "Campaign ownership is updated once per recorded operation. Factions that lose their last region are eliminated. Leaving an unfinished match through the menu is not the same as winning and does not entitle you to a region. The result concerns the selected target region, not automatic ownership of neighboring territories."
+        image: {fileID: 0}
     - id: collection
       title:
         key: help.topic.collection.title
         fallback: "Collection and card copies"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.collection.block.overview.text
+          fallback: "Collection stores your permanent owned card copies and saved decks. A match hand is a temporary inventory; receiving a card during a match does not always add a permanent Collection copy."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.collection.block.instructions.text
+          fallback: "Open Collection to inspect cards, owned counts, deck-point prices and allowed copies. Use its faction/category controls to find main cards, Equipment and Mutators. Save a valid deck and select it for future matches."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.collection.block.rules.text
+          fallback: "Including a copy in a deck does not consume it permanently; it limits what that loadout may use. Rewards and special Library grants can increase ownership. In-play deaths and ordinary match-card use are separate from permanent ownership. Some system/event-only cards are intentionally excluded from deck building."
+        image: {fileID: 0}
     - id: deck-editor
       title:
         key: help.topic.deck-editor.title
         fallback: "Creating and editing decks"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.deck-editor.block.overview.text
+          fallback: "The deck editor builds a saved loadout from owned cards. Main cards are drawn during a match; Equipment and Mutator entries unlock their respective manufacturing options."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.deck-editor.block.instructions.text
+          fallback: "Choose a faction, add or remove copies with the plus/minus controls, inspect the total points and save the deck. Select the saved deck when entering a match or campaign attack. Read warnings about missing heroes or Bases before deciding to play."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.deck-editor.block.rules.text
+          fallback: "The cap is 100 points, with individual card-copy and ownership limits. Heroes and attachment blueprints are limited to one copy each. You can remove cards from a deck that has become invalid after an update. A saved match retains its frozen starting loadout rather than adopting later editor changes."
+        image: {fileID: 0}
     - id: match-rewards
       title:
         key: help.topic.match-rewards.title
         fallback: "Match rewards and collection progression"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.match-rewards.block.overview.text
+          fallback: "Eligible completed human matches can grant permanent Collection rewards. Rewards are recorded for the match, so loading or re-opening a result is not a new grant."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.match-rewards.block.instructions.text
+          fallback: "On victory, choose the required number of different cards from the available offer and confirm. A victory offers up to 5 candidates and normally lets you select 2; if fewer remain available, the choice shrinks accordingly. A defeat offers up to 1 eligible card and applies that grant once."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.match-rewards.block.rules.text
+          fallback: "Reward candidates respect faction permission and the remaining Collection copy limits. A draw does not grant the normal win/loss reward. In a non-campaign local multiplayer match, the account receives one outcome: victory for the sole surviving human or defeat when the last human is eliminated. Earlier human eliminations do not each grant separate rewards."
+        image: {fileID: 0}
   - id: service
     title:
       key: help.section.service.title
@@ -471,264 +1893,1257 @@ MonoBehaviour:
       title:
         key: help.topic.save-load.title
         fallback: "Saving, loading and slot management"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.save-load.block.overview.text
+          fallback: "Save and Load are available through the gear menu during a legal human-turn state. Saves use numbered slots and preserve the active match rather than starting a new random setup."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.save-load.block.instructions.text
+          fallback: "Open the menu, choose Save, select a slot and confirm. Overwriting an occupied slot requires confirmation. Use Load to choose an existing saved match; loading replaces current unsaved progress. Delete a slot only when you want to remove that saved match."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.save-load.block.rules.text
+          fallback: "New slots can be added from the save window. Slot selection alone does not execute the action. A saved match keeps its own map, participants and starting loadouts. If a slot reports an error or incompatible content, read that message rather than assuming that opening it succeeded."
+        image: {fileID: 0}
     - id: save-limits
       title:
         key: help.topic.save-limits.title
         fallback: "When a match can be saved"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.save-limits.block.overview.text
+          fallback: "A match can be saved only during a confirmed human turn after its opening actions have completed, while the game is in a settled state."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.save-limits.block.instructions.text
+          fallback: "Finish the encounter, wait for all armies to stop, accept pending reports, close decisions, and finish or cancel attachment and Research/Production operations. Reopen the gear menu and use Save once the displayed restriction is cleared."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.save-limits.block.rules.text
+          fallback: "Saving is unavailable during battles or unsettled encounters, movement, restore/loading, research/production transactions, pending decisions and card operations. It is also unavailable before turn confirmation, on an AI turn or after the match has ended. The save button uses the live conditions, not merely whether a window is visible."
+        image: {fileID: 0}
     - id: spectator
       title:
         key: help.topic.spectator.title
         fallback: "AI match spectator: pause and fast resolve"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.spectator.block.overview.text
+          fallback: "An AI-only match provides observer controls for watching play. The spectator can pause AI progress at an action boundary and use the available fast-resolution controls."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.spectator.block.instructions.text
+          fallback: "Use the playback/pause control to request a pause or continue observing. Open the gear menu or Help even while an AI turn is active. While paused for inspection, use the permitted map views; close the menu before returning to those controls."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.spectator.block.rules.text
+          fallback: "A pause request does not interrupt a half-applied action. An open menu/help window holds AI at the same safe boundary but blocks gameplay inspection beneath it. Closing it releases that hold without cancelling a separately requested spectator pause. Fast resolution changes presentation speed, not the shared combat and resource rules."
+        image: {fileID: 0}
     - id: settings
       title:
         key: help.topic.settings.title
         fallback: "Sound settings and tutorial hints"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.settings.block.overview.text
+          fallback: "Options contains master volume, music enable/volume and tutorial-hint controls. These settings change presentation and guidance rather than unit stats or match balance."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.settings.block.instructions.text
+          fallback: "Open Options from the appropriate menu, adjust the sliders/toggles and return with its Back control. Enable tutorial hints if you want contextual guidance for actions such as drawing, creating armies, attaching upgrades or production."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.settings.block.rules.text
+          fallback: "Already completed hints are tracked so they are not repeatedly presented as new actions. Turning sound or music off does not skip a gameplay decision. The in-match menu remains responsible for blocking map input while its settings window is open."
+        image: {fileID: 0}
     - id: radio
       title:
         key: help.topic.radio.title
         fallback: "Army radio reports"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.radio.block.overview.text
+          fallback: "Army radio messages provide brief contextual reports about observed situations, enemy strength and weather. They help draw attention to a situation without replacing the actual map and card information."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.radio.block.instructions.text
+          fallback: "Read a report, then inspect the relevant army, route or hex before issuing orders. Treat comments about weak or strong enemies as an assessment of the available observation, and check a storm report against the current footprint."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.radio.block.rules.text
+          fallback: "Radio chatter does not spend AP, change the battle result or reveal every hidden enemy. Cosmetic messages can be withheld while a decision or battle window is active. Use actual unit details and legal-action feedback for precise costs and restrictions."
+        image: {fileID: 0}
     - id: exit
       title:
         key: help.topic.exit.title
         fallback: "Leaving a match and returning to the campaign"
-      blocks: []
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.exit.block.overview.text
+          fallback: "The match menu returns you to the appropriate destination: Campaign for a campaign operation or Main Menu for a standalone match."
+        image: {fileID: 0}
+      - id: instructions
+        kind: 0
+        text:
+          key: help.topic.exit.block.instructions.text
+          fallback: "If you need to preserve the exact current state, create a legal save before leaving. Open the gear menu and choose the displayed destination. Acknowledge any result/reward flow when the game has already finished."
+        image: {fileID: 0}
+      - id: rules
+        kind: 0
+        text:
+          key: help.topic.exit.block.rules.text
+          fallback: "Leaving is not a substitute for saving or a victory result. Loading another slot also replaces unsaved progress. Campaign region capture is based on the recorded completed operation result; merely returning to the campaign does not award the target region."
+        image: {fileID: 0}
   - id: abilities
     title:
       key: help.section.abilities.title
       fallback: "Ability reference"
     topics:
-    - id: ability-criticaldamage
+    - id: all-abilities
       title:
-        key: help.topic.ability-criticaldamage.title
-        fallback: "Critical Damage"
-      blocks: []
-    - id: ability-ceramicarmor
-      title:
-        key: help.topic.ability-ceramicarmor.title
-        fallback: "Ceramic Armor"
-      blocks: []
-    - id: ability-berserk
-      title:
-        key: help.topic.ability-berserk.title
-        fallback: "Berserk"
-      blocks: []
-    - id: ability-rapidreaction
-      title:
-        key: help.topic.ability-rapidreaction.title
-        fallback: "Rapid Reaction"
-      blocks: []
-    - id: ability-shockattack
-      title:
-        key: help.topic.ability-shockattack.title
-        fallback: "Shock Attack"
-      blocks: []
-    - id: ability-hyperkinetic
-      title:
-        key: help.topic.ability-hyperkinetic.title
-        fallback: "Hyperkinetic"
-      blocks: []
-    - id: ability-pyrokinetic
-      title:
-        key: help.topic.ability-pyrokinetic.title
-        fallback: "Pyrokinetic"
-      blocks: []
-    - id: ability-splash
-      title:
-        key: help.topic.ability-splash.title
-        fallback: "Splash"
-      blocks: []
-    - id: ability-scorcher
-      title:
-        key: help.topic.ability-scorcher.title
-        fallback: "Scorcher"
-      blocks: []
-    - id: ability-raisetherots
-      title:
-        key: help.topic.ability-raisetherots.title
-        fallback: "Raise The Rots"
-      blocks: []
-    - id: ability-heal
-      title:
-        key: help.topic.ability-heal.title
-        fallback: "Heal"
-      blocks: []
-    - id: ability-transport
-      title:
-        key: help.topic.ability-transport.title
-        fallback: "Transport"
-      blocks: []
-    - id: ability-repair
-      title:
-        key: help.topic.ability-repair.title
-        fallback: "Repair"
-      blocks: []
-    - id: ability-disruption
-      title:
-        key: help.topic.ability-disruption.title
-        fallback: "Disruption"
-      blocks: []
-    - id: ability-airfield
-      title:
-        key: help.topic.ability-airfield.title
-        fallback: "Airfield"
-      blocks: []
-    - id: ability-singleuse
-      title:
-        key: help.topic.ability-singleuse.title
-        fallback: "Single Use"
-      blocks: []
-    - id: ability-explosion3
-      title:
-        key: help.topic.ability-explosion3.title
-        fallback: "Explosion 3"
-      blocks: []
-    - id: ability-explosion5
-      title:
-        key: help.topic.ability-explosion5.title
-        fallback: "Explosion 5"
-      blocks: []
-    - id: ability-explosion10
-      title:
-        key: help.topic.ability-explosion10.title
-        fallback: "Explosion 10"
-      blocks: []
-    - id: ability-ionic
-      title:
-        key: help.topic.ability-ionic.title
-        fallback: "Ionic"
-      blocks: []
-    - id: ability-bodyguard
-      title:
-        key: help.topic.ability-bodyguard.title
-        fallback: "Bodyguard"
-      blocks: []
-    - id: ability-counterattack
-      title:
-        key: help.topic.ability-counterattack.title
-        fallback: "Counterattack"
-      blocks: []
-    - id: ability-drill
-      title:
-        key: help.topic.ability-drill.title
-        fallback: "Drill"
-      blocks: []
-    - id: ability-r1s0
-      title:
-        key: help.topic.ability-r1s0.title
-        fallback: "r 1s 0"
-      blocks: []
-    - id: ability-r1s4
-      title:
-        key: help.topic.ability-r1s4.title
-        fallback: "r 1s 4"
-      blocks: []
-    - id: ability-r1s5
-      title:
-        key: help.topic.ability-r1s5.title
-        fallback: "r 1s 5"
-      blocks: []
-    - id: ability-r1s6
-      title:
-        key: help.topic.ability-r1s6.title
-        fallback: "r 1s 6"
-      blocks: []
-    - id: ability-stealth4
-      title:
-        key: help.topic.ability-stealth4.title
-        fallback: "Stealth 4"
-      blocks: []
-    - id: ability-aa
-      title:
-        key: help.topic.ability-aa.title
-        fallback: "AA"
-      blocks: []
-    - id: ability-apbonus
-      title:
-        key: help.topic.ability-apbonus.title
-        fallback: "Ap Bonus"
-      blocks: []
-    - id: ability-trade
-      title:
-        key: help.topic.ability-trade.title
-        fallback: "Trade"
-      blocks: []
-    - id: ability-tacticalintelligence
-      title:
-        key: help.topic.ability-tacticalintelligence.title
-        fallback: "Tactical Intelligence"
-      blocks: []
-    - id: ability-barracks
-      title:
-        key: help.topic.ability-barracks.title
-        fallback: "Barracks"
-      blocks: []
-    - id: ability-research
-      title:
-        key: help.topic.ability-research.title
-        fallback: "Research"
-      blocks: []
-    - id: ability-researcher
-      title:
-        key: help.topic.ability-researcher.title
-        fallback: "Researcher"
-      blocks: []
-    - id: ability-production
-      title:
-        key: help.topic.ability-production.title
-        fallback: "Production"
-      blocks: []
-    - id: ability-assembler
-      title:
-        key: help.topic.ability-assembler.title
-        fallback: "Assembler"
-      blocks: []
-    - id: ability-collecthuman
-      title:
-        key: help.topic.ability-collecthuman.title
-        fallback: "Collect Human"
-      blocks: []
-    - id: ability-collectenergy
-      title:
-        key: help.topic.ability-collectenergy.title
-        fallback: "Collect Energy"
-      blocks: []
-    - id: ability-collectmaterials
-      title:
-        key: help.topic.ability-collectmaterials.title
-        fallback: "Collect Materials"
-      blocks: []
-    - id: ability-collecttech
-      title:
-        key: help.topic.ability-collecttech.title
-        fallback: "Collect Tech"
-      blocks: []
-    - id: ability-regeneration
-      title:
-        key: help.topic.ability-regeneration.title
-        fallback: "Regeneration"
-      blocks: []
-    - id: ability-producehuman
-      title:
-        key: help.topic.ability-producehuman.title
-        fallback: "Produce Human"
-      blocks: []
-    - id: ability-produceenergy
-      title:
-        key: help.topic.ability-produceenergy.title
-        fallback: "Produce Energy"
-      blocks: []
-    - id: ability-producematerials
-      title:
-        key: help.topic.ability-producematerials.title
-        fallback: "Produce Materials"
-      blocks: []
-    - id: ability-producetech
-      title:
-        key: help.topic.ability-producetech.title
-        fallback: "Produce Tech"
-      blocks: []
+        key: help.topic.all-abilities.title
+        fallback: "Abilities"
+      blocks:
+      - id: overview
+        kind: 0
+        text:
+          key: help.topic.all-abilities.block.overview.text
+          fallback: "All abilities are collected on this page. Scroll down to read each effect, how to use it and its restrictions. Names match the ability reference; a listed ability is available to your army only when an actual card or attachment grants it."
+        image: {fileID: 0}
+      - id: ability-criticaldamage
+        kind: 2
+        text:
+          key: help.topic.ability-criticaldamage.title
+          fallback: "Critical Damage"
+        image: {fileID: 0}
+      - id: ability-criticaldamage-overview
+        kind: 0
+        text:
+          key: help.topic.ability-criticaldamage.block.overview.text
+          fallback: "Damage of a successful attack x2."
+        image: {fileID: 0}
+      - id: ability-criticaldamage-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-criticaldamage.block.instructions.text
+          fallback: "Use the carrier against a target where a positive token difference is likely; improving the chance to hit is still necessary."
+        image: {fileID: 0}
+      - id: ability-criticaldamage-rules
+        kind: 0
+        text:
+          key: help.topic.ability-criticaldamage.block.rules.text
+          fallback: "The current multiplier is 2. It applies before matching flat damage bonuses and before Ceramic Armor. A tied or losing attack has no positive base damage to double."
+        image: {fileID: 0}
+      - id: ability-ceramicarmor
+        kind: 2
+        text:
+          key: help.topic.ability-ceramicarmor.title
+          fallback: "Ceramic Armor"
+        image: {fileID: 0}
+      - id: ability-ceramicarmor-overview
+        kind: 0
+        text:
+          key: help.topic.ability-ceramicarmor.block.overview.text
+          fallback: "-1 to all damage received."
+        image: {fileID: 0}
+      - id: ability-ceramicarmor-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-ceramicarmor.block.instructions.text
+          fallback: "Use this carrier to absorb small hits. Check its own HP and other defensive effects before relying on the reduction."
+        image: {fileID: 0}
+      - id: ability-ceramicarmor-rules
+        kind: 0
+        text:
+          key: help.topic.ability-ceramicarmor.block.rules.text
+          fallback: "The current reduction is 1 after the normal offensive modifiers. It can reduce a small hit to zero. It does not increase Defense tokens or guarantee that a larger attack is harmless."
+        image: {fileID: 0}
+      - id: ability-berserk
+        kind: 2
+        text:
+          key: help.topic.ability-berserk.title
+          fallback: "Berserk"
+        image: {fileID: 0}
+      - id: ability-berserk-overview
+        kind: 0
+        text:
+          key: help.topic.ability-berserk.block.overview.text
+          fallback: "Each hit taken in combat: +1 ATK, -1 DEF until the battle ends."
+        image: {fileID: 0}
+      - id: ability-berserk-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-berserk.block.instructions.text
+          fallback: "Keep the carrier alive through repeated hits to increase its attack potential, but watch the accompanying defense loss."
+        image: {fileID: 0}
+      - id: ability-berserk-rules
+        kind: 0
+        text:
+          key: help.topic.ability-berserk.block.rules.text
+          fallback: "Each damaging hit adds 1 Attack and removes 1 Defense for this battle, subject to the defense floor. These temporary changes are reverted at encounter end; wounds remain."
+        image: {fileID: 0}
+      - id: ability-rapidreaction
+        kind: 2
+        text:
+          key: help.topic.ability-rapidreaction.title
+          fallback: "Rapid Reaction"
+        image: {fileID: 0}
+      - id: ability-rapidreaction-overview
+        kind: 0
+        text:
+          key: help.topic.ability-rapidreaction.block.overview.text
+          fallback: "Deploys for 0 AP and moves in an army for 0 AP."
+        image: {fileID: 0}
+      - id: ability-rapidreaction-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-rapidreaction.block.instructions.text
+          fallback: "Deploy the carrier when you need to conserve AP, or include it in a mobile army to reduce that army's activation cost."
+        image: {fileID: 0}
+      - id: ability-rapidreaction-rules
+        kind: 0
+        text:
+          key: help.topic.ability-rapidreaction.block.rules.text
+          fallback: "Its ground deployment and movement-activation AP contribution is 0. This does not waive resource prices, movement-point costs or another unit's activation cost. Check separate aircraft launch requirements where applicable."
+        image: {fileID: 0}
+      - id: ability-shockattack
+        kind: 2
+        text:
+          key: help.topic.ability-shockattack.title
+          fallback: "Shock Attack"
+        image: {fileID: 0}
+      - id: ability-shockattack-overview
+        kind: 0
+        text:
+          key: help.topic.ability-shockattack.block.overview.text
+          fallback: "A damaging hit makes the target lose its pending turn this round and cancels its counterattack."
+        image: {fileID: 0}
+      - id: ability-shockattack-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-shockattack.block.instructions.text
+          fallback: "Use a damaging hit on an enemy whose pending action or close counterattack would be dangerous."
+        image: {fileID: 0}
+      - id: ability-shockattack-rules
+        kind: 0
+        text:
+          key: help.topic.ability-shockattack.block.rules.text
+          fallback: "The target loses a still-pending turn for the current tactical round. Shock does not undo an action already taken and does not skip a future round. Counterattack suppression requires a damaging hit."
+        image: {fileID: 0}
+      - id: ability-hyperkinetic
+        kind: 2
+        text:
+          key: help.topic.ability-hyperkinetic.title
+          fallback: "Hyperkinetic"
+        image: {fileID: 0}
+      - id: ability-hyperkinetic-overview
+        kind: 0
+        text:
+          key: help.topic.ability-hyperkinetic.block.overview.text
+          fallback: "+2 DMG vs Armored targets when the attack deals damage."
+        image: {fileID: 0}
+      - id: ability-hyperkinetic-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-hyperkinetic.block.instructions.text
+          fallback: "Inspect the target's Armored tag and select a suitable attack. The ability is useful after you have secured a positive base hit."
+        image: {fileID: 0}
+      - id: ability-hyperkinetic-rules
+        kind: 0
+        text:
+          key: help.topic.ability-hyperkinetic.block.rules.text
+          fallback: "The current bonus is +2 damage against Armored targets. It does not create a hit from a zero or negative success difference. Other matching offensive modifiers and final armor reduction still apply."
+        image: {fileID: 0}
+      - id: ability-pyrokinetic
+        kind: 2
+        text:
+          key: help.topic.ability-pyrokinetic.title
+          fallback: "Pyrokinetic"
+        image: {fileID: 0}
+      - id: ability-pyrokinetic-overview
+        kind: 0
+        text:
+          key: help.topic.ability-pyrokinetic.block.overview.text
+          fallback: "+2 DMG vs Bio targets when the attack deals damage."
+        image: {fileID: 0}
+      - id: ability-pyrokinetic-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-pyrokinetic.block.instructions.text
+          fallback: "Inspect the target's Bio tag before using the carrier as a damage specialist."
+        image: {fileID: 0}
+      - id: ability-pyrokinetic-rules
+        kind: 0
+        text:
+          key: help.topic.ability-pyrokinetic.block.rules.text
+          fallback: "The current bonus is +2 damage against Bio targets after a positive base hit. It is not a universal bonus against every Infantry or Hero card; the actual Bio tag matters."
+        image: {fileID: 0}
+      - id: ability-splash
+        kind: 2
+        text:
+          key: help.topic.ability-splash.title
+          fallback: "Splash"
+        image: {fileID: 0}
+      - id: ability-splash-overview
+        kind: 0
+        text:
+          key: help.topic.ability-splash.block.overview.text
+          fallback: "On a damaging hit, up to 2 random orthogonally adjacent units, allies included, take half the damage."
+        image: {fileID: 0}
+      - id: ability-splash-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-splash.block.instructions.text
+          fallback: "Inspect the four orthogonal neighbors of the primary target before attacking; friendly units can be among them."
+        image: {fileID: 0}
+      - id: ability-splash-rules
+        kind: 0
+        text:
+          key: help.topic.ability-splash.block.rules.text
+          fallback: "A damaging primary hit can produce up to 2 random secondary hits. They use half the primary damage, rounded down, with the secondary victim's armor reduction. There is no separate attack roll for each collateral hit, and zero half-damage has no effect."
+        image: {fileID: 0}
+      - id: ability-scorcher
+        kind: 2
+        text:
+          key: help.topic.ability-scorcher.title
+          fallback: "Scorcher"
+        image: {fileID: 0}
+      - id: ability-scorcher-overview
+        kind: 0
+        text:
+          key: help.topic.ability-scorcher.block.overview.text
+          fallback: "On a damaging hit, one random orthogonally adjacent unit takes half the damage if it is Bio."
+        image: {fileID: 0}
+      - id: ability-scorcher-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-scorcher.block.instructions.text
+          fallback: "Use the carrier when the primary target has nearby Bio units, while checking for friendly Bio neighbors."
+        image: {fileID: 0}
+      - id: ability-scorcher-rules
+        kind: 0
+        text:
+          key: help.topic.ability-scorcher.block.rules.text
+          fallback: "One random orthogonally adjacent unit is selected; damage occurs only if that selected unit is Bio. Half primary damage is rounded down and the secondary victim's protection applies. This does not guarantee choosing a Bio neighbor just because one exists."
+        image: {fileID: 0}
+      - id: ability-raisetherots
+        kind: 2
+        text:
+          key: help.topic.ability-raisetherots.title
+          fallback: "Raise The Rots"
+        image: {fileID: 0}
+      - id: ability-raisetherots-overview
+        kind: 0
+        text:
+          key: help.topic.ability-raisetherots.block.overview.text
+          fallback: "At battle start summons 2 extra units on its side while the grid has room. They fight for this battle only."
+        image: {fileID: 0}
+      - id: ability-raisetherots-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-raisetherots.block.instructions.text
+          fallback: "Use the carrier to add temporary bodies when the encounter starts and your side has available grid space."
+        image: {fileID: 0}
+      - id: ability-raisetherots-rules
+        kind: 0
+        text:
+          key: help.topic.ability-raisetherots.block.rules.text
+          fallback: "The current summon count is 2 per carrier. These summoned units exist for the battle only and are removed when the encounter or their temporary participation ends. They do not become permanent Collection or hand cards."
+        image: {fileID: 0}
+      - id: ability-heal
+        kind: 2
+        text:
+          key: help.topic.ability-heal.title
+          fallback: "Heal"
+        image: {fileID: 0}
+      - id: ability-heal-overview
+        kind: 0
+        text:
+          key: help.topic.ability-heal.block.overview.text
+          fallback: "Restores 1 HP to a random wounded Bio ally in its army: unit at the start of its combat turn, hero at the start of each round."
+        image: {fileID: 0}
+      - id: ability-heal-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-heal.block.instructions.text
+          fallback: "Keep wounded Bio allies in the same army. In combat, let the carrier reach its healing trigger rather than expecting a strategic repair button."
+        image: {fileID: 0}
+      - id: ability-heal-rules
+        kind: 0
+        text:
+          key: help.topic.ability-heal.block.rules.text
+          fallback: "The current heal amount is 1 HP to a random eligible wounded Bio ally. A normal carrier triggers at the start of its combat turn; a hero carrier triggers at round start. Healing does not resurrect dead cards or replace paid full repair."
+        image: {fileID: 0}
+      - id: ability-transport
+        kind: 2
+        text:
+          key: help.topic.ability-transport.title
+          fallback: "Transport"
+        image: {fileID: 0}
+      - id: ability-transport-overview
+        kind: 0
+        text:
+          key: help.topic.ability-transport.block.overview.text
+          fallback: "Raises the slowest Infantry in its army to the carrier's Move."
+        image: {fileID: 0}
+      - id: ability-transport-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-transport.block.instructions.text
+          fallback: "Combine the carrier with a slower eligible Infantry unit in the same ground army and inspect the resulting movement."
+        image: {fileID: 0}
+      - id: ability-transport-rules
+        kind: 0
+        text:
+          key: help.topic.ability-transport.block.rules.text
+          fallback: "Each carrier supports one non-hero, non-aircraft, non-prisoner, non-summoned Infantry passenger. Existing valid pairs are retained where possible. Other slow members can still limit the army. It is a movement benefit, not an additional roster-capacity slot."
+        image: {fileID: 0}
+      - id: ability-repair
+        kind: 2
+        text:
+          key: help.topic.ability-repair.title
+          fallback: "Repair"
+        image: {fileID: 0}
+      - id: ability-repair-overview
+        kind: 0
+        text:
+          key: help.topic.ability-repair.block.overview.text
+          fallback: "Enables paid repair for all own armies on its hex."
+        image: {fileID: 0}
+      - id: ability-repair-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-repair.block.instructions.text
+          fallback: "Move the ground mechanic to the same hex as your wounded force, then use the wounded unit's paid repair control in the Army Viewer."
+        image: {fileID: 0}
+      - id: ability-repair-rules
+        kind: 0
+        text:
+          key: help.topic.ability-repair.block.rules.text
+          fallback: "The source must be a living friendly non-aircraft ground member outside prison/aircraft containers. It serves friendly armies on that hex without granting deployment rights. Each repair still costs 1 AP plus the target's stored resource price and restores its HP to full."
+        image: {fileID: 0}
+      - id: ability-disruption
+        kind: 2
+        text:
+          key: help.topic.ability-disruption.title
+          fallback: "Disruption"
+        image: {fileID: 0}
+      - id: ability-disruption-overview
+        kind: 0
+        text:
+          key: help.topic.ability-disruption.block.overview.text
+          fallback: "On a hostile Base or Citadel hex, or arriving with an attacking army: cancels its building DEF bonus for the encounter. Does not reveal the carrier."
+        image: {fileID: 0}
+      - id: ability-disruption-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-disruption.block.instructions.text
+          fallback: "Bring a living eligible ground carrier into a hostile Base/Citadel encounter, or position it on the hostile building's hex."
+        image: {fileID: 0}
+      - id: ability-disruption-rules
+        kind: 0
+        text:
+          key: help.topic.ability-disruption.block.rules.text
+          fallback: "The effect cancels the defender's building defense contribution, not its intrinsic unit Defense or ordinary terrain bonus. Presence is enough; reading this effect does not itself reveal a hidden carrier. Sandstorms can already remove the same building contribution."
+        image: {fileID: 0}
+      - id: ability-airfield
+        kind: 2
+        text:
+          key: help.topic.ability-airfield.title
+          fallback: "Airfield"
+        image: {fileID: 0}
+      - id: ability-airfield-overview
+        kind: 0
+        text:
+          key: help.topic.ability-airfield.block.overview.text
+          fallback: "Mobile airfield: carries aircraft up to its Airfield Capacity."
+        image: {fileID: 0}
+      - id: ability-airfield-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-airfield.block.instructions.text
+          fallback: "Inspect the carrier's Airfield Capacity, store aircraft in its airfield container and form a wing when you need to launch."
+        image: {fileID: 0}
+      - id: ability-airfield-rules
+        kind: 0
+        text:
+          key: help.topic.ability-airfield.block.rules.text
+          fallback: "Stored aircraft and the carrier's ready wing share physical capacity. The aircraft are separate from the ground carrier's army roster. A wing becomes independent on actual take-off; free landing capacity and fuel still matter."
+        image: {fileID: 0}
+      - id: ability-singleuse
+        kind: 2
+        text:
+          key: help.topic.ability-singleuse.title
+          fallback: "Single Use"
+        image: {fileID: 0}
+      - id: ability-singleuse-overview
+        kind: 0
+        text:
+          key: help.topic.ability-singleuse.block.overview.text
+          fallback: "Equipment: consumed after an attack. Unit: expended after its attack."
+        image: {fileID: 0}
+      - id: ability-singleuse-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-singleuse.block.instructions.text
+          fallback: "Check whether the ability is innate on the Unit or supplied by an attachment before committing the attack."
+        image: {fileID: 0}
+      - id: ability-singleuse-rules
+        kind: 0
+        text:
+          key: help.topic.ability-singleuse.block.rules.text
+          fallback: "A Single Use attachment is consumed after the launched attack. An innate disposable non-hero Unit is expended after its attack. A multi-target explosion is one launched attack, so consumption occurs at completion rather than once per victim. A miss does not make the spent attack free."
+        image: {fileID: 0}
+      - id: ability-explosion3
+        kind: 2
+        text:
+          key: help.topic.ability-explosion3.title
+          fallback: "Explosion 3"
+        image: {fileID: 0}
+      - id: ability-explosion3-overview
+        kind: 0
+        text:
+          key: help.topic.ability-explosion3.block.overview.text
+          fallback: "Replaces the attack with 10-die challenges against up to 3 random distinct units or structures on the target hex, allies included."
+        image: {fileID: 0}
+      - id: ability-explosion3-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-explosion3.block.instructions.text
+          fallback: "Use the carrier only after inspecting all occupants and structures on the target hex; up to 3 distinct targets are selected randomly, including allies."
+        image: {fileID: 0}
+      - id: ability-explosion3-rules
+        kind: 0
+        text:
+          key: help.topic.ability-explosion3.block.rules.text
+          fallback: "Every selected target faces a separate 10-token attack. The size number is the maximum target count, not damage or dice. The launcher is excluded. Structures can be damaged, and defensive abilities/Fate apply through the supported challenge. Single Use is a separate consumption rule."
+        image: {fileID: 0}
+      - id: ability-explosion5
+        kind: 2
+        text:
+          key: help.topic.ability-explosion5.title
+          fallback: "Explosion 5"
+        image: {fileID: 0}
+      - id: ability-explosion5-overview
+        kind: 0
+        text:
+          key: help.topic.ability-explosion5.block.overview.text
+          fallback: "Replaces the attack with 10-die challenges against up to 5 random distinct units or structures on the target hex, allies included."
+        image: {fileID: 0}
+      - id: ability-explosion5-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-explosion5.block.instructions.text
+          fallback: "Use the carrier only after inspecting all occupants and structures on the target hex; up to 5 distinct targets are selected randomly, including allies."
+        image: {fileID: 0}
+      - id: ability-explosion5-rules
+        kind: 0
+        text:
+          key: help.topic.ability-explosion5.block.rules.text
+          fallback: "Every selected target faces a separate 10-token attack. The size number is the maximum target count, not damage or dice. The launcher is excluded. Structures can be damaged, and defensive abilities/Fate apply through the supported challenge. Single Use is a separate consumption rule."
+        image: {fileID: 0}
+      - id: ability-explosion10
+        kind: 2
+        text:
+          key: help.topic.ability-explosion10.title
+          fallback: "Explosion 10"
+        image: {fileID: 0}
+      - id: ability-explosion10-overview
+        kind: 0
+        text:
+          key: help.topic.ability-explosion10.block.overview.text
+          fallback: "Replaces the attack with 10-die challenges against up to 10 random distinct units or structures on the target hex, allies included."
+        image: {fileID: 0}
+      - id: ability-explosion10-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-explosion10.block.instructions.text
+          fallback: "Use the carrier only after inspecting all occupants and structures on the target hex; up to 10 distinct targets are selected randomly, including allies."
+        image: {fileID: 0}
+      - id: ability-explosion10-rules
+        kind: 0
+        text:
+          key: help.topic.ability-explosion10.block.rules.text
+          fallback: "Every selected target faces a separate 10-token attack. The size number is the maximum target count, not damage or dice. The launcher is excluded. Structures can be damaged, and defensive abilities/Fate apply through the supported challenge. Single Use is a separate consumption rule."
+        image: {fileID: 0}
+      - id: ability-ionic
+        kind: 2
+        text:
+          key: help.topic.ability-ionic.title
+          fallback: "Ionic"
+        image: {fileID: 0}
+      - id: ability-ionic-overview
+        kind: 0
+        text:
+          key: help.topic.ability-ionic.block.overview.text
+          fallback: "+2 DMG vs Mechanical targets when the attack deals damage."
+        image: {fileID: 0}
+      - id: ability-ionic-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-ionic.block.instructions.text
+          fallback: "Use the carrier against targets tagged Mechanical, and check whether the target has additional defensive abilities."
+        image: {fileID: 0}
+      - id: ability-ionic-rules
+        kind: 0
+        text:
+          key: help.topic.ability-ionic.block.rules.text
+          fallback: "The current bonus is +2 damage after a positive base hit against Mechanical targets. A Mechanical classification is independent of the unit's chassis or faction name."
+        image: {fileID: 0}
+      - id: ability-bodyguard
+        kind: 2
+        text:
+          key: help.topic.ability-bodyguard.title
+          fallback: "Bodyguard"
+        image: {fileID: 0}
+      - id: ability-bodyguard-overview
+        kind: 0
+        text:
+          key: help.topic.ability-bodyguard.block.overview.text
+          fallback: "Once per round takes a hit aimed at an adjacent ally instead. Heroes never guard."
+        image: {fileID: 0}
+      - id: ability-bodyguard-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-bodyguard.block.instructions.text
+          fallback: "Arrange the carrier orthogonally beside the allied card you want to protect. A diagonal neighbor does not qualify."
+        image: {fileID: 0}
+      - id: ability-bodyguard-rules
+        kind: 0
+        text:
+          key: help.topic.ability-bodyguard.block.rules.text
+          fallback: "One guard intercepts at most once per tactical round. A hero cannot serve as a Bodyguard. If several guards qualify, the eligible one with the most current HP is used. Damage is recalculated against the guard's own abilities; counterattacks are not intercepted."
+        image: {fileID: 0}
+      - id: ability-counterattack
+        kind: 2
+        text:
+          key: help.topic.ability-counterattack.title
+          fallback: "Counterattack"
+        image: {fileID: 0}
+      - id: ability-counterattack-overview
+        kind: 0
+        text:
+          key: help.topic.ability-counterattack.block.overview.text
+          fallback: "After surviving an attack from an adjacent cell (diagonals included), strikes the attacker back. Cancelled by Shock Attack."
+        image: {fileID: 0}
+      - id: ability-counterattack-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-counterattack.block.instructions.text
+          fallback: "Use the carrier to make close attacks costly for the opponent. Preserve enough HP to survive the primary attack."
+        image: {fileID: 0}
+      - id: ability-counterattack-rules
+        kind: 0
+        text:
+          key: help.topic.ability-counterattack.block.rules.text
+          fallback: "The attacker must be within one cell, diagonals included. A damaging Shock Attack, a retreating army, a hero carrier or death prevents the response. The response is its own challenge but cannot start another counterattack or Bodyguard chain."
+        image: {fileID: 0}
+      - id: ability-drill
+        kind: 2
+        text:
+          key: help.topic.ability-drill.title
+          fallback: "Drill"
+        image: {fileID: 0}
+      - id: ability-drill-overview
+        kind: 0
+        text:
+          key: help.topic.ability-drill.block.overview.text
+          fallback: "Each combat round: +1 ATK for that round to the own ground unit with the highest ATK."
+        image: {fileID: 0}
+      - id: ability-drill-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-drill.block.instructions.text
+          fallback: "Keep the carrier present at the beginning of a tactical round to strengthen a leading ground combatant."
+        image: {fileID: 0}
+      - id: ability-drill-rules
+        kind: 0
+        text:
+          key: help.topic.ability-drill.block.rules.text
+          fallback: "Each carrier grants the current +1 Attack round bonus to an eligible own ground combatant with the highest Attack. Multiple carriers select different recipients when available. The bonus lasts for that round, not permanently."
+        image: {fileID: 0}
+      - id: ability-r1s0
+        kind: 2
+        text:
+          key: help.topic.ability-r1s0.title
+          fallback: "r1s0"
+        image: {fileID: 0}
+      - id: ability-r1s0-overview
+        kind: 0
+        text:
+          key: help.topic.ability-r1s0.block.overview.text
+          fallback: "Army vision +1 hex. Cannot detect stealth units."
+        image: {fileID: 0}
+      - id: ability-r1s0-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-r1s0.block.instructions.text
+          fallback: "Place this carrier in the army that needs one additional hex of vision. Approach suspected hidden units to bring its spotting reach into play."
+        image: {fileID: 0}
+      - id: ability-r1s0-rules
+        kind: 0
+        text:
+          key: help.topic.ability-r1s0.block.rules.text
+          fallback: "Its adjacent spotting pool is 0: it cannot detect hidden units on a neighboring hex merely by seeing that hex. A minimal same-hex observation can still exist under the ordinary source rule."
+        image: {fileID: 0}
+      - id: ability-r1s4
+        kind: 2
+        text:
+          key: help.topic.ability-r1s4.title
+          fallback: "r1s4"
+        image: {fileID: 0}
+      - id: ability-r1s4-overview
+        kind: 0
+        text:
+          key: help.topic.ability-r1s4.block.overview.text
+          fallback: "Army vision +1 hex. 4 dice to detect stealth units on its hex and adjacent hexes."
+        image: {fileID: 0}
+      - id: ability-r1s4-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-r1s4.block.instructions.text
+          fallback: "Place this carrier in the army that needs one additional hex of vision. Approach suspected hidden units to bring its spotting reach into play."
+        image: {fileID: 0}
+      - id: ability-r1s4-rules
+        kind: 0
+        text:
+          key: help.topic.ability-r1s4.block.rules.text
+          fallback: "Its adjacent spotting pool is 4. The best applicable source is used rather than adding all carriers together. Spotting needs strictly more successes than the hidden unit's concealment; a tie leaves it hidden."
+        image: {fileID: 0}
+      - id: ability-r1s5
+        kind: 2
+        text:
+          key: help.topic.ability-r1s5.title
+          fallback: "r1s5"
+        image: {fileID: 0}
+      - id: ability-r1s5-overview
+        kind: 0
+        text:
+          key: help.topic.ability-r1s5.block.overview.text
+          fallback: "Army vision +1 hex. 5 dice to detect stealth units on its hex and adjacent hexes."
+        image: {fileID: 0}
+      - id: ability-r1s5-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-r1s5.block.instructions.text
+          fallback: "Place this carrier in the army that needs one additional hex of vision. Approach suspected hidden units to bring its spotting reach into play."
+        image: {fileID: 0}
+      - id: ability-r1s5-rules
+        kind: 0
+        text:
+          key: help.topic.ability-r1s5.block.rules.text
+          fallback: "Its adjacent spotting pool is 5. The best applicable source is used rather than adding all carriers together. Spotting needs strictly more successes than the hidden unit's concealment; a tie leaves it hidden."
+        image: {fileID: 0}
+      - id: ability-r1s6
+        kind: 2
+        text:
+          key: help.topic.ability-r1s6.title
+          fallback: "r1s6"
+        image: {fileID: 0}
+      - id: ability-r1s6-overview
+        kind: 0
+        text:
+          key: help.topic.ability-r1s6.block.overview.text
+          fallback: "Army vision +1 hex. 6 dice to detect stealth units on its hex and adjacent hexes."
+        image: {fileID: 0}
+      - id: ability-r1s6-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-r1s6.block.instructions.text
+          fallback: "Place this carrier in the army that needs one additional hex of vision. Approach suspected hidden units to bring its spotting reach into play."
+        image: {fileID: 0}
+      - id: ability-r1s6-rules
+        kind: 0
+        text:
+          key: help.topic.ability-r1s6.block.rules.text
+          fallback: "Its adjacent spotting pool is 6. The best applicable source is used rather than adding all carriers together. Spotting needs strictly more successes than the hidden unit's concealment; a tie leaves it hidden."
+        image: {fileID: 0}
+      - id: ability-stealth4
+        kind: 2
+        text:
+          key: help.topic.ability-stealth4.title
+          fallback: "Stealth 4"
+        image: {fileID: 0}
+      - id: ability-stealth4-overview
+        kind: 0
+        text:
+          key: help.topic.ability-stealth4.block.overview.text
+          fallback: "Can enter stealth for 1 AP: hides with 4 dice, +1 or +2 on difficult terrain."
+        image: {fileID: 0}
+      - id: ability-stealth4-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-stealth4.block.instructions.text
+          fallback: "Use the carrier's stealth action and pay 1 AP to hide; leave for 0 AP before taking offensive actions."
+        image: {fileID: 0}
+      - id: ability-stealth4-rules
+        kind: 0
+        text:
+          key: help.topic.ability-stealth4.block.rules.text
+          fallback: "The base hide pool is 4, with a terrain bonus of move cost minus 1. Spotting must score strictly more successes to detect it. Leaving stealth uses the turn's toggle too, so you cannot immediately hide again. Availability of a tag in the reference does not guarantee that your selected deck contains a carrier."
+        image: {fileID: 0}
+      - id: ability-aa
+        kind: 2
+        text:
+          key: help.topic.ability-aa.title
+          fallback: "AA"
+        image: {fileID: 0}
+      - id: ability-aa-overview
+        kind: 0
+        text:
+          key: help.topic.ability-aa.block.overview.text
+          fallback: "Intercepts enemy aircraft within the card's anti-air radius."
+        image: {fileID: 0}
+      - id: ability-aa-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-aa.block.instructions.text
+          fallback: "Maintain sight of likely enemy flight hexes and keep the carrier revealed. Choose Attack or Skip when a legal reaction is offered."
+        image: {fileID: 0}
+      - id: ability-aa-rules
+        kind: 0
+        text:
+          key: help.topic.ability-aa.block.rules.text
+          fallback: "Use the card's actual anti-air radius. A unit fires once until its owner's next turn refresh; Attack or Skip prevents another prompt for the same wing in that cycle. A hidden AA carrier cannot fire just because its radius covers the target."
+        image: {fileID: 0}
+      - id: ability-apbonus
+        kind: 2
+        text:
+          key: help.topic.ability-apbonus.title
+          fallback: "Ap Bonus"
+        image: {fileID: 0}
+      - id: ability-apbonus-overview
+        kind: 0
+        text:
+          key: help.topic.ability-apbonus.block.overview.text
+          fallback: "Adds 2 AP to the owner's round allocation for each eligible in-play carrier, on top of the initiative-rank allocation."
+        image: {fileID: 0}
+      - id: ability-apbonus-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-apbonus.block.instructions.text
+          fallback: "Deploy or build the carrier and keep it in play through the new round's AP allocation."
+        image: {fileID: 0}
+      - id: ability-apbonus-rules
+        kind: 0
+        text:
+          key: help.topic.ability-apbonus.block.rules.text
+          fallback: "Each in-play source currently adds 2 AP, and multiple eligible sources stack. A card in hand or a captive in prison is not an ordinary Ap Bonus source. The grant is added to initiative AP; it is not a free AP gain each time you reopen a panel."
+        image: {fileID: 0}
+      - id: ability-trade
+        kind: 2
+        text:
+          key: help.topic.ability-trade.title
+          fallback: "Trade"
+        image: {fileID: 0}
+      - id: ability-trade-overview
+        kind: 0
+        text:
+          key: help.topic.ability-trade.block.overview.text
+          fallback: "Unlocks resource exchange while in play. Starts at 2:1; each exchange increases the price by 1. An idle turn lowers it by 1, minimum 2:1. Costs no AP."
+        image: {fileID: 0}
+      - id: ability-trade-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-trade.block.instructions.text
+          fallback: "Keep a living carrier in play, open the Trade window during your confirmed turn and inspect the current exchange rate."
+        image: {fileID: 0}
+      - id: ability-trade-rules
+        kind: 0
+        text:
+          key: help.topic.ability-trade.block.rules.text
+          fallback: "The player starts at a minimum 2:1 rate; each exchange worsens it by 1, and a turn without trades improves it by 1 down to the minimum. Trade costs no AP. Additional carriers unlock access but do not reset the shared rate."
+        image: {fileID: 0}
+      - id: ability-tacticalintelligence
+        kind: 2
+        text:
+          key: help.topic.ability-tacticalintelligence.title
+          fallback: "Tactical Intelligence"
+        image: {fileID: 0}
+      - id: ability-tacticalintelligence-overview
+        kind: 0
+        text:
+          key: help.topic.ability-tacticalintelligence.block.overview.text
+          fallback: "Unlocks opponent intelligence while in play. Ground armies closer to an enemy citadel reveal more fields; fields change each turn."
+        image: {fileID: 0}
+      - id: ability-tacticalintelligence-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-tacticalintelligence.block.instructions.text
+          fallback: "Open opponent intelligence and move a qualifying field ground army nearer the opponent's original citadel to increase the visible report."
+        image: {fileID: 0}
+      - id: ability-tacticalintelligence-rules
+        kind: 0
+        text:
+          key: help.topic.ability-tacticalintelligence.block.rules.text
+          fallback: "Distances 3, 2, 1 and 0 reveal 4, 8, 12 and 16 report fields. Garrisons and aircraft do not provide this proximity contribution. Report fields change with your personal turn and do not replace live fog/stealth rules."
+        image: {fileID: 0}
+      - id: ability-barracks
+        kind: 2
+        text:
+          key: help.topic.ability-barracks.title
+          fallback: "Barracks"
+        image: {fileID: 0}
+      - id: ability-barracks-overview
+        kind: 0
+        text:
+          key: help.topic.ability-barracks.block.overview.text
+          fallback: "Accepts units deployed from hand and holds a garrison. Retreating armies head to the nearest own Barracks."
+        image: {fileID: 0}
+      - id: ability-barracks-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-barracks.block.instructions.text
+          fallback: "Use an owned eligible building to deploy the ground cards that require Barracks, and inspect its stationary garrison."
+        image: {fileID: 0}
+      - id: ability-barracks-rules
+        kind: 0
+        text:
+          key: help.topic.ability-barracks.block.rules.text
+          fallback: "Ground deployment must satisfy the card's actual required building ability and final capacity. Retreat movement prefers a direction toward the nearest eligible own Barracks, not an instant teleport there. Aircraft require their separate airfield capacity."
+        image: {fileID: 0}
+      - id: ability-research
+        kind: 2
+        text:
+          key: help.topic.ability-research.title
+          fallback: "Research"
+        image: {fileID: 0}
+      - id: ability-research-overview
+        kind: 0
+        text:
+          key: help.topic.ability-research.block.overview.text
+          fallback: "Facility: enables Research for a hero with Researcher on this hex."
+        image: {fileID: 0}
+      - id: ability-research-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-research.block.instructions.text
+          fallback: "Bring a friendly Researcher hero to this owned facility's hex, open Research and select an available deck blueprint."
+        image: {fileID: 0}
+      - id: ability-research-rules
+        kind: 0
+        text:
+          key: help.topic.ability-research.block.rules.text
+          fallback: "Research requires both the facility capability and a valid acting hero. It spends the attempt's AP/resources and can reveal that participating Researcher. It does not manufacture every possible card just because the building exists."
+        image: {fileID: 0}
+      - id: ability-researcher
+        kind: 2
+        text:
+          key: help.topic.ability-researcher.title
+          fallback: "Researcher"
+        image: {fileID: 0}
+      - id: ability-researcher-overview
+        kind: 0
+        text:
+          key: help.topic.ability-researcher.block.overview.text
+          fallback: "Hero can run Research at a Research Facility on its hex."
+        image: {fileID: 0}
+      - id: ability-researcher-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-researcher.block.instructions.text
+          fallback: "Move this hero onto the same hex as your Research Facility and choose a blueprint in the Research window."
+        image: {fileID: 0}
+      - id: ability-researcher-rules
+        kind: 0
+        text:
+          key: help.topic.ability-researcher.block.rules.text
+          fallback: "The hero must be yours and not a prisoner. Choosing Research reveals that hero if hidden. The attempt rolls the hero's maximum Fate stat and spends a local Fate budget; its live combat Fate is unchanged."
+        image: {fileID: 0}
+      - id: ability-production
+        kind: 2
+        text:
+          key: help.topic.ability-production.title
+          fallback: "Production"
+        image: {fileID: 0}
+      - id: ability-production-overview
+        kind: 0
+        text:
+          key: help.topic.ability-production.block.overview.text
+          fallback: "Facility: enables Production for a hero with Assembler on this hex."
+        image: {fileID: 0}
+      - id: ability-production-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-production.block.instructions.text
+          fallback: "Bring a friendly Assembler hero to the owned facility's hex, open Production and select an available Equipment blueprint."
+        image: {fileID: 0}
+      - id: ability-production-rules
+        kind: 0
+        text:
+          key: help.topic.ability-production.block.rules.text
+          fallback: "A valid Facility, hero, free hand slot, unlocked blueprint and affordable attempt cost are all required. The facility does not automatically produce an item every round. A failed roll still spends the attempt cost."
+        image: {fileID: 0}
+      - id: ability-assembler
+        kind: 2
+        text:
+          key: help.topic.ability-assembler.title
+          fallback: "Assembler"
+        image: {fileID: 0}
+      - id: ability-assembler-overview
+        kind: 0
+        text:
+          key: help.topic.ability-assembler.block.overview.text
+          fallback: "Hero can run Production at a Production Facility on its hex."
+        image: {fileID: 0}
+      - id: ability-assembler-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-assembler.block.instructions.text
+          fallback: "Position this hero on an owned Production Facility and use the Production window to begin an Equipment attempt."
+        image: {fileID: 0}
+      - id: ability-assembler-rules
+        kind: 0
+        text:
+          key: help.topic.ability-assembler.block.rules.text
+          fallback: "The hero must be yours and not a prisoner. Production does not itself reveal a hidden acting hero. The same fixed-success difficulty test and local Fate-spending rules apply as in Research."
+        image: {fileID: 0}
+      - id: ability-collecthuman
+        kind: 2
+        text:
+          key: help.topic.ability-collecthuman.title
+          fallback: "Collect Human"
+        image: {fileID: 0}
+      - id: ability-collecthuman-overview
+        kind: 0
+        text:
+          key: help.topic.ability-collecthuman.block.overview.text
+          fallback: "Collects Human from the carrier's hex under the collection rules. This uses available hex yield rather than creating an unlimited fixed resource bonus."
+        image: {fileID: 0}
+      - id: ability-collecthuman-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-collecthuman.block.instructions.text
+          fallback: "Place a matching collector on a visited hex with available Human yield and protect the location. Inspect the marginal income before constructing another collector or upgrading it."
+        image: {fileID: 0}
+      - id: ability-collecthuman-rules
+        kind: 0
+        text:
+          key: help.topic.ability-collecthuman.block.rules.text
+          fallback: "Collection is resolved at the new-round income step. A Facility contributes 1 plus its own upgrade level and the hex yield caps the harvest. Buildings collect first; eligible units with the matching Collect tag then take up to 1 each from the remainder, only when their owner has no combat-capable enemy on the hex. This is not the unconditional Produce bonus."
+        image: {fileID: 0}
+      - id: ability-collectenergy
+        kind: 2
+        text:
+          key: help.topic.ability-collectenergy.title
+          fallback: "Collect Energy"
+        image: {fileID: 0}
+      - id: ability-collectenergy-overview
+        kind: 0
+        text:
+          key: help.topic.ability-collectenergy.block.overview.text
+          fallback: "Collects Energy from the carrier's hex under the collection rules. This uses available hex yield rather than creating an unlimited fixed resource bonus."
+        image: {fileID: 0}
+      - id: ability-collectenergy-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-collectenergy.block.instructions.text
+          fallback: "Place a matching collector on a visited hex with available Energy yield and protect the location. Inspect the marginal income before constructing another collector or upgrading it."
+        image: {fileID: 0}
+      - id: ability-collectenergy-rules
+        kind: 0
+        text:
+          key: help.topic.ability-collectenergy.block.rules.text
+          fallback: "Collection is resolved at the new-round income step. A Facility contributes 1 plus its own upgrade level and the hex yield caps the harvest. Buildings collect first; eligible units with the matching Collect tag then take up to 1 each from the remainder, only when their owner has no combat-capable enemy on the hex. This is not the unconditional Produce bonus."
+        image: {fileID: 0}
+      - id: ability-collectmaterials
+        kind: 2
+        text:
+          key: help.topic.ability-collectmaterials.title
+          fallback: "Collect Materials"
+        image: {fileID: 0}
+      - id: ability-collectmaterials-overview
+        kind: 0
+        text:
+          key: help.topic.ability-collectmaterials.block.overview.text
+          fallback: "Collects Materials from the carrier's hex under the collection rules. This uses available hex yield rather than creating an unlimited fixed resource bonus."
+        image: {fileID: 0}
+      - id: ability-collectmaterials-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-collectmaterials.block.instructions.text
+          fallback: "Place a matching collector on a visited hex with available Materials yield and protect the location. Inspect the marginal income before constructing another collector or upgrading it."
+        image: {fileID: 0}
+      - id: ability-collectmaterials-rules
+        kind: 0
+        text:
+          key: help.topic.ability-collectmaterials.block.rules.text
+          fallback: "Collection is resolved at the new-round income step. A Facility contributes 1 plus its own upgrade level and the hex yield caps the harvest. Buildings collect first; eligible units with the matching Collect tag then take up to 1 each from the remainder, only when their owner has no combat-capable enemy on the hex. This is not the unconditional Produce bonus."
+        image: {fileID: 0}
+      - id: ability-collecttech
+        kind: 2
+        text:
+          key: help.topic.ability-collecttech.title
+          fallback: "Collect Tech"
+        image: {fileID: 0}
+      - id: ability-collecttech-overview
+        kind: 0
+        text:
+          key: help.topic.ability-collecttech.block.overview.text
+          fallback: "Collects Tech from the carrier's hex under the collection rules. This uses available hex yield rather than creating an unlimited fixed resource bonus."
+        image: {fileID: 0}
+      - id: ability-collecttech-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-collecttech.block.instructions.text
+          fallback: "Place a matching collector on a visited hex with available Tech yield and protect the location. Inspect the marginal income before constructing another collector or upgrading it."
+        image: {fileID: 0}
+      - id: ability-collecttech-rules
+        kind: 0
+        text:
+          key: help.topic.ability-collecttech.block.rules.text
+          fallback: "Collection is resolved at the new-round income step. A Facility contributes 1 plus its own upgrade level and the hex yield caps the harvest. Buildings collect first; eligible units with the matching Collect tag then take up to 1 each from the remainder, only when their owner has no combat-capable enemy on the hex. This is not the unconditional Produce bonus."
+        image: {fileID: 0}
+      - id: ability-regeneration
+        kind: 2
+        text:
+          key: help.topic.ability-regeneration.title
+          fallback: "Regeneration"
+        image: {fileID: 0}
+      - id: ability-regeneration-overview
+        kind: 0
+        text:
+          key: help.topic.ability-regeneration.block.overview.text
+          fallback: "Restores 1 HP (a Base: 1 structure point) at the end of the owner's turn."
+        image: {fileID: 0}
+      - id: ability-regeneration-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-regeneration.block.instructions.text
+          fallback: "Keep a surviving wounded carrier in play until the end of its owner's turn."
+        image: {fileID: 0}
+      - id: ability-regeneration-rules
+        kind: 0
+        text:
+          key: help.topic.ability-regeneration.block.rules.text
+          fallback: "The current restoration is 1 HP for a living unit or 1 structure point for an eligible Base, never above maximum. Prisoners are excluded. This is an automatic end-turn effect, not a full repair action, and does not bring back a destroyed carrier."
+        image: {fileID: 0}
+      - id: ability-producehuman
+        kind: 2
+        text:
+          key: help.topic.ability-producehuman.title
+          fallback: "Produce Human"
+        image: {fileID: 0}
+      - id: ability-producehuman-overview
+        kind: 0
+        text:
+          key: help.topic.ability-producehuman.block.overview.text
+          fallback: "Grants 1 Human at the round's income step while the carrier is in play. This is a fixed resource bonus, separate from harvesting a deposit."
+        image: {fileID: 0}
+      - id: ability-producehuman-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-producehuman.block.instructions.text
+          fallback: "Deploy or build the carrier and keep it in play to receive its Human contribution at the round's income step."
+        image: {fileID: 0}
+      - id: ability-producehuman-rules
+        kind: 0
+        text:
+          key: help.topic.ability-producehuman.block.rules.text
+          fallback: "Each eligible in-play source grants 1 Human, separate from the hex's collection limit. Multiple sources stack. A card in hand or a prisoner does not provide this ordinary source bonus. It is not awarded again each time the player opens or confirms a turn panel."
+        image: {fileID: 0}
+      - id: ability-produceenergy
+        kind: 2
+        text:
+          key: help.topic.ability-produceenergy.title
+          fallback: "Produce Energy"
+        image: {fileID: 0}
+      - id: ability-produceenergy-overview
+        kind: 0
+        text:
+          key: help.topic.ability-produceenergy.block.overview.text
+          fallback: "Grants 1 Energy at the round's income step while the carrier is in play. This is a fixed resource bonus, separate from harvesting a deposit."
+        image: {fileID: 0}
+      - id: ability-produceenergy-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-produceenergy.block.instructions.text
+          fallback: "Deploy or build the carrier and keep it in play to receive its Energy contribution at the round's income step."
+        image: {fileID: 0}
+      - id: ability-produceenergy-rules
+        kind: 0
+        text:
+          key: help.topic.ability-produceenergy.block.rules.text
+          fallback: "Each eligible in-play source grants 1 Energy, separate from the hex's collection limit. Multiple sources stack. A card in hand or a prisoner does not provide this ordinary source bonus. It is not awarded again each time the player opens or confirms a turn panel."
+        image: {fileID: 0}
+      - id: ability-producematerials
+        kind: 2
+        text:
+          key: help.topic.ability-producematerials.title
+          fallback: "Produce Materials"
+        image: {fileID: 0}
+      - id: ability-producematerials-overview
+        kind: 0
+        text:
+          key: help.topic.ability-producematerials.block.overview.text
+          fallback: "Grants 1 Materials at the round's income step while the carrier is in play. This is a fixed resource bonus, separate from harvesting a deposit."
+        image: {fileID: 0}
+      - id: ability-producematerials-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-producematerials.block.instructions.text
+          fallback: "Deploy or build the carrier and keep it in play to receive its Materials contribution at the round's income step."
+        image: {fileID: 0}
+      - id: ability-producematerials-rules
+        kind: 0
+        text:
+          key: help.topic.ability-producematerials.block.rules.text
+          fallback: "Each eligible in-play source grants 1 Materials, separate from the hex's collection limit. Multiple sources stack. A card in hand or a prisoner does not provide this ordinary source bonus. It is not awarded again each time the player opens or confirms a turn panel."
+        image: {fileID: 0}
+      - id: ability-producetech
+        kind: 2
+        text:
+          key: help.topic.ability-producetech.title
+          fallback: "Produce Tech"
+        image: {fileID: 0}
+      - id: ability-producetech-overview
+        kind: 0
+        text:
+          key: help.topic.ability-producetech.block.overview.text
+          fallback: "Grants 1 Tech at the round's income step while the carrier is in play. This is a fixed resource bonus, separate from harvesting a deposit."
+        image: {fileID: 0}
+      - id: ability-producetech-instructions
+        kind: 0
+        text:
+          key: help.topic.ability-producetech.block.instructions.text
+          fallback: "Deploy or build the carrier and keep it in play to receive its Tech contribution at the round's income step."
+        image: {fileID: 0}
+      - id: ability-producetech-rules
+        kind: 0
+        text:
+          key: help.topic.ability-producetech.block.rules.text
+          fallback: "Each eligible in-play source grants 1 Tech, separate from the hex's collection limit. Multiple sources stack. A card in hand or a prisoner does not provide this ordinary source bonus. It is not awarded again each time the player opens or confirms a turn panel."
+        image: {fileID: 0}

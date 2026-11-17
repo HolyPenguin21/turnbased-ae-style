@@ -136,14 +136,14 @@ namespace Game.UI
                     image.gameObject.SetActive(true); articleBlocks.Add(image.gameObject);
                 }
                 string caption = Text(block.text);
-                if (!string.IsNullOrEmpty(caption)) AddText(caption);
+                if (!string.IsNullOrEmpty(caption)) AddText(caption, block.kind == HelpBlockKind.Heading);
             }
             LayoutRebuilder.ForceRebuildLayoutImmediate(articleScroll.content);
             UIUtility.ResetDetailScroll(articleScroll);
         }
-        private void AddText(string value)
+        private void AddText(string value, bool heading = false)
         {
-            var label = Instantiate(textBlockTemplate, articleScroll.content);
+            var label = Instantiate(heading ? articleTitle : textBlockTemplate, articleScroll.content);
             SceneUIAudioBinder.BindCreatedRoot(label);
             label.text = value; label.gameObject.SetActive(true); articleBlocks.Add(label.gameObject);
         }
