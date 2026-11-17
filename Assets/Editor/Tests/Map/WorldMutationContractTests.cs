@@ -109,6 +109,121 @@ namespace Game.EditorTests
             BuildingRegistry.Unregister(hex);
             Assert.That(owner.Hand.Hand.Count, Is.EqualTo(1)); Assert.That(ArmyRegistry.IsRegistered(field), Is.False);
         }
+        [TestCase(false)] [TestCase(true)]
+        public void UndefendedFacilityNotificationsObserveStoppedMover(bool insideOuterMutation)
+        {
+            var building = Building(false);
+            var field = Army(owner, Unit(true)); field.IsAirfield = true;
+            var first = Unit(); first.Owner = capturer; first.MoveCurrent = 4;
+            var second = Unit(); second.Owner = capturer; second.MoveCurrent = 2;
+            var mover = Army(capturer, first, second);
+            VisionSystem.RecomputeFor(owner); VisionSystem.RecomputeFor(capturer);
+            var notifications = new List<string>(); var intermediate = new List<string>();
+            bool formerOwnerWitnessed = false, strangerWitnessed = false;
+            void Observe(string notification)
+            {
+                notifications.Add(notification);
+                if (BuildingRegistry.FindAt(hex) != null || first.MoveCurrent != 0 || second.MoveCurrent != 0
+                    || ArmyRegistry.FindArmyContaining(first) != mover || ArmyRegistry.FindArmyContaining(second) != mover
+                    || ArmyRegistry.IsRegistered(field) || field.Members.Count != 0 || owner.Hand.Hand.Count != 1)
+                    intermediate.Add(notification);
+            }
+            Action<HexCoord, BuildingData> visual = (at, current) =>
+            {
+                if (!at.Equals(hex)) return;
+                Observe("visual");
+                formerOwnerWitnessed = VisionSystem.IsVisible(owner, hex) && current == null;
+                strangerWitnessed |= VisionSystem.IsVisible(stranger, hex);
+            };
+            Action<BuildingData> destroyed = current => { if (current == building) Observe("destroyed"); };
+            Action<HexCoord, PlayerSetupData> lost = (at, previous) =>
+            { if (at.Equals(hex) && previous == owner) Observe("lost"); };
+            Action<PlayerSetupData, HexCoord> content = (viewer, at) =>
+            {
+                if (!at.Equals(hex)) return;
+                if (viewer == stranger) strangerWitnessed = true;
+                if (viewer == capturer) Observe("content");
+            };
+            BuildingRegistry.VisualStateChanged += visual; BuildingRegistry.BuildingDestroyed += destroyed;
+            BuildingRegistry.StructureLost += lost; VisionSystem.VisibleContentChanged += content;
+            try
+            {
+                using (insideOuterMutation ? VisionSystem.BeginMutation() : null)
+                {
+                    BuildingRegistry.CaptureOrDestroyIfUndefended(hex, capturer, null, mover);
+                    if (insideOuterMutation) Assert.That(notifications, Is.Empty);
+                }
+                Assert.That(notifications, Is.EquivalentTo(new[] { "visual", "destroyed", "lost", "content" }));
+                Assert.That(intermediate, Is.Empty, "Every callback must see destruction, stopped movement and returned cargo together.");
+                Assert.That(formerOwnerWitnessed, Is.True); Assert.That(strangerWitnessed, Is.False);
+                Assert.That(VisionSystem.IsVisible(owner, hex), Is.False);
+                Assert.That(HumanVisualMemory.IsBuildingKnown(owner, hex), Is.False);
+                Assert.That(HumanVisualMemory.IsBuildingKnown(stranger, hex), Is.False);
+                Assert.That(HumanVisualMemory.TryGetArmySighting(owner, mover.Id, out var sighting), Is.True);
+                Assert.That(sighting.Observed.Members.Select(member => member.MoveCurrent), Is.EqualTo(new[] { 0, 0 }));
+                Assert.That(HumanVisualMemory.TryGetArmySighting(stranger, mover.Id, out _), Is.False);
+                first.MoveCurrent = 3;
+                BuildingRegistry.CaptureOrDestroyIfUndefended(hex, capturer, null, mover);
+                Assert.That(notifications.Count, Is.EqualTo(4)); Assert.That(first.MoveCurrent, Is.EqualTo(3));
+                Assert.That(owner.Hand.Hand.Count, Is.EqualTo(1));
+            }
+            finally
+            {
+                BuildingRegistry.VisualStateChanged -= visual; BuildingRegistry.BuildingDestroyed -= destroyed;
+                BuildingRegistry.StructureLost -= lost; VisionSystem.VisibleContentChanged -= content;
+            }
+        }
+        [TestCase(false)] [TestCase(true)]
+        public void FacilityObserverResetCannotPublishStaleNoticesOrChangeMovementAfterCallback(bool beforeVision)
+        {
+            var building = Building(false);
+            var member = Unit(); member.Owner = capturer; member.MoveCurrent = 4;
+            var mover = Army(capturer, member);
+            int resets = 0, observedMovement = -1, staleNotices = 0;
+            void Reset()
+            {
+                resets++; observedMovement = member.MoveCurrent;
+                VisionSystem.Clear();
+                // A callback may begin a new lifecycle. The completed action must not
+                // overwrite a subsequent change after it has published its result.
+                member.MoveCurrent = 7;
+            }
+            Action<HexCoord, BuildingData> visual = (at, _) => { if (beforeVision && at.Equals(hex)) Reset(); };
+            Action<BuildingData> destroyed = current => { if (!beforeVision && current == building) Reset(); };
+            Action<BuildingData> lateDestroyed = _ => staleNotices++;
+            Action<HexCoord, PlayerSetupData> lost = (_, __) => staleNotices++;
+            BuildingRegistry.VisualStateChanged += visual;
+            BuildingRegistry.BuildingDestroyed += destroyed; BuildingRegistry.BuildingDestroyed += lateDestroyed;
+            BuildingRegistry.StructureLost += lost;
+            try { BuildingRegistry.CaptureOrDestroyIfUndefended(hex, capturer, null, mover); }
+            finally
+            {
+                BuildingRegistry.VisualStateChanged -= visual;
+                BuildingRegistry.BuildingDestroyed -= destroyed; BuildingRegistry.BuildingDestroyed -= lateDestroyed;
+                BuildingRegistry.StructureLost -= lost;
+            }
+            Assert.That(resets, Is.EqualTo(1)); Assert.That(observedMovement, Is.Zero);
+            Assert.That(staleNotices, Is.Zero); Assert.That(member.MoveCurrent, Is.EqualTo(7));
+            Assert.That(BuildingRegistry.FindAt(hex), Is.Null);
+        }
+        [Test] public void UndefendedBaseCapturePreservesMovementForObservers()
+        {
+            var building = Building();
+            var member = Unit(); member.Owner = capturer; member.MoveCurrent = 3;
+            var mover = Army(capturer, member);
+            int calls = 0; bool final = true;
+            void Observe()
+            {
+                calls++; final &= BuildingRegistry.FindAt(hex) == building && building.Owner == capturer
+                    && member.MoveCurrent == 3 && ArmyRegistry.FindArmyContaining(member) == mover;
+            }
+            Action<HexCoord, BuildingData> visual = (at, _) => { if (at.Equals(hex)) Observe(); };
+            Action<BuildingData, PlayerSetupData> captured = (current, _) => { if (current == building) Observe(); };
+            BuildingRegistry.VisualStateChanged += visual; BuildingRegistry.BaseCaptured += captured;
+            try { BuildingRegistry.CaptureOrDestroyIfUndefended(hex, capturer, null, mover); }
+            finally { BuildingRegistry.VisualStateChanged -= visual; BuildingRegistry.BaseCaptured -= captured; }
+            Assert.That(calls, Is.EqualTo(2)); Assert.That(final, Is.True);
+        }
         [Test] public void CarrierRemovalReturnsHangarAndDeckWithoutSelection()
         {
             var carrier = Unit(); carrier.AirfieldCapacity = 2; var host = Army(owner, carrier);
