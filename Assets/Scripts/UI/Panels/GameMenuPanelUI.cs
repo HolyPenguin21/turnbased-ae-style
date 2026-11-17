@@ -29,10 +29,13 @@ namespace Game.UI
         [SerializeField] private TMP_Text exitButtonText;
         private Game.Turns.GameTurnController turnController;
         // An AI-only match has no human turn at all (also after its winner is announced): the
-        // spectator may open the menu at any moment, battles included — they run without input.
+        // spectator may open the menu at any moment outside a battle.
         private bool ObserverMatch => turnController != null && turnController.IsAiObserverMatch;
         private bool HumanTurn => turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
-        private bool MenuAvailable => !UIFocusUtility.HasOverlay && (ObserverMatch || (!BattleActive && HumanTurn));
+        private bool MenuAvailable => !UIFocusUtility.HasOverlay && !BattleActive && (ObserverMatch || HumanTurn);
+        // The whole panel (menu/help buttons, play-pause, utility) sits over the battle screen,
+        // so it is hidden for the duration of a battle.
+        private CanvasGroup panelGroup;
         private struct GroupState
         {
             public CanvasGroup Group;
@@ -82,8 +85,9 @@ namespace Game.UI
             if (saveButton != null) saveButton.interactable = turnController != null && turnController.CanSaveMatch(out _);
             if (loadButton != null) loadButton.interactable = turnController != null && turnController.SaveConfiguration != null;
             bool ownsSlots = saveSlots != null && saveSlots.IsShowing;
-            bool closeForTurn = !ObserverMatch && (BattleActive || !HumanTurn);
+            bool closeForTurn = BattleActive || (!ObserverMatch && !HumanTurn);
             if (IsShowing && (closeForTurn || (!MenuAvailable && !ownsSlots))) ContinueGame();
+            SetPanelHidden(BattleActive);
             if (helpButton != null)
             {
                 helpButton.gameObject.SetActive(!IsShowing);
@@ -94,6 +98,18 @@ namespace Game.UI
                 gearButton.gameObject.SetActive(!IsShowing);
                 gearButton.interactable = MenuAvailable;
             }
+        }
+        private void SetPanelHidden(bool hidden)
+        {
+            if (panelGroup == null)
+            {
+                if (!hidden) return;
+                panelGroup = GetComponent<CanvasGroup>();
+                if (panelGroup == null) panelGroup = gameObject.AddComponent<CanvasGroup>();
+            }
+            panelGroup.alpha = hidden ? 0f : 1f;
+            panelGroup.interactable = !hidden;
+            panelGroup.blocksRaycasts = !hidden;
         }
         public void OpenHelp()
         {
@@ -230,6 +246,7 @@ namespace Game.UI
         {
             ContinueGame();
             RestoreGameplayCanvases();
+            SetPanelHidden(false);
             if (gearButton != null) gearButton.onClick.RemoveListener(OpenMenu);
             if (helpButton != null) helpButton.onClick.RemoveListener(OpenHelp);
             if (helpPanel != null) helpPanel.Closed -= ContinueGame;
