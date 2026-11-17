@@ -19,6 +19,8 @@ namespace Game.UI
         [SerializeField] private MatchSaveSlotsUI saveSlots;
         [SerializeField] private BattleScreenUI battleScreen;
         [SerializeField] private Button gearButton;
+        [SerializeField] private Button helpButton;
+        [SerializeField] private GameHelpPanelUI helpPanel;
         [SerializeField] private Button optionsButton;
         [SerializeField] private Button saveButton;
         [SerializeField] private Button loadButton;
@@ -63,6 +65,8 @@ namespace Game.UI
             turnController = UnityEngine.Object.FindAnyObjectByType<Game.Turns.GameTurnController>();
             if (turnController != null) turnController.TurnStateChanged += RefreshBattleAvailability;
             if (gearButton != null) gearButton.onClick.AddListener(OpenMenu);
+            if (helpButton != null) helpButton.onClick.AddListener(OpenHelp);
+            if (helpPanel != null) helpPanel.Closed += ContinueGame;
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
             if (saveButton != null) saveButton.onClick.AddListener(OpenSave);
             if (loadButton != null) loadButton.onClick.AddListener(OpenLoad);
@@ -80,20 +84,37 @@ namespace Game.UI
             bool ownsSlots = saveSlots != null && saveSlots.IsShowing;
             bool closeForTurn = !ObserverMatch && (BattleActive || !HumanTurn);
             if (IsShowing && (closeForTurn || (!MenuAvailable && !ownsSlots))) ContinueGame();
+            if (helpButton != null)
+            {
+                helpButton.gameObject.SetActive(!IsShowing);
+                helpButton.interactable = MenuAvailable;
+            }
             if (gearButton != null)
             {
                 gearButton.gameObject.SetActive(!IsShowing);
                 gearButton.interactable = MenuAvailable;
             }
         }
-        public void OpenMenu()
+        public void OpenHelp()
         {
-            if (!MenuAvailable || !isActiveAndEnabled || IsShowing || blockingRoot == null || menuPanel == null) return;
-            instance = this; // Also supports entering Play Mode without domain/scene reload.
+            if (!MenuAvailable || !isActiveAndEnabled || IsShowing || helpPanel == null || !helpPanel.HasBindings) return;
+            BeginModal();
+            helpPanel.Show();
+            VisibilityChanged?.Invoke();
+            RefreshBattleAvailability();
+        }
+        private void BeginModal()
+        {
+            instance = this;
             previousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             IsShowing = true;
             turnController.SetAiObserverMenuHold(true);
             BlockGameplayCanvases();
+        }
+        public void OpenMenu()
+        {
+            if (!MenuAvailable || !isActiveAndEnabled || IsShowing || blockingRoot == null || menuPanel == null) return;
+            BeginModal();
             if (gearButton != null) gearButton.gameObject.SetActive(false);
             blockingRoot.SetActive(true);
             menuPanel.SetActive(true);
@@ -137,6 +158,7 @@ namespace Game.UI
             blockedThroughFrame = Time.frameCount;
             IsShowing = false;
             if (turnController != null) turnController.SetAiObserverMenuHold(false);
+            if (helpPanel != null) helpPanel.Close();
             if (saveSlots != null) saveSlots.Close();
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             if (blockingRoot != null) blockingRoot.SetActive(false);
@@ -209,6 +231,8 @@ namespace Game.UI
             ContinueGame();
             RestoreGameplayCanvases();
             if (gearButton != null) gearButton.onClick.RemoveListener(OpenMenu);
+            if (helpButton != null) helpButton.onClick.RemoveListener(OpenHelp);
+            if (helpPanel != null) helpPanel.Closed -= ContinueGame;
             if (optionsButton != null) optionsButton.onClick.RemoveListener(OpenOptions);
             if (saveButton != null) saveButton.onClick.RemoveListener(OpenSave);
             if (loadButton != null) loadButton.onClick.RemoveListener(OpenLoad);
