@@ -1,10 +1,10 @@
 # Справочник игры — заголовки на валидацию
 
-Основание: `master` / `bff7ed7`, 17.11.2026. Всего разделов: 11, тем: 131.
+Основание: `master` / `421f05e`, 17.11.2026. Всего разделов: 11, тем: 86.
 
-Ниже весь предлагаемый список. Это проект оглавления; русские названия способностей — рабочие переводы, рядом сохранены реальные теги. После утверждения оглавления заполняются статьи по актуальному коду.
+Ниже полное оглавление. Русские названия способностей — рабочие переводы, рядом сохранены реальные теги. По разрешению владельца все статьи наполнены английскими инструкциями, сверенными с текущим кодом.
 
-В игре сейчас английские заголовки, как в остальном интерфейсе. Полные описания пока не утверждены: справа показывается явное сообщение о подготовке статьи. Каталог содержит постоянные ID, ключи локализации и упорядоченные блоки текста/изображений.
+В игре английские заголовки и 86 статей (440 блоков текста и подзаголовков). Каталог содержит постоянные ID и ключи локализации. Изображения добавляются позже. Экспорт всех текстов: `Docs/GameHelp_English_Content.md`. Источники и уточнения: `Docs/GameHelp_Content_Sources.md`.
 
 ## Основы игры
 
@@ -31,7 +31,7 @@
 | `card-types` | Типы карт и теги юнитов | Card types and unit tags |
 | `card-stats` | Характеристики карт и значки способностей | Card stats and ability icons |
 | `deck` | Состав колоды и ограничения | Deck composition and limits |
-| `hand` | Рука, добор и сброс карт | Hand, drawing and discarding cards |
+| `hand` | Размер руки, добор и использование карт | Hand size, drawing and using cards |
 | `play-card` | Розыгрыш карт и условия выставления | Playing cards and deployment requirements |
 | `tactics` | Карты тактики и модификаторы проверок | Tactic cards and challenge modifiers |
 | `equipment` | Экипировка и совместимость улучшений | Equipment and attachment compatibility |
@@ -46,7 +46,7 @@
 | `resources` | Ресурсы Human, Energy, Materials и Tech | Human, Energy, Materials and Tech |
 | `income` | Доход и ресурсный потенциал гексов | Income and resource yields |
 | `trade` | Торговля и обменный курс | Trade and the exchange rate |
-| `bases` | Основание баз и радиус базы | Founding bases and their radius |
+| `bases` | Основание баз и расширение | Founding bases and expansion |
 | `base-upgrades` | Улучшение баз и слоты построек | Base upgrades and facility slots |
 | `facilities` | Постройки и требования к строительству | Facilities and construction requirements |
 | `extractors` | Добывающие здания и их улучшение | Extraction sites and their upgrades |
@@ -163,65 +163,71 @@
 
 ## Справочник способностей
 
-Источники: Assets/Scripts/Cards/UnitAbilities.cs; Assets/Scripts/Cards/UnitAbilityCatalog.cs
+Слева одна кнопка **Abilities**. Все 46 способностей размещены справа в одной статье с подзаголовками и общей прокруткой.
 
 | ID | Заголовок на утверждение | Текущий английский заголовок |
 |---|---|---|
-| `ability-criticaldamage` | CriticalDamage — Критический урон | Critical Damage |
-| `ability-ceramicarmor` | CeramicArmor — Керамическая броня | Ceramic Armor |
-| `ability-berserk` | Berserk — Берсерк | Berserk |
-| `ability-rapidreaction` | RapidReaction — Быстрая реакция | Rapid Reaction |
-| `ability-shockattack` | ShockAttack — Шоковая атака | Shock Attack |
-| `ability-hyperkinetic` | Hyperkinetic — Гиперкинетика | Hyperkinetic |
-| `ability-pyrokinetic` | Pyrokinetic — Пирокинетика | Pyrokinetic |
-| `ability-splash` | Splash — Сопутствующий урон | Splash |
-| `ability-scorcher` | Scorcher — Выжигатель | Scorcher |
-| `ability-raisetherots` | RaiseTheRots — Поднятие Rots | Raise The Rots |
-| `ability-heal` | Heal — Лечение | Heal |
-| `ability-transport` | Transport — Транспорт | Transport |
-| `ability-repair` | Repair — Ремонт | Repair |
-| `ability-disruption` | Disruption — Подавление защиты | Disruption |
-| `ability-airfield` | Airfield — Аэродром | Airfield |
-| `ability-singleuse` | SingleUse — Одноразовое применение | Single Use |
-| `ability-explosion3` | Explosion3 — Взрыв 3 | Explosion 3 |
-| `ability-explosion5` | Explosion5 — Взрыв 5 | Explosion 5 |
-| `ability-explosion10` | Explosion10 — Взрыв 10 | Explosion 10 |
-| `ability-ionic` | Ionic — Ионный урон | Ionic |
-| `ability-bodyguard` | Bodyguard — Телохранитель | Bodyguard |
-| `ability-counterattack` | Counterattack — Контратака | Counterattack |
-| `ability-drill` | Drill — Подготовка бойцов | Drill |
-| `ability-r1s0` | r1s0 — Разведка r1s0 | r 1s 0 |
-| `ability-r1s4` | r1s4 — Разведка r1s4 | r 1s 4 |
-| `ability-r1s5` | r1s5 — Разведка r1s5 | r 1s 5 |
-| `ability-r1s6` | r1s6 — Разведка r1s6 | r 1s 6 |
-| `ability-stealth4` | Stealth4 — Скрытность 4 | Stealth 4 |
-| `ability-aa` | AA — Противовоздушная оборона | AA |
-| `ability-apbonus` | ApBonus — Бонус очков действий | Ap Bonus |
-| `ability-trade` | Trade — Торговля | Trade |
-| `ability-tacticalintelligence` | TacticalIntelligence — Тактическая разведка | Tactical Intelligence |
-| `ability-barracks` | Barracks — Казармы | Barracks |
-| `ability-research` | Research — Исследования | Research |
-| `ability-researcher` | Researcher — Исследователь | Researcher |
-| `ability-production` | Production — Производство | Production |
-| `ability-assembler` | Assembler — Сборщик | Assembler |
-| `ability-collecthuman` | CollectHuman — Добыча Human | Collect Human |
-| `ability-collectenergy` | CollectEnergy — Добыча Energy | Collect Energy |
-| `ability-collectmaterials` | CollectMaterials — Добыча Materials | Collect Materials |
-| `ability-collecttech` | CollectTech — Добыча Tech | Collect Tech |
-| `ability-regeneration` | Regeneration — Регенерация | Regeneration |
-| `ability-producehuman` | ProduceHuman — Производство Human | Produce Human |
-| `ability-produceenergy` | ProduceEnergy — Производство Energy | Produce Energy |
-| `ability-producematerials` | ProduceMaterials — Производство Materials | Produce Materials |
-| `ability-producetech` | ProduceTech — Производство Tech | Produce Tech |
+| `all-abilities` | Все способности | Abilities |
+
+Подзаголовки внутри общей статьи (не отдельные кнопки):
+
+| Способность | Название для проверки | Сохранённая идентичность |
+|---|---|---|
+| Critical Damage | CriticalDamage — Критический урон | `ability-criticaldamage` |
+| Ceramic Armor | CeramicArmor — Керамическая броня | `ability-ceramicarmor` |
+| Berserk | Berserk — Берсерк | `ability-berserk` |
+| Rapid Reaction | RapidReaction — Быстрая реакция | `ability-rapidreaction` |
+| Shock Attack | ShockAttack — Шоковая атака | `ability-shockattack` |
+| Hyperkinetic | Hyperkinetic — Гиперкинетика | `ability-hyperkinetic` |
+| Pyrokinetic | Pyrokinetic — Пирокинетика | `ability-pyrokinetic` |
+| Splash | Splash — Сопутствующий урон | `ability-splash` |
+| Scorcher | Scorcher — Выжигатель | `ability-scorcher` |
+| Raise The Rots | RaiseTheRots — Поднятие Rots | `ability-raisetherots` |
+| Heal | Heal — Лечение | `ability-heal` |
+| Transport | Transport — Транспорт | `ability-transport` |
+| Repair | Repair — Ремонт | `ability-repair` |
+| Disruption | Disruption — Подавление защиты | `ability-disruption` |
+| Airfield | Airfield — Аэродром | `ability-airfield` |
+| Single Use | SingleUse — Одноразовое применение | `ability-singleuse` |
+| Explosion 3 | Explosion3 — Взрыв 3 | `ability-explosion3` |
+| Explosion 5 | Explosion5 — Взрыв 5 | `ability-explosion5` |
+| Explosion 10 | Explosion10 — Взрыв 10 | `ability-explosion10` |
+| Ionic | Ionic — Ионный урон | `ability-ionic` |
+| Bodyguard | Bodyguard — Телохранитель | `ability-bodyguard` |
+| Counterattack | Counterattack — Контратака | `ability-counterattack` |
+| Drill | Drill — Подготовка бойцов | `ability-drill` |
+| r1s0 | r1s0 — Разведка r1s0 | `ability-r1s0` |
+| r1s4 | r1s4 — Разведка r1s4 | `ability-r1s4` |
+| r1s5 | r1s5 — Разведка r1s5 | `ability-r1s5` |
+| r1s6 | r1s6 — Разведка r1s6 | `ability-r1s6` |
+| Stealth 4 | Stealth4 — Скрытность 4 | `ability-stealth4` |
+| AA | AA — Противовоздушная оборона | `ability-aa` |
+| Ap Bonus | ApBonus — Бонус очков действий | `ability-apbonus` |
+| Trade | Trade — Торговля | `ability-trade` |
+| Tactical Intelligence | TacticalIntelligence — Тактическая разведка | `ability-tacticalintelligence` |
+| Barracks | Barracks — Казармы | `ability-barracks` |
+| Research | Research — Исследования | `ability-research` |
+| Researcher | Researcher — Исследователь | `ability-researcher` |
+| Production | Production — Производство | `ability-production` |
+| Assembler | Assembler — Сборщик | `ability-assembler` |
+| Collect Human | CollectHuman — Добыча Human | `ability-collecthuman` |
+| Collect Energy | CollectEnergy — Добыча Energy | `ability-collectenergy` |
+| Collect Materials | CollectMaterials — Добыча Materials | `ability-collectmaterials` |
+| Collect Tech | CollectTech — Добыча Tech | `ability-collecttech` |
+| Regeneration | Regeneration — Регенерация | `ability-regeneration` |
+| Produce Human | ProduceHuman — Производство Human | `ability-producehuman` |
+| Produce Energy | ProduceEnergy — Производство Energy | `ability-produceenergy` |
+| Produce Materials | ProduceMaterials — Производство Materials | `ability-producematerials` |
+| Produce Tech | ProduceTech — Производство Tech | `ability-producetech` |
 
 ## Границы покрытия
 
-Отдельные названия карт, картинки, разновидности событий и комбинации террейна не превращены в отдельные статьи: это данные соответствующих каталогов. Их общие механики входят в оглавление. Все теги из `UnitAbilities.All` включены отдельными темами, включая параметры разведки и добывающие способности. Их наличие в коде не означает наличие носителя в стартовых колодах; это будет отмечено в статьях.
+Отдельные названия карт, картинки, разновидности событий и комбинации террейна не превращены в отдельные статьи: это данные соответствующих каталогов. Их общие механики входят в оглавление. Все теги из `UnitAbilities.All` включены подзаголовками общей статьи Abilities, включая параметры разведки и добывающие способности. Их наличие в коде не означает наличие носителя в стартовых колодах; это будет отмечено в статьях.
 
 Числовые правила, стоимости и ограничения не берутся из старых обсуждений. При наполнении каждой статьи они сверяются с актуальными правилами и конфигурацией. Новые или изменённые правила не вводятся этим окном.
 
 ## Подключение переводов и контента
 
-`Assets/Config/GameHelpCatalog.asset` — единый источник порядка и заголовков. ID и ключи не переименовываются при переводе. Для текста статьи добавляются блоки `Text`, для изображения — `Image` со Sprite и необязательной локализованной подписью. Ключи новых блоков: `help.topic.<id>.block.<block-id>.text`.
+`Assets/Config/GameHelpCatalog.asset` — единый источник порядка и заголовков. ID и ключи не переименовываются при переводе. Для подзаголовка добавляется блок `Heading`, для текста — `Text`, для изображения — `Image` со Sprite и необязательной локализованной подписью. Ключи новых блоков: `help.topic.<id>.block.<block-id>.text`. У перенесённых способностей сохранены прежние ключи `help.topic.ability-...`, чтобы группировка не сбросила будущие переводы.
 
 `GameHelpPanelUI.SetTextResolver(Func<string, string>)` принимает поиск перевода по ключу; отсутствие перевода возвращает английский fallback. Сервис локализации вызывает этот метод при смене языка. Он же должен выбрать шрифт с нужными глифами через обычный механизм TextMeshPro. Выбор языка и перевод всего интерфейса — последующая задача.
