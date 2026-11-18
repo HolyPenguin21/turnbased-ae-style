@@ -87,24 +87,54 @@ namespace Game.Ai.V2
             StrategicReservedResource resource, SpendAuthority authority,
             IReadOnlyDictionary<string, float> drawsByOwner = null)
         {
-            var heldByOwner = new Dictionary<string, float>();
-            foreach (ResourceClaim c in claims)
+            if (claims is IReadOnlyList<ResourceClaim> list && list.Count == 0)
+                return 0f;
+
+            Dictionary<string, float> heldByOwner = availableOwnerTotals ?? new Dictionary<string, float>();
+            availableOwnerTotals = null;
+            try
             {
-                if (c.Resource != resource || MayDrawOn(authority, c))
-                    continue;
-                string key = c.Owner ?? string.Empty;
-                heldByOwner.TryGetValue(key, out float held);
-                heldByOwner[key] = held + Mathf.Max(0f, c.Amount);
+                if (claims is IReadOnlyList<ResourceClaim> indexed)
+                {
+                    for (int i = 0; i < indexed.Count; i++)
+                        Accumulate(heldByOwner, indexed[i], resource, authority);
+                }
+                else
+                {
+                    foreach (ResourceClaim claim in claims)
+                        Accumulate(heldByOwner, claim, resource, authority);
+                }
+
+                float outstanding = 0f;
+                foreach (KeyValuePair<string, float> owner in heldByOwner)
+                {
+                    float drawn = 0f;
+                    if (drawsByOwner != null)
+                        drawsByOwner.TryGetValue(owner.Key, out drawn);
+                    outstanding += Mathf.Max(0f, owner.Value - Mathf.Max(0f, drawn));
+                }
+                return outstanding;
             }
-            float outstanding = 0f;
-            foreach (KeyValuePair<string, float> owner in heldByOwner)
+            finally
             {
-                float drawn = 0f;
-                if (drawsByOwner != null)
-                    drawsByOwner.TryGetValue(owner.Key, out drawn);
-                outstanding += Mathf.Max(0f, owner.Value - Mathf.Max(0f, drawn));
+                heldByOwner.Clear();
+                availableOwnerTotals = heldByOwner;
             }
-            return outstanding;
+        }
+
+        // Borrow scratch storage only during the synchronous read. Keep the existing owner
+        // grouping and summation order even with no draws, so fractional holds price identically.
+        [System.ThreadStatic] private static Dictionary<string, float> availableOwnerTotals;
+        [System.ThreadStatic] private static List<ResourceClaim> availableClaims;
+
+        private static void Accumulate(Dictionary<string, float> totals, ResourceClaim claim,
+            StrategicReservedResource resource, SpendAuthority authority)
+        {
+            if (claim.Resource != resource || MayDrawOn(authority, claim))
+                return;
+            string key = claim.Owner ?? string.Empty;
+            totals.TryGetValue(key, out float held);
+            totals[key] = held + Mathf.Max(0f, claim.Amount);
         }
 
         internal static float Physical(PlayerRoot root, StrategicReservedResource resource)
@@ -128,12 +158,22 @@ namespace Game.Ai.V2
             StrategicReservedResource? only = null)
         {
             var claims = new List<ResourceClaim>();
-            foreach (StrategicResourceReservation r in
-                     StrategicResourceReservationLedger.LiveRows(player, turn))
-                if (only == null || r.Resource == only.Value)
-                    claims.Add(new ResourceClaim(r.Owner, KindOf(r.Reason), r.Resource, r.Amount));
-            ApplyDeferredIncomeCover(claims, player, turn);
+            FillLedgerClaims(claims, StrategicResourceReservationLedger.LiveRows(player, turn), player, turn, only);
             return claims;
+        }
+
+        private static void FillLedgerClaims(List<ResourceClaim> claims,
+            IReadOnlyList<StrategicResourceReservation> rows, PlayerSetupData player, int turn,
+            StrategicReservedResource? only, bool physicalOnly = false)
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                StrategicResourceReservation row = rows[i];
+                if ((only == null || row.Resource == only.Value)
+                    && (!physicalOnly || row.Resource != StrategicReservedResource.ActionPoints))
+                    claims.Add(new ResourceClaim(row.Owner, KindOf(row.Reason), row.Resource, row.Amount));
+            }
+            ApplyDeferredIncomeCover(claims, player, turn);
         }
 
         // The cover is shared by the deferred owners of one resource in ordinal owner order; a
@@ -146,8 +186,13 @@ namespace Game.Ai.V2
                 if (claims[i].Kind == ResourceClaimKind.EconomyDeferred
                     && EconomyReservationLifecycle.DeferredIncomeCover(player, turn, claims[i].Resource) > 0f)
                     (deferred ??= new List<int>()).Add(i);
-            if (deferred == null)
-                return;
+            if (deferred != null)
+                DistributeDeferredIncomeCover(claims, deferred, player, turn);
+        }
+
+        private static void DistributeDeferredIncomeCover(List<ResourceClaim> claims, List<int> deferred,
+            PlayerSetupData player, int turn)
+        {
             var cover = new Dictionary<StrategicReservedResource, float>();
             deferred.Sort((a, b) => System.StringComparer.Ordinal.Compare(claims[a].Owner, claims[b].Owner));
             var drop = new List<int>();
@@ -196,7 +241,61 @@ namespace Game.Ai.V2
             float physical = Physical(root, resource);
             if (player == null || ctx == null)
                 return Mathf.Max(0f, physical);
-            return Free(physical, Claims(player, root, ctx, resource), resource, authority);
+            if (resource == StrategicReservedResource.ActionPoints)
+                return Free(physical, Claims(player, root, ctx, resource), resource, authority);
+
+            var rows = StrategicResourceReservationLedger.LiveRows(player, ctx.TurnNumber);
+            if (rows.Count == 0)
+                return Mathf.Max(0f, physical);
+
+            var claims = RentClaims();
+            try
+            {
+                FillLedgerClaims(claims, rows, player, ctx.TurnNumber, resource);
+                return Free(physical, claims, resource, authority);
+            }
+            finally { ReturnClaims(claims); }
+        }
+
+        internal static ResourceBundle FreeResources(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, SpendAuthority authority = default)
+        {
+            if (root == null) return default;
+            var rows = player != null && ctx != null
+                ? StrategicResourceReservationLedger.LiveRows(player, ctx.TurnNumber)
+                : System.Array.Empty<StrategicResourceReservation>();
+            if (rows.Count == 0)
+            {
+                var stockpile = new ResourceBundle();
+                foreach (ResourceType type in ResourceBundle.All)
+                    stockpile.Add(type, Mathf.Max(0f, root.GetResource(type)));
+                return stockpile;
+            }
+
+            var claims = RentClaims();
+            try
+            {
+                FillLedgerClaims(claims, rows, player, ctx.TurnNumber, null, physicalOnly: true);
+                var resources = new ResourceBundle();
+                foreach (ResourceType type in ResourceBundle.All)
+                    resources.Add(type, Free(root.GetResource(type), claims,
+                        StrategicResourceReservationLedger.Map(type), authority));
+                return resources;
+            }
+            finally { ReturnClaims(claims); }
+        }
+
+        private static List<ResourceClaim> RentClaims()
+        {
+            var claims = availableClaims ?? new List<ResourceClaim>();
+            availableClaims = null;
+            return claims;
+        }
+
+        private static void ReturnClaims(List<ResourceClaim> claims)
+        {
+            claims.Clear();
+            availableClaims = claims;
         }
     }
 }

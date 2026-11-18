@@ -303,16 +303,16 @@ namespace Game.Ai.V2
                 return float.NegativeInfinity;
 
             float marginalBenefit = op.SuccessChance * EquipmentUpgradeValuation.EquipmentUpgradeValue(op);
-            System.Func<ResourceType, float> spendable = root == null ? null
-                : (System.Func<ResourceType, float>)(type =>
-                    StrategicSpendability.SpendableAmount(player, root, ctx, type));
+            ResourceBundle? available = root != null
+                && (HasResourceBill(plan.FundingCost) || HasResourceBill(plan.Generation?.GenerationResourceCost))
+                ? TurnResourceBook.FreeResources(player, root, ctx) : (ResourceBundle?)null;
             // 2026-10-16 (user decision) — Research/Production is the designed resource sink: once
             // the turn's AP has no other use, the upgrade pays its AP at today's marginal value
             // (the same ramp and floor recurring AP effects use), so idle AP stops vetoing it.
             // Resources are already priced by scarcity (ActionPrice.Scarcity).
             float apScale = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f,
                 EffectEvaluationContext.ResolveMarginalApUtility(snap, null));
-            return marginalBenefit - ResourceCost(plan, snap, spendable, player, apScale);
+            return marginalBenefit - ResourceCost(plan, snap, player: player, apScale: apScale, availableResources: available);
         }
 
         // -----------------------------------------------------------------------------------------
@@ -750,11 +750,11 @@ namespace Game.Ai.V2
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
         private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
             System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
-            float apScale = 1f)
+            float apScale = 1f, ResourceBundle? availableResources = null)
         {
             if (plan == null) return 0f;
             return ResourceCost(plan.ApCost + plan.DeferredAttachmentAp, plan.FundingCost,
-                       plan.Generation, snap, spendableResource, player, apScale)
+                       plan.Generation, snap, spendableResource, player, apScale, availableResources)
                    + ChainStepPenalty(plan.Kind);
         }
 
@@ -764,17 +764,19 @@ namespace Game.Ai.V2
         private static float ResourceCost(float successfulAp, ResourceCost successfulResources,
             GenerationStep generation, WorldSnapshot snap,
             System.Func<ResourceType, float> spendableResource, PlayerSetupData player,
-            float apScale = 1f)
+            float apScale = 1f, ResourceBundle? availableResources = null)
         {
+            ResourceCost attemptBill = generation?.GenerationResourceCost;
+            ResourceBundle availableNow = availableResources ?? (HasResourceBill(successfulResources)
+                || HasResourceBill(attemptBill) ? ActionPrice.AvailableResources(snap, spendableResource) : default);
             float successfulCost = ActionPrice.ToCardScore(ActionPrice.Ap(successfulAp) * apScale)
-                + StrategicResourceCostValue(successfulResources, snap, spendableResource, player);
+                + StrategicResourceCostValue(successfulResources, snap, availableNow, player);
             if (generation == null)
                 return successfulCost;
             float chance = Mathf.Clamp01(generation.SuccessChance);
             float attemptCost = ActionPrice.ToCardScore(
                     ResearchProductionSystem.AttemptApCost(generation.ChallengeCard) * apScale)
-                + StrategicResourceCostValue(generation.GenerationResourceCost, snap,
-                    spendableResource, player);
+                + StrategicResourceCostValue(attemptBill, snap, availableNow, player);
             return chance * successfulCost + (1f - chance) * attemptCost;
         }
 
@@ -1258,24 +1260,29 @@ namespace Game.Ai.V2
         internal static float StrategicResourceCostValue(ResourceCost c, WorldSnapshot snap,
             System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
         {
-            if (c == null)
+            if (!HasResourceBill(c))
                 return 0f;
+            return StrategicResourceCostValue(c, snap, ActionPrice.AvailableResources(snap, spendableResource), player);
+        }
+
+        private static float StrategicResourceCostValue(ResourceCost c, WorldSnapshot snap,
+            ResourceBundle availableNow, PlayerSetupData player)
+        {
+            if (!HasResourceBill(c)) return 0f;
             float residualPreservation = 0f;
-            if (snap?.Self != null)
+            if (snap?.Self != null && player != null)
                 foreach (ResourceType type in ResourceBundle.All)
                 {
                     int amount = c.Get(type);
-                    if (amount <= 0)
-                        continue;
-                    float availableNow = spendableResource != null
-                        ? Mathf.Max(0f, spendableResource(type))
-                        : snap.Self.Stockpile.Get(type);
-                    residualPreservation += ResidualResourcePreservationValue(
-                        player, snap, type, amount, availableNow);
+                    if (amount > 0)
+                        residualPreservation += ResidualResourcePreservationValue(
+                            player, snap, type, amount, availableNow.Get(type));
                 }
-            return ActionPrice.ToCardScore(ActionPrice.Resources(c, snap, spendableResource))
-                + residualPreservation;
+            return ActionPrice.ToCardScore(ActionPrice.Resources(c, snap, availableNow)) + residualPreservation;
         }
+
+        private static bool HasResourceBill(ResourceCost cost) => cost != null
+            && (cost.human > 0 || cost.energy > 0 || cost.materials > 0 || cost.tech > 0);
 
         // Marginal value of keeping only the units this candidate consumes when current-turn,
         // actor-aware AGG/RCN demand was proven blocked by this exact resource. This remains a

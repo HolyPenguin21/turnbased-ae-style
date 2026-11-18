@@ -125,40 +125,57 @@ namespace Game.Combat
             IReadOnlyList<DefendingAirArmy> armies, AirStrikePolicy policy, int strikePasses = 1,
             IReadOnlyList<bool> firstPassSpent = null, IReadOnlyList<ExplosionCollateral> collateral = null)
         {
-            if (aircraft?.Any(p => ExplosionAttack.TargetLimit(p.Abilities) > 0) != true) collateral = null;
-            var defenders = new List<WorthIt.DefenderProfile>();
-            var groups = new List<int>();
-            var fates = new List<int>();
-            var commanders = new List<int>();
-            foreach (DefendingAirArmy army in armies ?? System.Array.Empty<DefendingAirArmy>())
+            if (collateral != null && !HasExplosionAircraft(aircraft)) collateral = null;
+            StrikeWorkspace workspace = RentWorkspace();
+            try
             {
-                if (policy.ExactTargetArmyId.HasValue && army.ArmyId != policy.ExactTargetArmyId.Value)
-                    continue;
-                int group = groups.Count; // unique partition label, independent of global army IDs
-                for (int i = 0; i < army.Units.Count; i++)
-                {
-                    defenders.Add(army.Units[i]);
-                    groups.Add(group);
-                    commanders.Add(army.CommanderIndex >= 0 ? group + army.CommanderIndex : -1);
-                    fates.Add(army.CurrentFates[i]);
-                }
+                var defenders = workspace.Defenders;
+                var groups = workspace.Groups;
+                var fates = workspace.Fates;
+                var commanders = workspace.Commanders;
+                if (armies != null)
+                    for (int ai = 0; ai < armies.Count; ai++)
+                    {
+                        DefendingAirArmy army = armies[ai];
+                        if (policy.ExactTargetArmyId.HasValue && army.ArmyId != policy.ExactTargetArmyId.Value)
+                            continue;
+                        int group = groups.Count;
+                        for (int i = 0; i < army.Units.Count; i++)
+                        {
+                            defenders.Add(army.Units[i]);
+                            groups.Add(group);
+                            commanders.Add(army.CommanderIndex >= 0 ? group + army.CommanderIndex : -1);
+                            fates.Add(army.CurrentFates[i]);
+                        }
+                    }
+                if (aircraft == null || aircraft.Count == 0 || strikePasses <= 0
+                    || (defenders.Count == 0 && collateral?.Any(c => !c.Friendly && c.Profile.HitPoints > 0) != true))
+                    return new AirStrikeEstimate(SumDefense(defenders), SumAttack(defenders), defenders, 0f);
+
+                AbilityMagnitudes magnitudes = AbilityMagnitudes.Default;
+                var exact = WorthIt.EstimateCacheActive ? workspace.Exact : null;
+                var key = workspace.Key;
+                AppendKey(key, exact, aircraft, defenders, policy, strikePasses, 0, magnitudes);
+                key.Add(-3000); key.AddRange(groups);
+                key.Add(-4000); key.AddRange(fates);
+                key.Add(-5000); key.AddRange(commanders);
+                key.Add(-6000);
+                int spentStart = key.Count;
+                for (int i = 0; i < aircraft.Count; i++)
+                    key.Add(firstPassSpent != null && i < firstPassSpent.Count && firstPassSpent[i] ? 1 : 0);
+                AppendCollateralKey(key, exact, collateral, workspace.CollateralGroups);
+                int scope = WorthIt.EstimateCacheScopeId;
+                if (TryCached(workspace, exact, out AirStrikeEstimate cached, out var ownedKey))
+                    return cached;
+
+                var spent = new int[aircraft.Count];
+                key.CopyTo(spentStart, spent, 0, spent.Length);
+                AirStrikeEstimate result = Simulate(aircraft, defenders, policy, strikePasses, 0,
+                    magnitudes, Seed(key), groups.ToArray(), fates.ToArray(), commanders.ToArray(), spent, collateral);
+                Store(scope, ownedKey, result);
+                return result;
             }
-            if (aircraft == null || aircraft.Count == 0 || (defenders.Count == 0 && collateral?.Any(c => !c.Friendly && c.Profile.HitPoints > 0) != true) || strikePasses <= 0)
-                return new AirStrikeEstimate(SumDefense(defenders), SumAttack(defenders), defenders, 0f);
-            var magnitudes = AbilityMagnitudes.Default;
-            int[] spent = Enumerable.Range(0, aircraft.Count)
-                .Select(i => firstPassSpent != null && i < firstPassSpent.Count && firstPassSpent[i] ? 1 : 0).ToArray();
-            int[] key = BuildKey(aircraft, defenders, policy, strikePasses, 0, magnitudes)
-                .Concat(new[] { -3000 }).Concat(groups)
-                .Concat(new[] { -4000 }).Concat(fates)
-                .Concat(new[] { -5000 }).Concat(commanders)
-                .Concat(new[] { -6000 }).Concat(spent).ToArray();
-            key = WithCollateralKey(key, collateral);
-            if (TryCached(key, out AirStrikeEstimate cached)) return cached;
-            AirStrikeEstimate result = Simulate(aircraft, defenders, policy, strikePasses, 0,
-                magnitudes, Seed(key), groups.ToArray(), fates.ToArray(), commanders.ToArray(), spent, collateral);
-            Store(key, result);
-            return result;
+            finally { ReturnWorkspace(workspace); }
         }
 
         // Live-roster overload (the aircraft as they fly now).
@@ -178,7 +195,7 @@ namespace Game.Combat
             IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy,
             int strikePasses = 1, int defenderFate = 0, IReadOnlyList<ExplosionCollateral> collateral = null)
         {
-            if (aircraft?.Any(p => ExplosionAttack.TargetLimit(p.Abilities) > 0) != true) collateral = null;
+            if (collateral != null && !HasExplosionAircraft(aircraft)) collateral = null;
             if (aircraft == null || aircraft.Count == 0
                 || ((knownDefenders == null || knownDefenders.Count == 0)
                     && collateral?.Any(c => !c.Friendly && c.Profile.HitPoints > 0) != true) || strikePasses <= 0)
@@ -187,13 +204,21 @@ namespace Game.Combat
 
             knownDefenders = knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
             AbilityMagnitudes magnitudes = AbilityMagnitudes.Default;
-            int[] key = WithCollateralKey(BuildKey(aircraft, knownDefenders, policy, strikePasses, defenderFate, magnitudes), collateral);
-            if (TryCached(key, out AirStrikeEstimate cached))
-                return cached;
-            AirStrikeEstimate result = Simulate(aircraft, knownDefenders, policy, strikePasses,
-                Mathf.Max(0, defenderFate), magnitudes, Seed(key), collateral: collateral);
-            Store(key, result);
-            return result;
+            StrikeWorkspace workspace = RentWorkspace();
+            try
+            {
+                var exact = WorthIt.EstimateCacheActive ? workspace.Exact : null;
+                AppendKey(workspace.Key, exact, aircraft, knownDefenders, policy, strikePasses, defenderFate, magnitudes);
+                AppendCollateralKey(workspace.Key, exact, collateral, workspace.CollateralGroups);
+                int scope = WorthIt.EstimateCacheScopeId;
+                if (TryCached(workspace, exact, out AirStrikeEstimate cached, out var ownedKey))
+                    return cached;
+                AirStrikeEstimate result = Simulate(aircraft, knownDefenders, policy, strikePasses,
+                    Mathf.Max(0, defenderFate), magnitudes, Seed(workspace.Key), collateral: collateral);
+                Store(scope, ownedKey, result);
+                return result;
+            }
+            finally { ReturnWorkspace(workspace); }
         }
 
         private static AirStrikeEstimate Simulate(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
@@ -404,9 +429,7 @@ namespace Game.Combat
                 // stats into the subsequent ground estimate as well as their wounds.
                 float meanAttack = attackSum[i] / survivalCount[i];
                 float meanDefense = defenseSum[i] / survivalCount[i];
-                expectedDefenders.Add(new WorthIt.DefenderProfile(meanDefense, o.HasCeramicArmor, o.TypeTags,
-                    meanAttack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
-                    o.IsHero, o.FateMax, o.IsSummoned, o.Range, o.Consumption, o.SingleUseUnit));
+                expectedDefenders.Add(o.WithState(meanHp, meanAttack, meanDefense));
                 survivorIndices.Add(i);
                 survivingFates.Add(Mathf.RoundToInt(fateSum[i] / survivalCount[i]));
                 expectedDefense += meanDefense;
@@ -424,41 +447,90 @@ namespace Game.Combat
             d == null ? 0f : d.Sum(x => x.Attack);
 
         // ---- cache (one WorthIt estimate-cache scope) ----------------------------------------
-        private static readonly Dictionary<string, AirStrikeEstimate> Cache =
-            new Dictionary<string, AirStrikeEstimate>();
-        private static int _cacheScope = int.MinValue;
+        private static Dictionary<WorthIt.EstimateCacheKey, AirStrikeEstimate> Cache = new();
         internal static int CacheHits { get; private set; }
         internal static int CacheMisses { get; private set; }
+        internal static int CacheEntryCount => Cache.Count;
 
-        private static bool TryCached(int[] key, out AirStrikeEstimate estimate)
+        internal static void ClearEstimateCache() => Cache.Clear();
+
+        internal static void ReleaseMatchCache()
+        {
+            Cache = new Dictionary<WorthIt.EstimateCacheKey, AirStrikeEstimate>();
+            availableWorkspace = null;
+        }
+
+        private sealed class StrikeWorkspace
+        {
+            internal readonly List<int> Key = new();
+            internal readonly List<int> Exact = new();
+            internal readonly List<WorthIt.DefenderProfile> Defenders = new();
+            internal readonly List<int> Groups = new();
+            internal readonly List<int> Fates = new();
+            internal readonly List<int> Commanders = new();
+            internal readonly Dictionary<int, int> CollateralGroups = new();
+            internal int[] Lookup = System.Array.Empty<int>();
+        }
+
+        [System.ThreadStatic] private static StrikeWorkspace availableWorkspace;
+
+        private static StrikeWorkspace RentWorkspace()
+        {
+            var workspace = availableWorkspace ?? new StrikeWorkspace();
+            availableWorkspace = null;
+            return workspace;
+        }
+
+        private static void ReturnWorkspace(StrikeWorkspace workspace)
+        {
+            workspace.Key.Clear();
+            workspace.Exact.Clear();
+            workspace.Defenders.Clear();
+            workspace.Groups.Clear();
+            workspace.Fates.Clear();
+            workspace.Commanders.Clear();
+            workspace.CollateralGroups.Clear();
+            availableWorkspace = workspace;
+        }
+
+        private static bool TryCached(StrikeWorkspace workspace, List<int> exact,
+            out AirStrikeEstimate estimate, out WorthIt.EstimateCacheKey? ownedKey)
         {
             estimate = default;
-            if (!WorthIt.EstimateCacheActive)
+            ownedKey = null;
+            if (exact == null)
                 return false;
-            if (_cacheScope != WorthIt.EstimateCacheScopeId)
-            {
-                Cache.Clear();
-                _cacheScope = WorthIt.EstimateCacheScopeId;
-            }
-            if (Cache.TryGetValue(KeyString(key), out estimate))
+
+            int seedCount = workspace.Key.Count;
+            int count = seedCount + exact.Count + 1;
+            if (workspace.Lookup.Length < count)
+                System.Array.Resize(ref workspace.Lookup, System.Math.Max(count, workspace.Lookup.Length * 2));
+            workspace.Key.CopyTo(workspace.Lookup);
+            exact.CopyTo(workspace.Lookup, seedCount);
+            workspace.Lookup[count - 1] = seedCount;
+
+            var key = new WorthIt.EstimateCacheKey(workspace.Lookup, count);
+            if (Cache.TryGetValue(key, out estimate))
             {
                 CacheHits++;
                 return true;
             }
+
             CacheMisses++;
+            var owned = new int[count];
+            System.Array.Copy(workspace.Lookup, owned, count);
+            ownedKey = new WorthIt.EstimateCacheKey(owned, count);
             return false;
         }
 
-        private static void Store(int[] key, AirStrikeEstimate estimate)
+        private static void Store(int scope, WorthIt.EstimateCacheKey? key, AirStrikeEstimate estimate)
         {
-            if (!WorthIt.EstimateCacheActive || _cacheScope != WorthIt.EstimateCacheScopeId)
+            if (!key.HasValue || !WorthIt.EstimateCacheActive || scope != WorthIt.EstimateCacheScopeId)
                 return;
             if (Cache.Count >= CacheMaxEntries)
                 Cache.Clear();
-            Cache[KeyString(key)] = estimate;
+            Cache[key.Value] = estimate;
         }
-
-        private static string KeyString(int[] key) => string.Join(",", key);
 
         // The COMPLETE input of one estimate: every aircraft's simulated attack facts, every
         // defender profile field the simulation reads (current HP, max HP, Defense incl. hero
@@ -469,67 +541,121 @@ namespace Game.Combat
             IReadOnlyList<WorthIt.DefenderProfile> defenders, AirStrikePolicy policy, int passes,
             int defenderFate, AbilityMagnitudes m)
         {
-            // This key also seeds the bounded trials. Keep the old layout/seed for ordinary
-            // rosters so adding consumable support does not reroll every existing matchup.
-            bool consumable = aircraft.Any(p => p.Consumption != null) || defenders.Any(p => p.Consumption != null);
-            var buf = new List<int> { consumable ? KeyVersion : 5, Trials, passes, defenderFate, (int)policy.Kind,
-                policy.ExactTargetArmyId ?? int.MinValue, policy.MinimumSurvivors,
-                System.BitConverter.SingleToInt32Bits(m.CriticalDamageMultiplier),
-                m.HyperkineticBonusDamage, m.CeramicArmorReduction, m.PyrokineticBonusDamage,
-                m.BerserkAttackGain, m.BerserkDefenseLoss, m.IonicBonusDamage, m.DrillAttackBonus };
-            void Profile(WorthIt.DefenderProfile p)
-            {
-                buf.Add(System.BitConverter.SingleToInt32Bits(p.Attack));
-                buf.Add(System.BitConverter.SingleToInt32Bits(p.Defense));
-                buf.Add(System.BitConverter.SingleToInt32Bits(p.HitPoints));
-                buf.Add(System.BitConverter.SingleToInt32Bits(p.MaxHitPoints));
-                buf.Add(p.IsHero ? 1 : 0);
-                buf.Add(p.FateMax);
-                buf.Add(p.IsGroundCombatant ? 1 : 0);
-                buf.Add(p.IsSummoned ? 1 : 0);
-                buf.Add(p.Initiative);
-                if (p.SingleUseUnit) { buf.Add(-19019); buf.Add(1); }
-                buf.Add(p.HasCeramicArmor ? 1 : 0);
-                if (consumable) WorthIt.AppendConsumptionKey(buf, p.Consumption);
-                int abilities = p.Abilities?.Count ?? -1;
-                buf.Add(abilities);
-                for (int i = 0; i < abilities; i++)
-                    buf.Add(StableHash(p.Abilities[i]));
-                int tags = p.TypeTags?.Count ?? -1;
-                buf.Add(tags);
-                for (int i = 0; i < tags; i++)
-                    buf.Add((int)p.TypeTags[i]);
-            }
-            buf.Add(-1000 - aircraft.Count);
-            foreach (WorthIt.DefenderProfile a in aircraft)
-                Profile(a);
-            buf.Add(-2000 - defenders.Count);
-            foreach (WorthIt.DefenderProfile d in defenders)
-                Profile(d);
-            return buf.ToArray();
+            var buffer = new List<int>();
+            AppendKey(buffer, null, aircraft, defenders, policy, passes, defenderFate, m);
+            return buffer.ToArray();
         }
 
-        private static int[] WithCollateralKey(int[] key, IReadOnlyList<ExplosionCollateral> collateral)
+        private static void AppendKey(List<int> buffer, List<int> exact,
+            IReadOnlyList<WorthIt.DefenderProfile> aircraft, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            AirStrikePolicy policy, int passes, int defenderFate, AbilityMagnitudes m)
         {
-            if (collateral == null || collateral.Count == 0) return key;
-            var result = key.ToList(); result.Add(-19020);
-            var groups = new Dictionary<int, int>();
-            foreach (var target in collateral)
+            bool consumable = HasConsumption(aircraft) || HasConsumption(defenders);
+            AppendHeader(buffer, exact, policy, passes, defenderFate, m, consumable);
+            buffer.Add(-1000 - aircraft.Count);
+            for (int i = 0; i < aircraft.Count; i++)
+                AppendProfile(buffer, exact, aircraft[i], consumable);
+            buffer.Add(-2000 - defenders.Count);
+            for (int i = 0; i < defenders.Count; i++)
+                AppendProfile(buffer, exact, defenders[i], consumable);
+        }
+
+        private static void AppendHeader(List<int> buffer, List<int> exact, AirStrikePolicy policy,
+            int passes, int defenderFate, AbilityMagnitudes m, bool consumable)
+        {
+            exact?.Add(policy.ExactTargetArmyId.HasValue ? 1 : 0);
+            buffer.Add(consumable ? KeyVersion : 5);
+            buffer.Add(Trials);
+            buffer.Add(passes);
+            buffer.Add(defenderFate);
+            buffer.Add((int)policy.Kind);
+            buffer.Add(policy.ExactTargetArmyId ?? int.MinValue);
+            buffer.Add(policy.MinimumSurvivors);
+            buffer.Add(System.BitConverter.SingleToInt32Bits(m.CriticalDamageMultiplier));
+            buffer.Add(m.HyperkineticBonusDamage);
+            buffer.Add(m.CeramicArmorReduction);
+            buffer.Add(m.PyrokineticBonusDamage);
+            buffer.Add(m.BerserkAttackGain);
+            buffer.Add(m.BerserkDefenseLoss);
+            buffer.Add(m.IonicBonusDamage);
+            buffer.Add(m.DrillAttackBonus);
+        }
+
+        private static bool HasExplosionAircraft(IReadOnlyList<WorthIt.DefenderProfile> aircraft)
+        {
+            if (aircraft != null)
+                for (int i = 0; i < aircraft.Count; i++)
+                    if (ExplosionAttack.TargetLimit(aircraft[i].Abilities) > 0) return true;
+            return false;
+        }
+
+        private static bool HasConsumption(IReadOnlyList<WorthIt.DefenderProfile> roster)
+        {
+            for (int i = 0; i < roster.Count; i++)
+                if (roster[i].Consumption != null) return true;
+            return false;
+        }
+
+        private static void AppendProfile(List<int> key, List<int> exact, WorthIt.DefenderProfile p, bool consumable)
+        {
+            key.Add(System.BitConverter.SingleToInt32Bits(p.Attack));
+            key.Add(System.BitConverter.SingleToInt32Bits(p.Defense));
+            key.Add(System.BitConverter.SingleToInt32Bits(p.HitPoints));
+            key.Add(System.BitConverter.SingleToInt32Bits(p.MaxHitPoints));
+            key.Add(p.IsHero ? 1 : 0);
+            key.Add(p.FateMax);
+            key.Add(p.IsGroundCombatant ? 1 : 0);
+            key.Add(p.IsSummoned ? 1 : 0);
+            key.Add(p.Initiative);
+            if (p.SingleUseUnit) { key.Add(-19019); key.Add(1); }
+            key.Add(p.HasCeramicArmor ? 1 : 0);
+            if (consumable) WorthIt.AppendConsumptionKey(key, p.Consumption);
+
+            // The old numeric stream still defines the seed. Cache equality additionally
+            // preserves exact ability names and fields copied into returned survivors.
+            exact?.Add(p.Range);
+            exact?.Add(p.CanDisruptBuilding ? 1 : 0);
+            int abilities = p.Abilities?.Count ?? -1;
+            key.Add(abilities);
+            for (int i = 0; i < abilities; i++)
             {
+                string ability = p.Abilities[i];
+                key.Add(StableHash(ability));
+                if (exact == null) continue;
+                exact.Add(ability?.Length ?? -1);
+                if (ability != null)
+                    foreach (char ch in ability) exact.Add(ch);
+            }
+            int tags = p.TypeTags?.Count ?? -1;
+            key.Add(tags);
+            for (int i = 0; i < tags; i++)
+                key.Add((int)p.TypeTags[i]);
+        }
+
+        private static void AppendCollateralKey(List<int> key, List<int> exact,
+            IReadOnlyList<ExplosionCollateral> collateral, Dictionary<int, int> groups)
+        {
+            if (collateral == null || collateral.Count == 0) return;
+            key.Add(-19020);
+            for (int i = 0; i < collateral.Count; i++)
+            {
+                ExplosionCollateral target = collateral[i];
                 int group = -1;
                 if (target.ArmyId.HasValue && !groups.TryGetValue(target.ArmyId.Value, out group))
                     groups[target.ArmyId.Value] = group = groups.Count;
-                result.Add(group);
-                result.Add(target.Friendly ? 1 : 0);
-                result.Add(target.OwnCitadel ? 1 : 0);
-                result.AddRange(BuildKey(System.Array.Empty<WorthIt.DefenderProfile>(), new[] { target.Profile },
-                    AirStrikePolicy.Standard, 1, 0, AbilityMagnitudes.Default));
+                key.Add(group);
+                key.Add(target.Friendly ? 1 : 0);
+                key.Add(target.OwnCitadel ? 1 : 0);
+                bool consumable = target.Profile.Consumption != null;
+                AppendHeader(key, exact, AirStrikePolicy.Standard, 1, 0, AbilityMagnitudes.Default, consumable);
+                key.Add(-1000);
+                key.Add(-2001);
+                AppendProfile(key, exact, target.Profile, consumable);
             }
-            return result.ToArray();
         }
 
-        // Deterministic per-matchup seed built only from the numeric key (never object hashes).
-        private static int Seed(int[] key)
+        // Deterministic per-matchup seed from the original numeric sequence.
+        private static int Seed(List<int> key)
         {
             unchecked
             {

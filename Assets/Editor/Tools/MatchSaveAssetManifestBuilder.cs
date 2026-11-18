@@ -155,11 +155,24 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
         return AssetDatabase.LoadAllAssetsAtPath(path);
     }
     // Size and write time of every content file and importer setting, plus the manifest file and
-    // the engine version. A git checkout or an editor import changes the write time. Scenes are
+    // the engine version and generator source. A git checkout or an editor import changes the write time. Scenes are
     // listed without their contents: the rebuild never reads them. Presentation prefabs are left out.
     private static string InputStamp(string[] content)
     {
+        using var hash = System.Security.Cryptography.SHA256.Create();
         var text = new System.Text.StringBuilder(Application.unityVersion).Append('\n');
+        // A changed generator must invalidate the editor stamp even with identical content.
+        foreach (string source in new[] { "Assets/Editor/Tools/MatchSaveAssetManifestBuilder.cs",
+            "Assets/Editor/Tools/MatchSaveContentFingerprint.cs" })
+        {
+            text.Append(source).Append('|');
+            if (File.Exists(source))
+            {
+                using var stream = File.OpenRead(source);
+                text.Append(BitConverter.ToString(hash.ComputeHash(stream)));
+            }
+            text.Append('\n');
+        }
         foreach (string path in content.Append(Output))
         {
             if (path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) { text.Append(path).Append('\n'); continue; }
@@ -170,8 +183,7 @@ public sealed class MatchSaveAssetManifestBuilder : AssetPostprocessor, IPreproc
             AppendFile(text, path + ".meta");
             text.Append('\n');
         }
-        using (var hash = System.Security.Cryptography.SHA256.Create())
-            return BitConverter.ToString(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text.ToString()))).Replace("-", "");
+        return BitConverter.ToString(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text.ToString()))).Replace("-", "");
     }
     private static void AppendFile(System.Text.StringBuilder text, string path)
     {

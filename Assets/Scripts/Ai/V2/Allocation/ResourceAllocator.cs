@@ -1080,17 +1080,21 @@ namespace Game.Ai.V2
         private string Fingerprint(TentativeAllocation a)
         {
             string funded = string.Join(",", a.Funded
-                .Select(fe => $"{StableMissionKey.For(fe.Mission)}={fe.Tentative.Ap.ToString("0.00", CultureInfo.InvariantCulture)}"));
+                .Select(fe => $"{StableMissionKey.For(fe.Mission)}={AllocationFacts(fe.Tentative.Ap, fe.PhysicalDraw)}"));
             string deferred = string.Join(",", a.Deferred
                 .Select(d => $"{StableMissionKey.For(d.Mission)}:{d.Reason}")
                 .OrderBy(x => x, StringComparer.Ordinal));
             string repriced = string.Join(",", _repricedFloors
                 .OrderBy(kv => kv.Key, MissionKeyComparer.Instance)
-                .Select(kv => $"{kv.Key}:{kv.Value.Fmt()}"));
+                .Select(kv => $"{kv.Key}:{AllocationFacts(kv.Value.Ap, kv.Value.Physical)}"));
             return funded + "|" + deferred
-                + "|unused=" + a.Unused.Ap.ToString("0.00", CultureInfo.InvariantCulture)
+                + "|unused=" + a.Unused.Ap.ToString("R", CultureInfo.InvariantCulture)
                 + "|repriced=" + repriced;
         }
+
+        private static string AllocationFacts(float ap, ResourceVector amount) => string.Format(CultureInfo.InvariantCulture,
+            "{0:R}/{1:R}/{2:R}/{3:R}/{4:R}",
+            ap, amount.Human, amount.Energy, amount.Materials, amount.Tech);
 
         private static string LogNum(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Game.Cards;
 using Game.Economy;
 using UnityEngine;
@@ -31,7 +32,7 @@ namespace Game.Ai.V2
         // Price of one unit of `type` - see ScarcityProfile. 1 when nothing is known (no snapshot).
         internal static float Scarcity(ResourceType type, WorldSnapshot snap,
             Func<ResourceType, float> spendableResource = null) =>
-            ScarcityProfile(snap, spendableResource)[(int)type];
+            Prices(snap, AvailableResources(snap, spendableResource)).Get(type);
 
         // ===========================================================================================
         //  SCARCITY — one price per resource, read against what the hand + deck can actually play
@@ -56,30 +57,36 @@ namespace Game.Ai.V2
         internal static float[] ScarcityProfile(WorldSnapshot snap,
             Func<ResourceType, float> spendableResource = null)
         {
-            var price = new float[4];
-            if (snap?.Self == null)
-            {
-                for (int i = 0; i < 4; i++) price[i] = 1f;
-                return price;
-            }
-            var supply = new float[4];
+            ResourceBundle price = Prices(snap, AvailableResources(snap, spendableResource));
+            return new[] { price.Human, price.Energy, price.Materials, price.Tech };
+        }
+
+        internal static ResourceBundle AvailableResources(WorldSnapshot snap,
+            Func<ResourceType, float> spendableResource)
+        {
+            if (snap?.Self == null) return default;
+            if (spendableResource == null) return snap.Self.Stockpile;
+            var resources = new ResourceBundle();
             foreach (ResourceType type in ResourceBundle.All)
-            {
-                float availableNow = spendableResource != null
-                    ? Mathf.Max(0f, spendableResource(type))
-                    : snap.Self.Stockpile.Get(type);
-                supply[(int)type] = availableNow + Mathf.Max(0f, snap.Self.PerTurnIncome.Get(type))
-                    * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
-            }
-            // Pure in (snapshot cards, supply): memoized per snapshot so the hundreds of price
-            // reads of one card round sort the deck once. Hand identity is part of the key.
-            ProfileKey key = ProfileKey.Of(snap, supply);
-            var memo = ProfileMemo.GetOrCreateValue(snap);
-            if (memo.TryGetValue(key, out float[] cached))
-                return (float[])cached.Clone();
-            DeckPlayability play = DeckPlayability.Of(CardCosts(snap), supply);
+                resources.Add(type, Mathf.Max(0f, spendableResource(type)));
+            return resources;
+        }
+
+        private static ResourceBundle Prices(WorldSnapshot snap, ResourceBundle availableNow)
+        {
+            if (snap?.Self == null)
+                return new ResourceBundle { Human = 1f, Energy = 1f, Materials = 1f, Tech = 1f };
+
+            ResourceBundle supply = HorizonSupply(snap, availableNow);
+            SnapshotProfiles memo = ProfilesFor(snap);
+            ProfileKey key = ProfileKey.Of(supply);
+            if (memo.TryGet(key, out ResourceBundle cached))
+                return cached;
+            var available = new[] { supply.Human, supply.Energy, supply.Materials, supply.Tech };
+            var price = new float[4];
+            DeckPlayability play = DeckPlayability.Of(CardCosts(snap), available);
             for (int i = 0; i < 4; i++)
-                price[i] = PressurePrice(play.EffectiveDemand(i), supply[i]);
+                price[i] = PressurePrice(play.EffectiveDemand(i), available[i]);
             var unlocked = new float[4];
             var missing = new float[4];
             foreach (DeckPlayability.BlockedCard card in play.Blocked)
@@ -101,50 +108,124 @@ namespace Game.Ai.V2
             for (int i = 0; i < 4; i++)
                 if (missing[i] > 0f)
                     price[i] += unlocked[i] / missing[i];
-            if (memo.Count >= MaxProfilesPerSnapshot) memo.Clear();
-            memo[key] = (float[])price.Clone();
-            return price;
+            var result = new ResourceBundle { Human = price[0], Energy = price[1], Materials = price[2], Tech = price[3] };
+            memo.Add(key, result);
+            return result;
         }
 
         private const int MaxProfilesPerSnapshot = 64;
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
-            System.Collections.Generic.Dictionary<ProfileKey, float[]>> ProfileMemo =
+            SnapshotProfiles> ProfileMemo =
             new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
-                System.Collections.Generic.Dictionary<ProfileKey, float[]>>();
+                SnapshotProfiles>();
+
+        private static SnapshotProfiles ProfilesFor(WorldSnapshot snap)
+        {
+            var memo = ProfileMemo.GetOrCreateValue(snap);
+            memo.RefreshCosts(snap);
+            return memo;
+        }
+
+        // Development uses the same ordered bills as the price instead of totals by resource.
+        internal static string CardDemandKey(WorldSnapshot snap) =>
+            snap?.Self == null ? string.Empty : ProfilesFor(snap).DemandKey;
+
+        private sealed class SnapshotProfiles
+        {
+            // Detached values, not ResourceCost references that can change behind the cache.
+            // A flat array also avoids one new object per card whenever demand is refreshed.
+            private int[] costs = Array.Empty<int>();
+            private readonly Dictionary<ProfileKey, LinkedListNode<(ProfileKey Key, ResourceBundle Price)>> profiles = new();
+            private readonly LinkedList<(ProfileKey Key, ResourceBundle Price)> byRecency = new();
+            private string demandKey;
+
+            public SnapshotProfiles() { }
+
+            internal string DemandKey => demandKey ??= string.Join(",", costs);
+
+            internal bool TryGet(ProfileKey key, out ResourceBundle price)
+            {
+                if (!profiles.TryGetValue(key, out var node))
+                {
+                    price = default;
+                    return false;
+                }
+                if (node != byRecency.First)
+                {
+                    byRecency.Remove(node);
+                    byRecency.AddFirst(node);
+                }
+                price = node.Value.Price;
+                return true;
+            }
+
+            internal void Add(ProfileKey key, ResourceBundle price)
+            {
+                if (profiles.Count < MaxProfilesPerSnapshot)
+                {
+                    profiles.Add(key, byRecency.AddFirst((key, price)));
+                    return;
+                }
+                var node = byRecency.Last;
+                profiles.Remove(node.Value.Key);
+                byRecency.RemoveLast();
+                node.Value = (key, price);
+                byRecency.AddFirst(node);
+                profiles.Add(key, node);
+            }
+
+            internal void RefreshCosts(WorldSnapshot snap)
+            {
+                var hand = snap.Self.Hand;
+                var deck = snap.Self.Deck;
+                int handCount = hand?.Count ?? 0, deckCount = deck?.Count ?? 0;
+                bool matches = costs.Length == (handCount + deckCount) * 4;
+                for (int i = 0; matches && i < handCount; i++)
+                    matches = Matches(hand[i]?.EffectivePlayResourceCost, i * 4);
+                for (int i = 0; matches && i < deckCount; i++)
+                    matches = Matches(deck[i]?.resourceCost, (handCount + i) * 4);
+                if (matches) return;
+
+                if (costs.Length != (handCount + deckCount) * 4)
+                    costs = new int[(handCount + deckCount) * 4];
+                for (int i = 0; i < handCount; i++) Store(hand[i]?.EffectivePlayResourceCost, i * 4);
+                for (int i = 0; i < deckCount; i++) Store(deck[i]?.resourceCost, (handCount + i) * 4);
+                profiles.Clear();
+                byRecency.Clear();
+                demandKey = null;
+            }
+
+            private bool Matches(ResourceCost cost, int index) =>
+                costs[index] == (cost?.human ?? 0) && costs[index + 1] == (cost?.energy ?? 0)
+                && costs[index + 2] == (cost?.materials ?? 0) && costs[index + 3] == (cost?.tech ?? 0);
+
+            private void Store(ResourceCost cost, int index)
+            {
+                costs[index] = cost?.human ?? 0;
+                costs[index + 1] = cost?.energy ?? 0;
+                costs[index + 2] = cost?.materials ?? 0;
+                costs[index + 3] = cost?.tech ?? 0;
+            }
+        }
 
         private readonly struct ProfileKey : IEquatable<ProfileKey>
         {
-            private readonly int _h, _e, _m, _t, _handCount, _deckCount;
-            private readonly long _handIds;
+            private readonly int _h, _e, _m, _t;
 
-            private ProfileKey(int h, int e, int m, int t, int handCount, long handIds, int deckCount)
+            private ProfileKey(int h, int e, int m, int t)
             {
                 _h = h; _e = e; _m = m; _t = t;
-                _handCount = handCount; _handIds = handIds; _deckCount = deckCount;
             }
 
-            internal static ProfileKey Of(WorldSnapshot snap, float[] supply)
-            {
-                int handCount = 0, deckCount = 0;
-                long ids = 0;
-                if (snap.Self.Hand != null)
-                    foreach (CardData card in snap.Self.Hand)
-                    {
-                        handCount++;
-                        ids = ids * 31 + (card?.RuntimeId ?? -1);
-                    }
-                if (snap.Self.Deck != null)
-                    foreach (CardDefinition _ in snap.Self.Deck) deckCount++;
-                return new ProfileKey(Mathf.RoundToInt(supply[0] * 100f), Mathf.RoundToInt(supply[1] * 100f),
-                    Mathf.RoundToInt(supply[2] * 100f), Mathf.RoundToInt(supply[3] * 100f),
-                    handCount, ids, deckCount);
-            }
+            // Calculation uses the exact float supply, so the key must not round it.
+            internal static ProfileKey Of(ResourceBundle supply) => new ProfileKey(
+                BitConverter.SingleToInt32Bits(supply.Human), BitConverter.SingleToInt32Bits(supply.Energy),
+                BitConverter.SingleToInt32Bits(supply.Materials), BitConverter.SingleToInt32Bits(supply.Tech));
 
-            public bool Equals(ProfileKey o) => _h == o._h && _e == o._e && _m == o._m && _t == o._t
-                && _handCount == o._handCount && _handIds == o._handIds && _deckCount == o._deckCount;
+            public bool Equals(ProfileKey o) => _h == o._h && _e == o._e && _m == o._m && _t == o._t;
             public override bool Equals(object obj) => obj is ProfileKey o && Equals(o);
             public override int GetHashCode() =>
-                (((((_h * 397) ^ _e) * 397 ^ _m) * 397 ^ _t) * 397 ^ _handCount) * 397 ^ _handIds.GetHashCode() ^ _deckCount;
+                (((_h * 397) ^ _e) * 397 ^ _m) * 397 ^ _t;
         }
 
         // The demand a type really faces (playable + waiting on it), on the price's own supply.
@@ -177,10 +258,16 @@ namespace Game.Ai.V2
 
         private static float[] HorizonSupply(WorldSnapshot snap)
         {
-            var supply = new float[4];
-            foreach (ResourceType t in ResourceBundle.All)
-                supply[(int)t] = snap.Self.Stockpile.Get(t) + Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t))
-                    * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
+            ResourceBundle supply = HorizonSupply(snap, snap.Self.Stockpile);
+            return new[] { supply.Human, supply.Energy, supply.Materials, supply.Tech };
+        }
+
+        private static ResourceBundle HorizonSupply(WorldSnapshot snap, ResourceBundle availableNow)
+        {
+            var supply = new ResourceBundle();
+            foreach (ResourceType type in ResourceBundle.All)
+                supply.Add(type, availableNow.Get(type) + Mathf.Max(0f, snap.Self.PerTurnIncome.Get(type))
+                    * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns));
             return supply;
         }
 
@@ -210,28 +297,58 @@ namespace Game.Ai.V2
         {
             if (amount == null)
                 return 0f;
-            float[] prices = null;
+            ResourceBundle? prices = null;
             float total = 0f;
             foreach (ResourceType type in ResourceBundle.All)
             {
                 float units = Mathf.Max(0f, amount(type));
                 if (units > 0f)
                 {
-                    prices ??= ScarcityProfile(snap, spendableResource);
-                    total += units * AiConfigV2.actionPriceResourceAp * prices[(int)type];
+                    prices ??= Prices(snap, AvailableResources(snap, spendableResource));
+                    total += units * AiConfigV2.actionPriceResourceAp * prices.Value.Get(type);
                 }
             }
             return total;
         }
 
         internal static float Resources(ResourceCost cost, WorldSnapshot snap = null,
-            Func<ResourceType, float> spendableResource = null) =>
-            cost == null ? 0f : Resources(t => cost.Get(t), snap, spendableResource);
+            Func<ResourceType, float> spendableResource = null)
+        {
+            ResourceBundle bill = Bill(cost);
+            return bill.Sum > 0 ? PriceBill(bill, Prices(snap, AvailableResources(snap, spendableResource))) : 0f;
+        }
 
-        internal static float Resources(ResourceVector cost, WorldSnapshot snap = null) =>
-            Resources(t => t == ResourceType.Human ? cost.Human
-                : t == ResourceType.Energy ? cost.Energy
-                : t == ResourceType.Materials ? cost.Materials : cost.Tech, snap);
+        internal static float Resources(ResourceCost cost, WorldSnapshot snap, ResourceBundle availableNow)
+        {
+            ResourceBundle bill = Bill(cost);
+            return bill.Sum > 0 ? PriceBill(bill, Prices(snap, availableNow)) : 0f;
+        }
+
+        internal static float Resources(ResourceVector cost, WorldSnapshot snap = null)
+        {
+            var bill = new ResourceBundle { Human = Mathf.Max(0f, cost.Human), Energy = Mathf.Max(0f, cost.Energy),
+                Materials = Mathf.Max(0f, cost.Materials), Tech = Mathf.Max(0f, cost.Tech) };
+            return bill.Human > 0 || bill.Energy > 0 || bill.Materials > 0 || bill.Tech > 0
+                ? PriceBill(bill, Prices(snap, AvailableResources(snap, null))) : 0f;
+        }
+
+        private static ResourceBundle Bill(ResourceCost cost) => cost == null ? default : new ResourceBundle
+        {
+            Human = Mathf.Max(0, cost.human), Energy = Mathf.Max(0, cost.energy),
+            Materials = Mathf.Max(0, cost.materials), Tech = Mathf.Max(0, cost.tech),
+        };
+
+        private static float PriceBill(ResourceBundle bill, ResourceBundle prices)
+        {
+            float total = 0;
+            foreach (ResourceType type in ResourceBundle.All)
+            {
+                float units = bill.Get(type);
+                if (units > 0)
+                    total += units * AiConfigV2.actionPriceResourceAp * prices.Get(type);
+            }
+            return total;
+        }
 
         // The two currencies — the only conversion of a price into score units.
         internal static float ToTaskScore(float apEquivalents) =>

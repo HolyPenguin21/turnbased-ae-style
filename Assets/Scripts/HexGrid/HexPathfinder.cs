@@ -289,6 +289,12 @@ namespace Game.HexGrid
         }
 
         private static readonly Stack<SearchBuffers> _bufferPool = new Stack<SearchBuffers>();
+        internal static void ClearMatchCache()
+        {
+            _grid = null;
+            _bufferPool.Clear();
+        }
+
         private static SearchBuffers RentBuffers(int size)
         {
             SearchBuffers buffers = _bufferPool.Count > 0 ? _bufferPool.Pop() : new SearchBuffers();
