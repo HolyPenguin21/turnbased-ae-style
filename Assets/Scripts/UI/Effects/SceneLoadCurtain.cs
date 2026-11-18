@@ -8,7 +8,7 @@ namespace Game.UI
     // Full-screen black loading curtain that survives a scene change. Shown before a scene
     // load (LoadScene renders one black frame first, so the freeze of a synchronous load sits
     // behind black instead of a frozen menu) and stays up until the loaded scene is ready.
-    // Optional picture (GameConfig.loadingScreenImage) fills the screen over the black.
+    // Optional picture (GameConfig.loadingScreenImages, one picked at random) fills the screen over the black.
     //
     // A scene that runs its own reveal (CitadelSetupController's intro) calls Hold in Awake and
     // Release when it is ready; any other loaded scene fades the curtain out on its own one

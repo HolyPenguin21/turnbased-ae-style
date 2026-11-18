@@ -458,7 +458,7 @@ namespace Game.Campaign
         {
             if (SceneLoadCurtain.IsLoading) return;
             if (!CampaignMatchBridge.PrepareMatch(gameConfig, selectedDeckId, out string error)) { Failure(error, OpenDeckSelection); return; }
-            Game.UI.SceneLoadCurtain.LoadScene(SceneNames.Game, gameConfig.loadingScreenImage);
+            Game.UI.SceneLoadCurtain.LoadScene(SceneNames.Game, gameConfig.PickLoadingScreenImage());
         }
         private void ResolveTest(string deckId)
         {

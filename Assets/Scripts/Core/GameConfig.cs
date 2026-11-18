@@ -27,7 +27,25 @@ namespace Game.Core
 
         [Header("Loading screen")]
         // Optional picture over the black curtain while the Game scene loads (SceneLoadCurtain).
-        public Sprite loadingScreenImage;
+        // Legacy single slot, kept so existing assets keep their value; treated as one more candidate.
+        [HideInInspector] public Sprite loadingScreenImage;
+        // Several pictures: one is chosen at random on every load.
+        public Sprite[] loadingScreenImages;
+
+        public Sprite PickLoadingScreenImage()
+        {
+            int n = 0;
+            if (loadingScreenImages != null)
+                foreach (var s in loadingScreenImages) if (s != null) n++;
+            bool legacy = loadingScreenImage != null;
+            int total = n + (legacy ? 1 : 0);
+            if (total == 0) return null;
+            int k = Random.Range(0, total);
+            if (loadingScreenImages != null)
+                foreach (var s in loadingScreenImages)
+                    if (s != null && k-- == 0) return s;
+            return loadingScreenImage;
+        }
 
         [Header("Collection content")]
         public Game.Cards.StartingDeckCatalog collectionDeckCatalog;

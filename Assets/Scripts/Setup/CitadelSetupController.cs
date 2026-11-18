@@ -126,7 +126,7 @@ namespace Game.Setup
             setupGeneration = GameSession.Generation;
             // Black until the intro (or a restore) is ready; loaders already showed it before
             // the load, a direct scene start gets it here.
-            SceneLoadCurtain.Hold(gameObject.scene, gameConfig != null ? gameConfig.loadingScreenImage : null);
+            SceneLoadCurtain.Hold(gameObject.scene, gameConfig != null ? gameConfig.PickLoadingScreenImage() : null);
         }
 
         private void OnDestroy()
