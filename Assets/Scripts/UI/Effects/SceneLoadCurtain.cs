@@ -39,14 +39,15 @@ namespace Game.UI
             curtain.StartCoroutine(curtain.LoadAfterFrame(sceneName));
         }
 
-        // Fully opaque curtain now; keeps an already shown picture when image is null.
+        // Fully opaque curtain now; keeps an already shown picture (image is only used if none is shown yet).
         public static SceneLoadCurtain Show(Sprite image = null)
         {
             if (instance == null) instance = Create();
             instance.StopFade();
             instance.group.alpha = 1f;
             instance.group.blocksRaycasts = true;
-            if (image != null) instance.SetPicture(image);
+            // One picture per load: a later Show/Hold (the loaded scene's own) must not swap it.
+            if (image != null && !instance.picture.enabled) instance.SetPicture(image);
             return instance;
         }
 
