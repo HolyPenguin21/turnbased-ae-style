@@ -187,12 +187,13 @@ namespace Game.Ai.V2
                 return false;
             ArmyData departing = builder;
             ArmyData receiving = garrison;
-            if (!choice.Route.IsOnTarget && LocalOperatorRelease.OperatorsNeededHome(player, builder,
-                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, intents)).Count > 0)
+            var preparationSite = choice.Route.IsOnTarget ? null
+                : DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, intents);
+            if (!choice.Route.IsOnTarget
+                && LocalOperatorRelease.OperatorsNeededHome(player, builder, preparationSite).Count > 0)
             {
                 if (!LocalOperatorRelease.CanKeepOperatorsHome(player, builder, commitments,
-                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, intents),
-                        out _, out departing)) return false;
+                        preparationSite, out _, out departing)) return false;
                 receiving = ArmyData.CreateVisualSnapshot();
                 receiving.Owner = garrison.Owner; receiving.Hex = garrison.Hex; receiving.IsGarrison = true;
                 receiving.Members.AddRange(garrison.Members);

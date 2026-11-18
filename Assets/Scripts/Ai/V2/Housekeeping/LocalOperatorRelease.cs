@@ -58,16 +58,12 @@ namespace Game.Ai.V2
         }
 
         // The heroes whose departure with `army` would leave a served duty without an operator.
-        private static List<UnitData> DutyOperators(PlayerSetupData player, ArmyData army,
+        internal static List<UnitData> OperatorsNeededHome(PlayerSetupData player, ArmyData army,
             System.Func<ResearchProductionMode, HexCoord?> preparationSite) =>
             army.Members
                 .Where(m => m != null && m.IsHero
                     && AiArmyRoles.FacilityNeedsHero(player, army, m, preparationSite))
                 .ToList();
-
-        internal static IReadOnlyList<UnitData> OperatorsNeededHome(PlayerSetupData player, ArmyData army,
-            System.Func<ResearchProductionMode, HexCoord?> preparationSite) =>
-            DutyOperators(player, army, preparationSite);
 
         private static ArmyData LocalGarrison(PlayerSetupData player, ArmyData army) =>
             ArmyRegistry.AllAt(army.Hex)
@@ -126,7 +122,7 @@ namespace Game.Ai.V2
             departure = army;
             if (player == null || army == null || army.IsGarrison || army.IsPrison || army.Owner != player)
                 return true;
-            List<UnitData> operators = DutyOperators(player, army, preparationSite);
+            List<UnitData> operators = OperatorsNeededHome(player, army, preparationSite);
             if (operators.Count == 0)
                 return true;
             ArmyData garrison = LocalGarrison(player, army);
@@ -168,7 +164,7 @@ namespace Game.Ai.V2
             if (player == null || army == null || army.IsGarrison || army.IsPrison
                 || army.Owner != player || !army.Members.Any(m => m != null && m.IsHero))
                 return 0;
-            List<UnitData> operators = DutyOperators(player, army, preparationSite);
+            List<UnitData> operators = OperatorsNeededHome(player, army, preparationSite);
             if (operators.Count == 0)
                 return 0;
             ArmyData garrison = LocalGarrison(player, army);

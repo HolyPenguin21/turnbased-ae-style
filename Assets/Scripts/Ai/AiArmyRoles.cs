@@ -207,23 +207,33 @@ namespace Game.Ai
         public static bool IsGarrisonHero(UnitData unit) =>
             unit != null && unit.IsHero && unit.TypeTags.Contains(UnitTypeTag.Support);
 
+        // THE one enumeration of the modes whose duty on `hex` `unit` qualifies for: an own facility of
+        // the mode on the hex, or (preparationSite, when given) the hex the player's preparation has
+        // selected for that mode. Every operator predicate below is a filter over this list.
+        private static IEnumerable<ResearchProductionMode> DutyModes(PlayerSetupData player, HexCoord hex,
+            UnitData unit, System.Func<ResearchProductionMode, HexCoord?> preparationSite)
+        {
+            if (player == null || unit == null)
+                yield break;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner != player)
+                yield break;
+            foreach (ResearchProductionMode mode in new[]
+                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
+            {
+                if (!unit.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
+                    continue;
+                bool facility = building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
+                if (facility || (preparationSite?.Invoke(mode) is HexCoord site && site.Equals(hex)))
+                    yield return mode;
+            }
+        }
+
         // A hero that operates an own Research/Production facility on `hex`: the facility's
         // role hero standing there (ResearchProductionSystem.FindActors — the same source the
         // facility's own eligibility and ArmyReorgAnalyzer.MarkDevelopmentOperators read).
-        public static bool IsFacilityOperator(PlayerSetupData player, HexCoord hex, UnitData unit)
-        {
-            if (player == null || unit == null || !unit.IsHero)
-                return false;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building == null || building.Owner != player)
-                return false;
-            foreach (ResearchProductionMode mode in new[]
-                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
-                if (building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
-                    && unit.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
-                    return true;
-            return false;
-        }
+        public static bool IsFacilityOperator(PlayerSetupData player, HexCoord hex, UnitData unit) =>
+            unit != null && unit.IsHero && DutyModes(player, hex, unit, null).Any();
 
         // Does the Research/Production duty of `army`'s hex lose a mode if `hero` leaves together with
         // `army`? A duty is an own facility of the mode on the hex, or (preparationSite) the hex the
@@ -235,46 +245,18 @@ namespace Game.Ai
             System.Func<ResearchProductionMode, HexCoord?> preparationSite = null,
             IReadOnlyCollection<UnitData> departingMembers = null)
         {
-            if (player == null || army == null || hero == null)
+            if (army == null)
                 return false;
-            BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (building == null || building.Owner != player)
-                return false;
-            foreach (ResearchProductionMode mode in new[]
-                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
-            {
-                bool facility = building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
-                HexCoord? site = facility ? null : preparationSite?.Invoke(mode);
-                if ((!facility && !(site.HasValue && site.Value.Equals(army.Hex)))
-                    || !hero.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
-                    continue;
-                if (!ResearchProductionSystem.FindActors(player, army.Hex, mode)
-                        .Any(a => a != hero && !(departingMembers ?? army.Members).Contains(a)))
-                    return true;
-            }
-            return false;
+            return DutyModes(player, army.Hex, hero, preparationSite).Any(mode =>
+                !ResearchProductionSystem.FindActors(player, army.Hex, mode)
+                    .Any(a => a != hero && !(departingMembers ?? army.Members).Contains(a)));
         }
 
         // `unit` is an operator of an own facility on `hex`, or (preparationSite) of the preparation
         // site the player has selected there for a mode it qualifies for.
         public static bool IsDutyOperator(PlayerSetupData player, HexCoord hex, UnitData unit,
-            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
-        {
-            if (IsFacilityOperator(player, hex, unit))
-                return true;
-            if (preparationSite == null || player == null || unit == null || !unit.IsHero)
-                return false;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building == null || building.Owner != player)
-                return false;
-            foreach (ResearchProductionMode mode in new[]
-                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
-                if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
-                    && preparationSite(mode) is HexCoord site && site.Equals(hex)
-                    && unit.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
-                    return true;
-            return false;
-        }
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null) =>
+            unit != null && unit.IsHero && DutyModes(player, hex, unit, preparationSite).Any();
 
         // The whole field army moving off its hex would leave a served duty without its operator.
         // A shape fact apart from IsHeroLed: whether this army MAY take a new remote assignment.
