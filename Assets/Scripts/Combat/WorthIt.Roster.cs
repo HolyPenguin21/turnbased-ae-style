@@ -351,6 +351,10 @@ namespace Game.Combat
             internal readonly List<int> LivingTargets;
             internal readonly List<int> SecondaryTargets;
             internal readonly System.Comparison<(bool isAttacker, int index)> ByInitiativeDescending;
+            // Deployment capacity (BattleGrid front row = 5 cells): per side and list index, 0 = in the
+            // fight, 1 = reserve (melee body beyond the front row, waits for a free cell), 2 = stepped
+            // up this round (acts from the next one). See WorthIt.MeleeReserve.
+            internal byte[] AttackerStance = new byte[0], DefenderStance = new byte[0];
             private List<BattleUnit> _attackers, _defenders;
 
             internal SimulationScratch(int attackers, int defenders)

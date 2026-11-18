@@ -95,6 +95,8 @@ namespace Game.Combat
             AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
             scratch = scratch ?? new SimulationScratch(attackers.Count, defenders.Count);
             scratch.Reset(attackers, defenders);
+            MeleeReserve.Deploy(attackers, ref scratch.AttackerStance);
+            MeleeReserve.Deploy(defenders, ref scratch.DefenderStance);
             var order = scratch.Order;
             var acted = scratch.Acted;
             var suppressed = scratch.Suppressed;
@@ -119,11 +121,15 @@ namespace Game.Combat
                     for (int i = 0; i < defenders.Count; i++)
                         if (defenders[i].IsHero) ApplyHealing(defenders, i, rng);
                 scratch.BodyguardsUsed.Clear();
+                MeleeReserve.StepUp(attackers, scratch.AttackerStance);
+                MeleeReserve.StepUp(defenders, scratch.DefenderStance);
                 if (attackersDrill) ApplyRosterDrill(attackers, true, scratch.Drilled, magnitudes);
                 if (defendersDrill) ApplyRosterDrill(defenders, false, scratch.Drilled, magnitudes);
                 order.Clear();
-                for (int i = 0; i < attackers.Count; i++) if (!attackers[i].IsHero) order.Add((true, i));
-                for (int i = 0; i < defenders.Count; i++) if (!defenders[i].IsHero) order.Add((false, i));
+                for (int i = 0; i < attackers.Count; i++)
+                    if (!attackers[i].IsHero && MeleeReserve.Acts(scratch.AttackerStance, i)) order.Add((true, i));
+                for (int i = 0; i < defenders.Count; i++)
+                    if (!defenders[i].IsHero && MeleeReserve.Acts(scratch.DefenderStance, i)) order.Add((false, i));
 
                 // Shuffle first (random Initiative tie-break, same reasoning BattleTurnOrder's own
                 // class comment gives for why equal Initiative shouldn't always resolve the same

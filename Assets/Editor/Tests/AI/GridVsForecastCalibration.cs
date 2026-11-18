@@ -96,7 +96,7 @@ namespace Game.EditorTests
         {
             var sb = new System.Text.StringBuilder();
             var scen = new List<(string name, S[] att, S[] def, int bonus)>();
-            foreach (int n in new[] { 5, 6, 7, 8 })
+            foreach (int n in (System.Environment.GetEnvironmentVariable("AIV_SWEEP") ?? "5,6,7,8").Split(',').Select(int.Parse))
             {
                 scen.Add(($"{n} melee vs 5 r2", Rep(n, new S(4,2,5,1,1)), Rep(5, new S(4,2,5,1,2)), 0));
                 scen.Add(($"{n} melee vs 5 melee", Rep(n, new S(4,2,5,1,1)), Rep(5, new S(4,2,5,1,1)), 0));
@@ -111,6 +111,7 @@ namespace Game.EditorTests
                 sb.AppendLine($"{sc.name,-36} real={real:0.00} (rounds {rounds:0.0})  forecast={fc:0.00}");
             }
             TestContext.WriteLine(sb.ToString());
+            var path = System.Environment.GetEnvironmentVariable("AIV_OUT"); if (!string.IsNullOrEmpty(path)) System.IO.File.WriteAllText(path, sb.ToString());
             Assert.Pass(sb.ToString());
         }
         static S[] Rep(int n, S s) => Enumerable.Repeat(s, n).ToArray();
