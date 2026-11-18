@@ -237,9 +237,6 @@ namespace Game.Ai.V2
                                 DevelopmentOpportunityEvaluator.PreparationDutySite(mode, snapshot,
                                     player, AiHandRegistry.Peek(player), ctx, activeIntents,
                                     projectedArmy: preview, replacedArmy: p.Deploy.Army));
-                        float fieldPotential = WorldAnalysis.FieldStrikePotential(player,
-                            OwnWorld.Of(player).Armies.Where(a => a != p.Deploy.Army).Concat(new[] { preview }),
-                            snapshot.Self.AvailablePower, activeIntents);
                         var routes = WorldAnalysis.EconomyBuilderRoutes(
                             snapshot, player, ctx, demand.TargetHex.Value, projected);
                         if (routes.Count == 0)
@@ -251,7 +248,7 @@ namespace Game.Ai.V2
                             demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                             demand.EconomyBuildApCost,
                             includeReturn: demand.EconomyBuildCard?.Definition?.cardType != CardType.Base,
-                            projectedArmy: projected, projectedFieldStrikePotential: fieldPotential);
+                            projectedArmy: projected);
                         if (choice == null)
                             return DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort,
                                 "projected_builder_rejected_by_shared_ranking");

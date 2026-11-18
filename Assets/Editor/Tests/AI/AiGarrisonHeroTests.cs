@@ -828,6 +828,60 @@ namespace Game.EditorTests
             Assert.That(plan.ExpectedMembership[1], Does.Contain(iri.Key), plan.DebugSummary());
         }
 
+        private static ReorgUnit RFighter(float attack, float defence, float hp) => new ReorgUnit
+        {
+            Key = _key++, Power = attack + defence + hp, IsGroundCombatant = true, IsGroundBattleBody = true,
+            MoveCurrent = 3, MoveMax = 3,
+            CombatProfile = new Game.Combat.WorthIt.DefenderProfile(defence, false, attack: attack, hitPoints: hp),
+        };
+
+        // 2026-11-18 (owner, match Tessek vs Halden T20) — passive defence: the garrison (8 slots
+        // under Iri Vane's command, 3 of them Support heroes) and a free field army on the same hex
+        // fought the enemy one after the other. Under a near threat the garrison takes the field
+        // bodies and the Support heroes that are not its commander step into a hero-only bench on
+        // the hex (they keep serving it). In peace nothing moves.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void NearThreat_PacksTheGarrison_SupportHeroesStepToAHexBench(bool threatened)
+        {
+            ReorgUnit iri = RHero(8, support: true), rusty = RHero(4, support: true), nova = RHero(4, support: true);
+            ReorgUnit hank = RHero(6, support: false);
+            var garrisonBodies = new[] { RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f) };
+            var fieldBodies = new[] { RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f), RFighter(5f, 3f, 6f) };
+            ReorgContainer garrison = RGarrison(1, new[] { iri, rusty, nova }.Concat(garrisonBodies).ToArray());
+            ReorgContainer field = RFree(2, new[] { hank }.Concat(fieldBodies).ToArray());
+            var shell = new ReorgContainer { ArmyId = 3, Role = ReorgPhysicalRole.EmptyReusableArmy,
+                CanReceive = true, CanDonate = true, CanChangeComposition = true, CanReorderCommander = true };
+            var group = new LocalForceGroup { Containers = new List<ReorgContainer> { garrison, field, shell } };
+            if (threatened)
+                group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
+                {
+                    ArmyId = 26, EtaToGroup = 1, EtaToNearestBase = 1,
+                    Members = Enumerable.Range(0, 6).Select(_ =>
+                        new Game.Combat.WorthIt.DefenderProfile(2f, false, attack: 5f, hitPoints: 5f)).ToArray(),
+                    TargetableUnitKeys = new HashSet<int>(garrisonBodies.Concat(fieldBodies).Select(u => u.Key)),
+                });
+
+            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+            List<int> garrisonAfter = plan.ExpectedMembership[1];
+            int bodiesInGarrison = garrisonAfter.Count(k => garrisonBodies.Concat(fieldBodies).Any(b => b.Key == k));
+
+            if (!threatened)
+            {
+                Assert.That(bodiesInGarrison, Is.EqualTo(3), plan.DebugSummary());
+                Assert.That(garrisonAfter, Has.Member(rusty.Key).And.Member(nova.Key), plan.DebugSummary());
+                return;
+            }
+            Assert.That(bodiesInGarrison, Is.EqualTo(7), "one defending formation: " + plan.DebugSummary());
+            Assert.That(garrisonAfter, Has.Member(iri.Key), "the commander keeps the 8 slots");
+            Assert.That(garrisonAfter, Has.No.Member(rusty.Key).And.No.Member(nova.Key));
+            Assert.That(plan.ExpectedMembership[2].Concat(plan.ExpectedMembership[3]).ToList(),
+                Has.Member(rusty.Key).And.Member(nova.Key), "the Support heroes stay on the hex");
+            foreach (int id in new[] { 2, 3 })
+                Assert.That(plan.ExpectedMembership[id].All(k => k == hank.Key || k == rusty.Key || k == nova.Key),
+                    Is.True, "no Support hero rides in a fighting formation");
+        }
+
         // 2026-10-15 (user decision) — playtest: Aldric and Dorian stood as lone free heroes on
         // Draven's Base (-1,3) beside its garrison while Sentinels were one turn away. A lone hero
         // stays a bench in peace; under a near threat it shelters in the local garrison.

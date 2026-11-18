@@ -107,7 +107,7 @@ namespace Game.Ai.V2
                                 || ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, mover)
                                 || !withdrawalProposed.Add(mover.ArmyId))
                                 continue;
-                            HexCoord? destination = response.Kind == ActiveDefenceResponseKind.Regroup
+                            HexCoord? destination = response.LeadsToAsset(mover.ArmyId)
                                 ? response.RegroupHex
                                 : ActiveDefenceObjectiveEvaluator.SafeWithdrawalBase(snap, mover, committed);
                             if (!destination.HasValue || mover.Hex.Equals(destination.Value))
@@ -121,7 +121,8 @@ namespace Game.Ai.V2
                         }
                         AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId + "#withdraw",
                             $"[AI][V2][ActiveDefence][Admission] decision="
-                            + (response.Kind == ActiveDefenceResponseKind.Regroup ? "REGROUP" : "RETREAT")
+                            + (response.Kind == ActiveDefenceResponseKind.Regroup ? "REGROUP"
+                                : response.RegroupHex.HasValue ? "CITADEL_REGROUP" : "RETREAT")
                             + $" enemy={objective.Target.EnemyArmyId} reason={response.Reason} "
                             + $"power={response.AvailablePower:0.#}/{response.RequiredPower:0.#} "
                             + $"hold={(response.HoldWinChance < 0f ? "n/a" : response.HoldWinChance.ToString("0.00"))} "
@@ -493,7 +494,8 @@ namespace Game.Ai.V2
                     mover.ArmyId == pendingPreparationHost.armyId ? pendingPreparationHost.value : 0f);
             ActiveDefenceMissionTarget target = objective.Target;
             target.Phase = ActiveDefencePhase.Return;
-            target.ReturnPurpose = response.Kind == ActiveDefenceResponseKind.Regroup
+            bool regroup = response.LeadsToAsset(mover.ArmyId);
+            target.ReturnPurpose = regroup
                 ? ActiveDefenceReturnPurpose.RegroupForAsset : ActiveDefenceReturnPurpose.SafeWithdrawal;
             target.PrimaryArmyId = mover.ArmyId;
             target.ReturnHex = destination;
@@ -508,7 +510,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = mover.ArmyId,
                 Requirements = requirements,
                 Explain = $"ActiveDefence enemy #{target.EnemyArmyId} "
-                    + (response.Kind == ActiveDefenceResponseKind.Regroup ? "regroup" : "retreat")
+                    + (regroup ? "regroup" : "retreat")
                     + $" #{mover.ArmyId} -> {destination.Q},{destination.R} ({response.Reason}; "
                     + $"power {response.AvailablePower:0.#}/{response.RequiredPower:0.#}) task {score.Value:0.00}",
             };

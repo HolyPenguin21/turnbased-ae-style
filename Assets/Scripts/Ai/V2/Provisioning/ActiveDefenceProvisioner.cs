@@ -220,13 +220,16 @@ namespace Game.Ai.V2
                 ActiveDefenceResponse response = objective == null
                     || !objective.Target.ProtectedAssetHex.Equals(target.ReturnHex.Value) ? null
                     : AssessRegroupForProvisioning(snap, funded.Mission, session, intents);
-                if (response?.Kind == ActiveDefenceResponseKind.Shortage)
-                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                        "regroup_funded_cohort_insufficient"));
-                if (response?.Kind != ActiveDefenceResponseKind.Regroup
-                    || !response.ReinforcementArmyIds.Contains(actor.Id))
+                // The own Citadel's best-effort regroup is a Shortage that still leads this actor
+                // to the asset (ActiveDefenceResponse.LeadsToAsset): it is never "insufficient".
+                if (response?.LeadsToAsset(actor.Id) != true)
+                {
+                    if (response?.Kind == ActiveDefenceResponseKind.Shortage)
+                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                            "regroup_funded_cohort_insufficient"));
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         "regroup_no_longer_needed"));
+                }
             }
             else
             {

@@ -4392,8 +4392,10 @@ namespace Game.EditorTests
             after.Self.BaseHexes = before.Self.BaseHexes; after.Self.Hand = before.Self.Hand;
             after.Economy = new EconomyStanding { BaseOpportunities = new[] { new EconomyBaseOpportunity {
                 Hex = demand.TargetHex.Value, BuilderRoutes = new[] { BuilderRoute(recipient, 2, 2, 2) } } } };
+            // 2026-11-18 (owner) — the fixed fist share is gone: a free combat army is a builder
+            // like any other while no own stronghold needs it home.
             Assert.That(CapabilityDeliveryEvaluator.EconomyDeliveryChoice(after, demand, army.Id,
-                null, null, out _), Is.Null, "a free existing fist must still be refused");
+                null, null, out _), Is.Not.Null, "a free combat army is an ordinary builder");
             Assert.That(CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx,
                 after, plan, demand, null, null, new HashSet<int> { army.Id, army.Id + 1 },
                 out float delivered, before), Is.True);

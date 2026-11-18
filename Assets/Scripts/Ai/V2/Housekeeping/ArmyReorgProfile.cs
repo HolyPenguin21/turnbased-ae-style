@@ -200,7 +200,15 @@ namespace Game.Ai.V2
                 return true;
             if (localGarrison != null && localGarrison.CanReceive
                 && Containers.Any(c => !c.IsGarrison && c.IsMutableGround
+                    && !ReorgViability.IsHexBench(c, c.Units)
                     && c.Units.Any(u => u != null && (u.IsDevelopmentOperator || u.IsGarrisonHero))))
+                return true;
+            // 2026-11-18 (owner) — passive defence: under a deployed enemy a garrison and a free
+            // field formation on the same hex are repacked for the fight (the threat-first
+            // readiness profile decides), even when only one field formation stands there.
+            if (localGarrison != null && ThreatBenchmarks.Count > 0
+                && Containers.Any(c => !c.IsGarrison && c.IsMutableGround && c.CanDonate
+                    && c.Units.Any(u => u != null && u.IsGroundCombatant)))
                 return true;
 
             // §9 — a heroless OR support-led viable field formation plus a benched combat hero
@@ -286,6 +294,16 @@ namespace Game.Ai.V2
 
         public static bool IsSingletonShape(IReadOnlyList<ReorgUnit> units) =>
             units != null && units.Count == 1 && units[0].IsGroundCombatant;
+
+        // 2026-11-18 (owner) — an operator / Support hero must stay on the hex of its facility's
+        // Citadel or Base, not in the garrison container itself (ResearchProductionSystem.FindActors
+        // reads every own army on the hex; ApBonus works anywhere in play). A free ground container
+        // on the hex holding heroes only is that place too: it takes no garrison slot, never fights,
+        // and a departure that would take the facility's operator is refused by its duty
+        // (OperatorDutyBlocksDeparture). Live twin: HousekeepingExecutor.IsHexBench.
+        public static bool IsHexBench(ReorgContainer meta, IReadOnlyList<ReorgUnit> units) =>
+            meta != null && !meta.IsGarrison && meta.IsMutableGround && !meta.IsMissionReceiver
+            && units != null && units.All(u => u != null && u.IsHero);
 
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
             c != null && !c.SingletonExempt && c.IsScoredField && IsSingletonShape(c.Units);

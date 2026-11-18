@@ -235,8 +235,10 @@ namespace Game.EditorTests
                 "replacing exact evidence must not erase the bounded economic pressure history");
         }
 
+        // 2026-11-18 (owner) — a combat army (here 40% of the strike) is a builder like any other
+        // while no own stronghold needs it home: the fixed fist share is gone.
         [TestCase(false, false, false, true)]
-        [TestCase(true, false, false, false)]
+        [TestCase(true, false, false, true)]
         [TestCase(false, true, false, false)]
         [TestCase(false, false, true, false)]
         public void ProjectedEconomyBuilderUsesTheSameCandidateContract(
@@ -257,7 +259,7 @@ namespace Game.EditorTests
             var routes = new[] { new EconomyBuilderRouteSnapshot { ArmyId = 19, IsOnTarget = false } };
             Assert.That(System.Linq.Enumerable.Any(EconomyBuilderSelection.EconomyBuilderCandidates(snap,
                 new HexCoord(2, 0), routes, System.Array.Empty<MissionIntent>(), commitments,
-                projected, 100f)), Is.EqualTo(allowed));
+                projected)), Is.EqualTo(allowed));
         }
 
         [Test]

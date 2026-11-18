@@ -96,10 +96,6 @@ namespace Game.Ai.V2
         public const int attackPreparationCardWaitTurns = 3;
         // Free Recon wing formation competes in the Phase-B arbiter at no more than this utility:
         // below every real card play / draw, above doing nothing.
-        // An army whose power is at least this share of the player's field strike potential is part
-        // of the fist and is never taken as an Economy builder (it defends or attacks instead).
-        public const float economyBuilderFistShare = 0.25f;
-
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
         // =======================================================================================
         //  COMBAT OPPORTUNITY ANALYZER  (shared estimator — ONE ESTIMATOR, MANY STAGES)

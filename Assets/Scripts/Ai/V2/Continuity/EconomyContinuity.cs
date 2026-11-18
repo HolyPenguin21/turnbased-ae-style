@@ -576,6 +576,20 @@ namespace Game.Ai.V2
                     + "reason=operator_leaves_served_facility");
                 return;
             }
+            // 2026-11-18 (owner) — a combat army builds only while no own stronghold needs it home
+            // (EconomyBuilderSelection's candidate gate). Re-read while the build walks: when a
+            // stronghold starts to need it, the build is retired and the free army is ActiveDefence's
+            // (Regroup / the Citadel's shortage regroup / Intercept), the same structural release.
+            if (actor.IsStructuralRaidActor && !actor.Hex.Equals(ei.TargetHex)
+                && AttackMarchPolicy.StrongholdNeedingArmy(snap, actor, out _) != null)
+            {
+                MissionLeaseBook.ReleaseByOwner(player, snap.TurnNumber,
+                    EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
+                RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
+                AiDebugLog.Write($"[AI][V2][Economy] retire {intent.IntentKey} actor=#{actor.ArmyId} "
+                    + "reason=stronghold_needs_the_army");
+                return;
+            }
             IReadOnlyList<EconomyBuilderRouteSnapshot> routes = ei.Kind == EconomyTaskKind.FoundBase
                 ? snap.Economy.BaseOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)).BuilderRoutes
                 : snap.Economy.ExtractionOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)

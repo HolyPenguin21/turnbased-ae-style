@@ -101,13 +101,16 @@ namespace Game.Ai.V2
             List<ReorgUnit> from = c.Roster[srcId];
             List<ReorgUnit> to = c.Roster[dstId];
             ReorgUnit u = from.FirstOrDefault(x => x.Key == unit.Key);
-            if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted
-                || (u.IsDevelopmentOperator && !allowDevelopmentOperator) || u.IsAviation)
-                return null;
-
             ReorgContainer srcMeta = c.Meta[srcId];
             ReorgContainer dstMeta = c.Meta[dstId];
-            if (srcMeta.IsGarrison && !GarrisonMayRelease(from, u, srcMeta))
+            // 2026-11-18 (owner) — a hero entering a hero-only bench on the hex stays where it
+            // serves (ReorgViability.IsHexBench): an operator / Support hero may take that step.
+            bool toHexBench = u != null && u.IsHero && ReorgViability.IsHexBench(dstMeta, to);
+            if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted
+                || (u.IsDevelopmentOperator && !allowDevelopmentOperator && !toHexBench) || u.IsAviation)
+                return null;
+
+            if (srcMeta.IsGarrison && !GarrisonMayRelease(from, u, srcMeta, toHexBench))
                 return null;
             if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                 return null;
@@ -121,6 +124,44 @@ namespace Game.Ai.V2
             c.Transfers.Add(new PlannedTransfer(u.Key, srcId, dstId, reason));
             c.MovedUnitKeys.Add(u.Key);
             return c;
+        }
+
+        // 2026-11-18 (owner) — passive defence packing: the field source's ground bodies enter the
+        // garrison strongest first; when the garrison has no slot, an operator / Support hero
+        // (never a combat hero) steps into `benchId` (a hero-only bench on the hex) to make one.
+        // Every step is an ordinary TryMoveOne, so capacity, floors, AP and movement rules hold.
+        // Null when nothing moved.
+        private static VState PackGarrisonFromField(VState state, int srcId, int garrisonId, int? benchId)
+        {
+            VState s = state;
+            bool moved = false;
+            List<ReorgUnit> bodies = state.Roster[srcId]
+                .Where(x => x != null && x.IsGroundCombatant && !x.IsCommitted)
+                .OrderByDescending(x => x.Power).ThenBy(x => x.Key).ToList();
+            foreach (ReorgUnit body in bodies)
+            {
+                VState next = TryMoveOne(s, srcId, garrisonId, body,
+                    "pack the garrison for the defence of the hex");
+                if (next == null && benchId.HasValue)
+                {
+                    // The lowest command first: the garrison's capacity is its first hero's
+                    // CommandRating (ReorgViability.Capacity), so the commander stays; a departure
+                    // that would overcrowd the garrison is refused by TryMoveOne itself.
+                    ReorgUnit hero = s.Roster[garrisonId]
+                        .Where(x => x != null && x.IsHero && (x.IsDevelopmentOperator || x.IsGarrisonHero)
+                            && !s.MovedUnitKeys.Contains(x.Key))
+                        .OrderBy(x => x.CommandRating).ThenBy(x => x.Key).FirstOrDefault();
+                    VState freed = hero == null ? null : TryMoveOne(s, garrisonId, benchId.Value, hero,
+                        "free a garrison slot: operator / Support hero to a hero-only bench on the hex");
+                    next = freed == null ? null : TryMoveOne(freed, srcId, garrisonId, body,
+                        "pack the garrison for the defence of the hex");
+                }
+                if (next == null)
+                    break;
+                s = next;
+                moved = true;
+            }
+            return moved ? s : null;
         }
 
         private static VState TrySeed(VState state, int donorId, int weakId)
@@ -277,11 +318,13 @@ namespace Game.Ai.V2
             return ReorgViability.Capacity(after, destMeta.IsGarrison) >= after.Count;
         }
 
+        // `toHexBench` — the hero only steps into a hero-only bench on the same hex
+        // (ReorgViability.IsHexBench): an operator / Support hero may, the garrison keeping a member.
         private static bool GarrisonMayRelease(List<ReorgUnit> garrison, ReorgUnit u,
-            ReorgContainer meta)
+            ReorgContainer meta, bool toHexBench = false)
         {
             if (u.IsDevelopmentOperator || u.IsGarrisonHero)
-                return false;
+                return toHexBench && garrison.Count > 1;
             if (u.IsHero)
                 return garrison.Count > 1;
             // The one garrison release rule (AiArmyRoles.MayReleaseBodies) on the roster as it

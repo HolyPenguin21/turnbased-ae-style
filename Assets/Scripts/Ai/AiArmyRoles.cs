@@ -202,8 +202,10 @@ namespace Game.Ai
 
         // 2026-09-30 (user decision) — a garrison hero: a hero whose card carries the Support type
         // tag (ApBonus, Researcher and Assembler heroes are authored with it). Its place is the
-        // garrison: Housekeeping keeps it there and never pulls it out, and an active task takes
-        // it only as a priced fallback (GarrisonHeroFallbackCost) when no other hero qualifies.
+        // hex of its Citadel / Base: the garrison, or (2026-11-18, owner) a hero-only bench on that
+        // hex when the garrison's slots are needed for the defence (ReorgViability.IsHexBench) —
+        // Housekeeping never puts it into a fighting formation, and an active task takes it only as
+        // a priced fallback (GarrisonHeroFallbackCost) when no other hero qualifies.
         public static bool IsGarrisonHero(UnitData unit) =>
             unit != null && unit.IsHero && unit.TypeTags.Contains(UnitTypeTag.Support);
 

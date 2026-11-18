@@ -39,6 +39,42 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 0.1 2026-11-18 (owner, match Tessek vs Halden T20) — passive defence under a deployed
+            // enemy: the garrison takes the free field formation's bodies (strongest first) and, when
+            // it is full, an operator / Support hero steps into a hero-only bench on the hex
+            // (ReorgViability.IsHexBench) to make room. One candidate per (field source, bench): a
+            // body-by-body climb would stall where moving one body first weakens the hardest
+            // defender. The threat-first readiness profile judges the result.
+            if (state.ThreatBenchmarks.Count > 0
+                && state.Meta.TryGetValue(operatorGarrisonId, out ReorgContainer defenceGarrison)
+                && defenceGarrison.IsGarrison && defenceGarrison.CanReceive)
+            {
+                foreach (int srcId in armyIds)
+                {
+                    ReorgContainer src = state.Meta[srcId];
+                    if (!IsFieldContainer(src) || !src.CanDonate
+                        || !state.Roster[srcId].Any(x => x != null && x.IsGroundCombatant))
+                        continue;
+                    // No bench: the garrison's free slots only.
+                    VState filled = PackGarrisonFromField(state, srcId, operatorGarrisonId, null);
+                    if (filled != null)
+                        yield return filled;
+                    // A garrison some operation holds gives nobody away (the executor's
+                    // mission-claim preflight): it is only filled.
+                    if (!defenceGarrison.CanDonate)
+                        continue;
+                    foreach (int benchId in armyIds)
+                    {
+                        if (benchId == srcId || !state.Meta[benchId].CanReceive
+                            || !ReorgViability.IsHexBench(state.Meta[benchId], state.Roster[benchId]))
+                            continue;
+                        VState packed = PackGarrisonFromField(state, srcId, operatorGarrisonId, benchId);
+                        if (packed != null)
+                            yield return packed;
+                    }
+                }
+            }
+
             // 0. Commander reorder — zero-AP, membership-preserving. For any reorderable container
             // (field OR garrison) holding >= 2 heroes, promote the one commander evaluation's best
             // hero (HeroRoleEvaluator — its formation's fight against the group's strongest threat,

@@ -100,6 +100,14 @@ namespace Game.Ai.V2
                         + $"primary #{a.PrimaryArmyId} is no longer a ground container");
                     return false;
                 }
+                // A walk home whose home now needs the army: the same handover as DefendHome.
+                ArmySnapshot walking = snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == a.PrimaryArmyId.Value);
+                if (walking != null && walking.IsStructuralRaidActor
+                    && AttackMarchPolicy.StrongholdNeedingArmy(snap, walking, out _, out _,
+                        out AssetThreatSnapshot recoveryPin) != null
+                    && HandsOverToActiveDefence(snap, intent, walking, recoveryPin))
+                    return false;
             }
             else if (a.Preparation && a.Phase == AttackMissionPhase.Gather)
             {
@@ -174,6 +182,8 @@ namespace Game.Ai.V2
                             + $"primary #{a.PrimaryArmyId} is free for the defence");
                         return false;
                     }
+                    if (HandsOverToActiveDefence(snap, intent, marching, march.Pin))
+                        return false;
                     WithdrawTo(intent, a, march.HomeHex.Value, "defend_home: " + march.Reason);
                     return true;
                 }
@@ -513,6 +523,25 @@ namespace Game.Ai.V2
                 + $"clears {a.Target.DiagnosticLabel} ({DescribeClearance(snap, a)}); existing "
                 + $"reinforcement candidate none ({none}); {march.Reason} (win {march.WinChance:0.00}) - "
                 + "committed assault continues");
+            return true;
+        }
+
+        // 2026-11-18 (owner, match Tessek vs Halden T19-T20) — king safety by ACTIVE defence: an
+        // Attack army its own stronghold needs home is handed to ActiveDefence (the operation ends
+        // and its claim is released) when it destroys the threat before it reaches the stronghold
+        // (ActiveDefenceObjectiveEvaluator.CanDefeatBeforeThreatWith: the intercept's plan, win
+        // gate and turn-order timing). ActiveDefence then plans the Intercept on its own path in
+        // the same pass; otherwise the army walks home (RecoveryReturn) as before. An unobserved
+        // (remembered) threat has no position to intercept, so it never hands over.
+        private static bool HandsOverToActiveDefence(WorldSnapshot snap, MissionIntent intent,
+            ArmySnapshot army, AssetThreatSnapshot pin)
+        {
+            if (army == null || pin?.Contact?.Army == null
+                || !ActiveDefenceObjectiveEvaluator.CanDefeatBeforeThreatWith(snap, pin, army.ArmyId))
+                return false;
+            AiDebugLog.Write($"[AI][V2][Attack][March] {intent.IntentKey} handed to ActiveDefence - "
+                + $"primary #{army.ArmyId} destroys #{pin.Contact.Army.ArmyId} before it reaches "
+                + $"({pin.Asset.Hex.Q},{pin.Asset.Hex.R}); claim released for the intercept");
             return true;
         }
 

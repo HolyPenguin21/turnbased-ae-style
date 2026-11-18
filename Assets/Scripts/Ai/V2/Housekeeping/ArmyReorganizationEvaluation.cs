@@ -50,9 +50,13 @@ namespace Game.Ai.V2
             // enemy can reach this hex within activeDefenceWithdrawMaxEnemyEta turns: then it
             // shelters in the local garrison (exposed like an operator outside it), which its
             // command rating also serves. Economy still reaches it there by garrison extraction.
+            // 2026-11-18 — only while the garrison has a slot to take it: a garrison packed with
+            // fighters for the same threat (passive defence) cannot shelter it, and the hero then
+            // stands as a bench on the hex instead of blocking that packing.
             bool shelterLoneHeroes = s.ThreatBenchmarks.Any(t => !t.HiddenFromUs
                     && t.EtaToGroup <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
-                && s.Meta.Values.Any(m => m.IsGarrison && m.CanReceive);
+                && s.Meta.Any(kv => kv.Value.IsGarrison && kv.Value.CanReceive
+                    && ReorgViability.Capacity(s.Roster[kv.Key], true) > s.Roster[kv.Key].Count);
 
             foreach (int id in s.Meta.Keys.OrderBy(x => x))
             {
@@ -63,8 +67,10 @@ namespace Game.Ai.V2
                     legality++;
                 if (!meta.IsGarrison)
                 {
-                    operatorExposure += units.Count(u => u != null
-                        && (u.IsDevelopmentOperator || u.IsGarrisonHero));
+                    // A hero-only bench on the hex keeps them where they serve (IsHexBench).
+                    if (!ReorgViability.IsHexBench(meta, units))
+                        operatorExposure += units.Count(u => u != null
+                            && (u.IsDevelopmentOperator || u.IsGarrisonHero));
                     if (shelterLoneHeroes && meta.IsMutableGround && meta.CanDonate
                         && units.Count == 1 && units[0] != null && units[0].IsHero
                         && !units[0].IsCommitted && !units[0].IsDevelopmentOperator
@@ -79,9 +85,11 @@ namespace Game.Ai.V2
                 else if (meta.IsMutableGround && meta.CanDonate)
                     // Ordinary secondary heroes add no command or force. Keep canonical passive
                     // battle carriers (Heal/Drill) for the mission's own counterfactual check.
+                    // A Support hero is OperatorExposure's business (2026-11-18: off a hero-only
+                    // bench it is exposed; on it, it takes no fighter slot).
                     preparationSlotWaste += units.Where(u => u != null && u.IsHero).Skip(1)
                         .Count(u => !u.IsCommitted && !u.IsDevelopmentOperator
-                            && !u.IsArmySupportCarrier);
+                            && !u.IsGarrisonHero && !u.IsArmySupportCarrier);
                 if (meta.PreparationTargetKeys != null)
                     preparationSlotWaste += ReorgViability.PreparationRosterWaste(meta, units,
                         s.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(

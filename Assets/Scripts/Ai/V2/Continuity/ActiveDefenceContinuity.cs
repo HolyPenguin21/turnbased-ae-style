@@ -87,8 +87,7 @@ namespace Game.Ai.V2
                         || !regroupObjective.Target.ProtectedAssetHex.Equals(defence.ProtectedAssetHex) ? null
                         : ActiveDefenceObjectiveEvaluator.AssessResponse(snap, regroupObjective, committed,
                             ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(intents), null, intents);
-                    if (response?.Kind != ActiveDefenceResponseKind.Regroup
-                        || !response.ReinforcementArmyIds.Contains(actor.ArmyId))
+                    if (response?.LeadsToAsset(actor.ArmyId) != true)
                     {
                         AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END actor={actor.ArmyId} "
                             + $"reason={(regroupObjective == null ? "threat_no_longer_listed" : "regroup_no_longer_needed")}");

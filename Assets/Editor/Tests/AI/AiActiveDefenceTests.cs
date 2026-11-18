@@ -574,6 +574,79 @@ namespace Game.EditorTests
                 "another free army destroys the force before it arrives: ActiveDefence answers it");
         }
 
+        // 2026-11-18 (owner, match Tessek vs Halden T19-T20) — an Attack army its home calls back
+        // is handed to ActiveDefence when it destroys the observed threat before it arrives; a
+        // remembered threat has no position to intercept, so the army walks home as before.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void AttackCalledHome_IsHandedToActiveDefence_WhenItDestroysTheObservedThreatFirst(bool observed)
+        {
+            var owner = new PlayerSetupData();
+            var fist = DefenceActor(owner, 26, new HexCoord(-3, 0), 40f, 40f, 80f);
+            WorldSnapshot snap = AssetWorld(fist);
+            AssetThreatSnapshot threat = snap.Threat.Threats[0];
+            PlayerSetupData enemy = threat.Contact.Army.Owner;
+            if (!observed)
+                threat.Contact.Knowledge = ContactKnowledge.LastKnown;
+            var site = new HexCoord(9, -1);
+            var target = AttackTargetRef.For(site, enemy, AttackTargetKind.Base);
+            snap.Known.Buildings = new[] { new AiMapMemory.KnownBuilding(site, enemy, false, null, null, 0,
+                true, 0f, 8) };
+            var attack = new AttackIntent { Target = target, Phase = AttackMissionPhase.Assault,
+                PrimaryArmyId = fist.ArmyId, OperationStarted = true, AssaultStarted = true };
+            var intent = new MissionIntent { IntentKey = MissionIntentKey.ForAttack(target),
+                Kind = MissionKind.Attack, Status = IntentStatus.Active, Funding = CommitmentTier.Hard,
+                Objective = attack };
+
+            AttackMarchAssessment march = AttackMarchPolicy.Assess(snap, target, fist);
+            Assert.That(march.Verdict, Is.EqualTo(AttackMarchVerdict.DefendHome), march.Reason);
+            Assert.That(march.Pin?.Contact?.Army?.ArmyId, Is.EqualTo(99), "the verdict names its pin");
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanDefeatBeforeThreatWith(snap, threat, fist.ArmyId),
+                Is.EqualTo(observed));
+            try
+            {
+                bool kept = AttackContinuity.ResolveAttackIntent(owner, snap, intent, attack,
+                    new HashSet<int>(), out bool success);
+                Assert.That(success, Is.False);
+                if (observed)
+                    Assert.That(kept, Is.False, "the operation ends: ActiveDefence intercepts with the army");
+                else
+                {
+                    Assert.That(kept, Is.True);
+                    Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn),
+                        "an unobserved threat: the army walks home");
+                }
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        // 2026-11-18 (owner, match Tessek vs Halden T3-T10) — the only field army (100% of the
+        // strike) is a builder like any hero-led army when it is free; the 25% fist share that kept
+        // it idle is gone. Only an own stronghold that needs it home keeps it from building.
+        [Test]
+        public void EconomyBuilderGate_FreeFistBuilds_UnlessAStrongholdNeedsItHome()
+        {
+            var owner = new PlayerSetupData();
+            var fist = DefenceActor(owner, 26, new HexCoord(1, 0), 20f, 10f, 30f);
+            fist.IsMobileEconomyBuilder = true;
+            fist.HasHero = true;
+            WorldSnapshot snap = AssetWorld(fist);
+            snap.Self.FieldStrikePotential = fist.EffectiveArmyPower;
+            var site = new HexCoord(3, -1);
+            var routes = new List<EconomyBuilderRouteSnapshot>
+                { new EconomyBuilderRouteSnapshot { ArmyId = fist.ArmyId, TravelCost = 2 } };
+            string Why() => EconomyBuilderSelection.EconomyBuilderCandidateRejection(snap, site, routes,
+                fist.ArmyId, Array.Empty<MissionIntent>(), new ActorCommitments());
+
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, fist, out _), Is.EqualTo(Secondary),
+                "precondition: the threatened Base falls without the army");
+            Assert.That(Why(), Is.EqualTo("stronghold_needs_the_army"));
+
+            snap.Threat.Threats = Array.Empty<AssetThreatSnapshot>();
+            Assert.That(Why(), Does.StartWith("ranking_rejected"),
+                "no fist share: the free army passes the candidate gate");
+        }
+
         // 2026-11-13 (owner, match Sable vs Korrin) — trading an own Base for the enemy's Citadel
         // is an option: a decisive Citadel blow that lands AFTER the enemy reaches the threatened
         // Base still marches; the race stays required when the threatened stronghold is our Citadel.
@@ -604,6 +677,43 @@ namespace Game.EditorTests
             snap.Threat.Threats[0].Asset.Kind = AssetKind.Citadel;
             Assert.That(AttackMarchPolicy.Assess(snap, citadel, marcher).Verdict,
                 Is.EqualTo(AttackMarchVerdict.DefendHome), "our own Citadel still needs the race");
+        }
+
+        // 2026-11-18 (owner, match Tessek vs Halden T19-T20) — Rust Bite left the own Citadel
+        // (hold 0.04 with it) for the enemy Citadel two turns away while the enemy stood one turn
+        // out: the "with the army it holds" requirement released it, so the race was never asked.
+        // The own Citadel needs an army that can be back in time even below the hold bar; a Base
+        // keeps the old rule.
+        [Test]
+        public void AttackMarch_OwnCitadelThatFallsEvenWithTheArmy_StillCallsItBack_ABaseDoesNot()
+        {
+            var owner = new PlayerSetupData();
+            var marcher = DefenceActor(owner, 26, new HexCoord(1, 0), 2f, 1f, 3f);
+            WorldSnapshot snap = AssetWorld(marcher);
+            AssetThreatSnapshot threat = snap.Threat.Threats[0];
+            PlayerSetupData enemy = threat.Contact.Army.Owner;
+            var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
+                { ProtectedAssetHex = Secondary, ProtectedAssetKind = AssetKind.Base } };
+            Assert.That(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, Secondary,
+                    new[] { marcher }, KnownOpposition.OfEnemyArmy(snap, threat.Contact.Army.ArmyId)),
+                Is.LessThan(AiConfigV2.activeDefenceHoldWinChance), "precondition: it falls even with the army");
+
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.Null,
+                "a Base that falls anyway does not keep the army");
+
+            threat.Asset.Kind = AssetKind.Citadel;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out int eta, out bool isCitadel),
+                Is.EqualTo(Secondary), "the own Citadel keeps an army that is back in time");
+            Assert.That(isCitadel, Is.True);
+            Assert.That(eta, Is.EqualTo(2));
+            var farSite = new HexCoord(9, -1);
+            Assert.That(AttackMarchPolicy.Assess(snap, AttackTargetRef.For(farSite, enemy, AttackTargetKind.Citadel),
+                marcher).Verdict, Is.EqualTo(AttackMarchVerdict.DefendHome),
+                "a Citadel blow that cannot land first is no reason to leave");
+
+            threat.EnemyEta = 0;
+            Assert.That(AttackMarchPolicy.StrongholdNeedingArmy(snap, marcher, out _), Is.Null,
+                "an army that cannot be back in time is still not called back");
         }
 
         // 2026-10-18 (log: Brynn #21 held 90 turns next to Thane's Base (-3,1) because Thane's #22
@@ -1620,6 +1730,37 @@ namespace Game.EditorTests
             ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap), null, null, null);
             Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
             Assert.That(response.Movers, Is.Empty);
+        }
+
+        // 2026-11-18 (owner, match Tessek vs Halden) — the own Citadel's loss ends the player: a
+        // Shortage there still gathers every army that arrives before the threat on the Citadel
+        // (best effort; the Shortage and its production demand stay). A Base shortage keeps the
+        // old answer: no regroup below the hold bar.
+        [Test]
+        public void CitadelShortage_GathersEveryTimelyArmyOnTheCitadel_ABaseShortageDoesNot()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot weak = DefenceActor(owner, 7, new HexCoord(0, 0), 2f, 1f, 3f);
+            WorldSnapshot snap = AssetWorld(weak);
+
+            ActiveDefenceResponse atBase = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                AssetObjective(snap), null, null, null);
+            Assert.That(atBase.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(atBase.HoldWinChance, Is.LessThan(AiConfigV2.activeDefenceHoldWinChance));
+            Assert.That(atBase.RegroupHex, Is.Null, "a Base below the hold bar is not regrouped on");
+            Assert.That(atBase.LeadsToAsset(weak.ArmyId), Is.False);
+
+            snap.Threat.Threats[0].Asset.Kind = AssetKind.Citadel;
+            ActiveDefenceResponse atCitadel = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                AssetObjective(snap), null, null, null);
+            Assert.That(atCitadel.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage),
+                "still a shortage: the production demand stays");
+            Assert.That(atCitadel.Reason, Is.EqualTo("insufficient_defence_power"));
+            Assert.That(atCitadel.RegroupHex, Is.EqualTo(Secondary));
+            Assert.That(atCitadel.LeadsToAsset(weak.ArmyId), Is.True);
+            Assert.That(atCitadel.Movers.Select(m => m.ArmyId), Does.Contain(weak.ArmyId));
+            Assert.That(ActiveDefenceObjectiveEvaluator.ImminentResponseArmyIds(snap, new HashSet<int>()),
+                Does.Contain(weak.ArmyId), "a fresh raid does not take the army the Citadel gathers");
         }
 
         [TestCase(AttackMissionPhase.Gather)]

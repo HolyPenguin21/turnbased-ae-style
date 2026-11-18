@@ -77,9 +77,11 @@ namespace Game.Ai.V2
         // A lone hero is never a ready fighter. Only the same-hex assembly loop may nominate it,
         // and only a complete projected roster with a legal escort can pass that loop's gate.
         // The lone-hero field container shape (also the ActiveDefence bench shelter's mover).
+        // A facility operator on its hex bench (ReorgViability.IsHexBench) is no assembly host:
+        // the assembled formation would carry it away (OperatorDutyBlocksDeparture, 2026-11-18).
         internal static bool IsHeroAssemblyHost(ArmySnapshot a) =>
             a != null && a.HasHero && a.MemberCount == 1 && !a.IsGarrison && !a.IsPrison
-                && !a.IsAir && !a.IsAirfield && !a.IsSoloRecce;
+                && !a.IsAir && !a.IsAirfield && !a.IsSoloRecce && !a.OperatorDutyBlocksDeparture;
 
         // T10 — diagnostics only: why each own structural field army is NOT in EligibleArmies,
         // by the same predicates in the same order (claimed by another operation, no MP left this

@@ -15,15 +15,18 @@ namespace Game.Ai.V2
         internal readonly bool Decisive;
         internal readonly HexCoord? HomeHex;
         internal readonly string Reason;
+        // DefendHome only: the threat that calls the army home (StrongholdNeedingArmy's pin).
+        internal readonly AssetThreatSnapshot Pin;
 
         internal AttackMarchAssessment(AttackMarchVerdict verdict, float win, bool decisive,
-            HexCoord? home, string reason)
+            HexCoord? home, string reason, AssetThreatSnapshot pin = null)
         {
             Verdict = verdict;
             WinChance = win;
             Decisive = decisive;
             HomeHex = home;
             Reason = reason;
+            Pin = pin;
         }
     }
 
@@ -32,7 +35,8 @@ namespace Game.Ai.V2
     //  target, re-read every turn on the facts now known. Snapshot-pure; Continuity applies it.
     //    1. Own stronghold in danger: an honest hostile army threatens an own Citadel / Base that
     //       cannot hold without this army, this army arrives before the enemy's action and its
-    //       return makes it hold -> DefendHome. The one exception: a decisive blow at the enemy's
+    //       return makes it hold (own Citadel: its return is required even when it does not make
+    //       it hold, 2026-11-18) -> DefendHome. The one exception: a decisive blow at the enemy's
     //       Citadel (taking the Citadel ends that player) -> Continue; when the stronghold that
     //       falls is our own Citadel the blow must also land before the enemy reaches it
     //       (2026-11-13: a Base may be traded for the enemy Citadel). A threat whose army stands
@@ -154,7 +158,8 @@ namespace Game.Ai.V2
                     && (!homeIsCitadel || strikeEta == 0 || strikeEta < enemyEta);
                 if (!mateFirst)
                     return new AttackMarchAssessment(AttackMarchVerdict.DefendHome, win, decisive, home,
-                        $"own stronghold ({home.Value.Q},{home.Value.R}) falls without this army (enemy eta {enemyEta}; {DescribePin(snap, pinning)})");
+                        $"own stronghold ({home.Value.Q},{home.Value.R}) falls without this army (enemy eta {enemyEta}; {DescribePin(snap, pinning)})",
+                        pinning);
             }
             if (!observed)
                 return new AttackMarchAssessment(AttackMarchVerdict.Continue, 0f, false, null,
@@ -213,7 +218,8 @@ namespace Game.Ai.V2
         // The own Citadel / Base that an honest hostile army will take unless `army` returns: the
         // threat is imminent (activeDefenceWithdrawMaxEnemyEta), it does not hold without the army
         // (activeDefenceHoldWinChance), the army is already there or arrives before the enemy, and with the
-        // army it holds. The Citadel first, then the nearest
+        // army it holds (an own Citadel: the army is needed even when it holds without
+        // reaching that bar — its loss ends the player). The Citadel first, then the nearest
         // enemy. Null when no stronghold needs this army. `struckNow` — the hex this army strikes
         // decisively this turn: an enemy standing there is destroyed before it can move, so its
         // threat is no reason to keep the army (ActiveDefence leaves such an enemy to Attack:
@@ -295,16 +301,22 @@ namespace Game.Ai.V2
                 bool departureBreaksHold = projectedArmies?.Count > 0
                     && !ActiveDefenceObjectiveEvaluator.FallsWithout(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(
                         snap, objective, null, null, enemy), confidence);
+                bool citadel = t.Asset.Kind == AssetKind.Citadel;
                 if (!departureBreaksHold)
                 {
                     if (!army.Hex.Equals(t.Asset.Hex)
                         && !ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snap, army,
                             t.Asset.Hex, eta, out _, fastestByTurns: true)) continue;
-                    if (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, t.Asset.Hex,
-                            new[] { army }, enemy, projectedArmies: projectedArmies)
+                    // 2026-11-18 (owner, match Tessek vs Halden T19-T20) — losing the own Citadel
+                    // ends the player, so an army that can be back in time is needed there even
+                    // when it cannot lift the hold to activeDefenceHoldWinChance: leaving it is
+                    // worth something only through a decisive blow that lands first (Assess,
+                    // mateFirst). Rust Bite left a Citadel held 0.04 for a Citadel two turns away
+                    // while the enemy stood one turn out. A Base keeps the "with it, it holds" rule.
+                    if (!citadel && ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective,
+                            t.Asset.Hex, new[] { army }, enemy, projectedArmies: projectedArmies)
                             < AiConfigV2.activeDefenceHoldWinChance) continue;
                 }
-                bool citadel = t.Asset.Kind == AssetKind.Citadel;
                 if (best == null || (citadel && !bestCitadel) || (citadel == bestCitadel && eta < enemyEta))
                 {
                     best = t.Asset.Hex;

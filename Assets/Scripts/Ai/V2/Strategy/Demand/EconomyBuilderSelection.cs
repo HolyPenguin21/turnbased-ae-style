@@ -59,11 +59,11 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             float buildValue, float buildApCost, bool includeReturn,
             int? pinnedBuilderArmyId = null, bool? requiresFoundingGarrison = null,
-            ArmySnapshot projectedArmy = null, float? projectedFieldStrikePotential = null)
+            ArmySnapshot projectedArmy = null)
         {
             var ranked = RankEconomyBuilders(snap, target, routes, activeIntents, commitments,
                 buildValue, buildApCost, includeReturn, requiresFoundingGarrison,
-                projectedArmy, projectedFieldStrikePotential);
+                projectedArmy);
             if (pinnedBuilderArmyId.HasValue)
                 return ranked.FirstOrDefault(x => x.Army?.ArmyId == pinnedBuilderArmyId.Value);
             // An ordinary hero whose delivered task loses money is not a usable alternative.
@@ -77,13 +77,13 @@ namespace Game.Ai.V2
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             float buildValue, float buildApCost, bool includeReturn, bool? requiresFoundingGarrison = null,
-            ArmySnapshot projectedArmy = null, float? projectedFieldStrikePotential = null)
+            ArmySnapshot projectedArmy = null)
         {
             // Assess the EXACT candidate first: loan admission and final TaskScore must
             // price the same projected roster, outbound trip and return activations.
             // The old raw-hex penalty introduced a second incompatible delivery scorer.
             return EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments,
-                    projectedArmy, projectedFieldStrikePotential)
+                    projectedArmy)
                 .Select(x => AssessEconomyArmy(snap, target, x.route, x.army,
                     buildApCost, includeReturn, requiresFoundingGarrison))
                 .Where(x => LogIfIneligible(snap, target, x))
@@ -558,7 +558,7 @@ namespace Game.Ai.V2
             EconomyBuilderCandidates(WorldSnapshot snap, HexCoord target,
                 IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
                 IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-                ArmySnapshot projectedArmy = null, float? projectedFieldStrikePotential = null)
+                ArmySnapshot projectedArmy = null)
         {
             IReadOnlyList<EconomyBuilderRouteSnapshot> witnessed = routes
                 ?? System.Array.Empty<EconomyBuilderRouteSnapshot>();
@@ -566,8 +566,7 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot army = projectedArmy?.ArmyId == route.ArmyId ? projectedArmy
                     : snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == route.ArmyId);
-                string rejection = CandidateRejection(snap, target, route, army, activeIntents, commitments,
-                    projectedFieldStrikePotential);
+                string rejection = CandidateRejection(snap, target, route, army, activeIntents, commitments);
                 if (rejection == null)
                     yield return (route, !route.IsOnTarget ? army.EconomyDeparture ?? army : army);
                 else if (rejection != "garrison_without_extraction_route"
@@ -596,8 +595,7 @@ namespace Game.Ai.V2
         // Provisioning's diagnostic trace (EconomyBuilderCandidateRejection).
         private static string CandidateRejection(WorldSnapshot snap, HexCoord target,
             EconomyBuilderRouteSnapshot route, ArmySnapshot army,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            float? projectedFieldStrikePotential = null)
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
             if (army == null)
                 return "not_in_snapshot";
@@ -617,19 +615,20 @@ namespace Game.Ai.V2
                 return "operator_leaves_served_facility";
 
             MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
-            // Project owner, 2026-10-02: a strong field army belongs to defence/offence, not to
-            // economy. Vex's 20-power army (a hero + 2 bodies, its best of 34 field power) was
-            // released from an intercept and sent to found a base two turns before an enemy fist
-            // of 78 reached its citadel. A free army that is a real share of the player's field
-            // strike potential is never an Economy builder unless it already stands on the site or
-            // is already this site's Economy builder; the demand falls back to a hero-only builder.
+            // Project owner, 2026-10-02: Vex's 20-power army was released from an intercept and
+            // sent to found a base two turns before an enemy fist of 78 reached its citadel.
+            // 2026-11-18 (owner, match Tessek vs Halden T3-T10): the fixed 25%-of-strike share
+            // that answered it kept Halden's only field army (100% of its strike) from ever
+            // building while it stood idle (T4: 1 of 10 AP spent) and his extraction stalled for
+            // eight turns. A combat army is now a builder like any hero-led army — near the site
+            // (the delivery horizon), with nothing else to do (assignment / claim gates below) —
+            // unless an own stronghold needs it home: THE home-needs-the-army rule Attack's march
+            // reads (AttackMarchPolicy.StrongholdNeedingArmy, the own-Citadel race included).
             if (!army.IsGarrison && !route.IsOnTarget
                 && (assignment == null || assignment.Kind != MissionKind.Economy)
-                && army.IsStructuralRaidActor && snap?.Self != null
-                && (projectedFieldStrikePotential ?? snap.Self.FieldStrikePotential) > 0f
-                && army.EffectiveArmyPower >= AiConfigV2.economyBuilderFistShare
-                    * (projectedFieldStrikePotential ?? snap.Self.FieldStrikePotential))
-                return "combat_fist_not_a_builder";
+                && army.IsStructuralRaidActor
+                && AttackMarchPolicy.StrongholdNeedingArmy(snap, army, out _) != null)
+                return "stronghold_needs_the_army";
             if (assignment != null)
             {
                 if (assignment.Kind == MissionKind.Economy)

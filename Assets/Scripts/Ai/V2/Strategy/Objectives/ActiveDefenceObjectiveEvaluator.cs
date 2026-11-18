@@ -102,8 +102,16 @@ namespace Game.Ai.V2
         public readonly List<ArmySnapshot> Movers = new List<ArmySnapshot>();
         // Includes already bound regroup legs, so Continuity can retain only necessary actors.
         public readonly HashSet<int> ReinforcementArmyIds = new HashSet<int>();
-        // Regroup only: the exact currently owned protected asset hex.
+        // Regroup (and a Shortage at the own Citadel, 2026-11-18): the exact currently owned
+        // protected asset hex the ReinforcementArmyIds walk to.
         public HexCoord? RegroupHex;
+        // THE answer to "is this army sent to stand on the protected asset?" — a sufficient
+        // Regroup, or the own Citadel's best-effort regroup inside a Shortage (its loss ends the
+        // player, so every army that arrives in time stands there even below the hold bar).
+        // Read by the planner, Continuity and Provisioning alike.
+        public bool LeadsToAsset(int armyId) => RegroupHex.HasValue
+            && (Kind == ActiveDefenceResponseKind.Regroup || Kind == ActiveDefenceResponseKind.Shortage)
+            && ReinforcementArmyIds.Contains(armyId);
         public string Reason;
         // The defence estimate with the roles the fight really has (our armies DEFEND the asset,
         // with its terrain + structure defence): the chance the force that stands at the asset holds
@@ -738,8 +746,19 @@ namespace Game.Ai.V2
             }
             response.Kind = ActiveDefenceResponseKind.Shortage;
             response.Reason = "insufficient_defence_power";
+            // 2026-11-18 (owner, match Tessek vs Halden) — the own Citadel's loss ends the player:
+            // a shortage there still gathers every army that arrives before the threat on the
+            // Citadel (best effort, the Shortage stays and keeps its production demand), instead
+            // of sending the threatened ones to another Base that outlives the game by nothing.
+            if (objective.Target.ProtectedAssetKind == AssetKind.Citadel && selected.Count > 0)
+            {
+                response.RegroupHex = asset;
+                response.ReinforcementArmyIds.UnionWith(selected.Select(m => m.ArmyId));
+                response.Movers.AddRange(selected.Where(m => withdrawing == null || !withdrawing.Contains(m.ArmyId)));
+            }
             // A shortage at one base is not authority to evacuate every free field army.
             response.Movers.AddRange(usable.Where(a => (withdrawing == null || !withdrawing.Contains(a.ArmyId))
+                && !response.ReinforcementArmyIds.Contains(a.ArmyId)
                 && !snap.Self.BaseHexes.Contains(a.Hex) && NeedsSafeWithdrawal(snap, a)));
             return TraceResponse(snap, objective, response, committed);
         }
@@ -1090,6 +1109,22 @@ namespace Game.Ai.V2
             return defeaterArmyId >= 0;
         }
 
+        // 2026-11-18 (owner, match Tessek vs Halden) — may an Attack army that its own stronghold
+        // calls home be handed to ActiveDefence instead: does THIS army destroy the threat before
+        // it reaches the stronghold? The same plan, win gate and turn-order timing as
+        // CanDefeatBeforeThreat, asked of this one army (every other army excluded), whatever
+        // operation holds it now. Read by AttackContinuity's handover. (Raid releases through
+        // ImminentResponseArmyIds, which also lists Regroup movers; an Attack army called home
+        // already walks there on its Hard RecoveryReturn, so only an intercept takes it over.)
+        internal static bool CanDefeatBeforeThreatWith(WorldSnapshot snap, AssetThreatSnapshot t, int armyId)
+        {
+            if (snap?.Self?.Armies == null)
+                return false;
+            var others = new HashSet<int>(snap.Self.Armies.Where(a => a != null && a.ArmyId != armyId)
+                .Select(a => a.ArmyId));
+            return CanDefeatBeforeThreat(snap, t, others, out int defeater) && defeater == armyId;
+        }
+
         private static int FindDefeater(WorldSnapshot snap, AssetThreatSnapshot t, EnemyContactSnapshot c,
             ISet<int> excluded)
         {
@@ -1167,8 +1202,8 @@ namespace Game.Ai.V2
                     required.UnionWith(response.Plan.MergeArmyIds);
                     required.UnionWith(response.Plan.Transfers.Select(t => t.DonorArmyId));
                 }
-                else if (response?.Kind == ActiveDefenceResponseKind.Regroup)
-                    required.UnionWith(response.ReinforcementArmyIds);
+                else if (response != null && response.RegroupHex.HasValue)
+                    required.UnionWith(response.ReinforcementArmyIds.Where(response.LeadsToAsset));
             }
             return required;
         }

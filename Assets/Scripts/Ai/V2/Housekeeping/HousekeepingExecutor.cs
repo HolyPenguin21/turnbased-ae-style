@@ -302,10 +302,25 @@ namespace Game.Ai.V2
             if (!from.CanLeaveWithoutOvercrowding(unit)) { why = "source would overcrowd"; return false; }
             if (!KeepsOperationMovement(player, turn, to, new[] { unit }, commitments, out why))
                 return false;
-            if (from.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, from, unit, allowCitadelEmergency: false))
+            if (from.IsGarrison && IsHexBench(player, turn, to, unit, commitments))
+            {
+                // The hero stays on its facility's hex (ReorgViability.IsHexBench): only the
+                // garrison's "never the literal last member" rule applies.
+                if (from.Members.Count <= 1) { why = "garrison keeps a member"; return false; }
+            }
+            else if (from.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, from, unit, allowCitadelEmergency: false))
             { why = "garrison safety floor"; return false; }
             return true;
         }
+
+        // Live twin of ReorgViability.IsHexBench: a hero joins a free ground field container on the
+        // same hex (CommonPreflight) that holds heroes only — it keeps serving that hex.
+        private static bool IsHexBench(PlayerSetupData player, int turn, ArmyData to, UnitData unit,
+            ActorCommitments commitments) =>
+            unit != null && unit.IsHero && to != null && !to.IsGarrison && !to.IsPrison
+            && !to.IsCarrierContainer && !AviationRules.IsAirfield(to) && !AviationRules.IsAirArmy(to)
+            && to.Members.All(m => m != null && m.IsHero)
+            && ArmyReorgAnalyzer.MutationContractFor(player, turn, to, commitments) == null;
 
         // Live twin of the planner's TrySwap rosterExchange: `armyA` is a claimed Attack preparation
         // host whose contract releases `unitA` (a body its target roster does not contain) and

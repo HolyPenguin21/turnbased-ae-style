@@ -107,16 +107,10 @@ namespace Game.Ai.V2
                 if (ordinary != null && !EconomyBuilderSelection.EconomyBuilderIsSupport(ordinary))
                     return null;
             }
-            if (choice != null || prepared == null)
-                return choice;
-            // This actor was legitimately prepared FOR Economy, not taken from an existing fist.
-            // Exempt only its new fist classification; all other gates and the real grant remain.
-            if (EconomyBuilderSelection.EconomyBuilderCandidateRejection(after, demand.TargetHex.Value,
-                    builderRoutes, builderArmyId, activeIntents, commitments) != "combat_fist_not_a_builder")
-                return null;
-            choice = EconomyBuilderSelection.AssessEconomyArmy(after, demand.TargetHex.Value, builderRoutes[0],
-                prepared, demand.EconomyBuildApCost, includeReturn: !foundBase);
-            return choice.Suitability != EconomyBuilderSelection.EconomyArmySuitability.Ineligible ? choice : null;
+            // 2026-11-18 — the fist-share exemption for an actor prepared FOR Economy is gone with
+            // the share itself (EconomyBuilderSelection.CandidateRejection): the prepared actor
+            // passes the ordinary candidate gates like any builder.
+            return choice;
         }
 
         internal static float DeliveredCapabilityAmount(AxisDemand demand,
