@@ -882,6 +882,43 @@ namespace Game.EditorTests
                     Is.True, "no Support hero rides in a fighting formation");
         }
 
+        // 2026-11-18 (owner, match Kryll vs Tessek T31) — Kryll held Ashen Base (0,4) with a full
+        // garrison, Ironclad (Dorian Kesh, 3/7) and two heroless 2-body armies; each lost to Dust
+        // Dogs alone, so the first/second contact rows never moved and the folds were refused. The
+        // attacker fights every formation in turn and keeps its wounds: the whole-hex hold is what a
+        // fold improves, so the heroless bodies join the hero army that has room for them.
+        [Test]
+        public void NearThreat_HeroArmyWithRoom_TakesTheHeroless2BodyArmies_ForTheWholeHexHold()
+        {
+            System.Func<ReorgUnit> F = () => RFighter(4f, 2f, 4f);
+            var garrisonBodies = new[] { F(), F(), F(), F() };
+            ReorgUnit dorian = RHero(7, support: false);
+            var ironcladBodies = new[] { F(), F() };
+            var locusts = new[] { F(), F() };
+            var sand = new[] { F(), F() };
+            ReorgContainer garrison = RGarrison(1, garrisonBodies);
+            ReorgContainer ironclad = RFree(2, new[] { dorian }.Concat(ironcladBodies).ToArray());
+            ReorgContainer locustsArmy = RFree(3, locusts);
+            ReorgContainer sandArmy = RFree(4, sand);
+            var group = new LocalForceGroup
+            {
+                Containers = new List<ReorgContainer> { garrison, ironclad, locustsArmy, sandArmy },
+            };
+            group.ThreatBenchmarks.Add(new ReorgThreatBenchmark
+            {
+                ArmyId = 21, EtaToGroup = 1, EtaToNearestBase = 1,
+                Members = Enumerable.Range(0, 5).Select(_ =>
+                    new Game.Combat.WorthIt.DefenderProfile(2f, false, attack: 6f, hitPoints: 5f)).ToArray(),
+                TargetableUnitKeys = new HashSet<int>(garrisonBodies.Concat(ironcladBodies)
+                    .Concat(locusts).Concat(sand).Select(u => u.Key)),
+            });
+
+            ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
+
+            Assert.That(plan.ExpectedMembership[2].Count(k => k != dorian.Key), Is.EqualTo(6),
+                "Ironclad takes both heroless pairs: " + plan.DebugSummary());
+        }
+
         // 2026-10-15 (user decision) — playtest: Aldric and Dorian stood as lone free heroes on
         // Draven's Base (-1,3) beside its garrison while Sentinels were one turn away. A lone hero
         // stays a bench in peace; under a near threat it shelters in the local garrison.

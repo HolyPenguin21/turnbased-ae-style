@@ -10,12 +10,17 @@ namespace Game.Ai.V2
         private readonly struct ThreatContactRow
         {
             public readonly int ThreatArmyId;
+            // The whole hex against this attacker: every contactable formation in the rules' fight
+            // order, the attacker's wounds carried from one battle to the next.
+            public readonly float HexReadiness;
             public readonly float FirstReadiness;
             public readonly float SecondReadiness;
 
-            public ThreatContactRow(int threatArmyId, float firstReadiness, float secondReadiness)
+            public ThreatContactRow(int threatArmyId, float hexReadiness, float firstReadiness,
+                float secondReadiness)
             {
                 ThreatArmyId = threatArmyId;
+                HexReadiness = hexReadiness;
                 FirstReadiness = firstReadiness;
                 SecondReadiness = secondReadiness;
             }
@@ -179,8 +184,9 @@ namespace Game.Ai.V2
 
         // Threat-first defensive profile. For each concrete enemy attacker, reproduce
         // BattleInitiator's observer-specific contact ordering with its canonical comparator.
-        // The plan then compares the worst threat's first defender, that threat's second line,
-        // and only then the next threat. No position coefficient or per-container max is used.
+        // The plan then compares the worst threat's whole-hex hold (HexReadiness), its first
+        // defender, its second line, and only then the next threat. No position coefficient or
+        // per-container max is used.
         private static IReadOnlyList<float> BuildThreatContactReadiness(VState state)
         {
             var rows = new List<ThreatContactRow>();
@@ -233,13 +239,16 @@ namespace Game.Ai.V2
                 float second = ranked.Count > 1
                     ? ContactReadiness(state, threat, ranked[1].defenders, ranked[1].commander)
                     : NoDefenderReadiness(threat.EtaToGroup);
-                rows.Add(new ThreatContactRow(threat.ArmyId, first, second));
+                rows.Add(new ThreatContactRow(threat.ArmyId, HexReadiness(state, threat, ranked),
+                    first, second));
             }
 
             // Lowest readiness is the most dangerous enemy contact. Stable army id is ordering
             // only; it never becomes strategic utility.
             rows.Sort((a, b) =>
             {
+                if (a.HexReadiness < b.HexReadiness - FloatEps) return -1;
+                if (a.HexReadiness > b.HexReadiness + FloatEps) return 1;
                 if (a.FirstReadiness < b.FirstReadiness - FloatEps) return -1;
                 if (a.FirstReadiness > b.FirstReadiness + FloatEps) return 1;
                 if (a.SecondReadiness < b.SecondReadiness - FloatEps) return -1;
@@ -247,13 +256,32 @@ namespace Game.Ai.V2
                 return a.ThreatArmyId.CompareTo(b.ThreatArmyId);
             });
 
-            var profile = new List<float>(rows.Count * 2);
+            var profile = new List<float>(rows.Count * 3);
             foreach (ThreatContactRow row in rows)
             {
+                profile.Add(row.HexReadiness);
                 profile.Add(row.FirstReadiness);
                 profile.Add(row.SecondReadiness);
             }
             return profile;
+        }
+
+        // 2026-11-18 (owner, match Kryll vs Tessek T31) — the hex is held or lost as a whole: the
+        // attacker fights every formation in turn and carries its wounds on (BattleInitiator,
+        // WorthIt.EstimateHexControl — the one hex-hold model ActiveDefence's HoldChanceAtAsset
+        // reads too). The first/second contact rows alone never saw the third and later
+        // formations, so folding two heroless 2-body armies into a 3/7 hero army changed nothing
+        // there and was refused (Kryll (0,4): hold 0.32 as it stood, 0.92 folded; lost all six).
+        private static float HexReadiness(VState state, ReorgThreatBenchmark threat,
+            List<(int containerId, WorthIt.BattleEstimate selection, List<WorthIt.DefenderProfile> defenders,
+                WorthIt.SideCommander commander)> ranked)
+        {
+            var armies = new List<WorthIt.DefendingArmy>(ranked.Count);
+            foreach (var r in ranked)
+                armies.Add(new WorthIt.DefendingArmy(r.defenders, r.commander, armyId: r.containerId));
+            float attackerWins = WorthIt.EstimateHexControl(threat.Members, threat.Commander, armies,
+                state.HexDefenseBonus, environment: state.Environment).WinChance;
+            return 1f - attackerWins / (1f + Math.Max(0, threat.EtaToGroup));
         }
 
         private static float ContactReadiness(VState state, ReorgThreatBenchmark threat,

@@ -40,7 +40,8 @@ namespace Game.Ai.V2
             // and above generic strength/composition.
             public readonly int FormationDefect;
             // Defensive-readiness profile. With deployed enemies it is threat-first:
-            // worst threat's first real contact defender, that threat's second line, then the next
+            // worst threat's whole-hex hold (every formation in fight order, wounds carried —
+            // WorthIt.EstimateHexControl), its first real contact defender, its second line, then the next
             // threat, each using group-local ETA. Without a benchmark it falls back to the
             // strongest-first canonical AiPower formation profile. Higher is always better.
             public readonly IReadOnlyList<float> FormationStrengths;
@@ -94,7 +95,7 @@ namespace Game.Ai.V2
                     if (av < bv - FloatEps) return 1;
                 }
 
-                // Threat-backed profiles have a fixed two entries per contactable threat;
+                // Threat-backed profiles have a fixed three entries per contactable threat;
                 // the variable-length case is the no-threat AiPower fallback. There, a trailing
                 // weaker formation remains neutral so an empty reusable shell never creates
                 // pressure to seed itself.
