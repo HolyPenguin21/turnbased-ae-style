@@ -405,8 +405,9 @@ namespace Game.EditorTests
                 // Re-recorded 2026-10-30: the 2026-10-08 value never matched its own revision
                 // (that code gave BFF544B7...), and the defensive-Fate retry rule (e8778221,
                 // 2026-10-20) changed the simulation deliberately. Re-record only for an intended
-                // combat-rule change.
-                Assert.That(actual, Is.EqualTo("2B6723C199EBA2CE8524B5E2A042D58823448B491233C51885BABAE947DA29AC"));
+                // combat-rule change. Re-recorded 2026-11-18: rosters are listed in canonical body order
+                // (WorthIt.CanonicalBodyOrder), which changes the roster seed of unsorted inputs.
+                Assert.That(actual, Is.EqualTo("CFA7D514455722D66EF953F911EFFF6162B54D27C14F1EF5D196EA96E826B54A"));
             }
         }
 

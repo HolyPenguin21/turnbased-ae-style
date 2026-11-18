@@ -62,6 +62,33 @@ namespace Game.EditorTests
                 Is.EqualTo(expected.WinChance), "capture-free fights share the same weather boundary");
         }
 
+        // Match 2026-11-18 (Halden T16): the ActiveDefence hold swung 0.20/0.04/0.24 inside one turn.
+        // The forecast has no positions, so listing the same bodies in another order must not re-roll it.
+        [Test]
+        public void HexControl_DoesNotDependOnTheListingOrderOfTheBodies()
+        {
+            var attackers = new List<WorthIt.DefenderProfile>
+                { Body(4, 2, 6), Body(4, 2, 6), Body(3, 1, 5), Body(4, 3, 6), Body(3, 2, 5), Hero(6) };
+            var bodies = new List<WorthIt.DefenderProfile>
+                { Body(3, 2, 5), Body(3, 3, 5), Body(2, 3, 4), Body(3, 2, 4), Body(4, 1, 6), Body(2, 2, 4) };
+            float reference = float.NaN;
+            var rnd = new System.Random(3);
+            for (int k = 0; k < 12; k++)
+            {
+                var order = new List<WorthIt.DefenderProfile>(bodies);
+                for (int i = order.Count - 1; i > 0; i--)
+                {
+                    int j = rnd.Next(i + 1);
+                    (order[i], order[j]) = (order[j], order[i]);
+                }
+                order.Add(Hero(7));
+                var single = new[] { new WorthIt.DefendingArmy(order, default, 1f) };
+                float win = WorthIt.EstimateHexControl(attackers, default, single, 1f).WinChance;
+                if (k == 0) reference = win;
+                Assert.That(win, Is.EqualTo(reference), "permutation " + k);
+            }
+        }
+
         [Test]
         public void ABackRowHeroIsNotADecoyForTheEnemyAttacks()
         {

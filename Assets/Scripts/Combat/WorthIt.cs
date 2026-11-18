@@ -95,19 +95,53 @@ namespace Game.Combat
 
         // Most forecast inputs are already tactical rosters without pending summons.
         // Use them directly during this synchronous read and leave the authored summon path intact.
+        // The result is in canonical body order (CanonicalBodyOrder).
         private static IReadOnlyCollection<DefenderProfile> PrepareBattleRoster(IReadOnlyCollection<DefenderProfile> source)
         {
             if (source == null || source.Count == 0) return System.Array.Empty<DefenderProfile>();
-            if (!(source is IReadOnlyList<DefenderProfile> indexed)) return WithBattleSummons(source);
+            if (!(source is IReadOnlyList<DefenderProfile> indexed)) return CanonicalBodyOrder(WithBattleSummons(source));
             bool pending = false, alreadySummoned = false;
             for (int i = 0; i < indexed.Count; i++)
             {
                 DefenderProfile profile = indexed[i];
-                if (!profile.IsGroundCombatant && !profile.IsHero) return WithBattleSummons(source);
+                if (!profile.IsGroundCombatant && !profile.IsHero) return CanonicalBodyOrder(WithBattleSummons(source));
                 alreadySummoned |= profile.IsSummoned;
                 pending |= profile.Abilities?.Contains(UnitAbilities.RaiseTheRots) == true;
             }
-            return pending && !alreadySummoned ? WithBattleSummons(source) : source;
+            return CanonicalBodyOrder(pending && !alreadySummoned ? WithBattleSummons(source) : indexed);
+        }
+
+        // The forecast has no positions: the same bodies must give the same estimate however the
+        // caller happens to list them. The roster seed and the simulation's tie-breaks both read list
+        // order, so a pure reordering (a unit joining an army, a reorg) re-rolled the 25 trials
+        // (match 2026-11-18: hold swung 0.72..1.00 on a permutation alone). Bodies are put in profile-hash
+        // order; heroes keep their slots, so the first hero (the commander) is unchanged. A roster that
+        // is already canonical is returned as is; only an unsorted one costs one copy.
+        private static IReadOnlyCollection<DefenderProfile> CanonicalBodyOrder(IReadOnlyList<DefenderProfile> roster)
+        {
+            int n = roster.Count;
+            if (n < 2) return roster;
+            bool sorted = true;
+            int previous = 0, bodies = 0;
+            for (int i = 0; i < n && sorted; i++)
+            {
+                if (roster[i].IsHero) continue;
+                int key = AccumulateProfileHash(17, roster[i]);
+                if (bodies++ > 0 && key < previous) sorted = false;
+                previous = key;
+            }
+            if (sorted || bodies < 2) return roster;
+            var keyed = new List<(int key, int index, DefenderProfile profile)>(bodies);
+            for (int i = 0; i < n; i++)
+                if (!roster[i].IsHero)
+                    keyed.Add((AccumulateProfileHash(17, roster[i]), i, roster[i]));
+            var slots = new List<int>(bodies);
+            foreach (var k in keyed) slots.Add(k.index);
+            keyed.Sort((x, y) => x.key != y.key ? x.key.CompareTo(y.key) : x.index.CompareTo(y.index));
+            var result = new DefenderProfile[n];
+            for (int i = 0; i < n; i++) result[i] = roster[i];
+            for (int j = 0; j < slots.Count; j++) result[slots[j]] = keyed[j].profile;
+            return result;
         }
 
         private static bool AnyGroundCombatant(IEnumerable<DefenderProfile> units)

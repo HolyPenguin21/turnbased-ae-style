@@ -147,7 +147,9 @@ namespace Game.EditorTests
             defenders[0] = second;
             defenders[1] = first;
             var reordered = Keys();
-            Assert.That(WorthIt.Estimate(attackers, defenders, 0f), Is.Not.EqualTo(before));
+            // The forecast has no positions: listing the same bodies in another order is the same estimate
+            // (WorthIt.CanonicalBodyOrder); only the verdict KEYS below keep the actual opposition order.
+            Assert.That(WorthIt.Estimate(attackers, defenders, 0f), Is.EqualTo(before));
             Assert.That(reordered.Full, Is.Not.EqualTo(initial.Full));
             Assert.That(reordered.Core, Is.Not.EqualTo(initial.Core));
 
