@@ -14,7 +14,6 @@ using Object = UnityEngine.Object;
 namespace Game.EditorTests
 {
     // Native camera/input tests: run in Unity, never replace projection with a managed stub.
-    [NonParallelizable]
     public sealed class HoverCacheUnityTests
     {
         private GameObject root;
