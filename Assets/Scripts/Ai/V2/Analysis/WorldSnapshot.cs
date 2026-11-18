@@ -145,9 +145,10 @@ namespace Game.Ai.V2
         public bool HasPreparationStep;
         public bool ResearchPreparationViable;
         public bool ProductionPreparationViable;
-        // The base where each mode's preparation currently stands (DevelopmentOpportunityEvaluator.
-        // SelectedPreparationSite, derived from the world, never stored): its operator is a duty
-        // there. Null while nothing is prepared or a facility of the mode already exists.
+        // The base where each mode's preparation currently binds its operator (DevelopmentOpportunityEvaluator.
+        // PreparationDutySite, derived from the world, never stored): its operator is a duty there.
+        // Null while nothing is prepared, the mode's Facility is only in the deck, or a facility of
+        // the mode already exists.
         public HexCoord? ResearchPreparationSite;
         public HexCoord? ProductionPreparationSite;
         public HexCoord? PreparationSiteFor(ResearchProductionMode mode) =>
