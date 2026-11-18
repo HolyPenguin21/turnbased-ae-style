@@ -93,6 +93,34 @@ namespace Game.Combat
             return roster;
         }
 
+        // Most forecast inputs are already tactical rosters without pending summons.
+        // Use them directly during this synchronous read and leave the authored summon path intact.
+        private static IReadOnlyCollection<DefenderProfile> PrepareBattleRoster(IReadOnlyCollection<DefenderProfile> source)
+        {
+            if (source == null || source.Count == 0) return System.Array.Empty<DefenderProfile>();
+            if (!(source is IReadOnlyList<DefenderProfile> indexed)) return WithBattleSummons(source);
+            bool pending = false, alreadySummoned = false;
+            for (int i = 0; i < indexed.Count; i++)
+            {
+                DefenderProfile profile = indexed[i];
+                if (!profile.IsGroundCombatant && !profile.IsHero) return WithBattleSummons(source);
+                alreadySummoned |= profile.IsSummoned;
+                pending |= profile.Abilities?.Contains(UnitAbilities.RaiseTheRots) == true;
+            }
+            return pending && !alreadySummoned ? WithBattleSummons(source) : source;
+        }
+
+        private static bool AnyGroundCombatant(IEnumerable<DefenderProfile> units)
+        {
+            if (units is IReadOnlyList<DefenderProfile> indexed)
+            {
+                for (int i = 0; i < indexed.Count; i++)
+                    if (indexed[i].IsGroundCombatant) return true;
+                return false;
+            }
+            return units.Any(p => p.IsGroundCombatant);
+        }
+
         private static DefenderProfile ProfileFromCard(CardDefinition card) =>
             new DefenderProfile(card.defenseRating,
                 card.grantedAbilities != null && card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
@@ -238,10 +266,10 @@ namespace Game.Combat
             SideCommander attackerCommander = default, SideCommander defenderCommander = default,
             AbilityMagnitudes? magnitudes = null, BattleEnvironment environment = default)
         {
-            attackerUnits = WithBattleSummons(attackerUnits);
-            defenderUnits = WithBattleSummons(defenderUnits);
+            attackerUnits = PrepareBattleRoster(attackerUnits);
+            defenderUnits = PrepareBattleRoster(defenderUnits);
             hexDefenseBonus = environment.HexDefense(hexDefenseBonus);
-            if (!defenderUnits.Any(p => p.IsGroundCombatant))
+            if (!AnyGroundCombatant(defenderUnits))
                 return new BattleEstimate(1f, 1f, 0f);
 
             if (!attackerUnits.Any(p => !p.IsHero))
@@ -276,7 +304,9 @@ namespace Game.Combat
         // is a Capture/Kill target only: it can escape, but it never damages the hunter
         // (BattleEngine.ApplyCaptureKillOutcome).
         public static bool FieldsGroundCombatant(IEnumerable<DefenderProfile> units) =>
-            units != null && WithBattleSummons(units).Any(p => p.IsGroundCombatant);
+            units != null && (units is IReadOnlyCollection<DefenderProfile> roster
+                ? AnyGroundCombatant(roster) || AnyGroundCombatant(PrepareBattleRoster(roster))
+                : AnyGroundCombatant(WithBattleSummons(units)));
 
         // Hero-only contacts have no tactical actors, but their Capture/Kill challenge is not a
         // guaranteed success. Use the canonical pools, Fate policy/order and outcome resolver.
@@ -348,10 +378,15 @@ namespace Game.Combat
             // The opposition-based AI estimate only: the flat Estimate overloads stay as they are, since
             // BattleInitiator.FindEnemyAt ranks real defenders through them.
             // Judged after summons exactly like the fights filter, so a summoning hero is never both.
-            List<DefendingArmy> heroOnly = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
-                .Where(a => a.Units != null && a.Units.Any(p => p.IsHero)
-                    && !FieldsGroundCombatant(a.Units)).ToList();
-            if (heroOnly.Count == 0)
+            List<DefendingArmy> heroOnly = null;
+            if (defendingArmies != null)
+                for (int i = 0; i < defendingArmies.Count; i++)
+                {
+                    var army = defendingArmies[i];
+                    if (army.Units != null && army.Units.Any(p => p.IsHero) && !FieldsGroundCombatant(army.Units))
+                        (heroOnly ??= new List<DefendingArmy>()).Add(army);
+                }
+            if (heroOnly == null)
                 return fights;
             BattleEstimate capture = EstimateCaptureKill(attackerUnits, attackerCommander, heroOnly);
             return new BattleEstimate(fights.WinChance * capture.WinChance,

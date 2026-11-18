@@ -229,6 +229,9 @@ namespace Game.Map
             foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
                 if (resident.Owner == building.Owner && BattleInitiator.DefendsBuildingAgainst(resident, mover))
                     return;
+            // Destruction and its movement consequence are one committed action. Keep prior
+            // witnesses until both are final, including callers without an outer mutation.
+            using var mutation = VisionSystem.BeginMutation();
             bool destroys = !building.IsBase;
             CaptureOrDestroy(building, mover, hexSelection);
             // Destroying a structure is the army's strategic action for this turn, as starting a

@@ -265,7 +265,7 @@ namespace Game.Ai.V2
                 After(EquipmentStat.Initiative), After(EquipmentStat.ActivationApCost), After(EquipmentStat.Fate));
 
             List<WorthIt.DefendingArmy> opposition;
-            List<WorthIt.DefenderProfile> targets;
+            IReadOnlyList<WorthIt.DefenderProfile> targets;
             using (new Game.Core.ProfileScope("AI/Equip.Targets"))
             {
                 opposition = EquipmentOpposition(snap, purpose);
@@ -899,7 +899,7 @@ namespace Game.Ai.V2
             private readonly EquipmentTargetMemo _outer;
             private readonly MaterializationReservation _reservation;
             internal static MaterializationReservation Reservation => s_current?._reservation;
-            private readonly Dictionary<(WorldSnapshot, MissionIntent), List<WorthIt.DefenderProfile>> _sets = new();
+            private readonly Dictionary<(WorldSnapshot, MissionIntent), IReadOnlyList<WorthIt.DefenderProfile>> _sets = new();
 
             // Opposition and the owning purpose depend only on snapshot + mission / recipient inside
             // one Enumerate. Consumers treat the cached list as read-only.
@@ -1029,24 +1029,24 @@ namespace Game.Ai.V2
             }
 
             internal static bool TryGet(WorldSnapshot snap, MissionIntent purpose,
-                out List<WorthIt.DefenderProfile> targets)
+                out IReadOnlyList<WorthIt.DefenderProfile> targets)
             {
                 targets = null;
                 return s_current != null && s_current._sets.TryGetValue((snap, purpose), out targets);
             }
 
             internal static void Store(WorldSnapshot snap, MissionIntent purpose,
-                List<WorthIt.DefenderProfile> targets)
+                IReadOnlyList<WorthIt.DefenderProfile> targets)
             {
                 if (s_current != null) s_current._sets[(snap, purpose)] = targets;
             }
 
             // Armoured / bio / air / mechanical shares of one target list: the list is shared by every pair priced
             // against the same snapshot + purpose, so it is scanned once (reference-keyed).
-            private readonly Dictionary<List<WorthIt.DefenderProfile>, (float Armored, float Bio, float Air, float Mechanical)> _shares
+            private readonly Dictionary<IReadOnlyList<WorthIt.DefenderProfile>, (float Armored, float Bio, float Air, float Mechanical)> _shares
                 = new();
 
-            internal static (float Armored, float Bio, float Air, float Mechanical) Shares(List<WorthIt.DefenderProfile> targets)
+            internal static (float Armored, float Bio, float Air, float Mechanical) Shares(IReadOnlyList<WorthIt.DefenderProfile> targets)
             {
                 if (s_current != null && s_current._shares.TryGetValue(targets, out var hit))
                     return hit;
@@ -1063,13 +1063,13 @@ namespace Game.Ai.V2
             }
         }
 
-        private static List<WorthIt.DefenderProfile> EquipmentTargetsFor(WorldSnapshot snap,
+        private static IReadOnlyList<WorthIt.DefenderProfile> EquipmentTargetsFor(WorldSnapshot snap,
             MissionIntent purpose)
         {
             if (EquipmentTargetMemo.TryGet(snap, purpose, out var cached))
                 return cached;
-            List<WorthIt.DefenderProfile> targets = SortTargets(
-                EquipmentTargets(snap, EquipmentOpposition(snap, purpose)));
+            IReadOnlyList<WorthIt.DefenderProfile> targets = SortTargets(
+                EquipmentTargets(snap, EquipmentOpposition(snap, purpose))).AsReadOnly();
             EquipmentTargetMemo.Store(snap, purpose, targets);
             return targets;
         }

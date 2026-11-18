@@ -76,8 +76,7 @@ namespace Game.Ai.V2
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
             if (mk?.AllHexes == null)
                 return false;
-            var onMap = mk.OnMapSet();
-            if (!onMap.Contains(focus))
+            if (!mk.IsOnMap(focus))
                 return false;
             if (mk.VisitedHexSet?.Contains(focus) == true && !IsKnownUnguardedEvent(snap, focus))
                 return false;
@@ -93,8 +92,7 @@ namespace Game.Ai.V2
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
             if (mk?.AllHexes == null)
                 return false;
-            var onMap = mk.OnMapSet();
-            if (!onMap.Contains(focus))
+            if (!mk.IsOnMap(focus))
                 return false;
             return !mk.IsBlockedForScout(focus, stealthCapable: false);
         }
@@ -107,8 +105,7 @@ namespace Game.Ai.V2
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
             if (mk?.AllHexes == null)
                 return false;
-            var onMap = mk.OnMapSet();
-            return onMap.Contains(focus) && !mk.IsBlockedForScout(focus, stealthCapable: true);
+            return mk.IsOnMap(focus) && !mk.IsBlockedForScout(focus, stealthCapable: true);
         }
 
         public static int ExploreStillOpen(WorldSnapshot snap, HexCoord focus)
@@ -117,11 +114,10 @@ namespace Game.Ai.V2
                 return 0;
 
             MapKnowledgeSnapshot mk = snap.MapKnowledge;
-            var onMap = mk.OnMapSet();
             int fresh = 0;
             foreach (HexCoord n in HexGridMath.Neighbors(focus))
             {
-                if (!onMap.Contains(n))
+                if (!mk.IsOnMap(n))
                     continue;
                 if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(n))
                     continue;

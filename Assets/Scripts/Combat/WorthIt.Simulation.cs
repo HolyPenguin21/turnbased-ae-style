@@ -20,7 +20,7 @@ namespace Game.Combat
         // not consume the game's RNG stream). A side without a commander adds nothing to the
         // hash, so commander-less matchups keep exactly the seeds they always had.
         private static int BuildRosterSeed(IReadOnlyCollection<DefenderProfile> attackerUnits,
-            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus,
+            IEnumerable<DefenderProfile> enemyUnits, float hexDefenseBonus,
             SideCommander attackerCommander = default, SideCommander defenderCommander = default)
         {
             unchecked
@@ -333,58 +333,71 @@ namespace Game.Combat
             if (defendingArmies?.Any(a => a.Units?.Count > 0) == true
                 && !FieldsGroundCombatant(attackerUnits))
                 return new BattleEstimate(0f, 0f, 0f);
-            var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
-                .Select(a => a.With(WithBattleSummons(a.Units), a.Commander,
-                    a.DefenseBonusOverride, a.BuildingDefenseBonus))
-                .Where(a => a.Units.Any(p => p.IsGroundCombatant))
-                .ToList();
-            // One army: the public single estimate applies the weather itself (and its HexDefense
-            // turns any building/Disruption arithmetic into 0 in a storm).
-            if (armies.Count <= 1)
-                return armies.Count == 0
-                    ? new BattleEstimate(1f, 1f, 0f)
-                    : Estimate(attackerUnits, armies[0].Units,
-                        armies[0].DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander), attackerCommander,
-                        armies[0].Commander, magnitudes, environment);
+            List<DefendingArmy> armies = null;
+            DefendingArmy first = default;
+            bool found = false;
+            if (defendingArmies != null)
+                for (int i = 0; i < defendingArmies.Count; i++)
+                {
+                    var army = defendingArmies[i];
+                    var roster = PrepareBattleRoster(army.Units);
+                    if (!AnyGroundCombatant(roster)) continue;
+                    army = army.With(roster, army.Commander,
+                        army.DefenseBonusOverride, army.BuildingDefenseBonus);
+                    if (!found) { first = army; found = true; }
+                    else
+                    {
+                        armies ??= new List<DefendingArmy>(defendingArmies.Count) { first };
+                        armies.Add(army);
+                    }
+                }
+            if (armies == null)
+                return !found ? new BattleEstimate(1f, 1f, 0f)
+                    : Estimate(attackerUnits, first.Units,
+                        first.DefenseBonus(hexDefenseBonus, attackerUnits, attackerCommander),
+                        attackerCommander, first.Commander, magnitudes, environment);
 
             bool storm = environment.InSandstorm;
-            attackerUnits = WithBattleSummons(attackerUnits);
-            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander, storm);
-            if (!baseline.Any(u => !u.IsHero))
+            attackerUnits = PrepareBattleRoster(attackerUnits);
+            if (!attackerUnits.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
-            List<DefendingArmy> order = UnderWeather(FightOrder(attackerUnits, attackerCommander, armies,
-                hexDefenseBonus, magnitudes, environment), environment).ToList();
-
-            int seed = BuildRosterSeed(attackerUnits,
-                order.SelectMany(a => a.Units).ToList(), hexDefenseBonus, attackerCommander, default);
+            var order = UnderWeather(FightOrder(attackerUnits, attackerCommander, armies,
+                hexDefenseBonus, magnitudes, environment), environment);
+            int seed = BuildRosterSeed(attackerUnits, order.SelectMany(a => a.Units),
+                hexDefenseBonus, attackerCommander, default);
             foreach (DefendingArmy a in order)
                 if (a.Commander.Present)
                     seed = unchecked((seed * 31 + a.Commander.Initiative) * 31 + a.Commander.Fate);
             AbilityMagnitudes m = magnitudes ?? AbilityMagnitudes.Default;
-            // Each defending army converted once; every trial fights a fresh copy (same values the
-            // per-trial conversion produced).
-            var defenderTemplates = order
-                .Select(a => ToBattleUnits(a.Units, a.DefenseBonus(hexDefenseBonus), a.Commander.Initiative, a.Commander, storm))
-                .ToList();
             return CachedEstimate(2, seed, m,
                 buf =>
                 {
                     AppendKey(buf, attackerCommander);
-                    AppendKey(buf, baseline);
+                    AppendKey(buf, attackerUnits, 0f, attackerCommander.Initiative, storm, attackerCommander);
                     buf.Add(order.Count);
                     for (int i = 0; i < order.Count; i++)
                     {
-                        AppendKey(buf, order[i].Commander);
-                        AppendKey(buf, defenderTemplates[i]);
-                        buf.Add(System.BitConverter.SingleToInt32Bits(order[i].BuildingDefenseBonus));
+                        DefendingArmy army = order[i];
+                        AppendKey(buf, army.Commander);
+                        AppendKey(buf, army.Units, army.DefenseBonus(hexDefenseBonus), army.Commander.Initiative,
+                            storm, army.Commander);
+                        buf.Add(System.BitConverter.SingleToInt32Bits(army.BuildingDefenseBonus));
                     }
                 },
-                () => SimulateSequential(baseline, order, defenderTemplates, seed, attackerCommander, m));
+                () =>
+                {
+                    var baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander, storm);
+                    var defenderTemplates = new List<List<BattleUnit>>(order.Count);
+                    foreach (DefendingArmy army in order)
+                        defenderTemplates.Add(ToBattleUnits(army.Units, army.DefenseBonus(hexDefenseBonus),
+                            army.Commander.Initiative, army.Commander, storm));
+                    return SimulateSequential(baseline, order, defenderTemplates, seed, attackerCommander, m);
+                });
         }
 
         private static BattleEstimate SimulateSequential(List<BattleUnit> baseline,
-            List<DefendingArmy> order, List<List<BattleUnit>> defenderTemplates, int seed,
+            IReadOnlyList<DefendingArmy> order, List<List<BattleUnit>> defenderTemplates, int seed,
             SideCommander attackerCommander, AbilityMagnitudes magnitudes)
         {
             var rng = new System.Random(seed);

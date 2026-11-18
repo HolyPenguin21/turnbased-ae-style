@@ -28,6 +28,51 @@ namespace Game.EditorTests
         };
 
         [Test]
+        public void PhysicalBatchMatchesIndividualReadsAndNeverRetainsPreviousHolds()
+        {
+            var player = new PlayerSetupData();
+            var root = Game.Map.PlayerRoot.Create(player, "resource book parity");
+            var context = new Game.Ai.AiTurnContext { TurnNumber = 1 };
+            try
+            {
+                foreach (Game.Economy.ResourceType type in ResourceBundle.All)
+                {
+                    root.AddResource(type, 10);
+                    StrategicReservedResource resource = StrategicResourceReservationLedger.Map(type);
+                    foreach (var row in new[] {
+                        ("own", StrategicReservationReason.EconomyBuildCompletion, .375f),
+                        ("other", StrategicReservationReason.EconomyDeferredBuild, 2.125f),
+                        ("other", StrategicReservationReason.StrategicReactionPass, .25f),
+                    })
+                        StrategicResourceReservationLedger.Upsert(player, 1, new StrategicResourceReservation
+                        {
+                            Owner = row.Item1, Reason = row.Item2, Amount = row.Item3, Resource = resource,
+                            ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                        });
+                }
+
+                EconomyReservationLifecycle.OpenDeferredIncomeCover(player, 1,
+                    new[] { 0f, 1.25f, .5f, 0f, 3f });
+                foreach (var authority in new[] { default, new SpendAuthority("own", false),
+                    new SpendAuthority("own", true) })
+                {
+                    var bundle = TurnResourceBook.FreeResources(player, root, context, authority);
+                    foreach (Game.Economy.ResourceType type in ResourceBundle.All)
+                        Assert.That(bundle.Get(type), Is.EqualTo(
+                            StrategicSpendability.SpendableAmount(player, root, context, type, authority)));
+                }
+                StrategicResourceReservationLedger.ClearAll();
+                Assert.That(TurnResourceBook.FreeResources(player, root, context).Sum, Is.EqualTo(40f));
+            }
+            finally
+            {
+                StrategicResourceReservationLedger.ClearAll();
+                EconomyReservationLifecycle.ClearAll();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
+        }
+
+        [Test]
         public void LedgerWriteDetachesCallerAndReadDetachesInspection()
         {
             var player = new PlayerSetupData();

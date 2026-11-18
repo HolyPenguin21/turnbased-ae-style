@@ -814,23 +814,31 @@ namespace Game.Ai.V2
 
         // Every on-map hex (== map.AllCoords). ObservationVantageSelector enumerates observation
         // candidates from this instead of re-reading the map.
-        public IReadOnlyList<HexCoord> AllHexes;
-
-        // Membership view of AllHexes, built once per snapshot instead of once per queried focus.
-        // Rebuilt if AllHexes is ever reassigned; AllHexes keeps its order for other consumers.
-        private HashSet<HexCoord> _onMapSet;
-        private IReadOnlyList<HexCoord> _onMapSource;
-        public ISet<HexCoord> OnMapSet()
+        public IReadOnlyList<HexCoord> AllHexes
         {
-            if (AllHexes == null) return null;
-            if (AllHexes is HashSet<HexCoord> direct) return direct;
-            if (_onMapSet == null || !ReferenceEquals(_onMapSource, AllHexes))
+            get => allHexes;
+            set
             {
-                _onMapSet = new HashSet<HexCoord>(AllHexes);
-                _onMapSource = AllHexes;
+                allHexes = value == null ? null : System.Array.AsReadOnly(value.ToArray());
+                onMapSet = null;
+                geometryKey = null;
             }
-            return _onMapSet;
         }
+
+        private IReadOnlyList<HexCoord> allHexes;
+        private HashSet<HexCoord> onMapSet;
+        private string geometryKey;
+
+        public bool IsOnMap(HexCoord hex)
+        {
+            if (allHexes == null) return false;
+            onMapSet ??= new HashSet<HexCoord>(allHexes);
+            return onMapSet.Contains(hex);
+        }
+
+        internal string GeometryKey => geometryKey ??= allHexes == null ? string.Empty
+            : string.Join(";", allHexes.Select(h => System.FormattableString.Invariant($"{h.Q},{h.R}"))
+                .OrderBy(row => row, System.StringComparer.Ordinal));
 
         // The subset of AllHexes a ground scout must never be routed ONTO regardless of stealth:
         // terrain no ground army can enter (off-map is implicit). Enemy PROXIMITY is deliberately

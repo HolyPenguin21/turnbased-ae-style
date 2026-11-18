@@ -69,7 +69,7 @@ namespace Game.Combat
             public int Entries;
         }
 
-        private static readonly Dictionary<EstimateCacheKey, BattleEstimate> EstimateCacheEntries =
+        private static Dictionary<EstimateCacheKey, BattleEstimate> EstimateCacheEntries =
             new Dictionary<EstimateCacheKey, BattleEstimate>();
         private static readonly Dictionary<string, int> EstimateAbilityIds =
             new Dictionary<string, int>(StringComparer.Ordinal);
@@ -97,6 +97,7 @@ namespace Game.Combat
         {
             EstimateCacheScopeId++;
             EstimateCacheEntries.Clear();
+            AviationCombatEstimator.ClearEstimateCache();
             _estimateCacheStats = default;
             _estimateCacheActive = true;
         }
@@ -123,10 +124,22 @@ namespace Game.Combat
         {
             EstimateCacheStats stats = CurrentEstimateCacheStats;
             EstimateCacheEntries.Clear();
+            AviationCombatEstimator.ClearEstimateCache();
             _estimateCacheActive = false;
             EstimateCacheScopeId++;
             _estimateCacheStats = default;
             return stats;
+        }
+
+        internal static void ReleaseMatchCache()
+        {
+            EndEstimateCacheScope();
+            EstimateCacheEntries = new Dictionary<EstimateCacheKey, BattleEstimate>();
+            EstimateAbilityIds.Clear();
+            EstimateKeyBuffer.Clear();
+            EstimateKeyBuffer.Capacity = 256;
+            EstimateLookupBuffer = new int[256];
+            AviationCombatEstimator.ReleaseMatchCache();
         }
 
         // Runs `compute` through the cache when a scope is active. `appendKey` writes the complete
@@ -205,15 +218,33 @@ namespace Game.Combat
         }
 
         private static void AppendKey(List<int> buf, IReadOnlyCollection<DefenderProfile> profiles,
-            float defenseBonus, int initiativeBonus, bool inSandstorm)
+            float defenseBonus, int initiativeBonus, bool inSandstorm, SideCommander commander = default)
         {
+            int countIndex = buf.Count;
             buf.Add(-1000 - profiles.Count);
+            int supportCount = commander.SupportHeroes?.Count ?? 0;
+            int represented = 0;
             if (profiles is IReadOnlyList<DefenderProfile> indexed)
+            {
                 for (int i = 0; i < indexed.Count; i++)
-                    AppendKey(buf, ToBattleUnit(indexed[i], defenseBonus, initiativeBonus, inSandstorm));
+                {
+                    BattleUnit unit = ToBattleUnit(indexed[i], defenseBonus, initiativeBonus, inSandstorm);
+                    if (supportCount > 0 && unit.IsHero && IsSupportHero(unit.Abilities)) represented++;
+                    AppendKey(buf, unit);
+                }
+            }
             else
-                foreach (DefenderProfile p in profiles)
-                    AppendKey(buf, ToBattleUnit(p, defenseBonus, initiativeBonus, inSandstorm));
+            {
+                foreach (DefenderProfile profile in profiles)
+                {
+                    BattleUnit unit = ToBattleUnit(profile, defenseBonus, initiativeBonus, inSandstorm);
+                    if (supportCount > 0 && unit.IsHero && IsSupportHero(unit.Abilities)) represented++;
+                    AppendKey(buf, unit);
+                }
+            }
+            for (int i = represented; i < supportCount; i++)
+                AppendKey(buf, ToBattleUnit(commander.SupportHeroes[i], defenseBonus, 0, inSandstorm));
+            buf[countIndex] -= System.Math.Max(0, supportCount - represented);
         }
 
         private static void AppendKey(List<int> buf, BattleUnit u)
@@ -256,7 +287,7 @@ namespace Game.Combat
             return id;
         }
 
-        private readonly struct EstimateCacheKey : IEquatable<EstimateCacheKey>
+        internal readonly struct EstimateCacheKey : IEquatable<EstimateCacheKey>
         {
             private readonly int[] _data;
             private readonly int _count;

@@ -81,7 +81,7 @@ namespace Game.Setup
             // inputs still exist. A stopped Unity coroutine need not dispose every iterator.
             Memory("Game.Ai.V2.MissionIntentRegistry", MissionIntentRegistry.Clear),
             new MatchStateEntry("Game.Combat.WorthIt", MatchStateKind.Cache,
-                () => WorthIt.EndEstimateCacheScope()),
+                WorthIt.ReleaseMatchCache),
             // --- world ---------------------------------------------------------------------------
             World("Game.Map.BuildingRegistry", BuildingRegistry.Clear),
             World("Game.Map.HexResourceBonusRegistry", HexResourceBonusRegistry.Clear),
@@ -175,9 +175,9 @@ namespace Game.Setup
             new MatchStateEntry("Game.Core.ScopeTiming", MatchStateKind.Diagnostics, () => Game.Core.ScopeTiming.Take(0)),
 
             // --- caches ----------------------------------------------------------------------------
-            new MatchStateEntry("Game.Ai.SafeStepPathing", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Ai.SafeStepPathing", MatchStateKind.Cache, SafeStepPathing.ClearMatchCache),
             // flat grid keyed by (map, PathingVersion) + reusable search buffers
-            new MatchStateEntry("Game.HexGrid.HexPathfinder", MatchStateKind.Cache),
+            new MatchStateEntry("Game.HexGrid.HexPathfinder", MatchStateKind.Cache, Game.HexGrid.HexPathfinder.ClearMatchCache),
             new MatchStateEntry("Game.Ai.V2.WorldAnalysis", MatchStateKind.Cache),
             // scarcity profile memo, weakly keyed by the WorldSnapshot it was computed for
             new MatchStateEntry("Game.Ai.V2.ActionPrice", MatchStateKind.Cache),
@@ -191,7 +191,7 @@ namespace Game.Setup
             new MatchStateEntry("Game.Combat.BattleEncounterCoordinator", MatchStateKind.Cache, BattleEncounterCoordinator.ResetForMatch),
             new MatchStateEntry("Game.Map.ArmyDestructionEffect", MatchStateKind.Cache,
                 resetNote: "Content-only frames; no match entities or subscriptions."),
-            new MatchStateEntry("Game.Combat.AviationCombatEstimator", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Combat.AviationCombatEstimator", MatchStateKind.Cache, resetBy: "Game.Combat.WorthIt"),
             // verdict-key text rows in weak tables keyed by the profile/roster/deck objects themselves
             new MatchStateEntry("Game.Ai.V2.DevelopmentAdmission", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.ProfileRowCache", MatchStateKind.Cache),

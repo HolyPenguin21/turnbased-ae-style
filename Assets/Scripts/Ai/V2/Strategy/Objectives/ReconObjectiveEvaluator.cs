@@ -922,10 +922,9 @@ namespace Game.Ai.V2
             int count = 1;
 
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
-            var onMap = mk?.OnMapSet();
             foreach (HexCoord n in HexGridMath.Neighbors(focus))
             {
-                if (onMap != null && onMap.Contains(n) == false) continue;
+                if (mk?.AllHexes != null && !mk.IsOnMap(n)) continue;
                 if (mk?.VisitedHexSet != null && mk.VisitedHexSet.Contains(n)) continue;
                 if (mk != null && mk.IsBlockedForScout(n, stealthCapable: false)) continue;
                 sum += HexObservationRetention(snap, n, floor);

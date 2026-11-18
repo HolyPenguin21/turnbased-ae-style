@@ -96,17 +96,17 @@ namespace Game.Ai.V2
                 .Where(i => i != null).OrderBy(i => i.IntentKey)
                 .Select(i => $"{i.IntentKey}:{i.Kind}:"
                     + string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i).OrderBy(x => x))));
-            return $"turn={snapshot?.TurnNumber}"
-                + $"|operatorForecast={OperatorForecastFacts(snapshot, player)}"
-                + $"|equipmentPriority={EquipmentUpgradeValuation.RecipientPriorityFacts(snapshot)}"
-                + $"|held={held}"
-                + $"|memory={AiMapMemory.RouteMemoryVersionFor(player)}"
-                + $"|know={snapshot?.KnowledgeVersion}"
-                + $"|recipients={RecipientFacts(player, hand)}"
-                + $"|live={string.Join(";", live)}"
-                + $"|strike={strike}"
-                + $"|facAA={(snapshot?.Self?.HasFacilityAntiAir == true ? 1 : 0)}"
-                + $"|{Facts(snapshot, activeIntents)}";
+            return string.Concat(
+                "turn=", snapshot?.TurnNumber.ToString(CultureInfo.InvariantCulture),
+                "|operatorForecast=", OperatorForecastFacts(snapshot, player),
+                "|equipmentPriority=", EquipmentUpgradeValuation.RecipientPriorityFacts(snapshot),
+                "|held=", held,
+                "|memory=", AiMapMemory.RouteMemoryVersionFor(player).ToString(CultureInfo.InvariantCulture),
+                "|know=", snapshot?.KnowledgeVersion.ToString(CultureInfo.InvariantCulture),
+                "|recipients=", RecipientFacts(player, hand),
+                "|live=", string.Join(";", live), "|strike=", strike,
+                "|facAA=", snapshot?.Self?.HasFacilityAntiAir == true ? "1" : "0",
+                "|", Facts(snapshot, activeIntents));
         }
 
         // 2026-11-15 (late-game perf, owner option A) — the part of an equipment delta's inputs
@@ -124,8 +124,7 @@ namespace Game.Ai.V2
             hands.Sort(System.StringComparer.Ordinal);
             var rosters = new List<string>();
             foreach (ArmySnapshot a in snapshot?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
-                if (a != null) rosters.Add(DefenderFingerprint(a.Members) + "/" + DefenderFingerprint(a.MembersWithHeroes)
-                    + "/ground=" + (a.Members?.Count(p => p.IsGroundCombatant) ?? 0));
+                if (a != null) rosters.Add(CoreRoster(a));
             rosters.Sort(System.StringComparer.Ordinal);
             var air = new List<string>();
             var weather = new List<string>();
@@ -142,20 +141,45 @@ namespace Game.Ai.V2
                 weather.Add($"{g.Hex}:{Game.Combat.BattleEnvironment.At(g.Hex, snapshot.Map)}");
             air.Sort(System.StringComparer.Ordinal);
             weather.Sort(System.StringComparer.Ordinal);
-            return $"turn={snapshot?.TurnNumber}"
-                + $"|known={KnownTargetsFacts(snapshot)}"
-                + $"|threats={ThreatFacts(snapshot)}"
-                + $"|bench={Benchmarks(snapshot?.Self?.Deck)}"
-                + $"|hand={string.Join(";", hands)}"
-                // EquipmentTargets' reference profiles read the SNAPSHOT's hand definitions, which
-                // can lag the live hand above (independent review 2026-11-15).
-                + $"|snapHand={Benchmarks((snapshot?.Self?.Hand ?? System.Array.Empty<CardData>()).Where(c => c?.Definition != null).Select(c => c.Definition).ToList())}"
-                + $"|rosters={string.Join(";", rosters)}"
-                + $"|route={RouteMapFacts(snapshot)}"
-                + $"|memory={AiMapMemory.RouteMemoryVersionFor(player)}"
-                + $"|air={string.Join(";", air)}"
-                + $"|weather={string.Join(";", weather)}"
-                + $"|facAA={(snapshot?.Self?.HasFacilityAntiAir == true ? 1 : 0)}";
+            return string.Concat(
+                "turn=", snapshot?.TurnNumber.ToString(CultureInfo.InvariantCulture),
+                "|known=", KnownTargetsFacts(snapshot), "|threats=", ThreatFacts(snapshot),
+                "|bench=", Benchmarks(snapshot?.Self?.Deck), "|hand=", string.Join(";", hands),
+                "|snapHand=", Benchmarks((snapshot?.Self?.Hand ?? System.Array.Empty<CardData>())
+                    .Where(c => c?.Definition != null).Select(c => c.Definition).ToList()),
+                "|rosters=", string.Join(";", rosters), "|route=", RouteMapFacts(snapshot),
+                "|memory=", AiMapMemory.RouteMemoryVersionFor(player).ToString(CultureInfo.InvariantCulture),
+                "|air=", string.Join(";", air), "|weather=", string.Join(";", weather),
+                "|facAA=", snapshot?.Self?.HasFacilityAntiAir == true ? "1" : "0");
+        }
+
+        private sealed class CoreRosterMemo
+        {
+            internal string Members, Tactical, Row;
+            internal int GroundCount;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ArmySnapshot, CoreRosterMemo>
+            s_coreRosters = new();
+
+        private static string CoreRoster(ArmySnapshot army)
+        {
+            string members = DefenderFingerprint(army.Members);
+            string tactical = DefenderFingerprint(army.MembersWithHeroes);
+            int ground = 0;
+            if (army.Members != null)
+                for (int i = 0; i < army.Members.Count; i++)
+                    if (army.Members[i].IsGroundCombatant) ground++;
+            var memo = s_coreRosters.GetValue(army, _ => new CoreRosterMemo());
+            if (memo.Row != null && object.ReferenceEquals(memo.Members, members)
+                && object.ReferenceEquals(memo.Tactical, tactical) && memo.GroundCount == ground)
+                return memo.Row;
+
+            memo.Members = members;
+            memo.Tactical = tactical;
+            memo.GroundCount = ground;
+            return memo.Row = string.Concat(members, "/", tactical, "/ground=",
+                ground.ToString(CultureInfo.InvariantCulture));
         }
 
         // A deployed recipient's own inputs (EquipmentDeltaCache CORE entries): its army in
@@ -218,8 +242,8 @@ namespace Game.Ai.V2
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
             var ctx = root == null ? null : new AiTurnContext { Map = snap?.Map, TurnNumber = snap?.TurnNumber ?? 0 };
             string budget = string.Join(",", ResourceBundle.All.Select(t =>
-                $"{snap?.Economy?.SpendableStockpile.Get(t)}:{snap?.Self?.PerTurnIncome.Get(t)}:"
-                + ActionPrice.PendingCardResourceDemand(snap, t).ToString("R", CultureInfo.InvariantCulture)));
+                string.Format(CultureInfo.InvariantCulture, "{0:R}:{1:R}:{2:R}",
+                    snap?.Economy?.SpendableStockpile.Get(t), snap?.Self?.PerTurnIncome.Get(t), snap?.Self?.Stockpile.Get(t))));
             string sources = string.Join(",", (snap?.Development?.ForecastSources
                     ?? System.Array.Empty<GenerationStep>())
                 .Select(g => $"{g.CardKey}:{g.CardDef?.authoredKey}:{g.ChallengeCard?.fate}:{g.Hero?.Fate}:{g.Hero?.FateMax}:{g.Hero?.RuntimeId}:{g.Hero?.Mutator?.authoredKey}:"
@@ -230,14 +254,16 @@ namespace Game.Ai.V2
                 Game.Aviation.AviationRules.OwnedAirfieldHexes(player).OrderBy(h => h.Q).ThenBy(h => h.R)
                     .Select(h => $"{h}:{Game.Aviation.AviationRules.FreeAirfieldCapacity(h, player)}"));
             ApActionEconomySnapshot ap = snap?.Self?.ApEconomy;
-            return $"{snap?.Self?.ActionPoints}:{snap?.Development?.ForecastActionPoints}:{ap?.BaseActionPoints}:{ap?.WitnessedApDemand}:"
-                + $"{ap?.EstimatedArmyApDemand}:{ap?.EstimatedCardApDemand}:{budget}:{sources}:"
-                + DevelopmentDiversity.HistoryKey(player, snap?.TurnNumber ?? 0)
-                + $"|airfields={airfields}|path={snap?.MapPathingVersion}"
-                + $"|missileStock={GroundCombatAirSupport.MissileStockFacts(snap, player)}"
-                + $"|liveAp={(root == null ? "-" : StrategicSpendability.SpendableAp(player, root, ctx).ToString("R", CultureInfo.InvariantCulture))}"
-                + $"|handCapacity={AiHandRegistry.Peek(player)?.HasFreeSlot}"
-                + "|preservation=" + PriceInputs(snap, player, root, ctx);
+            return string.Concat(
+                $"{snap?.Self?.ActionPoints}:{snap?.Development?.ForecastActionPoints}:{ap?.BaseActionPoints}:{ap?.WitnessedApDemand}:",
+                $"{ap?.EstimatedArmyApDemand}:{ap?.EstimatedCardApDemand}:", budget, ":", sources, ":",
+                DevelopmentDiversity.HistoryKey(player, snap?.TurnNumber ?? 0),
+                "|airfields=", airfields, "|path=", snap?.MapPathingVersion.ToString(CultureInfo.InvariantCulture),
+                "|missileStock=", GroundCombatAirSupport.MissileStockFacts(snap, player),
+                "|liveAp=", root == null ? "-" : StrategicSpendability.SpendableAp(player, root, ctx).ToString("R", CultureInfo.InvariantCulture),
+                "|handCapacity=", AiHandRegistry.Peek(player)?.HasFreeSlot.ToString(),
+                "|preservation=", PriceInputs(snap, player, root, ctx),
+                "|cardBills=", ActionPrice.CardDemandKey(snap));
         }
 
         // Per resource: spendable (stock net of other owners' holds), income, and the current
@@ -246,18 +272,19 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx)
         {
             int turn = snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0;
+            bool hasLive = ctx != null && root != null;
+            ResourceBundle available = TurnResourceBook.FreeResources(player, root, ctx);
             return string.Join(";", ResourceBundle.All.Select(t =>
             {
-                string spend = ctx != null && root != null
-                    ? StrategicSpendability.SpendableAmount(player, root, ctx, t)
-                        .ToString("0.###", CultureInfo.InvariantCulture)
+                string spend = hasLive
+                    ? available.Get(t).ToString("R", CultureInfo.InvariantCulture)
                     : "-";
                 string income = snapshot?.Self != null
-                    ? snapshot.Self.PerTurnIncome.Get(t).ToString("0.###", CultureInfo.InvariantCulture)
+                    ? snapshot.Self.PerTurnIncome.Get(t).ToString("R", CultureInfo.InvariantCulture)
                     : "-";
                 string block = ResourceStarvationRegistry.TryGetCurrentBlock(
                         player, t, turn, out ResourceBlockEvidence b)
-                    ? string.Format(CultureInfo.InvariantCulture, "{0:0.###}/{1:0.###}/{2:0.###}",
+                    ? string.Format(CultureInfo.InvariantCulture, "{0:R}/{1:R}/{2:R}",
                         b.Required, b.IncomePerTurn, b.DemandValue)
                     : "0";
                 return $"{spend}:{income}:{block}";
@@ -425,18 +452,20 @@ namespace Game.Ai.V2
             string trimmedScouts = snapshot?.Observer == null ? "-" : string.Join(",",
                 ReconTurnStateStore.For(snapshot.Observer, snapshot.TurnNumber)
                     .ReconActorsTrimmedThisTurn(snapshot.TurnNumber).OrderBy(x => x));
-            return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}"
-                + $"|threats={threats}|purposes={purposes}|benchmarks={benchmarks}|knownTargets={knownTargets}"
-                + $"|routeMap={routeMap}|trimmedScouts={trimmedScouts}"
-                + $"|operatorClaims={snapshot?.Intents?.Development.GeneratedOperatorFacts(snapshot?.TurnNumber ?? 0)}"
-                + $"|prepSite={rd?.ResearchPreparationSite}:{rd?.ProductionPreparationSite}"
-                + $"|mobilization={AttackForceReadiness.MobilizationOpen(snapshot?.Self)}"
-                + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
+            string readiness = $"{(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
                 + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"
                 + $"{(rd?.ResearcherCardInHand == true ? 1 : 0)}:"
                 + $"{(rd?.AssemblerCardInHand == true ? 1 : 0)}:"
                 + $"{(rd?.DevPathViable == true ? 1 : 0)}:prep={(rd?.HasPreparationStep == true ? 1 : 0)}:{rd?.PreparationHeadroom ?? 0f}:modes={rd?.ResearchPreparationViable}:{rd?.ProductionPreparationViable}:targets={rd?.UpgradeTargetCount ?? 0}:"
                 + $"{(rd?.BestSuccessChance ?? 0f):0.###}";
+            return string.Concat("fac=", facilities, "|off=", offerings, "|bases=", bases,
+                "|armies=", armies, "|claims=", claims, "|threats=", threats, "|purposes=", purposes,
+                "|benchmarks=", benchmarks, "|knownTargets=", knownTargets,
+                "|routeMap=", routeMap, "|trimmedScouts=", trimmedScouts,
+                "|operatorClaims=", snapshot?.Intents?.Development.GeneratedOperatorFacts(snapshot.TurnNumber),
+                $"|prepSite={rd?.ResearchPreparationSite}:{rd?.ProductionPreparationSite}",
+                "|mobilization=", AttackForceReadiness.MobilizationOpen(snapshot?.Self).ToString(),
+                "|ready=", readiness);
         }
 
         // One own army snapshot: roster, commander, Mutator slots, route/movement state.
@@ -490,27 +519,23 @@ namespace Game.Ai.V2
         private static string RouteMapFacts(WorldSnapshot snapshot)
         {
             MapKnowledgeSnapshot map = snapshot?.MapKnowledge;
-            string routeMap = $"{snapshot?.Map != null}:{snapshot?.MapPathingVersion}:"
-                + (map?.ExplorableUnknownFrac.ToString("R", CultureInfo.InvariantCulture) ?? "-")
-                + ":hexes=" + string.Join(";", (map?.AllHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
-                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
-                + ":hard=" + string.Join(";", (map?.ScoutHardBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
-                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
-                + ":visible=" + string.Join(";", (map?.VisibleArrivalBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
-                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal));
-            return routeMap;
+            return string.Concat($"{snapshot?.Map != null}:{snapshot?.MapPathingVersion}:",
+                map?.ExplorableUnknownFrac.ToString("R", CultureInfo.InvariantCulture) ?? "-",
+                ":hexes=", map?.GeometryKey, ":hard=", BlockedHexFacts(map?.ScoutHardBlockedHexes),
+                ":visible=", BlockedHexFacts(map?.VisibleArrivalBlockedHexes));
         }
 
-        // EXACT, order-stable digest of a combat roster. Aggregates (Count plus Attack/Defense/HP/
+        private static string BlockedHexFacts(ISet<Game.HexGrid.HexCoord> hexes) =>
+            hexes == null || hexes.Count == 0 ? string.Empty : string.Join(";",
+                hexes.Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal));
+
+        // Exact digest of a combat roster. Aggregates (Count plus Attack/Defense/HP/
         // Initiative sums) are strictly weaker than what the cached decision depends on: WorthIt
         // reads each profile INDIVIDUALLY — per-defender Defense, CeramicArmor, ability list, unit
         // type tags, current AND max HP, and Initiative — so two genuinely different rosters can
         // share every aggregate while giving different WorthIt answers.
         //
-        // Every field WorthIt reads is emitted verbatim; nothing is hashed (a long-lived key must
-        // not be built on GetHashCode). Per-profile rows are sorted ordinally so a
-        // pure REORDERING of the same roster keeps the same key: WorthIt orders combat by
-        // Initiative, never by list position, so order carries no information here.
+        // Keep roster order: WorthIt reads it when deriving the seed and building trial inputs.
         private static string DefenderFingerprint(IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> defenders)
         {
             if (defenders == null || defenders.Count == 0)
@@ -542,10 +567,9 @@ namespace Game.Ai.V2
 
         private static string BuildDefenderFingerprint(IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> defenders)
         {
-            var rows = new List<string>(defenders.Count);
-            foreach (Game.Combat.WorthIt.DefenderProfile d in defenders)
-                rows.Add(DefenderRow(d));
-            rows.Sort(System.StringComparer.Ordinal);
+            var rows = new string[defenders.Count];
+            for (int i = 0; i < rows.Length; i++)
+                rows[i] = DefenderRow(defenders[i]);
             return $"{defenders.Count}:" + string.Join("|", rows);
         }
 
@@ -602,7 +626,7 @@ namespace Game.Ai.V2
 
         private static string Benchmarks(IReadOnlyList<Game.Cards.CardDefinition> deck)
         {
-            deck = deck ?? System.Array.Empty<Game.Cards.CardDefinition>();
+            if (deck == null || deck.Count == 0) return string.Empty;
             BenchmarkMemo memo = s_benchmarks.GetValue(deck, _ => new BenchmarkMemo());
             lock (memo)
             {
@@ -636,8 +660,8 @@ namespace Game.Ai.V2
             string abilities = d.Abilities == null ? string.Empty
                 : string.Join(",", d.Abilities.Where(x => x != null)
                     .OrderBy(x => x, System.StringComparer.Ordinal));
-            return $"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
-                + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/"
+            return System.FormattableString.Invariant($"{d.Attack:R}/{d.Defense:R}/{d.HitPoints:R}/{d.MaxHitPoints:R}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/")
+                + $"{(d.IsGroundCombatant ? 1 : 0)}{(d.IsHero ? 1 : 0)}{(d.IsSummoned ? 1 : 0)}/{d.FateMax}/"
                 + $"[{tags}]/[{abilities}]/consume={d.Consumption?.Key}/singleUnit={d.SingleUseUnit}/disruptEligible={d.CanDisruptBuilding}";
         }
 

@@ -19,6 +19,19 @@ namespace Game.EditorTests
         public void TearDown() => AiMapMemory.Clear();
 
         [Test]
+        public void ReplacingMapKnowledgeTakesOwnershipOfTheMembershipList()
+        {
+            var hex = new HexCoord(1, 1);
+            var original = new List<HexCoord> { hex };
+            var snapshot = new Game.Ai.V2.MapKnowledgeSnapshot { AllHexes = original };
+            Assert.That(snapshot.IsOnMap(hex), Is.True);
+            original.Clear();
+            Assert.That(snapshot.IsOnMap(hex), Is.True);
+            snapshot.AllHexes = original;
+            Assert.That(snapshot.IsOnMap(hex), Is.False);
+        }
+
+        [Test]
         public void RouteMemoryRevisionChangesOnlyForOwningPlayer()
         {
             var a = new PlayerSetupData();
@@ -84,6 +97,29 @@ namespace Game.EditorTests
                     { moveCost = costs != null && costs.TryGetValue(new HexCoord(q, r), out int c) ? c : 1 };
             map.SetData(length + 2, 1f, data);
             return map;
+        }
+
+        [Test]
+        public void MatchExitReleasesTheGridAndRouteOwnerBeforeAnotherSearch()
+        {
+            var owner = new PlayerSetupData();
+            var from = new HexCoord(0, 0);
+            var to = new HexCoord(3, 0);
+            HexMap map = LineMap(4);
+            try
+            {
+                Assert.That(SafeStepPathing.FindSafePathCost(map, owner, from, to, 3), Is.EqualTo(3));
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+                var mapField = typeof(SafeStepPathing).GetField("_cacheMap", flags);
+                var gridField = typeof(HexPathfinder).GetField("_grid", flags);
+                Assert.That(mapField.GetValue(null), Is.SameAs(map));
+                Assert.That(gridField.GetValue(null), Is.Not.Null);
+                Game.Setup.MatchStateInventory.EndMatch();
+                Assert.That(mapField.GetValue(null), Is.Null);
+                Assert.That(gridField.GetValue(null), Is.Null);
+                Assert.That(SafeStepPathing.FindSafePathCost(map, owner, from, to, 3), Is.EqualTo(3));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(_mapObject); }
         }
 
         [Test]
