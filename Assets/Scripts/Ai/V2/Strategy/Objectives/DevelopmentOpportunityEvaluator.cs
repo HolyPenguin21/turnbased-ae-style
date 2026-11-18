@@ -580,7 +580,8 @@ namespace Game.Ai.V2
                 if (chosen.HasValue && !chosen.Value.Equals(hex))
                     return $"reason=preparation_site_selected=({chosen.Value.Q},{chosen.Value.R})";
             }
-            System.Func<ResourceType, float> spendable = t => StrategicSpendability.SpendableAmount(player, root, ctx, t);
+            ResourceBundle available = describeOnly ? default : TurnResourceBook.FreeResources(player, root, ctx);
+            System.Func<ResourceType, float> spendable = available.Get;
             // Peer hand facilities are ranked by the one card score of today's step (placement),
             // not by the cheapest bill: a weak cheap card must not hide a better one from the arbiter.
             // Desire facts keep the structural order. On a full Base the card is only the capacity
@@ -1118,6 +1119,8 @@ namespace Game.Ai.V2
                 UseKey = "investment-preview", CardKey = "investment-preview:" + card.authoredKey,
             };
             float best = float.NegativeInfinity;
+            ResourceBundle available = TurnResourceBook.FreeResources(player, root, ctx);
+            System.Func<ResourceType, float> spendable = available.Get;
             foreach (PlacementOption option in options)
             {
                 // Exactly the same solo-Recce vs Hero vs combat classification as Phase B.
@@ -1134,7 +1137,7 @@ namespace Game.Ai.V2
                 // card effects, alternative role and hold. Prerequisite actions are sunk here.
                 StrategicCardUseCandidate score = StrategicCardEvaluator.ScoreSurplus(
                     plan, inv, recce, card.cardType == CardType.Hero, hand, abilities, snap,
-                    spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
+                    spendableResource: spendable,
                     player: player);
                 best = Mathf.Max(best, score.NetScore);
             }

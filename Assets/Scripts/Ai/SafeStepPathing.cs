@@ -225,6 +225,14 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, PlayerRouteCache> _playerCaches = new Dictionary<PlayerSetupData, PlayerRouteCache>();
         private static HexMap _cacheMap;
         private static int _cacheMapVersion = -1;
+
+        internal static void ClearMatchCache()
+        {
+            _playerCaches.Clear();
+            _cacheMap = null;
+            _cacheMapVersion = -1;
+        }
+
         // Transit blockers are derived from the ONE AI arrival rule (AiMapMemory.KnownGroundArrival)
         // — never a parallel list: a hex is crossed only if arriving there sets nothing off for
         // this kind of mover. Candidates are every hex this observer remembers holding an army or
@@ -362,10 +370,10 @@ namespace Game.Ai
         private static HexPath GetRoute(HexMap map, PlayerSetupData owner, HexCoord from, HexCoord targetHex, int? maxMovement,
             SafeRouteProfile profile = SafeRouteProfile.Standard)
         {
-            using var __profile = new Game.Core.ProfileScope("AI/Pathing.GetRoute");
             PlayerRouteCache cache = EnsureCacheState(map, owner);
             var key = (from, targetHex, maxMovement, profile);
             if (cache.Routes.TryGetValue(key, out HexPath cached)) return cached;
+            using var __profile = new Game.Core.ProfileScope("AI/Pathing.ResolveMiss");
             if (cache.Routes.Count >= MaxCachedRoutes) cache.Routes.Clear();
             HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
                 blockHex: SafeRouteBlocker(BlockersFor(cache, profile, false), targetHex),

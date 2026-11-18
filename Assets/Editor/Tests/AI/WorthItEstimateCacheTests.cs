@@ -41,6 +41,43 @@ namespace Game.EditorTests
         // ---- 2026-10-08: the cached estimate is policy-free; the verdict is applied outside it ----
 
         [Test]
+        public void AviationRangeIsPartOfReturnedProfileIdentityAndScopeReleasesEntries()
+        {
+            var attacks = new[] { Unit(1, 0, 2) };
+            WorthIt.DefenderProfile Target(int range, bool canDisrupt = true) => new WorthIt.DefenderProfile(
+                10, false, null, 1, 99, range: range, canDisruptBuilding: canDisrupt);
+            var firstScope = WorthIt.OpenEstimateCacheScope();
+            var first = AviationCombatEstimator.EstimateAirStrike(attacks, new[] { Target(2) }, default);
+            var second = AviationCombatEstimator.EstimateAirStrike(attacks, new[] { Target(3) }, default);
+            Assert.That(first.ExpectedDefendersAfter[0].Range, Is.EqualTo(2));
+            Assert.That(second.ExpectedDefendersAfter[0].Range, Is.EqualTo(3));
+            var third = AviationCombatEstimator.EstimateAirStrike(attacks, new[] { Target(3, false) }, default);
+            Assert.That(third.ExpectedDefendersAfter[0].CanDisruptBuilding, Is.False);
+            Assert.That(AviationCombatEstimator.CacheEntryCount, Is.EqualTo(3));
+
+            using var secondScope = WorthIt.OpenEstimateCacheScope();
+            AviationCombatEstimator.EstimateAirStrike(attacks, new[] { Target(3) }, default);
+            firstScope.Dispose();
+            Assert.That(AviationCombatEstimator.CacheEntryCount, Is.EqualTo(1));
+            Game.Setup.MatchStateInventory.EndMatch();
+            Assert.That(AviationCombatEstimator.CacheEntryCount, Is.Zero);
+        }
+
+        [Test]
+        public void AviationAllowsSeedCollisionsWithoutAliasingReturnedAbilityNames()
+        {
+            var attacks = new[] { Unit(1, 0, 2) };
+            var aa = new[] { Unit(1, 10, 99, 2, "Aa") };
+            var bb = new[] { Unit(1, 10, 99, 2, "BB") };
+            Assert.That(AviationCombatEstimator.BuildKey(attacks, aa, default, 1, 0, AbilityMagnitudes.Default),
+                Is.EqualTo(AviationCombatEstimator.BuildKey(attacks, bb, default, 1, 0, AbilityMagnitudes.Default)));
+            using var scope = WorthIt.OpenEstimateCacheScope();
+            AviationCombatEstimator.EstimateAirStrike(attacks, aa, default);
+            var actual = AviationCombatEstimator.EstimateAirStrike(attacks, bb, default);
+            Assert.That(actual.ExpectedDefendersAfter[0].Abilities, Is.EqualTo(new[] { "BB" }));
+        }
+
+        [Test]
         public void OneEstimateServesTwoThresholds_EachWithItsOwnVerdict()
         {
             var strong = new List<WorthIt.DefenderProfile> { Unit(30, 10, 60), Unit(30, 10, 60), Unit(30, 10, 60) };

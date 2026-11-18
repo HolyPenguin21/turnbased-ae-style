@@ -499,38 +499,36 @@ namespace Game.Map
                 && turnController.TurnConfirmed && !turnController.InputBlocked;
         }
 
-        // Turn-based game, mostly-idle camera: re-running RaycastHex every single frame
-        // regardless of whether anything that could change its result actually moved was pure
-        // waste (see RaycastHex's own per-call cost — a plane intersection plus a
-        // TryGetTerrainAt lookup, not a cheap property read). Cached against the 3 inputs that can change
-        // which hex is under the cursor: the mouse's screen position, and the camera's own
-        // position/zoom (RtsCameraController's WASD pan and scroll-zoom can move what's under a
-        // STATIONARY cursor) — camera rotation is deliberately not checked, this project's
-        // camera is fixed-angle for its whole lifetime (see RtsCameraController's own comment).
+        // Cache the plane/map lookup against its actual geometric inputs. The ray captures
+        // viewport, projection and camera changes even with a stationary mouse. Map identity,
+        // transform and data revision also matter when the same controller survives a rebuild.
         private HexCoord? _cachedHoverCoord;
-        private Vector2 _lastHoverMousePos;
-        private Vector3 _lastHoverCameraPos;
-        private float _lastHoverOrthoSize;
+        private Ray _lastHoverRay;
+        private HexMap _lastHoverMap;
+        private Matrix4x4 _lastHoverMapTransform;
+        private int _lastHoverMapVersion;
         private bool _hasCachedHover;
 
         private HexCoord? RaycastHexCached()
         {
-            if (Mouse.current == null || targetCamera == null)
+            if (Mouse.current == null || targetCamera == null || map == null)
                 return null;
 
-            Vector2 mousePos = Mouse.current.position.ReadValue();
-            Vector3 camPos = targetCamera.transform.position;
-            float orthoSize = targetCamera.orthographicSize;
+            Ray ray = targetCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+            Matrix4x4 mapTransform = map.transform.worldToLocalMatrix;
 
-            if (_hasCachedHover && mousePos == _lastHoverMousePos
-                && camPos == _lastHoverCameraPos && orthoSize == _lastHoverOrthoSize)
+            if (_hasCachedHover && ReferenceEquals(map, _lastHoverMap)
+                && map.PathingVersion == _lastHoverMapVersion
+                && ray.origin.Equals(_lastHoverRay.origin) && ray.direction.Equals(_lastHoverRay.direction)
+                && mapTransform.Equals(_lastHoverMapTransform))
                 return _cachedHoverCoord;
 
-            _lastHoverMousePos = mousePos;
-            _lastHoverCameraPos = camPos;
-            _lastHoverOrthoSize = orthoSize;
+            _lastHoverRay = ray;
+            _lastHoverMap = map;
+            _lastHoverMapTransform = mapTransform;
+            _lastHoverMapVersion = map.PathingVersion;
             _hasCachedHover = true;
-            _cachedHoverCoord = RaycastHex(mousePos);
+            _cachedHoverCoord = RaycastHex(ray);
             return _cachedHoverCoord;
         }
 
@@ -542,7 +540,11 @@ namespace Game.Map
             if (targetCamera == null || map == null)
                 return null;
 
-            Ray ray = targetCamera.ScreenPointToRay(screenPosition);
+            return RaycastHex(targetCamera.ScreenPointToRay(screenPosition));
+        }
+
+        private HexCoord? RaycastHex(Ray ray)
+        {
             // The map is flat at Y=0 (see GameConfig's own "every scene element sits flat at
             // Y=0" comment) — a math plane intersection instead of Physics.Raycast against a
             // baked Ground collider, so hex-picking can't silently break if that collider's

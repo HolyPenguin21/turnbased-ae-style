@@ -204,10 +204,35 @@ namespace Game.Map
             }
         }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetFrameCache()
+        {
+            foreach (Sprite[] frames in FrameCache.Values)
+                ReleaseFrames(frames);
+            FrameCache.Clear();
+        }
+
+        private static void ReleaseFrames(Sprite[] frames)
+        {
+            foreach (Sprite frame in frames)
+            {
+                if (frame == null) continue;
+                if (Application.isPlaying) Destroy(frame);
+                else DestroyImmediate(frame);
+            }
+        }
+
         private static Sprite[] LoadFrames(string sheetName)
         {
             if (FrameCache.TryGetValue(sheetName, out Sprite[] cached))
-                return cached;
+            {
+                bool usable = true;
+                foreach (Sprite frame in cached)
+                    if (frame == null || frame.texture == null) { usable = false; break; }
+                if (usable) return cached;
+                FrameCache.Remove(sheetName);
+                ReleaseFrames(cached);
+            }
 
             Texture2D texture = Resources.Load<Texture2D>(ResourceRoot + sheetName);
             if (texture == null || texture.width != Columns * FramePixels ||

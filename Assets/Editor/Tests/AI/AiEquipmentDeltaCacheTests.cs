@@ -127,6 +127,37 @@ namespace Game.EditorTests
 
 
         [Test]
+        public void DevelopmentKeysRetainTheOrderAndPrecisionOfTheActualOpposition()
+        {
+            var owner = new PlayerSetupData();
+            var first = new WorthIt.DefenderProfile(defense: 2f, hasCeramicArmor: false,
+                attack: 2.0001f, hitPoints: 3f, initiative: 2);
+            var second = new WorthIt.DefenderProfile(defense: 1f, hasCeramicArmor: false,
+                attack: 3f, hitPoints: 2f, initiative: 2);
+            var defenders = new[] { first, second };
+            var attackers = new[] { new WorthIt.DefenderProfile(defense: 2f, hasCeramicArmor: false,
+                attack: 3f, hitPoints: 5f, initiative: 2) };
+            var snap = new WorldSnapshot { Observer = owner, TurnNumber = 5, Self = new SelfSnapshot(),
+                TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { new ArmySnapshot { Members = defenders } } } };
+            (string Full, string Core) Keys() => (DevelopmentAdmission.RecipientVerdictKey(snap, null, owner, null),
+                DevelopmentAdmission.RecipientDeltaCoreKey(snap, owner, null));
+
+            var initial = Keys();
+            var before = WorthIt.Estimate(attackers, defenders, 0f);
+            defenders[0] = second;
+            defenders[1] = first;
+            var reordered = Keys();
+            Assert.That(WorthIt.Estimate(attackers, defenders, 0f), Is.Not.EqualTo(before));
+            Assert.That(reordered.Full, Is.Not.EqualTo(initial.Full));
+            Assert.That(reordered.Core, Is.Not.EqualTo(initial.Core));
+
+            defenders[1] = first.WithState(first.HitPoints, 2.0004f, first.Defense);
+            var changedAttack = Keys();
+            Assert.That(changedAttack.Full, Is.Not.EqualTo(reordered.Full));
+            Assert.That(changedAttack.Core, Is.Not.EqualTo(reordered.Core));
+        }
+
+        [Test]
         public void RecipientStampReadsItsOwnArmyAndPurposeButNotAnotherArmy()
         {
             var owner = new PlayerSetupData();

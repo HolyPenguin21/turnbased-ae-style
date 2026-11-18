@@ -251,6 +251,33 @@ namespace Game.EditorTests
             Assert.That(next.Funded.Single().PhysicalDraw.Materials, Is.EqualTo(9));
         }
 
+        [Test] public void AllocationDoesNotConvergeWhenOnlyPhysicalTradePriceChanges()
+        {
+            root.AddResource(ResourceType.Materials, 20);
+            var snapshot = new WorldSnapshot { Observer = player, TurnNumber = context.TurnNumber,
+                Self = new SelfSnapshot { ActionPoints = 3, Stockpile = new ResourceBundle { Materials = 20 } } };
+            var mission = new MissionProposal { Kind = MissionKind.Scout,
+                Target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(1, 0) },
+                BaseValue = 20, EffectiveValue = 20, LocalAdmissionScore = 20,
+                Requirements = new MissionRequirements { ApMinimum = 1, ApDesired = 1, ApMaximum = 1,
+                    EnergyMinimum = 2, EnergyDesired = 2, EnergyMaximum = 2 } };
+            mission.Axes.Value[DesireAxis.Recon] = 1;
+            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, Radar.Even(),
+                new List<MissionProposal>(), new List<Commitment> {
+                    new Commitment { Mission = mission, Tier = CommitmentTier.Hard } }, player);
+
+            var first = session.Pack().Funded.Single();
+            Assert.That(first.PhysicalDraw.Materials, Is.EqualTo(5));
+            Assert.That(TradeFunding.Fund(player, root, context, new ResourceCost(tech: 2)), Is.True);
+
+            var repriced = session.Pack().Funded.Single();
+            Assert.That(repriced.Tentative.Ap, Is.EqualTo(first.Tentative.Ap));
+            Assert.That(repriced.PhysicalDraw.Materials, Is.EqualTo(9));
+            Assert.That(session.Converged, Is.False);
+            session.Pack();
+            Assert.That(session.Converged, Is.True);
+        }
+
         [Test] public void LostAccessAndClosedTurnDoNotSpend()
         {
             root.AddResource(ResourceType.Materials, 2); root.EndTradeTurn();
