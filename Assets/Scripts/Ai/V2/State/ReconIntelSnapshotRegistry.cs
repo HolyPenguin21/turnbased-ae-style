@@ -44,6 +44,9 @@ namespace Game.Ai.V2
 
         public static bool IsStaleAge(int ageTurns) => ageTurns >= AiConfigV2.reconIntelStaleTurnsLo;
 
+        // The tighter limit of an Attack observation need (Recon's need Refresh, Desire's pressure).
+        public static bool IsAttackIntelStale(int ageTurns) => ageTurns > AiConfigV2.attackIntelMaxAgeTurns;
+
         public static void Capture(PlayerSetupData player, int turn, int knowledgeVersion,
             IReadOnlyDictionary<HexCoord, int> lastObserved)
         {

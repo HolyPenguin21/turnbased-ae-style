@@ -112,6 +112,21 @@ namespace Game.EditorTests
             Assert.That(MissionActorPolicy.HasCapableActor(intent, snap, StealthRequirement.Required), Is.False);
         }
 
+        // 2026-11-18 perf: a commitments build reads only the stealth requirement of a Disruption
+        // intent; the cheap read equals the re-materialised objective with and without a carrier.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void DisruptionStealthForIntent_EqualsTheRematerialisedObjective(bool carrier)
+        {
+            WorldSnapshot snap = Snapshot(Scout(2, carrier));
+            var intent = new ScoutIntent { Kind = ScoutTargetKind.DisruptStructure, FocusHex = Site };
+            StealthRequirement full = ReconObjectiveEvaluator.ForIntent(snap, intent)?.Stealth
+                ?? StealthRequirement.None;
+            Assert.That(full, Is.EqualTo(carrier ? StealthRequirement.Required : StealthRequirement.None),
+                "fixture: the objective exists exactly with a carrier scout");
+            Assert.That(ReconObjectiveEvaluator.StealthForIntent(snap, intent), Is.EqualTo(full));
+        }
+
         // 2026-11-13 (owner, P1) — WaitForDisruption (wait only for a source that finishes this
         // turn for free) was superseded by the entry gate AttackObjectiveEvaluator.HasAssaultDisruption:
         // a structure-defended site is entered only with a carrier on the hex or in the fist —

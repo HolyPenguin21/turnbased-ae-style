@@ -277,8 +277,8 @@ namespace Game.EditorTests
             Assert.That(calls, Is.EqualTo(1)); Assert.That(observedMovement, Is.Zero);
             Assert.That(busyDuringDestruction, Is.True); Assert.That(ArmyRegistry.HasMovementInProgress, Is.False);
             Assert.That(BuildingRegistry.FindAt(first), Is.Null);
-            Assert.That(ArmyRegistry.At(first), Does.Contain(army));
-            Assert.That(ArmyRegistry.At(origin), Does.Not.Contain(army));
+            Assert.That(ArmyRegistry.At(first), Has.Member(army));
+            Assert.That(ArmyRegistry.At(origin), Has.No.Member(army));
         }
         [Test] public void RetreatOntoFacilityNotifiesAfterRelocationAndMovementEnd()
         {

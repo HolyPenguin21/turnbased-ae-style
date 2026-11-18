@@ -48,14 +48,11 @@ namespace Game.Ai.V2
 
             if (ReconScoutKinds.IsRefresh(intent.Kind))
             {
-                // A Refresh intent is valid only while the frozen IntelAge still says the focus is
-                // genuinely stale. If another observer refreshed it before this scan, age is 0 and
-                // the intent is already complete. Never-observed is not Refresh and returns false.
-                return ReconIntelSnapshotRegistry.TryGetIntelAge(snap, intent.FocusHex, out int age)
-                    && ReconIntelSnapshotRegistry.IsStaleAge(age)
-                    && (IsRefreshFocusRunnable(snap, intent.FocusHex)
-                        || (IsAttackObservationFocusRunnable(snap, intent.FocusHex)
-                            && AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(intent.FocusHex)));
+                // A Refresh intent is valid exactly while its objective exists: the frozen IntelAge
+                // still says the focus is stale (an Attack need: older than attackIntelMaxAgeTurns).
+                // If another observer refreshed it before this scan, age is 0 and the intent is
+                // already complete. Never-observed is not Refresh and returns false.
+                return ReconObjectiveEvaluator.RefreshExists(snap, intent.FocusHex);
             }
 
             return ReconScoutKinds.IsExplore(intent.Kind)

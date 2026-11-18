@@ -392,7 +392,7 @@ namespace Game.Ai.V2
         {
             foreach (HexCoord hex in AttackObjectiveEvaluator.ObservationNeeds(snap))
                 if (observed == null || !observed.TryGetValue(hex, out int seen)
-                    || turn - seen > AiConfigV2.attackIntelMaxAgeTurns)
+                    || ReconIntelSnapshotRegistry.IsAttackIntelStale(turn - seen))
                     return 1f;
             return 0f;
         }

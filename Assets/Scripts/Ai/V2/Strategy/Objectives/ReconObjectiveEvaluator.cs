@@ -121,9 +121,13 @@ namespace Game.Ai.V2
             return facts != null && ReferenceEquals(facts.Snap, snap) ? facts : null;
         }
 
-        private static bool IsObservationNeed(WorldSnapshot snap, HexCoord hex) =>
-            FactsFor(snap)?.ObservationNeeds.Contains(hex)
-                ?? AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex);
+        // A single question: the running Enumerate's frozen needs, else a live read
+        // (ObservationNeedLookup owns that choice).
+        private static bool IsObservationNeed(WorldSnapshot snap, HexCoord hex)
+        {
+            using var needs = new ObservationNeedLookup(snap);
+            return needs.Contains(hex);
+        }
 
         // ONE AttackObjectiveEvaluator.ObservationNeeds read shared by many IsObservationNeed
         // questions about the same snapshot and an unchanged intent set (one ActorCommitments
@@ -431,9 +435,7 @@ namespace Game.Ai.V2
             int? preferredMoverArmyId = null, bool requireMover = true)
         {
             if (!AssaultNeedsDisruption(snap, hex)) return null;
-            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.DisruptStructure,
-                FocusHex = hex, Stealth = StealthRequirement.Required };
-            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, target, preferredMoverArmyId);
+            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, DisruptionTarget(hex), preferredMoverArmyId);
             if (requireMover && !cost.MoverKnown) return null;
             // 2026-11-07 (owner) — the carrier a live Attack operation counts on
             // (AttackSupportProjection.FreeCarrier) is a step of that operation: it keeps Attack's
@@ -458,6 +460,17 @@ namespace Game.Ai.V2
                 Stealth = StealthRequirement.Required, TaskScore = score, BaseValue = score.Value,
                 StrategicRelevance = 1f };
         }
+
+        private static ScoutMissionTarget DisruptionTarget(HexCoord hex) => new ScoutMissionTarget
+        {
+            Kind = ScoutTargetKind.DisruptStructure, FocusHex = hex, Stealth = StealthRequirement.Required,
+        };
+
+        // Does DisruptAt(snap, hex) exist (default mover gate)? Its own gates without the score
+        // (UnblockedAttackValue, prices) - the read StealthForIntent needs per commitments build.
+        private static bool DisruptionExists(WorldSnapshot snap, HexCoord hex) =>
+            AssaultNeedsDisruption(snap, hex)
+            && ScoutCostModel.Estimate(snap, DisruptionTarget(hex)).MoverKnown;
 
         // 2026-11-16 (owner decision) — the value a Recon step unblocks: the live `attack`'s own
         // value (MissionIntent.DisplacementValue, what its idle army loses) while the entry rule the
@@ -540,29 +553,57 @@ namespace Game.Ai.V2
         public static ReconObjective RefreshAt(WorldSnapshot snap, HexCoord hex,
             int? preferredMoverArmyId = null)
         {
-            // Both branches need a known age past their own gates; the observation-need read
-            // (Attack's whole target enumeration outside an Enumerate) is asked only when one passes.
-            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
-                return null;
+            switch (RefreshKindAt(snap, hex, null, exactKind: true, out int age))
+            {
+                case RefreshKind.AttackNeed:
+                    ReconDirectionSnapshot direction = null;
+                    return AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction);
+                case RefreshKind.Stale:
+                    return BuildRefresh(snap, hex, age, preferredMoverArmyId);
+                default:
+                    return null;
+            }
+        }
+
+        // Does a Refresh objective exist at `hex` right now (RefreshAt non-null)? The one validity
+        // rule of a durable Refresh intent (ScoutObjectiveEvaluator.IsIntentStillValid) and of its
+        // stealth requirement (StealthForIntent). `needs` shares one observation-need read.
+        internal static bool RefreshExists(WorldSnapshot snap, HexCoord hex,
+            ObservationNeedLookup needs = null) =>
+            RefreshKindAt(snap, hex, needs, exactKind: false, out _) != RefreshKind.None;
+
+        private enum RefreshKind { None, AttackNeed, Stale }
+
+        // THE branch rule of a Refresh at `hex`: an Attack observation need (AttackNeedRefresh),
+        // else an ordinary stale Refresh. Both need a known age past their own gates; the
+        // observation need (Attack's whole target enumeration outside an Enumerate) is read only
+        // when the answer depends on it. `exactKind` false = existence only: when both branches
+        // pass, the kind is not asked and Stale stands for "exists".
+        private static RefreshKind RefreshKindAt(WorldSnapshot snap, HexCoord hex,
+            ObservationNeedLookup needs, bool exactKind, out int age)
+        {
+            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out age))
+                return RefreshKind.None;
             bool asNeed = RefreshNeedGatesPass(snap, hex, age);
             bool asStale = RefreshStaleGatesPass(snap, hex, age);
             if (!asNeed && !asStale)
-                return null;
-            if (IsObservationNeed(snap, hex))
-            {
-                ReconDirectionSnapshot direction = null;
-                return asNeed ? AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction) : null;
-            }
-            return asStale ? BuildRefresh(snap, hex, age, preferredMoverArmyId) : null;
+                return RefreshKind.None;
+            if (!exactKind && asNeed && asStale)
+                return RefreshKind.Stale;
+            bool need = needs?.Contains(hex) ?? IsObservationNeed(snap, hex);
+            if (need)
+                return asNeed ? RefreshKind.AttackNeed : RefreshKind.None;
+            return asStale ? RefreshKind.Stale : RefreshKind.None;
         }
 
         // The age and runnable gates of an Attack observation-need Refresh (AttackNeedRefresh).
         private static bool RefreshNeedGatesPass(WorldSnapshot snap, HexCoord hex, int age) =>
-            age > AiConfigV2.attackIntelMaxAgeTurns
+            ReconIntelSnapshotRegistry.IsAttackIntelStale(age)
             && ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex);
 
-        // The age and runnable gates of an ordinary stale Refresh (RefreshAt, BuildRefreshObjectives).
-        private static bool RefreshStaleGatesPass(WorldSnapshot snap, HexCoord hex, int age) =>
+        // The age and runnable gates of an ordinary stale Refresh (RefreshAt, BuildRefreshObjectives,
+        // ReconContinuity's re-focus waypoints).
+        internal static bool RefreshStaleGatesPass(WorldSnapshot snap, HexCoord hex, int age) =>
             ReconIntelSnapshotRegistry.IsStaleAge(age)
             && ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, hex);
 
@@ -672,27 +713,20 @@ namespace Game.Ai.V2
                 case ScoutTargetKind.Hunt:
                 case ScoutTargetKind.AirSweep:
                     return StealthRequirement.None;
-                // Existence reads the mover estimate (requireMover); few Disruption intents exist.
+                // A Disruption objective always requires stealth; existence reads DisruptAt's own
+                // gates (the mover estimate included), not its score.
                 case ScoutTargetKind.DisruptStructure:
-                    return DisruptAt(snap, hex)?.Stealth ?? StealthRequirement.None;
+                    return DisruptionExists(snap, hex) ? StealthRequirement.Required : StealthRequirement.None;
                 case ScoutTargetKind.Explore:
                     return EnemyExposedAt(snap, hex) && ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, hex)
                         ? StealthRequirement.Required : StealthRequirement.None;
                 case ScoutTargetKind.Refresh:
                 {
-                    if (!EnemyExposedAt(snap, hex))
-                        return StealthRequirement.None;
-                    // RefreshAt's two branches - AttackNeedRefresh for an observation need, the
-                    // stale Refresh otherwise - both need a known age and differ only in their own
-                    // age and runnable gates. The need is asked only when those gates disagree
-                    // (today: a visible-arrival-blocked known site, age past both thresholds).
-                    if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
-                        return StealthRequirement.None;
-                    bool asNeed = RefreshNeedGatesPass(snap, hex, age);
-                    bool asStale = RefreshStaleGatesPass(snap, hex, age);
-                    bool exists = asNeed == asStale ? asNeed
-                        : (needs?.Contains(hex) ?? IsObservationNeed(snap, hex)) ? asNeed : asStale;
-                    return exists ? StealthRequirement.Required : StealthRequirement.None;
+                    // Both Refresh branches require stealth exactly when the focus is exposed; the
+                    // observation need is read only when the branch gates disagree (today: a
+                    // visible-arrival-blocked known site, age past both thresholds).
+                    return EnemyExposedAt(snap, hex) && RefreshExists(snap, hex, needs)
+                        ? StealthRequirement.Required : StealthRequirement.None;
                 }
                 default:
                     return StealthRequirement.None;

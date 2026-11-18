@@ -353,6 +353,50 @@ namespace Game.EditorTests
                         ReconObjectiveEvaluator.StealthForIntent(snap, lane.Scout))), $"#{lane.PreferredMoverArmyId}");
         }
 
+        // One existence rule for a Refresh: the durable intent is valid exactly while RefreshAt
+        // re-materialises its objective - every age, blocked and open hexes, with and without
+        // the live Attack's need.
+        [Test]
+        public void RefreshIntentValidity_EqualsTheObjectiveExistence()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            snap.MapKnowledge.VisibleArrivalBlockedHexes.Add(new HexCoord(3, 1));
+            snap.MapKnowledge.ScoutHardBlockedHexes.Add(new HexCoord(4, -1));
+            var seen = new Dictionary<HexCoord, int>();
+            int k = 0;
+            foreach (HexCoord h in snap.MapKnowledge.AllHexes)
+                seen[h] = snap.TurnNumber - (k++ % 5);
+            seen[Site] = 7;
+            ReconIntelSnapshotRegistry.Clear();
+            ReconIntelSnapshotRegistry.Capture(snap.Observer, snap.TurnNumber, snap.KnowledgeVersion, seen);
+            var hexes = snap.MapKnowledge.AllHexes.Append(new HexCoord(20, 0)).ToList();
+
+            void AssertAgree(string label)
+            {
+                int exist = 0;
+                foreach (HexCoord h in hexes)
+                {
+                    bool exists = ReconObjectiveEvaluator.RefreshAt(snap, h) != null;
+                    var intent = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = h };
+                    Assert.That(ScoutObjectiveEvaluator.IsIntentStillValid(snap, intent), Is.EqualTo(exists),
+                        $"{label} validity at {h}");
+                    Assert.That(ReconObjectiveEvaluator.RefreshExists(snap, h), Is.EqualTo(exists),
+                        $"{label} existence at {h}");
+                    if (exists) exist++;
+                }
+                Assert.That(exist, Is.GreaterThan(0), $"{label}: fixture must hold live Refreshes");
+            }
+
+            AssertAgree("with the need");
+            Assert.That(ScoutObjectiveEvaluator.IsIntentStillValid(snap,
+                new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = Site }), Is.True);
+            MissionIntentRegistry.Clear();
+            snap.Intents = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            AssertAgree("without the need");
+            Assert.That(ScoutObjectiveEvaluator.IsIntentStillValid(snap,
+                new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = Site }), Is.False);
+        }
+
         // A known field army beside the site: every hex around it is exposed.
         private static void ExposeSite(WorldSnapshot snap)
         {
