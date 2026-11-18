@@ -195,9 +195,10 @@ namespace Game.Ai.V2
                     + $"{matching}/{traitMatching}/{placements}/{preflight}/{opDeliver} "
                     + $"resourceDeficits=[{deficits}] directNeedMin={directNeed} ap={ap}"
                     + (refits > 0 ? $" refit={refits}" : "")
-                    // The gate name alone hid the real refusal (match 2026-11-18): print the two most
-                    // frequent delivery reasons here instead of sending the reader to [ECO][Builder].
-                    + (postGate == "operational-delivery-gate" && failures.Count > 0
+                    // The gate name alone hid the real refusal (match 2026-11-18): while no placement
+                    // reaches a price check (delivery gate, play-preflight, empty chain) print the two
+                    // most frequent refusal reasons instead of sending the reader to [ECO][Builder].
+                    + (directNeed == "-" && failures.Count > 0
                         ? " why=[" + string.Join(" | ", failures.OrderByDescending(kv => kv.Value)
                             .ThenBy(kv => kv.Key).Take(2).Select(kv => kv.Key)) + "]"
                         : "");
