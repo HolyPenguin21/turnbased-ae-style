@@ -2409,7 +2409,7 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 04000000
+      hostTypeTags: 0400000007000000
       hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []
@@ -2525,7 +2525,7 @@ MonoBehaviour:
       tech: 0
     attachmentSlot: 0
     equipment:
-      hostTypeTags: 0400000005000000
+      hostTypeTags: 040000000500000007000000
       hostKinds: 00000000
       clearAbilityFamilies: 
       removeAbilities: []

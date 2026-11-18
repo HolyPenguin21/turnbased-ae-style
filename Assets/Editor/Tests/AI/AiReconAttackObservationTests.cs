@@ -268,6 +268,102 @@ namespace Game.EditorTests
             Assert.That(AttackObjectiveEvaluator.ObservationNeeds(snap), Is.Empty);
         }
 
+        // 2026-11-18 late-game perf: StealthForIntent asks the observation need only when the
+        // need and stale Refresh gates disagree - a visible-arrival-blocked known site. There the
+        // need decides: with it the Refresh exists (stealth Required), without it it does not.
+        [Test]
+        public void ExposedNeedOnABlockedSite_StealthEqualsTheRematerialisedRefresh()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            ExposeSite(snap);
+            var intent = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = Site };
+
+            Assert.That(ReconObjectiveEvaluator.ForIntent(snap, intent)?.Stealth,
+                Is.EqualTo(StealthRequirement.Required), "fixture: the need's Refresh exists, exposed");
+            Assert.That(ReconObjectiveEvaluator.StealthForIntent(snap, intent),
+                Is.EqualTo(StealthRequirement.Required));
+            using (var needs = new ReconObjectiveEvaluator.ObservationNeedLookup(snap))
+                Assert.That(ReconObjectiveEvaluator.StealthForIntent(snap, intent, needs),
+                    Is.EqualTo(StealthRequirement.Required));
+
+            MissionIntentRegistry.Clear();
+            snap.Intents = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            Assert.That(AttackObjectiveEvaluator.ObservationNeeds(snap), Is.Empty,
+                "fixture: without the Attack the site is no observation need");
+            Assert.That(ReconObjectiveEvaluator.ForIntent(snap, intent), Is.Null,
+                "a blocked site is no ordinary Refresh");
+            Assert.That(ReconObjectiveEvaluator.StealthForIntent(snap, intent),
+                Is.EqualTo(StealthRequirement.None));
+            using (var needs = new ReconObjectiveEvaluator.ObservationNeedLookup(snap))
+                Assert.That(ReconObjectiveEvaluator.StealthForIntent(snap, intent, needs),
+                    Is.EqualTo(StealthRequirement.None));
+        }
+
+        // The shared lookup answers exactly as the per-call read, in any question order (a hex
+        // found early stops the pull, a later question continues it).
+        [Test]
+        public void ObservationNeedLookup_AnswersAsThePerCallRead()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            var hexes = snap.MapKnowledge.AllHexes.ToList();
+            hexes.Remove(Site);
+            hexes.Insert(hexes.Count / 2, Site);
+            hexes.Add(Site);
+            using var needs = new ReconObjectiveEvaluator.ObservationNeedLookup(snap);
+            foreach (HexCoord h in hexes)
+                Assert.That(needs.Contains(h),
+                    Is.EqualTo(AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(h)), $"{h}");
+            Assert.That(needs.Contains(Site), Is.True);
+        }
+
+        // One commitments build shares the need read across its Scout intents: an incumbent
+        // scout that cannot hide loses the claim on the exposed need, a stealth-capable one keeps it.
+        [Test]
+        public void CommitmentsBuild_AppliesTheNeedStealthToEveryIncumbentRefresh()
+        {
+            WorldSnapshot snap = Scenario(out _);
+            ExposeSite(snap);
+            snap.Self.Armies = new List<ArmySnapshot>
+            {
+                new ArmySnapshot { ArmyId = 31, Owner = snap.Observer, Hex = new HexCoord(3, 0),
+                    IsSoloRecce = true, MemberCount = 1, MaxMovement = 2, CurrentMovement = 2 },
+                new ArmySnapshot { ArmyId = 32, Owner = snap.Observer, Hex = new HexCoord(3, 1),
+                    IsSoloRecce = true, CanEnterStealth = true, MemberCount = 1, MaxMovement = 2,
+                    CurrentMovement = 2 },
+            };
+            MissionIntent Lane(int mover)
+            {
+                var lane = new MissionIntent
+                {
+                    Kind = MissionKind.Scout, Status = IntentStatus.Active,
+                    Objective = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = Site },
+                    PreferredMoverArmyId = mover,
+                };
+                lane.IntentKey = MissionIntentKey.For(lane);
+                return lane;
+            }
+            var lanes = new[] { Lane(31), Lane(32) };
+
+            ISet<int> claimed = ActorCommitments.FromIntents(lanes, snap, null).ClaimedArmyIdSet;
+
+            Assert.That(claimed, Is.EquivalentTo(new[] { 32 }));
+            foreach (MissionIntent lane in lanes)
+                Assert.That(claimed.Contains(lane.PreferredMoverArmyId.Value), Is.EqualTo(
+                    MissionActorPolicy.HasCapableActor(lane, snap,
+                        ReconObjectiveEvaluator.StealthForIntent(snap, lane.Scout))), $"#{lane.PreferredMoverArmyId}");
+        }
+
+        // A known field army beside the site: every hex around it is exposed.
+        private static void ExposeSite(WorldSnapshot snap)
+        {
+            var enemy = new PlayerSetupData { Nickname = "Enemy field", ColorIndex = 3 };
+            snap.Known.EnemySightings = new[]
+            {
+                new AiMapMemory.KnownEnemySighting(new HexCoord(7, 0), enemy, "field", 1, 2f, 2f,
+                    new List<Game.Combat.WorthIt.DefenderProfile>(), seenTurn: snap.TurnNumber, armyId: 77),
+            };
+        }
+
         private static WorldSnapshot Scenario(out ArmySnapshot scout)
         {
             var player = new PlayerSetupData { Nickname = "Recon audit", ColorIndex = 1 };

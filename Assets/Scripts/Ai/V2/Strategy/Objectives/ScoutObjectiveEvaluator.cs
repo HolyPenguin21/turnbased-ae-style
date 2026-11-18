@@ -54,8 +54,8 @@ namespace Game.Ai.V2
                 return ReconIntelSnapshotRegistry.TryGetIntelAge(snap, intent.FocusHex, out int age)
                     && ReconIntelSnapshotRegistry.IsStaleAge(age)
                     && (IsRefreshFocusRunnable(snap, intent.FocusHex)
-                        || (AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(intent.FocusHex)
-                            && IsAttackObservationFocusRunnable(snap, intent.FocusHex)));
+                        || (IsAttackObservationFocusRunnable(snap, intent.FocusHex)
+                            && AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(intent.FocusHex)));
             }
 
             return ReconScoutKinds.IsExplore(intent.Kind)

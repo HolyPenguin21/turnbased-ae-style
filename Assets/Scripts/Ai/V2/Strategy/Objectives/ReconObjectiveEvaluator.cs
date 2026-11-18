@@ -125,6 +125,51 @@ namespace Game.Ai.V2
             FactsFor(snap)?.ObservationNeeds.Contains(hex)
                 ?? AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex);
 
+        // ONE AttackObjectiveEvaluator.ObservationNeeds read shared by many IsObservationNeed
+        // questions about the same snapshot and an unchanged intent set (one ActorCommitments
+        // build). Pulled lazily: a hex found early stops the enumeration exactly as a single
+        // Contains does, a later question continues it, so the answers equal the per-call read.
+        // 2026-11-18 late game: every commitments build re-ran ObservationNeeds (a nested
+        // commitments build, Attack's target enumeration and readiness forecasts) per exposed
+        // Refresh intent - 0.4-2.8 s per turn.
+        internal sealed class ObservationNeedLookup : System.IDisposable
+        {
+            private readonly WorldSnapshot _snap;
+            private HashSet<HexCoord> _seen;
+            private IEnumerator<HexCoord> _pending;
+
+            internal ObservationNeedLookup(WorldSnapshot snap) => _snap = snap;
+
+            internal bool Contains(HexCoord hex)
+            {
+                HashSet<HexCoord> frozen = FactsFor(_snap)?.ObservationNeeds;
+                if (frozen != null)
+                    return frozen.Contains(hex);
+                if (_seen == null)
+                {
+                    _seen = new HashSet<HexCoord>();
+                    _pending = AttackObjectiveEvaluator.ObservationNeeds(_snap).GetEnumerator();
+                }
+                if (_seen.Contains(hex))
+                    return true;
+                while (_pending != null && _pending.MoveNext())
+                {
+                    HexCoord need = _pending.Current;
+                    _seen.Add(need);
+                    if (need.Equals(hex))
+                        return true;
+                }
+                Dispose();
+                return false;
+            }
+
+            public void Dispose()
+            {
+                _pending?.Dispose();
+                _pending = null;
+            }
+        }
+
         private static float LocalExplorationGap(WorldSnapshot snap)
         {
             EnumerationFacts facts = FactsFor(snap);
@@ -495,18 +540,31 @@ namespace Game.Ai.V2
         public static ReconObjective RefreshAt(WorldSnapshot snap, HexCoord hex,
             int? preferredMoverArmyId = null)
         {
+            // Both branches need a known age past their own gates; the observation-need read
+            // (Attack's whole target enumeration outside an Enumerate) is asked only when one passes.
+            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
+                return null;
+            bool asNeed = RefreshNeedGatesPass(snap, hex, age);
+            bool asStale = RefreshStaleGatesPass(snap, hex, age);
+            if (!asNeed && !asStale)
+                return null;
             if (IsObservationNeed(snap, hex))
             {
                 ReconDirectionSnapshot direction = null;
-                return AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction);
+                return asNeed ? AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction) : null;
             }
-            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
-                || !ReconIntelSnapshotRegistry.IsStaleAge(age))
-                return null;
-            if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, hex))
-                return null;
-            return BuildRefresh(snap, hex, age, preferredMoverArmyId);
+            return asStale ? BuildRefresh(snap, hex, age, preferredMoverArmyId) : null;
         }
+
+        // The age and runnable gates of an Attack observation-need Refresh (AttackNeedRefresh).
+        private static bool RefreshNeedGatesPass(WorldSnapshot snap, HexCoord hex, int age) =>
+            age > AiConfigV2.attackIntelMaxAgeTurns
+            && ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex);
+
+        // The age and runnable gates of an ordinary stale Refresh (RefreshAt, BuildRefreshObjectives).
+        private static bool RefreshStaleGatesPass(WorldSnapshot snap, HexCoord hex, int age) =>
+            ReconIntelSnapshotRegistry.IsStaleAge(age)
+            && ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, hex);
 
         // The aviation-only observation pass (ScoutTargetKind.AirSweep). FocusHex = the sweep
         // anchor (WorldAnalysis.TryAirSweepAnchor: true enemy army concentration, else enemy
@@ -599,7 +657,10 @@ namespace Game.Ai.V2
         // read first: an unexposed focus skips the gates (Refresh's observation-need gate runs
         // Attack's target enumeration). Keep in step with ExploreAt / RefreshAt /
         // AttackNeedRefresh / DisruptAt.
-        internal static StealthRequirement StealthForIntent(WorldSnapshot snap, ScoutIntent si)
+        // `needs` (optional) shares one ObservationNeeds read across the intents of one
+        // commitments build; without it each Refresh question reads the needs live.
+        internal static StealthRequirement StealthForIntent(WorldSnapshot snap, ScoutIntent si,
+            ObservationNeedLookup needs = null)
         {
             if (si == null)
                 return StealthRequirement.None;
@@ -621,19 +682,17 @@ namespace Game.Ai.V2
                 {
                     if (!EnemyExposedAt(snap, hex))
                         return StealthRequirement.None;
-                    int age;
-                    if (IsObservationNeed(snap, hex))
-                    {
-                        if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out age)
-                            || age <= AiConfigV2.attackIntelMaxAgeTurns
-                            || !ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex))
-                            return StealthRequirement.None;
-                    }
-                    else if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out age)
-                        || !ReconIntelSnapshotRegistry.IsStaleAge(age)
-                        || !ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, hex))
+                    // RefreshAt's two branches - AttackNeedRefresh for an observation need, the
+                    // stale Refresh otherwise - both need a known age and differ only in their own
+                    // age and runnable gates. The need is asked only when those gates disagree
+                    // (today: a visible-arrival-blocked known site, age past both thresholds).
+                    if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
                         return StealthRequirement.None;
-                    return StealthRequirement.Required;
+                    bool asNeed = RefreshNeedGatesPass(snap, hex, age);
+                    bool asStale = RefreshStaleGatesPass(snap, hex, age);
+                    bool exists = asNeed == asStale ? asNeed
+                        : (needs?.Contains(hex) ?? IsObservationNeed(snap, hex)) ? asNeed : asStale;
+                    return exists ? StealthRequirement.Required : StealthRequirement.None;
                 }
                 default:
                     return StealthRequirement.None;
@@ -645,14 +704,12 @@ namespace Game.Ai.V2
         private static ReconObjective AttackNeedRefresh(WorldSnapshot snap, HexCoord hex,
             int? preferredMoverArmyId, ref ReconDirectionSnapshot direction)
         {
-            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
-                || age <= AiConfigV2.attackIntelMaxAgeTurns)
-                return null;
             // Recon audit B2 — only a HARD block (off-map / impassable terrain) stops the look. A known
             // hostile site is always a visible-arrival block (its garrison would fight, an
             // undefended one would be taken over), so testing that block here dropped EVERY Attack
             // need; the job is observed from a vantage instead (ObservationVantageSelector.UsesVantage).
-            if (!ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex))
+            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
+                || !RefreshNeedGatesPass(snap, hex, age))
                 return null;
             if (direction == null)
                 direction = DirectionFor(snap);
@@ -666,11 +723,9 @@ namespace Game.Ai.V2
             foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
             {
                 int age = Mathf.Max(0, snap.TurnNumber - kv.Value);
-                if (!ReconIntelSnapshotRegistry.IsStaleAge(age))
-                    continue;
                 // Visibility footprints may extend beyond the generated playfield. Use the same
                 // actual-map gate as durable Refresh validity, before pricing or beam selection.
-                if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
+                if (!RefreshStaleGatesPass(snap, kv.Key, age))
                     continue;
                 stale.Add((kv.Key, age));
             }

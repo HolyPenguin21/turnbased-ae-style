@@ -25,6 +25,9 @@ namespace Game.Ai.V2
             if (reconObjectives != null)
                 foreach (ReconObjective o in reconObjectives)
                     reqByKey[o.IntentKey] = o.Stealth;
+            // One Attack observation-need read for every Scout intent of this build: nothing below
+            // changes the snapshot or an intent, so it equals each intent's own read.
+            using var observationNeeds = new ReconObjectiveEvaluator.ObservationNeedLookup(snap);
 
             foreach (MissionIntent i in intents)
             {
@@ -177,7 +180,7 @@ namespace Game.Ai.V2
                     // ReconObjectiveEvaluator.{ExploreAt,RefreshAt}, each of which recomputes
                     // exposure and can return Stealth.Required. Mirror that per-kind (a re-focused
                     // path returns null and silently drops a real stealth requirement).
-                    req = ReconObjectiveEvaluator.StealthForIntent(snap, i.Scout);
+                    req = ReconObjectiveEvaluator.StealthForIntent(snap, i.Scout, observationNeeds);
                 }
 
                 if (HasCapableActor(i, snap, req))
