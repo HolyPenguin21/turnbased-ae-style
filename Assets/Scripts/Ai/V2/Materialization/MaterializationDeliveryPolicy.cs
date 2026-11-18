@@ -234,7 +234,7 @@ namespace Game.Ai.V2
                         var commitments = actorCommitments ?? ActorCommitments.FromIntents(activeIntents, snapshot, null);
                         projected.OperatorDutyBlocksDeparture = DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(
                             player, preview, commitments, mode =>
-                                DevelopmentOpportunityEvaluator.SelectedPreparationSite(mode, snapshot,
+                                DevelopmentOpportunityEvaluator.PreparationDutySite(mode, snapshot,
                                     player, AiHandRegistry.Peek(player), ctx, activeIntents,
                                     projectedArmy: preview, replacedArmy: p.Deploy.Army));
                         float fieldPotential = WorldAnalysis.FieldStrikePotential(player,
@@ -550,9 +550,9 @@ namespace Game.Ai.V2
 
             DeliveryAssessment Decide(bool ok, DeliveryFailureReason reason, string detail)
             {
-                AiDebugLog.WriteDeduped($"hero-vs-ready|{demand.TargetHex}|{card}|{p.Deploy.Hex}",
+                AiDebugLog.WriteDeduped($"hero-vs-ready|{demand.TargetHex}|{card}|{p.Deploy.Hex}|{p.Deploy.Kind}",
                     $"[ECO][HeroVsReady] site=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
-                    + $"card={card} deploy=({p.Deploy.Hex.Q},{p.Deploy.Hex.R}) {detail} "
+                    + $"card={card} deploy=({p.Deploy.Hex.Q},{p.Deploy.Hex.R}) kind={p.Deploy.Kind} {detail} "
                     + $"decision={(ok ? "NEW_HERO" : reason.ToString())}");
                 return ok ? DeliveryAssessment.Ok : DeliveryAssessment.No(reason, detail);
             }

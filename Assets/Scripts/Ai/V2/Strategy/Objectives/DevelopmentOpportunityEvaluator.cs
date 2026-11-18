@@ -318,10 +318,7 @@ namespace Game.Ai.V2
             if (!facilityReady && facilityOfModeExists)
                 return "reason=mode_facility_exists_elsewhere";
             if (!facilityReady)
-                facilityCards = hand.Hand
-                    .Where(c => c?.Definition?.cardType == CardType.Facility
-                        && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
-                    .ToList();
+                facilityCards = HandFacilityCards(mode, hand);
             bool futureFacility = facilityReady || facilityCards.Count > 0 || deck?.Any(d =>
                 d?.cardType == CardType.Facility && d.grantedAbilities?.Contains(
                     ResearchProductionSystem.FacilityAbility(mode)) == true) == true;
@@ -340,6 +337,32 @@ namespace Game.Ai.V2
             }
             return null;
         }
+
+        // The hand Facility cards that found a site of `mode` - the one reading of "the Facility stage
+        // is playable now" (StructuralPreparationBlock and the operator duty both read it).
+        private static List<CardData> HandFacilityCards(ResearchProductionMode mode, AiHandData hand) =>
+            (hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+                .Where(c => c?.Definition?.cardType == CardType.Facility
+                    && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
+                .ToList();
+
+        // THE operator DUTY of `mode`: the selected preparation site, but only while its Facility stage
+        // is playable now (a Facility card of the mode in hand). Selection stays Development's own
+        // staging fact (an operator may still come first while the Facility is in the deck -
+        // FreeOperatorCanComeFirst...); the duty is a hard veto on the operator leaving for Economy,
+        // Raid, Attack, Housekeeping and Materialization, and a hard veto needs a live plan.
+        // 2026-11-18 (match Draven vs Halden): Halden's Assembler Rusty Miller sat in hand T1-T11
+        // while every Human/Materials extraction was rejected operator_leaves_served_facility - his
+        // own projected placement elected the Citadel as the Production site on a Factory that was
+        // only in the deck (Development: current_stage_not_worth_playing); later he stood pinned in a
+        // garrison for the rest of the match. Income stayed 5/turn (Human 1) and the Citadel fell.
+        // The duty returns the same pass a Facility card of the mode reaches the hand.
+        internal static HexCoord? PreparationDutySite(ResearchProductionMode mode, WorldSnapshot snap,
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
+            IReadOnlyList<MissionIntent> activeIntents, ArmyData projectedArmy = null,
+            ArmyData replacedArmy = null) =>
+            HandFacilityCards(mode, hand).Count == 0 ? null
+                : SelectedPreparationSite(mode, snap, player, hand, ctx, activeIntents, projectedArmy, replacedArmy);
 
         // THE preparation site of `mode` while no facility of the mode exists, derived from the live
         // world (no stored assignment): 1) a delivery already walking a qualified hero to a viable
@@ -381,9 +404,11 @@ namespace Game.Ai.V2
             AiArmyRoles.DepartureStripsOperator(player, army, site)
             && !LocalOperatorRelease.CanKeepOperatorsHome(player, army, commitments, site, out _);
 
+        // The live DUTY site (PreparationDutySite's rule on the live world); every reader is a duty test.
         internal static System.Func<ResearchProductionMode, HexCoord?> LivePreparationSite(
             PlayerSetupData player, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents) =>
-            mode => SelectedPreparationSite(mode, player, hand, ctx, intents);
+            mode => HandFacilityCards(mode, hand).Count == 0 ? null
+                : SelectedPreparationSite(mode, player, hand, ctx, intents);
 
         // The operators the departing `army` leaves in the local garrison (empty when none is needed).
         internal static IReadOnlyList<UnitData> OperatorsStayingHome(PlayerSetupData player,
@@ -683,7 +708,7 @@ namespace Game.Ai.V2
                         continue;
                     // Nor the sole operator of a preparation site selected for another mode.
                     if (AiArmyRoles.FacilityNeedsHero(player, army, candidate,
-                            otherMode => SelectedPreparationSite(otherMode, snap, player, hand, ctx, activeIntents)))
+                            otherMode => PreparationDutySite(otherMode, snap, player, hand, ctx, activeIntents)))
                         continue;
                     int route = army.IsGarrison || AiArmyRoles.IsDetachedFieldDelivery(army, candidate)
                         ? SafeStepPathing.FindSafePathCost(ctx.Map, player,

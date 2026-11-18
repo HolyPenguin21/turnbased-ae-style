@@ -187,9 +187,9 @@ namespace Game.Ai.V2
                 DevelopmentOpportunityEvaluator.StepResourceHeadroom(
                     snap.Development.InvestmentSurplusByType, o.StageResourceCost));
             snap.Development.DevPathViable |= steps.Count > 0;
-            snap.Development.ResearchPreparationSite = DevelopmentOpportunityEvaluator.SelectedPreparationSite(
+            snap.Development.ResearchPreparationSite = DevelopmentOpportunityEvaluator.PreparationDutySite(
                 ResearchProductionMode.Research, snap, player, hand, ctx, intents);
-            snap.Development.ProductionPreparationSite = DevelopmentOpportunityEvaluator.SelectedPreparationSite(
+            snap.Development.ProductionPreparationSite = DevelopmentOpportunityEvaluator.PreparationDutySite(
                 ResearchProductionMode.Production, snap, player, hand, ctx, intents);
             // Operator duty of every own field army, against the live roster outside it: set when the
             // army would take a served operator away AND cannot leave it home for free (the one rule

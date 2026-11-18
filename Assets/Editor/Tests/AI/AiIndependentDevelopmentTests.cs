@@ -811,6 +811,38 @@ namespace Game.EditorTests
                     _player, _hand, _ctx, null, preview, live)), Is.EqualTo(!outsideOperator));
         }
 
+        // 2026-11-18 (match Draven vs Halden) — a solo Assembler projected into the base elected it as
+        // the Production site on a Factory that was only in the deck, so every Economy delivery of
+        // that hero was refused operator_leaves_served_facility for 11 turns. Selection (Development's
+        // staging) still elects the site; the duty veto needs the Facility stage playable now.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PreparationDutyBindsTheOperatorOnlyWhileTheFacilityIsInHand(bool facilityInDeck)
+        {
+            if (facilityInDeck)
+            {
+                _hand.RemoveCard(_facility); _snapshot.Self.Deck = new[] { _facility.Definition };
+            }
+            var op = new UnitData { Owner = _player, IsHero = true, CommandRating = 6, Name = "op" };
+            op.Abilities.Add(UnitAbilities.Assembler);
+            var preview = ArmyData.CreateVisualSnapshot();
+            preview.Owner = _player; preview.Hex = Site; preview.Members.Add(op);
+            Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(ResearchProductionMode.Production,
+                _snapshot, _player, _hand, _ctx, null, preview), Is.EqualTo((HexCoord?)Site),
+                "Development keeps staging the site either way (operator may come first)");
+            Assert.That(DevelopmentOpportunityEvaluator.PreparationDutySite(ResearchProductionMode.Production,
+                _snapshot, _player, _hand, _ctx, null, preview),
+                Is.EqualTo(facilityInDeck ? null : (HexCoord?)Site));
+            Assert.That(DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(_player, preview, null,
+                mode => DevelopmentOpportunityEvaluator.PreparationDutySite(mode, _snapshot,
+                    _player, _hand, _ctx, null, preview)), Is.EqualTo(!facilityInDeck),
+                "a deck-only Factory is no duty: the sole operator may leave for Economy");
+            var field = new ArmyData { Owner = _player, Hex = Site };
+            field.Members.Add(op); ArmyRegistry.Register(field);
+            Assert.That(DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(_player, field, _hand, _ctx,
+                null, null), Is.EqualTo(!facilityInDeck), "the live re-check reads the same duty rule");
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         [Category("UnityEngine")]
