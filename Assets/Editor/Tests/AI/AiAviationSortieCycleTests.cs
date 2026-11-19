@@ -1353,7 +1353,7 @@ namespace Game.EditorTests
                 var build = typeof(NonCombatCardPlayer).GetMethod("BuildAviationPlays",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                 var arguments = new object[] { card, null, snap, _owner, _root, hand, ctx,
-                    new List<string>(), null, false };
+                    new List<string>(), null, false, default(SpendAuthority) };
                 var candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
                 Assert.That(candidates.Count, Is.EqualTo(1));
                 Assert.That(candidates[0].Explain, Does.Contain("serviceTask="));
@@ -1363,6 +1363,14 @@ namespace Game.EditorTests
                 snap.Intents = MissionIntentRegistry.GetOrCreate(_owner);
                 candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
                 Assert.That(candidates, Is.Empty, "a sighting alone must not invent a task for aviation");
+
+                // Match 2026-11-19b (Sable T9/T11): a full hand with nothing to fly at froze the
+                // turn. The aircraft may then be stored in the airfield, with no task value.
+                while (hand.HasFreeSlot)
+                    hand.Hand.Add(new CardData(new CardDefinition { displayName = "Filler" }));
+                candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
+                Assert.That(candidates.Count, Is.EqualTo(1), "a full hand stores the aircraft");
+                Assert.That(candidates[0].Explain, Does.Contain("serviceTask=0"));
             }
             finally { MissionIntentRegistry.Clear(); Object.DestroyImmediate(mapObject); }
         }

@@ -511,6 +511,13 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // A full hand (no draw possible) plays its surplus body into a ready or new army even past
+        // the scout portfolio (owner 2026-11-19, match Sable T9/T11: a frozen hand cost whole turns).
+        internal static bool HoldsScoutSurplus(PlayerSetupData player, MaterializationPlan plan,
+            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives, AiHandData hand) =>
+            (hand == null || hand.HasFreeSlot)
+            && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives);
+
         // §P1 — generic surplus must not add a scout beyond the physical IsSoloRecce portfolio
         // cap, across EVERY chain kind (RankedSurplus treats a recce card as ScoutCapability and
         // will build NewArmy / ReusableShell / Attach / Generate placements for it — the Recon
@@ -587,10 +594,7 @@ namespace Game.Ai.V2
                             + $"no garrison overfill ({floorWhy}); a surplus body belongs to a field army");
                     continue;
                 }
-                // A full hand (no draw possible) plays its surplus body into a ready or new army
-                // even past the scout portfolio (owner 2026-11-19): a frozen hand costs whole turns.
-                if (residual == null && (hand == null || hand.HasFreeSlot)
-                    && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
+                if (residual == null && HoldsScoutSurplus(player, plan, snap, reconObjectives, hand))
                 {
                     if (verbose)
                         AiDebugLog.Write($"[AI][V2]   strat.B - hold {plan.StableKey} {AiCardLog.Plan(plan)}: "

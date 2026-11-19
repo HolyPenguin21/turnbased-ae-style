@@ -267,6 +267,29 @@ namespace Game.EditorTests
                 Assert.That(moved, Is.GreaterThan(0), "a free army on the Base is the fist the mover joins");
         }
 
+        // Match 2026-11-19b (Sable T9/T11, owner): a full hand froze whole turns while its scout
+        // cards were held at the portfolio cap. A full hand plays its surplus body into a new army.
+        [Test]
+        public void ScoutSurplusAtThePortfolioCap_IsHeldOnlyWhileTheHandCanStillDraw()
+        {
+            var us = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            for (int i = 0; i < ReconConcurrencyPolicy.HardCap; i++)
+            {
+                UnitData scout = Body(us, "S" + i, 1);
+                scout.Abilities.Add("r1s4");
+                Army(us, Citadel, false, scout);
+            }
+            var plan = new MaterializationPlan { FinalCapability = CapabilityKind.ScoutCapability };
+            var snap = new WorldSnapshot { Observer = us };
+            var hand = new AiHandData(null, us.Faction, 0);
+            Assert.That(TempoCandidateProvider.HoldsScoutSurplus(us, plan, snap, null, hand), Is.True,
+                "a hand with a free slot keeps the card and draws");
+            while (hand.HasFreeSlot)
+                hand.Hand.Add(new Game.Cards.CardData(new Game.Cards.CardDefinition { displayName = "Filler" }));
+            Assert.That(TempoCandidateProvider.HoldsScoutSurplus(us, plan, snap, null, hand), Is.False,
+                "a full hand plays the scout into a ready or new army");
+        }
+
         // ---- founding site --------------------------------------------------------------------
 
         [Test]
